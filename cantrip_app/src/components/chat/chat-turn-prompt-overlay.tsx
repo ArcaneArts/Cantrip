@@ -1,5 +1,11 @@
 import type { ChatMessage } from "@cantrip/protocol";
-import { useEffect, useMemo, useState, type RefObject } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type RefObject,
+} from "react";
 
 import { editableMessageText } from "@/components/chat/latest-message-edit";
 import {
@@ -191,10 +197,12 @@ export function useChatTurnPromptOverlay({
 export function ChatTurnPromptOverlay({
   eliteModeEnabled,
   message,
+  rightInset = 0,
   visible,
 }: {
   eliteModeEnabled: boolean;
   message: ChatMessage | null;
+  rightInset?: CSSProperties["right"];
   visible: boolean;
 }) {
   if (!message || !visible) return null;
@@ -213,22 +221,25 @@ export function ChatTurnPromptOverlay({
   return (
     <div
       aria-hidden="true"
-      className="pointer-events-none absolute inset-x-0 top-0 z-30 px-4 pt-2 sm:px-8 md:px-10"
+      className="pointer-events-none absolute left-0 top-0 z-30 overflow-clip transition-[right] duration-150 ease-out motion-reduce:transition-none"
       data-chat-turn-prompt-overlay=""
+      style={{ right: rightInset }}
     >
-      {eliteModeEnabled ? (
-        <EliteReveal
-          className="mx-auto max-w-5xl"
-          config={CHAT_TURN_PROMPT_GLITCH_CONFIG}
-          contentKind="box"
-          key={`${message.id}:${summary}`}
-          replayKey={0}
-        >
-          {promptCard}
-        </EliteReveal>
-      ) : (
-        <div className="mx-auto max-w-5xl">{promptCard}</div>
-      )}
+      <div className="px-4 pb-4 pt-2 sm:px-8 md:px-10">
+        {eliteModeEnabled ? (
+          <EliteReveal
+            className="mx-auto max-w-5xl"
+            config={CHAT_TURN_PROMPT_GLITCH_CONFIG}
+            contentKind="box"
+            key={`${message.id}:${summary}`}
+            replayKey={0}
+          >
+            {promptCard}
+          </EliteReveal>
+        ) : (
+          <div className="mx-auto max-w-5xl">{promptCard}</div>
+        )}
+      </div>
     </div>
   );
 }
