@@ -114,6 +114,7 @@ import { useAppLiveStatus } from "@/lib/app-live-react";
 import { liveResourceRefreshInterval } from "@/lib/live-resource-refresh";
 import {
   SettingsNavigationLayout,
+  settingsSearchResults,
   type SettingsNavigationSection,
 } from "./settings-navigation";
 import { McpServerSettings } from "./mcp-server-settings";
@@ -230,6 +231,13 @@ export const settingsNavigationSections: readonly SettingsNavigationSection<Sett
           description: "Permission defaults for standalone conversations.",
         },
         {
+          id: "chat-display",
+          label: "Chat display",
+          description:
+            "Show the current prompt header while scrolling through a chat.",
+          keywords: ["overlay context hide"],
+        },
+        {
           id: "updates",
           label: "Cantrip updates",
           description: "Desktop releases, downloads, and installation.",
@@ -283,12 +291,34 @@ export const settingsNavigationSections: readonly SettingsNavigationSection<Sett
       searchItems: [
         {
           id: "appearance",
-          label: "Appearance",
-          description:
-            "Theme, contrast, content gutters, Elite Mode, and macOS Pro Mode.",
-          keywords: [
-            "light dark brightness opacity transparency gutter width spacing",
-          ],
+          label: "Brightness",
+          description: "System, light, or dark theme.",
+        },
+        { id: "high-contrast", label: "High contrast" },
+        {
+          id: "content-gutters",
+          label: "Content gutters",
+          keywords: ["width spacing"],
+        },
+        {
+          id: "elite-mode",
+          label: "Elite Mode",
+          keywords: ["experimental reveal effects configure"],
+        },
+        {
+          id: "pro-mode",
+          label: "Pro Mode",
+          keywords: ["macos opacity transparency vibrancy blur"],
+        },
+        {
+          id: "tab-display",
+          label: "Tab bar display",
+          keywords: ["top bottom rail icons tabs hybrid"],
+        },
+        {
+          id: "file-change",
+          label: "File change shimmer",
+          keywords: ["animation highlight added modified deleted"],
         },
       ],
     },
@@ -754,10 +784,6 @@ function newEditableRoute(providerId: string, modelName = ""): EditableRoute {
     modelName,
     enabled: true,
   };
-}
-
-function matchesSearch(query: string, ...values: Array<string | null>) {
-  return values.some((value) => value?.toLowerCase().includes(query));
 }
 
 function editSettingsRowFromKeyboard(
@@ -1605,77 +1631,38 @@ export function SettingsPage({
       settingsNavigationSectionsForResources(
         settings.data?.providers ?? [],
         settings.data?.models ?? [],
+      ).map((section) =>
+        section.id === "appearance" && !macosDesktopRuntime
+          ? {
+              ...section,
+              searchItems: section.searchItems.filter(
+                ({ id }) => id !== "pro-mode",
+              ),
+            }
+          : section,
       ),
-    [settings.data?.models, settings.data?.providers],
+    [macosDesktopRuntime, settings.data?.models, settings.data?.providers],
   );
-  const appearanceMatches =
-    !generalSearch ||
-    matchesSearch(
+  useEffect(() => {
+    if (!generalSearch) return;
+    const resource = settingsSearchResults(
       generalSearch,
-      "appearance theme system light dark high contrast pro mode opacity transparency vibrancy blur macos operating system elite experimental reveal effects configure tab bar top bottom rail icons tabs hybrid display file change shimmer animation added modified deleted",
+      navigationSections,
+    ).find(
+      ({ sectionId, id }) =>
+        sectionId === "models" &&
+        (id.startsWith("provider:") || id.startsWith("model:")),
     );
-  const desktopStreamingMatches =
-    !generalSearch ||
-    matchesSearch(
-      generalSearch,
-      "remote desktop streaming frame rate fps quality adaptive latency bandwidth data saver sharp balanced",
-    );
-  const permissionDefaultsMatch =
-    !generalSearch ||
-    matchesSearch(
-      generalSearch,
-      "default new agent standalone chat ide permissions sandbox read only workspace full access yolo approvals",
-    );
-  const workspaceLayoutProfileMatches =
-    !generalSearch ||
-    matchesSearch(
-      generalSearch,
-      "project workspace profile layout agent hybrid ide tabs panes first open destinations docks",
-    );
-  const agentNamingMatches =
-    !generalSearch ||
-    matchesSearch(
-      generalSearch,
-      "agent chat names random generated title new agent labeling model automatic task names thinking effort",
-    );
-  const computerUseMatches =
-    !generalSearch ||
-    matchesSearch(
-      generalSearch,
-      "computer use accessibility privacy screen recording window effects filter worker capture",
-    );
-  const chatDisplayMatches =
-    !generalSearch ||
-    matchesSearch(
-      generalSearch,
-      "chat display current prompt header overlay scrolling context show hide",
-    );
-  const desktopUpdateMatches =
-    desktopUpdatesAvailable &&
-    (!generalSearch ||
-      matchesSearch(
-        generalSearch,
-        "cantrip desktop update updater version release notes download install restart",
-      ));
-  const encryptionRecoveryMatches =
-    !generalSearch ||
-    matchesSearch(
-      generalSearch,
-      "anonymous recovery encryption key backup export restore file",
-    );
-  const hasSearchResults =
-    section === "appearance"
-      ? appearanceMatches
-      : section === "computer-use"
-        ? computerUseMatches
-        : section === "remote-desktop"
-          ? desktopStreamingMatches
-          : workspaceLayoutProfileMatches ||
-            permissionDefaultsMatch ||
-            agentNamingMatches ||
-            chatDisplayMatches ||
-            encryptionRecoveryMatches ||
-            desktopUpdateMatches;
+    if (resource) {
+      setActiveModelsTab(
+        modelsSettingsSearchTab(
+          resource.id,
+          settings.data?.models ?? [],
+          settings.data?.providers ?? [],
+        ),
+      );
+    }
+  }, [generalSearch, navigationSections, settings.data]);
 
   useEffect(() => {
     setSection(initialSection);
@@ -1700,547 +1687,598 @@ export function SettingsPage({
         onSectionChange={(next) => {
           setSection(next);
         }}
-        onSearchResultSelect={(result) => {
-          if (result.sectionId === "models")
-            setActiveModelsTab(
-              modelsSettingsSearchTab(result.id, models, providers),
-            );
-        }}
       >
-        <div
-          data-content-gutter={
-            section === "logs"
-              ? "expansive"
-              : section === "usage" || section === "tunnels"
-                ? "wide"
-                : "standard"
-          }
-          className={`min-h-0 min-w-0 max-w-full flex-1 overflow-x-hidden ${section === "logs" || section === "elite" ? "overflow-hidden p-3 sm:p-4" : "overflow-y-auto p-4 sm:p-6"}`}
-        >
-          <div
-            className={`${section === "general" || section === "appearance" || section === "computer-use" || section === "remote-desktop" ? "grid" : "hidden"} w-full min-w-0 gap-4`}
-          >
-            {settings.isError ? (
-              <p className="text-sm text-destructive">
-                {errorText(settings.error)}
-              </p>
-            ) : null}
+        {(section, searchResults) => {
+          const matchesSetting = (...ids: string[]) =>
+            !searchResults || searchResults.some(({ id }) => ids.includes(id));
+          return (
+            <div
+              data-content-gutter={
+                searchResults
+                  ? undefined
+                  : section === "logs"
+                    ? "expansive"
+                    : section === "usage" || section === "tunnels"
+                      ? "wide"
+                      : "standard"
+              }
+              className={`min-h-0 min-w-0 max-w-full flex-1 overflow-x-hidden ${searchResults ? (section === "logs" ? "h-[32rem] overflow-hidden" : "overflow-visible") : section === "logs" || section === "elite" ? "overflow-hidden p-3 sm:p-4" : "overflow-y-auto p-4 sm:p-6"}`}
+            >
+              <div
+                className={`${section === "general" || section === "appearance" || section === "computer-use" || section === "remote-desktop" ? "grid" : "hidden"} w-full min-w-0 gap-4`}
+              >
+                {settings.isError ? (
+                  <p className="text-sm text-destructive">
+                    {errorText(settings.error)}
+                  </p>
+                ) : null}
 
-            {hasSearchResults ? (
-              <div className="min-w-0 divide-y overflow-hidden border-y">
-                {section === "appearance" && appearanceMatches ? (
-                  <section>
-                    <div className="px-3 py-3">
-                      <TabDisplaySettings />
-                      <FileChangeSettings />
-                    </div>
-                    <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-3">
-                      <div className="flex min-w-0 items-center gap-2.5">
-                        <Palette className="size-4 shrink-0 text-muted-foreground" />
-                        <div>
-                          <h2 className="text-sm font-semibold">Appearance</h2>
-                          <p className="text-xs text-muted-foreground">
-                            System follows the operating system.
-                          </p>
+                <div className="min-w-0 divide-y overflow-hidden border-y">
+                  {section === "appearance" &&
+                  matchesSetting(
+                    "appearance",
+                    "high-contrast",
+                    "content-gutters",
+                    "elite-mode",
+                    "pro-mode",
+                    "tab-display",
+                    "file-change",
+                  ) ? (
+                    <section>
+                      {matchesSetting("tab-display", "file-change") ? (
+                        <div className="px-3 py-3">
+                          {matchesSetting("tab-display") ? (
+                            <TabDisplaySettings />
+                          ) : null}
+                          {matchesSetting("file-change") ? (
+                            <FileChangeSettings />
+                          ) : null}
                         </div>
-                      </div>
-                      <div className="flex flex-wrap items-center justify-end gap-2">
-                        <label className="flex items-center gap-2 text-xs">
-                          <span className="text-muted-foreground">
-                            Brightness
-                          </span>
-                          <NativeSelect
-                            aria-label="Brightness"
-                            className="h-7"
-                            size="sm"
-                            value={settings.data?.preferences.theme ?? "system"}
-                            disabled={preferences.isPending}
-                            onChange={(event) =>
-                              preferences.mutate({
-                                theme: event.target.value as ThemePreference,
-                              })
-                            }
-                          >
-                            <option value="system">System</option>
-                            <option value="light">Light</option>
-                            <option value="dark">Dark</option>
-                          </NativeSelect>
-                        </label>
-                        <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted/50">
-                          <input
-                            type="checkbox"
-                            className="size-3.5 accent-primary"
-                            checked={
-                              settings.data?.preferences.highContrast ?? false
-                            }
-                            disabled={preferences.isPending}
-                            onChange={(event) =>
-                              preferences.mutate({
-                                highContrast: event.target.checked,
-                              })
-                            }
-                          />
-                          High contrast
-                        </label>
-                        <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted/50">
-                          <input
-                            aria-label="Content gutters"
-                            type="checkbox"
-                            className="size-3.5 accent-primary"
-                            checked={
-                              settings.data?.preferences.contentGutters ?? false
-                            }
-                            disabled={preferences.isPending}
-                            onChange={(event) =>
-                              preferences.mutate({
-                                contentGutters: event.target.checked,
-                              })
-                            }
-                          />
-                          Gutters
-                        </label>
-                        <EliteModePreferenceControl
-                          checked={
-                            settings.data?.preferences.eliteMode ?? false
-                          }
-                          disabled={preferences.isPending}
-                          onCheckedChange={(checked) =>
-                            preferences.mutate({ eliteMode: checked })
-                          }
-                          onConfigure={() => {
-                            setSection("elite");
-                            onEliteOpen?.();
-                          }}
-                        />
-                        {macosDesktopRuntime ? (
-                          <ProModePreferenceControl
-                            checked={
-                              settings.data?.preferences.proMode ?? false
-                            }
-                            disabled={preferences.isPending}
-                            onCheckedChange={(checked) =>
-                              preferences.mutate({ proMode: checked })
-                            }
-                            onConfigure={() => {
-                              setProModeOpacityDraft(savedProModeOpacity);
-                              setProModeOpacityDialogOpen(true);
-                            }}
-                          />
+                      ) : null}
+                      <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-3">
+                        {!searchResults ? (
+                          <div className="flex min-w-0 items-center gap-2.5">
+                            <Palette className="size-4 shrink-0 text-muted-foreground" />
+                            <div>
+                              <h2 className="text-sm font-semibold">
+                                Appearance
+                              </h2>
+                              <p className="text-xs text-muted-foreground">
+                                System follows the operating system.
+                              </p>
+                            </div>
+                          </div>
                         ) : null}
-                      </div>
-                    </div>
-                  </section>
-                ) : null}
-
-                {section === "general" && encryptionRecoveryMatches ? (
-                  <EncryptionRecoverySettings />
-                ) : null}
-
-                {section === "general" && workspaceLayoutProfileMatches ? (
-                  <section>
-                    <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-3">
-                      <div className="flex min-w-0 items-center gap-2.5">
-                        <Layers3 className="size-4 shrink-0 text-muted-foreground" />
-                        <div>
-                          <h2 className="text-sm font-semibold">
-                            Project workspace profile
-                          </h2>
-                          <p className="text-xs text-muted-foreground">
-                            Chooses destinations only for newly opened tabs.
-                            Existing tab placements never move.
-                          </p>
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                          {matchesSetting("appearance") ? (
+                            <label className="flex items-center gap-2 text-xs">
+                              <span className="text-muted-foreground">
+                                Brightness
+                              </span>
+                              <NativeSelect
+                                aria-label="Brightness"
+                                className="h-7"
+                                size="sm"
+                                value={
+                                  settings.data?.preferences.theme ?? "system"
+                                }
+                                disabled={preferences.isPending}
+                                onChange={(event) =>
+                                  preferences.mutate({
+                                    theme: event.target
+                                      .value as ThemePreference,
+                                  })
+                                }
+                              >
+                                <option value="system">System</option>
+                                <option value="light">Light</option>
+                                <option value="dark">Dark</option>
+                              </NativeSelect>
+                            </label>
+                          ) : null}
+                          {matchesSetting("high-contrast") ? (
+                            <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted/50">
+                              <input
+                                type="checkbox"
+                                className="size-3.5 accent-primary"
+                                checked={
+                                  settings.data?.preferences.highContrast ??
+                                  false
+                                }
+                                disabled={preferences.isPending}
+                                onChange={(event) =>
+                                  preferences.mutate({
+                                    highContrast: event.target.checked,
+                                  })
+                                }
+                              />
+                              High contrast
+                            </label>
+                          ) : null}
+                          {matchesSetting("content-gutters") ? (
+                            <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted/50">
+                              <input
+                                aria-label="Content gutters"
+                                type="checkbox"
+                                className="size-3.5 accent-primary"
+                                checked={
+                                  settings.data?.preferences.contentGutters ??
+                                  false
+                                }
+                                disabled={preferences.isPending}
+                                onChange={(event) =>
+                                  preferences.mutate({
+                                    contentGutters: event.target.checked,
+                                  })
+                                }
+                              />
+                              Gutters
+                            </label>
+                          ) : null}
+                          {matchesSetting("elite-mode") ? (
+                            <EliteModePreferenceControl
+                              checked={
+                                settings.data?.preferences.eliteMode ?? false
+                              }
+                              disabled={preferences.isPending}
+                              onCheckedChange={(checked) =>
+                                preferences.mutate({ eliteMode: checked })
+                              }
+                              onConfigure={() => {
+                                setSettingsSearchQuery("");
+                                setSection("elite");
+                                onEliteOpen?.();
+                              }}
+                            />
+                          ) : null}
+                          {macosDesktopRuntime && matchesSetting("pro-mode") ? (
+                            <ProModePreferenceControl
+                              checked={
+                                settings.data?.preferences.proMode ?? false
+                              }
+                              disabled={preferences.isPending}
+                              onCheckedChange={(checked) =>
+                                preferences.mutate({ proMode: checked })
+                              }
+                              onConfigure={() => {
+                                setProModeOpacityDraft(savedProModeOpacity);
+                                setProModeOpacityDialogOpen(true);
+                              }}
+                            />
+                          ) : null}
                         </div>
                       </div>
-                      <label className="flex items-center gap-2 text-xs">
-                        <span className="text-muted-foreground">Profile</span>
-                        <NativeSelect
-                          aria-label="Project workspace profile"
-                          size="sm"
-                          value={
-                            settings.data?.preferences.workspaceLayoutProfile ??
-                            "hybrid"
-                          }
-                          disabled={preferences.isPending}
-                          onChange={(event) =>
-                            preferences.mutate({
-                              workspaceLayoutProfile: event.target
-                                .value as WorkspaceLayoutProfile,
-                            })
-                          }
-                        >
-                          <option value="agent">Agent</option>
-                          <option value="hybrid">Hybrid</option>
-                          <option value="ide">IDE</option>
-                        </NativeSelect>
-                      </label>
-                    </div>
-                  </section>
-                ) : null}
+                    </section>
+                  ) : null}
 
-                {section === "computer-use" && computerUseMatches ? (
-                  <div>
-                    <ComputerUseSettings
-                      enabled={
-                        settings.data?.preferences.computerUseEnabled ?? false
-                      }
-                      pending={preferences.isPending}
-                      onChange={(computerUseEnabled) =>
-                        preferences.mutate({ computerUseEnabled })
-                      }
-                    />
-                    {settings.data?.preferences.computerUseEnabled ? (
-                      <div className="px-3 pb-3">
-                        <ComputerUseEffectsSettings
-                          configuration={
-                            settings.data.preferences.computerUseEffects
-                          }
-                          pending={preferences.isPending}
-                          onChange={(computerUseEffects) =>
-                            preferences.mutate({ computerUseEffects })
-                          }
-                          workers={workers.data ?? []}
-                        />
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-                {section === "general" && chatDisplayMatches ? (
-                  <section>
-                    <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-3">
-                      <div className="flex min-w-0 items-center gap-2.5">
-                        <PanelTop className="size-4 shrink-0 text-muted-foreground" />
-                        <div>
-                          <h2 className="text-sm font-semibold">
-                            Chat display
-                          </h2>
-                          <p className="text-xs text-muted-foreground">
-                            Control the context shown while scrolling through a
-                            chat.
-                          </p>
-                        </div>
-                      </div>
-                      <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted/50">
-                        <input
-                          type="checkbox"
-                          aria-label="Show current prompt header"
-                          className="size-3.5 accent-primary"
-                          checked={
-                            settings.data?.preferences.showChatPromptOverlay ??
-                            true
-                          }
-                          disabled={preferences.isPending}
-                          onChange={(event) =>
-                            preferences.mutate({
-                              showChatPromptOverlay: event.target.checked,
-                            })
-                          }
-                        />
-                        Show current prompt
-                      </label>
-                    </div>
-                  </section>
-                ) : null}
+                  {section === "general" &&
+                  matchesSetting("anonymous-recovery") ? (
+                    <EncryptionRecoverySettings />
+                  ) : null}
 
-                {section === "general" && permissionDefaultsMatch ? (
-                  <section>
-                    <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-3">
-                      <div className="flex min-w-0 items-center gap-2.5">
-                        <Lock className="size-4 shrink-0 text-muted-foreground" />
-                        <div>
-                          <h2 className="text-sm font-semibold">
-                            Default agent permissions
-                          </h2>
-                          <p className="text-xs text-muted-foreground">
-                            Agents set to Default follow this permission
-                            profile.
-                          </p>
+                  {section === "general" &&
+                  matchesSetting("workspace-layout-profile") ? (
+                    <section>
+                      <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-3">
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          <Layers3 className="size-4 shrink-0 text-muted-foreground" />
+                          <div>
+                            <h2 className="text-sm font-semibold">
+                              Project workspace profile
+                            </h2>
+                            <p className="text-xs text-muted-foreground">
+                              Chooses destinations only for newly opened tabs.
+                              Existing tab placements never move.
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                      <div className="flex flex-wrap items-center justify-end gap-1 rounded-md bg-muted/50 p-0.5">
-                        {BUILTIN_PERMISSION_PROFILES.map((profile) => (
-                          <Button
-                            key={profile.id}
-                            type="button"
+                        <label className="flex items-center gap-2 text-xs">
+                          <span className="text-muted-foreground">Profile</span>
+                          <NativeSelect
+                            aria-label="Project workspace profile"
                             size="sm"
-                            className="h-7 px-2.5 text-xs"
-                            variant={
+                            value={
                               settings.data?.preferences
-                                .defaultPermissionProfileId === profile.id
-                                ? "default"
-                                : "ghost"
+                                .workspaceLayoutProfile ?? "hybrid"
                             }
                             disabled={preferences.isPending}
-                            title={profile.description}
-                            onClick={() =>
+                            onChange={(event) =>
                               preferences.mutate({
-                                defaultPermissionProfileId: profile.id,
+                                workspaceLayoutProfile: event.target
+                                  .value as WorkspaceLayoutProfile,
                               })
                             }
                           >
-                            {permissionProfileLabel(profile.id)}
-                          </Button>
-                        ))}
+                            <option value="agent">Agent</option>
+                            <option value="hybrid">Hybrid</option>
+                            <option value="ide">IDE</option>
+                          </NativeSelect>
+                        </label>
                       </div>
-                    </div>
-                    <div className="flex flex-wrap items-center justify-between gap-3 border-t px-3 py-3">
-                      <div className="flex min-w-0 items-center gap-2.5">
-                        <Lock className="size-4 shrink-0 text-muted-foreground" />
-                        <div>
-                          <h3 className="text-xs font-medium">
-                            Standalone Chat permissions
-                          </h3>
-                          <p className="text-[11px] text-muted-foreground">
-                            Applied only to each Chat&apos;s worker scratch
-                            folder.
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex flex-wrap items-center justify-end gap-1 rounded-md bg-muted/50 p-0.5">
-                        {BUILTIN_PERMISSION_PROFILES.map((profile) => (
-                          <Button
-                            key={profile.id}
-                            type="button"
-                            size="sm"
-                            className="h-7 px-2.5 text-xs"
-                            variant={
-                              settings.data?.preferences
-                                .defaultChatPermissionProfileId === profile.id
-                                ? "default"
-                                : "ghost"
-                            }
-                            disabled={preferences.isPending}
-                            title={profile.description}
-                            onClick={() =>
-                              preferences.mutate({
-                                defaultChatPermissionProfileId: profile.id,
-                              })
-                            }
-                          >
-                            {permissionProfileLabel(profile.id)}
-                          </Button>
-                        ))}
-                      </div>
-                    </div>
-                  </section>
-                ) : null}
+                    </section>
+                  ) : null}
 
-                {section === "general" && agentNamingMatches ? (
-                  <section>
-                    <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-3">
-                      <div className="flex min-w-0 items-center gap-2.5">
-                        <Sparkles className="size-4 shrink-0 text-muted-foreground" />
-                        <div>
-                          <h2 className="text-sm font-semibold">
-                            Agent chat names
-                          </h2>
-                          <p className="text-xs text-muted-foreground">
-                            Choose how newly created agent chats are named.
-                          </p>
-                        </div>
-                      </div>
-                      <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted/50">
-                        <input
-                          type="checkbox"
-                          aria-label="Use random agent names"
-                          className="size-3.5 accent-primary"
-                          checked={
-                            settings.data?.preferences.randomAgentNames ?? false
-                          }
-                          disabled={preferences.isPending}
-                          onChange={(event) =>
-                            preferences.mutate({
-                              randomAgentNames: event.target.checked,
-                            })
-                          }
-                        />
-                        Use random names
-                      </label>
-                    </div>
-                    {settings.data ? (
-                      <LabelingSettings
-                        settings={settings.data.preferences}
-                        models={models}
+                  {section === "computer-use" &&
+                  matchesSetting("computer-use") ? (
+                    <div>
+                      <ComputerUseSettings
+                        enabled={
+                          settings.data?.preferences.computerUseEnabled ?? false
+                        }
                         pending={preferences.isPending}
-                        update={(input) => preferences.mutate(input)}
+                        onChange={(computerUseEnabled) =>
+                          preferences.mutate({ computerUseEnabled })
+                        }
                       />
-                    ) : null}
-                  </section>
-                ) : null}
+                      {settings.data?.preferences.computerUseEnabled ? (
+                        <div className="px-3 pb-3">
+                          <ComputerUseEffectsSettings
+                            configuration={
+                              settings.data.preferences.computerUseEffects
+                            }
+                            pending={preferences.isPending}
+                            onChange={(computerUseEffects) =>
+                              preferences.mutate({ computerUseEffects })
+                            }
+                            workers={workers.data ?? []}
+                          />
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {section === "general" && matchesSetting("chat-display") ? (
+                    <section>
+                      <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-3">
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          <PanelTop className="size-4 shrink-0 text-muted-foreground" />
+                          <div>
+                            <h2 className="text-sm font-semibold">
+                              Chat display
+                            </h2>
+                            <p className="text-xs text-muted-foreground">
+                              Control the context shown while scrolling through
+                              a chat.
+                            </p>
+                          </div>
+                        </div>
+                        <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted/50">
+                          <input
+                            type="checkbox"
+                            aria-label="Show current prompt header"
+                            className="size-3.5 accent-primary"
+                            checked={
+                              settings.data?.preferences
+                                .showChatPromptOverlay ?? true
+                            }
+                            disabled={preferences.isPending}
+                            onChange={(event) =>
+                              preferences.mutate({
+                                showChatPromptOverlay: event.target.checked,
+                              })
+                            }
+                          />
+                          Show current prompt
+                        </label>
+                      </div>
+                    </section>
+                  ) : null}
 
-                {section === "remote-desktop" && desktopStreamingMatches ? (
-                  <section>
-                    <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-3">
-                      <div className="flex min-w-0 items-center gap-2.5">
-                        <Gauge className="size-4 shrink-0 text-muted-foreground" />
-                        <div>
-                          <h2 className="text-sm font-semibold">
-                            Remote Desktop
-                          </h2>
-                          <p className="text-xs text-muted-foreground">
-                            Higher rates are best effort; adaptive quality keeps
-                            the newest frame responsive.
-                          </p>
+                  {section === "general" &&
+                  matchesSetting("agent-permissions", "chat-permissions") ? (
+                    <section>
+                      <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-3">
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          <Lock className="size-4 shrink-0 text-muted-foreground" />
+                          <div>
+                            <h2 className="text-sm font-semibold">
+                              Default agent permissions
+                            </h2>
+                            <p className="text-xs text-muted-foreground">
+                              Agents set to Default follow this permission
+                              profile.
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap items-center justify-end gap-1 rounded-md bg-muted/50 p-0.5">
+                          {BUILTIN_PERMISSION_PROFILES.map((profile) => (
+                            <Button
+                              key={profile.id}
+                              type="button"
+                              size="sm"
+                              className="h-7 px-2.5 text-xs"
+                              variant={
+                                settings.data?.preferences
+                                  .defaultPermissionProfileId === profile.id
+                                  ? "default"
+                                  : "ghost"
+                              }
+                              disabled={preferences.isPending}
+                              title={profile.description}
+                              onClick={() =>
+                                preferences.mutate({
+                                  defaultPermissionProfileId: profile.id,
+                                })
+                              }
+                            >
+                              {permissionProfileLabel(profile.id)}
+                            </Button>
+                          ))}
                         </div>
                       </div>
-                      <div className="flex flex-wrap items-center justify-end gap-2">
-                        <label className="flex items-center gap-2 text-xs">
-                          <span className="text-muted-foreground">
-                            Frame rate
-                          </span>
-                          <NativeSelect
-                            size="sm"
-                            aria-label="Remote Desktop frame rate"
-                            value={
-                              settings.data?.preferences.desktopFrameRate ?? 30
+                      <div className="flex flex-wrap items-center justify-between gap-3 border-t px-3 py-3">
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          <Lock className="size-4 shrink-0 text-muted-foreground" />
+                          <div>
+                            <h3 className="text-xs font-medium">
+                              Standalone Chat permissions
+                            </h3>
+                            <p className="text-[11px] text-muted-foreground">
+                              Applied only to each Chat&apos;s worker scratch
+                              folder.
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap items-center justify-end gap-1 rounded-md bg-muted/50 p-0.5">
+                          {BUILTIN_PERMISSION_PROFILES.map((profile) => (
+                            <Button
+                              key={profile.id}
+                              type="button"
+                              size="sm"
+                              className="h-7 px-2.5 text-xs"
+                              variant={
+                                settings.data?.preferences
+                                  .defaultChatPermissionProfileId === profile.id
+                                  ? "default"
+                                  : "ghost"
+                              }
+                              disabled={preferences.isPending}
+                              title={profile.description}
+                              onClick={() =>
+                                preferences.mutate({
+                                  defaultChatPermissionProfileId: profile.id,
+                                })
+                              }
+                            >
+                              {permissionProfileLabel(profile.id)}
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+                    </section>
+                  ) : null}
+
+                  {section === "general" &&
+                  matchesSetting("automatic-titles") ? (
+                    <section>
+                      <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-3">
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          <Sparkles className="size-4 shrink-0 text-muted-foreground" />
+                          <div>
+                            <h2 className="text-sm font-semibold">
+                              Agent chat names
+                            </h2>
+                            <p className="text-xs text-muted-foreground">
+                              Choose how newly created agent chats are named.
+                            </p>
+                          </div>
+                        </div>
+                        <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted/50">
+                          <input
+                            type="checkbox"
+                            aria-label="Use random agent names"
+                            className="size-3.5 accent-primary"
+                            checked={
+                              settings.data?.preferences.randomAgentNames ??
+                              false
                             }
                             disabled={preferences.isPending}
                             onChange={(event) =>
                               preferences.mutate({
-                                desktopFrameRate: Number(event.target.value) as
-                                  15 | 30 | 60,
+                                randomAgentNames: event.target.checked,
                               })
                             }
-                          >
-                            <option value={15}>15 FPS</option>
-                            <option value={30}>30 FPS</option>
-                            <option value={60}>60 FPS max</option>
-                          </NativeSelect>
-                        </label>
-                        <label className="flex items-center gap-2 text-xs">
-                          <span className="text-muted-foreground">Quality</span>
-                          <NativeSelect
-                            size="sm"
-                            aria-label="Remote Desktop stream quality"
-                            value={
-                              settings.data?.preferences.desktopStreamQuality ??
-                              "adaptive"
-                            }
-                            disabled={preferences.isPending}
-                            onChange={(event) =>
-                              preferences.mutate({
-                                desktopStreamQuality: event.target
-                                  .value as UserSettings["desktopStreamQuality"],
-                              })
-                            }
-                          >
-                            <option value="adaptive">Adaptive</option>
-                            <option value="data-saver">Data saver</option>
-                            <option value="balanced">Balanced</option>
-                            <option value="sharp">Sharp</option>
-                          </NativeSelect>
+                          />
+                          Use random names
                         </label>
                       </div>
-                    </div>
-                  </section>
-                ) : null}
+                      {settings.data ? (
+                        <LabelingSettings
+                          settings={settings.data.preferences}
+                          models={models}
+                          pending={preferences.isPending}
+                          update={(input) => preferences.mutate(input)}
+                        />
+                      ) : null}
+                    </section>
+                  ) : null}
 
-                {section === "general" && desktopUpdateMatches ? (
-                  <DesktopUpdateSettings
-                    capability={desktopUpdateCapability.data!}
-                  />
-                ) : null}
+                  {section === "remote-desktop" &&
+                  matchesSetting("remote-desktop") ? (
+                    <section>
+                      <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-3">
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          <Gauge className="size-4 shrink-0 text-muted-foreground" />
+                          <div>
+                            <h2 className="text-sm font-semibold">
+                              Remote Desktop
+                            </h2>
+                            <p className="text-xs text-muted-foreground">
+                              Higher rates are best effort; adaptive quality
+                              keeps the newest frame responsive.
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                          <label className="flex items-center gap-2 text-xs">
+                            <span className="text-muted-foreground">
+                              Frame rate
+                            </span>
+                            <NativeSelect
+                              size="sm"
+                              aria-label="Remote Desktop frame rate"
+                              value={
+                                settings.data?.preferences.desktopFrameRate ??
+                                30
+                              }
+                              disabled={preferences.isPending}
+                              onChange={(event) =>
+                                preferences.mutate({
+                                  desktopFrameRate: Number(
+                                    event.target.value,
+                                  ) as 15 | 30 | 60,
+                                })
+                              }
+                            >
+                              <option value={15}>15 FPS</option>
+                              <option value={30}>30 FPS</option>
+                              <option value={60}>60 FPS max</option>
+                            </NativeSelect>
+                          </label>
+                          <label className="flex items-center gap-2 text-xs">
+                            <span className="text-muted-foreground">
+                              Quality
+                            </span>
+                            <NativeSelect
+                              size="sm"
+                              aria-label="Remote Desktop stream quality"
+                              value={
+                                settings.data?.preferences
+                                  .desktopStreamQuality ?? "adaptive"
+                              }
+                              disabled={preferences.isPending}
+                              onChange={(event) =>
+                                preferences.mutate({
+                                  desktopStreamQuality: event.target
+                                    .value as UserSettings["desktopStreamQuality"],
+                                })
+                              }
+                            >
+                              <option value="adaptive">Adaptive</option>
+                              <option value="data-saver">Data saver</option>
+                              <option value="balanced">Balanced</option>
+                              <option value="sharp">Sharp</option>
+                            </NativeSelect>
+                          </label>
+                        </div>
+                      </div>
+                    </section>
+                  ) : null}
+
+                  {section === "general" &&
+                  desktopUpdatesAvailable &&
+                  matchesSetting("updates") ? (
+                    <DesktopUpdateSettings
+                      capability={desktopUpdateCapability.data!}
+                    />
+                  ) : null}
+                </div>
               </div>
-            ) : null}
-          </div>
-          {section === "models" && settings.isError ? (
-            <p role="alert" className="text-sm text-destructive">
-              {errorText(settings.error)}
-            </p>
-          ) : null}
-          {section === "models" && !settings.data && settings.isPending ? (
-            <p role="status" className="text-sm text-muted-foreground">
-              Loading model settings…
-            </p>
-          ) : null}
-          {section === "models" && settings.data ? (
-            <ModelsSettings
-              activeTab={activeModelsTab}
-              models={models}
-              providers={providers}
-              preferences={settings.data.preferences}
-              preferencesPending={preferences.isPending}
-              preferencesError={
-                preferences.isError ? errorText(preferences.error) : null
-              }
-              removingModel={removeModel.isPending}
-              modelError={
-                removeModel.isError ? errorText(removeModel.error) : null
-              }
-              providerError={
-                removeProvider.isError ? errorText(removeProvider.error) : null
-              }
-              onTabChange={setActiveModelsTab}
-              onAddProvider={(setup) => openProviderDialog(null, setup)}
-              onEditProvider={(provider) => openProviderDialog(provider)}
-              onAddModel={(providerId) => openModelDialog(null, providerId)}
-              onEditModel={(model) => openModelDialog(model)}
-              onRemoveModel={(model) => removeModel.mutate(model.id)}
-              onPreferencesChange={preferences.mutateAsync}
-              renderProviderOverview={(provider) => (
-                <ProviderRow
-                  key={provider.id}
-                  availableResetCredits={chatGptAvailableResetCredits}
-                  provider={provider}
-                  workerId={worker?.workerId ?? null}
-                  removing={removeProvider.isPending}
-                  onEdit={() => openProviderDialog(provider)}
-                  onAnalytics={() => setAnalyticsProvider(provider)}
-                  onRemove={() => removeProvider.mutate(provider.id)}
+              {section === "models" && settings.isError ? (
+                <p role="alert" className="text-sm text-destructive">
+                  {errorText(settings.error)}
+                </p>
+              ) : null}
+              {section === "models" && !settings.data && settings.isPending ? (
+                <p role="status" className="text-sm text-muted-foreground">
+                  Loading model settings…
+                </p>
+              ) : null}
+              {section === "models" && settings.data ? (
+                <ModelsSettings
+                  activeTab={activeModelsTab}
+                  models={models}
+                  providers={providers}
+                  preferences={settings.data.preferences}
+                  preferencesPending={preferences.isPending}
+                  preferencesError={
+                    preferences.isError ? errorText(preferences.error) : null
+                  }
+                  removingModel={removeModel.isPending}
+                  modelError={
+                    removeModel.isError ? errorText(removeModel.error) : null
+                  }
+                  providerError={
+                    removeProvider.isError
+                      ? errorText(removeProvider.error)
+                      : null
+                  }
+                  onTabChange={setActiveModelsTab}
+                  onAddProvider={(setup) => openProviderDialog(null, setup)}
+                  onEditProvider={(provider) => openProviderDialog(provider)}
+                  onAddModel={(providerId) => openModelDialog(null, providerId)}
+                  onEditModel={(model) => openModelDialog(model)}
+                  onRemoveModel={(model) => removeModel.mutate(model.id)}
+                  onPreferencesChange={preferences.mutateAsync}
+                  renderProviderOverview={(provider) => (
+                    <ProviderRow
+                      key={provider.id}
+                      availableResetCredits={chatGptAvailableResetCredits}
+                      provider={provider}
+                      workerId={worker?.workerId ?? null}
+                      removing={removeProvider.isPending}
+                      onEdit={() => openProviderDialog(provider)}
+                      onAnalytics={() => setAnalyticsProvider(provider)}
+                      onRemove={() => removeProvider.mutate(provider.id)}
+                    />
+                  )}
                 />
-              )}
-            />
-          ) : null}
-          {section === "workspaces" ? (
-            <div className="w-full min-w-0">
-              <WorkspaceSettings
-                onOpenPolicySettings={(policyId) => {
-                  setPolicyEditorId(policyId ?? null);
-                  setSection("policies");
-                }}
-              />
+              ) : null}
+              {section === "workspaces" ? (
+                <div className="w-full min-w-0">
+                  <WorkspaceSettings
+                    onOpenPolicySettings={(policyId) => {
+                      setSettingsSearchQuery("");
+                      setPolicyEditorId(policyId ?? null);
+                      setSection("policies");
+                    }}
+                  />
+                </div>
+              ) : null}
+              {section === "policies" ? (
+                <div className="w-full min-w-0">
+                  <PolicySettings
+                    initialPolicyId={policyEditorId}
+                    onInitialPolicyHandled={() => {
+                      setPolicyEditorId(null);
+                      onPolicyOpenHandled?.();
+                    }}
+                  />
+                </div>
+              ) : null}
+              {section === "workers" ? <WorkerSettings /> : null}
+              {section === "tasks" ? <TaskSettings /> : null}
+              {section === "usage" ? <AccountUsageSettings /> : null}
+              {section === "elite" ? (
+                <EliteSettings
+                  appWideEnabled={settings.data?.preferences.eliteMode ?? false}
+                  configuredEffect={
+                    settings.data?.preferences.eliteRevealConfig
+                  }
+                  configSaving={preferences.isPending}
+                  onAppWideEnabledChange={(eliteMode) =>
+                    preferences.mutate({ eliteMode })
+                  }
+                  onConfigChange={(eliteRevealConfig) =>
+                    preferences.mutate({ eliteRevealConfig })
+                  }
+                  saveError={
+                    preferences.isError ? errorText(preferences.error) : null
+                  }
+                />
+              ) : null}
+              {section === "logs" ? <LogSettings /> : null}
+              {section === "tunnels" ? (
+                <TunnelSettings onOpenOwner={onOpenTunnelOwner} />
+              ) : null}
+              {section === "skills" ? <SkillsSettings /> : null}
+              {section === "mcp" ? (
+                <div className="w-full min-w-0">
+                  <McpServerSettings scope={{ kind: "global" }} />
+                </div>
+              ) : null}
             </div>
-          ) : null}
-          {section === "policies" ? (
-            <div className="w-full min-w-0">
-              <PolicySettings
-                initialPolicyId={policyEditorId}
-                onInitialPolicyHandled={() => {
-                  setPolicyEditorId(null);
-                  onPolicyOpenHandled?.();
-                }}
-              />
-            </div>
-          ) : null}
-          {section === "workers" ? <WorkerSettings /> : null}
-          {section === "tasks" ? <TaskSettings /> : null}
-          {section === "usage" ? <AccountUsageSettings /> : null}
-          {section === "elite" ? (
-            <EliteSettings
-              appWideEnabled={settings.data?.preferences.eliteMode ?? false}
-              configuredEffect={settings.data?.preferences.eliteRevealConfig}
-              configSaving={preferences.isPending}
-              onAppWideEnabledChange={(eliteMode) =>
-                preferences.mutate({ eliteMode })
-              }
-              onConfigChange={(eliteRevealConfig) =>
-                preferences.mutate({ eliteRevealConfig })
-              }
-              saveError={
-                preferences.isError ? errorText(preferences.error) : null
-              }
-            />
-          ) : null}
-          {section === "logs" ? <LogSettings /> : null}
-          {section === "tunnels" ? (
-            <TunnelSettings onOpenOwner={onOpenTunnelOwner} />
-          ) : null}
-          {section === "skills" ? <SkillsSettings /> : null}
-          {section === "mcp" ? (
-            <div className="w-full min-w-0">
-              <McpServerSettings scope={{ kind: "global" }} />
-            </div>
-          ) : null}
-        </div>
+          );
+        }}
       </SettingsNavigationLayout>
 
       {macosDesktopRuntime ? (

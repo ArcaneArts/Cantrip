@@ -116,14 +116,23 @@ function SettingsSectionList<SectionId extends string>({
 }
 
 function SettingsSearchResultList<SectionId extends string>({
-  onSelect,
   query,
+  renderSection,
   results,
 }: {
-  onSelect(result: SettingsSearchResult<SectionId>): void;
   query: string;
+  renderSection(
+    section: SectionId,
+    results: readonly SettingsSearchResult<SectionId>[],
+  ): ReactNode;
   results: readonly SettingsSearchResult<SectionId>[];
 }) {
+  const groups = new Map<SectionId, SettingsSearchResult<SectionId>[]>();
+  for (const result of results) {
+    const group = groups.get(result.sectionId) ?? [];
+    group.push(result);
+    groups.set(result.sectionId, group);
+  }
   return (
     <div className="grid gap-2" data-slot="settings-search-results">
       <div>
@@ -134,33 +143,22 @@ function SettingsSearchResultList<SectionId extends string>({
             : `No settings match “${query.trim()}”.`}
         </p>
       </div>
-      {results.length ? (
-        <div className="divide-y border-y">
-          {results.map((result) => (
-            <button
-              key={`${result.sectionId}:${result.id}`}
-              type="button"
-              className="flex w-full items-center gap-3 px-3 py-3 text-left transition-colors hover:bg-muted/60"
-              onClick={() => onSelect(result)}
-            >
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-medium">
-                  {result.label}
-                </span>
-                {result.description ? (
-                  <span className="mt-0.5 block text-xs text-muted-foreground">
-                    {result.description}
-                  </span>
-                ) : null}
-              </span>
-              <span className="shrink-0 text-[11px] text-muted-foreground">
-                {result.sectionLabel}
-              </span>
-              <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
-            </button>
-          ))}
-        </div>
-      ) : null}
+      {[...groups].map(([sectionId, group]) => (
+        <section
+          key={sectionId}
+          aria-label={group[0]!.sectionLabel}
+          className="min-w-0 border-t pt-4"
+          data-slot="settings-search-section"
+          data-settings-section={sectionId}
+        >
+          <h3 className="mb-3 text-sm font-semibold">
+            {group[0]!.sectionLabel}
+          </h3>
+          <div className="flex min-h-0 min-w-0 flex-col">
+            {renderSection(sectionId, group)}
+          </div>
+        </section>
+      ))}
     </div>
   );
 }
@@ -174,7 +172,6 @@ export function SettingsNavigationLayout<SectionId extends string>({
   onMobileSectionOpenChange,
   onSearchQueryChange,
   onSectionChange,
-  onSearchResultSelect,
   searchPlaceholder = "Search all settings",
   searchQuery,
   sections,
@@ -182,13 +179,15 @@ export function SettingsNavigationLayout<SectionId extends string>({
 }: {
   activeSection: SectionId;
   ariaLabel: string;
-  children: ReactNode;
+  children(
+    section: SectionId,
+    results: readonly SettingsSearchResult<SectionId>[] | null,
+  ): ReactNode;
   initialMobileSectionOpen?: boolean;
   mobileSectionOpen?: boolean;
   onMobileSectionOpenChange?(open: boolean): void;
   onSearchQueryChange(query: string): void;
   onSectionChange(section: SectionId): void;
-  onSearchResultSelect?(result: SettingsSearchResult<SectionId>): void;
   searchPlaceholder?: string;
   searchQuery: string;
   sections: readonly SettingsNavigationSection<SectionId>[];
@@ -215,14 +214,14 @@ export function SettingsNavigationLayout<SectionId extends string>({
     onSectionChange(section);
     setMobileSectionOpen(true);
   };
-  const selectSearchResult = (result: SettingsSearchResult<SectionId>) => {
-    onSearchResultSelect?.(result);
-    selectSection(result.sectionId);
+  const updateSearchQuery = (query: string) => {
+    onSearchQueryChange(query);
+    if (query.trim()) setMobileSectionOpen(true);
   };
 
   return (
     <div
-      className="flex min-h-0 min-w-0 flex-1 overflow-hidden"
+      className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:flex-row"
       data-slot="settings-navigation-layout"
     >
       <aside
@@ -236,7 +235,7 @@ export function SettingsNavigationLayout<SectionId extends string>({
             className="max-w-none"
             placeholder={searchPlaceholder}
             value={searchQuery}
-            onValueChange={onSearchQueryChange}
+            onValueChange={updateSearchQuery}
           />
         </div>
         <nav
@@ -251,63 +250,57 @@ export function SettingsNavigationLayout<SectionId extends string>({
         </nav>
       </aside>
 
+      <div className="shrink-0 border-b p-4 md:hidden">
+        <h1 className="sr-only">{title}</h1>
+        <SettingsSearchField
+          ariaLabel={searchPlaceholder}
+          className="max-w-none"
+          placeholder={searchPlaceholder}
+          value={searchQuery}
+          onValueChange={updateSearchQuery}
+        />
+      </div>
       <section
         aria-label={`${title} categories`}
         className={cn(
           "min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:hidden",
-          mobileSectionOpen && !normalizedQuery ? "hidden" : "flex",
+          mobileSectionOpen || normalizedQuery ? "hidden" : "flex",
         )}
         data-slot="settings-mobile-categories"
       >
-        <div className="border-b p-4">
-          <h1 className="sr-only">{title}</h1>
-          <SettingsSearchField
-            ariaLabel={searchPlaceholder}
-            className="max-w-none"
-            placeholder={searchPlaceholder}
-            value={searchQuery}
-            onValueChange={onSearchQueryChange}
-          />
-        </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-2">
-          {normalizedQuery ? (
-            <SettingsSearchResultList
-              query={searchQuery}
-              results={results}
-              onSelect={selectSearchResult}
-            />
-          ) : (
-            <SettingsSectionList
-              activeSection={activeSection}
-              sections={sections}
-              onSelect={selectSection}
-            />
-          )}
+          <SettingsSectionList
+            activeSection={activeSection}
+            sections={sections}
+            onSelect={selectSection}
+          />
         </div>
       </section>
 
       <main
         className={cn(
           "min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:flex",
-          !mobileSectionOpen || normalizedQuery ? "hidden md:flex" : "flex",
+          !mobileSectionOpen && !normalizedQuery ? "hidden md:flex" : "flex",
         )}
         data-slot="settings-content"
       >
-        <div className="flex h-12 shrink-0 items-center gap-2 border-b px-2 md:hidden">
-          <span className="truncate px-2 text-sm font-medium">
-            {active?.label ?? title}
-          </span>
-        </div>
+        {!normalizedQuery ? (
+          <div className="flex h-12 shrink-0 items-center gap-2 border-b px-2 md:hidden">
+            <span className="truncate px-2 text-sm font-medium">
+              {active?.label ?? title}
+            </span>
+          </div>
+        ) : null}
         {normalizedQuery ? (
           <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
             <SettingsSearchResultList
               query={searchQuery}
               results={results}
-              onSelect={selectSearchResult}
+              renderSection={children}
             />
           </div>
         ) : (
-          children
+          children(activeSection, null)
         )}
       </main>
     </div>
