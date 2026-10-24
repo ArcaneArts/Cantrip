@@ -140,6 +140,44 @@ it("connects the command queue to the bound endpoint and disposes it on logout",
   connection.dispose();
 });
 
+it("refreshes a second connection through an authorized read after a local commit", async () => {
+  let current = structuredClone(layout);
+  const fetcher = vi.fn(async (_url: unknown, init?: RequestInit) => {
+    if (init?.method !== "POST") return Response.json(current);
+    const command = JSON.parse(init.body as string);
+    const result = applyWorkspaceCommand(current, command);
+    current = result.layout;
+    return Response.json({
+      ...result,
+      appliedRevision: current.revision,
+      replayed: false,
+    });
+  });
+  vi.stubGlobal("fetch", fetcher);
+  const first = await connectWorkspaceCommands(
+    layout.projectId,
+    layout.id,
+    "main",
+  );
+  const second = await connectWorkspaceCommands(
+    layout.projectId,
+    layout.id,
+    "main",
+  );
+  try {
+    await first.controller.dispatch({ type: "home" });
+    await vi.waitFor(() => {
+      expect(second.controller.getSnapshot().authoritative.revision).toBe(1);
+    });
+    // Two initial reads, one command, and the notified connection's read.
+    expect(fetcher).toHaveBeenCalledTimes(4);
+    expect(second.controller.getSnapshot().authoritative).toEqual(current);
+  } finally {
+    first.dispose();
+    second.dispose();
+  }
+});
+
 it("imports observations only after an actual missing workspace response", async () => {
   const observations = {
     mainWindowId: "main",
