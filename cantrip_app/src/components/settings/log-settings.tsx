@@ -370,7 +370,7 @@ export function VirtualLogConsole({
   return (
     <div
       ref={viewportRef}
-      className="relative min-h-0 flex-1 overflow-auto font-mono text-[11px] leading-[22px] [scrollbar-color:color-mix(in_srgb,currentColor_30%,transparent)_transparent]"
+      className="relative min-h-0 flex-1 overflow-auto font-mono text-[11px] leading-[22px]"
       role="log"
       aria-live="off"
       onScroll={(event) => {

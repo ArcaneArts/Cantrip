@@ -262,7 +262,7 @@ export function ModelsSettings({
           role="tablist"
           aria-label="Model providers"
           aria-orientation="horizontal"
-          className="flex min-w-0 items-center overflow-x-auto overflow-y-hidden overscroll-x-contain [scrollbar-width:thin]"
+          className="flex min-w-0 items-center overflow-x-auto overflow-y-hidden overscroll-x-contain"
           onKeyDown={navigateTabs}
         >
           <Button type="button" variant="ghost" {...tabProps("general")}>
