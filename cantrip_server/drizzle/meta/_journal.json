@@ -1618,6 +1618,13 @@
       "when": 1792728000000,
       "tag": "0230_task_automatic_retry",
       "breakpoints": true
+    },
+    {
+      "idx": 231,
+      "version": "7",
+      "when": 1792801867000,
+      "tag": "0231_elite_mode_default_off",
+      "breakpoints": true
     }
   ]
 }

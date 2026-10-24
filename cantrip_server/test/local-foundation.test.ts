@@ -1718,7 +1718,7 @@ describe("local server foundation", () => {
       proMode: false,
       proModeOpacity: 80,
       contentGutters: false,
-      eliteMode: true,
+      eliteMode: false,
       eliteRevealConfig: {
         glitchCountMax: 8,
         glitchCountMin: 4,

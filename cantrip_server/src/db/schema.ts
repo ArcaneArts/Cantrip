@@ -1047,7 +1047,7 @@ export const userSettings = pgTable(
     proMode: boolean("pro_mode").notNull().default(false),
     proModeOpacity: integer("pro_mode_opacity").notNull().default(80),
     contentGutters: boolean("content_gutters").notNull().default(false),
-    eliteMode: boolean("elite_mode").notNull().default(true),
+    eliteMode: boolean("elite_mode").notNull().default(false),
     eliteRevealConfig: jsonb("elite_reveal_config")
       .$type<EliteRevealConfig>()
       .notNull()
