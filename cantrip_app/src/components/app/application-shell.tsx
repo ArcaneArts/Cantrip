@@ -2021,6 +2021,8 @@ export function App() {
         worktreeId: explorer.worktreeId,
         path,
         preview,
+        reservePreview: (resourceId) =>
+          explorerLifecycleRef.current.get(resourceId)?.reservePreviewReplacement?.() ?? null,
       });
     },
     abandonSidebarFilePinHandoff,

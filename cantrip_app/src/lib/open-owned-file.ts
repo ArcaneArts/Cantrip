@@ -19,6 +19,7 @@ export async function openOwnedFile({
   path,
   focusWindow,
   preview = false,
+  reservePreview,
 }: {
   controller: WorkspaceCommandClient;
   queryClient: QueryClient;
@@ -27,6 +28,7 @@ export async function openOwnedFile({
   path: string;
   focusWindow: (id: string) => Promise<void>;
   preview?: boolean;
+  reservePreview?: (resourceId: string) => (() => void) | null;
 }) {
   const session = JSON.stringify(getClientSessionIdentitySnapshot());
   const assertCurrent = () => {
@@ -109,7 +111,7 @@ export async function openOwnedFile({
         definitionId: "project.file",
         resourceId: resource.id,
       },
-      { preview },
+      { preview, reservePreview },
     );
     assertCurrent();
     if (receipt.focusWindowId) await focusWindow(receipt.focusWindowId);

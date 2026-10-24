@@ -737,6 +737,122 @@ describe("workspace command scope and atomicity", () => {
   });
 });
 
+describe("atomic file preview replacement", () => {
+  function input() {
+    const layout = fixture();
+    const old = layout.windows[0]!.panes[0]!.tabs[1]!;
+    old.resource = {
+      kind: "entity",
+      definitionId: "project.file",
+      resourceId: "old-file",
+    };
+    old.preview = true;
+    const next = {
+      ...old,
+      id: "new-view",
+      resource: { ...old.resource, resourceId: "new-file" },
+    };
+    const action: WorkspaceAction = {
+      type: "open",
+      tab: next,
+      target: { kind: "pane", paneId: "a" },
+      replacePreviewTabId: old.id,
+    };
+    return { layout, old, action };
+  }
+  it("replaces the reserved preview in place in one revision", () => {
+    const { layout, action } = input();
+    const result = applyWorkspaceCommand(
+      layout,
+      command(layout, action),
+    ).layout;
+    expect(result.revision).toBe(layout.revision + 1);
+    expect(result.windows[0]!.panes[0]!.tabs.map((t) => t.id)).toEqual([
+      "a1",
+      "new-view",
+      "a3",
+    ]);
+    expect(result.windows[0]!.panes[0]!.activeTabId).toBe("new-view");
+    expect(layout.windows[0]!.panes[0]!.tabs[1]!.id).toBe("a2");
+  });
+  it("retains a preview pinned before replacement commits", () => {
+    const { layout, old, action } = input();
+    old.preview = false;
+    const result = applyWorkspaceCommand(
+      layout,
+      command(layout, action),
+    ).layout;
+    expect(result.windows[0]!.panes[0]!.tabs.map((t) => t.id)).toEqual([
+      "a1",
+      "a2",
+      "a3",
+      "new-view",
+    ]);
+  });
+  it("focuses a file already opened elsewhere without removing the reserved preview", () => {
+    const { layout, action } = input();
+    if (action.type !== "open") throw new Error("Expected open action");
+    layout.windows[1]!.panes[0]!.tabs[0]!.resource = action.tab.resource;
+    const result = applyWorkspaceCommand(layout, command(layout, action));
+    expect(result.focusWindowId).toBe("popout");
+    expect(result.layout.windows[0]!.panes[0]!.tabs.map((t) => t.id)).toEqual([
+      "a1",
+      "a2",
+      "a3",
+    ]);
+    expect(result.layout.windows[1]!.panes[0]!.activeTabId).toBe("p1");
+  });
+  it.each(["non-file source", "permanent destination", "new pane"])(
+    "rejects invalid replacement: %s",
+    (kind) => {
+      const { layout, old, action } = input();
+      if (action.type !== "open") throw new Error("Expected open action");
+      if (kind === "non-file source") old.resource = tab("other").resource;
+      if (kind === "permanent destination") action.tab.preview = false;
+      if (kind === "new pane")
+        action.target = {
+          kind: "new-pane",
+          paneId: "new-pane",
+          region: "center",
+          splitId: "new-split",
+        };
+      const before = structuredClone(layout);
+      expect(() =>
+        applyWorkspaceCommand(layout, command(layout, action)),
+      ).toThrow("Preview replacement requires");
+      expect(layout).toEqual(before);
+    },
+  );
+  it("rejects a stale replacement after the reserved view leaves its pane", () => {
+    const { layout, old, action } = input();
+    layout.windows[0]!.panes[0]!.tabs.splice(1, 1);
+    layout.windows[0]!.panes[0]!.activeTabId = "a1";
+    layout.windows[0]!.panes[1]!.tabs.push(old);
+    expect(() =>
+      applyWorkspaceCommand(layout, command(layout, action)),
+    ).toThrow("same pane");
+  });
+  it("does not replace a preview reserved by a pending detach", () => {
+    const { layout, old, action } = input();
+    const prepared = applyWorkspaceCommand(
+      layout,
+      command(layout, {
+        type: "prepare-detach",
+        transferId: "preview-detach",
+        paneId: "a",
+        tabId: old.id,
+        destinationWindowId: "preview-window",
+        destinationPaneId: "preview-pane",
+      }),
+    ).layout;
+    const before = structuredClone(prepared);
+    expect(() =>
+      applyWorkspaceCommand(prepared, command(prepared, action)),
+    ).toThrow("Preview is reserved for a pending transfer");
+    expect(prepared).toEqual(before);
+  });
+});
+
 describe("tab activation history", () => {
   it("records actual selection without changing tab order or other windows", () => {
     let layout = fixture();
