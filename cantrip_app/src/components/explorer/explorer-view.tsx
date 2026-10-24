@@ -363,6 +363,10 @@ export function ExplorerView({
   const draftVersionRef = useRef(draftVersion);
   const dirtyRef = useRef(false);
   const worktreeIdRef = useRef(explorer.worktreeId);
+  const persistedViewStateRef = useRef({
+    selectedPath: explorer.selectedPath,
+    fileMode: explorer.fileMode,
+  });
   const viewStateQueueRef = useRef<Promise<boolean>>(Promise.resolve(true));
   const directoryFetches = useIsFetching({
     queryKey: [
@@ -893,12 +897,26 @@ export function ExplorerView({
     // transient and must not be pulled back inline by legacy saved view state.
     if (transientFilePath || onOpenFile) return;
     const worktreeChanged = worktreeIdRef.current !== explorer.worktreeId;
+    const previous = persistedViewStateRef.current;
+    // A local open/mode change can render before the query publishes its saved
+    // summary. Only changed persisted state may replace that local intent.
     const viewStateChanged =
-      explorer.selectedPath !== selectedPathRef.current ||
-      explorer.fileMode !== fileModeRef.current;
+      explorer.selectedPath !== previous.selectedPath ||
+      explorer.fileMode !== previous.fileMode;
     if (
       viewStatePending > 0 ||
       (!worktreeChanged && (!viewStateChanged || dirtyRef.current))
+    ) {
+      return;
+    }
+    persistedViewStateRef.current = {
+      selectedPath: explorer.selectedPath,
+      fileMode: explorer.fileMode,
+    };
+    if (
+      !worktreeChanged &&
+      explorer.selectedPath === selectedPathRef.current &&
+      explorer.fileMode === fileModeRef.current
     ) {
       return;
     }
