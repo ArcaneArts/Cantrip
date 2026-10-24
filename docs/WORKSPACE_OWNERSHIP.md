@@ -30,7 +30,8 @@ are flags on ordinary tabs. Resource loading must not remove tab identities.
 
 ## Cycle 1: ownership contract and seed conversion
 
-Branch: `codex/workspace-ownership-contract`. PR/merge: pending.
+Branch: `codex/workspace-ownership-contract`. [PR #2209](https://github.com/ArcaneArts/Cantrip/pull/2209)
+merged as `54bf48971`; Primary synchronized.
 
 - Added a versioned protocol snapshot with window-owned pane trees and independent
   tab identities, window-local selection/history, and attachment generations.
@@ -57,6 +58,41 @@ unchanged; its additive list now also records the three traffic constants from
 #2204 that reproduced a baseline failure on unchanged Primary. Native/UI
 verification is not applicable to this unconnected contract cycle and remains
 required before completion.
+
+Broader CI exposed a Windows worker broken-symlink creation failure also present
+in the preceding run `40046965685`, plus a worker Git index-lock collision.
+Cycle 1 changed no worker source/tests. Final broader CI: 15 jobs passed, four
+failed. The other three failures were the unchanged server timeout-policy count
+(expects ten unbounded commands, observes six), also reproduced in preceding
+run `40047835332`. These are not claimed as passing; native and full-system
+acceptance remain open. The clean cycle worktree was submitted for recoverable
+archival after merge verification.
+
+## Cycle 2: deterministic workspace command controller
+
+Branch: `codex/workspace-command-controller`. PR/merge: pending.
+
+- Added strict commands with operation, workspace, project, window, attachment
+  generation, and expected-revision identity. Pure execution rejects stale
+  renderers/revisions and cannot modify a tab in another window by accident.
+- Implements select/home, close tab/pane, pin, exact reorder, move, split,
+  resize, and open/focus-existing. Close selection is adjacent within a pane;
+  empty-pane cleanup collapses its tree leaf and uses local focus history.
+- Opening an already-open resource selects its original view, returning an
+  explicit focus-window effect when necessary, not a duplicate placement.
+- Empty-popout effects describe only a window emptied by the current command;
+  unrelated empty windows preparing transfers are left untouched.
+- Execution validates a cloned result and advances one revision atomically;
+  failures never mutate the input. No native destruction, resource deletion,
+  authorization, or save is performed by this pure transition layer.
+- Durable receipts/idempotency, server persistence, pending-operation rebasing,
+  lifecycle confirmations, and actual UI routing remain integration work. This
+  cycle does not enable a competing write path or claim live cutover.
+
+Verification: all 608 protocol tests passed, including 39 new transition tests;
+protocol typecheck and build passed. Scoped formatting, large-file checks, and
+`git diff --check` passed. Reviewed inputs remain unchanged after both successful
+and rejected operations. Native/UI integration is still outstanding.
 
 ## Remaining implementation and acceptance ledger
 
