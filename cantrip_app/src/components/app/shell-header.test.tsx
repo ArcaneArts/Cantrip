@@ -12,6 +12,28 @@ vi.mock("./use-mouse-back", () => ({
   },
 }));
 
+describe("file document header", () => {
+  it("displays the document filename and its checkout path without an Explorer", () => {
+    const markup = renderToStaticMarkup(
+      <TooltipProvider>
+        <ShellHeader
+          bindings={{
+            appMode: "ide",
+            showContentTitlebar: true,
+            isPopout: true,
+            selectedFileDocument: { path: "src/lib.rs" },
+            explorerDisplayPath: "/checkouts/feature/src/lib.rs",
+            contentHeaderActions: {},
+          }}
+        />
+      </TooltipProvider>,
+    );
+    expect(markup).toContain("lib.rs");
+    expect(markup).toContain("/checkouts/feature/src/lib.rs");
+    expect(markup).not.toContain(">Cantrip<");
+  });
+});
+
 describe("desktop settings workspace", () => {
   it.each([
     ["showSettings", "setShowSettings"],

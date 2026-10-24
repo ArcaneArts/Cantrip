@@ -248,6 +248,63 @@ function run(action: WorkspaceAction, layout = fixture(), windowId = "main") {
   return applyWorkspaceCommand(layout, command(layout, action, windowId));
 }
 
+describe("file view mode", () => {
+  it.each(["edit", "preview", "visual"] as const)(
+    "persists %s on only the selected view",
+    (mode) => {
+      const layout = fixture();
+      const file = layout.windows[0]!.panes[0]!.tabs[0]!;
+      file.resource = {
+        kind: "entity",
+        definitionId: "project.file",
+        resourceId: "document",
+      };
+      const next = run(
+        { type: "file-mode", tabId: file.id, mode },
+        layout,
+      ).layout;
+      expect(next.windows[0]!.panes[0]!.tabs[0]!.fileMode).toBe(mode);
+      expect(file.fileMode).toBeUndefined();
+      expect(next.windows[0]!.panes[0]!.tabs[1]!.fileMode).toBeUndefined();
+      expect(workspaceOwnershipSchema.parse(next)).toEqual(next);
+      const moved = run(
+        { type: "move", tabId: file.id, targetPaneId: "b", position: 0 },
+        next,
+      ).layout;
+      expect(
+        moved.windows[0]!.panes.find(({ id }) => id === "b")!.tabs[0]!.fileMode,
+      ).toBe(mode);
+    },
+  );
+  it("rejects non-file views and another window's view", () => {
+    const layout = fixture();
+    expect(() =>
+      run({ type: "file-mode", tabId: "a1", mode: "edit" }, layout),
+    ).toThrow("File mode requires a file view");
+    layout.windows[1]!.panes[0]!.tabs[0]!.resource = {
+      kind: "entity",
+      definitionId: "project.file",
+      resourceId: "document",
+    };
+    expect(() =>
+      run({ type: "file-mode", tabId: "p1", mode: "edit" }, layout),
+    ).toThrow(WorkspaceCommandError);
+    expect(layout.windows[1]!.panes[0]!.tabs[0]!.fileMode).toBeUndefined();
+  });
+  it("rejects invalid modes and mode metadata on non-file tabs", () => {
+    expect(
+      workspaceActionSchema.safeParse({
+        type: "file-mode",
+        tabId: "a1",
+        mode: "invalid",
+      }).success,
+    ).toBe(false);
+    const layout = fixture();
+    layout.windows[0]!.panes[0]!.tabs[0]!.fileMode = "edit";
+    expect(workspaceOwnershipSchema.safeParse(layout).success).toBe(false);
+  });
+});
+
 describe("prepared return to main", () => {
   const prepare: WorkspaceAction = {
     type: "prepare-return",

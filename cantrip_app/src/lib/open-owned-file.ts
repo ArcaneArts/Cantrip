@@ -1,16 +1,20 @@
-import type { ExplorerSummary } from "@cantrip/protocol";
 import type { QueryClient } from "@tanstack/react-query";
-import { createExplorer, getExplorers } from "./api/explorers";
+import {
+  createFileDocument,
+  getFileDocuments,
+  type FileDocument,
+} from "./api/file-documents";
+import { getProjectWorktrees } from "./api/worktrees";
 import { getClientSessionIdentitySnapshot } from "./client-session";
 import type { WorkspaceCommandClient } from "./workspace-command-client";
-import { defaultExplorerFileMode } from "@/components/explorer/explorer-file-language";
+import { surfaceTitleEncryption } from "./surface-title-encryption";
 
 const pending = new WeakMap<
   WorkspaceCommandClient,
-  Map<string, { resource: Promise<ExplorerSummary>; consumers: number }>
+  Map<string, { resource: Promise<FileDocument>; consumers: number }>
 >();
 
-/** File-specific protected backing records; never rebind an existing tree/view. */
+/** Immutable documents and workspace-owned views; never rebind an Explorer. */
 export async function openOwnedFile({
   controller,
   queryClient,
@@ -51,42 +55,34 @@ export async function openOwnedFile({
   if (!request) {
     const resource = (async () => {
       // Fetch the actual resource catalog, not a possibly still-loading query snapshot.
-      const resources = await getExplorers(projectId);
+      const resources = await getFileDocuments(projectId);
       assertCurrent();
-      const fileResourceIds = new Set(
-        controller
-          .getSnapshot()
-          .authoritative.windows.flatMap((window) => window.panes)
-          .flatMap((pane) => pane.tabs)
-          .flatMap((tab) =>
-            tab.resource.kind === "entity" &&
-            tab.resource.definitionId === "project.file"
-              ? [tab.resource.resourceId]
-              : [],
-          ),
-      );
       const existing = resources.find(
         (candidate) =>
-          fileResourceIds.has(candidate.id) &&
           candidate.projectId === projectId &&
           candidate.worktreeId === worktreeId &&
-          candidate.selectedPath === path,
+          candidate.path === path,
       );
       if (existing) return existing;
-      return createExplorer(
-        projectId,
-        path.split("/").at(-1) || path,
-        worktreeId,
-        undefined,
-        undefined,
-        {
-          attachToTabLayout: false,
-          initialViewState: {
-            selectedPath: path,
-            fileMode: defaultExplorerFileMode(path),
-          },
-        },
+      const worktrees = await getProjectWorktrees(projectId);
+      assertCurrent();
+      const worktree = worktrees.find(
+        (candidate) =>
+          candidate.id === worktreeId && candidate.projectId === projectId,
       );
+      if (!worktree) throw new Error("File document worktree was not found.");
+      return createFileDocument({
+        id: surfaceTitleEncryption.fileDocumentId({
+          projectId,
+          workerId: worktree.workerId,
+          worktreeId,
+          path,
+        }),
+        projectId,
+        workerId: worktree.workerId,
+        worktreeId,
+        path,
+      });
     })();
     request = { resource, consumers: 0 };
     requests.set(key, request);
@@ -98,8 +94,8 @@ export async function openOwnedFile({
   try {
     const resource = await request.resource;
     assertCurrent();
-    queryClient.setQueryData<ExplorerSummary[]>(
-      ["explorers", projectId],
+    queryClient.setQueryData<FileDocument[]>(
+      ["file-documents", projectId],
       (current = []) => [
         ...current.filter((candidate) => candidate.id !== resource.id),
         resource,

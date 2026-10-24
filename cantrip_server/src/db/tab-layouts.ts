@@ -517,6 +517,21 @@ export async function resolveEntitySurface(
   const tabKind = projectSurfaceTabKind(surface);
   if (!tabKind) return null;
   const tabId = surface.resourceId;
+  if (surface.definitionId === "project.file") {
+    const documents = await database
+      .select({ id: schema.fileDocuments.id })
+      .from(schema.fileDocuments)
+      .where(
+        and(
+          eq(schema.fileDocuments.id, tabId),
+          eq(schema.fileDocuments.projectId, projectId),
+        ),
+      )
+      .limit(1);
+    if (documents[0]) return { tabId, tabKind, titleProtection: null };
+    // Existing Explorer-backed file placements remain readable until their
+    // protected location has been migrated by an authorized client.
+  }
   let rows: Array<{
     id: string;
     titleProtection: PrivateDisplayLabelOpaque | null;

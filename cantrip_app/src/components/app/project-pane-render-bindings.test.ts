@@ -61,6 +61,43 @@ function bindings() {
 }
 
 describe("project pane render bindings", () => {
+  it("uses a file document's worker without treating the view as an Explorer", () => {
+    const document = {
+      id: "document",
+      workerId: "document-worker",
+      worktreeId: "tree",
+    };
+    const worker = { workerId: "document-worker" };
+    const fileSurface = {
+      kind: "file",
+      tabKey: "document-view",
+      entity: document,
+    } as ProjectSurface;
+    const shell = {
+      ...bindings(),
+      selectedFileDocument: { id: "other-document" },
+      selectedWorker: { workerId: "other-worker" },
+      workers: { data: [worker] },
+    };
+    const resolved = projectPaneRenderBindings(
+      shell,
+      presentation(false, fileSurface),
+    );
+    expect(resolved.selectedFileDocument).toBe(document);
+    expect(resolved.selectedWorker).toBe(worker);
+    expect(resolved.selectedExplorer).toBeUndefined();
+    expect(resolved.explorerSurfaceVisible).toBe(false);
+    expect(resolved.selectedTabKey).toBe("document-view");
+    const unavailableWorker = projectPaneRenderBindings(
+      { ...shell, workers: { data: [] } },
+      presentation(false, fileSurface),
+    );
+    expect(unavailableWorker.selectedWorker).toBeUndefined();
+    expect(unavailableWorker.selectedFileDocument).toBe(document);
+    expect(
+      projectPaneRenderBindings(shell, presentation(true)).selectedFileDocument,
+    ).toBeUndefined();
+  });
   it("shows each pane's linked CLI and restores its chat when toggled off", () => {
     const chat = { id: "chat-one", activeWorkerId: "worker-one" };
     const otherChat = { id: "chat-two" };

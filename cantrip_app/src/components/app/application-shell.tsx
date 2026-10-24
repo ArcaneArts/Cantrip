@@ -520,6 +520,7 @@ export function App() {
     stagedTerminalTransfers,
     incomingTerminalViews,
     incomingExplorerViews,
+    incomingFileDocumentViews,
     incomingCodeViews,
     incomingBrowserViews,
   } = useWorkspaceEditorTransfer({
@@ -552,11 +553,15 @@ export function App() {
     beforeClose: async (surface) => {
       if (surface.kind === "explorer") {
         await explorerLifecycleRef.current.get(surface.tabId)?.prepareClose();
+      } else if (surface.kind === "file") {
+        await explorerLifecycleRef.current.get(surface.tabKey)?.prepareClose();
       }
     },
     onCloseError: (surface) => {
       if (surface.kind === "explorer") {
         explorerLifecycleRef.current.get(surface.tabId)?.cancelClose();
+      } else if (surface.kind === "file") {
+        explorerLifecycleRef.current.get(surface.tabKey)?.cancelClose();
       }
     },
     queryClient,
@@ -570,8 +575,20 @@ export function App() {
   const { codeAppearance, proModeActive, setCodeAppearance, setProModeActive } =
     useShellAppearanceState();
   const pinDirtyOwnedFile = useCallback(
-    (resourceId: string) => {
-      void workspaceConnection.connection?.controller
+    (viewOrResourceId: string) => {
+      const controller = workspaceConnection.connection?.controller;
+      if (!controller) return;
+      const view = controller
+        .getSnapshot()
+        .projected.windows.flatMap((window) => window.panes)
+        .flatMap((pane) => pane.tabs)
+        .find((tab) => tab.id === viewOrResourceId);
+      const resourceId =
+        view?.resource.kind === "entity" &&
+        view.resource.definitionId === "project.file"
+          ? view.resource.resourceId
+          : viewOrResourceId;
+      void controller
         .pinFilePreviews(resourceId)
         .catch(setWorkspaceConnectionError);
     },
@@ -1410,6 +1427,10 @@ export function App() {
     : selectedSurface?.kind === "explorer"
       ? selectedSurface.entity
       : undefined;
+  const selectedFileDocument =
+    !sidebarFilePreviewVisible && selectedSurface?.kind === "file"
+      ? selectedSurface.entity
+      : undefined;
   const selectedBrowser =
     !sidebarFilePreviewVisible && selectedSurface?.kind === "browser"
       ? selectedSurface.entity
@@ -1423,6 +1444,7 @@ export function App() {
       [
         sidebarExplorer?.worktreeId,
         selectedExplorer?.worktreeId,
+        selectedFileDocument?.worktreeId,
         selectedTerminal?.worktreeId,
         selectedCodeTab?.worktreeId,
         selectedProjectView?.worktreeId,
@@ -1444,6 +1466,7 @@ export function App() {
         sidebarExplorer?.activeWorkerId,
         sidebarFileWorkerId,
         selectedExplorer?.activeWorkerId,
+        selectedFileDocument?.workerId,
       ],
       projectVisible:
         appMode === "ide" &&
@@ -1462,6 +1485,8 @@ export function App() {
     selectedCodeTab?.worktreeId,
     selectedExplorer?.activeWorkerId,
     selectedExplorer?.worktreeId,
+    selectedFileDocument?.workerId,
+    selectedFileDocument?.worktreeId,
     selectedProjectView?.worktreeId,
     selectedProjectWorkerId,
     selectedStandaloneChat?.activeWorkerId,
@@ -1514,20 +1539,22 @@ export function App() {
                   definitionId: selectedBuiltInSurface.entity.definitionId,
                 }
               : null;
-  const activeWorktreeId = activeChat
-    ? activeChat.activeWorktreeId
-    : selectedTerminal
-      ? selectedTerminal.worktreeId
-      : selectedExplorer
-        ? selectedExplorer.worktreeId
-        : selectedCodeTab
-          ? selectedCodeTab.worktreeId
-          : selectedBuiltInSurface
-            ? selectedBuiltInSurface.entity.worktreeId
-            : selectedProjectView &&
-                selectedProjectView.kind !== "remote-desktop"
-              ? selectedProjectView.worktreeId
-              : null;
+  const activeWorktreeId = selectedFileDocument
+    ? selectedFileDocument.worktreeId
+    : activeChat
+      ? activeChat.activeWorktreeId
+      : selectedTerminal
+        ? selectedTerminal.worktreeId
+        : selectedExplorer
+          ? selectedExplorer.worktreeId
+          : selectedCodeTab
+            ? selectedCodeTab.worktreeId
+            : selectedBuiltInSurface
+              ? selectedBuiltInSurface.entity.worktreeId
+              : selectedProjectView &&
+                  selectedProjectView.kind !== "remote-desktop"
+                ? selectedProjectView.worktreeId
+                : null;
   const activeWorktree = worktrees.data?.find(
     (worktree) => worktree.id === activeWorktreeId,
   );
@@ -1572,6 +1599,7 @@ export function App() {
     selectedProjectView?.kind === "remote-desktop"
       ? remoteDesktop.data?.workerId
       : (activeChat?.activeWorkerId ??
+        selectedFileDocument?.workerId ??
         selectedCodeTab?.activeWorkerId ??
         selectedBrowser?.workerId ??
         activeWorktree?.workerId ??
@@ -1582,9 +1610,11 @@ export function App() {
   const activeExplorerHeader = sidebarFilePreviewVisible
     ? sidebarFilePreviewHeader
     : explorerHeader;
-  const explorerDisplayPath = selectedExplorer
-    ? `${activeWorktree?.displayPath ?? selectedProject?.source?.displayPath ?? "Explorer"}${activeExplorerHeader?.directoryPath ? `/${activeExplorerHeader.directoryPath}` : ""}`
-    : null;
+  const explorerDisplayPath = selectedFileDocument
+    ? `${activeWorktree?.displayPath ? `${activeWorktree.displayPath}/` : ""}${selectedFileDocument.path}`
+    : selectedExplorer
+      ? `${activeWorktree?.displayPath ?? selectedProject?.source?.displayPath ?? "Explorer"}${activeExplorerHeader?.directoryPath ? `/${activeExplorerHeader.directoryPath}` : ""}`
+      : null;
   const bindChatWorktree = (
     chat: ChatSummary,
     worktreeId: string,
@@ -2022,7 +2052,9 @@ export function App() {
         path,
         preview,
         reservePreview: (resourceId) =>
-          explorerLifecycleRef.current.get(resourceId)?.reservePreviewReplacement?.() ?? null,
+          explorerLifecycleRef.current
+            .get(resourceId)
+            ?.reservePreviewReplacement?.() ?? null,
       });
     },
     abandonSidebarFilePinHandoff,
@@ -2149,6 +2181,10 @@ export function App() {
   // into sidebar, header, persistent-surface, content-host, and overlay views.
   // prettier-ignore
   const renderBindings = {
+    persistFileViewMode: async (tabId: string, mode: import("@cantrip/protocol").ExplorerFileMode) => {
+      if (!ownedWorkspace) throw new Error("File view ownership is unavailable.");
+      await ownedWorkspace.controller.dispatch({ type: "file-mode", tabId, mode });
+    },
     activateSidebarFilePreview, activeChat, activeExplorerHeader,
     activePopout, activeProjectOverviewPopout, activeProjectOverviewSection, activeProjectTaskChat, activeProjectTaskChatId,
     activeProjectWorkspace, activeRelocation, activeWorktree, activeWorktreeId,
@@ -2156,7 +2192,7 @@ export function App() {
     appToast, archiveStandaloneChat, archivedStandaloneChats, beginSidebarResize, bindChatWorktree,
     bindWorktreeMutation, bootstrap, browsers, chatRelocationOpen, chatRelocations,
     chatConsoleOpenChats, chats, closeCompactProject, closeProjectTask, closeSidebarFilePreview, codeAppearance,
-    codeHeader, codeTabs, stagedExplorerTransfers, stagedCodeTransfers, stagedTerminalTransfers, incomingTerminalViews, incomingExplorerViews, incomingCodeViews, incomingBrowserViews, commandBarOpen, compactManagedHeader, compactShell,
+    codeHeader, codeTabs, stagedExplorerTransfers, stagedCodeTransfers, stagedTerminalTransfers, incomingTerminalViews, incomingExplorerViews, incomingFileDocumentViews, incomingCodeViews, incomingBrowserViews, commandBarOpen, compactManagedHeader, compactShell,
     completeSidebarFilePinHandoff, contentRootRef, contentScrolled, createProjectSurface, createSidebarExplorerMutation, createSidebarFolder, createSidebarFile,
     createWorkspaceMutation, createWorktreeMutation, creatingSurfaceKinds, currentRelocation, deleteBrowserMutation, dockPresentationMutation,
     deleteChatMutation, deleteCodeTabMutation, deleteExplorerMutation, deleteProjectViewMutation, deleteSidebarFileEntry,
@@ -2188,7 +2224,7 @@ export function App() {
     runConfigurationEditorId, runConfigurationRuntimes, runConfigurations, runProjectScriptCommand, scriptCommandWorktreeId,
     selectPaneFromSidebar, selectProjectFromCommandBar,
     selectProjectFromSidebar, selectProjectWorkspace, selectStandaloneChat, selectTopTab, selectedBrowser,
-    selectedBuiltInSurface, selectedChat, selectedCodeTab, selectedExplorer, selectedFolderSetupJob, selectedFolderSetupNeedsAttention,
+    selectedBuiltInSurface, selectedChat, selectedCodeTab, selectedExplorer, selectedFileDocument, selectedFolderSetupJob, selectedFolderSetupNeedsAttention,
     selectedLongPathFailure, selectedLongPathSetupJob, selectedPaneSurfaces, selectedPlacementContext, selectedProject,
     selectedProjectId, selectedProjectSetupJob, selectedProjectView, selectedProjectWorkerId, selectedRunDefinitionAvailable,
     selectedRunLaunchAvailable, selectedRunLaunchProblem, selectedRunRuntime, selectedRunStopAvailable, selectedRunStopProblem,

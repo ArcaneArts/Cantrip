@@ -7,6 +7,8 @@ import type { EditorHistoryState } from "@/components/editor/input-history";
 import type { ExplorerTransferState } from "./explorer-view";
 
 export interface ExplorerTransferScope {
+  documentId?: string;
+  documentPath?: string;
   serverId: string;
   ownerId: string;
   explorerId: string;
@@ -82,6 +84,12 @@ export function validateExplorerTransfer(
   scope: ExplorerTransferScope,
 ): ExplorerTransferState {
   const state = object(value);
+  if (state.documentId !== scope.documentId) invalid();
+  if (
+    scope.documentId &&
+    (!scope.documentPath || state.selectedPath !== scope.documentPath)
+  )
+    invalid();
   for (const field of [
     "explorerId",
     "projectId",
@@ -120,6 +128,13 @@ export function validateExplorerTransfer(
         ids.has(id)
       )
         return invalid();
+      if (
+        scope.documentId &&
+        (identity[2] !== scope.workerId ||
+          identity[4] !== scope.worktreeId ||
+          identity[5] !== scope.documentPath)
+      )
+        return invalid();
       ids.add(id);
       if (typeof document.saveFailed !== "boolean") return invalid();
       return {
@@ -143,6 +158,7 @@ export function validateExplorerTransfer(
   if (selectedPath === "") invalid();
   return {
     explorerId: scope.explorerId,
+    ...(scope.documentId ? { documentId: scope.documentId } : {}),
     projectId: scope.projectId,
     workerId: scope.workerId,
     worktreeId: scope.worktreeId,

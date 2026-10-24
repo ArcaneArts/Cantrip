@@ -52,6 +52,24 @@ function operations() {
 }
 
 describe("surface command controller", () => {
+  it("closes document views without routing document identities to resource mutations", () => {
+    const operationSet = operations();
+    const controller = createSurfaceCommandController(operationSet);
+    const surface = {
+      kind: "file",
+      tabId: "document",
+      tabKey: "independent-view",
+    } as ProjectSurface;
+    controller.renameSurface(surface, "other.rs");
+    controller.deleteSurfaceResource(surface);
+    controller.closeSurfaceView(surface);
+    expect(operationSet.views.close.mutate).toHaveBeenCalledWith(surface);
+    for (const operations of Object.values(operationSet.crud)) {
+      expect(operations.rename.mutate).not.toHaveBeenCalled();
+      expect(operations.delete.mutate).not.toHaveBeenCalled();
+    }
+    expect(operationSet.crud.explorer.requestDelete).not.toHaveBeenCalled();
+  });
   it("routes creation through the matching mutation and preserves placement", () => {
     const operationSet = operations();
     const controller = createSurfaceCommandController(operationSet);

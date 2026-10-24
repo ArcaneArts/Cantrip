@@ -488,6 +488,16 @@ export function applyWorkspaceCommand(
     case "pin":
       tabById(action.tabId).tab.preview = false;
       break;
+    case "file-mode": {
+      const { tab } = tabById(action.tabId);
+      if (tab.resource.definitionId !== "project.file")
+        throw new WorkspaceCommandError(
+          "invalid",
+          "File mode requires a file view.",
+        );
+      tab.fileMode = action.mode;
+      break;
+    }
     case "rename-pane":
       paneById(action.paneId).titleProtection = action.titleProtection;
       break;

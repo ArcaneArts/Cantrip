@@ -7,6 +7,8 @@ import { startWorkspaceTransferDestination } from "@/lib/workspace-transfer-dest
 import { getExplorers, getTerminals, getBrowsers } from "@/lib/api";
 import { stageExplorerTransferBatch } from "@/components/explorer/explorer-transfer-batch";
 import { useWorkspaceEditorTransfer } from "./use-workspace-editor-transfer";
+import { getFileDocuments } from "@/lib/api/file-documents";
+vi.mock("@/lib/api/file-documents", () => ({ getFileDocuments: vi.fn() }));
 const editorPayload = new TextEncoder().encode(
   JSON.stringify({ version: 1, editors: [] }),
 );
@@ -28,6 +30,7 @@ vi.mock("@/components/explorer/explorer-transfer-batch", () => ({
 ).IS_REACT_ACT_ENVIRONMENT = true;
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.mocked(getFileDocuments).mockResolvedValue([]);
   setClientSession({
     authMode: "accounts",
     csrfToken: null,
@@ -308,6 +311,66 @@ it("rejects a pending terminal restore when its reservation is cancelled", async
       }),
     );
     expect(f.value().incomingTerminalViews).toHaveLength(0);
+  } finally {
+    await act(async () => f.renderer.unmount());
+  }
+});
+
+it("stages a first-class document separately and waits for restoration acknowledgment", async () => {
+  const f = await mount();
+  const document = {
+    id: "editor",
+    projectId: "project",
+    workerId: "worker",
+    worktreeId: "tree",
+    path: "src/main.rs",
+    createdAt: "2026-10-24T00:00:00Z",
+  };
+  vi.mocked(getFileDocuments).mockResolvedValue([document]);
+  vi.mocked(getExplorers).mockResolvedValue([]);
+  const state = {
+    explorerId: "tab",
+    documentId: "editor",
+    fileMode: "preview",
+  } as never;
+  vi.mocked(stageExplorerTransferBatch).mockReturnValue([
+    { tabId: "tab", state },
+  ]);
+  try {
+    let completion!: Promise<void>;
+    let restored = false;
+    await act(async () => {
+      completion = f.restore(editorPayload).then(() => {
+        restored = true;
+      });
+    });
+    expect(restored).toBe(false);
+    expect(f.value().incomingExplorerViews).toHaveLength(0);
+    expect(f.value().incomingFileDocumentViews![0]).toMatchObject({
+      tabId: "tab",
+      resource: document,
+      state,
+    });
+    expect(stageExplorerTransferBatch).toHaveBeenCalledWith(editorPayload, [
+      {
+        tabId: "tab",
+        scope: {
+          serverId: "server",
+          ownerId: "owner",
+          explorerId: "tab",
+          documentId: "editor",
+          documentPath: "src/main.rs",
+          projectId: "project",
+          worktreeId: "tree",
+          workerId: "worker",
+        },
+      },
+    ]);
+    await act(async () => {
+      f.value().incomingFileDocumentViews![0]!.staging!.onRestored();
+      await completion;
+    });
+    expect(restored).toBe(true);
   } finally {
     await act(async () => f.renderer.unmount());
   }

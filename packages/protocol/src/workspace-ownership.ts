@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { explorerFileModeSchema } from "./explorer-surfaces.js";
 import { privateDisplayLabelOpaqueSchema } from "./private-labels.js";
 import { projectPaneRegionSchema } from "./project-pane-identifiers.js";
 import { projectSurfaceResourceRefSchema } from "./project-surfaces.js";
@@ -43,12 +44,24 @@ export const workspaceTabSchema = z
     id: identity,
     resource: projectSurfaceResourceRefSchema,
     preview: z.boolean(),
+    // Non-content presentation preference, scoped to this view/device layout.
+    fileMode: explorerFileModeSchema.optional(),
     titleProtection: privateDisplayLabelOpaqueSchema.nullable(),
     builtInState: projectBuiltInSurfaceStateSchema.nullable(),
     dockPresentation: projectDockPresentationPreferenceSchema.nullable(),
   })
   .strict()
   .superRefine((tab, context) => {
+    if (
+      tab.fileMode !== undefined &&
+      tab.resource.definitionId !== "project.file"
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["fileMode"],
+        message: "File mode requires a file view.",
+      });
+    }
     if (tab.resource.kind === "builtin") {
       if (tab.builtInState?.definitionId !== tab.resource.definitionId) {
         context.addIssue({

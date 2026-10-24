@@ -12,7 +12,11 @@ import type { ProjectFileSurface, ProjectSurface } from "@/lib/project-surface";
 import { projectSurfaceIdentityForTab } from "@/lib/project-surface-registry";
 import { WorkspaceDndStateProvider } from "./workspace-dnd-state";
 
-import { ProjectPaneTabStrip } from "./project-tab-bar";
+import {
+  ProjectPaneTabStrip,
+  surfaceCanRename,
+  surfaceCanDelete,
+} from "./project-tab-bar";
 import { SurfaceMenuItems } from "./surface-tab-controls";
 
 const display = vi.hoisted(() => ({
@@ -268,6 +272,35 @@ function renderTabs(surface: ProjectFileSurface) {
 }
 
 describe("project pane tab strip", () => {
+  it("uses the document file icon and offers no resource rename/delete actions", () => {
+    const legacy = fileSurface();
+    const document = {
+      id: "document",
+      projectId: "project-1",
+      workerId: "worker-1",
+      worktreeId: "worktree-1",
+      path: "src/main.rs",
+      createdAt: now,
+    };
+    const surface: ProjectFileSurface = {
+      ...legacy,
+      kind: "file",
+      entity: document,
+      resource: {
+        entity: document,
+        ref: {
+          kind: "entity",
+          definitionId: "project.file",
+          resourceId: document.id,
+        },
+      },
+      title: "main.rs",
+    };
+    expect(surfaceCanRename(surface)).toBe(false);
+    expect(surfaceCanDelete(surface)).toBe(false);
+    expect(renderTabs(surface)).toContain('data-file-icon="rust"');
+    expect(renderTabs(surface)).toContain("main.rs");
+  });
   it.each([
     ["tabs", false],
     ["tabs", true],

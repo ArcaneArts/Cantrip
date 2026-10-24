@@ -4289,6 +4289,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         });
       }
       case "explorer.operation":
+      case "file-document.operation":
         return handleExplorerCommand(command, {
           surfaceStreamReplay,
           workerEncryption,

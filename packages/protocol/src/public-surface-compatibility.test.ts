@@ -418,6 +418,13 @@ const taskAutomaticRetryExports = [
   "taskFailureKindForError",
   "taskFailureKindSchema",
 ];
+const fileDocumentExports = [
+  "fileDocumentCreateSchema",
+  "fileDocumentPrivateStateOpaqueSchema",
+  "fileDocumentPrivateStateProtectedContentSchema",
+  "fileDocumentWireListSchema",
+  "fileDocumentWireSummarySchema",
+];
 
 describe("protocol public surface compatibility", () => {
   it("preserves the root runtime export baseline with reviewed CUA and managed-session additions", () => {
@@ -434,6 +441,7 @@ describe("protocol public surface compatibility", () => {
           !taskRecoveryExports.includes(name) &&
           !liveTrafficExports.includes(name) &&
           !workspaceOwnershipExports.includes(name) &&
+          !fileDocumentExports.includes(name) &&
           !taskAutomaticRetryExports.includes(name) &&
           !taskConversationExports.includes(name) &&
           !chatFileReferencesExports.includes(name) &&
@@ -446,7 +454,10 @@ describe("protocol public surface compatibility", () => {
     expect(
       exportNames.filter((name) => retiredWorkbenchExports.includes(name)),
     ).toEqual([]);
-    expect(exportNames).toHaveLength(2084);
+    expect(exportNames).toHaveLength(2089);
+    expect(
+      exportNames.filter((name) => fileDocumentExports.includes(name)),
+    ).toEqual(fileDocumentExports);
     expect(
       exportNames.filter((name) => liveTrafficExports.includes(name)),
     ).toEqual(liveTrafficExports);
@@ -504,7 +515,10 @@ describe("protocol public surface compatibility", () => {
       (option) => option.shape.type.value,
     );
 
-    expect(commandTypes).toHaveLength(277);
+    expect(commandTypes).toHaveLength(278);
+    expect(
+      commandTypes.filter((type) => type === "file-document.operation"),
+    ).toHaveLength(1);
     expect(
       commandTypes.filter((type) => type === "git.change-summary"),
     ).toHaveLength(1);
@@ -525,6 +539,7 @@ describe("protocol public surface compatibility", () => {
         !managedWorkerCommands.includes(type) &&
         type !== "chat.files.references" &&
         type !== "label.generate" &&
+        type !== "file-document.operation" &&
         type !== "git.change-summary",
     );
     expect(baselineCommands).toHaveLength(259);

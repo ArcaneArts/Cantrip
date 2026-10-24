@@ -190,6 +190,60 @@ it("captures and retires all reserved editors without save or discard", async ()
   }
 });
 
+it("captures a document by its tab lifecycle and binds the immutable location", async () => {
+  const f = fixture();
+  const tab =
+    f.input.controller.getSnapshot().authoritative.windows[0]!.panes[0]!
+      .tabs[0]!;
+  tab.resource = {
+    kind: "entity",
+    definitionId: "project.file",
+    resourceId: "document",
+  };
+  f.input.surfaces.set("file", {
+    kind: "file",
+    entity: {
+      id: "document",
+      projectId: "project",
+      workerId: "worker",
+      worktreeId: "tree",
+      path: "src/main.rs",
+    },
+  } as ProjectSurface);
+  vi.mocked(f.lifecycles[0]!.captureTransfer!).mockResolvedValue({
+    explorerId: "file",
+    documentId: "document",
+    projectId: "project",
+    workerId: "worker",
+    worktreeId: "tree",
+    selectedPath: "src/main.rs",
+    fileMode: "edit",
+    documents: { scope: '["server","owner"]', documents: [] },
+  });
+  try {
+    await detachWorkspaceEditors(f.input, async (options) => {
+      const lease = await options.prepare(["file"]);
+      const payload = JSON.parse(
+        new TextDecoder().decode(await lease.capture()),
+      );
+      expect(payload.editors[0]).toMatchObject({
+        tabId: "file",
+        state: {
+          documentId: "document",
+          explorerId: "file",
+          selectedPath: "src/main.rs",
+        },
+      });
+      await lease.retire();
+      await lease.resume();
+      return "destination";
+    });
+    expect(f.lifecycles[0]!.save).not.toHaveBeenCalled();
+  } finally {
+    f.cleanup();
+  }
+});
+
 it("fails missing adapters before suspending any editor", async () => {
   const f = fixture();
   f.input.surfaces.delete("code");

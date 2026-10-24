@@ -48,6 +48,36 @@ async function fixture(): Promise<ExplorerTransferState> {
 }
 
 describe("editor transfer decoding", () => {
+  it("binds document transfers to the document ID and exact file", async () => {
+    const original = await fixture();
+    const documentScope = {
+      ...scope,
+      documentId: "document-one",
+      documentPath: "source.ts",
+    };
+    original.documentId = documentScope.documentId;
+    original.documents.documents = original.documents.documents.slice(0, 1);
+    const bytes = encodeExplorerTransfer(original, documentScope);
+    expect(decodeExplorerTransfer(bytes, documentScope)).toEqual(original);
+    expect(() =>
+      decodeExplorerTransfer(bytes, {
+        ...documentScope,
+        documentId: "document-two",
+      }),
+    ).toThrow(/mismatched/);
+    expect(() =>
+      decodeExplorerTransfer(bytes, {
+        ...documentScope,
+        documentPath: "other.ts",
+      }),
+    ).toThrow(/mismatched/);
+    expect(() => decodeExplorerTransfer(bytes, scope)).toThrow(/mismatched/);
+    const foreign = await fixture();
+    foreign.documentId = documentScope.documentId;
+    expect(() => validateExplorerTransfer(foreign, documentScope)).toThrow(
+      /mismatched/,
+    );
+  });
   it("round-trips selected and inactive documents with independent validated objects", async () => {
     const original = await fixture();
     const decoded = decodeExplorerTransfer(

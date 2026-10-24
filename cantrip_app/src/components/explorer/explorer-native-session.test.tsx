@@ -16,6 +16,7 @@ const state = vi.hoisted(() => ({
   lifecycle: null as unknown,
   input: null as unknown,
   transientPath: undefined as string | undefined,
+  fileAccess: undefined as import("@/lib/file-access").FileAccess | undefined,
   initialTransfer: undefined as
     import("./explorer-view").ExplorerTransferState | undefined,
   staging: undefined as
@@ -77,6 +78,7 @@ import {
   ExplorerView,
   type ExplorerHeaderState,
   type ExplorerLifecycleActions,
+  type FileDocumentEditorView,
 } from "./explorer-view";
 (
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -97,13 +99,14 @@ const settle = () =>
   act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 15));
   });
-function tree(explorer = summary) {
+function tree(explorer: ExplorerSummary | FileDocumentEditorView = summary) {
   return createElement(
     QueryClientProvider,
     { client },
     createElement(ExplorerView, {
       appearance: "dark",
       explorer,
+      fileAccess: state.fileAccess,
       initialTransfer: state.initialTransfer,
       transferStaging: state.staging,
       repositoryGraphAvailable: false,
@@ -119,7 +122,9 @@ function tree(explorer = summary) {
     }),
   );
 }
-async function render(explorer = summary) {
+async function render(
+  explorer: ExplorerSummary | FileDocumentEditorView = summary,
+) {
   await act(async () => {
     const content = state.strict
       ? createElement(StrictMode, null, tree(explorer))
@@ -145,6 +150,7 @@ beforeEach(() => {
   state.header = null;
   state.lifecycle = null;
   state.transientPath = undefined;
+  state.fileAccess = undefined;
   state.initialTransfer = undefined;
   state.staging = undefined;
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -169,6 +175,96 @@ afterEach(async () => {
 });
 
 describe("native Explorer document integration", () => {
+  it("renders a document view without an Explorer entity or Explorer mode writes", async () => {
+    const setMode = vi.fn(async (_mode: string) => {});
+    const view: FileDocumentEditorView = {
+      kind: "file-document",
+      id: "tab-one",
+      documentId: "document-one",
+      projectId: "project-one",
+      worktreeId: "worktree-one",
+      activeWorkerId: "worker-one",
+      selectedPath: "source.ts",
+      title: "source.ts",
+      fileMode: "edit",
+      setMode,
+      openFile: vi.fn(),
+    };
+    state.fileAccess = {
+      cacheKey: "file-document:document-one",
+      read: vi.fn().mockResolvedValue({
+        path: "source.ts",
+        content: "document",
+        version: "v1",
+        markdown: false,
+        size: 8,
+      }),
+      save: vi.fn(),
+      media: vi.fn(),
+    };
+    api.updateExplorerViewState.mockClear();
+    await render(view);
+    expect(input().session.text).toBe("document");
+    expect(header().canGoBack).toBe(false);
+    expect(header().showFileClose).toBe(false);
+    await act(async () => {
+      header().setFileMode("preview");
+    });
+    expect(setMode).toHaveBeenCalledWith("preview");
+    expect(api.updateExplorerViewState).not.toHaveBeenCalled();
+    const transfer = await (state.lifecycle as ExplorerLifecycleActions)
+      .captureTransfer!();
+    expect(transfer).toMatchObject({
+      explorerId: "tab-one",
+      documentId: "document-one",
+      selectedPath: "source.ts",
+    });
+    expect(api.getExplorerFile).not.toHaveBeenCalled();
+    setMode.mockRejectedValueOnce(new Error("Mode write failed"));
+    await act(async () => {
+      header().setFileMode("edit");
+    });
+    expect(
+      await (state.lifecycle as ExplorerLifecycleActions).flushViewState!(),
+    ).toBe(false);
+    expect(JSON.stringify(renderer!.toJSON())).toContain("Mode write failed");
+    expect(api.updateExplorerViewState).not.toHaveBeenCalled();
+  });
+  it("uses document file access for reads and versioned saves without Explorer I/O", async () => {
+    const read = vi.fn().mockResolvedValue({
+      path: "source.ts",
+      content: "document content",
+      version: "version-one",
+      markdown: false,
+      size: 16,
+    });
+    const save = vi.fn().mockImplementation(async (value) => ({
+      ...value,
+      version: "version-two",
+      markdown: false,
+      size: value.content.length,
+    }));
+    state.fileAccess = {
+      cacheKey: "file-document:document-one",
+      read,
+      save,
+      media: vi.fn(),
+    };
+    await render();
+    expect(input().session.text).toBe("document content");
+    await edit("document draft");
+    await act(async () => {
+      await header().save();
+    });
+    expect(save).toHaveBeenCalledWith({
+      path: "source.ts",
+      content: "document draft",
+      version: "version-one",
+    });
+    expect(header().dirty).toBe(false);
+    expect(api.getExplorerFile).not.toHaveBeenCalled();
+    expect(api.saveExplorerFile).not.toHaveBeenCalled();
+  });
   it.each(["back", "refresh"] as const)(
     "performs %s after async approval for the unchanged revision",
     async (action) => {

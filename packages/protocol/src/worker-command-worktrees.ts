@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { surfaceStreamWireRequestSchema } from "./surface-stream.js";
+import { fileDocumentPrivateStateOpaqueSchema } from "./surface-private-state.js";
 import { modelProviderKindSchema } from "./providers.js";
 import { projectRootKindSchema } from "./project-foundation.js";
 import { repositoryRelativePathSchema } from "./repository-paths.js";
@@ -18,6 +19,19 @@ import {
 } from "./worker-command-shared.js";
 
 export const workerWorktreeCommandSchemas = [
+  z
+    .object({
+      type: z.literal("file-document.operation"),
+      documentId: z.string().uuid(),
+      serverId: z.string().min(1).max(2_000),
+      projectId: z.string().min(1),
+      worktreeId: z.string().min(1),
+      workerId: z.string().min(1),
+      root: z.string().min(1),
+      stateProtection: fileDocumentPrivateStateOpaqueSchema,
+    })
+    .extend(surfaceStreamWireRequestSchema.shape)
+    .strict(),
   z.object({
     type: z.literal("worktree.list"),
     sourcePath: z.string().min(1),

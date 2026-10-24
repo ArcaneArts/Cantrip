@@ -24,6 +24,7 @@ export const SURFACE_STREAM_PROTECTED_CONTENT_BYTES_LIMIT = 4 * 1024 * 1024;
 export const surfaceStreamKindSchema = z.enum([
   "terminal",
   "explorer",
+  "file-document",
   "chat-files",
 ]);
 export const surfaceStreamDirectionSchema = z.enum([

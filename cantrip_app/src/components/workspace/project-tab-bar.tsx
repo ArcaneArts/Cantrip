@@ -86,10 +86,11 @@ export interface ProjectPaneTabStripProps {
   surfaces: readonly ProjectSurface[];
 }
 
-function surfaceCanRename(surface: ProjectSurface): boolean {
+export function surfaceCanRename(surface: ProjectSurface): boolean {
   return !(
     surface.kind === "builtin" ||
     surface.kind === "unresolved" ||
+    surface.kind === "file" ||
     (surface.kind === "terminal" && surface.entity.kind === "run-configuration")
   );
 }
@@ -98,6 +99,7 @@ export function surfaceCanDelete(surface: ProjectSurface): boolean {
   return (
     surface.kind !== "builtin" &&
     surface.kind !== "unresolved" &&
+    surface.kind !== "file" &&
     surface.definition.deletable
   );
 }
@@ -124,6 +126,8 @@ function SurfaceTabIcon({ surface }: { surface: ProjectSurface }) {
       className="size-3.5 shrink-0"
       definitionId={surface.entity.definitionId}
     />
+  ) : surface.kind === "file" ? (
+    <FileTypeIcon path={surface.entity.path} className="size-3.5" />
   ) : surface.kind === "explorer" && surface.entity.selectedPath ? (
     <FileTypeIcon path={surface.entity.selectedPath} className="size-3.5" />
   ) : (

@@ -81,6 +81,7 @@ export async function detachWorkspaceEditors(
             tab.resource.kind !== "entity" ||
             !surface ||
             (surface.kind !== "explorer" &&
+              surface.kind !== "file" &&
               surface.kind !== "code" &&
               surface.kind !== "terminal" &&
               surface.kind !== "browser")
@@ -104,6 +105,29 @@ export async function detachWorkspaceEditors(
             if (!lifecycle)
               throw new Error("The browser is not attached for transfer.");
             browserEntries.push({ ...owner, lifecycle });
+            continue;
+          }
+          if (surface.kind === "file") {
+            const document = surface.entity;
+            const lifecycle = input.explorers.get(tabId);
+            if (!lifecycle)
+              throw new Error(
+                "The document view is not attached for transfer.",
+              );
+            entries.push({
+              tabId,
+              lifecycle,
+              scope: {
+                serverId: identity.serverId,
+                ownerId: identity.userId,
+                explorerId: tabId,
+                documentId: document.id,
+                documentPath: document.path,
+                projectId: document.projectId,
+                worktreeId: document.worktreeId,
+                workerId: document.workerId,
+              },
+            });
             continue;
           }
           const entity = surface.entity;
