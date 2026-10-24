@@ -305,6 +305,192 @@ describe("file view mode", () => {
   });
 });
 
+describe("replacement renderer attachment", () => {
+  it("advances the generation without changing placement and rejects stale commands", () => {
+    const initial = fixture();
+    const result = run(
+      { type: "replace-attachment", rendererId: "replacement" },
+      initial,
+    );
+    expect(result.layout.windows[0]).toEqual({
+      ...initial.windows[0],
+      attachmentGeneration: 3,
+      rendererId: "replacement",
+    });
+    expect(result.layout.windows[1]).toEqual(initial.windows[1]);
+    expect(result.layout.revision).toBe(initial.revision + 1);
+    expect(result.emptyWindowIds).toEqual([]);
+    expect(() =>
+      applyWorkspaceCommand(result.layout, {
+        ...command(result.layout, { type: "select", tabId: "a1" }),
+        attachmentGeneration: 2,
+      }),
+    ).toThrow("renderer no longer owns");
+    expect(initial.windows[0]!.attachmentGeneration).toBe(2);
+  });
+
+  it.each(["preparing", "destination-ready", "state-ready"] as const)(
+    "recovers source placement from %s without promoting staged state",
+    (phase) => {
+      const initial = fixture();
+      let pending = run(
+        {
+          type: "prepare-detach",
+          transferId: "interrupted",
+          paneId: "a",
+          tabId: "a2",
+          destinationWindowId: "staged",
+          destinationPaneId: "staged-pane",
+        },
+        initial,
+      ).layout;
+      if (phase !== "preparing")
+        pending = run(
+          { type: "transfer-ready", transferId: "interrupted" },
+          pending,
+          "staged",
+        ).layout;
+      if (phase === "state-ready")
+        pending = run(
+          { type: "transfer-state-ready", transferId: "interrupted" },
+          pending,
+          "staged",
+        ).layout;
+      const result = run(
+        { type: "replace-attachment", rendererId: "replacement" },
+        pending,
+      );
+      expect(result.layout.windows).toEqual([
+        {
+          ...initial.windows[0],
+          attachmentGeneration: 3,
+          rendererId: "replacement",
+        },
+        initial.windows[1],
+      ]);
+      expect(result.layout.pendingTransfers).toEqual([]);
+      expect(result.emptyWindowIds).toEqual(["staged"]);
+      expect(pending.pendingTransfers).toHaveLength(1);
+    },
+  );
+
+  it("cancels a source return without deleting the main window", () => {
+    const initial = fixture();
+    const pending = run(
+      {
+        type: "prepare-return",
+        transferId: "return",
+        paneId: "p",
+        splitId: "return-split",
+      },
+      initial,
+      "popout",
+    ).layout;
+    const result = run(
+      { type: "replace-attachment", rendererId: "replacement" },
+      pending,
+      "popout",
+    );
+    expect(result.layout.windows).toEqual([
+      initial.windows[0],
+      {
+        ...initial.windows[1],
+        attachmentGeneration: 4,
+        rendererId: "replacement",
+      },
+    ]);
+    expect(result.layout.pendingTransfers).toEqual([]);
+    expect(result.emptyWindowIds).toEqual([]);
+  });
+
+  it("cancels an incoming return without moving or removing its live source", () => {
+    const initial = fixture();
+    const pending = run(
+      {
+        type: "prepare-return",
+        transferId: "return",
+        paneId: "p",
+        splitId: "return-split",
+      },
+      initial,
+      "popout",
+    ).layout;
+    const result = run(
+      { type: "replace-attachment", rendererId: "replacement" },
+      pending,
+    );
+    expect(result.layout.windows).toEqual([
+      {
+        ...initial.windows[0],
+        attachmentGeneration: 3,
+        rendererId: "replacement",
+      },
+      initial.windows[1],
+    ]);
+    expect(result.layout.pendingTransfers).toEqual([]);
+    expect(result.emptyWindowIds).toEqual([]);
+    expect(pending.windows).toEqual(initial.windows);
+    expect(pending.pendingTransfers).toHaveLength(1);
+  });
+
+  it("binds the first staged renderer, preserves reconnects, and cancels its replacement", () => {
+    const pending = run(
+      {
+        type: "prepare-detach",
+        transferId: "other-transfer",
+        paneId: "p",
+        destinationWindowId: "staged",
+        destinationPaneId: "p",
+      },
+      fixture(),
+      "popout",
+    ).layout;
+    const bound = run(
+      { type: "replace-attachment", rendererId: "first" },
+      pending,
+      "staged",
+    ).layout;
+    expect(bound.windows.at(-1)).toMatchObject({
+      attachmentGeneration: 0,
+      rendererId: "first",
+    });
+    expect(bound.pendingTransfers).toEqual(pending.pendingTransfers);
+    const reconnected = run(
+      { type: "replace-attachment", rendererId: "first" },
+      bound,
+      "staged",
+    ).layout;
+    expect(reconnected.windows).toEqual(bound.windows);
+    expect(reconnected.pendingTransfers).toEqual(bound.pendingTransfers);
+    const replaced = run(
+      { type: "replace-attachment", rendererId: "second" },
+      reconnected,
+      "staged",
+    );
+    expect(replaced.layout.windows).toEqual(pending.windows.slice(0, 2));
+    expect(replaced.layout.pendingTransfers).toEqual([]);
+    expect(replaced.emptyWindowIds).toEqual(["staged"]);
+    const result = run(
+      { type: "replace-attachment", rendererId: "replacement" },
+      pending,
+    );
+    expect(result.layout.pendingTransfers).toEqual(pending.pendingTransfers);
+    expect(result.layout.windows.slice(1)).toEqual(pending.windows.slice(1));
+    expect(result.emptyWindowIds).toEqual([]);
+  });
+
+  it("rejects exhausted generations without changing source ownership", () => {
+    const initial = fixture();
+    initial.windows[0]!.attachmentGeneration = Number.MAX_SAFE_INTEGER;
+    expect(() =>
+      run({ type: "replace-attachment", rendererId: "replacement" }, initial),
+    ).toThrow("generation is exhausted");
+    expect(initial.windows[0]!.attachmentGeneration).toBe(
+      Number.MAX_SAFE_INTEGER,
+    );
+  });
+});
+
 describe("prepared return to main", () => {
   const prepare: WorkspaceAction = {
     type: "prepare-return",

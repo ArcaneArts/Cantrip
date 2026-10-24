@@ -10,6 +10,7 @@ import type {
   WorkspaceOwnership,
 } from "@cantrip/protocol";
 import { WorkspaceCommandClient } from "./workspace-command-client";
+import { WorkspaceWindowRetiredError } from "./workspace-renderer-attachment";
 
 beforeEach(() =>
   setClientSession({
@@ -32,6 +33,11 @@ function fixture() {
   let seed: WorkspaceSeedRequest | undefined;
   const dispose = vi.fn();
   const io = {
+    retire: vi.fn(async (_windowId: string) => {}),
+    renderer: vi.fn(async () => ({
+      rendererId: "renderer",
+      signal: new AbortController().signal,
+    })),
     device: vi.fn(async () => ({
       workspaceId: "device-project",
       mainWindowId: "main",
@@ -108,6 +114,29 @@ it("imports actual native owners and current-project selection", async () => {
   expect(result.presentation.getSnapshot().presentation).toBeNull();
   expect(result.controller.getSnapshot().disposed).toBe(true);
 });
+it.each(["native-pane", "main"])(
+  "closes only an authoritatively retired popout (%s)",
+  async (windowId) => {
+    const f = fixture();
+    f.mocks.connect.mockRejectedValue(
+      new WorkspaceWindowRetiredError(windowId),
+    );
+    await expect(
+      bootstrapWorkspace("p", emptyWorkspaceSelection("p"), windowId, f.io),
+    ).rejects.toThrow("no longer belongs");
+    expect(f.mocks.retire).toHaveBeenCalledTimes(windowId === "main" ? 0 : 1);
+  },
+);
+
+it("does not close a window on an ordinary attachment read failure", async () => {
+  const f = fixture();
+  f.mocks.connect.mockRejectedValue(new Error("network unavailable"));
+  await expect(
+    bootstrapWorkspace("p", emptyWorkspaceSelection("p"), "native-pane", f.io),
+  ).rejects.toThrow("network unavailable");
+  expect(f.mocks.retire).not.toHaveBeenCalled();
+});
+
 it("does not import another project's selection", async () => {
   const f = fixture();
   const result = await bootstrapWorkspace(

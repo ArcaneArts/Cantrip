@@ -4,6 +4,7 @@ import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { chromium, webkit } from "playwright-core";
 import { startEditorRecoveryFixture } from "./editor-recovery-fixture.mjs";
+import { isEditorReloadTeardownError } from "./editor-reload-error.mjs";
 
 const cases = [
   ["chromium", chromium, false],
@@ -87,17 +88,14 @@ for (const [name, engine, mobile] of selected) {
     page.on("pageerror", (error) => {
       // WebKit reports a caught fetch started by pagehide cleanup as a
       // javascript console/page error. Limit this classification to the actual
-      // deliberate reload and same-origin peer teardown/signaling endpoints.
-      const prefix = `/${new URL(fixture.origin).host}/api/worker-links/`;
-      const peerPath = error.message.startsWith(prefix)
-        ? error.message.slice(prefix.length)
-        : "";
+      // deliberate reload and same-origin teardown/signaling endpoints.
       if (
-        name === "webkit" &&
-        reloadingRenderer &&
-        /^[\w-]+\/peers(?:\/[\w-]+(?:\/signals)?)? due to access control checks\.$/u.test(
-          peerPath,
-        )
+        isEditorReloadTeardownError({
+          browser: name,
+          reloadingRenderer,
+          origin: fixture.origin,
+          message: error.message,
+        })
       )
         reloadNetworkErrors.push(error.message);
       else errors.push(error.message);

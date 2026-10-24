@@ -11,6 +11,9 @@ import { workspaceTabSchema } from "./workspace-ownership.js";
 
 const id = z.string().min(1);
 export const workspaceActionSchema = z.discriminatedUnion("type", [
+  // The host must establish that the previous renderer lifetime has ended
+  // before issuing this command. A missed heartbeat is not that evidence.
+  z.object({ type: z.literal("replace-attachment"), rendererId: id }).strict(),
   z
     .object({
       type: z.literal("prepare-return"),

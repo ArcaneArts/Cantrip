@@ -149,13 +149,57 @@ export function applyWorkspaceCommand(
         transfer.destinationWindowId === window.id && !transfer.returnSplitId,
     ) &&
     action.type !== "transfer-ready" &&
-    action.type !== "transfer-state-ready"
+    action.type !== "transfer-state-ready" &&
+    action.type !== "replace-attachment"
   )
     throw new WorkspaceCommandError(
       "invalid",
       "The destination is reserved for a pending transfer.",
     );
   switch (action.type) {
+    case "replace-attachment": {
+      const pending = layout.pendingTransfers ?? [];
+      // Reconnecting the same JS context must not cancel its live transfer.
+      if (window.rendererId === action.rendererId) break;
+      const staged = pending.find(
+        (transfer) =>
+          transfer.destinationWindowId === window.id && !transfer.returnSplitId,
+      );
+      // The first destination attachment preserves the generation embedded in
+      // the prepared handshake. A later replacement cancels that staged view.
+      if (staged && window.rendererId === undefined) {
+        window.rendererId = action.rendererId;
+        break;
+      }
+      if (!Number.isSafeInteger(window.attachmentGeneration + 1))
+        throw new WorkspaceCommandError(
+          "attachment",
+          "Workspace attachment generation is exhausted.",
+        );
+      // Pending transfers never moved ownership. A replacement source keeps
+      // every original pane/tab and recovers its protected document state;
+      // only uncommitted destination reservations are retired.
+      const interrupted = pending.filter(
+        (transfer) =>
+          transfer.sourceWindowId === window.id ||
+          transfer.destinationWindowId === window.id,
+      );
+      for (const transfer of interrupted) {
+        if (!transfer.returnSplitId)
+          retiredDestinationIds.push(transfer.destinationWindowId);
+      }
+      layout.windows = layout.windows.filter(
+        (owner) => !retiredDestinationIds.includes(owner.id),
+      );
+      layout.pendingTransfers = pending.filter(
+        (transfer) =>
+          transfer.sourceWindowId !== window.id &&
+          transfer.destinationWindowId !== window.id,
+      );
+      window.attachmentGeneration++;
+      window.rendererId = action.rendererId;
+      break;
+    }
     case "prepare-return": {
       if (window.id === layout.mainWindowId)
         throw new WorkspaceCommandError(

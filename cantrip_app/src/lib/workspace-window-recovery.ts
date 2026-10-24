@@ -1,14 +1,14 @@
 import type { WorkspaceOwnership } from "@cantrip/protocol";
 import type { DesktopPopoutPaneTarget } from "./desktop-popout";
 
-/** Only committed placements can be reopened without a transfer handshake.
- * An interrupted transfer remains reserved until explicitly reconciled. */
+/** Source placements remain authoritative during preparation. Reopening their
+ * actual window lets a replacement context acquire its lifetime and reconcile
+ * the reservation. Staged destinations must never be promoted by restoration. */
 export function workspaceWindowRecoveryTargets(layout: WorkspaceOwnership) {
   const transferring = new Set(
-    (layout.pendingTransfers ?? []).flatMap((transfer) => [
-      transfer.sourceWindowId,
-      transfer.destinationWindowId,
-    ]),
+    (layout.pendingTransfers ?? [])
+      .filter((transfer) => !transfer.returnSplitId)
+      .map((transfer) => transfer.destinationWindowId),
   );
   return layout.windows.flatMap((window) => {
     if (window.id === layout.mainWindowId || transferring.has(window.id))

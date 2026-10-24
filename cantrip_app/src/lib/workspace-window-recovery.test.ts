@@ -56,7 +56,7 @@ it("preserves detached window, pane and tab identities without replaying a trans
   expect(state).toEqual(before);
 });
 
-it("does not reopen empty windows or either side of an unresolved transfer", () => {
+it("reopens an interrupted transfer's authoritative source, never its staged destination", () => {
   const state = layout();
   state.windows[2]!.panes = [];
   expect(
@@ -69,7 +69,9 @@ it("does not reopen empty windows or either side of an unresolved transfer", () 
       destinationWindowId: "two",
     } as NonNullable<WorkspaceOwnership["pendingTransfers"]>[number],
   ];
-  expect(workspaceWindowRecoveryTargets(state)).toEqual([]);
+  expect(
+    workspaceWindowRecoveryTargets(state).map(({ windowId }) => windowId),
+  ).toEqual(["one"]);
 });
 
 it("continues independent windows after an actual native open failure", async () => {

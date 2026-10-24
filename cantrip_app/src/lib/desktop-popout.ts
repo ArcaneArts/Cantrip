@@ -776,6 +776,20 @@ export async function closeCurrentDesktopWindow(): Promise<void> {
   await getCurrentWebviewWindow().close();
 }
 
+/** Bootstrap has no mounted views to return. Close only the actual retired
+ * popout hosting this renderer, never a label supplied for another window. */
+export async function closeRetiredWorkspaceWindow(
+  windowId: string,
+): Promise<void> {
+  if (!isDesktopRuntime()) return;
+  const { getCurrentWebviewWindow } =
+    await import("@tauri-apps/api/webviewWindow");
+  const current = getCurrentWebviewWindow();
+  if (current.label === "main" || current.label !== windowId)
+    throw new Error("The retired workspace window is not this native window.");
+  await current.close();
+}
+
 export async function openDesktopPopoutGroup(
   target: DesktopPopoutGroupTarget,
   title: string,
@@ -850,7 +864,8 @@ export async function reopenWorkspaceWindow(
       visible: true,
       reuseWithoutFocus: true,
       assertBeforeCreate: () => {
-        if (!isCurrent()) throw new Error("Workspace recovery context changed.");
+        if (!isCurrent())
+          throw new Error("Workspace recovery context changed.");
       },
     },
   );

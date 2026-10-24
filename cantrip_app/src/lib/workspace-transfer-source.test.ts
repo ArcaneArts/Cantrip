@@ -59,6 +59,7 @@ function setup(returning = false) {
     });
   }
   const events: string[] = [];
+  const listeners = new Set<() => void>();
   let serial = 0;
   function apply(action: WorkspaceAction, windowId = sourceWindowId) {
     const result = applyWorkspaceCommand(layout, {
@@ -71,6 +72,7 @@ function setup(returning = false) {
       expectedRevision: layout.revision,
     });
     layout = result.layout;
+    for (const listener of listeners) listener();
     return { ...result, appliedRevision: layout.revision, replayed: false };
   }
   const dispatch = vi.fn(async (action: WorkspaceAction) => {
@@ -79,8 +81,17 @@ function setup(returning = false) {
   });
   const controller = {
     dispatch,
+    subscribe: (listener: () => void) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
     getSnapshot: () => ({ authoritative: layout, disposed: false }),
-  } as unknown as Pick<WorkspaceCommandClient, "dispatch" | "getSnapshot">;
+  } as unknown as Pick<
+    WorkspaceCommandClient,
+    "dispatch" | "getSnapshot" | "subscribe"
+  >;
   let callbacks!: Extract<
     Parameters<typeof createWorkspaceTransferChannel>[0],
     { side: "source" }
@@ -163,6 +174,7 @@ function setup(returning = false) {
     channel,
     dispatch,
     layout: () => layout,
+    apply,
     reject: (error: Error) => callbacks.onError(error),
     acknowledge: () => {
       apply(
@@ -176,6 +188,38 @@ function setup(returning = false) {
     },
   };
 }
+
+it("resumes a live return source after authoritative destination replacement", async () => {
+  const f = setup(true);
+  f.channel.sendSnapshot.mockImplementation(async () => {});
+  const transfer = detachWorkspaceViews(f.input, f.dependencies);
+  const outcome = expect(transfer).rejects.toThrow(
+    "cancelled during attachment recovery",
+  );
+  await vi.waitFor(() => expect(f.channel.sendSnapshot).toHaveBeenCalledOnce());
+  f.apply({ type: "replace-attachment", rendererId: "replacement" }, "main");
+  await outcome;
+  expect(f.lease.resume).toHaveBeenCalledOnce();
+  expect(f.lease.retire).not.toHaveBeenCalled();
+  expect(f.events).not.toContain("cancel-transfer");
+  expect(
+    f.layout().windows.find(({ id }) => id === "popout")!.panes[0]!.tabs[0]!.id,
+  ).toBe("tab");
+});
+
+it("never resumes the old source after its attachment is replaced", async () => {
+  const f = setup();
+  f.channel.sendSnapshot.mockImplementation(async () => {});
+  const transfer = detachWorkspaceViews(f.input, f.dependencies);
+  const outcome = expect(transfer).rejects.toThrow(
+    "source state remains retained",
+  );
+  await vi.waitFor(() => expect(f.channel.sendSnapshot).toHaveBeenCalledOnce());
+  f.apply({ type: "replace-attachment", rendererId: "replacement" });
+  await outcome;
+  expect(f.lease.resume).not.toHaveBeenCalled();
+  expect(f.lease.retire).not.toHaveBeenCalled();
+});
 
 it("returns a pane through the encrypted handshake without opening a new window", async () => {
   const f = setup(true);
