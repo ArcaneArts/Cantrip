@@ -8,6 +8,18 @@ import {
   type TerminalViewState,
 } from "@/components/terminal/terminal-view-state";
 import type { TerminalTransferLifecycle } from "@/components/terminal/terminal-view";
+import {
+  parseBrowserViewState,
+  type BrowserTransferLifecycle,
+} from "@/components/browser/browser-view-state";
+
+export interface BrowserTransferEntry {
+  tabId: string;
+  browserId: string;
+  projectId: string;
+  workerId: string;
+  lifecycle: BrowserTransferLifecycle;
+}
 
 export interface TerminalTransferEntry {
   tabId: string;
@@ -35,6 +47,7 @@ export function stageWorkspaceViewTransferBatch(
   bytes: Uint8Array,
   editors: readonly Pick<ExplorerTransferEntry, "tabId" | "scope">[],
   terminals: readonly ExpectedTerminal[],
+  browsers: readonly Omit<BrowserTransferEntry, "lifecycle">[] = [],
 ) {
   const editorStates = stageExplorerTransferBatch(bytes, editors);
   const payload = JSON.parse(
@@ -59,17 +72,44 @@ export function stageWorkspaceViewTransferBatch(
       state: validateTerminal(matches[0].state, expected),
     };
   });
-  return { editors: editorStates, terminals: terminalStates };
+  const incomingBrowsers: unknown = payload.browsers ?? [];
+  if (
+    !Array.isArray(incomingBrowsers) ||
+    incomingBrowsers.length !== browsers.length
+  )
+    throw new Error("Invalid browser transfer batch.");
+  const browserStates = browsers.map((expected) => {
+    if (ids.has(expected.tabId))
+      throw new Error("Duplicate transfer tab identity.");
+    ids.add(expected.tabId);
+    const matches = incomingBrowsers.filter(
+      (item) =>
+        item && typeof item === "object" && item.tabId === expected.tabId,
+    );
+    if (matches.length !== 1)
+      throw new Error("Invalid browser transfer batch.");
+    return {
+      tabId: expected.tabId,
+      state: parseBrowserViewState(matches[0].state, expected),
+    };
+  });
+  return {
+    editors: editorStates,
+    terminals: terminalStates,
+    browsers: browserStates,
+  };
 }
 
 /** One encrypted envelope and one suspension lifetime for a mixed pane. */
 export function prepareWorkspaceViewTransferBatch(
   editors: readonly ExplorerTransferEntry[],
   terminals: readonly TerminalTransferEntry[],
+  browsers: readonly BrowserTransferEntry[] = [],
 ) {
   const entries = terminals.map((entry) => ({ ...entry }));
+  const browserEntries = browsers.map((entry) => ({ ...entry }));
   const ids = new Set(editors.map(({ tabId }) => tabId));
-  for (const entry of entries) {
+  for (const entry of [...entries, ...browserEntries]) {
     if (!entry.tabId || ids.has(entry.tabId))
       throw new Error("Duplicate transfer tab identity.");
     ids.add(entry.tabId);
@@ -102,7 +142,7 @@ export function prepareWorkspaceViewTransferBatch(
       );
   };
   try {
-    for (const entry of entries)
+    for (const entry of [...entries, ...browserEntries])
       releases.push(entry.lifecycle.suspendTransfer());
   } catch (error) {
     try {
@@ -132,6 +172,18 @@ export function prepareWorkspaceViewTransferBatch(
           );
         terminalStates.push({ tabId: entry.tabId, state });
       }
+      const browserStates = [];
+      for (const entry of browserEntries) {
+        const state = parseBrowserViewState(
+          await entry.lifecycle.captureTransfer(),
+          entry,
+        );
+        if (released)
+          throw new Error(
+            "Workspace transfer batch was released during capture.",
+          );
+        browserStates.push({ tabId: entry.tabId, state });
+      }
       if (released)
         throw new Error(
           "Workspace transfer batch was released during capture.",
@@ -142,6 +194,7 @@ export function prepareWorkspaceViewTransferBatch(
           version: 1,
           editors: editorStates,
           terminals: terminalStates,
+          browsers: browserStates,
         }),
       );
     },
@@ -149,7 +202,7 @@ export function prepareWorkspaceViewTransferBatch(
       if (released || !captured)
         throw new Error("Capture workspace state before retirement.");
       editorBatch.retire();
-      for (const entry of entries) {
+      for (const entry of [...entries, ...browserEntries]) {
         if (retired.has(entry.tabId)) continue;
         await entry.lifecycle.retireTransfer();
         retired.add(entry.tabId);

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { clearClientSession, setClientSession } from "@/lib/client-session";
 import type { WorkspaceCommandClient } from "@/lib/workspace-command-client";
 import { startWorkspaceTransferDestination } from "@/lib/workspace-transfer-destination";
-import { getExplorers, getTerminals } from "@/lib/api";
+import { getExplorers, getTerminals, getBrowsers } from "@/lib/api";
 import { stageExplorerTransferBatch } from "@/components/explorer/explorer-transfer-batch";
 import { useWorkspaceEditorTransfer } from "./use-workspace-editor-transfer";
 const editorPayload = new TextEncoder().encode(
@@ -15,6 +15,7 @@ vi.mock("@/lib/api", () => ({
   getExplorers: vi.fn(),
   getCodeTabs: vi.fn(),
   getTerminals: vi.fn(),
+  getBrowsers: vi.fn(),
 }));
 vi.mock("@/lib/workspace-transfer-destination", () => ({
   startWorkspaceTransferDestination: vi.fn(),
@@ -135,6 +136,66 @@ async function mount(returning = false) {
       .restore,
   };
 }
+
+it("waits for actual browser restoration before acknowledging and removes closed incoming views", async () => {
+  const f = await mount();
+  try {
+    f.layout.windows[0]!.panes[0]!.tabs[0]!.resource = {
+      kind: "entity",
+      definitionId: "project.browser",
+      resourceId: "browser",
+    };
+    vi.mocked(getBrowsers).mockResolvedValue([
+      { id: "browser", projectId: "project", workerId: "worker" },
+    ] as never);
+    vi.mocked(stageExplorerTransferBatch).mockReturnValue([]);
+    const state = {
+      version: 1,
+      browserId: "browser",
+      projectId: "project",
+      workerId: "worker",
+      address: "draft",
+      addressDirty: true,
+      currentUrl: "https://example.com/",
+      invalidAddress: false,
+      serviceSearch: "",
+      viewport: { width: 1280, height: 720, devicePixelRatio: 1 },
+    };
+    let completion!: Promise<void>;
+    let complete = false;
+    await act(async () => {
+      completion = f
+        .restore(
+          new TextEncoder().encode(
+            JSON.stringify({
+              version: 1,
+              editors: [],
+              browsers: [{ tabId: "tab", state }],
+            }),
+          ),
+        )
+        .then(() => {
+          complete = true;
+        });
+      await Promise.resolve();
+    });
+    expect(complete).toBe(false);
+    expect(f.value().incomingBrowserViews![0]!.state).toEqual(state);
+    await act(async () => {
+      f.value().incomingBrowserViews![0]!.staging!.onRestored();
+      await completion;
+    });
+    f.layout.pendingTransfers = [];
+    f.layout.windows[0]!.id = "destination";
+    await act(async () => f.notify());
+    expect(f.value().incomingBrowserViews![0]!.staging).toBeUndefined();
+    f.layout.windows[0]!.panes = [];
+    await act(async () => f.notify());
+    expect(f.value().incomingBrowserViews).toEqual([]);
+  } finally {
+    await act(async () => f.renderer.unmount());
+  }
+});
 
 it("stages terminal state by view identity and removes it when that view closes", async () => {
   const f = await mount();

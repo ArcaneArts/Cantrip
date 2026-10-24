@@ -2,6 +2,18 @@ import type { BrowserFleetService, BrowserSummary } from "@cantrip/protocol";
 import { useEffect, useState } from "react";
 import { PersistentSurfacePortal } from "@/components/app/persistent-surface-portal";
 import { BrowserView } from "./browser-view";
+import type {
+  BrowserViewState,
+  BrowserTransferStaging,
+} from "./browser-view-state";
+
+export interface IncomingBrowserView {
+  tabId: string;
+  browser: BrowserSummary;
+  state: BrowserViewState;
+  staging?: BrowserTransferStaging;
+}
+const EMPTY_INCOMING: readonly IncomingBrowserView[] = [];
 
 export interface BrowserViewOwner {
   tabId: string;
@@ -32,8 +44,10 @@ export function PersistentBrowserViews({
   fleetDiscovery,
   onOpenService,
   onPageState,
+  incomingViews = EMPTY_INCOMING,
 }: {
   owners: readonly BrowserViewOwner[];
+  incomingViews?: readonly IncomingBrowserView[];
   selectedTabId: string | null;
   placements?: readonly {
     tabId: string;
@@ -57,7 +71,15 @@ export function PersistentBrowserViews({
 }) {
   const [inlineHost, setInlineHost] = useState<HTMLDivElement | null>(null);
   const [retained, setRetained] = useState<readonly BrowserViewOwner[]>(owners);
-  const rendered = reconcileBrowserOwners(retained, owners);
+  const mergedOwners = [...owners];
+  for (const incoming of incomingViews)
+    if (!mergedOwners.some(({ tabId }) => tabId === incoming.tabId))
+      mergedOwners.push({
+        tabId: incoming.tabId,
+        resourceId: incoming.browser.id,
+        browser: incoming.browser,
+      });
+  const rendered = reconcileBrowserOwners(retained, mergedOwners);
   useEffect(() => {
     setRetained((previous) => reconcileBrowserOwners(previous, owners));
   }, [owners]);
@@ -67,6 +89,7 @@ export function PersistentBrowserViews({
       {rendered.map(({ tabId, browser }) => {
         if (!browser) return null;
         const placement = placements?.find((entry) => entry.tabId === tabId);
+        const incoming = incomingViews.find((view) => view.tabId === tabId);
         const visible = placements
           ? Boolean(placement && placement.portalTarget !== null)
           : selectedTabId === tabId;
@@ -84,6 +107,9 @@ export function PersistentBrowserViews({
           >
             <BrowserView
               browser={browser}
+              transferTabId={tabId}
+              initialViewState={incoming?.state}
+              transferStaging={incoming?.staging}
               visible={visible}
               fleetDiscovery={fleetDiscovery}
               onOpenService={(service) =>

@@ -4,6 +4,69 @@ import {
   stageWorkspaceViewTransferBatch,
 } from "./workspace-view-transfer-batch";
 import type { TerminalViewState } from "@/components/terminal/terminal-view-state";
+import type { BrowserViewState } from "@/components/browser/browser-view-state";
+
+it("validates browser ownership, stages private drafts, and retires one mixed pane", async () => {
+  const state: BrowserViewState = {
+    version: 1,
+    browserId: "browser",
+    projectId: "project",
+    workerId: "worker",
+    address: "unfinished",
+    addressDirty: true,
+    currentUrl: "https://example.com/",
+    invalidAddress: false,
+    serviceSearch: "local",
+    viewport: { width: 1280, height: 720, devicePixelRatio: 1 },
+  };
+  const release = vi.fn();
+  const browser = {
+    tabId: "browser-tab",
+    browserId: "browser",
+    projectId: "project",
+    workerId: "worker",
+    lifecycle: {
+      suspendTransfer: vi.fn(() => release),
+      captureTransfer: vi.fn(async () => state),
+      retireTransfer: vi.fn(async () => {}),
+    },
+  };
+  const f = fixture();
+  const batch = prepareWorkspaceViewTransferBatch(
+    [f.editor],
+    [f.terminal],
+    [browser],
+  );
+  const bytes = await batch.captureBytes();
+  expect(
+    stageWorkspaceViewTransferBatch(bytes, [f.editor], [f.terminal], [browser])
+      .browsers,
+  ).toEqual([{ tabId: browser.tabId, state }]);
+  expect(() =>
+    stageWorkspaceViewTransferBatch(
+      bytes,
+      [f.editor],
+      [f.terminal],
+      [{ ...browser, workerId: "other" }],
+    ),
+  ).toThrow(/does not match/);
+  expect(() =>
+    stageWorkspaceViewTransferBatch(bytes, [f.editor], [f.terminal], []),
+  ).toThrow(/Invalid browser/);
+  expect(() =>
+    prepareWorkspaceViewTransferBatch(
+      [f.editor],
+      [],
+      [{ ...browser, tabId: f.editor.tabId }],
+    ),
+  ).toThrow(/Duplicate/);
+  await batch.retire();
+  await batch.retire();
+  expect(browser.lifecycle.retireTransfer).toHaveBeenCalledOnce();
+  batch.resume();
+  batch.resume();
+  expect(release).toHaveBeenCalledOnce();
+});
 
 function fixture() {
   const state: TerminalViewState = {

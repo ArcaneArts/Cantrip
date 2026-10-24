@@ -46,6 +46,8 @@ export interface UseRemoteSurfaceWorkerLinkResult {
   retry(): void;
   suspendInput(): () => void;
   drain(): Promise<void>;
+  /** Release only this renderer attachment; the worker-owned surface survives. */
+  detach(): void;
   sendFrame(
     channel: RemoteSurfaceChannel,
     payload: Uint8Array,
@@ -65,6 +67,7 @@ export function useRemoteSurfaceWorkerLink(
   const [error, setError] = useState<string | null>(null);
   const [activeRoutes, setActiveRoutes] =
     useState<RemoteSurfaceWorkerLinkRoutes | null>(null);
+  const [attachmentEpoch, setAttachmentEpoch] = useState(0);
 
   useEffect(() => {
     if (options.enabled === false) {
@@ -110,9 +113,13 @@ export function useRemoteSurfaceWorkerLink(
     options.surfaceId,
     options.surfaceKind,
     options.workerId,
+    attachmentEpoch,
   ]);
 
-  const retry = useCallback(() => clientRef.current?.retry(), []);
+  const retry = useCallback(() => {
+    if (clientRef.current) clientRef.current.retry();
+    else setAttachmentEpoch((epoch) => epoch + 1);
+  }, []);
   const suspendInput = useCallback(() => {
     const client = clientRef.current;
     if (!client)
@@ -135,6 +142,12 @@ export function useRemoteSurfaceWorkerLink(
     ) => clientRef.current?.send(channel, payload, coalesceKey) ?? false,
     [],
   );
+  const detach = useCallback(() => {
+    const client = clientRef.current;
+    clientRef.current = null;
+    client?.close();
+    setActiveRoutes(null);
+  }, []);
 
   return {
     activeRoute: remoteSurfaceWorkerLinkRouteLabel(activeRoutes),
@@ -144,6 +157,7 @@ export function useRemoteSurfaceWorkerLink(
     retry,
     suspendInput,
     drain,
+    detach,
     sendFrame,
     setError,
   };

@@ -11,6 +11,7 @@ import type {
   TerminalSummary,
   ExplorerSummary,
   CodeTabSummary,
+  BrowserSummary,
 } from "@cantrip/protocol";
 import type { TerminalTransferStaging } from "@/components/terminal/terminal-view";
 import type {
@@ -20,7 +21,17 @@ import type {
 } from "@/components/explorer/explorer-view";
 import { stageWorkspaceViewTransferBatch } from "./workspace-view-transfer-batch";
 import type { TerminalViewState } from "@/components/terminal/terminal-view-state";
-import { getCodeTabs, getExplorers, getTerminals } from "@/lib/api";
+import {
+  getCodeTabs,
+  getExplorers,
+  getTerminals,
+  getBrowsers,
+} from "@/lib/api";
+import type {
+  BrowserViewState,
+  BrowserTransferStaging,
+} from "@/components/browser/browser-view-state";
+import type { IncomingBrowserView } from "@/components/browser/persistent-browser-views";
 import {
   getClientSessionIdentitySnapshot,
   onClientSessionIdentityChanged,
@@ -34,6 +45,13 @@ const subscribeSession = (listener: () => void) =>
   onClientSessionIdentityChanged(listener);
 const noSubscription = () => () => {};
 type StagedEditor =
+  | {
+      tabId: string;
+      kind: "browser";
+      state: BrowserViewState;
+      browser: BrowserSummary;
+      staging: BrowserTransferStaging;
+    }
   | {
       tabId: string;
       kind: "explorer";
@@ -250,11 +268,17 @@ export function useWorkspaceEditorTransfer({
           const terminalTabs = tabs.filter(
             ({ resource }) => resource.definitionId === "project.terminal",
           );
-          if (editorTabs.length + terminalTabs.length !== tabs.length)
+          const browserTabs = tabs.filter(
+            ({ resource }) => resource.definitionId === "project.browser",
+          );
+          if (
+            editorTabs.length + terminalTabs.length + browserTabs.length !==
+            tabs.length
+          )
             throw new Error(
               "This surface does not yet have a workspace transfer adapter.",
             );
-          const [explorers, code, terminals] = await Promise.all([
+          const [explorers, code, terminals, browsers] = await Promise.all([
             editorTabs.some(
               ({ resource }) => resource.definitionId !== "project.code",
             )
@@ -266,6 +290,7 @@ export function useWorkspaceEditorTransfer({
               ? getCodeTabs(layout.projectId)
               : [],
             terminalTabs.length ? getTerminals(layout.projectId) : [],
+            browserTabs.length ? getBrowsers(layout.projectId) : [],
           ]);
           assertCurrent();
           const expected = editorTabs.map((tab) => {
@@ -305,8 +330,35 @@ export function useWorkspaceEditorTransfer({
               workerId: entity.activeWorkerId,
             };
           });
-          const { editors: snapshots, terminals: terminalSnapshots } =
-            stageWorkspaceViewTransferBatch(bytes, expected, expectedTerminals);
+          const expectedBrowsers = browserTabs.map((tab) => {
+            const resource = tab.resource;
+            const entity =
+              resource.kind === "entity"
+                ? browsers.find(({ id }) => id === resource.resourceId)
+                : undefined;
+            if (
+              !entity ||
+              entity.projectId !== layout.projectId ||
+              !entity.workerId
+            )
+              throw new Error("Transferred browser resource is unavailable.");
+            return {
+              tabId: tab.id,
+              browserId: entity.id,
+              projectId: entity.projectId,
+              workerId: entity.workerId,
+            };
+          });
+          const {
+            editors: snapshots,
+            terminals: terminalSnapshots,
+            browsers: browserSnapshots,
+          } = stageWorkspaceViewTransferBatch(
+            bytes,
+            expected,
+            expectedTerminals,
+            expectedBrowsers,
+          );
           const explorerStates = new Map<string, ExplorerTransferState>();
           const codeStates = new Map<string, ExplorerTransferState>();
           snapshots.forEach(({ state }, index) => {
@@ -365,6 +417,15 @@ export function useWorkspaceEditorTransfer({
               };
             },
           );
+          const stagedBrowsers = browserSnapshots.map(
+            ({ tabId, state }): StagedEditor => ({
+              tabId,
+              state,
+              kind: "browser",
+              browser: browsers.find(({ id }) => id === state.browserId)!,
+              staging: restoration(),
+            }),
+          );
           // Complete React staging before the coordinator acknowledges readiness.
           flushSync(() =>
             setStaged((current) => ({
@@ -378,11 +439,15 @@ export function useWorkspaceEditorTransfer({
                         ) &&
                         !terminalSnapshots.some(
                           (snapshot) => snapshot.tabId === tabId,
+                        ) &&
+                        !browserSnapshots.some(
+                          (snapshot) => snapshot.tabId === tabId,
                         ),
                     )
                   : []),
                 ...stagedEditors,
                 ...stagedTerminals,
+                ...stagedBrowsers,
               ],
             })),
           );
@@ -443,12 +508,14 @@ export function useWorkspaceEditorTransfer({
         incomingTerminalViews: undefined,
         incomingExplorerViews: undefined,
         incomingCodeViews: undefined,
+        incomingBrowserViews: undefined,
       };
     const explorers = new Map<string, ExplorerTransferState>();
     const code = new Map<string, ExplorerTransferState>();
     const terminals = new Map<string, TerminalViewState>();
     const incomingExplorerViews: IncomingEditorView<ExplorerSummary>[] = [];
     const incomingCodeViews: IncomingEditorView<CodeTabSummary>[] = [];
+    const incomingBrowserViews: IncomingBrowserView[] = [];
     const incomingTerminalViews: {
       tabId: string;
       terminal: TerminalSummary;
@@ -457,6 +524,13 @@ export function useWorkspaceEditorTransfer({
     }[] = [];
     for (const editor of staged.editors) {
       if (!retainedTabs.has(editor.tabId)) continue;
+      if (editor.kind === "browser") {
+        incomingBrowserViews.push({
+          ...editor,
+          staging: pendingTabs.has(editor.tabId) ? editor.staging : undefined,
+        });
+        continue;
+      }
       if (editor.kind === "terminal") {
         terminals.set(editor.tabId, editor.state);
         incomingTerminalViews.push({
@@ -485,6 +559,7 @@ export function useWorkspaceEditorTransfer({
       incomingTerminalViews,
       incomingExplorerViews,
       incomingCodeViews,
+      incomingBrowserViews,
     };
   }, [context, staged, retainedTabs, pendingTabs]);
 }

@@ -3,8 +3,10 @@ import type { ExplorerTransferEntry } from "@/components/explorer/explorer-trans
 import {
   prepareWorkspaceViewTransferBatch,
   type TerminalTransferEntry,
+  type BrowserTransferEntry,
 } from "./workspace-view-transfer-batch";
 import { getTerminalTransferLifecycle } from "@/components/terminal/terminal-transfer-lifecycle";
+import { getBrowserTransferLifecycle } from "@/components/browser/browser-transfer-lifecycle";
 import { getNativeCodeLifecycle } from "@/components/code/native-code-lifecycle";
 import type { ProjectSurface } from "@/lib/project-surface";
 import {
@@ -16,7 +18,7 @@ import { focusWorkspaceNativeWindow } from "@/lib/desktop-popout";
 import type { WorkspaceCommandClient } from "@/lib/workspace-command-client";
 import { detachWorkspaceViews } from "@/lib/workspace-transfer-source";
 
-/** Source adapter for native document-backed and terminal surfaces. Other live surfaces must
+/** Source adapter for document-backed, terminal, and browser surfaces. Other live surfaces must
  * supply their own transfer adapters before they can use this path. */
 export async function detachWorkspaceEditors(
   input: {
@@ -70,6 +72,7 @@ export async function detachWorkspaceEditors(
           ?.panes.find(({ id }) => id === input.paneId);
         const entries: ExplorerTransferEntry[] = [];
         const terminalEntries: TerminalTransferEntry[] = [];
+        const browserEntries: BrowserTransferEntry[] = [];
         for (const tabId of tabIds) {
           const tab = pane?.tabs.find(({ id }) => id === tabId);
           const surface = input.surfaces.get(tabId);
@@ -79,17 +82,31 @@ export async function detachWorkspaceEditors(
             !surface ||
             (surface.kind !== "explorer" &&
               surface.kind !== "code" &&
-              surface.kind !== "terminal")
+              surface.kind !== "terminal" &&
+              surface.kind !== "browser")
           )
             throw new Error(
               "This surface does not yet have a workspace transfer adapter.",
             );
-          const entity = surface.entity;
           if (
-            entity.id !== tab.resource.resourceId ||
-            entity.projectId !== layout.projectId
+            surface.entity.id !== tab.resource.resourceId ||
+            surface.entity.projectId !== layout.projectId
           )
             throw new Error("Workspace transfer resource changed.");
+          if (surface.kind === "browser") {
+            const owner = {
+              tabId,
+              projectId: surface.entity.projectId,
+              browserId: surface.entity.id,
+              workerId: surface.entity.workerId ?? "",
+            };
+            const lifecycle = getBrowserTransferLifecycle(owner);
+            if (!lifecycle)
+              throw new Error("The browser is not attached for transfer.");
+            browserEntries.push({ ...owner, lifecycle });
+            continue;
+          }
+          const entity = surface.entity;
           if (surface.kind === "terminal") {
             const owner = {
               tabId,
@@ -125,6 +142,7 @@ export async function detachWorkspaceEditors(
         const batch = prepareWorkspaceViewTransferBatch(
           entries,
           terminalEntries,
+          browserEntries,
         );
         return {
           capture: batch.captureBytes,
