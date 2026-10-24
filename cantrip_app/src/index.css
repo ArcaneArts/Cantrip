@@ -56,6 +56,7 @@
   --row-alternate: oklch(0.97 0.002 264);
   --scrollbar-thumb: oklch(0.17 0.01 264 / 20%);
   --scrollbar-thumb-hover: oklch(0.17 0.01 264 / 34%);
+  --scrollbar-size: 4px;
   --syntax-foreground: var(--foreground);
   --syntax-comment: oklch(0.49 0.03 264);
   --syntax-punctuation: oklch(0.42 0.03 264);
@@ -191,60 +192,57 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
-    scrollbar-color: var(--scrollbar-thumb) transparent;
-    scrollbar-width: thin;
+    --scrollbar-visible-thumb: var(--scrollbar-thumb);
+  }
+
+  @media (hover: hover) {
+    * {
+      /* Reset per element so a hovered ancestor cannot reveal other panes. */
+      --scrollbar-visible-thumb: transparent;
+    }
+
+    *:hover {
+      --scrollbar-visible-thumb: var(--scrollbar-thumb);
+    }
+  }
+
+  /* Standard scrollbar colors override WebKit's custom geometry in Chromium.
+     Use them only where the fine-grained WebKit styling is unavailable. */
+  @supports not selector(::-webkit-scrollbar) {
+    * {
+      scrollbar-color: var(--scrollbar-visible-thumb) transparent;
+      scrollbar-width: thin;
+    }
   }
 
   *::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-  }
-
-  *::-webkit-scrollbar-track,
-  *::-webkit-scrollbar-corner {
+    width: var(--scrollbar-size);
+    height: var(--scrollbar-size);
     background: transparent;
   }
 
+  *::-webkit-scrollbar-track,
+  *::-webkit-scrollbar-track-piece,
+  *::-webkit-scrollbar-corner {
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+  }
+
+  *::-webkit-scrollbar-button {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+
   *::-webkit-scrollbar-thumb {
-    border-radius: 1px;
-    background: var(--scrollbar-thumb);
+    border: 0;
+    border-radius: 999px;
+    background: var(--scrollbar-visible-thumb);
   }
 
   *::-webkit-scrollbar-thumb:hover {
     background: var(--scrollbar-thumb-hover);
-  }
-
-  @media (hover: hover) {
-    [data-slot="app-sidebar-shell"] [data-slot="sidebar-scroll-region"],
-    [data-slot="settings-sidebar"] [data-slot="sidebar-scroll-region"] {
-      scrollbar-color: transparent transparent;
-    }
-
-    [data-slot="app-sidebar-shell"]
-      [data-slot="sidebar-scroll-region"]::-webkit-scrollbar-thumb,
-    [data-slot="settings-sidebar"]
-      [data-slot="sidebar-scroll-region"]::-webkit-scrollbar-thumb {
-      background: transparent;
-    }
-
-    [data-slot="app-sidebar-shell"]:hover [data-slot="sidebar-scroll-region"],
-    [data-slot="settings-sidebar"]:hover [data-slot="sidebar-scroll-region"] {
-      scrollbar-color: var(--scrollbar-thumb) transparent;
-    }
-
-    [data-slot="app-sidebar-shell"]:hover
-      [data-slot="sidebar-scroll-region"]::-webkit-scrollbar-thumb,
-    [data-slot="settings-sidebar"]:hover
-      [data-slot="sidebar-scroll-region"]::-webkit-scrollbar-thumb {
-      background: var(--scrollbar-thumb);
-    }
-
-    [data-slot="app-sidebar-shell"]:hover
-      [data-slot="sidebar-scroll-region"]::-webkit-scrollbar-thumb:hover,
-    [data-slot="settings-sidebar"]:hover
-      [data-slot="sidebar-scroll-region"]::-webkit-scrollbar-thumb:hover {
-      background: var(--scrollbar-thumb-hover);
-    }
   }
 
   html {
@@ -450,6 +448,27 @@
   display: none;
   width: 0;
   height: 0;
+}
+
+/* xterm paints its own scrollbar; keep the larger transparent drag target but
+   give its visible thumb the same slim, hover-only treatment as native panes. */
+.xterm .xterm-scrollable-element > .scrollbar {
+  background: transparent !important;
+}
+
+.xterm .xterm-scrollable-element > .scrollbar.vertical > .slider {
+  left: auto !important;
+  right: 0;
+  width: var(--scrollbar-size) !important;
+  border-radius: 999px;
+}
+
+@media (hover: hover) {
+  .xterm:not(:hover) .xterm-scrollable-element > .scrollbar {
+    opacity: 0 !important;
+    pointer-events: none;
+    transition: none !important;
+  }
 }
 
 .pro-mode .xterm,
