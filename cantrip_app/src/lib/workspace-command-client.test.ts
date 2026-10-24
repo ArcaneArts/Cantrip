@@ -101,6 +101,65 @@ function setup() {
   };
 }
 
+it.each(["success", "rejected"] as const)(
+  "retains the legacy renderer until migration settles: %s",
+  async (outcome) => {
+    const { client, transport, server } = setup();
+    const source = open();
+    source.tab.resource = {
+      kind: "entity",
+      definitionId: "project.explorer",
+      resourceId: "legacy",
+    };
+    source.tab.builtInState = null;
+    await client.dispatch(source);
+    const before = client.getSnapshot().projected;
+    const gate = deferred<WorkspaceReceipt>();
+    vi.mocked(transport.execute).mockImplementationOnce(() => gate.promise);
+    const pending = client.dispatch({
+      type: "migrate-explorer-file",
+      tabId: "tab",
+      explorerId: "legacy",
+      expectedWorkerId: "worker",
+      expectedWorktreeId: "worktree",
+      expectedStateProtection: {
+        classification: { recordKind: "explorer-state" },
+        protectedState: {
+          formatVersion: 1,
+          keyRevision: 1,
+          envelope: {
+            version: 1,
+            algorithm: "AES-256-GCM",
+            keyRevision: 1,
+            nonce: "A".repeat(16),
+            ciphertext: "A".repeat(43),
+          },
+        },
+      },
+      documentId: "document",
+      mode: "edit",
+      retainedViews: [],
+    });
+    const failure = pending.catch((error) => error);
+    expect(client.getSnapshot().projected).toEqual(before);
+    await vi.waitFor(() => expect(transport.execute).toHaveBeenCalledTimes(2));
+    if (outcome === "success") {
+      gate.resolve(
+        result(server(), vi.mocked(transport.execute).mock.calls[1]![0]),
+      );
+      await pending;
+      expect(
+        client.getSnapshot().projected.windows[0]!.panes[0]!.tabs[0]!.resource
+          .definitionId,
+      ).toBe("project.file");
+    } else {
+      gate.reject("rejected");
+      expect(await failure).toBe("rejected");
+      expect(client.getSnapshot().projected).toEqual(before);
+    }
+  },
+);
+
 it.each(["success", "rejected", "uncertain"] as const)(
   "retains a reserved preview until replacement settles: %s",
   async (outcome) => {

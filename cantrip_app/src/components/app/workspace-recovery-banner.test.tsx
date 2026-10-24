@@ -29,6 +29,25 @@ it("renders nothing when healthy and a status while loading", () => {
     renderToStaticMarkup(<WorkspaceRecoveryBanner workspace={workspace} />),
   ).toContain("Loading workspace");
 });
+
+it("offers a migration retry without reconnecting or replaying workspace commands", async () => {
+  const workspace = fixture();
+  const migration = {
+    error: new Error("Migration checkpoint failed"),
+    retry: vi.fn(),
+  };
+  let renderer!: ReturnType<typeof create>;
+  await act(async () => {
+    renderer = create(
+      <WorkspaceRecoveryBanner workspace={workspace} migration={migration} />,
+    );
+  });
+  await act(async () => renderer.root.findByType("button").props.onClick());
+  expect(migration.retry).toHaveBeenCalledOnce();
+  expect(workspace.retry).not.toHaveBeenCalled();
+  expect(workspace.retryCommand).not.toHaveBeenCalled();
+  await act(async () => renderer.unmount());
+});
 it.each(["read", "command", "labels", "bootstrap", "disposed"] as const)(
   "routes %s recovery without replaying other actions",
   async (kind) => {

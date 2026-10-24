@@ -145,6 +145,7 @@ import { githubRepositoryOnboardingAction } from "@/lib/github-repository-onboar
 import { useAppLiveScope, useAppLiveStatus } from "@/lib/app-live-react";
 import { useWorkerObservationDemands } from "@/lib/worker-observation-react";
 import { type AppToastInput } from "@/components/ui/app-toast";
+import { useLegacyDocumentMigration } from "./use-legacy-document-migration";
 import { getChatRelocations } from "@/lib/api";
 import {
   projectBuiltInDefinitionForSection,
@@ -1085,6 +1086,13 @@ export function App() {
     surfaces: projectSurfaceIndex.byTabKey,
     explorers: explorerLifecycleRef.current,
     lifecycleRevision: fileLifecycleRevision,
+  });
+  const legacyDocumentMigration = useLegacyDocumentMigration({
+    workspace: ownedWorkspace,
+    explorers: explorers.data,
+    lifecycles: explorerLifecycleRef.current,
+    lifecycleRevision: fileLifecycleRevision,
+    queryClient,
   });
   const sidebarExplorerModel = useSidebarExplorerModel({
     unavailablePaneIds: unavailableDetachedPaneIds,
@@ -2254,7 +2262,7 @@ export function App() {
     standaloneChatCreationAvailable, standaloneChatCreationUnavailableReason, standaloneChatWorkerAvailable, standaloneChats, standaloneFilePath,
     standaloneFilesOpen, stopAndDeleteRunTerminalMutation, surfaceCreationFailure, switchToChat, switchToIde,
     tabLayout, tabLayoutMutation, terminals, terminalCommandPaletteTerminalId, terminalServiceTerminalId, updateBrowserMutation, updateCodeTabMutation,
-    visibleProjects, workers, workspaceConnection, workspaceDragError, workspaceSelection, worktreeActionError,
+    visibleProjects, workers, workspaceConnection, legacyDocumentMigration, workspaceDragError, workspaceSelection, worktreeActionError,
     worktreeCreateTarget, worktreeStatuses, worktrees,
   };
   return <ApplicationShellRender bindings={renderBindings} />;

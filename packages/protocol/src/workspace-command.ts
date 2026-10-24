@@ -8,9 +8,31 @@ import {
 } from "./project-tabs.js";
 import { privateDisplayLabelOpaqueSchema } from "./private-labels.js";
 import { workspaceTabSchema } from "./workspace-ownership.js";
+import { explorerPrivateStateOpaqueSchema } from "./surface-private-state.js";
 
 const id = z.string().min(1);
 export const workspaceActionSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("migrate-explorer-file"),
+      tabId: id,
+      explorerId: id,
+      expectedWorkerId: id,
+      expectedWorktreeId: id,
+      expectedStateProtection: explorerPrivateStateOpaqueSchema,
+      documentId: id,
+      mode: explorerFileModeSchema,
+      retainedViews: z.array(
+        z
+          .object({
+            tabId: id,
+            documentId: id,
+            mode: explorerFileModeSchema,
+          })
+          .strict(),
+      ),
+    })
+    .strict(),
   // The host must establish that the previous renderer lifetime has ended
   // before issuing this command. A missed heartbeat is not that evidence.
   z.object({ type: z.literal("replace-attachment"), rendererId: id }).strict(),

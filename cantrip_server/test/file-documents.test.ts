@@ -16,7 +16,10 @@ import {
 } from "@cantrip/protocol";
 import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
-import { protectedProjectFields } from "./private-label-fixture.js";
+import {
+  protectedExplorerFields,
+  protectedProjectFields,
+} from "./private-label-fixture.js";
 
 let db: DatabaseConnection;
 let directory: string;
@@ -110,6 +113,132 @@ function input() {
     },
   });
 }
+
+async function migrationFixture() {
+  const explorer = (await db.repository.createExplorer(owner, projectId, {
+    ...protectedExplorerFields(),
+    worktreeId,
+    attachToTabLayout: false,
+  }))!;
+  const document = (await db.repository.fileDocuments.create(
+    owner,
+    projectId,
+    input(),
+  ))!;
+  const retained = (await db.repository.fileDocuments.create(
+    owner,
+    projectId,
+    input(),
+  ))!;
+  const initial = (await db.repository.workspaceLayouts.seed(
+    owner,
+    projectId,
+    randomUUID(),
+    "main",
+  ))!;
+  const command = (layout: WorkspaceOwnership, action: WorkspaceAction) => ({
+    operationId: randomUUID(),
+    workspaceId: layout.id,
+    projectId,
+    windowId: "main",
+    attachmentGeneration: 0,
+    expectedRevision: layout.revision,
+    action,
+  });
+  const tabId = randomUUID();
+  const opened = (await db.repository.workspaceLayouts.execute(
+    owner,
+    command(initial, {
+      type: "open",
+      tab: {
+        id: tabId,
+        resource: {
+          kind: "entity",
+          definitionId: "project.explorer",
+          resourceId: explorer.id,
+        },
+        preview: false,
+        titleProtection: null,
+        builtInState: null,
+        dockPresentation: null,
+      },
+      target: {
+        kind: "new-pane",
+        paneId: randomUUID(),
+        region: "center",
+        splitId: randomUUID(),
+      },
+    }),
+  ))!.layout;
+  const action: Extract<WorkspaceAction, { type: "migrate-explorer-file" }> = {
+    type: "migrate-explorer-file",
+    tabId,
+    explorerId: explorer.id,
+    expectedWorkerId: explorer.activeWorkerId,
+    expectedWorktreeId: explorer.worktreeId,
+    expectedStateProtection: explorer.stateProtection,
+    documentId: document.id,
+    mode: "edit",
+    retainedViews: [
+      { tabId: randomUUID(), documentId: retained.id, mode: "edit" },
+    ],
+  };
+  return { opened, command, action, explorer };
+}
+
+it("commits all migrated views once and replays the receipt without duplicating retained files", async () => {
+  const f = await migrationFixture();
+  const request = f.command(f.opened, f.action);
+  const first = (await db.repository.workspaceLayouts.execute(owner, request))!;
+  const replay = (await db.repository.workspaceLayouts.execute(
+    owner,
+    request,
+  ))!;
+  expect(replay.replayed).toBe(true);
+  expect(replay.layout).toEqual(first.layout);
+  const tabs = first.layout.windows.flatMap((w) =>
+    w.panes.flatMap((p) => p.tabs),
+  );
+  expect(tabs.find((tab) => tab.id === f.action.tabId)?.resource).toEqual({
+    kind: "entity",
+    definitionId: "project.file",
+    resourceId: f.action.documentId,
+  });
+  expect(
+    tabs.filter((tab) => tab.id === f.action.retainedViews[0]!.tabId),
+  ).toHaveLength(1);
+  expect(
+    await db.repository.workspaceLayouts.execute("foreign-owner", request),
+  ).toBeNull();
+});
+
+it.each(["state", "worker", "worktree", "document", "retained"] as const)(
+  "rejects stale or unauthorized migration %s without partial placement",
+  async (field) => {
+    const f = await migrationFixture();
+    if (field === "state")
+      f.action.expectedStateProtection =
+        protectedExplorerFields().stateProtection;
+    if (field === "worker") f.action.expectedWorkerId = "other-worker";
+    if (field === "worktree") f.action.expectedWorktreeId = "other-worktree";
+    if (field === "document") f.action.documentId = "unavailable-document";
+    if (field === "retained")
+      f.action.retainedViews[0]!.documentId = "unavailable-document";
+    await expect(
+      db.repository.workspaceLayouts.execute(
+        owner,
+        f.command(f.opened, f.action),
+      ),
+    ).rejects.toThrow(
+      field === "document" || field === "retained"
+        ? /unavailable/
+        : /binding changed/,
+    );
+    expect(
+      await db.repository.workspaceLayouts.get(owner, projectId, f.opened.id),
+    ).toEqual(f.opened);
+  },
+);
 
 it("retains immutable documents after checkout rollback without granting execution", async () => {
   const checkoutId = randomUUID();

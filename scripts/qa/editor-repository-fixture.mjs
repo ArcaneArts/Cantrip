@@ -62,9 +62,56 @@ import { createDesktopExplorerWindowBroker as qaCreateFileBroker } from '@/lib/d
 import { desktopExplorerFileSearch as qaFileSearch, desktopStandaloneChatFileSearch as qaChatFileSearch } from '@/lib/desktop-popout';
 import { createStandaloneChat as qaCreateChat } from '@/lib/api/chats';
 import { clearClientSession as qaClearSession } from '@/lib/client-session';
+import { getClientSessionIdentitySnapshot as qaIdentity } from '@/lib/client-session';
+import { readWorkspaceDeviceIdentity as qaWorkspaceIdentity } from '@/lib/workspace-device-identity';
+import { workspaceLayoutTransport as qaWorkspaceTransport } from '@/lib/api/workspace-layouts';
+import { getExplorerFile as qaReadFile } from '@/lib/api/files';
+import { EditorSessionStore as QaDocumentStore, editorDocumentId as qaDocumentId } from '@/components/editor/document-session';
+import { DocumentRecoverySession as QaRecovery } from '@/lib/document-recovery-session';
 const qaFileBrokers = new Set();
 let qaProjectId = sessionStorage.getItem("__qaRepositoryProjectId");
+async function qaWorkspace() {
+  const identity = qaIdentity();
+  const scope = await qaWorkspaceIdentity(identity, qaProjectId);
+  const transport = qaWorkspaceTransport(qaProjectId, scope.workspaceId, identity);
+  return { scope, transport, layout: await transport.read() };
+}
 globalThis.__qaRepositoryFixture = {
+  async workspace() { return qaIdentity() ? (await qaWorkspace()).layout : null; },
+  async seedLegacyFile(path = 'qa.txt', drafts = {}) {
+    const explorer = await qaCreateExplorer(qaProjectId, 'Legacy migration QA', undefined, undefined, undefined, {
+      attachToTabLayout: false, initialViewState: { selectedPath: path, fileMode: 'edit' },
+    });
+    const { scope, transport, layout } = await qaWorkspace();
+    const owner = layout.windows.find(window => window.id === scope.mainWindowId);
+    const tabId = crypto.randomUUID();
+    if (Object.keys(drafts).length) {
+      const identity = qaIdentity();
+      const store = new QaDocumentStore();
+      store.resetScope(JSON.stringify([identity.serverId, identity.userId]));
+      for (const [filePath, text] of Object.entries(drafts)) {
+        const file = await qaReadFile(explorer.id, filePath);
+        store.open(qaDocumentId({server:identity.serverId, account:identity.userId,
+          worker:explorer.activeWorkerId, project:qaProjectId, worktree:explorer.worktreeId, path:filePath}),
+          file.content, file.version).editExternal(text);
+      }
+      const recovery = new QaRecovery({serverId:identity.serverId, ownerId:identity.userId,
+        workspaceId:layout.id, projectId:qaProjectId, workerId:explorer.activeWorkerId,
+        worktreeId:explorer.worktreeId, tabId, documentId:'legacy-migration:'+explorer.id});
+      const bytes = new TextEncoder().encode(JSON.stringify({explorerId:explorer.id,projectId:qaProjectId,
+        workerId:explorer.activeWorkerId,worktreeId:explorer.worktreeId,selectedPath:path,fileMode:'edit',
+        documents:store.captureRecovery()}));
+      try { await recovery.load(bytes=>JSON.parse(new TextDecoder().decode(bytes))); await recovery.checkpoint(bytes); }
+      finally { bytes.fill(0); recovery.dispose(); }
+    }
+    await transport.execute({ operationId: crypto.randomUUID(), workspaceId: layout.id, projectId: qaProjectId,
+      windowId: owner.id, attachmentGeneration: owner.attachmentGeneration, expectedRevision: layout.revision,
+      action: { type: 'open', tab: { id: tabId, resource: { kind: 'entity', definitionId: 'project.explorer', resourceId: explorer.id },
+        preview: false, titleProtection: null, builtInState: null, dockPresentation: null },
+        target: { kind: 'new-pane', paneId: crypto.randomUUID(), region: 'center', splitId: crypto.randomUUID() } },
+    });
+    return { tabId, explorerId: explorer.id };
+  },
   async create() { const project = await qaCreateProject(${JSON.stringify(seed.input)}); qaProjectId = project.id; sessionStorage.setItem("__qaRepositoryProjectId", project.id); return project; },
   async project() { return (await qaGetProjects()).find(project => project.id === qaProjectId); },
   async worktrees() { return qaGetWorktrees(qaProjectId); },

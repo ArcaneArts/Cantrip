@@ -5,6 +5,10 @@ import {
 } from "@cantrip/protocol";
 import { request, post } from "@/lib/api-client";
 import { surfaceTitleEncryption } from "@/lib/surface-title-encryption";
+import {
+  getClientSessionIdentitySnapshot,
+  clientSessionIdentityMatches,
+} from "@/lib/client-session";
 import type {
   ExecutionTarget,
   ExplorerViewStateUpdate,
@@ -17,6 +21,31 @@ export async function getExplorers(projectId: string) {
   return Promise.all(
     explorers.map((explorer) => surfaceTitleEncryption.openExplorer(explorer)),
   );
+}
+
+/** Keep the exact ciphertext alongside the decrypted location for a migration
+ * compare-and-swap. Re-encrypting the same path is not the same snapshot. */
+export async function getExplorerMigrationSource(
+  projectId: string,
+  explorerId: string,
+) {
+  const identity = getClientSessionIdentitySnapshot();
+  if (!identity) throw new Error("Sign in before migrating an Explorer.");
+  const explorers = explorerWireListSchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/explorers`,
+      {},
+      { expectedIdentity: identity },
+    ),
+  );
+  if (!clientSessionIdentityMatches(identity))
+    throw new Error("Explorer migration account changed.");
+  const wire = explorers.find((candidate) => candidate.id === explorerId);
+  if (!wire) throw new Error("Legacy Explorer is no longer available.");
+  const explorer = await surfaceTitleEncryption.openExplorer(wire);
+  if (!clientSessionIdentityMatches(identity))
+    throw new Error("Explorer migration account changed.");
+  return { wire, explorer };
 }
 
 export async function createExplorer(

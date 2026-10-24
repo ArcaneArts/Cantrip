@@ -1,0 +1,141 @@
+import { expect, it } from "vitest";
+import {
+  EditorSessionStore,
+  editorDocumentId,
+} from "@/components/editor/document-session";
+import {
+  bindLegacyDocument,
+  planLegacyDocuments,
+} from "./legacy-document-migration";
+import type { ExplorerTransferState } from "./explorer-view";
+
+const scope = {
+  serverId: "server",
+  ownerId: "owner",
+  projectId: "project",
+  explorerId: "explorer",
+  workerId: "worker",
+  worktreeId: "worktree",
+};
+
+function fixture(): ExplorerTransferState {
+  const store = new EditorSessionStore();
+  store.resetScope(JSON.stringify([scope.serverId, scope.ownerId]));
+  for (const worktree of ["worktree", "previous-worktree"]) {
+    const document = store.open(
+      editorDocumentId({
+        server: scope.serverId,
+        account: scope.ownerId,
+        project: scope.projectId,
+        worker: scope.workerId,
+        worktree,
+        path: "src/file.rs",
+      }),
+      "baseline\r\n",
+      "v1",
+    );
+    document.editExternal(`draft in ${worktree}\n`);
+  }
+  return {
+    ...scope,
+    selectedPath: "src/file.rs",
+    fileMode: "preview",
+    documents: store.captureRecovery(),
+  };
+}
+
+it("preserves selected mode and every inactive draft with independent document bindings", () => {
+  const original = fixture();
+  const before = structuredClone(original);
+  const candidates = planLegacyDocuments(original, scope);
+  expect(candidates).toHaveLength(2);
+  expect(
+    candidates.map(({ selected, mode, worktreeId }) => ({
+      selected,
+      mode,
+      worktreeId,
+    })),
+  ).toEqual([
+    { selected: true, mode: "preview", worktreeId: "worktree" },
+    { selected: false, mode: "edit", worktreeId: "previous-worktree" },
+  ]);
+  for (const [index, candidate] of candidates.entries()) {
+    const converted = bindLegacyDocument(candidate, scope, {
+      tabId: index === 0 ? "original-tab" : "retained-tab",
+      documentId: `document-${index}`,
+    });
+    expect(converted.documents.documents).toEqual([
+      original.documents.documents[index],
+    ]);
+    expect(converted.documents.documents[0]).not.toBe(
+      original.documents.documents[index],
+    );
+    expect(converted.explorerId).toBe(
+      index === 0 ? "original-tab" : "retained-tab",
+    );
+  }
+  expect(original).toEqual(before);
+});
+
+it("retains a selected file with no loaded text, including media files", () => {
+  const state = fixture();
+  state.selectedPath = "image.png";
+  expect(planLegacyDocuments(state, scope).map(({ path }) => path)).toEqual([
+    "image.png",
+    "src/file.rs",
+    "src/file.rs",
+  ]);
+});
+
+it("keeps tree-only Explorers distinct while recovering any retained buffers", () => {
+  const state = fixture();
+  state.selectedPath = null;
+  expect(
+    planLegacyDocuments(state, scope).every(({ selected }) => !selected),
+  ).toBe(true);
+  state.documents.documents = [];
+  expect(planLegacyDocuments(state, scope)).toEqual([]);
+});
+
+it("rejects a foreign inactive buffer instead of partially migrating", () => {
+  const state = fixture();
+  state.documents.documents[1]!.id = JSON.stringify([
+    "server",
+    "another-owner",
+    "worker",
+    "project",
+    "previous-worktree",
+    "src/file.rs",
+  ]);
+  expect(() => planLegacyDocuments(state, scope)).toThrow(/mismatched/);
+});
+
+it("rejects rebinding an inactive buffer to the selected worktree", () => {
+  const candidate = planLegacyDocuments(fixture(), scope)[1]!;
+  expect(() =>
+    bindLegacyDocument({ ...candidate, worktreeId: "worktree" }, scope, {
+      tabId: "tab",
+      documentId: "document",
+    }),
+  ).toThrow(/mismatched/);
+});
+
+it("does not migrate an already immutable document as a legacy Explorer", () => {
+  expect(() =>
+    planLegacyDocuments(fixture(), { ...scope, documentId: "document" }),
+  ).toThrow(/legacy/);
+});
+
+it.each(["tabId", "documentId"] as const)(
+  "rejects an empty %s binding",
+  (field) => {
+    const candidate = planLegacyDocuments(fixture(), scope)[0]!;
+    expect(() =>
+      bindLegacyDocument(candidate, scope, {
+        tabId: "tab",
+        documentId: "document",
+        [field]: "",
+      }),
+    ).toThrow(/explicit/);
+  },
+);

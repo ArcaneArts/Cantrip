@@ -17,6 +17,7 @@ import type {
   RepositoryTransaction,
 } from "./repository/database.js";
 import * as schema from "./schema.js";
+import { validateWorkspaceDocumentMigration } from "./workspace-document-migration.js";
 import {
   ProjectTabLayoutRepository,
   resolveEntitySurface,
@@ -188,6 +189,13 @@ export class WorkspaceLayoutRepository {
         };
       }
       let effectiveCommand = command;
+      if (command.action.type === "migrate-explorer-file")
+        await validateWorkspaceDocumentMigration(
+          tx,
+          ownerId,
+          projectId,
+          command.action,
+        );
       if (command.action.type === "open") {
         const resource = command.action.tab.resource;
         if (resource.kind === "entity") {

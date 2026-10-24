@@ -1261,6 +1261,7 @@ views; it does not complete interrupted ownership-transfer reconciliation or
 native crash/two-window acceptance. Those remain required follow-up work for the
 unbounded workspace goal. The local QA fixture artifacts remain intentionally
 untracked and must be preserved until native acceptance is finished.
+
 ### Attachment recovery follow-up (in progress)
 
 Previous cycle: PR #2225 merged as `a5b7fb5c3`. Integrated focused tests
@@ -1350,3 +1351,164 @@ remained empty. The disk file remained the original baseline. Logs:
 These validate source reload during interrupted readiness and abrupt process
 restart, not every possible timing permutation. Final cycle delivery remains
 outstanding. The full workspace goal is incomplete.
+
+### Legacy document migration follow-up (in progress)
+
+Attachment recovery merged in PR #2226 as `ad7b48376`. Primary was synchronized;
+57 integrated recovery tests passed after rebuilding its stale generated protocol
+output. Native QA artifacts were preserved outside the archived cycle worktree at
+`/Users/cyberpwn/.codex/qa-artifacts/workspace-attachment-recovery-pr2226`.
+The full repository check stops at the unchanged server tab-layout line budget
+(2,006 lines versus 2,000); this is also present in the baseline, not a passing
+repository-wide check. Native-contract CI run `40125409972` passed on Linux,
+macOS, and Windows.
+
+Worker-command run `40125409927` failed its Windows lane at
+`test/explorer.test.ts:136`: creating `broken.txt` over an existing broken symlink
+resolved instead of rejecting. The lane passed 144 tests with nine skipped and
+one failure. This matches the historical Windows symlink failure recorded above;
+no worker source or test changed in #2226. It remains an unresolved failure, not
+a green run or an assertion to weaken. Server-contract/CUA jobs were still live
+at this checkpoint.
+
+Current-source audit confirms a migration gap: `seedWorkspaceOwnership` maps
+legacy Explorer members to `project.explorer`, while `openOwnedFile` creates
+immutable `project.file` documents. Bootstrap performs no document conversion.
+Thus legacy file tabs retain mutable Explorer location authority even though
+new file tabs use independent document/view identities. Server seed cannot
+derive a document path from the encrypted Explorer state.
+
+The next increment must convert only actual file-bound legacy views, preserving
+their tab IDs, pane order, selection, mode, protected metadata, and drafts:
+
+1. Resolve and validate the decrypted Explorer location in the authenticated
+   client, then idempotently create the existing immutable document identity.
+2. Add a revision/generation-checked conversion operation for the current
+   owning window. Validate both source Explorer and target document project,
+   worker, and worktree authority on the server. Reject stale source bindings
+   rather than relocating a tab to an outdated path.
+3. Prepare/capture any mounted legacy editor before changing its backing, and
+   restore/checkpoint its state into the document view. Never discard dirty
+   state or force a save merely for migration; failed migration retains the
+   legacy view for recovery.
+4. Exclude active transfer reservations and other-window owners. Conversion
+   must be idempotent across reconnect/restart and coexist with old-client
+   resource writes without restoring project-global placement authority.
+5. Retain genuine Explorer tree resources (no selected file) and compatibility
+   readers until their last consumers are verified. Audit legacy native links
+   separately from ordinary document opening.
+
+This is an implementation plan grounded in current source, not completed
+migration. Protocol, server authority, client lifecycle, and native validation
+must land together before this cycle is delivered. `docs/TABS.md` still contains
+superseded placeholders and rollback descriptions and needs final reconciliation.
+
+Resumed implementation: `legacy-document-migration.ts` now partitions a validated
+Explorer capture into independently scoped document candidates, keeping the
+selected file first and preserving its mode. Source inspection found that the
+legacy session store also retains buffers from earlier paths/worktrees. Those
+buffers must receive separate document views in the same atomic migration;
+converting only `selectedPath` would discard inactive drafts. Tree-only Explorers
+remain tree views, including when retained buffers need separate recovery views.
+The helper preserves all captured document data and rejects foreign scope or
+incorrect target bindings. It does not yet mutate ownership or run at startup.
+
+Verification at this checkpoint: eight new migration unit tests and fifteen
+existing transfer-state tests passed (23 total), app typecheck passed, and
+`git diff --check` passed. Dependency packages were built in this worktree.
+Server authorization, atomic multi-document placement, protected checkpoints,
+runtime wiring, and native validation remain required before opening this PR.
+
+Final #2226 CI observations: CUA run `40125409966` passed. Server contract run
+`40125409895` failed on all three platforms with the same unchanged timeout-policy
+test: `worker-command-timeout-policy.test.ts:65` expects ten streaming-command
+contexts but finds six (147 passing tests, one failure per platform). #2226
+changed no server source/tests. This failure is recorded without weakening its
+assertion or claiming the server suite passed; the Windows worker broken-symlink
+failure above also remains unresolved.
+
+Atomic migration implementation checkpoint: `migrate-explorer-file` replaces
+the original tab's resource without changing its identity, selected position,
+preview flag, protected label, or pane split. It inserts retained document views
+adjacent to that tab without stealing focus. It rejects colliding view/document
+IDs, stale source resources, foreign-window tabs, and pending transfers. The
+server holds source/target authority rows through commit, compares the exact
+encrypted source binding, checks every target document's live project/source,
+worker, and worktree authority, and records the normal idempotent receipt. The
+client deliberately does not project this replacement optimistically: a rejected
+operation must leave the suspended legacy editor mounted with its draft store.
+
+Verification: all 925 protocol tests passed; 29 existing/focused file-document
+and workspace database tests passed, including six new migration cases; 39
+client queue/migration tests passed. Server and app typechecks and diff checks
+passed. The first protocol test attempt rejected a noncanonical base64url test
+fixture; the fixture was corrected, with validation unchanged. Runtime
+checkpoint orchestration, automatic invocation, and native migration checks are
+not implemented yet. No PR has been opened for this unfinished cycle.
+
+Runtime migration is now wired into the owning window's shell. Mounted
+file-bound legacy views are suspended, captured, and checkpointed through the
+existing encrypted document-recovery store before the atomic conversion runs.
+A separate encrypted legacy journal bridges process exit before layout commit.
+On retry/restart, recovered dirty buffers replace clean disk-loaded buffers;
+conflicting dirty versions are retained and reported rather than overwritten.
+Actual failure retains the journal and legacy view. Migration does not run in
+another window, during a transfer, or for a tree-only Explorer. It exposes a
+dedicated retry action without reconnecting or replaying unrelated commands.
+
+Runtime verification checkpoint: production app build and app typecheck passed;
+the full app run passed 3,787 tests with three skipped across 546 files. A further
+four owner-window/retry hook tests, added after that full run started, passed
+separately. Six coordinator tests cover checkpoint ordering, rejected commands,
+restart recovery, checkpoint failure, conflicting live/recovered drafts, and
+attachment retirement. The recovery-banner test confirms explicit migration
+retry routing. These use isolated mocked recovery I/O for orchestration; they
+do not establish native/IndexedDB behavior. Native migration QA has been
+initialized at `.qa/20261024-144650-validate-automatic-legacy-explor` but has not
+run yet. `pnpm check` still fails at the unchanged 2,006-line server tab-layout
+budget. The cycle remains uncommitted and no PR has been opened.
+
+Resumed QA checkpoint: the full app suite now passes 3,791 tests with three
+skipped across 547 files. A compiled production-app Chromium run seeded a legacy
+Explorer file via the authenticated APIs, reloaded, and observed automatic
+conversion to `project.file` with the original tab identity. An unsaved edit in
+the migrated view survived another reload, while the repository file remained
+unchanged. Evidence is under `.qa/editor-8a1fd3fa-e7d0-485d-88f9-b2db245cd57a`
+(including `migration.png`); the runnable harness is in the migration QA session
+above. Both owned fixture processes exited normally with no surviving children.
+The first run could not start its worker because the new worktree lacked the
+Cantrip CLI; `pnpm cli:build` succeeded and resolved that setup failure. A second
+run exposed a harness-only attempt to inspect workspace identity before session
+rehydration; the fixture now returns no snapshot until identity exists. The
+successful third run establishes browser migration and actual protected draft
+reload, not inactive-draft migration or native two-window acceptance. Those
+checks remain pending; no PR or merge is claimed for this cycle.
+
+Inactive-draft browser QA also passed using real file reads, the production
+editor-session store, and an encrypted pre-commit migration journal. Selected
+and inactive drafts became adjacent distinct tabs, retained the source tab ID,
+survived selection/reload, and left both disk files unchanged. Evidence:
+`.qa/editor-2a9e26fa-d222-4409-90d8-4db51afd357d`.
+
+The first actual native migration rendered both recovered tabs and the selected
+draft, but exposed an authenticated-label mismatch: the migration retained the
+old Explorer resource's encrypted title after changing the resource identity.
+Migration now clears that obsolete resource label, matching ordinary file opens
+whose displayed name derives from the encrypted document path; pane title and
+view identity remain intact. The protocol fixture now includes a non-null old
+Explorer label and asserts it is not carried into the document view. All 925
+protocol tests passed after the correction. Native transfer acceptance and a
+fresh browser label-error assertion are being rerun; this is not yet merged.
+
+Corrected acceptance passed: a fresh compiled Chromium fixture passed the
+label-error assertion, selected/inactive encrypted journal migration, and draft
+reload checks. Actual macOS native fixture
+`.qa/editor-a2b703a6-65e5-44e6-9301-235f8efe2bea` migrated both drafts without a
+label error, moved their entire pane to a new native window, displayed each
+draft there, and returned both tabs with their contents when the native window
+closed. Selecting each returned tab confirmed both original drafts; repository
+`git diff --exit-code -- qa.txt second.txt` confirmed no disk writes. Detailed
+observations are in the migration QA session's `OBSERVATIONS.md`. App typecheck
+and diff checks also passed. The cycle is ready for final source review and PR
+packaging, not yet merged; the broader goal's remaining adapters, entrypoint
+cleanup, simultaneous-device verification, and final documentation audit remain.
