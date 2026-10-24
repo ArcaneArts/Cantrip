@@ -12,6 +12,8 @@ import {
   type ExplorerGraphRequest,
   type ExplorerHeaderState,
   type ExplorerLifecycleActions,
+  type ExplorerTransferState,
+  type IncomingEditorView,
   type TransientExplorerFile,
 } from "@/components/explorer/explorer-view";
 import { clientLogger } from "@/lib/client-log-relay";
@@ -158,13 +160,17 @@ export function PersistentExplorerViews({
   onRevealFolder,
   revealLabel,
   onOpenTerminal,
-  openExplorers,
+  openExplorers: providedOpenExplorers,
   prewarmExplorer,
   prewarmSuccessorExplorer,
   repositoryGraphAvailable,
   visiblePlacements,
   excludedIds = EMPTY_EXCLUDED_EXPLORER_IDS,
+  initialTransfers,
+  incomingViews,
 }: {
+  incomingViews?: readonly IncomingEditorView<ExplorerSummary>[];
+  initialTransfers?: ReadonlyMap<string, ExplorerTransferState>;
   activeExplorer: ExplorerSummary | null;
   transientFile?: {
     explorerId: string;
@@ -212,6 +218,23 @@ export function PersistentExplorerViews({
     portalTarget?: Element | null;
   }[];
 }) {
+  const openExplorers = useMemo(
+    () =>
+      incomingViews
+        ? [
+            ...new Map(
+              [
+                ...incomingViews.map(({ resource }) => resource),
+                ...(providedOpenExplorers ?? []),
+              ].map((resource) => [resource.id, resource]),
+            ).values(),
+          ]
+        : providedOpenExplorers,
+    [incomingViews, providedOpenExplorers],
+  );
+  const incomingById = new Map(
+    incomingViews?.map((view) => [view.resource.id, view]) ?? [],
+  );
   const [dirtyIds, setDirtyIds] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
@@ -438,6 +461,11 @@ export function PersistentExplorerViews({
         active={active}
         appearance={appearance}
         explorer={explorer}
+        initialTransfer={
+          incomingById.get(explorer.id)?.state ??
+          initialTransfers?.get(explorer.id)
+        }
+        transferStaging={incomingById.get(explorer.id)?.staging}
         graphRequest={
           !transient && graphRequest?.explorerId === explorer.id
             ? graphRequest

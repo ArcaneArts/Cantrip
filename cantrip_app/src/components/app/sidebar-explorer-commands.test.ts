@@ -33,6 +33,7 @@ const previewOwner = {
 } as ExplorerSummary;
 
 function commandHarness({
+  openOwnedFile,
   handoff = null,
   layout,
   projects = [],
@@ -43,6 +44,9 @@ function commandHarness({
   }),
   worktrees = [],
 }: {
+  openOwnedFile?: Parameters<
+    typeof createSidebarExplorerCommands
+  >[0]["openOwnedFile"];
   handoff?: SidebarFilePinHandoffState | null;
   layout: ProjectTabLayoutSummary;
   projects?: ProjectSummary[];
@@ -57,6 +61,7 @@ function commandHarness({
   const revealWorkspace = vi.fn();
   const setWorkspaceSelection = vi.fn();
   const input = {
+    openOwnedFile,
     abandonSidebarFilePinHandoff: vi.fn(),
     createSidebarExplorerMutation: {
       isPending: false,
@@ -108,8 +113,38 @@ function commandHarness({
     setSidebarFilePreview,
     setWorkspaceSelection,
     queryClient: input.queryClient,
+    setPopoutError: input.setPopoutError,
   };
 }
+
+it("routes sidebar preview and pin through owned file views without a successor handoff", async () => {
+  const openOwnedFile = vi.fn(async () => {});
+  const harness = commandHarness({ layout: layout([]), openOwnedFile });
+  harness.commands.openSidebarFilePreviewPath(previewOwner, entry.path);
+  await vi.waitFor(() =>
+    expect(openOwnedFile).toHaveBeenCalledWith(previewOwner, entry.path, true),
+  );
+  await harness.commands.pinSidebarFilePath(previewOwner, entry.path);
+  expect(openOwnedFile).toHaveBeenLastCalledWith(
+    previewOwner,
+    entry.path,
+    false,
+  );
+  expect(harness.pinMutation.mutate).not.toHaveBeenCalled();
+  expect(harness.setSidebarFilePreview).not.toHaveBeenCalled();
+  expect(harness.setWorkspaceSelection).not.toHaveBeenCalled();
+});
+
+it("reports owned pin failure without falling back to legacy pinning", async () => {
+  const harness = commandHarness({
+    layout: layout([]),
+    openOwnedFile: vi.fn().mockRejectedValue(new Error("offline")),
+  });
+  await harness.commands.pinSidebarFilePath(previewOwner, entry.path);
+  expect(harness.setPopoutError).toHaveBeenCalledWith("offline");
+  expect(harness.pinMutation.mutate).not.toHaveBeenCalled();
+  expect(harness.revealWorkspace).not.toHaveBeenCalled();
+});
 
 function layout(tabbedExplorerIds: string[]): ProjectTabLayoutSummary {
   return {

@@ -137,8 +137,321 @@ export function applyWorkspaceCommand(
     return { pane, tab: pane.tabs.find((tab) => tab.id === id)! };
   };
   let focusWindowId: string | null = null;
+  const retiredDestinationIds: string[] = [];
   const action = command.action;
+  if (
+    (layout.pendingTransfers ?? []).some(
+      (transfer) =>
+        transfer.destinationWindowId === window.id && !transfer.returnSplitId,
+    ) &&
+    action.type !== "transfer-ready" &&
+    action.type !== "transfer-state-ready"
+  )
+    throw new WorkspaceCommandError(
+      "invalid",
+      "The destination is reserved for a pending transfer.",
+    );
   switch (action.type) {
+    case "prepare-return": {
+      if (window.id === layout.mainWindowId)
+        throw new WorkspaceCommandError(
+          "invalid",
+          "The main window cannot return to itself.",
+        );
+      const pane = paneById(action.paneId);
+      const destination = required(
+        layout.windows.find(({ id }) => id === layout.mainWindowId),
+        "Main window is unavailable.",
+      );
+      const pending = layout.pendingTransfers ?? [];
+      if (
+        pending.some(
+          (transfer) =>
+            transfer.id === action.transferId ||
+            transfer.tabIds.some((id) =>
+              pane.tabs.some((tab) => tab.id === id),
+            ),
+        )
+      )
+        throw new WorkspaceCommandError(
+          "invalid",
+          "Transfer identity or views are already in use.",
+        );
+      layout.pendingTransfers = [
+        ...pending,
+        {
+          id: action.transferId,
+          sourceWindowId: window.id,
+          sourceGeneration: window.attachmentGeneration,
+          sourcePaneId: pane.id,
+          sourcePlacement: {
+            panePosition: window.panes.indexOf(pane),
+            tabPosition: 0,
+            region: pane.region,
+            centerRoot: structuredClone(window.centerRoot),
+          },
+          tabIds: pane.tabs.map(({ id }) => id),
+          wholePane: true,
+          destinationWindowId: destination.id,
+          destinationGeneration: destination.attachmentGeneration,
+          destinationPaneId: pane.id,
+          returnSplitId: action.splitId,
+          phase: "preparing",
+        },
+      ];
+      break;
+    }
+    case "prepare-detach": {
+      const pane = paneById(action.paneId);
+      const tabs = action.tabId
+        ? [
+            required(
+              pane.tabs.find(({ id }) => id === action.tabId),
+              "Tab does not belong to the source pane.",
+            ),
+          ]
+        : pane.tabs;
+      const pending = layout.pendingTransfers ?? [];
+      if (
+        layout.windows.some(({ id }) => id === action.destinationWindowId) ||
+        pending.some(
+          (transfer) =>
+            transfer.id === action.transferId ||
+            transfer.tabIds.some((id) => tabs.some((tab) => tab.id === id)),
+        )
+      )
+        throw new WorkspaceCommandError(
+          "invalid",
+          "Transfer identity, destination, or views are already in use.",
+        );
+      if (
+        action.tabId
+          ? layout.windows.some((owner) =>
+              owner.panes.some(({ id }) => id === action.destinationPaneId),
+            )
+          : action.destinationPaneId !== pane.id
+      )
+        throw new WorkspaceCommandError(
+          "invalid",
+          "A pane transfer preserves its identity; a tab transfer requires a new pane identity.",
+        );
+      layout.windows.push({
+        id: action.destinationWindowId,
+        attachmentGeneration: 0,
+        panes: [],
+        centerRoot: null,
+        focusedPaneId: null,
+        recentPaneIds: [],
+      });
+      layout.pendingTransfers = [
+        ...pending,
+        {
+          id: action.transferId,
+          sourceWindowId: window.id,
+          sourceGeneration: window.attachmentGeneration,
+          sourcePaneId: pane.id,
+          sourcePlacement: {
+            panePosition: window.panes.indexOf(pane),
+            tabPosition: pane.tabs.indexOf(tabs[0]!),
+            region: pane.region,
+            centerRoot: structuredClone(window.centerRoot),
+          },
+          tabIds: tabs.map(({ id }) => id),
+          wholePane: !action.tabId,
+          destinationWindowId: action.destinationWindowId,
+          destinationGeneration: 0,
+          destinationPaneId: action.destinationPaneId,
+          phase: "preparing",
+        },
+      ];
+      break;
+    }
+    case "transfer-ready": {
+      const transfer = required(
+        layout.pendingTransfers?.find(({ id }) => id === action.transferId),
+        "Transfer no longer exists.",
+      );
+      if (transfer.destinationWindowId !== window.id)
+        throw new WorkspaceCommandError(
+          "scope",
+          "Only the destination can acknowledge readiness.",
+        );
+      if (transfer.phase === "preparing") transfer.phase = "destination-ready";
+      break;
+    }
+    case "transfer-state-ready": {
+      const transfer = required(
+        layout.pendingTransfers?.find(({ id }) => id === action.transferId),
+        "Transfer no longer exists.",
+      );
+      if (transfer.destinationWindowId !== window.id)
+        throw new WorkspaceCommandError(
+          "scope",
+          "Only the destination can acknowledge restored state.",
+        );
+      if (transfer.phase === "preparing")
+        throw new WorkspaceCommandError(
+          "invalid",
+          "Destination application readiness has not been acknowledged.",
+        );
+      transfer.phase = "state-ready";
+      break;
+    }
+    case "commit-transfer": {
+      const transfer = required(
+        layout.pendingTransfers?.find(({ id }) => id === action.transferId),
+        "Transfer no longer exists.",
+      );
+      if (transfer.sourceWindowId !== window.id)
+        throw new WorkspaceCommandError(
+          "scope",
+          "Only the source can commit transfer ownership after retiring its renderers.",
+        );
+      if (transfer.phase !== "state-ready")
+        throw new WorkspaceCommandError(
+          "invalid",
+          "Destination state restoration has not been acknowledged.",
+        );
+      const source = paneById(transfer.sourcePaneId);
+      const destination = required(
+        layout.windows.find(({ id }) => id === transfer.destinationWindowId),
+        "Destination window no longer exists.",
+      );
+      const tabs = transfer.tabIds.map((id) =>
+        required(
+          source.tabs.find((tab) => tab.id === id),
+          "Transferred tab no longer belongs to the prepared source pane.",
+        ),
+      );
+      if (
+        transfer.wholePane &&
+        (source.tabs.length !== tabs.length ||
+          source.tabs.some((tab, index) => tab.id !== transfer.tabIds[index]))
+      )
+        throw new WorkspaceCommandError(
+          "invalid",
+          "Source pane membership changed during transfer preparation.",
+        );
+      let moved: WorkspacePane;
+      if (transfer.wholePane) {
+        moved = source;
+        removePane(window, source);
+        moved.region = "center";
+      } else {
+        if (tabs.length !== 1)
+          throw new WorkspaceCommandError(
+            "invalid",
+            "Single-tab transfer contains multiple tabs.",
+          );
+        takeTab(window, source, tabs[0]!);
+        moved = {
+          id: transfer.destinationPaneId,
+          region: "center",
+          titleProtection: source.titleProtection,
+          tabs,
+          activeTabId: tabs[0]!.id,
+        };
+      }
+      if (transfer.returnSplitId) {
+        const previous = window.returnPlacement;
+        const original =
+          previous?.sourceWindowId === destination.id &&
+          (previous.detachedPaneId === moved.id ||
+            (previous.wholePane && previous.sourcePaneId === moved.id))
+            ? previous
+            : undefined;
+        const originalPane =
+          original && !original.wholePane
+            ? destination.panes.find(({ id }) => id === original.sourcePaneId)
+            : undefined;
+        if (originalPane) {
+          originalPane.tabs.splice(
+            Math.min(
+              original!.sourcePlacement.tabPosition,
+              originalPane.tabs.length,
+            ),
+            0,
+            ...moved.tabs,
+          );
+          focus(destination, originalPane, moved.activeTabId);
+        } else {
+          moved.region = original?.sourcePlacement.region ?? "center";
+          destination.panes.splice(
+            Math.min(
+              original?.sourcePlacement.panePosition ??
+                destination.panes.length,
+              destination.panes.length,
+            ),
+            0,
+            moved,
+          );
+          if (moved.region === "center") {
+            const originalTree = original?.wholePane
+              ? original.sourcePlacement.centerRoot
+              : null;
+            const canRestoreTree =
+              originalTree &&
+              JSON.stringify(
+                removeWorkspacePaneLeaf(originalTree, moved.id),
+              ) === JSON.stringify(destination.centerRoot);
+            destination.centerRoot = canRestoreTree
+              ? structuredClone(originalTree)
+              : destination.centerRoot
+                ? {
+                    kind: "split",
+                    id: transfer.returnSplitId,
+                    direction: "horizontal",
+                    fraction: 0.5,
+                    first: destination.centerRoot,
+                    second: { kind: "pane", paneId: moved.id },
+                  }
+                : { kind: "pane", paneId: moved.id };
+          }
+          focus(destination, moved, moved.activeTabId);
+        }
+        focusWindowId = destination.id;
+        layout.pendingTransfers = layout.pendingTransfers!.filter(
+          ({ id }) => id !== transfer.id,
+        );
+        break;
+      }
+      destination.panes = [moved];
+      destination.centerRoot = { kind: "pane", paneId: moved.id };
+      destination.returnPlacement = {
+        detachedPaneId: moved.id,
+        sourceWindowId: transfer.sourceWindowId,
+        sourcePaneId: transfer.sourcePaneId,
+        sourcePlacement: transfer.sourcePlacement,
+        wholePane: transfer.wholePane,
+      };
+      focus(destination, moved, moved.activeTabId);
+      focusWindowId = destination.id;
+      layout.pendingTransfers = layout.pendingTransfers!.filter(
+        ({ id }) => id !== transfer.id,
+      );
+      break;
+    }
+    case "cancel-transfer": {
+      const transfer = required(
+        layout.pendingTransfers?.find(({ id }) => id === action.transferId),
+        "Transfer no longer exists.",
+      );
+      if (transfer.sourceWindowId !== window.id)
+        throw new WorkspaceCommandError(
+          "scope",
+          "Only the source can cancel this transfer.",
+        );
+      if (!transfer.returnSplitId) {
+        layout.windows = layout.windows.filter(
+          ({ id }) => id !== transfer.destinationWindowId,
+        );
+        retiredDestinationIds.push(transfer.destinationWindowId);
+      }
+      layout.pendingTransfers = layout.pendingTransfers!.filter(
+        ({ id }) => id !== transfer.id,
+      );
+      break;
+    }
     case "home":
       window.focusedPaneId = null;
       break;
@@ -158,6 +471,112 @@ export function applyWorkspaceCommand(
     case "pin":
       tabById(action.tabId).tab.preview = false;
       break;
+    case "rename-pane":
+      paneById(action.paneId).titleProtection = action.titleProtection;
+      break;
+    case "dock-presentation": {
+      const { pane, tab } = tabById(action.tabId);
+      if (pane.region !== "right" && pane.region !== "bottom")
+        throw new WorkspaceCommandError(
+          "invalid",
+          "Dock presentation requires a right or bottom pane.",
+        );
+      tab.dockPresentation = action.presentation;
+      break;
+    }
+    case "reorder-panes": {
+      const panes = new Map(
+        window.panes
+          .filter((pane) => pane.region === action.region)
+          .map((pane) => [pane.id, pane]),
+      );
+      if (
+        action.paneIds.length !== panes.size ||
+        new Set(action.paneIds).size !== panes.size ||
+        action.paneIds.some((id) => !panes.has(id))
+      )
+        throw new WorkspaceCommandError(
+          "invalid",
+          "Pane order must contain every local region member exactly once.",
+        );
+      let index = 0;
+      window.panes = window.panes.map((pane) =>
+        pane.region === action.region
+          ? panes.get(action.paneIds[index++]!)!
+          : pane,
+      );
+      if (action.region === "center") {
+        // Reassign leaf occupants, not split nodes: retain split identities,
+        // orientation and fractions while changing visual pane order.
+        let leaf = 0;
+        const reorderLeaves = (
+          node: NonNullable<WorkspaceWindow["centerRoot"]>,
+        ): void => {
+          if (node.kind === "pane") node.paneId = action.paneIds[leaf++]!;
+          else {
+            reorderLeaves(node.first);
+            reorderLeaves(node.second);
+          }
+        };
+        if (window.centerRoot) reorderLeaves(window.centerRoot);
+      }
+      break;
+    }
+    case "move-new-pane": {
+      const { pane, tab } = tabById(action.tabId);
+      // Evaluate the insertion position after removing an emptied source pane.
+      const count = window.panes.filter(
+        (p) =>
+          p.region === action.region && !(p === pane && pane.tabs.length === 1),
+      ).length;
+      if (action.position > count)
+        throw new WorkspaceCommandError(
+          "invalid",
+          "Target pane position is outside the region.",
+        );
+      takeTab(window, pane, tab);
+      const target: WorkspacePane = {
+        id: action.paneId,
+        region: action.region,
+        titleProtection: null,
+        tabs: [tab],
+        activeTabId: tab.id,
+      };
+      const regionPanes = window.panes.filter(
+        (p) => p.region === action.region,
+      );
+      const neighbor = regionPanes[action.position];
+      const previous = regionPanes[action.position - 1];
+      const insertion = neighbor
+        ? window.panes.indexOf(neighbor)
+        : previous
+          ? window.panes.indexOf(previous) + 1
+          : window.panes.length;
+      window.panes.splice(insertion, 0, target);
+      if (target.region === "center") {
+        if (!window.centerRoot)
+          window.centerRoot = { kind: "pane", paneId: target.id };
+        else {
+          const anchor = neighbor ?? previous!;
+          const targetLeaf = { kind: "pane" as const, paneId: target.id };
+          const anchorLeaf = { kind: "pane" as const, paneId: anchor.id };
+          window.centerRoot = replaceWorkspacePaneLeaf(
+            window.centerRoot,
+            anchor.id,
+            {
+              kind: "split",
+              id: action.splitId,
+              direction: "horizontal",
+              fraction: 0.5,
+              first: neighbor ? targetLeaf : anchorLeaf,
+              second: neighbor ? anchorLeaf : targetLeaf,
+            },
+          );
+        }
+      }
+      focus(window, target, tab.id);
+      break;
+    }
     case "reorder": {
       const pane = paneById(action.paneId);
       const tabs = new Map(pane.tabs.map((tab) => [tab.id, tab]));
@@ -263,6 +682,9 @@ export function applyWorkspaceCommand(
         ),
       )[0];
       if (existing) {
+        // A permanent open promotes the existing preview in place. A preview
+        // open never demotes an already pinned view, including in another window.
+        if (!action.tab.preview) existing.tab.preview = false;
         focus(existing.owner, existing.pane, existing.tab.id);
         if (existing.owner.id !== window.id) focusWindowId = existing.owner.id;
         break;
@@ -309,9 +731,13 @@ export function applyWorkspaceCommand(
     operationId: command.operationId,
     focusWindowId,
     // The native coordinator must close these only after the durable receipt.
-    emptyWindowIds:
-      hadPanes && window.id !== layout.mainWindowId && window.panes.length === 0
+    emptyWindowIds: [
+      ...retiredDestinationIds,
+      ...(hadPanes &&
+      window.id !== layout.mainWindowId &&
+      window.panes.length === 0
         ? [window.id]
-        : [],
+        : []),
+    ],
   };
 }

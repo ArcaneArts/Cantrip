@@ -1,206 +1,198 @@
 # Workspace ownership implementation record
 
-Status: active, incomplete. This record tracks the identity-based tab/pane/window
-goal. It does not redefine completion around the foundation below.
+Status: **active and incomplete**. Cycles 1–4 are merged. Cycle 5 remains
+unmerged on `codex/workspace-shell-integration`. The target contract is not
+a claim that all surfaces and recovery paths already satisfy it.
 
 ## Target contract
 
-The ownership chain is device workspace → window → pane → tab → resource.
-Each tab has one pane owner; each pane has one window owner. Moving preserves
-identity. Window ownership is actual placement, not a disabled main-window
-placeholder. Workspace IDs are scoped to the authenticated account/server and
-project; viewport changes never choose a different device workspace.
+Ownership is device workspace → window → pane → tab → resource. Each tab has
+one pane owner; each pane has one window owner. Moving preserves identity.
+Workspace scope includes installation, account, server, and project—not viewport
+size. Mobile and desktop share resource availability, not placement changes.
 
-Tab close removes that view; popout window close returns its surviving views.
-Resource deletion/archive is a separate action. Active-tab close selects the
-right neighbor, then the left. Closing an inactive tab leaves selection alone.
-Closing the final tab removes its pane and focuses the most recently focused
-surviving pane in the same window, or home. Recent tab switching is separate.
+View close, native window close, and resource deletion are separate operations.
+Active-tab close selects right, otherwise left; inactive close preserves
+selection. An emptied pane selects the window's most recently focused survivor.
+Popout close returns only surviving views, without placeholders or resurrecting
+closed tabs. Application quit must not trigger normal return/reopen loops.
 
-Normal window close waits for a recoverable return transfer. Application quit
-persists a coherent session without reopening windows during shutdown. A native
-creation event is not an application-ready acknowledgement. No timeout alone
-proves that an owner died. Transfers prepare every affected surface and fence
-stale renderers using attachment generations. Dirty documents must transfer
-without mandatory saves or plaintext persistence.
+Transfers must preserve dirty inactive documents without mandatory saves or
+plaintext persistence. Destination restoration, not native creation, establishes
+readiness. Attachment generations fence stale renderers. A timeout alone never
+proves an owner died. All production layout writers must use the same command
+model; file preview/pin are ordinary tab state, not competing identities.
 
-Mobile and desktop share resources, not automatic layout edits. File tabs must
-be first-class views rather than mutable Explorer selections. Preview and pin
-are flags on ordinary tabs. Resource loading must not remove tab identities.
+## Merged cycles
 
-## Cycle 1: ownership contract and seed conversion
+| Cycle | Foundation                                                                 | Merge                                                                 |
+| ----- | -------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| 1     | Versioned identities, validation, legacy seed conversion                   | [#2209](https://github.com/ArcaneArts/Cantrip/pull/2209), `54bf48971` |
+| 2     | Revisioned commands, adjacent close selection, local focus, open-existing  | [#2210](https://github.com/ArcaneArts/Cantrip/pull/2210), `5bd2edad7` |
+| 3     | Authorized persistence, transactional revisions, durable receipts          | [#2211](https://github.com/ArcaneArts/Cantrip/pull/2211), `deb9f73cd` |
+| 4     | Session-bound client queue, pending reconciliation, stale-response fencing | [#2212](https://github.com/ArcaneArts/Cantrip/pull/2212), `1f2abe76e` |
 
-Branch: `codex/workspace-ownership-contract`. [PR #2209](https://github.com/ArcaneArts/Cantrip/pull/2209)
-merged as `54bf48971`; Primary synchronized.
+Merged-tree checks were performed and worktrees submitted for recoverable
+archival. Primary was synchronized after these cycles. These foundations alone
+did not enable the new shell.
 
-- Added a versioned protocol snapshot with window-owned pane trees and independent
-  tab identities, window-local selection/history, and attachment generations.
-- Validates unique ownership, exact center-tree membership, and local focus.
-- Added deterministic, one-time conversion from validated legacy wire layouts.
-  Preserves resource references, opaque protected labels, order, split fractions,
-  dock preferences, and supplied selection. Existing workspace state wins over
-  subsequent legacy snapshots; mismatched scope is rejected.
-- Conversion preserves pane IDs within a workspace. Persistence must use
-  workspace-scoped keys rather than treating imported pane IDs as globally unique.
-- No server table, endpoint, live UI, or migration runner uses this yet. Existing
-  legacy APIs remain unchanged. This is a contract foundation, not the rollout.
-- Explorer-backed file references intentionally remain legacy references during
-  seeding. A later file migration must resolve them through authorized protected
-  resource state, not copy paths into plaintext layout records.
-- Native detached-window discovery/import must happen before committing the
-  seeded layout in the integration cycle; the pure seed creates only the main
-  window and does not claim existing native windows have moved.
+Cycle 1 passed 569 protocol tests. Cycle 2 passed 608, with 72 focused checks
+repeated after merge. Cycle 3 passed 16 database/title/tenant tests and 848
+protocol tests; its 13 persistence cases were repeated after merge. Cycle 4
+passed 19 new client tests again after merge, 40 focused client tests, 848
+protocol tests, and 13 server workspace tests. Its App API CI passed on all
+three platforms. Relevant build/typecheck and boundary checks also ran.
 
-Verification: all 569 protocol tests passed (28 new ownership/conversion cases),
-protocol typecheck/build passed, and scoped formatting, large-file checks, and
-`git diff --check` passed. The original export compatibility fingerprint remains
-unchanged; its additive list now also records the three traffic constants from
-#2204 that reproduced a baseline failure on unchanged Primary. Native/UI
-verification is not applicable to this unconnected contract cycle and remains
-required before completion.
+Broader CI was not uniformly green: earlier runs exposed the server
+timeout-policy count, Windows symlink creation, and a worker Git index-lock
+collision. Cycle 3's attributable boundary inventory omission was corrected in
+Cycle 4. Historical failures are not waived or counted as passing.
 
-Broader CI exposed a Windows worker broken-symlink creation failure also present
-in the preceding run `40046965685`, plus a worker Git index-lock collision.
-Cycle 1 changed no worker source/tests. Final broader CI: 15 jobs passed, four
-failed. The other three failures were the unchanged server timeout-policy count
-(expects ten unbounded commands, observes six), also reproduced in preceding
-run `40047835332`. These are not claimed as passing; native and full-system
-acceptance remain open. The clean cycle worktree was submitted for recoverable
-archival after merge verification.
+## Cycle 5: current integrated implementation
 
-## Cycle 2: deterministic workspace command controller
+- The shell mounts ownership and projects only the current window. Opening,
+  selection, view close, layout commands, and creation use the controller.
+  Initializing ownership cannot fall back to legacy mutations. Missing resource
+  query data retains loading/error tabs.
+- Bootstrap derives durable device scope, reads existing state before seeding,
+  and imports observed native owners. Errors do not manufacture empty layouts.
+  Coalesced reads cannot overwrite newer receipts. Focus/reconnect and five-second
+  refresh synchronize windows without treating observer failure as owner death.
+- Resource removal cleans affected views transactionally across device
+  workspaces. Client deletion avoids legacy whole-layout rollback. Explicit
+  archive/delete remains separate from view close.
+- File links and sidebar preview/pin use the owned-file opener. Creation
+  coalesces through acknowledgment, explicit path-specific resources are reused,
+  existing modes are preserved, and new editable files start in Edit mode.
+  Pinning preserves identity; dirty reports pin previews.
+- Mobile navigation keeps distinct file identities and layout order, with
+  scroll/picker overflow instead of worktree deduplication.
+- Separate tab and whole-pane actions use generation-bound reservations and
+  protected state envelopes. Destination components acknowledge restoration
+  before ownership commits. Normal native close returns surviving panes before
+  destruction. Failed preparation retains source state.
+- Transfer adapters currently cover Explorer, Code, and terminal. Chat, browser,
+  remote-desktop, and other relevant surfaces remain unfinished.
+- Browser/remote-desktop transport now exposes nested, idempotently released
+  input suspension and a drain barrier covering asynchronous encryption, queued
+  chunks, backpressure, and worker transport acknowledgment. Replaced or closed
+  attachments reject the barrier instead of approving retirement. The React
+  transport hook exposes these operations for the remaining lifecycle adapters;
+  neither browser-action completion nor destination restoration is implied.
+- Close/delete preparation awaits confirmation without prematurely discarding
+  buffers. Guards include inactive document revisions and resource/session
+  identity. Reload/back reject stale answers. Terminal handoff drains accepted
+  input before retirement.
+- After native creation, transfers observe the exact destination window label.
+  Actual destruction or confirmed absence before readiness/restoration rejects
+  the handshake and cancels the reservation before resuming source input.
+  Observer installation errors preserve their actual error instead of claiming
+  a crash. Observers are released after success/failure; a late close after
+  commit cannot resurrect source ownership. This covers interrupted handoff,
+  not recovery of already-committed ownership after a window crash.
+- Editor confirmations use the supported JS dialog API. The installed Rust
+  shim calls `plugin:dialog|confirm`, but registers only open/save/message;
+  the supported JS API invokes `plugin:dialog|message`. Editor windows receive
+  narrowly scoped message-dialog permission.
 
-Branch: `codex/workspace-command-controller`. [PR #2210](https://github.com/ArcaneArts/Cantrip/pull/2210)
-merged as `5bd2edad7`; Primary synchronized and worktree recoverably archived.
+### Verification
 
-- Added strict commands with operation, workspace, project, window, attachment
-  generation, and expected-revision identity. Pure execution rejects stale
-  renderers/revisions and cannot modify a tab in another window by accident.
-- Implements select/home, close tab/pane, pin, exact reorder, move, split,
-  resize, and open/focus-existing. Close selection is adjacent within a pane;
-  empty-pane cleanup collapses its tree leaf and uses local focus history.
-- Opening an already-open resource selects its original view, returning an
-  explicit focus-window effect when necessary, not a duplicate placement.
-- Empty-popout effects describe only a window emptied by the current command;
-  unrelated empty windows preparing transfers are left untouched.
-- Execution validates a cloned result and advances one revision atomically;
-  failures never mutate the input. No native destruction, resource deletion,
-  authorization, or save is performed by this pure transition layer.
-- Durable receipts/idempotency, server persistence, pending-operation rebasing,
-  lifecycle confirmations, and actual UI routing remain integration work. This
-  cycle does not enable a competing write path or claim live cutover.
+Latest completed broad app run: **516 files, 3,545 tests passed, three skipped**.
+Protocol: **89 files, 881 tests passed**. Later confirmation/close changes passed
+54 editor tests, 43 dialog/related tests, and 22 close/CRUD tests in their
+respective focused runs. Server ownership/account-storage tests passed 19 cases.
+App typecheck, native compilation/check, and diff checks passed at recorded
+integration points. Earlier broad results do not prove the exact final tree.
+The app and protocol totals above were rerun immediately before packaging this
+cycle, after the destination-close and remote-input-drain changes.
 
-Verification: all 608 protocol tests passed, including 39 new transition tests;
-protocol typecheck and build passed. Scoped formatting, large-file checks, and
-`git diff --check` passed. Reviewed inputs remain unchanged after both successful
-and rejected operations. Native/UI integration is still outstanding.
+The CI workflow now explicitly runs asynchronous close/delete confirmation and
+terminal/mixed-pane transfer coverage. A fresh run of those 13 suites passed
+all 131 tests after the workflow update; diff whitespace validation also passed.
 
-Merged-tree verification: 72 ownership, command, and export-compatibility tests
-passed. Broader CI finished with 15 successful jobs and four failures (the same
-server timeout-policy count on three platforms and Windows broken-symlink case).
+The latest full worker run finished with **259 files passing, six failing,
+31 skipped; 2,489 tests passing, 10 failing, 133 skipped**. Failures include
+external-history reader version rejection, missing pinned gateway method
+classifications, Chromium initial capture, outbox timeout, filesystem-notification
+timing, and Sharp boundary timeout. There are no worker source edits in this
+branch, but attribution still needs verification; that fact alone does not prove
+baseline failures. The full server run also finished: **253 files passed,
+11 failed, eight skipped; 1,493 tests passed, 13 failed, 57 skipped**. Failures
+include five-second database tests, the unresolved app alias, missing test
+fixture methods, the timeout-policy count, and a test expecting a retired
+plaintext repository route to return 200 instead of its actual 410 response.
 
-## Cycle 3: durable workspace commands
+A serial rerun of workspace ownership, account storage, task-inline migration,
+and workspace-binding immutability passed all 22 tests in four suites with the
+original timeouts unchanged. The two migration timeouts did not reproduce in
+that run; this does not classify the other broad-suite failures as resolved.
 
-Branch: `codex/workspace-persistence`. [PR #2211](https://github.com/ArcaneArts/Cantrip/pull/2211)
-merged as `deb9f73cd`; Primary synchronized. All 13 new cases passed again against
-the merged tree; worktree recoverably archived. Broader CI exposed an attributable
-server-boundary inventory omission (three new routes and two tables), corrected
-in Cycle 4. Existing timeout-policy count and Windows symlink failures also
-remain; CI is not claimed green.
+Destination-closure recovery passed 51 tests across native-window utilities and
+the transfer coordinator, including pre-ready close, pre-restoration close,
+observer failure, exact-label isolation, and post-commit cleanup. App typecheck
+and diff checks passed. Native crash interaction still requires real-window QA.
 
-- Additive PostgreSQL/PGlite workspace and receipt tables, scoped by authenticated
-  owner, project, and client workspace. Layouts store protected metadata and
-  resource identities, not plaintext document contents or file paths.
-- Owner-authorized read, one-time seed, and command endpoints. Seed reads the
-  server's legacy layout; a client cannot submit an arbitrary imported snapshot.
-- Transactional workspace row locking serializes revisions and commits receipt
-  and layout together. Duplicate operation IDs acknowledge their original revision
-  while returning current state, never stale snapshots or repeated native effects.
-  Reusing an operation ID for different input is rejected.
-- Entity opens reuse project-resource authorization; built-in worktree references
-  are checked against actual project source/worktree records. Attachment generation
-  checks also apply to replays. Placement capabilities are validated before commit.
-- Existing device layouts are not overwritten by legacy writes or repeated seeds.
-  This is separate persistence, not live client cutover. Native detached-window
-  import must still be integrated before clients begin invoking seed automatically.
-- Pending-operation rebasing, typed client API integration, live subscriptions,
-  native handoff receipts, resource-deletion propagation, and device identity
-  provisioning remain subsequent work. No automatic client seed is enabled here.
+Remote-surface transport passed 15 tests including browser/desktop drain,
+blocked credit, acknowledgment delay, nested suspension, and interrupted drain
+on reconnect. App typecheck passed. Production transfer adapters still need to
+consume these primitives and receive real native acceptance coverage.
 
-Validation: 13 new database-backed cases plus three existing title/tenant tests
-passed (16 total); the protocol test command passed 848 tests. Server typecheck
-and build, protocol build, seven installation compatibility simulations, scoped
-formatting, large-file check, and diff whitespace check passed. Cases exercise
-migration, owner and device isolation, atomic rejection, concurrent replay,
-stale revisions/generations, HTTP validation, legacy-write isolation, and receipt
-persistence across restart. Invalid ownership results now produce a command
-rejection (HTTP 400) instead of an unhandled schema error.
-Native two-window and mobile validation remain required after live integration.
+An earlier `pnpm check` passed audits, Rust formatting/Clippy, scripts, CLI/CUA,
+selected app, protocol, logging, and crypto before failing server tests.
+Baseline source inspection found a task-operation fixture missing
+`taskRetries` and a server test importing an app module with an unresolved app
+alias. This is source attribution, not a clean baseline execution establishing
+every failure as unrelated. Neither broad server nor worker validation is green.
 
-## Cycle 4: session-bound client command execution
+### Native and UI evidence
 
-Branch: `codex/workspace-client-controller`. PR/merge: pending.
+QA uses disposable services and unique bundles under
+`.qa/20261024-010046-validate-identity-based-workspac/`. Fixture-only loopback
+configuration does not alter production transport policy.
 
-- Added a single-window command queue using the protocol transition engine,
-  authoritative snapshots, and projected pending intents. Later operations wait
-  for earlier receipts rather than racing stale whole-layout mutations.
-- Confirmed revision rejection permits rebase; uncertain transport outcomes retain
-  the exact sent command/operation identity for receipt recovery. Automatic
-  conflict retries are bounded, with explicit retry retaining pending intent.
-- Older observations/acknowledgements cannot overwrite newer authoritative state.
-  Invalid dependent intents are rejected against the actual accepted state, not
-  silently rewritten. Renderer generation or workspace-scope changes fence the
-  controller; disposal rejects pending work and ignores delayed acknowledgements.
-- Added account/server-lifetime-bound workspace transport and a connection helper
-  that opens existing ownership, executes against the new endpoints, and disposes
-  on logout/identity change. No uncoordinated seed occurs on mount.
-- Shared validated receipt schema is now used by both server and client. It adds
-  one explicit protocol export while preserving the legacy compatibility fingerprint.
-- This controller is callable with the real API but is not yet the shell's layout
-  authority. Shell cutover, shared instance ownership, native import/handshake,
-  durable device identity, subscription wiring, and surface rendering remain open.
+- `logs/native-workspace-tab-permissions.log`: moving dirty `second.txt`
+  left dirty `qa.txt` in main; existing-file open focused its native owner;
+  native close returned the surviving tab with unsaved text.
+- `logs/native-workspace-pane-close.log`: whole-pane movement preserved both
+  dirty files, including the inactive draft; main had no placeholder. Closing
+  one tab selected the other; native close returned only the survivor. This
+  exposed missing dirty-close confirmation, not a confirmation pass.
+- `logs/native-workspace-async-confirm.log`: dirty-tab transfer worked, but
+  Refresh reported confirmation failure and retained the draft. This led to
+  the supported dialog API correction.
+- `logs/native-workspace-message-confirm.log`: rebuilt fixture for that
+  correction compiled successfully. Automation observed its landing page but
+  could not activate web controls; coordinate calls reported
+  `noWindowsAvailable`, while native menus worked. Confirmation replay is
+  **not passed**.
 
-- Reviewed and registered all three workspace routes and both durable tables in
-  the server content-boundary inventory. Labels remain opaque envelopes; no
-  document contents, paths, or live buffers are admitted by these contracts.
+Terminated fixtures reported no surviving owned worker/server processes.
+Re-observe a live session before deciding it stopped; observation failure is
+not a reason to restart. The existing browser harness aggregate (23 passing
+checks) does not prove all native, mobile, or recovery requirements.
 
-Validation: 19 new deterministic client/transport tests passed, including a
-fresh rerun after boundary review. The broader focused client run passed 40
-tests; protocol tests passed 848; server workspace tests passed 13. App build
-and typecheck, server typecheck, source-corpus tests, large-file and whitespace
-checks passed. Server inventory and network tranche-two verification passed
-after the reviewed inventory correction. CI and merge are pending.
-Real native windows and mobile behavior are not established by these tests.
+## Remaining implementation and acceptance
 
-## Remaining implementation and acceptance ledger
+1. Complete first-class document/view separation beyond path-specific Explorer
+   backing, safe preview replacement, and legacy preview/provisioning/rebind
+   removal, including synchronous confirmations.
+2. Implement chat, browser, remote-desktop, and other lifecycle adapters with
+   actual restoration acknowledgment and correct live-session ownership.
+3. Complete crash/reload/reconnect/quit/restart and interrupted-transfer recovery;
+   prevent shutdown return loops, duplicate renderers, and stranded ownership.
+4. Finish legacy file-window/link migration; remove remaining placement side
+   effects and competing writers. Verify older-client isolation, idempotent
+   migration, and actual detached-window import.
+5. Verify interaction-based mobile recency, simultaneous device isolation,
+   overflow, keyboard focus, and every file-opening entry point.
+6. Replay native confirmation/failed-return cases and expand real native QA to
+   concurrent popouts, inactive drafts, all adapters, and lifecycle recovery.
+7. Run final-tree checks, investigate failures, review the full diff, and deliver
+   Cycle 5 through observed squash automerge. No PR exists for this cycle at
+   the time of this record.
+8. Update `docs/TABS.md` to the final enabled contract and audit every objective
+   requirement before completion.
 
-- [ ] Server persistence and owner-authorized workspace endpoints; atomic,
-      idempotent operations and workspace-scoped revisions.
-- [ ] One-time durable migration, existing detached-window import, legacy
-      labels/links translation, and isolation from older-client writes.
-- [ ] Unified controller for every layout/selection entry point, authoritative
-      base plus pending operations, conflict rebasing, and stale-response handling.
-- [ ] Adjacent-tab close policy and window-local focus history in the live app.
-- [ ] Stable loading/error tabs when resource queries lag layout queries.
-- [ ] First-class documents/file tabs, unified opens, ordinary preview/pin state,
-      protected dirty-buffer continuity, and explicit mode preservation.
-- [ ] Independent mobile workspace placement; stable file identities, real recent
-      history, overflow navigation, and simultaneous desktop/mobile verification.
-- [ ] Actual single-tab and whole-pane popout moves, no main placeholders, and
-      return of surviving tabs to the original or deterministic fallback placement.
-- [ ] Native application-ready transfer acknowledgement; all-surface adapters;
-      dirty inactive tabs; generation fencing; failed-open and failed-return recovery.
-- [ ] Crash/reload/reconnect/quit/restart recovery without duplicate renderers,
-      lost edits, resurrected closed tabs, or shutdown return loops.
-- [ ] Dedicated file windows, menus, drag/drop, keyboard actions, sidebar, mobile,
-      and links migrated to the same command/ownership semantics.
-- [ ] Account/logout/revocation boundaries, worker authorization, protected state,
-      resource deletion, and live terminal/browser/Code/remote-desktop/chat behavior.
-- [ ] Real native two-window tests and representative mobile interaction tests;
-      rapid operations, delayed responses, conflicts, and resource-loading races.
-- [ ] Completed behavior enabled; obsolete competing write paths removed;
-      documentation updated; every cycle merged and verified.
-
-The open draft PR #2140 touches Explorer editor-buffer recovery. Cycle 1 does not
-touch its files. Reinspect its current state before implementing editor transfer;
-do not adopt or overwrite its unmerged work.
+A schema, focused passing tests, successful editor popout, or opened PR does not
+complete the goal. All required behavior must be enabled, verified, documented,
+and merged.

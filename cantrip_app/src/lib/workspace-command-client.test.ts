@@ -1,5 +1,6 @@
 import {
   applyWorkspaceCommand,
+  WorkspaceCommandError,
   type WorkspaceAction,
   type WorkspaceCommand,
   type WorkspaceOwnership,
@@ -30,7 +31,7 @@ function layout(): WorkspaceOwnership {
     ],
   };
 }
-function open(): WorkspaceAction {
+function open(): Extract<WorkspaceAction, { type: "open" }> {
   return {
     type: "open",
     tab: {
@@ -76,9 +77,10 @@ function setup() {
       return receipt;
     }),
     classify: (error) =>
-      error === "conflict"
+      error === "conflict" ||
+      (error instanceof WorkspaceCommandError && error.code === "revision")
         ? "conflict"
-        : error === "rejected"
+        : error === "rejected" || error instanceof WorkspaceCommandError
           ? "rejected"
           : "uncertain",
   };
@@ -98,9 +100,260 @@ function setup() {
     },
   };
 }
+
+it("pins local file previews once while leaving remote views and focus untouched", async () => {
+  const { client, transport, server, setServer } = setup();
+  await client.openResource(
+    { kind: "entity", definitionId: "project.file", resourceId: "file" },
+    { preview: true },
+  );
+  const base = structuredClone(server());
+  const local = base.windows[0]!;
+  base.windows.push({
+    ...structuredClone(local),
+    id: "remote",
+    panes: local.panes.map((pane) => ({
+      ...structuredClone(pane),
+      id: "remote-pane",
+      activeTabId: "remote-tab",
+      tabs: pane.tabs.map((tab) => ({ ...tab, id: "remote-tab" })),
+    })),
+    centerRoot: { kind: "pane", paneId: "remote-pane" },
+    focusedPaneId: "remote-pane",
+    recentPaneIds: ["remote-pane"],
+  });
+  base.revision++;
+  setServer(base);
+  await client.refresh();
+  const focus = client.getSnapshot().projected.windows[0]!.focusedPaneId;
+  const ack = deferred<WorkspaceReceipt>();
+  vi.mocked(transport.execute).mockImplementationOnce((command) => {
+    const receipt = result(server(), command);
+    setServer(receipt.layout);
+    return ack.promise;
+  });
+  const first = client.pinFilePreviews("file");
+  await client.pinFilePreviews("file");
+  expect(transport.execute).toHaveBeenCalledTimes(2); // open plus one pin
+  expect(
+    client.getSnapshot().projected.windows[0]!.panes[0]!.tabs[0]!.preview,
+  ).toBe(false);
+  expect(
+    client.getSnapshot().projected.windows[1]!.panes[0]!.tabs[0]!.preview,
+  ).toBe(true);
+  const command = vi.mocked(transport.execute).mock.calls[1]![0];
+  ack.resolve({
+    layout: server(),
+    operationId: command.operationId,
+    appliedRevision: server().revision,
+    replayed: false,
+    focusWindowId: null,
+    emptyWindowIds: [],
+  });
+  await first;
+  expect(client.getSnapshot().authoritative.windows[0]!.focusedPaneId).toBe(
+    focus,
+  );
+  await client.pinFilePreviews("missing-file");
+  expect(transport.execute).toHaveBeenCalledTimes(2);
+  client.dispose();
+  await expect(client.pinFilePreviews("file")).rejects.toThrow("disposed");
+});
 const tick = async () => {
   for (let i = 0; i < 12; i++) await Promise.resolve();
 };
+
+it("coalesces refresh reads and refuses to roll back a newer command receipt", async () => {
+  const { client, transport } = setup();
+  const read = deferred<WorkspaceOwnership>();
+  vi.mocked(transport.read).mockReturnValueOnce(read.promise);
+  const first = client.refresh();
+  expect(client.refresh()).toBe(first);
+  await tick();
+  expect(transport.read).toHaveBeenCalledOnce();
+  await client.dispatch(open());
+  const before = client.getSnapshot();
+  read.resolve(layout());
+  await first;
+  expect(client.getSnapshot()).toBe(before);
+  expect(
+    client.getSnapshot().authoritative.windows[0]!.panes[0]!.tabs[0]!.id,
+  ).toBe("tab");
+  client.dispose();
+});
+
+it("retains layout and uncertain commands across failed observations", async () => {
+  const { client, transport, server, setServer } = setup();
+  await client.dispatch(open());
+  vi.mocked(transport.execute).mockRejectedValueOnce("uncertain");
+  const pending = client.dispatch({ type: "home" });
+  await tick();
+  const before = client.getSnapshot();
+  vi.mocked(transport.read).mockRejectedValueOnce("offline");
+  await expect(client.refresh()).rejects.toBe("offline");
+  expect(client.getSnapshot()).toMatchObject({
+    error: "uncertain",
+    refreshError: "offline",
+    pendingCount: 1,
+    disposed: false,
+  });
+  expect(client.getSnapshot().authoritative).toBe(before.authoritative);
+  setServer({ ...server(), revision: server().revision + 1 });
+  await client.refresh();
+  expect(client.getSnapshot().refreshError).toBeNull();
+  expect(client.getSnapshot().error).toBe("uncertain");
+  expect(transport.execute).toHaveBeenCalledTimes(2);
+  const rejected = expect(pending).rejects.toThrow("disposed");
+  client.dispose();
+  await rejected;
+});
+
+it("fences a changed renderer generation discovered by refresh", async () => {
+  const { client, setServer } = setup();
+  const changed = layout();
+  changed.revision = 1;
+  changed.windows[0]!.attachmentGeneration = 1;
+  setServer(changed);
+  await expect(client.refresh()).rejects.toThrow("attachment changed");
+  expect(client.getSnapshot().disposed).toBe(true);
+});
+
+it("routes selection through owned commands and avoids duplicate writes", async () => {
+  const { client, transport } = setup();
+  await client.dispatch(open());
+  await client.openResource(
+    {
+      kind: "entity",
+      definitionId: "project.terminal",
+      resourceId: "terminal",
+    },
+    { targetPaneId: "pane" },
+  );
+  await client.updateSelection((current) => ({
+    ...current,
+    activeTabByPane: { ...current.activeTabByPane, pane: "tab" },
+  }));
+  expect(
+    client.getSnapshot().authoritative.windows[0]!.panes[0]!.activeTabId,
+  ).toBe("tab");
+  const count = vi.mocked(transport.execute).mock.calls.length;
+  expect(await client.updateSelection((current) => current)).toBeNull();
+  expect(transport.execute).toHaveBeenCalledTimes(count);
+  await client.updateSelection((current) => ({
+    ...current,
+    destination: "overview",
+    focusedPaneId: null,
+  }));
+  expect(
+    client.getSnapshot().authoritative.windows[0]!.focusedPaneId,
+  ).toBeNull();
+  client.dispose();
+});
+
+it("rejects foreign or stale selections without changing authoritative focus", async () => {
+  const { client, transport } = setup();
+  await client.dispatch(open());
+  await expect(
+    client.updateSelection((current) => ({ ...current, projectId: "other" })),
+  ).rejects.toThrow("another project");
+  await expect(
+    client.updateSelection((current) => ({
+      ...current,
+      activeTabByPane: { pane: "missing" },
+    })),
+  ).rejects.toThrow("does not belong");
+  expect(transport.execute).toHaveBeenCalledTimes(1);
+  await client.openResource(
+    {
+      kind: "entity",
+      definitionId: "project.terminal",
+      resourceId: "terminal",
+    },
+    { targetPaneId: "pane" },
+  );
+  await client.dispatch({ type: "close-tab", tabId: "tab" });
+  expect(await client.updateSelection((current) => current)).toBeNull();
+  expect(
+    client.getSnapshot().authoritative.windows[0]!.panes[0]!.activeTabId,
+  ).not.toBe("tab");
+  client.dispose();
+  await expect(client.updateSelection((current) => current)).rejects.toThrow(
+    "disposed",
+  );
+});
+
+it("opens resources with independent tab identity and focuses an existing view on repeat", async () => {
+  const { client, transport } = setup();
+  const resource = { kind: "builtin", definitionId: "project.tasks" } as const;
+  const first = await client.openResource(resource);
+  const tab = first.layout.windows[0]!.panes[0]!.tabs[0]!;
+  expect(tab.id).not.toBe(resource.definitionId);
+  expect(tab.resource).toEqual(resource);
+  const second = await client.openResource(resource);
+  expect(second.layout.windows[0]!.panes).toHaveLength(1);
+  expect(second.layout.windows[0]!.panes[0]!.tabs).toEqual([tab]);
+  expect(second.layout.windows[0]!.panes[0]!.activeTabId).toBe(tab.id);
+  expect(transport.execute).toHaveBeenCalledTimes(2);
+  client.dispose();
+});
+
+it("opens another resource in the requested local region without a legacy placement", async () => {
+  const { client } = setup();
+  await client.openResource({ kind: "builtin", definitionId: "project.tasks" });
+  const result = await client.openResource(
+    {
+      kind: "entity",
+      definitionId: "project.terminal",
+      resourceId: "terminal-resource",
+    },
+    { targetRegion: "bottom" },
+  );
+  const pane = result.layout.windows[0]!.panes.find(
+    (p) => p.region === "bottom",
+  )!;
+  expect(pane.tabs[0]!.resource).toEqual({
+    kind: "entity",
+    definitionId: "project.terminal",
+    resourceId: "terminal-resource",
+  });
+  expect(pane.tabs[0]!.id).not.toBe("terminal-resource");
+  client.dispose();
+  await expect(
+    client.openResource({ kind: "builtin", definitionId: "project.tasks" }),
+  ).rejects.toThrow("disposed");
+});
+
+it("queues shell layout intent with stable generated identities across uncertain retries", async () => {
+  const { client, transport } = setup();
+  await client.dispatch(open());
+  vi.mocked(transport.execute).mockRejectedValueOnce("uncertain");
+  const moving = client.dispatchLayout({
+    type: "move-member",
+    tabKey: "tab",
+    targetPaneId: null,
+    targetMemberPosition: 0,
+    targetRegion: "right",
+    targetPanePosition: 0,
+  });
+  await tick();
+  const sent = vi.mocked(transport.execute).mock.calls[1]![0];
+  expect(sent.action).toMatchObject({
+    type: "move-new-pane",
+    tabId: "tab",
+    region: "right",
+    position: 0,
+  });
+  client.retry();
+  await moving;
+  expect(vi.mocked(transport.execute).mock.calls[2]![0]).toEqual(sent);
+  expect(client.getSnapshot().authoritative.windows[0]!.panes[0]!.region).toBe(
+    "right",
+  );
+  expect(
+    client.getSnapshot().authoritative.windows[0]!.panes[0]!.tabs[0]!.id,
+  ).toBe("tab");
+  client.dispose();
+});
 
 it("projects immediately and serializes later operations against acknowledged revisions", async () => {
   const { client, transport, setServer } = setup();
@@ -273,7 +526,7 @@ it("acknowledges delayed success without replaying stale window effects", async 
   expect(receipt.emptyWindowIds).toEqual([]);
 });
 
-it("rejects a dependent intent when its prerequisite open was rejected", async () => {
+it("uses server rejection for a dependent intent whose prerequisite open was rejected", async () => {
   const { client, transport } = setup();
   const request = deferred<WorkspaceReceipt>();
   vi.mocked(transport.execute).mockImplementationOnce(() => request.promise);
@@ -284,6 +537,46 @@ it("rejects a dependent intent when its prerequisite open was rejected", async (
   request.reject("rejected");
   expect(await opening).toBe("rejected");
   expect(await pinning).toBeInstanceOf(Error);
-  expect(transport.execute).toHaveBeenCalledTimes(1);
+  expect(transport.execute).toHaveBeenCalledTimes(2);
   expect(client.getSnapshot().projected.windows[0]!.panes).toEqual([]);
+});
+
+it("commits restored transfers when the destination update has not reached the source", async () => {
+  const { client, transport, server, setServer } = setup();
+  await client.dispatch(open());
+  await client.dispatch({
+    type: "prepare-detach",
+    transferId: "transfer",
+    paneId: "pane",
+    tabId: "tab",
+    destinationWindowId: "popout",
+    destinationPaneId: "destination-pane",
+  });
+  for (const type of ["transfer-ready", "transfer-state-ready"] as const) {
+    const receipt = result(server(), {
+      operationId: type,
+      projectId: "project",
+      workspaceId: "workspace",
+      windowId: "popout",
+      attachmentGeneration: 0,
+      expectedRevision: server().revision,
+      action: { type, transferId: "transfer" },
+    });
+    setServer(receipt.layout);
+  }
+  expect(client.getSnapshot().authoritative.pendingTransfers?.[0]?.phase).toBe(
+    "preparing",
+  );
+  const receipt = await client.dispatch({
+    type: "commit-transfer",
+    transferId: "transfer",
+  });
+  expect(transport.read).toHaveBeenCalledTimes(1);
+  expect(receipt.layout.windows.find(({ id }) => id === "main")?.panes).toEqual(
+    [],
+  );
+  expect(
+    receipt.layout.windows.find(({ id }) => id === "popout")?.panes[0]?.tabs[0]
+      ?.id,
+  ).toBe("tab");
 });

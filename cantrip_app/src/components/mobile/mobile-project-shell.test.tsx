@@ -175,7 +175,7 @@ describe("mobile project navigation", () => {
     expect(markup.match(/min-w-\[4\.5rem\]/g)).toHaveLength(6);
   });
 
-  it("keeps tap selection, archives agents, and closes other views", async () => {
+  it("keeps selection, view close, and explicit archive separate", async () => {
     const onArchive = vi.fn();
     const onClose = vi.fn();
     const onOpenPicker = vi.fn();
@@ -208,9 +208,12 @@ describe("mobile project navigation", () => {
     const contextCloseItems = renderer.root
       .findAllByProps({ "data-context-menu-item": true })
       .filter((item) => textContent(item).trim() === "Close View");
-    expect(contextCloseItems).toHaveLength(1);
-    contextCloseItems[0]!.props.onClick();
+    expect(contextCloseItems).toHaveLength(3);
+    contextCloseItems[1]!.props.onClick();
     expect(onClose).toHaveBeenCalledWith(surfaces[1]);
+    contextCloseItems[0]!.props.onClick();
+    expect(onClose).toHaveBeenLastCalledWith(surfaces[0]);
+    expect(onArchive).not.toHaveBeenCalled();
 
     const archiveItems = renderer.root
       .findAllByProps({ "data-context-menu-item": true })
@@ -218,7 +221,7 @@ describe("mobile project navigation", () => {
     expect(archiveItems).toHaveLength(2);
     archiveItems[0]!.props.onClick();
     expect(onArchive).toHaveBeenCalledWith(surfaces[0]);
-    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledTimes(2);
 
     renderer.root
       .findByProps({ "aria-label": "Choose project tab" })

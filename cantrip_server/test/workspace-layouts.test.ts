@@ -13,7 +13,10 @@ import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
 import type { ServerConfig } from "../src/config.js";
 import { installWorkspaceLayoutRoutes } from "../src/app/routes/workspace-layouts.js";
-import { protectedProjectFields } from "./private-label-fixture.js";
+import {
+  protectedProjectFields,
+  protectedTerminalFields,
+} from "./private-label-fixture.js";
 
 let db: DatabaseConnection;
 let config: ServerConfig;
@@ -108,6 +111,122 @@ const open = (id = "tab"): WorkspaceAction => ({
     region: "center",
     splitId: `split-${id}`,
   },
+});
+
+it("uses canonical protected resource labels while preserving retry command identity", async () => {
+  const project = await db.repository.createGithubProject(owner, {
+    workerId: "workspace-worker",
+    ...protectedProjectFields(),
+    repositoryBlindIndex: "L".repeat(43),
+    repositoryId: "workspace-label-resource",
+    nameWithOwner: "ArcaneArts/LabelTest",
+    url: "https://github.com/ArcaneArts/LabelTest",
+  });
+  await db.repository.completeGithubProjectSetup(
+    owner,
+    project.id,
+    "workspace-worker",
+    {
+      path: path.join(directory, "label-repository"),
+      displayPath: "ArcaneArts/LabelTest",
+      reused: false,
+      updated: false,
+      warning: null,
+    },
+  );
+  const layout = (await db.repository.workspaceLayouts.seed(
+    owner,
+    project.id,
+    randomUUID(),
+    "main",
+  ))!;
+  const fields = protectedTerminalFields();
+  const terminal = await db.repository.createTerminal(
+    owner,
+    project.id,
+    fields,
+  );
+  expect(terminal).not.toBeNull();
+  const action = open("label-tab");
+  if (action.type !== "open") throw new Error("fixture");
+  action.tab.resource = {
+    kind: "entity",
+    definitionId: "project.terminal",
+    resourceId: terminal!.id,
+  };
+  action.tab.builtInState = null;
+  // Client does not need a legacy placement or a copy of the private label.
+  const input = { ...command(layout, action), projectId: project.id };
+  const first = (await db.repository.workspaceLayouts.execute(owner, input))!;
+  const opened = first.layout.windows
+    .flatMap((w) => w.panes)
+    .flatMap((p) => p.tabs)
+    .find((t) => t.id === "label-tab")!;
+  expect(opened.titleProtection).toEqual(fields.titleProtection);
+  expect(action.tab.titleProtection).toBeNull();
+  const replay = (await db.repository.workspaceLayouts.execute(owner, input))!;
+  expect(replay.replayed).toBe(true);
+  expect(replay.layout).toEqual(first.layout);
+
+  // Resource deletion is shared availability, unlike device-local view closure.
+  const mobile = (await db.repository.workspaceLayouts.seed(
+    owner,
+    project.id,
+    randomUUID(),
+    "main",
+  ))!;
+  const mobileBefore = (await db.repository.workspaceLayouts.execute(owner, {
+    ...command(mobile, open("survivor")),
+    projectId: project.id,
+  }))!.layout;
+  expect(
+    await db.repository.deleteTerminal("unrelated-owner", terminal!.id),
+  ).toBeNull();
+  expect(
+    await db.repository.workspaceLayouts.get(owner, project.id, mobile.id),
+  ).toEqual(mobileBefore);
+  expect(
+    await db.repository.deleteTerminal(owner, terminal!.id),
+  ).not.toBeNull();
+  for (const workspace of [first.layout, mobileBefore]) {
+    const after = (await db.repository.workspaceLayouts.get(
+      owner,
+      project.id,
+      workspace.id,
+    ))!;
+    expect(after.revision).toBeGreaterThan(workspace.revision);
+    expect(
+      after.windows
+        .flatMap((w) => w.panes)
+        .flatMap((p) => p.tabs)
+        .some(
+          (t) =>
+            t.resource.kind === "entity" &&
+            t.resource.resourceId === terminal!.id,
+        ),
+    ).toBe(false);
+    if (workspace.id === mobile.id)
+      expect(
+        after.windows[0]!.panes.flatMap((p) => p.tabs).map((t) => t.id),
+      ).toContain("survivor");
+  }
+  const afterDelete = (await db.repository.workspaceLayouts.get(
+    owner,
+    project.id,
+    first.layout.id,
+  ))!;
+  const oldReplay = (await db.repository.workspaceLayouts.execute(
+    owner,
+    input,
+  ))!;
+  expect(oldReplay.layout).toEqual(afterDelete);
+  await expect(
+    db.repository.workspaceLayouts.execute(owner, {
+      ...input,
+      operationId: randomUUID(),
+      expectedRevision: afterDelete.revision,
+    }),
+  ).rejects.toThrow("resource is unavailable");
 });
 
 it("seeds once and never restores legacy state over newer workspace state", async () => {
@@ -340,6 +459,23 @@ it("validates endpoint body and route scope and exposes durable command results"
     ).json().replayed,
   ).toBe(true);
 });
+it("rejects an unknown detached pane without persisting a partial seed", async () => {
+  const workspaceId = randomUUID();
+  const url = `/api/projects/${projectId}/workspace-layouts/${workspaceId}`;
+  const response = await app.inject({
+    method: "POST",
+    url: `${url}/seed`,
+    payload: {
+      mainWindowId: "main",
+      detachedPanes: [{ paneId: "missing", windowId: "popout" }],
+    },
+  });
+  expect(response.statusCode).toBe(400);
+  expect(
+    await db.repository.workspaceLayouts.get(owner, projectId, workspaceId),
+  ).toBeNull();
+});
+
 it("retains workspace and idempotency receipts across a database restart", async () => {
   const layout = await seed();
   const input = command(layout, open());

@@ -14,7 +14,6 @@ import { useAppLiveScope } from "@/lib/app-live-react";
 import {
   buildProjectSurfaceIndex,
   omitProjectSurfaceTabs,
-  projectSurfaceTabId,
 } from "@/lib/project-surface";
 import {
   projectsInWorkspace,
@@ -57,16 +56,34 @@ export function useProjectWorkspaceSelectionState({
 
 export function projectWorkspaceSurfaceSelection(
   workspaceSelection: WorkspaceSelection,
+  layout: ProjectTabLayoutSummary | undefined,
 ) {
   const selectedTabKey = selectedWorkspaceTabKey(workspaceSelection);
+  const member =
+    layout?.projectId === workspaceSelection.projectId
+      ? layout.panes
+          .find(({ id }) => id === workspaceSelection.focusedPaneId)
+          ?.members.find(({ tabKey }) => tabKey === selectedTabKey)
+      : undefined;
+  const resourceId = (kind: string) =>
+    member?.tabKind === kind ? member.tabId : null;
+  const isProjectView =
+    member &&
+    ["history", "graph", "issues", "prs", "actions", "remote-desktop"].includes(
+      member.tabKind,
+    );
   return {
-    selectedBrowserId: projectSurfaceTabId(selectedTabKey, "browser"),
-    selectedChatId: projectSurfaceTabId(selectedTabKey, "chat"),
-    selectedCodeTabId: projectSurfaceTabId(selectedTabKey, "code"),
-    selectedExplorerId: projectSurfaceTabId(selectedTabKey, "explorer"),
-    selectedProjectViewId: projectSurfaceTabId(selectedTabKey, "view"),
+    selectedBuiltInDefinitionId:
+      member?.tabKind === "builtin"
+        ? (member.builtInState?.definitionId ?? null)
+        : null,
+    selectedBrowserId: resourceId("browser"),
+    selectedChatId: resourceId("chat"),
+    selectedCodeTabId: resourceId("code"),
+    selectedExplorerId: resourceId("explorer"),
+    selectedProjectViewId: isProjectView ? member.tabId : null,
     selectedTabKey,
-    selectedTerminalId: projectSurfaceTabId(selectedTabKey, "terminal"),
+    selectedTerminalId: resourceId("terminal"),
   } as const;
 }
 
@@ -177,10 +194,12 @@ const noOmittedTabKeys: ReadonlySet<string> = new Set();
 
 export function useProjectSurfaceSelection({
   omittedTabKeys = noOmittedTabKeys,
+  ownership,
   resources,
   selectedTabKey,
 }: {
   omittedTabKeys?: ReadonlySet<string>;
+  ownership?: Parameters<typeof buildProjectSurfaceIndex>[2];
   resources: Pick<
     ProjectWorkspaceResources,
     | "browsers"
@@ -209,17 +228,23 @@ export function useProjectSurfaceSelection({
     ],
   );
   const projectSurfaceIndex = useMemo(() => {
-    const index = buildProjectSurfaceIndex(resources.tabLayout.data, {
-      browsers: resources.browsers.data ?? [],
-      chats: resources.chats.data ?? [],
-      codeTabs: resources.codeTabs.data ?? [],
-      explorers: resources.explorers.data ?? [],
-      projectViews: resources.projectViews.data ?? [],
-      terminals: displayTerminals,
-    });
+    const index = buildProjectSurfaceIndex(
+      resources.tabLayout.data,
+      {
+        browsers: resources.browsers.data ?? [],
+        chats: resources.chats.data ?? [],
+        codeTabs: resources.codeTabs.data ?? [],
+        explorers: resources.explorers.data ?? [],
+        projectViews: resources.projectViews.data ?? [],
+        terminals: displayTerminals,
+      },
+      ownership,
+    );
     return omitProjectSurfaceTabs(index, omittedTabKeys);
   }, [
     omittedTabKeys,
+    ownership?.layout,
+    ownership?.windowId,
     resources.browsers.data,
     resources.chats.data,
     resources.codeTabs.data,

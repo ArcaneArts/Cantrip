@@ -32,6 +32,7 @@ export interface TerminalWorkerLinkConnection {
   readonly route: WorkerLinkRoute;
   activate(): void;
   close(code?: WorkerLinkChannelCloseCode): void;
+  drain(): Promise<void>;
   send(message: TerminalClientMessage): boolean;
 }
 
@@ -100,6 +101,7 @@ export async function openTerminalWorkerLink(
 }
 
 class ActiveTerminalWorkerLink implements TerminalWorkerLinkConnection {
+  #drainers = new Set<{ resolve(): void; reject(error: Error): void }>();
   #activated = false;
   #closed = false;
   #remoteClosed = false;
@@ -161,6 +163,19 @@ class ActiveTerminalWorkerLink implements TerminalWorkerLinkConnection {
 
   close(code: WorkerLinkChannelCloseCode = "normal"): void {
     this.#retire(code, true);
+  }
+
+  async drain(): Promise<void> {
+    if (this.#closed || this.#remoteClosed)
+      throw new Error("Terminal transport is closed.");
+    if (this.#outbound.length) {
+      await new Promise<void>((resolve, reject) =>
+        this.#drainers.add({ resolve, reject }),
+      );
+    }
+    if (this.#closed || this.#remoteClosed)
+      throw new Error("Terminal transport closed before drain.");
+    await this.stream.drain();
   }
 
   #receive(payload: Uint8Array): void {
@@ -232,6 +247,8 @@ class ActiveTerminalWorkerLink implements TerminalWorkerLinkConnection {
         this.#outbound.shift();
         this.#outboundBytes -= payload.byteLength;
       }
+      for (const waiter of this.#drainers) waiter.resolve();
+      this.#drainers.clear();
     } finally {
       this.#drainingOutbound = false;
     }
@@ -281,6 +298,9 @@ class ActiveTerminalWorkerLink implements TerminalWorkerLinkConnection {
   #retire(code: WorkerLinkChannelCloseCode, closeStream: boolean): void {
     if (this.#closed) return;
     this.#closed = true;
+    for (const waiter of this.#drainers)
+      waiter.reject(new Error("Terminal transport closed before drain."));
+    this.#drainers.clear();
     this.#leaseRenewal?.stop();
     this.#leaseRenewal = null;
     for (const unsubscribe of this.#unsubscribe) unsubscribe();

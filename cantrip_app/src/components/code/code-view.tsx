@@ -9,6 +9,8 @@ import {
   ExplorerView,
   type ExplorerHeaderState,
   type ExplorerLifecycleActions,
+  type ExplorerTransferState,
+  type ExplorerTransferStaging,
 } from "@/components/explorer/explorer-view";
 import {
   nativeCodeOwnerKey,
@@ -26,7 +28,11 @@ export function CodeView({
   appearance,
   codeTab,
   onHeaderChange,
+  initialTransfer,
+  transferStaging,
 }: {
+  initialTransfer?: ExplorerTransferState;
+  transferStaging?: ExplorerTransferStaging;
   active?: boolean;
   appearance: CodeAppearance;
   codeTab: CodeTabSummary;
@@ -40,6 +46,8 @@ export function CodeView({
       active={active}
       appearance={appearance}
       codeTab={codeTab}
+      initialTransfer={initialTransfer}
+      transferStaging={transferStaging}
       onHeaderChange={onHeaderChange}
     />
   );
@@ -49,13 +57,19 @@ function NativeProjectEditor({
   appearance,
   codeTab,
   onHeaderChange,
+  initialTransfer,
+  transferStaging,
 }: {
+  initialTransfer?: ExplorerTransferState;
+  transferStaging?: ExplorerTransferStaging;
   active: boolean;
   appearance: CodeAppearance;
   codeTab: CodeTabSummary;
   onHeaderChange?(state: CodeHeaderState | null): void;
 }) {
-  const [path, setPath] = useState<string | null>(null);
+  const [path, setPath] = useState<string | null>(
+    initialTransfer?.selectedPath ?? null,
+  );
   const [header, setHeader] = useState<ExplorerHeaderState | null>(null);
   const lifecycle = useRef<ExplorerLifecycleActions | null>(null);
   const ownerKey = nativeCodeOwnerKey(codeTab.id);
@@ -109,6 +123,8 @@ function NativeProjectEditor({
         active={active}
         appearance={appearance}
         explorer={explorer}
+        initialTransfer={initialTransfer}
+        transferStaging={transferStaging}
         onHeaderChange={setHeader}
         onLifecycleChange={onLifecycleChange}
         onOpenFile={onOpenFile}

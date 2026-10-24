@@ -137,12 +137,8 @@ export function MobileSurfacePicker({
               {existingSurfaces.map((surface) => {
                 const active =
                   !overviewSelected && surface.tabKey === activeTabKey;
-                const label =
-                  surface.kind === "explorer" ? "Explorer" : surface.title;
-                const removeLabel =
-                  surface.kind === "chat"
-                    ? `Archive ${label}`
-                    : `Remove ${label} from project tabs`;
+                const label = surface.title;
+                const removeLabel = `Close ${label} view`;
                 return (
                   <div
                     className={cn(
@@ -167,7 +163,9 @@ export function MobileSurfacePicker({
                             surface.kind === "chat" &&
                             surface.entity.experience === "task"
                               ? "task"
-                              : surface.kind
+                              : surface.kind === "unresolved"
+                                ? surface.member.tabKind
+                                : surface.kind
                           }
                         />
                       </span>
@@ -185,22 +183,26 @@ export function MobileSurfacePicker({
                     <Button
                       aria-label={removeLabel}
                       className="mr-2 size-10"
-                      onClick={() =>
-                        surface.kind === "chat"
-                          ? onArchiveSurface(surface)
-                          : onCloseSurface(surface)
-                      }
+                      onClick={() => onCloseSurface(surface)}
                       size="icon"
                       title={removeLabel}
                       type="button"
                       variant="ghost"
                     >
-                      {surface.kind === "chat" ? (
-                        <Archive className="size-4" />
-                      ) : (
-                        <X className="size-4" />
-                      )}
+                      <X className="size-4" />
                     </Button>
+                    {surface.kind === "chat" ? (
+                      <Button
+                        aria-label={`Archive ${label}`}
+                        className="mr-2 size-10"
+                        onClick={() => onArchiveSurface(surface)}
+                        size="icon"
+                        type="button"
+                        variant="ghost"
+                      >
+                        <Archive className="size-4" />
+                      </Button>
+                    ) : null}
                   </div>
                 );
               })}

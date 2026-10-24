@@ -112,6 +112,8 @@ export interface WorkerLinkStream {
   readonly route: WorkerLinkRoute;
   acknowledge(bytes: number): boolean;
   close(code?: WorkerLinkChannelCloseCode): void;
+  /** Wait until the worker adapter acknowledges all writes accepted so far. */
+  drain(): Promise<void>;
   halfClose(): boolean;
   onClose(listener: WorkerLinkStreamCloseListener): () => void;
   onData(listener: WorkerLinkDataListener): () => void;
@@ -1729,6 +1731,13 @@ class WorkerLinkFrameScheduler {
 }
 
 class ClientWorkerLinkStream implements WorkerLinkStream {
+  #writtenBytes = 0;
+  #acknowledgedBytes = 0;
+  #drainers = new Set<{
+    target: number;
+    resolve(): void;
+    reject(error: Error): void;
+  }>();
   #accepted = false;
   #canHalfClose = false;
   #canRead = false;
@@ -1831,10 +1840,21 @@ class ClientWorkerLinkStream implements WorkerLinkStream {
       payload,
     );
     if (sent) {
+      this.#writtenBytes += payload.byteLength;
       this.#creditBytes -= payload.byteLength;
       this.recordTelemetry("bytes-sent", payload.byteLength, "none");
     }
     return sent;
+  }
+
+  drain(): Promise<void> {
+    if (this.#closed)
+      return Promise.reject(new Error("WorkerLink channel is closed."));
+    const target = this.#writtenBytes;
+    if (this.#acknowledgedBytes >= target) return Promise.resolve();
+    return new Promise((resolve, reject) =>
+      this.#drainers.add({ target, resolve, reject }),
+    );
   }
 
   acknowledge(bytes: number): boolean {
@@ -1962,6 +1982,16 @@ class ClientWorkerLinkStream implements WorkerLinkStream {
           WORKER_LINK_MAX_CREDIT_BYTES,
           this.#creditBytes + header.bytes,
         );
+        this.#acknowledgedBytes = Math.min(
+          this.#writtenBytes,
+          this.#acknowledgedBytes + header.bytes,
+        );
+        for (const waiter of this.#drainers) {
+          if (waiter.target <= this.#acknowledgedBytes) {
+            this.#drainers.delete(waiter);
+            waiter.resolve();
+          }
+        }
         for (const listener of this.#writableListeners) listener();
         return;
       case "close":
@@ -1988,6 +2018,11 @@ class ClientWorkerLinkStream implements WorkerLinkStream {
   retire(code: WorkerLinkChannelCloseCode, preserveClose = false): void {
     if (this.#closed) return;
     this.#closed = true;
+    for (const waiter of this.#drainers)
+      waiter.reject(
+        new Error(`WorkerLink channel closed before drain: ${code}.`),
+      );
+    this.#drainers.clear();
     this.#openReject?.(new Error(`WorkerLink channel closed: ${code}.`));
     this.#clearOpenCallbacks();
     if (this.#accepted) {

@@ -44,50 +44,87 @@ const scanRoots = [
   "scripts",
 ];
 
-const tracked = spawnSync("git", ["ls-files", "-z", "--", ...scanRoots], {
-  cwd: repositoryRoot,
-  encoding: "buffer",
-  maxBuffer: 32 * 1024 * 1024,
-});
-if (tracked.error) throw tracked.error;
-if (tracked.status !== 0) process.exit(tracked.status ?? 1);
-
-const violations = [];
-for (const relativePath of tracked.stdout.toString("utf8").split("\0")) {
-  if (!relativePath || intentionallyHistoricalPaths.has(relativePath)) continue;
-  const content = await readFile(
-    path.join(repositoryRoot, relativePath),
-    "utf8",
+export async function auditRunConfigurationCutover(root = repositoryRoot) {
+  const tracked = spawnSync(
+    "git",
+    [
+      "ls-files",
+      "--cached",
+      "--others",
+      "--exclude-standard",
+      "-z",
+      "--",
+      ...scanRoots,
+    ],
+    {
+      cwd: root,
+      encoding: "buffer",
+      maxBuffer: 32 * 1024 * 1024,
+    },
   );
-  if (content.includes("\0")) continue;
-  for (const [identifier, replacement] of legacyIdentifiers) {
-    let offset = content.indexOf(identifier);
-    while (offset >= 0) {
-      const before = content.slice(0, offset);
-      const line = before.split("\n").length;
-      const column = offset - before.lastIndexOf("\n");
-      violations.push({ column, identifier, line, relativePath, replacement });
-      offset = content.indexOf(identifier, offset + identifier.length);
+  if (tracked.error) throw tracked.error;
+  if (tracked.status !== 0)
+    throw new Error(
+      tracked.stderr.toString("utf8") || "Could not enumerate audit sources.",
+    );
+
+  const violations = [];
+  for (const relativePath of new Set(
+    tracked.stdout.toString("utf8").split("\0"),
+  )) {
+    if (!relativePath || intentionallyHistoricalPaths.has(relativePath))
+      continue;
+    let content;
+    try {
+      content = await readFile(path.join(root, relativePath), "utf8");
+    } catch (error) {
+      // Unstaged deletions remain in the index, but are not current source.
+      if (error.code === "ENOENT") continue;
+      throw error;
+    }
+    if (content.includes("\0")) continue;
+    for (const [identifier, replacement] of legacyIdentifiers) {
+      let offset = content.indexOf(identifier);
+      while (offset >= 0) {
+        const before = content.slice(0, offset);
+        const line = before.split("\n").length;
+        const column = offset - before.lastIndexOf("\n");
+        violations.push({
+          column,
+          identifier,
+          line,
+          relativePath,
+          replacement,
+        });
+        offset = content.indexOf(identifier, offset + identifier.length);
+      }
     }
   }
+  return violations;
 }
 
-if (violations.length > 0) {
-  console.error("Legacy Run configuration cutover references remain:");
-  for (const violation of violations.sort(
-    (left, right) =>
-      left.relativePath.localeCompare(right.relativePath) ||
-      left.line - right.line ||
-      left.column - right.column,
-  )) {
-    console.error(
-      `${violation.relativePath}:${violation.line}:${violation.column} ` +
-        `${violation.identifier} (use ${violation.replacement})`,
+if (
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+  const violations = await auditRunConfigurationCutover();
+  if (violations.length > 0) {
+    console.error("Legacy Run configuration cutover references remain:");
+    for (const violation of violations.sort(
+      (left, right) =>
+        left.relativePath.localeCompare(right.relativePath) ||
+        left.line - right.line ||
+        left.column - right.column,
+    )) {
+      console.error(
+        `${violation.relativePath}:${violation.line}:${violation.column} ` +
+          `${violation.identifier} (use ${violation.replacement})`,
+      );
+    }
+    process.exitCode = 1;
+  } else {
+    console.log(
+      "Active source and guidance contain only replacement Run configuration contracts",
     );
   }
-  process.exitCode = 1;
-} else {
-  console.log(
-    "Active source and guidance contain only replacement Run configuration contracts",
-  );
 }

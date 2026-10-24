@@ -1,7 +1,10 @@
 import {
   workspaceCommandSchema,
   workspaceOwnershipSchema,
+  workspaceSeedRequestSchema,
   type WorkspaceCommand,
+  type WorkspaceSeedRequest,
+  type WorkspaceOwnership,
 } from "@cantrip/protocol";
 import { CantripApiError, request } from "@/lib/api-client";
 import {
@@ -21,13 +24,26 @@ export function workspaceLayoutTransport(
   projectId: string,
   workspaceId: string,
   identity: ClientSessionIdentitySnapshot,
-): WorkspaceTransport {
+): WorkspaceTransport & {
+  seed(input: WorkspaceSeedRequest): Promise<WorkspaceOwnership>;
+} {
   const expectedIdentity = { ...identity };
   const base = `/api/projects/${encodeURIComponent(projectId)}/workspace-layouts/${encodeURIComponent(workspaceId)}`;
   const behavior = { expectedIdentity, allowCsrfRecovery: false };
   return {
     read: async () =>
       workspaceOwnershipSchema.parse(await request(base, undefined, behavior)),
+    seed: async (input) =>
+      workspaceOwnershipSchema.parse(
+        await request(
+          `${base}/seed`,
+          {
+            method: "POST",
+            body: JSON.stringify(workspaceSeedRequestSchema.parse(input)),
+          },
+          behavior,
+        ),
+      ),
     execute: async (input: WorkspaceCommand) => {
       const command = workspaceCommandSchema.parse(input);
       if (
@@ -54,17 +70,30 @@ export function workspaceLayoutTransport(
   };
 }
 
-/** Opens existing migrated ownership only. Seeding requires native-window import
- * coordination and is deliberately not an automatic side effect of mounting. */
+/** Observe legacy placement only after an actual missing-workspace response.
+ * Callers must coordinate native import; a transport failure never means empty. */
 export async function connectWorkspaceCommands(
   projectId: string,
   workspaceId: string,
   windowId: string,
+  prepareSeed?: () => Promise<WorkspaceSeedRequest>,
 ) {
   const identity = getClientSessionIdentitySnapshot();
   if (!identity) throw new Error("Sign in before opening workspace ownership.");
   const transport = workspaceLayoutTransport(projectId, workspaceId, identity);
-  const layout = await transport.read();
+  let layout: WorkspaceOwnership;
+  try {
+    layout = await transport.read();
+  } catch (error) {
+    if (
+      !(error instanceof CantripApiError) ||
+      error.status !== 404 ||
+      !prepareSeed
+    )
+      throw error;
+    const seed = await prepareSeed();
+    layout = await transport.seed(seed);
+  }
   if (
     layout.projectId !== projectId ||
     layout.id !== workspaceId ||

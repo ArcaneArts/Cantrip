@@ -7,6 +7,19 @@ An identity-based ownership redesign is now in progress; see
 and shared mobile placement described below remain current behavior until that
 cutover, not the target contract of the redesign.
 
+The in-progress ownership integration makes Close View and middle-click uniformly
+non-destructive for Agent tabs in both the top strip and dock rails, including
+running or approval-waiting agents. These actions close only the view; they do not
+stop execution or archive the conversation. Archive Resource remains an explicit
+separate action. Close selection is committed by the workspace transition, not
+preemptively changed by the tab strip before close preparation succeeds.
+
+In the ownership path, native tab menus and dock-rail menus expose separate
+**Move Tab to New Window** and **Move Pane to New Window** actions. The first
+moves only the addressed tab; the second prepares every tab in its pane and
+moves the pane as a unit. Both use the same transfer coordinator and overlapping
+transfer guard. The header shortcut continues to move only the active tab.
+
 ## Panel controls
 
 Every visible surface owns its controls in a shared panel toolbar. Git reuses
@@ -605,8 +618,13 @@ or accepted as a generic placement region.
 Compact clients consume the same surface definitions, placements, and order
 but may not render desktop docks or split handles.
 
-- Mobile navigation exposes at most five active and recent surfaces after
-  collapsing Explorer file views to one destination per worktree.
+- Mobile navigation retains every window-owned view in layout order, including
+  distinct files in the same worktree. The bottom bar scrolls horizontally and
+  the Project tabs picker exposes the full list; there is no five-view cutoff or
+  placement-order approximation of recent activity. Selection does not change
+  visible membership. File entries use their titles rather than "Explorer".
+- Close View is available for Agent views too and does not archive or stop them.
+  Archive remains a separate, explicitly labeled action.
 - Selecting a right- or bottom-placed tab may present it full-screen locally.
 - That responsive presentation must not rewrite its desktop region or saved
   split fraction.

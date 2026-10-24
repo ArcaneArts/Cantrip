@@ -44,6 +44,12 @@ export function PersistentSurfaceLayer({
     folderRevealLabel,
     selectedPaneOwnedElsewhere,
     handleExplorerChanged,
+    stagedExplorerTransfers,
+    stagedCodeTransfers,
+    stagedTerminalTransfers,
+    incomingTerminalViews,
+    incomingExplorerViews,
+    incomingCodeViews,
     handleExplorerLifecycleChange,
     handleSidebarFilePreviewLifecycleChange,
     isPopout,
@@ -59,6 +65,7 @@ export function PersistentSurfaceLayer({
     pinSidebarFilePath,
     selectedPaneSurfaces,
     projects,
+    projectSurfaces,
     queryClient,
     renameSurface,
     selectTopTab,
@@ -273,6 +280,21 @@ export function PersistentSurfaceLayer({
         }
       >
         <PersistentCodeViews
+          incomingViews={incomingCodeViews}
+          unresolvedIds={
+            new Set<string>(
+              projectSurfaces?.flatMap((surface: any) =>
+                surface.kind === "unresolved" &&
+                surface.member.tabKind === "code"
+                  ? [surface.tabId]
+                  : [],
+              ),
+            )
+          }
+          openTabs={projectSurfaces?.flatMap((surface: any) =>
+            surface.kind === "code" ? [surface.entity] : [],
+          )}
+          initialTransfers={stagedCodeTransfers}
           activeTab={codeSurfaceVisible ? (selectedCodeTab ?? null) : null}
           appearance={codeAppearance}
           onChanged={(codeTab) =>
@@ -296,6 +318,25 @@ export function PersistentSurfaceLayer({
         }
       >
         <PersistentTerminalViews
+          incomingViews={incomingTerminalViews}
+          initialTransfers={stagedTerminalTransfers}
+          transferTabIds={
+            new Map<string, string>(
+              projectSurfaces?.flatMap((surface: any) =>
+                surface.kind === "terminal"
+                  ? [[surface.entity.id, surface.tabKey] as [string, string]]
+                  : surface.kind === "unresolved" &&
+                      surface.member.tabKind === "terminal"
+                    ? [
+                        [surface.member.tabId, surface.tabKey] as [
+                          string,
+                          string,
+                        ],
+                      ]
+                    : [],
+              ),
+            )
+          }
           active={terminalSurfaceVisible}
           commandPaletteTerminalId={terminalCommandPaletteTerminalId}
           key={selectedProjectId ?? "no-project"}
@@ -347,6 +388,8 @@ export function PersistentSurfaceLayer({
         }
       >
         <PersistentExplorerViews
+          incomingViews={incomingExplorerViews}
+          initialTransfers={stagedExplorerTransfers}
           activeExplorer={
             appMode === "ide" && sidebarFilePreviewPaneVisible
               ? (sidebarPreviewExplorer ?? null)

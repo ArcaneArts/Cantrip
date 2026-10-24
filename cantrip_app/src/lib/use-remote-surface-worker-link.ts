@@ -44,6 +44,8 @@ export interface UseRemoteSurfaceWorkerLinkResult {
   connectionState: RemoteSurfaceWorkerLinkConnectionState;
   error: string | null;
   retry(): void;
+  suspendInput(): () => void;
+  drain(): Promise<void>;
   sendFrame(
     channel: RemoteSurfaceChannel,
     payload: Uint8Array,
@@ -111,6 +113,20 @@ export function useRemoteSurfaceWorkerLink(
   ]);
 
   const retry = useCallback(() => clientRef.current?.retry(), []);
+  const suspendInput = useCallback(() => {
+    const client = clientRef.current;
+    if (!client)
+      throw new Error("Remote surface is not attached for transfer.");
+    return client.suspendInput();
+  }, []);
+  const drain = useCallback(async () => {
+    const client = clientRef.current;
+    if (!client)
+      throw new Error("Remote surface is not attached for transfer.");
+    await client.drain();
+    if (clientRef.current !== client)
+      throw new Error("Remote surface attachment changed during input drain.");
+  }, []);
   const sendFrame = useCallback(
     (
       channel: RemoteSurfaceChannel,
@@ -126,6 +142,8 @@ export function useRemoteSurfaceWorkerLink(
     connectionState,
     error,
     retry,
+    suspendInput,
+    drain,
     sendFrame,
     setError,
   };

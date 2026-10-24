@@ -88,6 +88,7 @@ export function createSidebarExplorerCommands({
   newGraphExplorer,
   newTerminal,
   openCreatedTab,
+  openOwnedFile,
   pinSidebarFileMutation,
   projects,
   queryClient,
@@ -130,6 +131,11 @@ export function createSidebarExplorerCommands({
     worktreeId?: string;
   }>;
   openCreatedTab: (projectId: string, kind: "explorer", tabId: string) => void;
+  openOwnedFile?: (
+    explorer: ExplorerSummary,
+    path: string,
+    preview: boolean,
+  ) => Promise<void>;
   pinSidebarFileMutation: SidebarExplorerMutations["pinSidebarFileMutation"];
   projects: ProjectSummary[] | undefined;
   queryClient: QueryClient;
@@ -176,6 +182,15 @@ export function createSidebarExplorerCommands({
     explorer: ExplorerSummary,
     path: string,
   ) => {
+    if (openOwnedFile) {
+      void openOwnedFile(explorer, path, true)
+        .then(() => {
+          setDesktopSidebarDrawerOpen(false);
+          revealWorkspace();
+        })
+        .catch((error: unknown) => setPopoutError(errorText(error)));
+      return;
+    }
     if (
       !sidebarExplorerCanOwnPreview({
         explorerId: explorer.id,
@@ -267,6 +282,16 @@ export function createSidebarExplorerCommands({
     explorer: ExplorerSummary,
     path: string,
   ) => {
+    if (openOwnedFile) {
+      try {
+        await openOwnedFile(explorer, path, false);
+        setDesktopSidebarDrawerOpen(false);
+        revealWorkspace();
+      } catch (error) {
+        setPopoutError(errorText(error));
+      }
+      return;
+    }
     const pinned = pinnedExplorerForPath({
       explorers: explorers ?? [],
       layout: tabLayout,

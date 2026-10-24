@@ -126,6 +126,7 @@ import {
   desktopPopoutPaneSearch,
   desktopPopoutPaneWindowLabel,
   discoverDesktopPopoutPaneIds,
+  discoverDesktopPopoutPanes,
   desktopProjectOverviewSearch,
   desktopProjectOverviewWindowLabel,
   desktopStandaloneChatFileSearch,
@@ -134,9 +135,11 @@ import {
   isMacosDesktopRuntime,
   observeDesktopPopoutClosure,
   observeDesktopWindowFocus,
+  watchWorkspaceNativeWindow,
   openSyntheticBuildProgressWindow,
   openDesktopPopoutGroup,
   openDesktopPopoutPane,
+  openWorkspaceTransferWindow,
   openDesktopExplorerFile,
   openDesktopStandaloneChatFile,
   parseDesktopExplorerFileTarget,
@@ -248,6 +251,28 @@ describe("desktop pop-out groups", () => {
     expect(stop()).toBeUndefined();
   });
 
+  it("observes the exact workspace window label independently of pane identity", async () => {
+    tauri.isTauri.mockReturnValue(true);
+    const owned = new webviews.MockWebviewWindow(
+      "cantrip-pane-workspace-owned",
+    );
+    const other = new webviews.MockWebviewWindow(
+      "cantrip-pane-workspace-other",
+    );
+    const closed = vi.fn();
+    const stop = await watchWorkspaceNativeWindow(owned.label, closed);
+    try {
+      await other.close();
+      expect(closed).not.toHaveBeenCalled();
+      await owned.close();
+      expect(closed).toHaveBeenCalledOnce();
+    } finally {
+      stop();
+      webviews.windows.clear();
+      tauri.isTauri.mockReturnValue(false);
+    }
+  });
+
   it("resumes when the detached window is destroyed", async () => {
     const onClosed = vi.fn();
     const unlisten = vi.fn();
@@ -305,6 +330,84 @@ describe("desktop pop-out panes", () => {
     projectId: "project one",
   };
 
+  it("round-trips transfer routing without treating URL metadata as workspace ownership", () => {
+    const owned = {
+      ...target,
+      transfer: {
+        id: "transfer one",
+        workspaceId: "workspace:device",
+        windowId: "reserved-window",
+        generation: 0,
+      },
+    };
+    const search = desktopPopoutPaneSearch(owned);
+    expect(parseDesktopPopoutPaneTarget(search)).toEqual(owned);
+    for (const field of [
+      "cantrip-transfer",
+      "workspace",
+      "window",
+      "generation",
+    ]) {
+      const parameters = new URLSearchParams(search);
+      parameters.delete(field);
+      expect(parseDesktopPopoutPaneTarget(`?${parameters}`)).toBeNull();
+    }
+    for (const generation of ["-1", "1.5", "NaN", "9007199254740992"]) {
+      const parameters = new URLSearchParams(search);
+      parameters.set("generation", generation);
+      expect(parseDesktopPopoutPaneTarget(`?${parameters}`)).toBeNull();
+    }
+  });
+
+  it("creates and reuses a reserved transfer window without revealing or focusing it", async () => {
+    tauri.isTauri.mockReturnValue(true);
+    vi.stubGlobal("window", { location: { pathname: "/" } });
+    const owned = {
+      ...target,
+      transfer: {
+        id: "transfer",
+        workspaceId: "workspace",
+        windowId: "reserved-window",
+        generation: 0,
+      },
+    };
+    try {
+      await expect(
+        openWorkspaceTransferWindow(owned, "Transfer"),
+      ).resolves.toBe("created");
+      const destination = webviews.windows.get("reserved-window")!;
+      expect(destination.options).toMatchObject({
+        focus: false,
+        visible: false,
+        dragDropEnabled: false,
+      });
+      expect(destination.options?.url).toBe(
+        `/${desktopPopoutPaneSearch(owned)}`,
+      );
+      expect(
+        webviews.windows.has(desktopPopoutPaneWindowLabel(target.paneId)),
+      ).toBe(false);
+      await expect(
+        openWorkspaceTransferWindow(owned, "Transfer retry"),
+      ).resolves.toBe("existing");
+      expect(webviews.windows.get("reserved-window")).toBe(destination);
+      expect(destination.show).not.toHaveBeenCalled();
+      expect(destination.setFocus).not.toHaveBeenCalled();
+      expect(destination.unminimize).not.toHaveBeenCalled();
+      await expect(
+        openWorkspaceTransferWindow(
+          { ...owned, transfer: { ...owned.transfer, windowId: "main" } },
+          "Invalid",
+        ),
+      ).rejects.toThrow(/Invalid workspace/);
+    } finally {
+      for (const window of webviews.windows.values()) await window.close();
+      webviews.windows.clear();
+      tauri.isTauri.mockReturnValue(false);
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("writes the canonical pane route and reads canonical or legacy routes", () => {
     expect(desktopPopoutPaneSearch(target)).toContain(
       "cantrip-popout-pane=pane+one",
@@ -357,6 +460,12 @@ describe("desktop pop-out panes", () => {
       expect(
         await discoverDesktopPopoutPaneIds(["pane-a", "pane-b", "pane-c"]),
       ).toEqual(new Set(["pane-a", "pane-b"]));
+      expect(
+        await discoverDesktopPopoutPanes(["pane-a", "pane-b", "pane-c"]),
+      ).toEqual([
+        { paneId: "pane-a", windowId: desktopPopoutPaneWindowLabel("pane-a") },
+        { paneId: "pane-b", windowId: desktopPopoutGroupWindowLabel("pane-b") },
+      ]);
     } finally {
       for (const window of webviews.windows.values()) await window.close();
       tauri.isTauri.mockReturnValue(false);

@@ -12,9 +12,14 @@ import {
 const api = vi.hoisted(() => ({
   deleteChat: vi.fn(),
   deleteExplorer: vi.fn(),
+  deleteCodeTab: vi.fn(),
   interruptChat: vi.fn(),
 }));
 vi.mock("@/lib/api", () => api);
+const codeConfirmation = vi.hoisted(() => vi.fn());
+vi.mock("@/components/code/native-code-lifecycle", () => ({
+  confirmNativeCodeDiscard: codeConfirmation,
+}));
 vi.mock("@/lib/run-configuration-api", () => ({
   operateRunConfigurationRuntime: vi.fn(),
 }));
@@ -23,6 +28,7 @@ import { useProjectSurfaceCloseCoordinator } from "./project-surface-close";
 import {
   useChatDeleteOperation,
   useExplorerSurfaceOperations,
+  useCodeSurfaceOperations,
 } from "./surface-crud-operations";
 import type { ExplorerLifecycleActions } from "../explorer/explorer-view";
 
@@ -154,7 +160,7 @@ function ExplorerDeleteHarness({
   const explorerLifecycleRef = useRef(
     new Map<string, ExplorerLifecycleActions>([["explorer-1", actions]]),
   );
-  const { deleteExplorerMutation } = useExplorerSurfaceOperations({
+  const { requestDeleteExplorer } = useExplorerSurfaceOperations({
     explorerLifecycleRef,
     queryClient,
     selectedProjectId: projectId,
@@ -164,7 +170,7 @@ function ExplorerDeleteHarness({
     <>
       <button
         id="close-explorer"
-        onClick={() => deleteExplorerMutation.mutate("explorer-1")}
+        onClick={() => requestDeleteExplorer("explorer-1")}
       />
       <span id="pending-explorer">
         {[...surfaceClose.pendingTabKeys].join(",")}
@@ -191,6 +197,149 @@ function text(renderer: TestRenderer.ReactTestRenderer, id: string) {
 }
 
 describe("immediate project surface deletion", () => {
+  it.each(["cancel", "delete-failure"] as const)(
+    "preserves Explorer drafts on %s without premature placement removal",
+    async (failure) => {
+      let finish!: () => void;
+      let reject!: (error: Error) => void;
+      const actions: ExplorerLifecycleActions = {
+        dirty: true,
+        cancelClose: vi.fn(),
+        discard: vi.fn(),
+        prepareClose: vi.fn(
+          () =>
+            new Promise<void>((yes, no) => {
+              finish = yes;
+              reject = no;
+            }),
+        ),
+        flushViewState: vi.fn().mockResolvedValue(true),
+        reconcile: vi.fn(),
+        save: vi.fn().mockResolvedValue(true),
+      };
+      api.deleteExplorer.mockRejectedValue(new Error("delete failed"));
+      const queryClient = new QueryClient();
+      const surfaceClose = {
+        begin: vi.fn(),
+        commit: vi.fn(),
+        commitView: vi.fn(),
+        rollback: vi.fn(),
+        pendingTabKeys: new Set<string>(),
+      };
+      let operations!: ReturnType<typeof useExplorerSurfaceOperations>;
+      function Probe() {
+        const explorerLifecycleRef = useRef(new Map([["explorer-1", actions]]));
+        operations = useExplorerSurfaceOperations({
+          explorerLifecycleRef,
+          queryClient,
+          selectedProjectId: projectId,
+          surfaceClose,
+        });
+        return null;
+      }
+      let renderer!: TestRenderer.ReactTestRenderer;
+      await act(async () => {
+        renderer = TestRenderer.create(
+          <QueryClientProvider client={queryClient}>
+            <Probe />
+          </QueryClientProvider>,
+        );
+      });
+      try {
+        let pending!: Promise<unknown>;
+        await act(async () => {
+          pending = operations.deleteExplorerMutation.mutateAsync("explorer-1");
+          void pending.catch(() => {});
+          await Promise.resolve();
+        });
+        expect(surfaceClose.begin).not.toHaveBeenCalled();
+        expect(api.deleteExplorer).not.toHaveBeenCalled();
+        expect(actions.discard).not.toHaveBeenCalled();
+        await act(async () => {
+          if (failure === "cancel") reject(new Error("close canceled"));
+          else finish();
+          await expect(pending).rejects.toThrow(
+            failure === "cancel" ? "close canceled" : "delete failed",
+          );
+        });
+        expect(actions.discard).not.toHaveBeenCalled();
+        expect(actions.cancelClose).toHaveBeenCalledOnce();
+        expect(surfaceClose.begin).toHaveBeenCalledTimes(
+          failure === "cancel" ? 0 : 1,
+        );
+        expect(surfaceClose.rollback).toHaveBeenCalledTimes(
+          failure === "cancel" ? 0 : 1,
+        );
+        expect(surfaceClose.commit).not.toHaveBeenCalled();
+      } finally {
+        await act(async () => renderer.unmount());
+        queryClient.clear();
+      }
+    },
+  );
+  it.each([false, true])(
+    "waits for Code deletion confirmation (%s) before removing any placement",
+    async (approved) => {
+      let answer!: (value: boolean) => void;
+      codeConfirmation.mockImplementationOnce(
+        () =>
+          new Promise<boolean>((resolve) => {
+            answer = resolve;
+          }),
+      );
+      api.deleteCodeTab
+        .mockReset()
+        .mockRejectedValue(new Error("server rejected deletion"));
+      const queryClient = new QueryClient();
+      const surfaceClose = {
+        begin: vi.fn(),
+        commit: vi.fn(),
+        commitView: vi.fn(),
+        rollback: vi.fn(),
+        pendingTabKeys: new Set<string>(),
+      };
+      let operations!: ReturnType<typeof useCodeSurfaceOperations>;
+      function Probe() {
+        operations = useCodeSurfaceOperations({
+          queryClient,
+          selectedProjectId: projectId,
+          surfaceClose,
+        });
+        return null;
+      }
+      let renderer!: TestRenderer.ReactTestRenderer;
+      await act(async () => {
+        renderer = TestRenderer.create(
+          <QueryClientProvider client={queryClient}>
+            <Probe />
+          </QueryClientProvider>,
+        );
+      });
+      try {
+        let pending!: Promise<unknown>;
+        await act(async () => {
+          pending = operations.deleteCodeTabMutation.mutateAsync("code-one");
+          void pending.catch(() => {});
+          await Promise.resolve();
+        });
+        expect(surfaceClose.begin).not.toHaveBeenCalled();
+        expect(api.deleteCodeTab).not.toHaveBeenCalled();
+        await act(async () => {
+          answer(approved);
+          await expect(pending).rejects.toThrow(
+            approved ? "server rejected deletion" : "deletion canceled",
+          );
+        });
+        expect(surfaceClose.begin).toHaveBeenCalledTimes(approved ? 1 : 0);
+        expect(api.deleteCodeTab).toHaveBeenCalledTimes(approved ? 1 : 0);
+        expect(surfaceClose.rollback).toHaveBeenCalledTimes(approved ? 1 : 0);
+        expect(surfaceClose.commit).not.toHaveBeenCalled();
+      } finally {
+        await act(async () => renderer.unmount());
+        queryClient.clear();
+      }
+    },
+  );
   beforeEach(() => {
     api.deleteChat.mockReset();
     api.deleteExplorer.mockReset();
@@ -272,7 +421,7 @@ describe("immediate project surface deletion", () => {
     await act(async () => renderer.unmount());
   });
 
-  it("starts Explorer teardown before hiding its mounted editor", async () => {
+  it("keeps Explorer mounted and selected until close preparation succeeds", async () => {
     const preparation = deferred<void>();
     const actions: ExplorerLifecycleActions = {
       cancelClose: vi.fn(),
@@ -317,8 +466,8 @@ describe("immediate project surface deletion", () => {
     await act(async () => Promise.resolve());
 
     expect(actions.prepareClose).toHaveBeenCalledTimes(1);
-    expect(text(renderer, "pending-explorer")).toBe("explorer:explorer-1");
-    expect(text(renderer, "selected-explorer")).toBe("terminal:terminal-1");
+    expect(text(renderer, "pending-explorer")).toBe("");
+    expect(text(renderer, "selected-explorer")).toBe("explorer:explorer-1");
     expect(api.deleteExplorer).not.toHaveBeenCalled();
 
     await act(async () => {

@@ -28,7 +28,7 @@ import type { RunningRunConfiguration } from "@/lib/run-terminal-model";
 import { cn } from "@/lib/utils";
 
 export type ProjectSurfaceCreateKind =
-  Exclude<ProjectSurface["kind"], "builtin"> | "tasks";
+  Exclude<ProjectSurface["kind"], "builtin" | "unresolved"> | "tasks";
 
 export interface ProjectSurfaceCreateDefinition {
   kind: ProjectSurfaceCreateKind;

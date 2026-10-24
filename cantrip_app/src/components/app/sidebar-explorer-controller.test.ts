@@ -14,6 +14,8 @@ import {
   createProjectExplorerFileOpening,
   sidebarExplorerProvisioningDetails,
   sidebarFilePinCompletion,
+  useExplorerLifecycleRefs,
+  useExplorerLifecycleRegistration,
   useSidebarExplorerModel,
   useSidebarFileState,
 } from "./sidebar-explorer-controller";
@@ -28,6 +30,50 @@ const project = {
   source: { path: "/project", workerId: "worker-project" },
   capabilities: { worktrees: true },
 } as ProjectSummary;
+
+describe("owned file lifecycle registration", () => {
+  it("reports dirty files without saving or closing and unregisters cleanly", async () => {
+    const onDirtyFile = vi.fn();
+    const queryClient = new QueryClient();
+    let lifecycle!: ReturnType<typeof useExplorerLifecycleRefs>;
+    let registration!: ReturnType<typeof useExplorerLifecycleRegistration>;
+    function Harness() {
+      lifecycle = useExplorerLifecycleRefs();
+      registration = useExplorerLifecycleRegistration({
+        lifecycle,
+        queryClient,
+        codeAppearance: "dark",
+        onDirtyFile,
+      });
+      return null;
+    }
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(createElement(Harness));
+    });
+    const actions = {
+      dirty: false,
+      cancelClose: vi.fn(),
+      flushViewState: vi.fn(async () => true),
+      prepareClose: vi.fn(async () => {}),
+      reconcile: vi.fn(async () => {}),
+      save: vi.fn(async () => true),
+    };
+    registration.handleExplorerLifecycleChange("file", actions);
+    expect(onDirtyFile).not.toHaveBeenCalled();
+    const dirty = { ...actions, dirty: true };
+    registration.handleExplorerLifecycleChange("file", dirty);
+    expect(lifecycle.explorerLifecycleRef.current.get("file")).toBe(dirty);
+    expect(onDirtyFile).toHaveBeenCalledExactlyOnceWith("file");
+    registration.handleExplorerLifecycleChange("file", null);
+    expect(lifecycle.explorerLifecycleRef.current.has("file")).toBe(false);
+    expect(onDirtyFile).toHaveBeenCalledTimes(1);
+    expect(actions.save).not.toHaveBeenCalled();
+    expect(actions.prepareClose).not.toHaveBeenCalled();
+    await act(async () => renderer.unmount());
+    queryClient.clear();
+  });
+});
 
 describe("project file opening", () => {
   it.each([false, true])(

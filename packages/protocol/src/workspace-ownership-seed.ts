@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { projectTabLayoutWireSummarySchema } from "./project-tabs.js";
 import type { ProjectSurfaceResourceRef } from "./project-surfaces.js";
+import { removeWorkspacePaneLeaf } from "./workspace-command-tree.js";
+import { WorkspaceCommandError } from "./workspace-command-apply.js";
 import {
   workspaceOwnershipSchema,
   type WorkspaceOwnership,
@@ -8,6 +10,27 @@ import {
 
 type LegacyLayout = z.infer<typeof projectTabLayoutWireSummarySchema>;
 type LegacyMember = LegacyLayout["panes"][number]["members"][number];
+
+export const workspaceSeedRequestSchema = z
+  .object({
+    mainWindowId: z.string().min(1),
+    activeTabByPane: z.record(z.string().min(1), z.string().min(1)).optional(),
+    focusedPaneId: z.string().min(1).nullable().optional(),
+    detachedPanes: z
+      .array(
+        z
+          .object({
+            paneId: z.string().min(1),
+            windowId: z.string().min(1),
+          })
+          .strict(),
+      )
+      .max(128)
+      .optional(),
+  })
+  .strict();
+
+export type WorkspaceSeedRequest = z.infer<typeof workspaceSeedRequestSchema>;
 
 const definitions = {
   chat: "project.agent",
@@ -43,6 +66,8 @@ export function seedWorkspaceOwnership(input: {
   existing?: WorkspaceOwnership;
   activeTabByPane?: Readonly<Record<string, string>>;
   focusedPaneId?: string | null;
+  /** Actual legacy native window observations, not timeout-based ownership guesses. */
+  detachedPanes?: readonly { paneId: string; windowId: string }[];
 }): WorkspaceOwnership {
   if (input.existing) {
     const existing = workspaceOwnershipSchema.parse(input.existing);
@@ -86,6 +111,39 @@ export function seedWorkspaceOwnership(input: {
   const focusedPaneId = panes.some((pane) => pane.id === input.focusedPaneId)
     ? input.focusedPaneId!
     : null;
+  const claimedPanes = new Set<string>();
+  const claimedWindows = new Set([input.mainWindowId]);
+  let centerRoot = legacy.centerRoot ?? null;
+  const detachedWindows = (input.detachedPanes ?? []).map((claim) => {
+    const pane = panes.find(({ id }) => id === claim.paneId);
+    if (
+      !pane ||
+      claimedPanes.has(claim.paneId) ||
+      !claim.windowId ||
+      claimedWindows.has(claim.windowId)
+    ) {
+      throw new WorkspaceCommandError(
+        "invalid",
+        "Invalid or duplicate legacy detached pane ownership.",
+      );
+    }
+    claimedPanes.add(claim.paneId);
+    claimedWindows.add(claim.windowId);
+    centerRoot = removeWorkspacePaneLeaf(centerRoot, claim.paneId);
+    return {
+      id: claim.windowId,
+      attachmentGeneration: 0,
+      panes: [pane],
+      centerRoot:
+        pane.region === "center"
+          ? { kind: "pane" as const, paneId: pane.id }
+          : null,
+      focusedPaneId: pane.id,
+      recentPaneIds: [pane.id],
+    };
+  });
+  const mainFocus =
+    focusedPaneId && !claimedPanes.has(focusedPaneId) ? focusedPaneId : null;
   return workspaceOwnershipSchema.parse({
     version: 1,
     id: input.workspaceId,
@@ -96,11 +154,12 @@ export function seedWorkspaceOwnership(input: {
       {
         id: input.mainWindowId,
         attachmentGeneration: 0,
-        panes,
-        centerRoot: legacy.centerRoot ?? null,
-        focusedPaneId,
-        recentPaneIds: focusedPaneId ? [focusedPaneId] : [],
+        panes: panes.filter(({ id }) => !claimedPanes.has(id)),
+        centerRoot,
+        focusedPaneId: mainFocus,
+        recentPaneIds: mainFocus ? [mainFocus] : [],
       },
+      ...detachedWindows,
     ],
   });
 }

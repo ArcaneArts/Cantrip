@@ -1,5 +1,11 @@
 import type { TerminalSummary } from "@cantrip/protocol";
-import { createElement, useEffect, useRef, type ReactNode } from "react";
+import {
+  createElement,
+  useEffect,
+  useRef,
+  type ReactNode,
+  type ComponentProps,
+} from "react";
 import TestRenderer, { act } from "react-test-renderer";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -18,9 +24,13 @@ vi.mock("./terminal-view", () => ({
   TerminalView: ({
     terminal,
     visible,
+    transferTabId,
+    transferStaging,
   }: {
     terminal: TerminalSummary;
     visible: boolean;
+    transferTabId?: string;
+    transferStaging?: unknown;
   }) => {
     const instance = useRef(lifecycle.nextInstance++).current;
     useEffect(() => {
@@ -34,6 +44,8 @@ vi.mock("./terminal-view", () => ({
       "data-mock-terminal-view": true,
       "data-terminal-id": terminal.id,
       "data-visible": visible,
+      "data-transfer-tab-id": transferTabId,
+      "data-staging": Boolean(transferStaging),
     });
   },
 }));
@@ -95,6 +107,10 @@ function render(
   ownedTerminals: TerminalSummary[],
   active = true,
   excludedIds: ReadonlySet<string> = new Set(),
+  transferTabIds?: ReadonlyMap<string, string>,
+  incomingViews?: ComponentProps<
+    typeof PersistentTerminalViews
+  >["incomingViews"],
 ) {
   return createElement(PersistentTerminalViews, {
     active,
@@ -108,10 +124,62 @@ function render(
     selectedTerminal,
     servicePanelTerminalId: null,
     excludedIds,
+    transferTabIds,
+    incomingViews,
   });
 }
 
 describe("Persistent terminal views", () => {
+  it("mounts an incoming passive terminal and activates the same renderer after commit", async () => {
+    const target = terminal("incoming");
+    const incoming = {
+      tabId: "view",
+      terminal: target,
+      state: {
+        version: 1 as const,
+        terminalId: target.id,
+        workerId: target.activeWorkerId,
+        cols: 80,
+        viewportY: 0,
+        followingOutput: true,
+        buffer: "normal" as const,
+        selection: null,
+      },
+      staging: { onRestored: vi.fn(), onError: vi.fn() },
+    };
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        render(null, [], false, new Set(), new Map(), [incoming]),
+      );
+    });
+    const mounted = renderer.root.findByProps({
+      "data-mock-terminal-view": true,
+    });
+    const instance = mounted.props["data-instance"];
+    expect(mounted.props["data-staging"]).toBe(true);
+    expect(mounted.props["data-visible"]).toBe(false);
+    await act(async () =>
+      renderer.update(
+        render(
+          target,
+          [target],
+          true,
+          new Set(),
+          new Map([[target.id, "view"]]),
+          [{ ...incoming, staging: undefined }],
+        ),
+      ),
+    );
+    const active = renderer.root.findByProps({
+      "data-mock-terminal-view": true,
+    });
+    expect(active.props["data-instance"]).toBe(instance);
+    expect(active.props["data-staging"]).toBe(false);
+    expect(active.props["data-visible"]).toBe(true);
+    expect(lifecycle.released).toEqual([]);
+    await act(async () => renderer.unmount());
+  });
   beforeEach(() => {
     lifecycle.created.length = 0;
     lifecycle.nextInstance = 0;
@@ -124,6 +192,45 @@ describe("Persistent terminal views", () => {
         remove() {},
       }),
     });
+  });
+
+  it("keeps all explicitly owned inactive views through resource-loading gaps and releases closed views", async () => {
+    const terminals = Array.from(
+      { length: MAX_RETAINED_TERMINAL_VIEWS + 2 },
+      (_, i) => terminal(`owned-${i}`),
+    );
+    const ids = new Map(
+      terminals.map((terminal, i) => [terminal.id, `view-${i}`]),
+    );
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        render(terminals[0]!, terminals, true, new Set(), ids),
+      );
+    });
+    expect(lifecycle.created).toHaveLength(terminals.length);
+    const inactive = renderer.root.findByProps({
+      "data-mock-terminal-view": true,
+      "data-terminal-id": terminals[13]!.id,
+    });
+    expect(inactive.props["data-transfer-tab-id"]).toBe("view-13");
+    expect(inactive.props["data-visible"]).toBe(false);
+    const instance = inactive.props["data-instance"];
+    await act(async () =>
+      renderer.update(render(null, [], false, new Set(), ids)),
+    );
+    expect(lifecycle.released).toEqual([]);
+    expect(
+      renderer.root.findByProps({
+        "data-mock-terminal-view": true,
+        "data-terminal-id": terminals[13]!.id,
+      }).props["data-instance"],
+    ).toBe(instance);
+    await act(async () =>
+      renderer.update(render(null, [], false, new Set(), new Map())),
+    );
+    expect(lifecycle.released).toHaveLength(terminals.length);
+    await act(async () => renderer.unmount());
   });
 
   it("shows controls only for the visible linked chat without replacing its terminal", async () => {

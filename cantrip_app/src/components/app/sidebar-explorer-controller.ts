@@ -173,18 +173,21 @@ export function useExplorerLifecycleRegistration({
   codeAppearance,
   lifecycle,
   queryClient,
+  onDirtyFile,
 }: {
   codeAppearance: CodeAppearance;
   lifecycle: ExplorerLifecycleRefs;
   queryClient: QueryClient;
+  onDirtyFile?: (explorerId: string) => void;
 }) {
   const { explorerLifecycleRef, sidebarFilePreviewLifecycleRef } = lifecycle;
   const handleExplorerLifecycleChange = useCallback(
     (explorerId: string, actions: ExplorerLifecycleActions | null) => {
       if (actions) explorerLifecycleRef.current.set(explorerId, actions);
       else explorerLifecycleRef.current.delete(explorerId);
+      if (actions?.dirty) onDirtyFile?.(explorerId);
     },
-    [explorerLifecycleRef],
+    [explorerLifecycleRef, onDirtyFile],
   );
   const handleSidebarFilePreviewLifecycleChange = useCallback(
     (_explorerId: string, actions: ExplorerLifecycleActions | null) => {
@@ -432,6 +435,7 @@ export function createProjectExplorerFileOpening({
   explorerLifecycleRef,
   openCreatedTab,
   openSidebarFilePreviewPath,
+  openOwnedFile,
   queryClient,
   selectedProject,
   setPopoutError,
@@ -444,6 +448,11 @@ export function createProjectExplorerFileOpening({
   explorerLifecycleRef: ExplorerLifecycleRefs["explorerLifecycleRef"];
   openCreatedTab: OpenCreatedTab;
   openSidebarFilePreviewPath?: (worktreeId: string, path: string) => boolean;
+  openOwnedFile?: (
+    projectId: string,
+    worktreeId: string,
+    path: string,
+  ) => Promise<void>;
   queryClient: QueryClient;
   selectedProject: ProjectSummary | undefined;
   setPopoutError: (error: string | null) => void;
@@ -455,6 +464,12 @@ export function createProjectExplorerFileOpening({
     worktreeId: string,
     path: string,
   ) => {
+    if (openOwnedFile) {
+      void openOwnedFile(projectId, worktreeId, path).catch((error: unknown) =>
+        setPopoutError(errorText(error)),
+      );
+      return;
+    }
     if (openSidebarFilePreviewPath?.(worktreeId, path)) return;
     void (async () => {
       let explorer = (explorers ?? []).find(

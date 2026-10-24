@@ -79,7 +79,6 @@ import {
   type ProjectSurfacePlacementContext,
 } from "@/components/workspace/project-surface-create-menu";
 import { ProjectSurfaceIcon } from "@/components/workspace/project-surface-icon";
-import { useAgentTabCloseConfirmation } from "@/components/workspace/use-agent-tab-close-confirmation";
 import {
   useWorkspaceDndState,
   WorkspaceDropPlaceholder,
@@ -127,6 +126,8 @@ function SortableDockRailTab({
   disabled,
   memberPosition,
   onClose,
+  onPopOut,
+  onPopOutPane,
   onDelete,
   onMoveToRegion,
   onSelect,
@@ -138,6 +139,8 @@ function SortableDockRailTab({
   disabled: boolean;
   memberPosition: number;
   onClose(): void;
+  onPopOut?(): void;
+  onPopOutPane?(): void;
   onDelete(stopRunning?: true): void;
   onMoveToRegion?(
     region: Extract<ProjectPaneRegion, "center" | DockRegion>,
@@ -183,9 +186,6 @@ function SortableDockRailTab({
         : "Focus";
   const needsApproval = surfaceNeedsApproval(surface);
   const running = surfaceIsRunning(surface);
-  const agentClose = useAgentTabCloseConfirmation((_surface, stopRunning) =>
-    onDelete(stopRunning),
-  );
   const actionLabel = `${action} ${surface.title}${needsApproval ? " (Approval required)" : running ? " (Running)" : ""}`;
   return (
     <>
@@ -194,13 +194,7 @@ function SortableDockRailTab({
         data-dock-rail-tab={surface.tabKey}
         data-dock-rail-tab-position={memberPosition}
         onAuxClick={(event) => {
-          if (!disabled)
-            closeTabOnMiddleClick(
-              event,
-              surface.kind === "chat"
-                ? () => agentClose.requestClose(surface)
-                : onClose,
-            );
+          if (!disabled) closeTabOnMiddleClick(event, onClose);
         }}
         onMouseDown={preventMiddleMouseDefault}
         ref={sortable.setNodeRef}
@@ -248,7 +242,11 @@ function SortableDockRailTab({
                   ) : (
                     <ProjectSurfaceIcon
                       className="size-4"
-                      kind={surface.kind}
+                      kind={
+                        surface.kind === "unresolved"
+                          ? surface.member.tabKind
+                          : surface.kind
+                      }
                     />
                   )}
                   {expanded ? (
@@ -272,7 +270,9 @@ function SortableDockRailTab({
                     region,
                     onMoveToRegion,
                   )}
-                  onClose={surface.kind === "chat" ? undefined : onClose}
+                  onClose={onClose}
+                  onPopOut={onPopOut}
+                  onPopOutPane={onPopOutPane}
                   onDelete={canDelete ? () => onDelete() : undefined}
                   title={surface.title}
                 />
@@ -281,7 +281,6 @@ function SortableDockRailTab({
           </ContextMenu.Root>
         </TabColor>
       </div>
-      {agentClose.confirmation}
     </>
   );
 }
@@ -292,6 +291,8 @@ export function DockRail({
   onCreate,
   onOpenRunning,
   onClose,
+  onPopOut,
+  onPopOutPane,
   onDelete,
   onMoveToRegion,
   onSelect,
@@ -307,6 +308,8 @@ export function DockRail({
   onCreate(kind: ProjectSurfaceCreateKind, target?: ExecutionTarget): void;
   onOpenRunning?(terminalId: string): void;
   onClose(surface: ProjectSurface): void;
+  onPopOut?(surface: ProjectSurface): void;
+  onPopOutPane?(surface: ProjectSurface): void;
   onDelete(surface: ProjectSurface, stopRunning?: true): void;
   onMoveToRegion?(
     surface: ProjectSurface,
@@ -450,6 +453,10 @@ export function DockRail({
                 disabled={pending}
                 memberPosition={memberPosition}
                 onClose={() => onClose(surface)}
+                onPopOut={onPopOut ? () => onPopOut(surface) : undefined}
+                onPopOutPane={
+                  onPopOutPane ? () => onPopOutPane(surface) : undefined
+                }
                 onDelete={(stopRunning) =>
                   stopRunning ? onDelete(surface, true) : onDelete(surface)
                 }
@@ -685,7 +692,7 @@ export function ProjectWorkspaceFrame({
             bindings.paneOwnedElsewhere?.(paneId),
           )
           .map(({ entity }: ProjectSurface) =>
-            "id" in entity ? entity.id : "",
+            entity && "id" in entity ? entity.id : "",
           )
           .filter(Boolean),
       ),
@@ -951,6 +958,8 @@ export function ProjectWorkspaceFrame({
             )
           }
           onClose={bindings.closeSurfaceView}
+          onPopOut={bindings.popOutTab}
+          onPopOutPane={bindings.popOutPane}
           onDelete={bindings.deleteSurfaceResource}
           onMoveToRegion={bindings.moveSurfaceToRegion}
           onRename={bindings.renameSurface}
@@ -1289,6 +1298,8 @@ export function ProjectWorkspaceFrame({
             )
           }
           onClose={bindings.closeSurfaceView}
+          onPopOut={bindings.popOutTab}
+          onPopOutPane={bindings.popOutPane}
           onDelete={bindings.deleteSurfaceResource}
           onMoveToRegion={bindings.moveSurfaceToRegion}
           onSelect={selectDockRailSurface}
@@ -1317,6 +1328,8 @@ export function ProjectWorkspaceFrame({
             )
           }
           onClose={bindings.closeSurfaceView}
+          onPopOut={bindings.popOutTab}
+          onPopOutPane={bindings.popOutPane}
           onDelete={bindings.deleteSurfaceResource}
           onMoveToRegion={bindings.moveSurfaceToRegion}
           onSelect={selectDockRailSurface}

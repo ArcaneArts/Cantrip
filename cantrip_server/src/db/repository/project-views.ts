@@ -7,10 +7,12 @@ import type {
 import { and, asc, eq } from "drizzle-orm";
 
 import * as schema from "../schema.js";
+import { removeResourceWorkspaceViews } from "../workspace-resource-removal.js";
 import {
   attachProjectTab,
   detachProjectTab,
   projectTabKey,
+  surfaceDefinitionIdForTab,
 } from "../tab-layouts.js";
 import {
   firstOrThrow,
@@ -207,6 +209,16 @@ export class ProjectViewRepository {
     const view = rows[0]?.view;
     if (!view) return false;
     const result = await this.database.transaction(async (transaction) => {
+      await removeResourceWorkspaceViews(
+        transaction,
+        ownerId,
+        view.projectId,
+        surfaceDefinitionIdForTab(
+          view.kind as ProjectViewWireSummary["kind"],
+          viewId,
+        ),
+        viewId,
+      );
       await detachProjectTab(
         transaction,
         view.projectId,
