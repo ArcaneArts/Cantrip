@@ -1,3 +1,4 @@
+import { reconcileNativeThreadObservation } from "./native-thread-observation.js";
 import { NativeCommandRecoveryRepository } from "./native-command-recovery.js";
 import {
   nativeCommandContext,
@@ -228,6 +229,19 @@ export class NativeCommandRepository {
       transaction: RepositoryTransaction,
     ) => ServerRepository,
   ) {}
+  reconcileThreadObservation(
+    ownerId: string,
+    expected: ChatExecutionContext,
+    status: Parameters<typeof reconcileNativeThreadObservation>[4],
+  ) {
+    return reconcileNativeThreadObservation(
+      this.database,
+      this.lanes,
+      ownerId,
+      expected,
+      status,
+    );
+  }
   refreshSettingsState(
     ownerId: string,
     chatId: string,
