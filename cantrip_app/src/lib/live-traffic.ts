@@ -3,14 +3,14 @@ import type {
   AccountLiveTrafficSample,
 } from "@cantrip/protocol";
 
-export const LIVE_TRAFFIC_HISTORY_SECONDS = 300;
-
 export interface LiveTrafficHistory {
   current: AccountLiveTrafficSample;
   cursor: string;
   epoch: string;
   generatedAt: string;
   instanceId: string;
+  sampleIntervalSeconds: AccountLiveTraffic["sampleIntervalSeconds"];
+  windowSeconds: AccountLiveTraffic["windowSeconds"];
   samples: AccountLiveTrafficSample[];
 }
 
@@ -19,7 +19,10 @@ export function mergeLiveTrafficHistory(
   incoming: AccountLiveTraffic,
 ): LiveTrafficHistory {
   const replace =
-    !current || incoming.reset || current.epoch !== incoming.epoch;
+    !current ||
+    incoming.reset ||
+    current.epoch !== incoming.epoch ||
+    current.sampleIntervalSeconds !== incoming.sampleIntervalSeconds;
   const samples = new Map<string, AccountLiveTrafficSample>();
   if (!replace) {
     for (const sample of current.samples) samples.set(sample.timestamp, sample);
@@ -33,9 +36,13 @@ export function mergeLiveTrafficHistory(
     epoch: incoming.epoch,
     generatedAt: incoming.generatedAt,
     instanceId: incoming.instanceId,
+    sampleIntervalSeconds: incoming.sampleIntervalSeconds,
+    windowSeconds: incoming.windowSeconds,
     samples: [...samples.values()]
       .sort((left, right) => left.timestamp.localeCompare(right.timestamp))
-      .slice(-LIVE_TRAFFIC_HISTORY_SECONDS),
+      .slice(
+        -Math.ceil(incoming.windowSeconds / incoming.sampleIntervalSeconds),
+      ),
   };
 }
 

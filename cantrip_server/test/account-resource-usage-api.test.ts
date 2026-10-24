@@ -110,6 +110,9 @@ describe("account resource usage API", () => {
       expect(firstLiveTraffic.statusCode).toBe(200);
       expect(secondLiveTraffic.statusCode).toBe(200);
       const firstLive = accountLiveTrafficSchema.parse(firstLiveTraffic.json());
+      expect(firstLive.sampleIntervalSeconds).toBe(0.25);
+      expect(firstLive.windowSeconds).toBe(600);
+      expect(firstLive.samples).toHaveLength(2400);
       const secondLive = accountLiveTrafficSchema.parse(
         secondLiveTraffic.json(),
       );

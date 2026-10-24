@@ -1,8 +1,11 @@
 import { randomUUID } from "node:crypto";
 
-import type {
-  AccountLiveTraffic,
-  AccountLiveTrafficSample,
+import {
+  ACCOUNT_LIVE_TRAFFIC_MAX_SAMPLES,
+  ACCOUNT_LIVE_TRAFFIC_SAMPLE_INTERVAL_SECONDS,
+  ACCOUNT_LIVE_TRAFFIC_WINDOW_SECONDS,
+  type AccountLiveTraffic,
+  type AccountLiveTrafficSample,
 } from "@cantrip/protocol/resource-usage";
 
 import type {
@@ -11,8 +14,10 @@ import type {
 } from "./bandwidth-meter.js";
 
 export const ACCOUNT_LIVE_TRAFFIC_ROUTE = "/api/account/live-traffic";
-export const LIVE_TRAFFIC_SAMPLE_INTERVAL_SECONDS = 1;
-export const LIVE_TRAFFIC_WINDOW_SECONDS = 300;
+export const LIVE_TRAFFIC_SAMPLE_INTERVAL_SECONDS =
+  ACCOUNT_LIVE_TRAFFIC_SAMPLE_INTERVAL_SECONDS;
+export const LIVE_TRAFFIC_WINDOW_SECONDS = ACCOUNT_LIVE_TRAFFIC_WINDOW_SECONDS;
+const SAMPLE_INTERVAL_MS = LIVE_TRAFFIC_SAMPLE_INTERVAL_SECONDS * 1_000;
 
 const DEFAULT_MAX_OWNERS = 2_048;
 const DEFAULT_OWNER_RETENTION_SECONDS = 600;
@@ -34,6 +39,7 @@ interface TrafficBucket {
 interface OwnerTraffic {
   buckets: Map<number, TrafficBucket>;
   lastAccessSecond: number;
+  lastPrunedSampleIndex: number;
   revision: number;
 }
 
@@ -78,22 +84,22 @@ function addCounter(current: number, increment: number): number {
   return Math.min(MAX_COUNTER, current + increment);
 }
 
-function cursorValue(second: number, revision: number): string {
-  return `${second}:${revision}`;
+function cursorValue(sampleIndex: number, revision: number): string {
+  return `${sampleIndex}:${revision}`;
 }
 
 function parseCursor(
   cursor: string,
-): { revision: number; second: number } | null {
+): { revision: number; sampleIndex: number } | null {
   const match = /^(\d+):(\d+)$/u.exec(cursor);
   if (!match) return null;
-  const second = Number(match[1]);
+  const sampleIndex = Number(match[1]);
   const revision = Number(match[2]);
-  return Number.isSafeInteger(second) &&
+  return Number.isSafeInteger(sampleIndex) &&
     Number.isSafeInteger(revision) &&
-    second >= 0 &&
+    sampleIndex >= 0 &&
     revision >= 0
-    ? { revision, second }
+    ? { revision, sampleIndex }
     : null;
 }
 
@@ -102,7 +108,7 @@ export function isAccountLiveTrafficRoute(route: string): boolean {
 }
 
 /**
- * Bounded, process-local one-second traffic history. The meter observes only
+ * Bounded, process-local quarter-second traffic history. The meter observes only
  * application payload measurements that already cross a Cantrip server
  * boundary; direct client-to-worker traffic is intentionally absent.
  */
@@ -149,9 +155,9 @@ export class LiveTrafficMeter implements AccountUsageRecorder {
       return false;
     }
     if (bytes === 0 && operations === 0) return true;
-    const second = this.#currentSecond();
-    const owner = this.#owner(ownerId, second);
-    const bucket = this.#bucket(owner, second);
+    const sampleIndex = this.#currentSampleIndex();
+    const owner = this.#owner(ownerId, sampleIndex);
+    const bucket = this.#bucket(owner, sampleIndex);
     owner.revision = addCounter(owner.revision, 1);
     bucket.revision = owner.revision;
     if (measurement.direction === "ingress") {
@@ -180,9 +186,9 @@ export class LiveTrafficMeter implements AccountUsageRecorder {
     ) {
       return false;
     }
-    const second = this.#currentSecond();
-    const owner = this.#owner(normalizedOwnerId, second);
-    const bucket = this.#bucket(owner, second);
+    const sampleIndex = this.#currentSampleIndex();
+    const owner = this.#owner(normalizedOwnerId, sampleIndex);
+    const bucket = this.#bucket(owner, sampleIndex);
     owner.revision = addCounter(owner.revision, 1);
     bucket.revision = owner.revision;
     bucket.httpRequests = addCounter(bucket.httpRequests, 1);
@@ -194,16 +200,16 @@ export class LiveTrafficMeter implements AccountUsageRecorder {
     query: LiveTrafficSnapshotQuery = {},
   ): AccountLiveTraffic {
     const now = this.#nowMilliseconds();
-    const second = Math.floor(now / 1_000);
-    const owner = this.#owner(ownerId.trim(), second);
-    const windowStart = second - LIVE_TRAFFIC_WINDOW_SECONDS + 1;
+    const sampleIndex = Math.floor(now / SAMPLE_INTERVAL_MS);
+    const owner = this.#owner(ownerId.trim(), sampleIndex);
+    const windowStart = sampleIndex - ACCOUNT_LIVE_TRAFFIC_MAX_SAMPLES + 1;
     const requestedCursor = query.after ? parseCursor(query.after) : null;
     let reset = Boolean(query.epoch && query.epoch !== this.epoch);
     if (
       query.after &&
       (!requestedCursor ||
-        requestedCursor.second < windowStart - 1 ||
-        requestedCursor.second > second ||
+        requestedCursor.sampleIndex < windowStart - 1 ||
+        requestedCursor.sampleIndex > sampleIndex ||
         requestedCursor.revision > owner.revision)
     ) {
       reset = true;
@@ -211,30 +217,26 @@ export class LiveTrafficMeter implements AccountUsageRecorder {
     const incremental = Boolean(
       query.after && query.epoch === this.epoch && requestedCursor && !reset,
     );
-    const startSecond = incremental
-      ? Math.max(windowStart, requestedCursor!.second)
+    const startSampleIndex = incremental
+      ? Math.max(windowStart, requestedCursor!.sampleIndex)
       : windowStart;
     const samples: AccountLiveTrafficSample[] = [];
-    for (
-      let sampleSecond = startSecond;
-      sampleSecond <= second;
-      sampleSecond += 1
-    ) {
-      const bucket = owner.buckets.get(sampleSecond);
+    for (let index = startSampleIndex; index <= sampleIndex; index += 1) {
+      const bucket = owner.buckets.get(index);
       if (
         incremental &&
-        sampleSecond === requestedCursor!.second &&
+        index === requestedCursor!.sampleIndex &&
         (bucket?.revision ?? 0) <= requestedCursor!.revision
       ) {
         continue;
       }
-      samples.push(this.#sample(sampleSecond, bucket));
+      samples.push(this.#sample(index, bucket));
     }
-    const current = this.#sample(second, owner.buckets.get(second));
+    const current = this.#sample(sampleIndex, owner.buckets.get(sampleIndex));
     return {
       schemaVersion: 1,
       epoch: this.epoch,
-      cursor: cursorValue(second, owner.revision),
+      cursor: cursorValue(sampleIndex, owner.revision),
       instanceId: this.instanceId,
       scope: "current-server-instance",
       sampleIntervalSeconds: LIVE_TRAFFIC_SAMPLE_INTERVAL_SECONDS,
@@ -252,27 +254,29 @@ export class LiveTrafficMeter implements AccountUsageRecorder {
   }
 
   ownerCount(): number {
-    this.#evict(this.#currentSecond());
+    this.#evict(Math.floor(this.#nowMilliseconds() / 1_000));
     return this.#owners.size;
   }
 
-  #bucket(owner: OwnerTraffic, second: number): TrafficBucket {
-    const minimum = second - LIVE_TRAFFIC_WINDOW_SECONDS + 1;
-    for (const bucketSecond of owner.buckets.keys()) {
-      if (bucketSecond < minimum || bucketSecond > second) {
-        owner.buckets.delete(bucketSecond);
+  #bucket(owner: OwnerTraffic, sampleIndex: number): TrafficBucket {
+    // Prune once per sample, rather than scanning the longer window per message.
+    if (owner.lastPrunedSampleIndex !== sampleIndex) {
+      const minimum = sampleIndex - ACCOUNT_LIVE_TRAFFIC_MAX_SAMPLES + 1;
+      for (const index of owner.buckets.keys()) {
+        if (index < minimum || index > sampleIndex) owner.buckets.delete(index);
       }
+      owner.lastPrunedSampleIndex = sampleIndex;
     }
-    let bucket = owner.buckets.get(second);
+    let bucket = owner.buckets.get(sampleIndex);
     if (!bucket) {
       bucket = emptyBucket();
-      owner.buckets.set(second, bucket);
+      owner.buckets.set(sampleIndex, bucket);
     }
     return bucket;
   }
 
-  #currentSecond(): number {
-    return Math.floor(this.#nowMilliseconds() / 1_000);
+  #currentSampleIndex(): number {
+    return Math.floor(this.#nowMilliseconds() / SAMPLE_INTERVAL_MS);
   }
 
   #nowMilliseconds(): number {
@@ -292,7 +296,10 @@ export class LiveTrafficMeter implements AccountUsageRecorder {
     }
   }
 
-  #owner(ownerId: string, second: number): OwnerTraffic {
+  #owner(ownerId: string, sampleIndex: number): OwnerTraffic {
+    const second = Math.floor(
+      sampleIndex * LIVE_TRAFFIC_SAMPLE_INTERVAL_SECONDS,
+    );
     if (!ownerId || ownerId.length > 200) {
       throw new Error("Live traffic owner is invalid.");
     }
@@ -316,6 +323,7 @@ export class LiveTrafficMeter implements AccountUsageRecorder {
     const created: OwnerTraffic = {
       buckets: new Map(),
       lastAccessSecond: second,
+      lastPrunedSampleIndex: -1,
       revision: 0,
     };
     this.#owners.set(ownerId, created);
@@ -323,12 +331,12 @@ export class LiveTrafficMeter implements AccountUsageRecorder {
   }
 
   #sample(
-    second: number,
+    sampleIndex: number,
     bucket: TrafficBucket | undefined,
   ): AccountLiveTrafficSample {
     const value = bucket ?? emptyBucket();
     return {
-      timestamp: new Date(second * 1_000).toISOString(),
+      timestamp: new Date(sampleIndex * SAMPLE_INTERVAL_MS).toISOString(),
       uploadBytes: value.uploadBytes,
       downloadBytes: value.downloadBytes,
       httpRequests: value.httpRequests,
