@@ -42,7 +42,6 @@ describe("owned file lifecycle registration", () => {
       registration = useExplorerLifecycleRegistration({
         lifecycle,
         queryClient,
-        codeAppearance: "dark",
         onDirtyFile,
       });
       return null;
@@ -76,100 +75,97 @@ describe("owned file lifecycle registration", () => {
 });
 
 describe("project file opening", () => {
-  it.each([false, true])(
-    "opens chat links under the resolved checkout ID (desktop=%s)",
-    async (desktopRuntime) => {
-      const openSidebarFilePreviewPath = vi.fn(() => true);
-      const setPopoutError = vi.fn();
-      const showAppToast = vi.fn();
-      const queryClient = new QueryClient();
-      const worktrees = [
-        {
-          id: "primary",
-          projectId: project.id,
-          path: "/project",
-          displayPath: "/project",
-          isPrimary: true,
-        },
-        {
-          id: "task",
-          projectId: project.id,
-          path: "/managed/task",
-          displayPath: "/managed/task",
-          isPrimary: false,
-        },
-      ] as ProjectWorktreeSummary[];
-      // A task checkout may have been registered since this shell last rendered.
-      queryClient.setQueryData(["worktrees", project.id], worktrees);
-      const { openChatFileLink } = createProjectExplorerFileOpening({
-        codeAppearance: "dark",
-        desktopRuntime,
-        explorers: [],
-        explorerLifecycleRef: { current: new Map() },
-        openCreatedTab: vi.fn(),
-        openSidebarFilePreviewPath,
-        queryClient,
-        selectedProject: project,
-        setPopoutError,
-        showAppToast,
-        worktrees: [],
-      });
-      const chat = {
+  it("opens chat links under the resolved checkout ID through workspace ownership", async () => {
+    const openOwnedFile = vi.fn(async () => {});
+    const setPopoutError = vi.fn();
+    const showAppToast = vi.fn();
+    const queryClient = new QueryClient();
+    const worktrees = [
+      {
+        id: "primary",
         projectId: project.id,
-        activeWorktreeId: "primary",
-      } as ChatSummary;
-
-      openChatFileLink(chat, "/managed/task/docs/BASELINE.md:14");
-      await Promise.resolve();
-      expect(openSidebarFilePreviewPath).toHaveBeenLastCalledWith(
-        "task",
-        "docs/BASELINE.md",
-      );
-
-      openChatFileLink(chat, "src/app.ts", "task");
-      await Promise.resolve();
-      expect(openSidebarFilePreviewPath).toHaveBeenLastCalledWith(
-        "task",
-        "src/app.ts",
-      );
-      expect(setPopoutError).not.toHaveBeenCalled();
-      expect(showAppToast).not.toHaveBeenCalled();
-      expect(chat.activeWorktreeId).toBe("primary");
-      queryClient.clear();
-    },
-  );
-
-  it("uses the sidebar editor preview before the desktop pop-out fallback", async () => {
-    const openSidebarFilePreviewPath = vi.fn(() => true);
-    const openCreatedTab = vi.fn();
-    const queryClient = {
-      invalidateQueries: vi.fn(),
-      setQueryData: vi.fn(),
-    };
-    const { openProjectExplorerFile } = createProjectExplorerFileOpening({
-      codeAppearance: "dark",
-      desktopRuntime: true,
-      explorers: [],
-      explorerLifecycleRef: { current: new Map() },
-      openCreatedTab,
-      openSidebarFilePreviewPath,
-      queryClient: queryClient as never,
-      selectedProject: undefined,
-      setPopoutError: vi.fn(),
-      showAppToast: vi.fn(),
+        path: "/project",
+        displayPath: "/project",
+        isPrimary: true,
+      },
+      {
+        id: "task",
+        projectId: project.id,
+        path: "/managed/task",
+        displayPath: "/managed/task",
+        isPrimary: false,
+      },
+    ] as ProjectWorktreeSummary[];
+    // A task checkout may have been registered since this shell last rendered.
+    queryClient.setQueryData(["worktrees", project.id], worktrees);
+    const { openChatFileLink } = createProjectExplorerFileOpening({
+      openOwnedFile,
+      queryClient,
+      selectedProject: project,
+      setPopoutError,
+      showAppToast,
       worktrees: [],
     });
+    const chat = {
+      projectId: project.id,
+      activeWorktreeId: "primary",
+    } as ChatSummary;
 
-    openProjectExplorerFile("project-1", "worktree-1", "src/app.ts");
+    openChatFileLink(chat, "/managed/task/docs/BASELINE.md:14");
     await Promise.resolve();
+    expect(openOwnedFile).toHaveBeenLastCalledWith(
+      project.id,
+      "task",
+      "docs/BASELINE.md",
+    );
 
-    expect(openSidebarFilePreviewPath).toHaveBeenCalledWith(
-      "worktree-1",
+    openChatFileLink(chat, "src/app.ts", "task");
+    await Promise.resolve();
+    expect(openOwnedFile).toHaveBeenLastCalledWith(
+      project.id,
+      "task",
       "src/app.ts",
     );
-    expect(queryClient.setQueryData).not.toHaveBeenCalled();
-    expect(openCreatedTab).not.toHaveBeenCalled();
+    expect(setPopoutError).not.toHaveBeenCalled();
+    expect(showAppToast).not.toHaveBeenCalled();
+    expect(chat.activeWorktreeId).toBe("primary");
+    queryClient.clear();
   });
+
+  it.each([false, true])(
+    "uses only the owned opener and reports failure (failure=%s)",
+    async (failure) => {
+      const openOwnedFile = vi.fn(async () => {
+        if (failure) throw new Error("workspace offline");
+      });
+      const setPopoutError = vi.fn();
+      const queryClient = {
+        invalidateQueries: vi.fn(),
+        setQueryData: vi.fn(),
+      };
+      const { openProjectExplorerFile } = createProjectExplorerFileOpening({
+        openOwnedFile,
+        queryClient: queryClient as never,
+        selectedProject: undefined,
+        setPopoutError,
+        showAppToast: vi.fn(),
+        worktrees: [],
+      });
+
+      openProjectExplorerFile("project-1", "worktree-1", "src/app.ts");
+      await Promise.resolve();
+
+      expect(openOwnedFile).toHaveBeenCalledExactlyOnceWith(
+        "project-1",
+        "worktree-1",
+        "src/app.ts",
+      );
+      expect(queryClient.setQueryData).not.toHaveBeenCalled();
+      if (failure)
+        expect(setPopoutError).toHaveBeenCalledWith("workspace offline");
+      else expect(setPopoutError).not.toHaveBeenCalled();
+    },
+  );
 });
 
 function explorer(workerId: string | null = "worker-explorer") {

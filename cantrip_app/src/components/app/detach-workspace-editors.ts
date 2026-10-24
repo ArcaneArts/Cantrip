@@ -33,6 +33,7 @@ export async function detachWorkspaceEditors(
     tabId?: string;
     returnToMain?: boolean;
     title: string;
+    signal?: AbortSignal;
     surfaces: ReadonlyMap<string, ProjectSurface>;
     explorers: ReadonlyMap<string, ExplorerLifecycleActions>;
   },
@@ -41,6 +42,9 @@ export async function detachWorkspaceEditors(
   const identity = getClientSessionIdentitySnapshot();
   if (!identity) throw new Error("Sign in before moving a workspace view.");
   const signal = new AbortController();
+  const abort = () => signal.abort(input.signal?.reason);
+  input.signal?.addEventListener("abort", abort, { once: true });
+  if (input.signal?.aborted) abort();
   const unsubscribe = input.controller.subscribe(() => {
     if (
       input.controller.getSnapshot().disposed ||
@@ -222,6 +226,7 @@ export async function detachWorkspaceEditors(
       },
     });
   } finally {
+    input.signal?.removeEventListener("abort", abort);
     unsubscribe();
     unsubscribeSession();
   }

@@ -111,6 +111,10 @@ export async function openOwnedFile({
     );
     assertCurrent();
     if (receipt.focusWindowId) await focusWindow(receipt.focusWindowId);
+    assertCurrent();
+    // Callers that continue into a window transfer must use this actual open
+    // result, not infer a tab from the currently selected Explorer or query data.
+    return { resource, receipt };
   } finally {
     request.consumers--;
     if (request.consumers === 0 && requests.get(key) === request)
