@@ -248,6 +248,148 @@ function run(action: WorkspaceAction, layout = fixture(), windowId = "main") {
   return applyWorkspaceCommand(layout, command(layout, action, windowId));
 }
 
+function migration(): Extract<
+  WorkspaceAction,
+  { type: "migrate-explorer-file" }
+> {
+  return {
+    type: "migrate-explorer-file",
+    tabId: "a2",
+    explorerId: "legacy",
+    expectedWorkerId: "worker",
+    expectedWorktreeId: "worktree",
+    expectedStateProtection: {
+      classification: { recordKind: "explorer-state" },
+      protectedState: {
+        formatVersion: 1,
+        keyRevision: 1,
+        envelope: {
+          version: 1,
+          algorithm: "AES-256-GCM",
+          keyRevision: 1,
+          nonce: "A".repeat(16),
+          ciphertext: "A".repeat(43),
+        },
+      },
+    },
+    documentId: "selected-document",
+    mode: "visual",
+    retainedViews: [
+      { tabId: "retained", documentId: "retained-document", mode: "edit" },
+    ],
+  };
+}
+
+function migrationFixture() {
+  const initial = fixture();
+  initial.windows[0]!.panes[0]!.tabs[1]!.titleProtection = {
+    classification: { recordKind: "explorer" },
+    protectedLabel: {
+      formatVersion: 1,
+      keyRevision: 1,
+      envelope: {
+        version: 1,
+        algorithm: "AES-256-GCM",
+        keyRevision: 1,
+        nonce: "AAAAAAAAAAAAAAAA",
+        ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+      },
+    },
+  };
+  initial.windows[0]!.panes[0]!.tabs[1]!.resource = {
+    kind: "entity",
+    definitionId: "project.explorer",
+    resourceId: "legacy",
+  };
+  return initial;
+}
+
+it("migrates legacy files atomically without changing tab identity, selection or splits", () => {
+  const initial = migrationFixture();
+  const before = structuredClone(initial);
+  const result = run(migration(), initial);
+  const pane = result.layout.windows[0]!.panes[0]!;
+  expect(pane.tabs.map(({ id }) => id)).toEqual(["a1", "a2", "retained", "a3"]);
+  expect(pane.activeTabId).toBe("a2");
+  expect(pane.tabs[1]).toEqual({
+    ...before.windows[0]!.panes[0]!.tabs[1],
+    resource: {
+      kind: "entity",
+      definitionId: "project.file",
+      resourceId: "selected-document",
+    },
+    fileMode: "visual",
+    titleProtection: null,
+  });
+  expect(pane.tabs[2]).toMatchObject({
+    id: "retained",
+    preview: false,
+    fileMode: "edit",
+  });
+  expect(result.layout.windows[0]!.centerRoot).toEqual(
+    before.windows[0]!.centerRoot,
+  );
+  expect(result.layout.windows[1]).toEqual(before.windows[1]);
+  expect(result.focusWindowId).toBeNull();
+  expect(result.emptyWindowIds).toEqual([]);
+  expect(initial).toEqual(before);
+});
+
+it("migrates an inactive legacy file without selecting it", () => {
+  const initial = migrationFixture();
+  initial.windows[0]!.panes[0]!.activeTabId = "a3";
+  const result = run({ ...migration(), retainedViews: [] }, initial);
+  expect(result.layout.windows[0]!.panes[0]!.activeTabId).toBe("a3");
+  expect(result.layout.windows[0]!.panes[0]!.tabs).toHaveLength(3);
+});
+
+it.each(["a2", "p1", "retained"])(
+  "rejects migration ID collision %s without modifying the source",
+  (id) => {
+    const initial = migrationFixture();
+    const before = structuredClone(initial);
+    const action = migration();
+    action.retainedViews.push({
+      tabId: id,
+      documentId: "extra-document",
+      mode: "edit",
+    });
+    expect(() => run(action, initial)).toThrow(/identity is already in use/);
+    expect(initial).toEqual(before);
+  },
+);
+
+it("rejects repeated document identity within a migration", () => {
+  const action = migration();
+  action.retainedViews[0]!.documentId = action.documentId;
+  expect(() => run(action, migrationFixture())).toThrow(
+    /identity is already in use/,
+  );
+});
+
+it("rejects migration of a different resource or another window's tab", () => {
+  expect(() => run(migration())).toThrow(/binding changed/);
+  expect(() => run(migration(), migrationFixture(), "popout")).toThrow(
+    /does not belong/,
+  );
+});
+
+it("does not convert a legacy file participating in a pending transfer", () => {
+  const initial = migrationFixture();
+  const prepared = run(
+    {
+      type: "prepare-detach",
+      transferId: "migration-race",
+      paneId: "a",
+      tabId: "a2",
+      destinationWindowId: "new-window",
+      destinationPaneId: "new-pane",
+    },
+    initial,
+  ).layout;
+  expect(() => run(migration(), prepared)).toThrow(/pending transfer/);
+});
+
 describe("file view mode", () => {
   it.each(["edit", "preview", "visual"] as const)(
     "persists %s on only the selected view",

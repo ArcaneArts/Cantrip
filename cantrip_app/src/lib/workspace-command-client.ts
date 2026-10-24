@@ -107,6 +107,9 @@ export class WorkspaceCommandClient {
       // optimistic removal: a rejection must retain the original renderer.
       if (pending.action.type === "open" && pending.action.replacePreviewTabId)
         continue;
+      // Migration also replaces a live editor. Retain its suspended source
+      // until the server commits; rejection must not destroy its draft store.
+      if (pending.action.type === "migrate-explorer-file") continue;
       // A newer observation may already include this sent operation. Until its
       // receipt arrives, avoid applying it twice to a newer observed snapshot.
       if (pending.sent && this.base.revision > pending.sent.expectedRevision)

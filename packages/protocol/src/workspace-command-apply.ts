@@ -157,6 +157,70 @@ export function applyWorkspaceCommand(
       "The destination is reserved for a pending transfer.",
     );
   switch (action.type) {
+    case "migrate-explorer-file": {
+      const { pane, tab } = tabById(action.tabId);
+      if (
+        tab.resource.kind !== "entity" ||
+        tab.resource.definitionId !== "project.explorer" ||
+        tab.resource.resourceId !== action.explorerId
+      )
+        throw new WorkspaceCommandError(
+          "invalid",
+          "Legacy Explorer binding changed.",
+        );
+      if (
+        (layout.pendingTransfers ?? []).some((transfer) =>
+          transfer.tabIds.includes(tab.id),
+        )
+      )
+        throw new WorkspaceCommandError(
+          "invalid",
+          "Legacy view is reserved for a pending transfer.",
+        );
+      const occupied = new Set(
+        layout.windows.flatMap((owner) =>
+          owner.panes.flatMap((pane) => pane.tabs.map((tab) => tab.id)),
+        ),
+      );
+      const documents = new Set([action.documentId]);
+      for (const retained of action.retainedViews) {
+        if (occupied.has(retained.tabId) || documents.has(retained.documentId))
+          throw new WorkspaceCommandError(
+            "invalid",
+            "Migration view or document identity is already in use.",
+          );
+        occupied.add(retained.tabId);
+        documents.add(retained.documentId);
+      }
+      // Preserve the selected view's identity, position, preview flag,
+      // and focus history. Inactive retained buffers become adjacent views;
+      // inserting them must never steal selection from this or another pane.
+      tab.resource = {
+        kind: "entity",
+        definitionId: "project.file",
+        resourceId: action.documentId,
+      };
+      tab.fileMode = action.mode;
+      // Explorer labels authenticate against the old resource ID. File views
+      // derive their label from the protected document path, just like open.
+      // Never carry the old ciphertext into a different resource identity.
+      tab.titleProtection = null;
+      const retainedTabs: WorkspaceTab[] = action.retainedViews.map((view) => ({
+        id: view.tabId,
+        resource: {
+          kind: "entity",
+          definitionId: "project.file",
+          resourceId: view.documentId,
+        },
+        fileMode: view.mode,
+        preview: false,
+        titleProtection: null,
+        builtInState: null,
+        dockPresentation: tab.dockPresentation,
+      }));
+      pane.tabs.splice(pane.tabs.indexOf(tab) + 1, 0, ...retainedTabs);
+      break;
+    }
     case "replace-attachment": {
       const pending = layout.pendingTransfers ?? [];
       // Reconnecting the same JS context must not cancel its live transfer.

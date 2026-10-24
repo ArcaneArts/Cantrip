@@ -5,7 +5,9 @@ import type { useWorkspaceConnection } from "./use-workspace-connection";
 type Connection = ReturnType<typeof useWorkspaceConnection>;
 export function WorkspaceRecoveryBanner({
   workspace,
+  migration,
 }: {
+  migration?: { error: unknown; retry(): void };
   workspace: Pick<
     Connection,
     "loading" | "error" | "retry" | "refresh" | "retryCommand" | "retryLabels"
@@ -47,7 +49,14 @@ export function WorkspaceRecoveryBanner({
                 action: "Retry labels",
                 retry: workspace.retryLabels,
               }
-            : null;
+            : migration?.error
+              ? {
+                  title: "File tab migration needs attention",
+                  error: migration.error,
+                  action: "Retry migration",
+                  retry: migration.retry,
+                }
+              : null;
   if (!issue)
     return workspace.loading ? (
       <div

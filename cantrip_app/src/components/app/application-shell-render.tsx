@@ -83,7 +83,10 @@ function ShellContent({
       bindings.workspaceConnection &&
       !showSettings &&
       !showServerAdmin ? (
-        <WorkspaceRecoveryBanner workspace={bindings.workspaceConnection} />
+        <WorkspaceRecoveryBanner
+          workspace={bindings.workspaceConnection}
+          migration={bindings.legacyDocumentMigration}
+        />
       ) : null}
       {desktopProjectFrame ? (
         <ProjectWorkspaceFrame
