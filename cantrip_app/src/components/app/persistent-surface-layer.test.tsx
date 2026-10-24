@@ -4,6 +4,16 @@ import { describe, expect, it, vi } from "vitest";
 
 import { PersistentSurfaceLayer } from "./persistent-surface-layer";
 
+vi.mock("@/components/chat/workspace-chat-panel", () => ({
+  WorkspaceChatPanel: ({
+    chat,
+    visible,
+  }: {
+    chat: { id: string };
+    visible: boolean;
+  }) => <div data-chat={chat.id} data-focus-enabled={visible} />,
+}));
+
 const surfaceProps = vi.hoisted(() => ({
   terminal: null as Record<string, unknown> | null,
   code: null as Record<string, unknown> | null,
@@ -40,6 +50,62 @@ vi.mock("@/components/workspace/project-tab-bar", () => ({
 }));
 
 describe("persistent surface layer", () => {
+  it("routes chats by tab identity and grants activation focus only to the selected tab", async () => {
+    (
+      globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+    ).IS_REACT_ACT_ENVIRONMENT = true;
+    const surfaces = ["a", "b"].map((id) => ({
+      kind: "chat",
+      tabKey: `view-${id}`,
+      tabId: `chat-${id}`,
+      entity: { id: `chat-${id}` },
+    }));
+    const bindings = {
+      appMode: "ide",
+      openExplorers: [],
+      selectedProjectId: "project",
+      selectedTabKey: "view-a",
+      projectSurfaces: surfaces,
+      dockPanePresentations: surfaces.map((surface) => ({
+        activeSurface: surface,
+        pane: { id: surface.tabKey },
+        portalTarget: {},
+      })),
+    };
+    let tree!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      tree = TestRenderer.create(
+        <PersistentSurfaceLayer bindings={bindings} />,
+      );
+    });
+    const panels = () =>
+      tree.root.findAll(
+        (node) => node.type === "div" && Boolean(node.props["data-chat"]),
+      );
+    expect(
+      panels().map((node) => [
+        node.props["data-chat"],
+        node.props["data-focus-enabled"],
+      ]),
+    ).toEqual([
+      ["chat-a", true],
+      ["chat-b", false],
+    ]);
+    await act(async () => {
+      tree.update(
+        <PersistentSurfaceLayer
+          bindings={{
+            ...bindings,
+            selectedTabKey: "view-b",
+            excludedPersistentSurfaceIds: new Set(["view-a"]),
+          }}
+        />,
+      );
+    });
+    expect(panels().map((node) => node.props["data-chat"])).toEqual(["chat-b"]);
+    expect(panels()[0]!.props["data-focus-enabled"]).toBe(true);
+    await act(async () => tree.unmount());
+  });
   it("routes document views by tab identity and excludes transferred views", async () => {
     (
       globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }

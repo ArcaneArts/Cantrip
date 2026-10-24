@@ -13,6 +13,7 @@ import type {
   ExplorerSummary,
   CodeTabSummary,
   BrowserSummary,
+  ChatSummary,
 } from "@cantrip/protocol";
 import type { TerminalTransferStaging } from "@/components/terminal/terminal-view";
 import type {
@@ -27,12 +28,18 @@ import {
   getExplorers,
   getTerminals,
   getBrowsers,
+  getChats,
 } from "@/lib/api";
 import type {
   BrowserViewState,
   BrowserTransferStaging,
 } from "@/components/browser/browser-view-state";
 import type { IncomingBrowserView } from "@/components/browser/persistent-browser-views";
+import type {
+  ChatViewState,
+  ChatTransferStaging,
+  IncomingChatView,
+} from "@/components/chat/chat-view-state";
 import {
   getClientSessionIdentitySnapshot,
   onClientSessionIdentityChanged,
@@ -46,6 +53,13 @@ const subscribeSession = (listener: () => void) =>
   onClientSessionIdentityChanged(listener);
 const noSubscription = () => () => {};
 type StagedEditor =
+  | {
+      tabId: string;
+      kind: "chat";
+      state: ChatViewState;
+      chat: ChatSummary;
+      staging: ChatTransferStaging;
+    }
   | {
       tabId: string;
       kind: "file";
@@ -279,14 +293,20 @@ export function useWorkspaceEditorTransfer({
           const browserTabs = tabs.filter(
             ({ resource }) => resource.definitionId === "project.browser",
           );
+          const chatTabs = tabs.filter(
+            ({ resource }) => resource.definitionId === "project.agent",
+          );
           if (
-            editorTabs.length + terminalTabs.length + browserTabs.length !==
+            editorTabs.length +
+              terminalTabs.length +
+              browserTabs.length +
+              chatTabs.length !==
             tabs.length
           )
             throw new Error(
               "This surface does not yet have a workspace transfer adapter.",
             );
-          const [explorers, code, terminals, browsers, documents] =
+          const [explorers, code, terminals, browsers, documents, chats] =
             await Promise.all([
               editorTabs.some(
                 ({ resource }) => resource.definitionId !== "project.code",
@@ -305,6 +325,7 @@ export function useWorkspaceEditorTransfer({
               )
                 ? getFileDocuments(layout.projectId)
                 : [],
+              chatTabs.length ? getChats(layout.projectId) : [],
             ]);
           assertCurrent();
           const expected = editorTabs.map((tab) => {
@@ -387,15 +408,31 @@ export function useWorkspaceEditorTransfer({
               workerId: entity.workerId,
             };
           });
+          const expectedChats = chatTabs.map((tab) => {
+            const resource = tab.resource;
+            const chat =
+              resource.kind === "entity"
+                ? chats.find(({ id }) => id === resource.resourceId)
+                : undefined;
+            if (!chat || chat.projectId !== layout.projectId)
+              throw new Error("Transferred chat resource is unavailable.");
+            return {
+              tabId: tab.id,
+              chatId: chat.id,
+              projectId: chat.projectId,
+            };
+          });
           const {
             editors: snapshots,
             terminals: terminalSnapshots,
             browsers: browserSnapshots,
+            chats: chatSnapshots,
           } = stageWorkspaceViewTransferBatch(
             bytes,
             expected,
             expectedTerminals,
             expectedBrowsers,
+            expectedChats,
           );
           const explorerStates = new Map<string, ExplorerTransferState>();
           const codeStates = new Map<string, ExplorerTransferState>();
@@ -474,6 +511,15 @@ export function useWorkspaceEditorTransfer({
               staging: restoration(),
             }),
           );
+          const stagedChats = chatSnapshots.map(
+            ({ tabId, state }): StagedEditor => ({
+              tabId,
+              state,
+              kind: "chat",
+              chat: chats.find(({ id }) => id === state.chatId)!,
+              staging: restoration(),
+            }),
+          );
           // Complete React staging before the coordinator acknowledges readiness.
           flushSync(() =>
             setStaged((current) => ({
@@ -490,12 +536,16 @@ export function useWorkspaceEditorTransfer({
                         ) &&
                         !browserSnapshots.some(
                           (snapshot) => snapshot.tabId === tabId,
+                        ) &&
+                        !chatSnapshots.some(
+                          (snapshot) => snapshot.tabId === tabId,
                         ),
                     )
                   : []),
                 ...stagedEditors,
                 ...stagedTerminals,
                 ...stagedBrowsers,
+                ...stagedChats,
               ],
             })),
           );
@@ -558,6 +608,7 @@ export function useWorkspaceEditorTransfer({
         incomingFileDocumentViews: undefined,
         incomingCodeViews: undefined,
         incomingBrowserViews: undefined,
+        incomingChatViews: undefined,
       };
     const explorers = new Map<string, ExplorerTransferState>();
     const code = new Map<string, ExplorerTransferState>();
@@ -566,6 +617,7 @@ export function useWorkspaceEditorTransfer({
     const incomingFileDocumentViews: IncomingEditorView<FileDocument>[] = [];
     const incomingCodeViews: IncomingEditorView<CodeTabSummary>[] = [];
     const incomingBrowserViews: IncomingBrowserView[] = [];
+    const incomingChatViews: IncomingChatView[] = [];
     const incomingTerminalViews: {
       tabId: string;
       terminal: TerminalSummary;
@@ -574,6 +626,13 @@ export function useWorkspaceEditorTransfer({
     }[] = [];
     for (const editor of staged.editors) {
       if (!retainedTabs.has(editor.tabId)) continue;
+      if (editor.kind === "chat") {
+        incomingChatViews.push({
+          ...editor,
+          staging: pendingTabs.has(editor.tabId) ? editor.staging : undefined,
+        });
+        continue;
+      }
       if (editor.kind === "file") {
         incomingFileDocumentViews.push({
           ...editor,
@@ -618,6 +677,7 @@ export function useWorkspaceEditorTransfer({
       incomingFileDocumentViews,
       incomingCodeViews,
       incomingBrowserViews,
+      incomingChatViews,
     };
   }, [context, staged, retainedTabs, pendingTabs]);
 }
