@@ -96,6 +96,7 @@ export async function startEditorRecoveryFixture({
     renewalStatus: 503,
     rejectUpgrades: false,
     dropPong: false,
+    rejectWorkspaceDestinations: false,
   };
   const serverPort = await availablePort();
   const controlToken = randomUUID();
@@ -294,6 +295,30 @@ export async function startEditorRecoveryFixture({
     vite = await preview({
       root: path.join(root, "cantrip_app"),
       configFile: false,
+      plugins: [
+        {
+          name: "qa-workspace-destination-failure",
+          configurePreviewServer(server) {
+            server.middlewares.use((request, response, next) => {
+              const url = new URL(request.url ?? "/", "http://fixture.invalid");
+              if (
+                faults.rejectWorkspaceDestinations &&
+                request.method === "GET" &&
+                url.pathname === "/" &&
+                url.searchParams.has("cantrip-transfer")
+              ) {
+                event("fault.workspace-destination", {
+                  transferId: url.searchParams.get("cantrip-transfer"),
+                });
+                response.writeHead(503, { "content-type": "text/plain" });
+                response.end("Injected QA destination startup failure");
+                return;
+              }
+              next();
+            });
+          },
+        },
+      ],
       build: { outDir: appDirectory },
       preview: {
         host: "127.0.0.1",

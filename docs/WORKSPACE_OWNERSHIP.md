@@ -1261,3 +1261,92 @@ views; it does not complete interrupted ownership-transfer reconciliation or
 native crash/two-window acceptance. Those remain required follow-up work for the
 unbounded workspace goal. The local QA fixture artifacts remain intentionally
 untracked and must be preserved until native acceptance is finished.
+### Attachment recovery follow-up (in progress)
+
+Previous cycle: PR #2225 merged as `a5b7fb5c3`. Integrated focused tests
+passed (54), editor lifecycle run `40094568230` passed, and native contracts
+run `40094568225` passed Linux/macOS/Windows on attempt 2. The first Windows
+attempt failed in unchanged process-guard fixture cleanup with EBUSY.
+
+This cycle joins authoritative attachment generations to actual renderer
+lifetimes and interrupted-transfer reconciliation:
+
+- An origin-wide exclusive Web Lock remains held until JavaScript context
+  destruction. Pagehide aborts consumers; BFCache restoration reloads rather
+  than reusing disposed controllers. Neither timeout nor observer failure
+  establishes replacement ownership.
+- Overlapping connections share an attachment identity. Final disconnect
+  retires that binding; same-page project return claims a fresh generation
+  because the original in-memory transfer lease no longer exists.
+- Atomic `replace-attachment` cancels affected uncommitted reservations while
+  preserving source tabs, protected drafts, and unrelated transfers. First
+  attachment of a staged destination preserves its handshake generation;
+  replacing that staged renderer retires the reservation instead.
+- Attachment claims rebase only after explicit revision rejection. Lost
+  replies remain uncertain; authoritative matching renderer identity proves
+  a prior claim without incrementing again.
+- Transfer sources observe cancellation and resume only while their original
+  generation still owns every transferred tab. Replaced sources cannot resume.
+- Startup restores source windows of interrupted transfers but not staged
+  destinations. Only an authoritative retired-window result closes the
+  matching current native popout, never main or another window.
+- Logout, renderer abort, and explicit disposal share idempotent cleanup of
+  subscriptions, refresh channels, controllers, and connection references.
+
+Automated evidence on this branch:
+
+- Full app: 544 files, 3,770 passing tests, 3 skipped.
+- Protocol: 917 passing tests, including 94 command tests.
+- Server workspace: 15 passing tests.
+- Focused API/bootstrap/lifetime/attachment/source tests: 49 passing.
+- App typecheck, production build, large-file/decomposition checks, diff check.
+- Real Chromium/WebKit lock harness: six acquisition/reload/close checkpoints.
+- Desktop Chromium editor fixture `editor-fd79363d-3c5a-4d7e-8cac-edd191c5799a`
+  passed before the final connection-cleanup fix.
+- Post-cleanup phone WebKit fixture
+  `editor-6ffad67f-fb6d-4d88-a934-f5e2902490b4` passed, including fixture
+  shutdown with all owned processes and sockets closed.
+
+The failed WebKit run `editor-92121c20-77fe-4636-be76-e0bbc36ba251` remains
+preserved, not counted as a pass. A separate localhost page without Cantrip
+code reproduced grant/telemetry/session cleanup access-control page errors
+during all eight reloads despite handled fetch rejections and no runtime
+errors. The harness classifies only these exact same-origin cleanup endpoints
+during explicit WebKit reload. Two classifier tests retain failures for other
+origins, ports, paths, messages, browsers, and times; runtime-error assertions
+are unchanged. Evidence:
+`.qa/20261024-081122-locate-webkit-worker-link-access`.
+
+Native validation used the current branch's isolated QA app and fixture
+`editor-f346d348-bd87-41b9-9b9e-7e7d997f1e6c`:
+
+- Dirty single-tab detach and native-close return preserved the draft.
+- Whole-pane transfer preserved two dirty files, including the inactive tab.
+- Main showed no duplicate tab, disabled placeholder, or occupied pane slot.
+- Explorer focused the already-open detached resource.
+- Detached WebView reload restored both unsaved drafts.
+- Closing one dirty tab with explicit confirmation and then its window
+  returned only the surviving tab; the closed tab did not resurrect.
+- Actual graceful application exit through the registered SIGINT handler,
+  followed by restart using the same isolated data directories, restored the
+  detached window and its unsaved draft; main remained empty. This checks
+  process shutdown/restart, not the tray confirmation dialog.
+- Both source files remained unchanged on disk. All owned native fixture
+  processes were stopped after validation; no production app was stopped.
+
+Detailed observations are retained in
+`.qa/20261024-141112-validate-current-native-attachme/OBSERVATIONS.md`.
+A transient “Add your first project” view during reload remains recorded for
+the final loading-UI audit.
+
+Interruption fixture `editor-0e17e5e6-4d53-4120-bf30-8601d1cfffec` passed
+two further native scenarios. A fixture-only HTTP 503 prevented the destination
+application from starting. Source WebView reload during pending transfer
+recovered the same tab and unsaved draft; clearing the fault allowed a successful
+detach. Abrupt SIGKILL of that isolated native app, followed by relaunch with
+the same fixture data, restored the detached owner and exact draft while main
+remained empty. The disk file remained the original baseline. Logs:
+`native-interruption.log` and `native-crash-restart.log` in the native QA session.
+These validate source reload during interrupted readiness and abrupt process
+restart, not every possible timing permutation. Final cycle delivery remains
+outstanding. The full workspace goal is incomplete.

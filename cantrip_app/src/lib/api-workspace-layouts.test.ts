@@ -140,6 +140,56 @@ it("connects the command queue to the bound endpoint and disposes it on logout",
   connection.dispose();
 });
 
+it.each(["logout", "renderer-end", "dispose"])(
+  "releases attachment listeners and its connection exactly once after %s",
+  async (cause) => {
+    const ended = new AbortController();
+    const releaseConnection = vi.fn();
+    const removeListener = vi.spyOn(ended.signal, "removeEventListener");
+    let current = structuredClone(layout);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: unknown, init?: RequestInit) => {
+        if (init?.method !== "POST") return Response.json(current);
+        const result = applyWorkspaceCommand(
+          current,
+          JSON.parse(init.body as string),
+        );
+        current = result.layout;
+        return Response.json({
+          ...result,
+          appliedRevision: current.revision,
+          replayed: false,
+        });
+      }),
+    );
+    const connection = await connectWorkspaceCommands(
+      layout.projectId,
+      layout.id,
+      "main",
+      undefined,
+      { rendererId: "renderer", signal: ended.signal, releaseConnection },
+    );
+    expect(
+      connection.controller.getSnapshot().authoritative.windows[0],
+    ).toMatchObject({
+      rendererId: "renderer",
+      attachmentGeneration: 1,
+    });
+    expect(releaseConnection).not.toHaveBeenCalled();
+    if (cause === "logout") clearClientSession();
+    else if (cause === "renderer-end") ended.abort(new Error("page ended"));
+    else connection.dispose();
+    expect(connection.controller.getSnapshot().disposed).toBe(true);
+    expect(removeListener).toHaveBeenCalledWith("abort", expect.any(Function));
+    clearClientSession();
+    ended.abort();
+    connection.dispose();
+    connection.dispose();
+    expect(releaseConnection).toHaveBeenCalledOnce();
+  },
+);
+
 it("refreshes a second connection through an authorized read after a local commit", async () => {
   let current = structuredClone(layout);
   const fetcher = vi.fn(async (_url: unknown, init?: RequestInit) => {

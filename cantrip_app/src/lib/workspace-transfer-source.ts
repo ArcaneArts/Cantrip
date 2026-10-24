@@ -34,7 +34,10 @@ function acknowledgement() {
 
 export async function detachWorkspaceViews(
   input: {
-    controller: Pick<WorkspaceCommandClient, "getSnapshot" | "dispatch">;
+    controller: Pick<
+      WorkspaceCommandClient,
+      "getSnapshot" | "dispatch" | "subscribe"
+    >;
     windowId: string;
     paneId: string;
     tabId?: string;
@@ -89,6 +92,24 @@ export async function detachWorkspaceViews(
   let channel: ReturnType<typeof createWorkspaceTransferChannel> | undefined;
   let committed = false;
   let unwatch: (() => void) | undefined;
+  let unsubscribe: (() => void) | undefined;
+  let sourceGeneration: number | undefined;
+  let reservedTabIds: readonly string[] = [];
+  const sourceStillOwnsViews = () => {
+    const state = controller.getSnapshot();
+    const source = state.authoritative.windows.find(
+      ({ id }) => id === input.windowId,
+    );
+    return (
+      !state.disposed &&
+      sourceGeneration !== undefined &&
+      source?.attachmentGeneration === sourceGeneration &&
+      reservedTabIds.length > 0 &&
+      reservedTabIds.every((id) =>
+        source.panes.some((pane) => pane.tabs.some((tab) => tab.id === id)),
+      )
+    );
+  };
   const ready = acknowledgement();
   const restored = acknowledgement();
   let failure: { error: unknown } | undefined;
@@ -118,6 +139,32 @@ export async function detachWorkspaceViews(
       transfer.sourceWindowId !== input.windowId
     )
       throw new Error("The source no longer owns this transfer.");
+    sourceGeneration = transfer.sourceGeneration;
+    reservedTabIds = [...transfer.tabIds];
+    unsubscribe = controller.subscribe(() => {
+      const current = controller.getSnapshot();
+      if (
+        current.disposed ||
+        current.authoritative.windows.find(({ id }) => id === input.windowId)
+          ?.attachmentGeneration !== sourceGeneration
+      ) {
+        fail(new Error("Workspace controller is disposed."));
+      } else if (
+        !committed &&
+        !current.authoritative.pendingTransfers?.some(
+          ({ id }) => id === transferId,
+        ) &&
+        sourceStillOwnsViews()
+      ) {
+        // A destination renderer replacement may cancel an incoming return.
+        // This is an authoritative cancellation, not a missing heartbeat.
+        fail(
+          new Error(
+            "Workspace transfer was cancelled during attachment recovery.",
+          ),
+        );
+      }
+    });
     const target = {
       projectId: state.authoritative.projectId,
       paneId: destinationPaneId,
@@ -182,7 +229,17 @@ export async function detachWorkspaceViews(
   } catch (error) {
     if (!committed) {
       try {
-        await controller.dispatch({ type: "cancel-transfer", transferId });
+        if (
+          controller
+            .getSnapshot()
+            .authoritative.pendingTransfers?.some(({ id }) => id === transferId)
+        ) {
+          await controller.dispatch({ type: "cancel-transfer", transferId });
+        }
+        if (lease && !sourceStillOwnsViews())
+          throw new Error(
+            "The previous renderer cannot resume views it no longer owns.",
+          );
         await lease?.resume();
       } catch (recoveryError) {
         throw new AggregateError(
@@ -194,6 +251,7 @@ export async function detachWorkspaceViews(
     throw error;
   } finally {
     unwatch?.();
+    unsubscribe?.();
     input.signal?.removeEventListener("abort", abort);
     channel?.dispose();
   }

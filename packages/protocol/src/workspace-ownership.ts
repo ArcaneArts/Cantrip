@@ -95,6 +95,8 @@ export const workspaceWindowSchema = z
     // Incremented when ownership is attached to a new renderer, never inferred
     // from a timeout. Transfer commands must fence stale attachment generations.
     attachmentGeneration: z.int().nonnegative(),
+    // Opaque identity of the context holding the exclusive lifetime lock.
+    rendererId: identity.optional(),
     panes: z.array(workspacePaneSchema),
     centerRoot: projectCenterLayoutNodeSchema.nullable(),
     focusedPaneId: identity.nullable(),
