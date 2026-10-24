@@ -20,7 +20,6 @@ import {
   resolveProjectWorkspace,
 } from "@/lib/project-workspaces";
 import { decorateRunConfigurationTerminals } from "@/lib/run-terminal-model";
-import type { SidebarFilePreviewState } from "@/lib/sidebar-file-tabs";
 import {
   emptyWorkspaceSelection,
   reconcileWorkspaceSelection,
@@ -267,12 +266,10 @@ export function useProjectSurfaceSelection({
 
 export function workspacePaneSelection({
   projectSurfaceIndex,
-  sidebarFilePreview,
   tabLayout,
   workspaceSelection,
 }: {
   projectSurfaceIndex: ReturnType<typeof buildProjectSurfaceIndex>;
-  sidebarFilePreview: SidebarFilePreviewState | null;
   tabLayout: ProjectTabLayoutSummary | undefined;
   workspaceSelection: WorkspaceSelection;
 }) {
@@ -290,11 +287,5 @@ export function workspacePaneSelection({
     orderedProjectSurfaces,
     selectedPaneSurfaces,
     selectedPane,
-    showSidebarPreviewTab: Boolean(
-      sidebarFilePreview &&
-      (sidebarFilePreview.active ||
-        (sidebarFilePreview.paneId !== null &&
-          sidebarFilePreview.paneId === workspaceSelection.focusedPaneId)),
-    ),
   } as const;
 }

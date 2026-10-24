@@ -160,7 +160,6 @@ it.each(["main", "detached"])(
       setFolderProjectDialogOpen: vi.fn(),
       setPendingSurfaceSelection,
       setProjectTaskChatIds: vi.fn(),
-      setSidebarFilePreview: vi.fn(),
       surfaceOpenRequestRef,
       setWorkspaceSelection,
       workspace: h.options.workspace,

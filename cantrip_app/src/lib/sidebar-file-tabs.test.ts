@@ -11,12 +11,7 @@ import {
   preferredSidebarExplorer,
   moveSidebarPath,
   sidebarExplorerPrewarmTarget,
-  sidebarFilePreviewAfterPaneSelection,
-  sidebarFilePreviewHasPaneFocus,
   sidebarFileName,
-  sidebarFilePreviewMatches,
-  sidebarFilePreviewIsVisible,
-  sidebarFilePreviewViewKey,
   sidebarFileTargetPaneId,
   sidebarPathAtOrBelow,
   tabbedExplorerIds,
@@ -44,68 +39,6 @@ function layout(...explorerIds: string[]): ProjectTabLayoutSummary {
 }
 
 describe("sidebar file tabs", () => {
-  it("recognizes an already-active preview without reopening it", () => {
-    const preview = {
-      active: true,
-      explorerId: "explorer-1",
-      paneId: "group-1",
-      path: "src/index.ts",
-      projectId: "project-1",
-    };
-
-    expect(sidebarFilePreviewMatches(preview, preview)).toBe(true);
-    expect(
-      sidebarFilePreviewMatches(preview, {
-        ...preview,
-        path: "src/other.ts",
-      }),
-    ).toBe(false);
-    expect(
-      sidebarFilePreviewMatches({ ...preview, active: false }, preview),
-    ).toBe(false);
-  });
-
-  it("keeps an active preview when another pane is selected", () => {
-    const preview = {
-      active: true,
-      explorerId: "explorer-1",
-      paneId: "center",
-      path: "src/index.ts",
-      projectId: "project-1",
-    };
-
-    expect(sidebarFilePreviewAfterPaneSelection(preview, "right")).toBe(
-      preview,
-    );
-    expect(sidebarFilePreviewAfterPaneSelection(preview, "bottom")).toBe(
-      preview,
-    );
-    expect(sidebarFilePreviewAfterPaneSelection(preview, "center")).toEqual({
-      ...preview,
-      active: false,
-    });
-  });
-
-  it("treats an active preview as focused only in its assigned pane", () => {
-    const preview = {
-      active: true,
-      explorerId: "explorer-1",
-      paneId: "center",
-      path: "src/index.ts",
-      projectId: "project-1",
-    };
-
-    expect(
-      sidebarFilePreviewHasPaneFocus({ focusedPaneId: "center", preview }),
-    ).toBe(true);
-    expect(
-      sidebarFilePreviewHasPaneFocus({ focusedPaneId: "right", preview }),
-    ).toBe(false);
-    expect(
-      sidebarFilePreviewHasPaneFocus({ focusedPaneId: "bottom", preview }),
-    ).toBe(false);
-  });
-
   it("prewarms sidebar workbenches only in the main window", () => {
     const sidebarExplorer = explorer("sidebar", "worktree-1");
     const initial = {
@@ -117,41 +50,6 @@ describe("sidebar file tabs", () => {
     expect(
       sidebarExplorerPrewarmTarget({ ...initial, isPopout: true }),
     ).toBeNull();
-  });
-
-  it("hides an active file preview while a managed screen owns the content area", () => {
-    const visible = {
-      previewActive: true,
-      previewExplorerAvailable: true,
-      showImporter: false,
-      showProjectSettings: false,
-      showServerAdmin: false,
-      showSettings: false,
-    };
-
-    expect(sidebarFilePreviewIsVisible(visible)).toBe(true);
-    for (const managedScreen of [
-      "showImporter",
-      "showProjectSettings",
-      "showServerAdmin",
-      "showSettings",
-    ] as const) {
-      expect(
-        sidebarFilePreviewIsVisible({
-          ...visible,
-          [managedScreen]: true,
-        }),
-      ).toBe(false);
-    }
-    expect(
-      sidebarFilePreviewIsVisible({
-        ...visible,
-        previewExplorerAvailable: false,
-      }),
-    ).toBe(false);
-    expect(
-      sidebarFilePreviewIsVisible({ ...visible, previewActive: false }),
-    ).toBe(false);
   });
 
   it("prefers the hidden Explorer for the active worktree", () => {
@@ -255,39 +153,7 @@ describe("sidebar file tabs", () => {
     ).toBe(preview);
   });
 
-  it("keeps one preview view while its temporary file changes", () => {
-    expect(
-      sidebarFilePreviewViewKey({
-        explorerId: "explorer-1",
-        path: "src/first.ts",
-      }),
-    ).toBe(
-      sidebarFilePreviewViewKey({
-        explorerId: "explorer-1",
-        path: "README.md",
-      }),
-    );
-    expect(
-      sidebarFilePreviewViewKey({
-        explorerId: "explorer-1",
-        path: "src/index.ts",
-      }),
-    ).not.toBe(
-      sidebarFilePreviewViewKey({
-        explorerId: "explorer-2",
-        path: "src/index.ts",
-      }),
-    );
-  });
-
   it("keeps sidebar files in center panes when a dock is focused", () => {
-    const preview = {
-      active: false,
-      explorerId: "sidebar-explorer",
-      paneId: "previous-group",
-      path: "src/previous.ts",
-      projectId: "project-1",
-    };
     const panes = [
       { id: "current-group", region: "center" as const },
       { id: "previous-group", region: "center" as const },
@@ -298,25 +164,19 @@ describe("sidebar file tabs", () => {
     expect(
       sidebarFileTargetPaneId({
         activePaneId: "current-group",
-        explorerId: "sidebar-explorer",
         panes,
-        preview,
       }),
     ).toBe("current-group");
     expect(
       sidebarFileTargetPaneId({
         activePaneId: "right-dock",
-        explorerId: "sidebar-explorer",
         panes,
-        preview,
       }),
-    ).toBe("previous-group");
+    ).toBe("current-group");
     expect(
       sidebarFileTargetPaneId({
         activePaneId: "bottom-dock",
-        explorerId: "other-explorer",
         panes,
-        preview: { ...preview, paneId: "right-dock" },
       }),
     ).toBe("current-group");
   });
@@ -335,6 +195,30 @@ describe("sidebar file tabs", () => {
     ).toBe(pinned);
     expect(tabbedExplorerIds(layout("pinned"))).toEqual(new Set(["pinned"]));
     expect(sidebarFileName("src/index.ts")).toBe("index.ts");
+  });
+
+  it("uses the first center pane when the remembered pane no longer exists", () => {
+    expect(
+      sidebarFileTargetPaneId({
+        activePaneId: "removed",
+        panes: [
+          { id: "dock", region: "right" },
+          { id: "center", region: "center" },
+        ],
+      }),
+    ).toBe("center");
+  });
+
+  it("does not invent a center target for an empty or dock-only layout", () => {
+    expect(
+      sidebarFileTargetPaneId({ activePaneId: null, panes: [] }),
+    ).toBeNull();
+    expect(
+      sidebarFileTargetPaneId({
+        activePaneId: "dock",
+        panes: [{ id: "dock", region: "right" }],
+      }),
+    ).toBeNull();
   });
 
   it("scopes connected Explorer tabs to the panes owned by this window", () => {

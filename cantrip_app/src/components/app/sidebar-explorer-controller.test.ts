@@ -254,8 +254,8 @@ describe("sidebar Explorer provisioning", () => {
   });
 });
 
-describe("sidebar preview ownership handoff", () => {
-  it("keeps the promoted preview surface addressable without returning it to the file tree under Strict Mode", async () => {
+describe("sidebar tree ownership", () => {
+  it("never repurposes a tabbed Explorer as the sidebar tree under Strict Mode", async () => {
     const pinned = {
       id: "explorer-pinned",
       projectId: "project-1",
@@ -279,13 +279,6 @@ describe("sidebar preview ownership handoff", () => {
     const worktrees = [
       { id: "worktree-1", isPrimary: true },
     ] as ProjectWorktreeSummary[];
-    const preview = {
-      active: true,
-      explorerId: pinned.id,
-      paneId: "group-1",
-      path: "src/first.ts",
-      projectId: "project-1",
-    };
     const observed: {
       current: ReturnType<typeof useSidebarExplorerModel> | null;
     } = { current: null };
@@ -298,9 +291,6 @@ describe("sidebar preview ownership handoff", () => {
           projectOverviewPopoutTarget: null,
         },
         explorers,
-        fileState: {
-          sidebarFilePreview: preview,
-        },
         openCreatedTab: vi.fn(),
         selectedProjectId: "project-1",
         selectedSurface: undefined,
@@ -320,7 +310,6 @@ describe("sidebar preview ownership handoff", () => {
         ),
       );
     });
-    expect(observed.current?.sidebarPreviewExplorer).toBe(pinned);
     expect(observed.current?.sidebarExplorer).toBeNull();
 
     await act(async () => {
@@ -332,7 +321,6 @@ describe("sidebar preview ownership handoff", () => {
         ),
       );
     });
-    expect(observed.current?.sidebarPreviewExplorer).toBe(pinned);
     expect(observed.current?.sidebarExplorer).toBe(replacement);
     await act(async () => renderer.unmount());
   });

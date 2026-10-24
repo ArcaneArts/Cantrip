@@ -7,51 +7,7 @@ import type {
 
 import type { ProjectSurface } from "./project-surface";
 
-export interface SidebarFilePreviewState {
-  active: boolean;
-  explorerId: string;
-  paneId: string | null;
-  path: string;
-  projectId: string;
-}
-
 export const SIDEBAR_EXPLORER_POOL_SIZE = 2;
-
-export function sidebarFilePreviewMatches(
-  preview: SidebarFilePreviewState | null,
-  target: Omit<SidebarFilePreviewState, "active">,
-): boolean {
-  return Boolean(
-    preview?.active &&
-    preview.explorerId === target.explorerId &&
-    preview.paneId === target.paneId &&
-    preview.path === target.path &&
-    preview.projectId === target.projectId,
-  );
-}
-
-export function sidebarFilePreviewAfterPaneSelection(
-  preview: SidebarFilePreviewState | null,
-  selectedPaneId: string | null,
-): SidebarFilePreviewState | null {
-  if (!preview?.active) return preview;
-  if (preview.paneId && selectedPaneId && preview.paneId !== selectedPaneId) {
-    return preview;
-  }
-  return { ...preview, active: false };
-}
-
-export function sidebarFilePreviewHasPaneFocus({
-  focusedPaneId,
-  preview,
-}: {
-  focusedPaneId: string | null;
-  preview: SidebarFilePreviewState | null;
-}): boolean {
-  return Boolean(
-    preview?.active && (!preview.paneId || preview.paneId === focusedPaneId),
-  );
-}
 
 export function sidebarExplorerPrewarmTarget({
   isPopout,
@@ -81,60 +37,18 @@ export function moveSidebarPath(
     : path;
 }
 
-export function sidebarFilePreviewViewKey(
-  preview: Pick<SidebarFilePreviewState, "explorerId" | "path">,
-): string {
-  return `sidebar-file-preview:${preview.explorerId}`;
-}
-
 export function sidebarFileTargetPaneId({
   activePaneId,
-  explorerId,
   panes,
-  preview,
 }: {
   activePaneId: string | null | undefined;
-  explorerId: string;
   panes: readonly Pick<ProjectPaneSummary, "id" | "region">[];
-  preview: SidebarFilePreviewState | null;
 }): string | null {
   const centerPaneIds = new Set(
     panes.filter(({ region }) => region === "center").map(({ id }) => id),
   );
   if (activePaneId && centerPaneIds.has(activePaneId)) return activePaneId;
-  if (
-    preview?.explorerId === explorerId &&
-    preview.paneId &&
-    centerPaneIds.has(preview.paneId)
-  ) {
-    return preview.paneId;
-  }
   return panes.find(({ region }) => region === "center")?.id ?? null;
-}
-
-export function sidebarFilePreviewIsVisible({
-  previewActive,
-  previewExplorerAvailable,
-  showImporter,
-  showProjectSettings,
-  showServerAdmin,
-  showSettings,
-}: {
-  previewActive: boolean;
-  previewExplorerAvailable: boolean;
-  showImporter: boolean;
-  showProjectSettings: boolean;
-  showServerAdmin: boolean;
-  showSettings: boolean;
-}): boolean {
-  return Boolean(
-    previewActive &&
-    previewExplorerAvailable &&
-    !showImporter &&
-    !showProjectSettings &&
-    !showServerAdmin &&
-    !showSettings,
-  );
 }
 
 export function tabbedExplorerIds(

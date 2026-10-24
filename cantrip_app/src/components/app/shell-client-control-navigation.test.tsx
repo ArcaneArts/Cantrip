@@ -111,7 +111,6 @@ async function mount(initial = layout()) {
     setFolderProjectDialogOpen: vi.fn(),
     setPendingSurfaceSelection: vi.fn(),
     setProjectTaskChatIds: vi.fn(),
-    setSidebarFilePreview: vi.fn(),
     setWorkspaceSelection: vi.fn<NavigationInput["setWorkspaceSelection"]>(
       (update) => {
         selection = typeof update === "function" ? update(selection) : update;

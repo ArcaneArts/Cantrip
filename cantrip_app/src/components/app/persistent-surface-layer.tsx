@@ -18,12 +18,8 @@ import {
   onClientSessionIdentityChanged,
 } from "@/lib/client-session";
 import { ProjectPaneTabStrip } from "@/components/workspace/project-tab-bar";
-import { dockPresentationsForSidebarPreview } from "@/components/app/project-workspace-frame-model";
 import { revealProjectInNativeFileManager } from "@/lib/desktop-project-share";
-import {
-  sidebarExplorerPrewarmTarget,
-  sidebarFileName,
-} from "@/lib/sidebar-file-tabs";
+import { sidebarExplorerPrewarmTarget } from "@/lib/sidebar-file-tabs";
 type PersistentSurfaceBindings = Readonly<Record<string, any>>;
 const browserSessionKey = () =>
   JSON.stringify(getClientSessionIdentitySnapshot());
@@ -41,11 +37,9 @@ export function PersistentSurfaceLayer({
     browserSessionKey,
   );
   const {
-    activateSidebarFilePreview,
     activeProjectTaskChat,
     chatConsoleOpenChats,
     appMode,
-    closeSidebarFilePreview,
     codeAppearance,
     codeSurfaceVisible,
     compactShell,
@@ -69,7 +63,6 @@ export function PersistentSurfaceLayer({
     incomingFileDocumentViews,
     incomingCodeViews,
     handleExplorerLifecycleChange,
-    handleSidebarFilePreviewLifecycleChange,
     isPopout,
     newTerminal,
     onlineWorkerIds,
@@ -81,7 +74,6 @@ export function PersistentSurfaceLayer({
     openTerminalLinkExternally,
     ownedTerminals,
     pendingTerminalInputs,
-    pinSidebarFilePath,
     selectedPaneSurfaces,
     projects,
     projectSurfaces,
@@ -101,7 +93,6 @@ export function PersistentSurfaceLayer({
     setCodeHeader,
     setExplorerHeader,
     setPendingTerminalInputs,
-    setSidebarFilePreviewHeader,
     setTerminalCommandPaletteTerminalId,
     setTerminalServiceTerminalId,
     showArchivedStandaloneChats,
@@ -109,13 +100,8 @@ export function PersistentSurfaceLayer({
     showProjectSettings,
     showServerAdmin,
     showSettings,
-    showSidebarPreviewTab,
-    sidebarFilePreview,
-    sidebarFilePreviewPaneVisible,
-    sidebarFilePreviewVisible,
     sidebarInlineExplorer,
     sidebarPreviewSuccessorExplorer,
-    sidebarPreviewExplorer,
     terminalCommandPaletteTerminalId,
     terminalServiceTerminalId,
     terminalSurfaceVisible,
@@ -123,18 +109,7 @@ export function PersistentSurfaceLayer({
     worktreeStatuses,
     worktrees,
   } = bindings;
-  const {
-    activePreviewPresentation: activeSidebarPreviewPresentation,
-    surfacePresentations: surfaceDockPanePresentations,
-  } = useMemo(
-    () =>
-      dockPresentationsForSidebarPreview(
-        dockPanePresentations,
-        sidebarFilePreview,
-        sidebarFilePreviewPaneVisible,
-      ),
-    [dockPanePresentations, sidebarFilePreview, sidebarFilePreviewPaneVisible],
-  );
+  const surfaceDockPanePresentations = dockPanePresentations;
   const dockCodePlacements = useMemo(
     () =>
       surfaceDockPanePresentations?.flatMap((presentation: any) =>
@@ -314,28 +289,8 @@ export function PersistentSurfaceLayer({
             ]
           : [],
     );
-    if (
-      !placements ||
-      !activeSidebarPreviewPresentation ||
-      !sidebarPreviewExplorer
-    ) {
-      return placements;
-    }
-    return [
-      ...placements,
-      {
-        explorer: sidebarPreviewExplorer,
-        focused: activeSidebarPreviewPresentation.focused,
-        gridArea: activeSidebarPreviewPresentation.gridArea,
-        paneId: activeSidebarPreviewPresentation.pane.id,
-        portalTarget: activeSidebarPreviewPresentation.portalTarget,
-      },
-    ];
-  }, [
-    activeSidebarPreviewPresentation,
-    sidebarPreviewExplorer,
-    surfaceDockPanePresentations,
-  ]);
+    return placements;
+  }, [surfaceDockPanePresentations]);
   return (
     <>
       <PersistentRemoteDesktopViews
@@ -457,9 +412,8 @@ export function PersistentSurfaceLayer({
           creatingKinds={creatingSurfaceKinds}
           surfaces={selectedPaneSurfaces}
           onCreate={(kind, target) => {
-            const paneId = sidebarFilePreview?.active
-              ? sidebarFilePreview.paneId
-              : (selectedPane?.id ?? selectedPaneSurfaces.at(-1)?.paneId);
+            const paneId =
+              selectedPane?.id ?? selectedPaneSurfaces.at(-1)?.paneId;
             if (selectedProject) {
               createProjectSurface(
                 selectedProject.id,
@@ -477,26 +431,6 @@ export function PersistentSurfaceLayer({
           paneId={selectedPane?.id}
           paneRegion={selectedPane?.region}
           placement={selectedPlacementContext}
-          previewFile={
-            showSidebarPreviewTab && sidebarFilePreview
-              ? {
-                  active: sidebarFilePreview.active,
-                  path: sidebarFilePreview.path,
-                  projectId: sidebarFilePreview.projectId,
-                  title: sidebarFileName(sidebarFilePreview.path),
-                  onClose: closeSidebarFilePreview,
-                  onPin: () => {
-                    if (sidebarPreviewExplorer) {
-                      void pinSidebarFilePath(
-                        sidebarPreviewExplorer,
-                        sidebarFilePreview.path,
-                      );
-                    }
-                  },
-                  onSelect: activateSidebarFilePreview,
-                }
-              : undefined
-          }
           projectId={selectedProject.id}
         />
       ) : null}
@@ -651,35 +585,15 @@ export function PersistentSurfaceLayer({
           incomingViews={incomingExplorerViews}
           initialTransfers={stagedExplorerTransfers}
           activeExplorer={
-            appMode === "ide" && sidebarFilePreviewPaneVisible
-              ? (sidebarPreviewExplorer ?? null)
-              : explorerSurfaceVisible
-                ? (selectedExplorer ?? null)
-                : null
-          }
-          transientFile={
-            appMode === "ide" && sidebarFilePreview
-              ? {
-                  explorerId: sidebarFilePreview.explorerId,
-                  file: {
-                    close: closeSidebarFilePreview,
-                    path: sidebarFilePreview.path,
-                  },
-                }
-              : undefined
+            explorerSurfaceVisible ? (selectedExplorer ?? null) : null
           }
           appearance={codeAppearance}
           graphRequest={explorerGraphRequest}
           gitStatuses={worktreeStatuses}
           key={selectedProjectId ?? "no-project"}
           onChanged={handleExplorerChanged}
-          onHeaderChange={
-            sidebarFilePreviewVisible
-              ? setSidebarFilePreviewHeader
-              : setExplorerHeader
-          }
+          onHeaderChange={setExplorerHeader}
           onLifecycleChange={handleExplorerLifecycleChange}
-          onTransientLifecycleChange={handleSidebarFilePreviewLifecycleChange}
           onOpenFile={desktopRuntime ? openExplorerFileWindow : undefined}
           onOpenGraphFile={(explorer, path) =>
             openProjectExplorerFile(

@@ -60,7 +60,6 @@ function commandHarness(
     setDesktopSidebarDrawerOpen: vi.fn(),
     setFolderProjectDialogOpen: vi.fn(),
     setPendingSurfaceSelection: vi.fn(),
-    setSidebarFilePreview: vi.fn(),
     setWorkspaceSelection: vi.fn(),
     settings: undefined,
     visibleProjects: [],
@@ -221,7 +220,6 @@ describe("project task selection", () => {
           taskIds = typeof update === "function" ? update(taskIds) : update;
         },
       ),
-      setSidebarFilePreview: vi.fn(),
       setWorkspaceSelection: vi.fn<Options["setWorkspaceSelection"]>(
         (update) => {
           selection = typeof update === "function" ? update(selection) : update;
@@ -732,7 +730,6 @@ describe("surface view open-or-focus", () => {
       setFolderProjectDialogOpen: vi.fn(),
       setPendingSurfaceSelection,
       setProjectTaskChatIds: vi.fn(),
-      setSidebarFilePreview: vi.fn(),
       setWorkspaceSelection,
       surfaceOpenRequestRef: { current: 0 },
     } as unknown as ProjectCommandOptions;
@@ -835,7 +832,6 @@ describe("created tab selection", () => {
       setFolderProjectDialogOpen: vi.fn(),
       setPendingSurfaceSelection: vi.fn(),
       setProjectTaskChatIds: vi.fn(),
-      setSidebarFilePreview: vi.fn(),
       setWorkspaceSelection,
     } as unknown as ProjectCommandOptions;
     const project = {
@@ -912,7 +908,6 @@ describe("created tab selection", () => {
       setFolderProjectDialogOpen: vi.fn(),
       setPendingSurfaceSelection,
       setProjectTaskChatIds: vi.fn(),
-      setSidebarFilePreview: vi.fn(),
       setWorkspaceSelection,
     } as unknown as ProjectCommandOptions;
 

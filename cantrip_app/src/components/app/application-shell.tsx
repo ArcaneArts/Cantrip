@@ -163,11 +163,6 @@ import {
   runtimeForRunTerminal,
   runTerminalTargetLabel,
 } from "@/lib/run-terminal-model";
-import {
-  sidebarFilePreviewAfterPaneSelection,
-  sidebarFilePreviewHasPaneFocus,
-  sidebarFilePreviewIsVisible,
-} from "@/lib/sidebar-file-tabs";
 import { projectScriptCommandDestination } from "@/lib/project-script-command";
 import type { ProjectSurface } from "@/lib/project-surface";
 import {
@@ -372,12 +367,7 @@ export function App() {
     setWorkspaceSelection,
   ]);
   const sidebarFileState = useSidebarFileState();
-  const {
-    explorerGraphRequest,
-    setExplorerGraphRequest,
-    setSidebarFilePreview,
-    sidebarFilePreview,
-  } = sidebarFileState;
+  const { explorerGraphRequest, setExplorerGraphRequest } = sidebarFileState;
   const [chatConsoleOpenChats, setChatConsoleOpenChats] = useState<
     ReadonlySet<string>
   >(() => new Set());
@@ -445,17 +435,12 @@ export function App() {
     string | "new" | null
   >(null);
   useEffect(() => setRunConfigurationEditorId(null), [selectedProjectId]);
-  const sidebarFilePreviewFocused = sidebarFilePreviewHasPaneFocus({
-    focusedPaneId: workspaceSelection.focusedPaneId,
-    preview: sidebarFilePreview,
-  });
   const [showProjectOverview, setShowProjectOverview] = useState(false);
   useEffect(
     () => setShowProjectOverview(false),
     [selectedProjectId, selectedTabKey, showSettings, showProjectSettings],
   );
   const projectOverviewSelected =
-    (showProjectOverview || !sidebarFilePreviewFocused) &&
     !showImporter &&
     !showSettings &&
     !showArchivedStandaloneChats &&
@@ -509,8 +494,6 @@ export function App() {
     useState<GitHistoryHeaderState | null>(null);
   const [explorerHeader, setExplorerHeader] =
     useState<ExplorerHeaderState | null>(null);
-  const [sidebarFilePreviewHeader, setSidebarFilePreviewHeader] =
-    useState<ExplorerHeaderState | null>(null);
   const [codeHeader, setCodeHeader] = useState<CodeHeaderState | null>(null);
   const desktopPopoutStatus = useDesktopPopoutStatusState();
   const { popoutError, popoutPending, setPopoutError } = desktopPopoutStatus;
@@ -548,11 +531,8 @@ export function App() {
     }>
   >([]);
   const explorerLifecycle = useExplorerLifecycleRefs();
-  const {
-    explorerLifecycleRef,
-    sidebarExplorerCreationKeyRef,
-    sidebarFilePreviewLifecycleRef,
-  } = explorerLifecycle;
+  const { explorerLifecycleRef, sidebarExplorerCreationKeyRef } =
+    explorerLifecycle;
   const { closeSurfaceViewMutation } = useProjectSurfaceViewOperations({
     workspace: ownedWorkspace,
     beforeClose: async (surface) => {
@@ -609,16 +589,13 @@ export function App() {
   const fileLifecycleRegistered = useCallback(() => {
     setFileLifecycleRevision((revision) => revision + 1);
   }, []);
-  const {
-    handleExplorerChanged,
-    handleExplorerLifecycleChange,
-    handleSidebarFilePreviewLifecycleChange,
-  } = useExplorerLifecycleRegistration({
-    lifecycle: explorerLifecycle,
-    queryClient,
-    onDirtyFile: pinDirtyOwnedFile,
-    onRegistered: fileLifecycleRegistered,
-  });
+  const { handleExplorerChanged, handleExplorerLifecycleChange } =
+    useExplorerLifecycleRegistration({
+      lifecycle: explorerLifecycle,
+      queryClient,
+      onDirtyFile: pinDirtyOwnedFile,
+      onRegistered: fileLifecycleRegistered,
+    });
 
   const {
     closeProjectTask,
@@ -651,7 +628,6 @@ export function App() {
     setFolderProjectDialogOpen,
     setPendingSurfaceSelection: setPendingSurfaceSelectionWithOpenCancellation,
     setProjectTaskChatIds,
-    setSidebarFilePreview,
     surfaceOpenRequestRef,
     setWorkspaceSelection,
   });
@@ -1123,7 +1099,6 @@ export function App() {
       projectOverviewPopoutTarget,
     },
     explorers: explorers.data,
-    fileState: sidebarFileState,
     openCreatedTab,
     selectedProjectId,
     selectedSurface,
@@ -1137,11 +1112,9 @@ export function App() {
     selectedProjectIdRef,
     sidebarDesiredWorktreeId,
     sidebarExplorer,
-    sidebarFilePreviewRef,
     sidebarInlineExplorer,
     sidebarInlineExplorers,
     sidebarPreviewSuccessorExplorer,
-    sidebarPreviewExplorer,
   } = sidebarExplorerModel;
   const {
     onlineWorkerIds,
@@ -1152,7 +1125,6 @@ export function App() {
   } = useSidebarExplorerProvisioning({
     explorers: explorers.data,
     explorersIsSuccess: explorers.isSuccess,
-    fileState: sidebarFileState,
     isPopout,
     lifecycle: explorerLifecycle,
     model: sidebarExplorerModel,
@@ -1171,41 +1143,26 @@ export function App() {
     () => mobileProjectSurfaces(projectSurfaces),
     [projectSurfaces],
   );
-  const sidebarFilePreviewPaneVisible = sidebarFilePreviewIsVisible({
-    previewActive: sidebarFilePreview?.active ?? false,
-    previewExplorerAvailable: Boolean(sidebarPreviewExplorer),
-    showImporter,
-    showProjectSettings,
-    showServerAdmin,
-    showSettings,
-  });
-  const sidebarFilePreviewVisible =
-    sidebarFilePreviewPaneVisible && sidebarFilePreviewFocused;
   const {
     orderedProjectSurfaces: projectInventorySurfaces,
     selectedPaneSurfaces,
     selectedPane,
-    showSidebarPreviewTab,
   } = workspacePaneSelection({
     projectSurfaceIndex,
-    sidebarFilePreview,
     tabLayout: tabLayout.data,
     workspaceSelection,
   });
   const selectedProjectView =
-    !sidebarFilePreviewVisible &&
-    (selectedSurface?.kind === "history" ||
-      selectedSurface?.kind === "graph" ||
-      selectedSurface?.kind === "issues" ||
-      selectedSurface?.kind === "prs" ||
-      selectedSurface?.kind === "actions" ||
-      selectedSurface?.kind === "remote-desktop")
+    selectedSurface?.kind === "history" ||
+    selectedSurface?.kind === "graph" ||
+    selectedSurface?.kind === "issues" ||
+    selectedSurface?.kind === "prs" ||
+    selectedSurface?.kind === "actions" ||
+    selectedSurface?.kind === "remote-desktop"
       ? selectedSurface.entity
       : undefined;
   const selectedBuiltInSurface =
-    !sidebarFilePreviewVisible && selectedSurface?.kind === "builtin"
-      ? selectedSurface
-      : undefined;
+    selectedSurface?.kind === "builtin" ? selectedSurface : undefined;
   const gitHistoryProject =
     selectedProject?.capabilities.git &&
     selectedProjectView &&
@@ -1242,9 +1199,7 @@ export function App() {
       worktrees.data?.[0]?.id ??
       null);
   const selectedChat =
-    !sidebarFilePreviewVisible && selectedSurface?.kind === "chat"
-      ? selectedSurface.entity
-      : undefined;
+    selectedSurface?.kind === "chat" ? selectedSurface.entity : undefined;
   const activeProjectTaskChat = activeProjectTaskChatId
     ? chats.data?.find(({ id }) => id === activeProjectTaskChatId)
     : undefined;
@@ -1323,9 +1278,7 @@ export function App() {
     selectedStandaloneChat?.id,
   ]);
   const selectedStandaloneTerminal =
-    !sidebarFilePreviewVisible && selectedSurface?.kind === "terminal"
-      ? selectedSurface.entity
-      : undefined;
+    selectedSurface?.kind === "terminal" ? selectedSurface.entity : undefined;
   const linkedConsoleTerminal = chatConsoleTerminal(
     activeChat?.id,
     chatConsoleOpenChats,
@@ -1465,23 +1418,14 @@ export function App() {
   const activeRelocation = activeChatRelocationJob(chatRelocations.data ?? []);
   const latestRelocation = latestChatRelocationJob(chatRelocations.data ?? []);
   const currentRelocation = activeRelocation ?? latestRelocation;
-  const selectedExplorer = sidebarFilePreviewVisible
-    ? (sidebarPreviewExplorer ?? undefined)
-    : selectedSurface?.kind === "explorer"
-      ? selectedSurface.entity
-      : undefined;
+  const selectedExplorer =
+    selectedSurface?.kind === "explorer" ? selectedSurface.entity : undefined;
   const selectedFileDocument =
-    !sidebarFilePreviewVisible && selectedSurface?.kind === "file"
-      ? selectedSurface.entity
-      : undefined;
+    selectedSurface?.kind === "file" ? selectedSurface.entity : undefined;
   const selectedBrowser =
-    !sidebarFilePreviewVisible && selectedSurface?.kind === "browser"
-      ? selectedSurface.entity
-      : undefined;
+    selectedSurface?.kind === "browser" ? selectedSurface.entity : undefined;
   const selectedCodeTab =
-    !sidebarFilePreviewVisible && selectedSurface?.kind === "code"
-      ? selectedSurface.entity
-      : undefined;
+    selectedSurface?.kind === "code" ? selectedSurface.entity : undefined;
   const visibleWorkerObservationDemands = useMemo(() => {
     const visibleWorktreeIds = new Set(
       [
@@ -1650,9 +1594,7 @@ export function App() {
   const selectedWorker = workers.data?.find(
     (worker) => worker.workerId === selectedWorkerId,
   );
-  const activeExplorerHeader = sidebarFilePreviewVisible
-    ? sidebarFilePreviewHeader
-    : explorerHeader;
+  const activeExplorerHeader = explorerHeader;
   const explorerDisplayPath = selectedFileDocument
     ? `${activeWorktree?.displayPath ? `${activeWorktree.displayPath}/` : ""}${selectedFileDocument.path}`
     : selectedExplorer
@@ -1958,7 +1900,6 @@ export function App() {
     setDesktopSidebarDrawerOpen,
     setFolderProjectDialogOpen,
     setPendingSurfaceSelection: setPendingSurfaceSelectionWithOpenCancellation,
-    setSidebarFilePreview,
     setWorkspaceSelection,
     settings: settings.data,
     visibleProjects,
@@ -1985,13 +1926,6 @@ export function App() {
   });
   const selectTopTab = (tabKey: string) => {
     const layout = tabLayout.data;
-    const targetPaneId =
-      layout?.panes.find(({ members }) =>
-        members.some((member) => member.tabKey === tabKey),
-      )?.id ?? null;
-    setSidebarFilePreview((current) =>
-      sidebarFilePreviewAfterPaneSelection(current, targetPaneId),
-    );
     if (layout) {
       setWorkspaceSelection((current) =>
         selectWorkspaceTab(current, layout, tabKey),
@@ -2064,12 +1998,9 @@ export function App() {
       model: desktopPopout,
       revealWorkspace,
       setPopoutError,
-      setSidebarFilePreview,
       setWorkspaceSelection,
     });
   const {
-    activateSidebarFilePreview,
-    closeSidebarFilePreview,
     createSidebarFolder,
     createSidebarFile,
     deleteSidebarFileEntry,
@@ -2090,7 +2021,6 @@ export function App() {
         : pinSidebarFileMutation.mutateAsync({ explorer, path }),
     createSidebarExplorerMutation,
     explorers: explorers.data,
-    fileState: sidebarFileState,
     lifecycle: explorerLifecycle,
     newGraphExplorer,
     newTerminal,
@@ -2100,7 +2030,6 @@ export function App() {
     selectedPane,
     setDesktopSidebarDrawerOpen,
     setPopoutError,
-    setWorkspaceSelection,
     sidebarExplorerCreationInput,
     sidebarExplorerCreationKey,
     tabLayout: tabLayout.data,
@@ -2199,13 +2128,13 @@ export function App() {
       if (!ownedWorkspace) throw new Error("File view ownership is unavailable.");
       await ownedWorkspace.controller.dispatch({ type: "file-mode", tabId, mode });
     },
-    activateSidebarFilePreview, activeChat, activeExplorerHeader,
+    activeChat, activeExplorerHeader,
     activePopout, activeProjectOverviewPopout, activeProjectOverviewSection, activeProjectTaskChat, activeProjectTaskChatId,
     activeProjectWorkspace, activeRelocation, activeWorktree, activeWorktreeId,
     activeWorktreeTarget, agentInspectOpenChats, appActionContext, appMode,
     appToast, archiveStandaloneChat, archivedStandaloneChats, beginSidebarResize, bindChatWorktree,
     bindWorktreeMutation, bootstrap, browsers, chatRelocationOpen, chatRelocations,
-    chatConsoleOpenChats, chats, closeCompactProject, closeProjectTask, closeSidebarFilePreview, codeAppearance,
+    chatConsoleOpenChats, chats, closeCompactProject, closeProjectTask, codeAppearance,
     codeHeader, codeTabs, stagedExplorerTransfers, stagedCodeTransfers, stagedTerminalTransfers, incomingTerminalViews, incomingExplorerViews, incomingFileDocumentViews, incomingCodeViews, incomingBrowserViews, incomingChatViews, incomingRemoteDesktopViews, commandBarOpen, compactManagedHeader, compactShell,
     contentRootRef, contentScrolled, createProjectSurface, createSidebarExplorerMutation, createSidebarFolder, createSidebarFile,
     createWorkspaceMutation, createWorktreeMutation, creatingSurfaceKinds, currentRelocation, deleteBrowserMutation, dockPresentationMutation,
@@ -2215,7 +2144,7 @@ export function App() {
     explorerDisplayPath, explorerFileTarget, explorerGraphRequest, explorers, finishSidebarResize,
     focusDetachedPane, folderProjectDialogMode, folderProjectDialogOpen, folderRevealLabel, folderSetupJobs,
     forkChatMutation, forkStandaloneChat, gitHistoryNavigation, gitHistoryHeader, gitHistoryProject, selectedPaneOwnedElsewhere, paneOwnedElsewhere,
-    handleExplorerChanged, handleExplorerLifecycleChange, handleSidebarFilePreviewLifecycleChange, handleWorkspaceDrop, isPopout,
+    handleExplorerChanged, handleExplorerLifecycleChange, handleWorkspaceDrop, isPopout,
     linkedConsoleChat, mobileNavigationSurfaces, mobileProjectSelectorOpen, moveSidebarResize, moveSurfaceToRegion,
     narrowViewport, newBrowser, newChat, newCodeTab, newExplorer,
     newRemoteDesktop, newStandaloneChat, newTask, newTerminal,
@@ -2249,13 +2178,13 @@ export function App() {
     setFolderProjectDialogMode, setFolderProjectDialogOpen, setGitHistoryHeader, setPendingSurfaceSelection,
     setPendingTerminalInputs, setProjectOverviewSection, setProjectOverviewWorktreeId, setRunConfigurationEditorId, setSettingsPolicyId,
     setSettingsSection, setShowArchivedStandaloneChats, setShowCustomizations, setShowImporter, setShowProjectSettings,
-    setShowServerAdmin, setShowSettings, setSidebarCollapsed, setSidebarFilePreviewHeader, setStandaloneFilePath,
+    setShowServerAdmin, setShowSettings, setSidebarCollapsed, setStandaloneFilePath,
     setStandaloneFilesOpen, setTerminalCommandPaletteTerminalId, setTerminalServiceTerminalId, setWorkspaceDragError, setWorktreeCreateTarget,
     settings, settingsPolicyId, settingsSection, showAppToast, showArchivedStandaloneChats,
     showChatConsole, showContentTitlebar, showCustomizations, showImporter, showProjectSettings,
-    showServerAdmin, showSettings, showSidebarPreviewTab, sidebarCollapsed, sidebarExplorer,
-    sidebarFilePreview, sidebarFilePreviewPaneVisible, sidebarFilePreviewVisible, sidebarFileWorkerId, sidebarFileWorkerOnline,
-    sidebarInlineExplorer, sidebarPreviewExplorer, sidebarPreviewSuccessorExplorer, sidebarRef, sidebarResizing, sidebarWidth,
+    showServerAdmin, showSettings, sidebarCollapsed, sidebarExplorer,
+    sidebarFileWorkerId, sidebarFileWorkerOnline,
+    sidebarInlineExplorer, sidebarPreviewSuccessorExplorer, sidebarRef, sidebarResizing, sidebarWidth,
     standaloneChatCreationAvailable, standaloneChatCreationUnavailableReason, standaloneChatWorkerAvailable, standaloneChats, standaloneFilePath,
     standaloneFilesOpen, stopAndDeleteRunTerminalMutation, surfaceCreationFailure, switchToChat, switchToIde,
     tabLayout, tabLayoutMutation, terminals, terminalCommandPaletteTerminalId, terminalServiceTerminalId, updateBrowserMutation, updateCodeTabMutation,

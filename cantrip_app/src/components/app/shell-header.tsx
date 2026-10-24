@@ -103,8 +103,6 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
     showSettings,
     showProjectOverview,
     setShowProjectOverview,
-    sidebarFilePreview,
-    sidebarFilePreviewVisible,
     sidebarToggleVisible,
     standaloneFilesOpen,
     switchToChat,
@@ -340,12 +338,7 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
                                             selectedFileDocument.path,
                                           )
                                         : selectedExplorer
-                                          ? sidebarFilePreviewVisible &&
-                                            sidebarFilePreview
-                                            ? sidebarFileName(
-                                                sidebarFilePreview.path,
-                                              )
-                                            : selectedExplorer.title
+                                          ? selectedExplorer.title
                                           : selectedTerminal
                                             ? selectedTerminal.linkedChatId
                                               ? (linkedConsoleChat?.title ??

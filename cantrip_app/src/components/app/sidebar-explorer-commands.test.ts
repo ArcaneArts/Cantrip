@@ -55,10 +55,8 @@ function commandHarness({
   ) => Promise<ExplorerSummary | null>;
   worktrees?: ProjectWorktreeSummary[];
 }) {
-  const setSidebarFilePreview = vi.fn();
   const legacyPin = vi.spyOn(api, "pinExplorer");
   const revealWorkspace = vi.fn();
-  const setWorkspaceSelection = vi.fn();
   const input = {
     openOwnedFile,
     createSidebarExplorerMutation: {
@@ -67,21 +65,9 @@ function commandHarness({
       reset: vi.fn(),
     },
     explorers: [previewOwner],
-    fileState: {
-      setSidebarFilePreview,
-      sidebarFilePreview: {
-        active: true,
-        explorerId: previewOwner.id,
-        paneId: "group-1",
-        path: "src/first.ts",
-        projectId: previewOwner.projectId,
-      },
-      waitForSidebarFileSuccessor: waitForSuccessor,
-    },
     lifecycle: {
       explorerLifecycleRef: { current: new Map() },
       sidebarExplorerCreationKeyRef: { current: null },
-      sidebarFilePreviewLifecycleRef: { current: null },
     },
     newGraphExplorer: { isPending: false, mutate: vi.fn(), reset: vi.fn() },
     newTerminal: { isPending: false, mutate: vi.fn(), reset: vi.fn() },
@@ -94,7 +80,6 @@ function commandHarness({
     selectedPane,
     setDesktopSidebarDrawerOpen: vi.fn(),
     setPopoutError: vi.fn(),
-    setWorkspaceSelection,
     sidebarExplorerCreationInput: null,
     sidebarExplorerCreationKey: null,
     tabLayout: layout,
@@ -104,8 +89,6 @@ function commandHarness({
     commands: createSidebarExplorerCommands(input),
     legacyPin,
     revealWorkspace,
-    setSidebarFilePreview,
-    setWorkspaceSelection,
     queryClient: input.queryClient,
     setPopoutError: input.setPopoutError,
   };
@@ -125,8 +108,6 @@ it("routes sidebar preview and pin through owned file views without a successor 
     false,
   );
   expect(harness.legacyPin).not.toHaveBeenCalled();
-  expect(harness.setSidebarFilePreview).not.toHaveBeenCalled();
-  expect(harness.setWorkspaceSelection).not.toHaveBeenCalled();
 });
 
 it("reports owned pin failure without falling back to legacy pinning", async () => {
@@ -247,7 +228,6 @@ describe("sidebar Explorer ownership commands", () => {
       entry.path,
       true,
     );
-    expect(harness.setSidebarFilePreview).not.toHaveBeenCalled();
   });
 
   it("opens and pins through ownership even when the Explorer already has a tab", async () => {
@@ -262,7 +242,6 @@ describe("sidebar Explorer ownership commands", () => {
       [previewOwner, entry.path, true],
       [previewOwner, entry.path, false],
     ]);
-    expect(harness.setSidebarFilePreview).not.toHaveBeenCalled();
     expect(harness.legacyPin).not.toHaveBeenCalled();
   });
 
@@ -289,34 +268,7 @@ describe("sidebar Explorer ownership commands", () => {
     await vi.waitFor(() =>
       expect(harness.setPopoutError).toHaveBeenCalledWith("offline"),
     );
-    expect(harness.setSidebarFilePreview).not.toHaveBeenCalled();
     expect(harness.revealWorkspace).not.toHaveBeenCalled();
-  });
-
-  it("refocuses an active preview after a dock pane was selected", () => {
-    const center = {
-      id: "group-1",
-      region: "center",
-      members: [],
-    } as unknown as ProjectTabLayoutSummary["panes"][number];
-    const right = {
-      id: "right-pane",
-      region: "right",
-      members: [],
-    } as unknown as ProjectTabLayoutSummary["panes"][number];
-    const dockLayout = {
-      panes: [center, right],
-    } as unknown as ProjectTabLayoutSummary;
-    const harness = commandHarness({
-      layout: dockLayout,
-      selectedPane: right,
-    });
-
-    harness.commands.activateSidebarFilePreview();
-
-    expect(harness.setWorkspaceSelection).toHaveBeenCalledTimes(1);
-    expect(harness.setSidebarFilePreview).not.toHaveBeenCalled();
-    expect(harness.revealWorkspace).toHaveBeenCalledTimes(1);
   });
 
   it("pins without waiting for a legacy successor or promoting an Explorer", async () => {
