@@ -408,6 +408,7 @@ const workspaceOwnershipExports = [
   "workspaceCommandSchema",
   "workspaceOwnershipSchema",
   "workspacePaneSchema",
+  "workspaceReceiptSchema",
   "workspaceTabSchema",
   "workspaceWindowSchema",
 ];
@@ -444,7 +445,7 @@ describe("protocol public surface compatibility", () => {
     expect(
       exportNames.filter((name) => retiredWorkbenchExports.includes(name)),
     ).toEqual([]);
-    expect(exportNames).toHaveLength(2082);
+    expect(exportNames).toHaveLength(2083);
     expect(
       exportNames.filter((name) => liveTrafficExports.includes(name)),
     ).toEqual(liveTrafficExports);

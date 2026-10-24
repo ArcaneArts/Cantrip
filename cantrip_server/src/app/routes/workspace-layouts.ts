@@ -1,6 +1,7 @@
 import {
   WorkspaceCommandError,
   workspaceCommandSchema,
+  workspaceReceiptSchema,
 } from "@cantrip/protocol";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import type { TabLayoutRouteDependencies } from "./tab-layouts.js";
@@ -79,7 +80,7 @@ export function installWorkspaceLayoutRoutes(
         input.data,
       );
       return result
-        ? reply.send(result)
+        ? reply.send(workspaceReceiptSchema.parse(result))
         : reply.code(404).send({ error: "Workspace not found." });
     } catch (error) {
       return failure(error, reply);

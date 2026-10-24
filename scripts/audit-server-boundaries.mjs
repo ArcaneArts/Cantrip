@@ -110,7 +110,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
     "601cfa1ef62b1fe37e7779ace69d80961404ad97ddc2089da85eef315183f9d9",
   applicationRoutes:
-    "80786c8fd1d6d3a502aa5546278cb9bad6c3905505040baebea3572c78615d34",
+    "61773f4a7c34a263177c5c73123e3d3ba29b3a50699947d725463f3ad7611eba",
   clientControlCommands:
     "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
   cliCommands:
@@ -163,6 +163,10 @@ const DURABLE_TABLE_CLASSIFICATIONS = {
   projectPolicyAssignments: "intentionally-public-control-plane",
   workspacePolicyAssignments: "intentionally-public-control-plane",
   tabGroups: "endpoint-protected",
+  // Workspace snapshots and exact-command receipts contain resource/placement
+  // identities plus opaque display-label envelopes, never document contents.
+  workspaceLayouts: "endpoint-protected",
+  workspaceCommandReceipts: "endpoint-protected",
   tabGroupMembers: "intentionally-public-control-plane",
   projectSources: "endpoint-protected",
   projectWorktrees: "endpoint-protected",
@@ -3420,6 +3424,17 @@ function applicationRouteContentClassification(route) {
   const native = nativeRouteContentClassification(route);
   if (native) return native;
   const key = `${route.method} ${route.path}`;
+  if (
+    /^\/api\/projects\/:projectId\/workspace-layouts\/:workspaceId(?:\/(?:seed|commands))?$/u.test(
+      route.path,
+    )
+  ) {
+    return {
+      classification: "endpoint-protected",
+      rationale:
+        "owner/project-authorized workspace placement and idempotent command receipts; resource identities, revisions and renderer generations are routing metadata; display labels remain opaque endpoint-protected envelopes; no document contents, paths or live buffers",
+    };
+  }
   if (key === "POST /api/internal/computer-use/authority") {
     return {
       classification: "intentionally-public-control-plane",

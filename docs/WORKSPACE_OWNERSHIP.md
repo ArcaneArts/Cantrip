@@ -101,7 +101,12 @@ server timeout-policy count on three platforms and Windows broken-symlink case).
 
 ## Cycle 3: durable workspace commands
 
-Branch: `codex/workspace-persistence`. PR/merge: pending.
+Branch: `codex/workspace-persistence`. [PR #2211](https://github.com/ArcaneArts/Cantrip/pull/2211)
+merged as `deb9f73cd`; Primary synchronized. All 13 new cases passed again against
+the merged tree; worktree recoverably archived. Broader CI exposed an attributable
+server-boundary inventory omission (three new routes and two tables), corrected
+in Cycle 4. Existing timeout-policy count and Windows symlink failures also
+remain; CI is not claimed green.
 
 - Additive PostgreSQL/PGlite workspace and receipt tables, scoped by authenticated
   owner, project, and client workspace. Layouts store protected metadata and
@@ -131,6 +136,41 @@ stale revisions/generations, HTTP validation, legacy-write isolation, and receip
 persistence across restart. Invalid ownership results now produce a command
 rejection (HTTP 400) instead of an unhandled schema error.
 Native two-window and mobile validation remain required after live integration.
+
+## Cycle 4: session-bound client command execution
+
+Branch: `codex/workspace-client-controller`. PR/merge: pending.
+
+- Added a single-window command queue using the protocol transition engine,
+  authoritative snapshots, and projected pending intents. Later operations wait
+  for earlier receipts rather than racing stale whole-layout mutations.
+- Confirmed revision rejection permits rebase; uncertain transport outcomes retain
+  the exact sent command/operation identity for receipt recovery. Automatic
+  conflict retries are bounded, with explicit retry retaining pending intent.
+- Older observations/acknowledgements cannot overwrite newer authoritative state.
+  Invalid dependent intents are rejected against the actual accepted state, not
+  silently rewritten. Renderer generation or workspace-scope changes fence the
+  controller; disposal rejects pending work and ignores delayed acknowledgements.
+- Added account/server-lifetime-bound workspace transport and a connection helper
+  that opens existing ownership, executes against the new endpoints, and disposes
+  on logout/identity change. No uncoordinated seed occurs on mount.
+- Shared validated receipt schema is now used by both server and client. It adds
+  one explicit protocol export while preserving the legacy compatibility fingerprint.
+- This controller is callable with the real API but is not yet the shell's layout
+  authority. Shell cutover, shared instance ownership, native import/handshake,
+  durable device identity, subscription wiring, and surface rendering remain open.
+
+- Reviewed and registered all three workspace routes and both durable tables in
+  the server content-boundary inventory. Labels remain opaque envelopes; no
+  document contents, paths, or live buffers are admitted by these contracts.
+
+Validation: 19 new deterministic client/transport tests passed, including a
+fresh rerun after boundary review. The broader focused client run passed 40
+tests; protocol tests passed 848; server workspace tests passed 13. App build
+and typecheck, server typecheck, source-corpus tests, large-file and whitespace
+checks passed. Server inventory and network tranche-two verification passed
+after the reviewed inventory correction. CI and merge are pending.
+Real native windows and mobile behavior are not established by these tests.
 
 ## Remaining implementation and acceptance ledger
 
