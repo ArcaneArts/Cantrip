@@ -2,6 +2,11 @@
 
 Status: implemented through Milestone 7.
 
+An identity-based ownership redesign is now in progress; see
+[the implementation record](WORKSPACE_OWNERSHIP.md). The detached placeholders
+and shared mobile placement described below remain current behavior until that
+cutover, not the target contract of the redesign.
+
 ## Panel controls
 
 Every visible surface owns its controls in a shared panel toolbar. Git reuses
