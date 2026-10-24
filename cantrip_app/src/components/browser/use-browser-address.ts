@@ -15,5 +15,10 @@ export function useBrowserAddress(initialUrl: string) {
   const followPage = useCallback((url: string) => {
     if (!dirty.current) setAddress(url);
   }, []);
-  return { address, edit, commit, followPage };
+  const restore = useCallback((value: string, isDirty: boolean) => {
+    dirty.current = isDirty;
+    setAddress(value);
+  }, []);
+  const isDirty = useCallback(() => dirty.current, []);
+  return { address, edit, commit, followPage, restore, isDirty };
 }

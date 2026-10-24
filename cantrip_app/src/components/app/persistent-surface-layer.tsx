@@ -261,6 +261,7 @@ export function PersistentSurfaceLayer({
     <>
       <Suspense fallback={null}>
         <PersistentBrowserViews
+          incomingViews={bindings.incomingBrowserViews}
           key={JSON.stringify([sessionKey, selectedProjectId])}
           owners={browserOwners}
           placements={browserPlacements}

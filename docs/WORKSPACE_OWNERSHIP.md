@@ -197,14 +197,39 @@ presentations; hidden views do not resize the worker viewport to hidden bounds.
 Address drafts survive blur and background page updates; navigation commits them
 and Escape cancels them. Shell callbacks retain the owning browser/project/pane.
 
-This is production integration, but not browser cross-window transfer: source
-quiescence, encrypted capture, passive destination restoration, and acknowledgment
-still need implementation. No new native/mobile interactive result is claimed.
+This persistent-browser increment merged in PR #2215 (`b2218469c`). Browser
+cross-window transfer is the next isolated increment described below.
 Regression tests cover draft retention, query gaps, ownership removal, responsive
 portal continuity, resource replacement, and shell callback routing. Final-tree
 app validation passed 518 files / 3,549 tests with 3 intentional skips; app
 typecheck, focused tests, formatting, boundary inventory, transport verification,
-and diff checks also passed. Interactive browser handoff remains unverified.
+and diff checks also passed.
+
+### Browser cross-window transfer increment (in progress)
+
+Browser tabs now join mixed-pane encrypted handoffs with exact tab/resource/
+project/worker scope validation. Source input is suspended, accepted asynchronous
+navigation/clipboard work and transport writes drain, and the destination restores
+the private address draft and captured viewport before acknowledging an actual
+rendered frame. The passive destination cannot navigate or repeat clipboard and
+metadata writes. Source retirement releases only its renderer attachment; the
+worker-owned Chromium session survives. Cancellation can reattach a retired source.
+
+Native fixture `editor-31072094-30ab-4528-a670-56753637d65b` verified an unsent
+address draft surviving pop-out and native-window close/return with the loaded
+page rendered in both destinations. Worker logs retained one browser runtime,
+temporarily two attachments during passive staging, and one after retirement.
+An earlier run exposed a missing initial-frame request after stream lanes opened;
+the rebuilt run passed that round trip after the correction. Repeated detach also
+displayed the preserved draft. A subsequent native automation interaction reported
+`noWindowsAvailable`; close-tab and concurrent-window acceptance are not claimed.
+The final passive clipboard/metadata guard still needs a final rebuilt QA replay.
+
+State-parser regression tests cover private draft preservation, malformed values,
+empty identities, and mismatched browser/project/worker reservations. The focused
+parser/operation-boundary/mixed-batch run passed 19 tests; app typecheck passed.
+Final-tree app validation passed 521 files / 3,569 tests with 3 intentional skips;
+app typecheck and diff checks passed. PR delivery remains pending for this increment.
 
 1. Complete first-class document/view separation beyond path-specific Explorer
    backing, safe preview replacement, and legacy preview/provisioning/rebind
