@@ -94,6 +94,37 @@ describe("desktop settings workspace", () => {
   );
 });
 
+describe("project overview safe area", () => {
+  it.each([
+    ["ide", true],
+    ["chat", true],
+    ["ide", false],
+    ["chat", false],
+  ])(
+    "reserves the mobile safe area only in compact %s mode (%s)",
+    (appMode, compactShell) => {
+      const setShowProjectOverview = vi.fn();
+      const header = ShellHeader({
+        bindings: {
+          appMode,
+          compactShell,
+          showProjectOverview: true,
+          setShowProjectOverview,
+        },
+      });
+
+      expect(
+        header.props.className.split(" ").includes("mobile-safe-top"),
+      ).toBe(compactShell);
+      expect(renderToStaticMarkup(header)).toContain(
+        appMode === "ide" ? "Back to Project" : "Back to Chat",
+      );
+      header.props.children[0].props.onClick();
+      expect(setShowProjectOverview).toHaveBeenCalledExactlyOnceWith(false);
+    },
+  );
+});
+
 describe("ShellHeader mobile Chat chrome", () => {
   it("renders one Chat header after switching from a selected IDE project", () => {
     const markup = renderToStaticMarkup(

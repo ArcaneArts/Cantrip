@@ -136,6 +136,7 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
       <header
         className={cn(
           "relative z-30 flex shrink-0 items-center gap-4 px-4",
+          compactShell && "mobile-safe-top",
           overlayTitlebar ? "h-8 text-xs" : "h-16 text-sm",
         )}
         data-slot="content-titlebar"
