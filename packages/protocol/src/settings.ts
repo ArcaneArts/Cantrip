@@ -54,7 +54,7 @@ export const userSettingsSchema = z.object({
   proMode: z.boolean(),
   proModeOpacity: z.number().int().min(0).max(100),
   contentGutters: z.boolean().default(false),
-  eliteMode: z.boolean().default(true),
+  eliteMode: z.boolean().default(false),
   eliteRevealConfig: eliteRevealConfigSchema.default(
     DEFAULT_ELITE_REVEAL_CONFIG,
   ),
