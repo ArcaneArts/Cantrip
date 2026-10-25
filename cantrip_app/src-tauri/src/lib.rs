@@ -27,6 +27,7 @@ use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 #[cfg(desktop)]
 use tauri_plugin_window_state::StateFlags;
 
+mod desktop_quit;
 mod desktop_update;
 #[cfg(desktop)]
 mod desktop_window_placement;
@@ -509,6 +510,20 @@ fn setup_macos_application_menu(app: &tauri::App) -> tauri::Result<()> {
         true,
         Some("CmdOrCtrl+Q"),
     )?)?;
+    // Isolated native QA exposes the real tray action without ambiguous tray icons.
+    #[cfg(debug_assertions)]
+    if std::env::var("CANTRIP_QA_RESTART_ON_EXIT").as_deref() == Ok("true")
+        && std::env::var("CANTRIP_QA_BUNDLE_ID")
+            .is_ok_and(|id| id.starts_with("art.cantrip.qa.workspace"))
+    {
+        application_menu.append(&MenuItem::with_id(
+            app,
+            "qa-quit-cantrip",
+            "QA Quit Cantrip",
+            true,
+            None::<&str>,
+        )?)?;
+    }
     let file_menu = menu
         .items()?
         .into_iter()
@@ -617,8 +632,7 @@ fn request_quit_confirmation(app: &tauri::AppHandle) {
                         "subsystem": "desktop-runtime"
                     })),
                 );
-            exit_state.approved.store(true, Ordering::SeqCst);
-            app_handle.exit(0);
+            desktop_quit::prepare(app_handle.clone());
         }
     });
 }
@@ -990,6 +1004,8 @@ pub fn run() {
     let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
     let builder = builder
         .invoke_handler(tauri::generate_handler![
+            desktop_quit::register_desktop_quit,
+            desktop_quit::acknowledge_desktop_quit,
             desktop_autostart_enabled,
             set_desktop_autostart,
             desktop_update::desktop_update_capability,
@@ -1098,6 +1114,7 @@ pub fn run() {
                 })),
             );
             app.manage(runtime);
+            app.manage(desktop_quit::DesktopQuit::default());
             app.manage(desktop_workers);
             app.manage(ProjectShareMounts::default());
             app.manage(TunnelForwards::default());
@@ -1115,6 +1132,8 @@ pub fn run() {
                 setup_macos_application_menu(app)?;
                 app.on_menu_event(|app, event| match event.id().as_ref() {
                     "close-cantrip-windows" => close_desktop_windows(app),
+                    #[cfg(debug_assertions)]
+                    "qa-quit-cantrip" => request_quit_confirmation(app),
                     #[cfg(target_os = "macos")]
                     NEW_AGENT_CHAT_ACTION_ID | NEW_TERMINAL_ACTION_ID => {
                         let _ = app.emit_to("main", APP_ACTION_EVENT, event.id().as_ref());

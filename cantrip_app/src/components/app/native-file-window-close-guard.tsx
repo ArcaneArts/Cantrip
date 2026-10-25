@@ -1,4 +1,5 @@
 import { isTauri } from "@tauri-apps/api/core";
+import { desktopQuitCoordinator } from "@/lib/desktop-quit-coordinator";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,6 +30,16 @@ export function NativeFileWindowCloseGuard({
   const [prompt, setPrompt] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    if (!enabled) return;
+    return desktopQuitCoordinator.register({
+      suspend: () => () => {},
+      checkpoint: async () => {
+        if (blocked.current?.() || current.current())
+          throw new Error("Legacy file recovery is still pending.");
+      },
+    });
+  }, [enabled]);
   const settle = (discard: boolean) => {
     const resolve = confirmation.current;
     confirmation.current = null;

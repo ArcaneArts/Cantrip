@@ -17,6 +17,7 @@ import {
 } from "@/lib/desktop-popout";
 import { installNativeTooltipSuppression } from "@/lib/native-tooltip-suppression";
 import { readStartupThemePreference } from "@/lib/startup-theme";
+import { installDesktopQuit } from "@/lib/desktop-quit";
 
 import "./index.css";
 
@@ -24,6 +25,7 @@ installClientLogCapture();
 installNativeTooltipSuppression(document);
 
 async function start(): Promise<void> {
+  await installDesktopQuit();
   void retireLegacyEditorWorker().catch(() => undefined);
   const startupThemePreference = readStartupThemePreference();
   if (startupThemePreference) {

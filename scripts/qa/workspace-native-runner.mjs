@@ -51,3 +51,13 @@ console.log(
   `QA_EVT ${JSON.stringify({ event: "native.workspace.bundle", status: "info", bundle, identifier })}`,
 );
 process.exitCode = await run(executable, []);
+if (
+  process.exitCode === 0 &&
+  process.env.CANTRIP_QA_RESTART_ON_EXIT === "true"
+) {
+  console.log(
+    "QA_EVT " +
+      JSON.stringify({ event: "native.workspace.restart", status: "info" }),
+  );
+  process.exitCode = await run(executable, []);
+}

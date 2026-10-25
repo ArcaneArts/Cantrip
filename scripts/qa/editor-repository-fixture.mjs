@@ -118,6 +118,23 @@ async function qaWorkspace() {
   const transport = qaWorkspaceTransport(qaProjectId, scope.workspaceId, identity);
   return { scope, transport, layout: await transport.read() };
 }
+if (import.meta.env.VITE_CANTRIP_QUIT_QA === 'true') {
+  void Promise.all([import('@/lib/desktop-quit-coordinator'), import('@tauri-apps/api/window')]).then(([{desktopQuitCoordinator}, {getCurrentWindow}]) => {
+    if (getCurrentWindow().label !== 'main') return;
+    let fail = true;
+    const button = document.createElement('button');
+    button.textContent = 'QA quit checkpoint: fail';
+    button.style.cssText = 'position:fixed;bottom:52px;left:8px;z-index:2147483647;background:#222;color:white;padding:8px';
+    button.onclick = () => { fail = !fail; button.textContent = fail ? 'QA quit checkpoint: fail' : 'QA quit checkpoint: delay 5s'; };
+    desktopQuitCoordinator.register({suspend: () => () => {}, checkpoint: async () => {
+      console.log('QA_EVT ' + JSON.stringify({event:'quit.checkpoint.started',status:'info',fail}));
+      if (fail) throw new Error('Disposable QA checkpoint failure');
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      console.log('QA_EVT ' + JSON.stringify({event:'quit.checkpoint.completed',status:'pass'}));
+    }});
+    document.body.append(button);
+  });
+}
 if (import.meta.env.VITE_CANTRIP_CODE_MIGRATION_QA === 'true') {
   const button = document.createElement('button');
   button.textContent = 'QA restore Code drafts';

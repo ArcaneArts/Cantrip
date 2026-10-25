@@ -2159,7 +2159,7 @@ task-dispatch, and tunnel-control tests; timeout failures occurred under combine
 native/app build load. All three files subsequently passed unchanged, serially:
 42 tests. This isolated rerun does not claim the full server suite passed.
 
-### Explicit recovered-draft reconciliation (in progress; not merged)
+### Explicit recovered-draft reconciliation
 
 The next cycle adds a client-only comparison dialog for divergent protected
 migration snapshots. Owned Explorer/Code conversion and legacy native-window
@@ -2185,3 +2185,40 @@ their original baseline bytes (no implicit save). The comparison dialog bounds
 its height and wraps baseline identifiers to remain usable in smaller windows.
 This is not goal completion and does not replace the broader recovery and
 compatibility audit.
+
+This cycle merged in #2251 (`d27da765b`); Primary was synchronized and all three
+native contract CI platforms passed.
+
+### Checkpoint-protected normal desktop quit
+
+Normal confirmed Quit now freezes editor input in every registered native
+renderer and waits for actual protected recovery writes, including inactive
+documents. A failed checkpoint, renderer replacement, or missing acknowledgement
+cancels quit and restores interaction; it never saves or discards a worker file.
+Acknowledgements are bound to the native window, renderer token, and quit round.
+Normal window-return handling and new popouts are suppressed while preparing.
+The native coordinator logs checkpoint outcomes without document text or tokens.
+
+Native validation uncovered a separate identity mismatch: the Code migration
+receipt identifies a workspace view, while its rendering consumer compared a
+resource ID. This stranded the retired source on “Moving editor…” and prevented
+quit. The consumer now matches the view ID before mapping to the Code resource;
+a regression uses deliberately distinct identities.
+
+In the isolated macOS fixture, two recovered unsaved files were split between
+main and a native popout. An injected checkpoint failure kept both windows and
+drafts. Retrying with a five-second checkpoint completed both acknowledgements,
+exited, and restarted the same fixture. Main restored only qa.txt and the Code
+browser; the separate window restored only second.txt. Both unsaved contents
+survived, while the repository stayed clean with its original file bytes.
+
+This increment covers normal confirmed Quit. Updater restart, synthetic-build
+replacement, forced termination, mobile acceptance, and the remaining broad
+workspace acceptance audit are not established by this run.
+
+Verification: all 553 app test files passed (3,853 tests, three skips) with four
+workers; all 130 native Rust library tests passed. App typechecking, formatting,
+large-file and decomposition checks passed. Initial simultaneous native/app/QA
+runs timed out in Graph status and native loopback tests; unchanged reruns after
+stopping the extra QA fixtures passed, including both full suites. Fixture data
+and synthetic protected drafts were retained; the final fixture exited normally.
