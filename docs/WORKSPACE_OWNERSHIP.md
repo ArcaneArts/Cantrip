@@ -2511,3 +2511,19 @@ The initial harness run incorrectly expected a `removed` state; the real
 removal/reconciliation contract uses `missing`, and the assertion was corrected.
 This cycle does not establish native input delivery, concurrent-window recovery,
 or the remaining comprehensive migration/authorization and broad-check audit.
+
+### Remote Desktop pane layout ownership
+
+Native acceptance exposed a redundant generic body beside the persistent Remote
+Desktop renderer. Although GlobalContentHost returns no Remote Desktop content,
+its surrounding flex child still consumed half of the pane. The generic body
+now yields this surface entirely to its persistent owner, just as it already
+does for file, Code, and Explorer surfaces. This preserves the renderer and live
+session while removing the empty sibling from center and dock layouts.
+
+Regression coverage checks both nested and non-nested Remote Desktop bodies,
+ordinary surface rendering, empty panes, and legacy detached handling. The six
+focused suites pass 49 tests and app typechecking passes. This does not establish
+remote input delivery or full detach/return acceptance. A fresh broad baseline
+check stopped at the unchanged 5-second maximum-size crypto round-trip timeout;
+that exact file passed both tests when rerun alone. The full check is not green.

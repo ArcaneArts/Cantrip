@@ -487,7 +487,7 @@ export function DockRail({
   );
 }
 
-function genericPaneBody(
+export function genericPaneBody(
   bindings: Readonly<Record<string, any>>,
   presentation: VisibleProjectPane,
   nested = false,
@@ -511,6 +511,7 @@ function genericPaneBody(
     kind === "code" ||
     kind === "explorer" ||
     kind === "file" ||
+    kind === "remote-desktop" ||
     (kind === "terminal" &&
       presentation.activeSurface?.entity.kind !== "run-configuration")
   ) {
