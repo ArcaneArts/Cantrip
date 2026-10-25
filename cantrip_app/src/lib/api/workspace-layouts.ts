@@ -2,6 +2,10 @@ import {
   workspaceCommandSchema,
   workspaceOwnershipSchema,
   workspaceSeedRequestSchema,
+  workspaceLegacyFileImportRequestSchema,
+  workspaceLegacyFileImportReceiptSchema,
+  type WorkspaceLegacyFileImportReceipt,
+  type WorkspaceLegacyFileImportRequest,
   type WorkspaceCommand,
   type WorkspaceSeedRequest,
   type WorkspaceOwnership,
@@ -29,6 +33,9 @@ export function workspaceLayoutTransport(
   identity: ClientSessionIdentitySnapshot,
 ): WorkspaceTransport & {
   seed(input: WorkspaceSeedRequest): Promise<WorkspaceOwnership>;
+  importLegacyFiles(
+    input: WorkspaceLegacyFileImportRequest,
+  ): Promise<WorkspaceLegacyFileImportReceipt>;
 } {
   const expectedIdentity = { ...identity };
   const base = `/api/projects/${encodeURIComponent(projectId)}/workspace-layouts/${encodeURIComponent(workspaceId)}`;
@@ -36,6 +43,19 @@ export function workspaceLayoutTransport(
   return {
     read: async () =>
       workspaceOwnershipSchema.parse(await request(base, undefined, behavior)),
+    importLegacyFiles: async (input) =>
+      workspaceLegacyFileImportReceiptSchema.parse(
+        await request(
+          `${base}/import-legacy-files`,
+          {
+            method: "POST",
+            body: JSON.stringify(
+              workspaceLegacyFileImportRequestSchema.parse(input),
+            ),
+          },
+          behavior,
+        ),
+      ),
     seed: async (input) =>
       workspaceOwnershipSchema.parse(
         await request(

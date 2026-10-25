@@ -7,6 +7,10 @@ import {
   workspaceCommandSchema,
   workspaceOwnershipSchema,
   workspaceSeedRequestSchema,
+  workspaceLegacyFileImportRequestSchema,
+  importWorkspaceLegacyFiles,
+  type WorkspaceLegacyFileImportRequest,
+  type WorkspaceTab,
   type WorkspaceSeedRequest,
   type WorkspaceCommand,
   type WorkspaceOwnership,
@@ -136,6 +140,68 @@ export class WorkspaceLayoutRepository {
         "This workspace already has a different main window.",
       );
     return layout;
+  }
+
+  /** One-time legacy native import. Serializes with all ordinary commands and
+   * never uses client-supplied titles or plaintext document state. */
+  async importLegacyFiles(
+    ownerId: string,
+    projectId: string,
+    workspaceId: string,
+    input: WorkspaceLegacyFileImportRequest,
+  ) {
+    const { expectedRevision, ...request } =
+      workspaceLegacyFileImportRequestSchema.parse(input);
+    return this.database.transaction(async (tx) => {
+      if (!(await ownedProject(tx, ownerId, projectId))) return null;
+      const [row] = await tx
+        .select()
+        .from(schema.workspaceLayouts)
+        .where(scope(ownerId, projectId, workspaceId))
+        .for("update");
+      if (!row) return null;
+      const layout = workspaceOwnershipSchema.parse(row.layout);
+      const replay = layout.legacyFileImports?.some(
+        ({ windowId }) => windowId === request.windowId,
+      );
+      if (!replay && layout.revision !== expectedRevision)
+        throw new WorkspaceCommandError(
+          "revision",
+          "Workspace revision changed before legacy import.",
+        );
+      const titles = new Map<string, WorkspaceTab["titleProtection"]>();
+      // Replays acknowledge the recorded import even after its resources close
+      // or disappear; the pure transform verifies exact original request bytes.
+      if (!replay)
+        for (const view of request.views) {
+          // Do not use resolveEntitySurface here: its compatibility fallback also
+          // accepts Explorer IDs. This import must end in immutable documents.
+          const [resolved] = await tx
+            .select({ id: schema.fileDocuments.id })
+            .from(schema.fileDocuments)
+            .where(
+              and(
+                eq(schema.fileDocuments.id, view.documentId),
+                eq(schema.fileDocuments.projectId, projectId),
+              ),
+            );
+          if (!resolved)
+            throw new WorkspaceCommandError(
+              "missing",
+              "An imported document is unavailable in this project.",
+            );
+          titles.set(view.documentId, null);
+        }
+      const result = importWorkspaceLegacyFiles(layout, request, titles);
+      if (!result.replayed) {
+        validatePlacements(result.layout);
+        await tx
+          .update(schema.workspaceLayouts)
+          .set({ layout: result.layout })
+          .where(scope(ownerId, projectId, workspaceId));
+      }
+      return result;
+    });
   }
 
   async execute(ownerId: string, input: WorkspaceCommand) {

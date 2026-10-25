@@ -11,6 +11,26 @@ import {
 
 const identity = z.string().min(1);
 
+/** Stable import identity, retained after close to prevent legacy URL replay
+ * from resurrecting a view. Document contents/paths never belong here. */
+export const workspaceLegacyFileImportSchema = z
+  .object({
+    windowId: z.string().regex(/^cantrip-editor-.+/u),
+    paneId: identity,
+    views: z
+      .array(
+        z
+          .object({
+            tabId: identity,
+            documentId: identity,
+            mode: explorerFileModeSchema,
+          })
+          .strict(),
+      )
+      .min(1),
+  })
+  .strict();
+
 // Durable preparation only. Contents and runtime state must use protected
 // surface handoff channels, never plaintext layout metadata.
 const pendingTransferSchema = z
@@ -130,6 +150,7 @@ export const workspaceOwnershipSchema = z
     mainWindowId: identity,
     windows: z.array(workspaceWindowSchema).min(1),
     pendingTransfers: z.array(pendingTransferSchema).max(128).optional(),
+    legacyFileImports: z.array(workspaceLegacyFileImportSchema).optional(),
   })
   .strict()
   .superRefine((layout, context) => {

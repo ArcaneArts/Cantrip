@@ -58,6 +58,49 @@ function transport() {
   );
 }
 
+const legacyImport = {
+  windowId: "cantrip-editor-old",
+  paneId: "imported-pane",
+  expectedRevision: 0,
+  views: [
+    { tabId: "imported-file", documentId: "document", mode: "edit" as const },
+  ],
+};
+
+it("sends only validated import bindings over the account-bound workspace route", async () => {
+  const receipt = { layout, replayed: true };
+  const fetcher = vi.fn(async (_url: unknown, _init?: RequestInit) =>
+    Response.json(receipt),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  expect(await transport().importLegacyFiles(legacyImport)).toEqual(receipt);
+  expect(fetcher.mock.calls[0]![0]).toContain(
+    "/api/projects/project%2Fid/workspace-layouts/device%2Fworkspace/import-legacy-files",
+  );
+  expect(JSON.parse(fetcher.mock.calls[0]![1]!.body as string)).toEqual(
+    legacyImport,
+  );
+});
+
+it("rejects an import acknowledgement after the account changes", async () => {
+  let finish!: (response: Response) => void;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          finish = resolve;
+        }),
+    ),
+  );
+  const pending = transport().importLegacyFiles(legacyImport);
+  clearClientSession();
+  finish(Response.json({ layout, replayed: false }));
+  await expect(pending).rejects.toMatchObject({
+    code: "client-identity-changed",
+  });
+});
+
 it("uses encoded workspace routes and validates the existing workspace snapshot", async () => {
   const fetcher = vi.fn(async (_url: unknown) => Response.json(layout));
   vi.stubGlobal("fetch", fetcher);

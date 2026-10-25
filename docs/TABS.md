@@ -109,13 +109,20 @@ document sessions own buffers, save state, and recovery. Moving must not require
 saving first.
 
 Code still accepts an old transferred inline selected path for legacy restoration.
-The standalone legacy Explorer-file window receiver also remains. Neither is a
-reason to route new opens outside ownership. Their remaining removal/compatibility
-audit is not complete.
+Legacy native Explorer-file links, with or without a broker launch token, now
+enter authenticated startup and import into the actual native host's workspace.
+The importer checkpoints selected and inactive drafts through encrypted recovery
+before atomically creating document tabs. It translates the route in place, then
+uses ordinary renderer attachment and return-to-main behavior. A retained import
+record prevents an old link from resurrecting a window that has already closed.
+Conflicting owned views or divergent recovered drafts are retained and reported,
+not overwritten. An import failure offers explicit retry. New file opens must
+still use the shared owned-file opener; compatibility is not an alternative
+authoritative placement path.
 
 Source: [opener](../cantrip_app/src/lib/open-owned-file.ts),
 [owned native file window](../cantrip_app/src/components/app/use-owned-file-window.ts),
-[legacy receiver](../cantrip_app/src/components/explorer/desktop-explorer-file-window.tsx).
+[legacy import](../cantrip_app/src/lib/import-legacy-file-window.ts).
 
 ## Detach, return, and recovery
 
