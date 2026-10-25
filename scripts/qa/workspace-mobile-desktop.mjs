@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
-import { writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { chromium } from "playwright-core";
 import { startEditorRecoveryFixture } from "./editor-recovery-fixture.mjs";
 import { verifyExplorerEntry } from "./workspace-explorer-entry.mjs";
+import { verifyCommandFileEntry } from "./workspace-command-file-entry.mjs";
 import {
   seedChatLinkFiles,
   verifyChatFileEntry,
@@ -29,6 +32,26 @@ try {
   );
   await seedMobileOverflowFiles(fixture.repositorySeed.repository);
   await seedChatLinkFiles(fixture.repositorySeed.repository);
+  await mkdir(path.join(fixture.repositorySeed.repository, "entry"));
+  for (const name of ["command-first.rs", "command-second.rs"])
+    await writeFile(
+      path.join(fixture.repositorySeed.repository, "entry", name),
+      "fn main() {}\n",
+    );
+  const git = (...args) =>
+    promisify(execFile)("git", args, {
+      cwd: fixture.repositorySeed.repository,
+    });
+  await git("add", "--", "entry/command-first.rs", "entry/command-second.rs");
+  await git(
+    "-c",
+    "user.name=Workspace QA",
+    "-c",
+    "user.email=qa@example.invalid",
+    "commit",
+    "-m",
+    "Seed file entry acceptance",
+  );
   browser = await chromium.launch({ headless: true });
   desktop = await browser.newPage({
     acceptDownloads: true,
@@ -382,6 +405,7 @@ try {
   );
   await verifyExplorerEntry({ mobile, desktop, record });
   await verifyChatFileEntry({ mobile, desktop, record });
+  await verifyCommandFileEntry({ mobile, desktop, record });
   await mobile.screenshot({
     path: path.join(fixture.directory, "mobile.png"),
     fullPage: true,
