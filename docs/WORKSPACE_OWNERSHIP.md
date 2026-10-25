@@ -2563,3 +2563,54 @@ The first fresh-worktree test attempt could not load unbuilt shared packages;
 building dependencies resolved that setup failure. No assertion was weakened.
 This increment is not a full-goal completion claim; the fresh full check and
 remaining requirement audit are still pending.
+
+### Consolidated acceptance audit, 2026-10-25
+
+This audit reconciles current source at `b1785e3fc` (#2265) with retained
+acceptance evidence. It is not a full-goal completion declaration. Earlier
+chronological statements of remaining work are superseded only where the
+specific evidence below addresses them.
+
+| Requirement                                  | Inspected evidence                                                             | Result and scope                                                                                                                                                                                                                             |
+| -------------------------------------------- | ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Independent ownership and one-time migration | Protocol ownership/seed assertions and server workspace-layout tests           | Unique scoped identities, seed order/geometry/protected metadata, actual detached owners, idempotency, transactional receipts and authorization covered                                                                                      |
+| Revision-safe pending commands               | Complete command-client tests and queue implementation                         | Lost responses retain exact sent bytes; explicit rejection permits rebase; stale reads and failed commands do not restore old snapshots; delayed receipts suppress stale window effects                                                      |
+| Session isolation                            | Connection implementation and tests                                            | Logout hides presentation, disposes the old connection and rejects retained callbacks; late bootstrap results cannot expose an old project/account                                                                                           |
+| Predictable close/focus                      | Protocol close-selection assertions and representative mobile overflow harness | Right then left neighbor, inactive selection retention, local pane-history fallback, empty-window distinction, keyboard picker activation and separate recent ordering                                                                       |
+| Native ownership and dirty state             | Latest two-window fixture observations, plus native surface acceptance         | Multiple detached owners leave main empty; closing a view does not return it; native close returns survivors; whole-pane transfer preserves active/inactive dirty files without saving                                                       |
+| Terminal/browser/chat/Code                   | Retained native surface observations                                           | Fresh terminal commands verified the same shell variable; browser document UUID, unsaved input and counter survived; chat draft and both Code buffers survived mixed-pane handoff                                                            |
+| Remote Desktop                               | Separate native target and WorkerLink lifecycle log                            | Click counter advanced 1/2/3 before detach, after detach and after return; keyboard input reached the target; old attachment closed before the next started                                                                                  |
+| Quit/crash/reload                            | Retained normal-quit, abrupt-process and WebKit recovery observations          | Failed checkpoint kept windows alive; successful checkpoint/restart preserved drafts; process kill and renderer death recovered ownership; failed destination startup retained the source                                                    |
+| Recovered-draft choice                       | Conflict-resolution QA event log and summary                                   | Five recorded passes: compare, cancel/retry, choose recovered, reload and unchanged disk. Its OBSERVATIONS file records an earlier locked-screen attempt, not the later successful run                                                       |
+| Mobile isolation and file entry              | Historical-file acceptance log plus inspected mobile harness assertions        | 19 scenario passes, including two installation contexts, dirty previews, resize/reload, overflow, explicit mode, Explorer/chat/related/command/History/graph entry and missing historical checkouts; fixture cleanup reported zero survivors |
+| Obsolete producers                           | #2265 source diff and 65 focused tests                                         | Local-claim/save-before-popout fallback and unused pane/group creation removed; legacy parsing/discovery remains deliberately available for persisted sessions                                                                               |
+
+Evidence locations are recorded in the preceding cycle sections. The latest
+native observations and working audit are retained in the
+`workspace-native-input-delivery` QA lane under
+`.qa/20261025-124712-verify-visible-native-remote-des/`. The recovered-draft
+result is in the `workspace-draft-conflict-resolution` lane under
+`.qa/20261024-234804-resolve-divergent-protected-code/qa_events.jsonl`.
+These contain synthetic QA state, not production user documents.
+
+The latest full `pnpm check`, run on the #2264 baseline, exited 1. Protocol
+passed 949 tests, crypto 96, server 1,609 (57 skipped), and app 3,867 (three
+skipped). Worker passed 2,518 tests (133 skipped), but failed the worktree
+filesystem notification assertion and the exact-2.5-MiB PNG adaptation timeout.
+Rerunning both files unchanged with two workers passed all 38 tests. The complete
+worker rerun with four workers still failed the filesystem notification test
+(this time the initial status remained empty), while image adaptation passed:
+2,519 passed, one failed, 133 skipped. Reduced concurrency did not resolve the
+watcher failure; its cause remains unproven. Timeouts and assertions were not
+relaxed.
+
+The separately executed `pnpm format:check` also exited 1: 167 reported files,
+including generated Rust target files and 11 source/document files. This is not
+a green repository-wide check. #2265's changed-file checks and app build/typecheck
+passed independently. Do not attribute the baseline's broad run to #2265.
+
+Remaining closure work: investigate the persistent full-suite watcher failure,
+finish source/evidence review for any requirement not yet independently covered, preserve ignored QA
+artifacts outside retained lanes, stop owned fixtures and clean up those lanes.
+No physical-mobile validation or exhaustive concurrency claim is made. Earlier
+terminal reconnection observations also remain limitations, not erased failures.
