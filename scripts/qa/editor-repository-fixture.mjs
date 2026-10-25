@@ -59,6 +59,9 @@ export function editorRepositoryFixturePlugin(seed) {
 import { createProjectWorktree as qaCreateWorktree, getProjectWorktrees as qaGetWorktrees } from '@/lib/api/worktrees';
 import { getExplorers as qaGetExplorers, createExplorer as qaCreateExplorer } from '@/lib/api/explorers';
 import { createCodeTab as qaCreateCode } from '@/lib/api/code';
+import { createFileDocument as qaCreateDocument } from '@/lib/api/file-documents';
+import { surfaceTitleEncryption as qaTitles } from '@/lib/surface-title-encryption';
+import { bindLegacyDocument as qaBindDocument, planLegacyDocuments as qaPlanDocuments } from '@/components/explorer/legacy-document-migration';
 import { createDesktopExplorerWindowBroker as qaCreateFileBroker } from '@/lib/desktop-explorer-window-broker';
 import { desktopExplorerFileSearch as qaFileSearch, desktopStandaloneChatFileSearch as qaChatFileSearch } from '@/lib/desktop-popout';
 import { createStandaloneChat as qaCreateChat } from '@/lib/api/chats';
@@ -127,12 +130,12 @@ if (import.meta.env.VITE_CANTRIP_CODE_MIGRATION_QA === 'true') {
     }
     void globalThis.__qaRepositoryFixture.seedLegacyFile('second.txt', {
     'qa.txt':'Code dirty qa.txt\\n', 'second.txt':'Code dirty second.txt\\n',
-  }, 'code').then(() => {button.textContent = 'Code drafts seeded';}).catch(error => {button.textContent = String(error);}).finally(() => {button.disabled = false;}); };
+  }, 'code', import.meta.env.VITE_CANTRIP_DRAFT_CONFLICT_QA === 'true' ? {'second.txt':'Alternative recovered second.txt\\n'} : {}).then(() => {button.textContent = 'Code drafts seeded';}).catch(error => {button.textContent = String(error);}).finally(() => {button.disabled = false;}); };
   void import('@tauri-apps/api/window').then(({getCurrentWindow}) => {if (getCurrentWindow().label === 'main') document.body.append(button);});
 }
 globalThis.__qaRepositoryFixture = {
   async workspace() { return qaIdentity() ? (await qaWorkspace()).layout : null; },
-  async seedLegacyFile(path = 'qa.txt', drafts = {}, sourceKind = 'explorer') {
+  async seedLegacyFile(path = 'qa.txt', drafts = {}, sourceKind = 'explorer', targetDrafts = {}) {
     const reader = await qaCreateExplorer(qaProjectId, 'Legacy migration QA', undefined, undefined, undefined, {
       attachToTabLayout: false, initialViewState: { selectedPath: path, fileMode: 'edit' },
     });
@@ -158,6 +161,21 @@ globalThis.__qaRepositoryFixture = {
         documents:store.captureRecovery()}));
       try { await recovery.load(bytes=>JSON.parse(new TextDecoder().decode(bytes))); await recovery.checkpoint(bytes); }
       finally { bytes.fill(0); recovery.dispose(); }
+      const sourceScope = {serverId:identity.serverId,ownerId:identity.userId,explorerId:explorer.id,
+        projectId:qaProjectId,workerId:explorer.activeWorkerId,worktreeId:explorer.worktreeId};
+      const capture = {...sourceScope,selectedPath:path,fileMode:'edit',documents:store.captureRecovery()};
+      for (const candidate of qaPlanDocuments(capture, sourceScope)) {
+        if (!(candidate.path in targetDrafts)) continue;
+        const binding = {projectId:qaProjectId,workerId:candidate.workerId,worktreeId:candidate.worktreeId,path:candidate.path};
+        const document = await qaCreateDocument({...binding,id:qaTitles.fileDocumentId(binding)});
+        const fileTabId = 'legacy-code:' + tabId + ':' + document.id;
+        const transfer = qaBindDocument(candidate, sourceScope, {tabId:fileTabId,documentId:document.id});
+        transfer.documents.documents[0].text = targetDrafts[candidate.path];
+        const target = new QaRecovery({...sourceScope,workspaceId:layout.id,tabId:fileTabId,documentId:document.id});
+        const data = new TextEncoder().encode(JSON.stringify(transfer));
+        try { await target.load(bytes=>JSON.parse(new TextDecoder().decode(bytes))); await target.checkpoint(data); }
+        finally {data.fill(0);target.dispose();}
+      }
     }
     await transport.execute({ operationId: crypto.randomUUID(), workspaceId: layout.id, projectId: qaProjectId,
       windowId: owner.id, attachmentGeneration: owner.attachmentGeneration, expectedRevision: layout.revision,

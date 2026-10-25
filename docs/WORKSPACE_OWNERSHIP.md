@@ -2115,7 +2115,7 @@ formatting and diff checks clean. No new native visual run was performed for
 this reconciliation-only change; it does not establish completion of native
 handoff acceptance.
 
-### Restored Code buffer conversion (in progress; not merged)
+### Restored Code buffer conversion
 
 Draft-preservation reconciliation merged in #2249 (`ae6badf05`). The next
 isolated cycle implements `migrate-code-files`: an owner-window command adds
@@ -2150,3 +2150,38 @@ A focused regression covers replacement, removal, and duplicate removal; the
 17-test Code lifecycle/view/migration-hook group passes. Before that final fix,
 the complete app suite passed 3,826 tests (three skips), all 939 protocol tests
 passed, and app typechecking passed. Broader goal acceptance remains incomplete.
+
+The cycle merged in #2250 (`b066fb16b`); Primary was synchronized and its tracked
+tree matched the reviewed branch. All 25 remote CI checks passed. The final app
+suite passed 3,827 tests (three skips). A concurrent full server run passed 1,577
+tests but failed ten tests and a suite setup across repository-discovery,
+task-dispatch, and tunnel-control tests; timeout failures occurred under combined
+native/app build load. All three files subsequently passed unchanged, serially:
+42 tests. This isolated rerun does not claim the full server suite passed.
+
+### Explicit recovered-draft reconciliation (in progress; not merged)
+
+The next cycle adds a client-only comparison dialog for divergent protected
+migration snapshots. Owned Explorer/Code conversion and legacy native-window
+import can ask which draft to keep or cancel. Choices are scoped to the exact
+validated snapshots, rechecked against ownership/account after awaiting input,
+and never save worker files. Cancel retains both versions; account/context
+changes clear previews and reject stale callbacks. A selected recovered draft
+is carried into the migration checkpoint instead of being silently replaced by
+a recapture of the suspended live editor. No private text enters layout metadata.
+
+Final verification passes all 551 app test files / 3,842 tests (three skips),
+including comparison rendering, cancellation, stale account/context actions,
+per-file choices, and source-ownership changes. App typechecking and diff checks
+pass. Legacy-window importer tests also cover explicit choice,
+cancellation, and account changes while awaiting a choice.
+
+After the host was unlocked, native validation passed: the dialog displayed both
+divergent second.txt drafts, Cancel retained both and offered Retry migration,
+and retry displayed the same snapshots. Choosing the recovered draft created
+distinct second.txt and qa.txt tabs. A native WebView reload retained the chosen
+second.txt text and the inactive dirty qa.txt text. Both worker files retained
+their original baseline bytes (no implicit save). The comparison dialog bounds
+its height and wraps baseline identifiers to remain usable in smaller windows.
+This is not goal completion and does not replace the broader recovery and
+compatibility audit.

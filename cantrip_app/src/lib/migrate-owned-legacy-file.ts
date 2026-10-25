@@ -4,7 +4,8 @@ import type { ExplorerLifecycleActions } from "@/components/explorer/explorer-vi
 import { validateExplorerTransfer } from "@/components/explorer/explorer-transfer-state";
 import {
   bindLegacyDocument,
-  mergeLegacyDocumentRecovery,
+  reconcileLegacyDocumentRecovery,
+  type ResolveLegacyDraft,
   planLegacyDocuments,
 } from "@/components/explorer/legacy-document-migration";
 import { getExplorerMigrationSource } from "./api/explorers";
@@ -31,6 +32,7 @@ export async function migrateOwnedLegacyFile({
   lifecycle,
   queryClient,
   sourceKind = "explorer",
+  resolveConflict,
 }: {
   controller: WorkspaceCommandClient;
   windowId: string;
@@ -39,6 +41,7 @@ export async function migrateOwnedLegacyFile({
   lifecycle: ExplorerLifecycleActions;
   queryClient: QueryClient;
   sourceKind?: "explorer" | "code";
+  resolveConflict?: ResolveLegacyDraft;
 }) {
   const identity = getClientSessionIdentitySnapshot();
   if (!identity) throw new Error("Sign in before migrating a file view.");
@@ -113,7 +116,13 @@ export async function migrateOwnedLegacyFile({
     );
     assertSource();
     if (recovered) {
-      const merged = mergeLegacyDocumentRecovery(capture, recovered, scope);
+      const merged = await reconcileLegacyDocumentRecovery(
+        capture,
+        recovered,
+        scope,
+        resolveConflict,
+        assertSource,
+      );
       const live = new Map(
         capture.documents.documents.map((document) => [document.id, document]),
       );
@@ -131,9 +140,12 @@ export async function migrateOwnedLegacyFile({
           ...capture,
           documents: { ...capture.documents, documents: restore },
         });
-        capture = await lifecycle.captureTransfer();
         assertSource();
       }
+      // A user may have selected recovery over a dirty live session. The
+      // session remains untouched until commit; migrate the resolved snapshot,
+      // not a recapture that would silently undo their choice.
+      capture = merged;
       // Code has no durable selected-path field. On a fresh browser mount the
       // protected journal is the only surviving selection/mode authority.
       if (sourceKind === "code" && capture.selectedPath === null)
@@ -229,10 +241,12 @@ export async function migrateOwnedLegacyFile({
         // An interrupted attempt may already have checkpointed this target.
         // Loading it is not permission to overwrite it with a fresh disk read.
         if (recoveredTarget)
-          transfer = mergeLegacyDocumentRecovery(
+          transfer = await reconcileLegacyDocumentRecovery(
             transfer,
             recoveredTarget,
             targetScope,
+            resolveConflict,
+            assertSource,
           );
         const bytes = new TextEncoder().encode(JSON.stringify(transfer));
         try {
