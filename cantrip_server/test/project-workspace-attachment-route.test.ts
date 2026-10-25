@@ -246,7 +246,7 @@ describe("attached project workspace route", () => {
     expect(rescanResponse.statusCode).toBe(202);
     expect(queue).toHaveBeenCalledWith("owner-one", workspaceId, {
       expectedStateRevision: 1,
-      depth: 3,
+      depth: -1,
     });
     expect(publishWorkspaceRepositoryDiscoveryChange).toHaveBeenCalledWith({
       job: { ...job, stateRevision: 2 },

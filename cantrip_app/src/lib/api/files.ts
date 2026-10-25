@@ -480,6 +480,22 @@ export async function loadExplorerMedia(
   explorerId: string,
   path: string,
 ): Promise<Blob> {
+  return loadProtectedFileMedia(path, (content, operationId, sequence) =>
+    executeExplorerOperation(explorerId, content, operationId, sequence),
+  );
+}
+
+export async function loadProtectedFileMedia(
+  path: string,
+  read: (
+    content: Extract<
+      ExplorerOperationRequestContent,
+      { type: "explorer.media.read" }
+    >,
+    operationId: ReturnType<typeof crypto.randomUUID>,
+    sequence: number,
+  ) => Promise<ExplorerOperationResultContent>,
+): Promise<Blob> {
   const operationId = crypto.randomUUID();
   const parts: BlobPart[] = [];
   let offset = 0;
@@ -488,8 +504,7 @@ export async function loadExplorerMedia(
     | { kind: string; mimeType: string; modifiedAt: string; size: number }
     | undefined;
   for (;;) {
-    const result = await executeExplorerOperation(
-      explorerId,
+    const result = await read(
       {
         type: "explorer.media.read",
         path,

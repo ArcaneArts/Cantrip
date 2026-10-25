@@ -1,30 +1,27 @@
-import { prepareNativeCodeTransfer } from "@/components/code/native-code-lifecycle";
 import type {
-  ExplorerSummary,
   ProjectSummary,
   ProjectTabLayoutSummary,
+  WorkspaceOwnership,
 } from "@cantrip/protocol";
 import type { QueryClient } from "@tanstack/react-query";
 import {
   useCallback,
   useEffect,
+  useRef,
   useState,
   type Dispatch,
   type MutableRefObject,
   type SetStateAction,
 } from "react";
-import { flushSync } from "react-dom";
 
 import { projectOverviewSectionLabel } from "@/components/app/application-shell-model";
 import type { ExplorerLifecycleActions } from "@/components/explorer/explorer-view";
-import { prepareExplorerPopout as prepareExplorerPopoutLifecycle } from "@/components/explorer/explorer-lifecycle";
 import { getExplorers } from "@/lib/api";
 import { clientLogger, operationalErrorMetadata } from "@/lib/client-log-relay";
 import {
   closeCurrentDesktopWindow,
   discoverDesktopPopoutPaneIds,
   focusDesktopPopoutPane,
-  openDesktopPopoutPane,
   openDesktopProjectOverviewPopout,
   updateDesktopWindowTitle,
   watchDesktopPopoutPane,
@@ -33,7 +30,6 @@ import {
 } from "@/lib/desktop-popout";
 import { errorMessage as errorText } from "@/lib/error-message";
 import type { ProjectOverviewSection } from "@/lib/project-overview-section";
-import type { SidebarFilePreviewState } from "@/lib/sidebar-file-tabs";
 import {
   selectWorkspacePane,
   type WorkspaceSelection,
@@ -54,33 +50,8 @@ export function useDesktopPopoutStatusState() {
 
 type DesktopPopoutStatusState = ReturnType<typeof useDesktopPopoutStatusState>;
 
-export async function openOwnedDesktopPane({
-  claim,
-  complete,
-  open = openDesktopPopoutPane,
-  release,
-  target,
-  title,
-}: {
-  claim(): void;
-  complete(): void;
-  open?: typeof openDesktopPopoutPane;
-  release(): void;
-  target: DesktopPopoutPaneTarget;
-  title: string;
-}) {
-  flushSync(claim);
-  try {
-    const disposition = await open(target, title);
-    complete();
-    return disposition;
-  } catch (error) {
-    release();
-    throw error;
-  }
-}
-
 export function useDesktopPopoutModel({
+  detachOwnedPane,
   activeProjectOverviewSection,
   currentSurface,
   desktopRuntime,
@@ -90,12 +61,16 @@ export function useDesktopPopoutModel({
   projectOverviewSelected,
   queryClient,
   resolvedProjectOverviewWorktreeId,
-  selectedExplorer,
   selectedProject,
   selectedProjectId,
   selectedPaneId,
   status,
 }: {
+  detachOwnedPane?(
+    paneId: string,
+    title: string,
+    tabId?: string,
+  ): Promise<unknown>;
   activeProjectOverviewSection: ProjectOverviewSection;
   currentSurface: { tabKey: string; title: string } | null;
   desktopRuntime: boolean;
@@ -105,14 +80,15 @@ export function useDesktopPopoutModel({
   projectOverviewSelected: boolean;
   queryClient: QueryClient;
   resolvedProjectOverviewWorktreeId: string | null;
-  selectedExplorer: ExplorerSummary | undefined;
   selectedProject: ProjectSummary | undefined;
   selectedProjectId: string | null;
   selectedPaneId: string | null;
   status: DesktopPopoutStatusState;
 }) {
+  const ownedTransferPending = useRef(false);
   const activePopout =
     desktopRuntime &&
+    detachOwnedPane &&
     !isPopout &&
     currentSurface &&
     selectedProject &&
@@ -143,10 +119,17 @@ export function useDesktopPopoutModel({
       : null;
   const paneOwnedElsewhere = useCallback(
     (paneId: string) =>
+      !detachOwnedPane &&
       !isPopout &&
       desktopRuntime &&
       (detached.claims.has(paneId) || !detached.inspectedPaneIds.has(paneId)),
-    [desktopRuntime, detached.claims, detached.inspectedPaneIds, isPopout],
+    [
+      desktopRuntime,
+      detached.claims,
+      detached.inspectedPaneIds,
+      isPopout,
+      detachOwnedPane,
+    ],
   );
   const selectedPaneOwnedElsewhere = Boolean(
     selectedPaneId && paneOwnedElsewhere(selectedPaneId),
@@ -186,98 +169,55 @@ export function useDesktopPopoutModel({
     },
     [detached.claims, detached.releasePane, explorerLifecycleRef, queryClient],
   );
-  const popOutActiveView = () => {
-    if (!activePopout || status.popoutPending) return;
+  const startOwnedTransfer = (
+    paneId: string,
+    title: string,
+    tabId?: string,
+  ) => {
+    if (
+      !detachOwnedPane ||
+      status.popoutPending ||
+      ownedTransferPending.current
+    )
+      return;
+    // UI state updates on the next render; claim synchronously so menu and
+    // header actions in the same event batch cannot create overlapping moves.
+    ownedTransferPending.current = true;
+    status.setPopoutPending(true);
+    status.setPopoutError(null);
     void (async () => {
-      const startedAt = performance.now();
-      clientLogger.info("Desktop pop-out preparation started", {
-        event: "window.popout.open.started",
-        operation: "open-popout",
-        projectId: activePopout.target.projectId,
-        subsystem: "desktop-window",
-      });
-      const explorerLifecycle = selectedExplorer
-        ? explorerLifecycleRef.current.get(selectedExplorer.id)
-        : null;
-      const preparation = await prepareExplorerPopoutLifecycle(
-        explorerLifecycle,
-        () =>
-          window.confirm(
-            "This Explorer has unsaved changes. Save and continue opening it in a new window?\n\nChoose Cancel to keep editing in this window.",
-          ),
-      );
-      if (preparation === "cancelled") return;
-      if (preparation === "save-failed") {
-        status.setPopoutError(
-          "Save the Explorer file before opening a pop-out.",
-        );
-        return;
-      }
-      if (preparation === "state-failed") {
-        status.setPopoutError(
-          "Explorer view state could not be saved before opening the pop-out.",
-        );
-        return;
-      }
-      const layout = queryClient.getQueryData<ProjectTabLayoutSummary>([
-        "project-tab-layout",
-        activePopout.target.projectId,
-      ]);
-      const codeTabs =
-        layout?.panes
-          .find((pane) => pane.id === activePopout.target.paneId)
-          ?.members.filter((member) => member.tabKind === "code")
-          .map((member) => member.tabId) ??
-        (currentSurface?.tabKey.startsWith("code:")
-          ? [currentSurface.tabKey.slice(5)]
-          : []);
-      for (const id of codeTabs)
-        if (!(await prepareNativeCodeTransfer(id))) {
-          status.setPopoutError(
-            "Save the Code tab's files before opening this pop-out.",
-          );
-          return;
-        }
-      status.setPopoutPending(true);
-      status.setPopoutError(null);
       try {
-        await openOwnedDesktopPane({
-          claim: () =>
-            detached.claimPane(
-              activePopout.target.paneId,
-              activePopout.target.projectId,
-              selectedExplorer?.id ?? null,
-            ),
-          complete: () =>
-            detached.completePaneClaim(activePopout.target.paneId),
-          release: () => detached.releasePane(activePopout.target.paneId),
-          target: activePopout.target,
-          title: activePopout.title,
-        });
-        clientLogger.info("Desktop pop-out opened", {
-          durationMs: Math.round(performance.now() - startedAt),
-          event: "window.popout.open.completed",
-          operation: "open-popout",
-          projectId: activePopout.target.projectId,
-          status: "opened",
-          subsystem: "desktop-window",
-        });
+        if (tabId === undefined) await detachOwnedPane(paneId, title);
+        else await detachOwnedPane(paneId, title, tabId);
       } catch (error) {
-        clientLogger.error("Desktop pop-out failed to open", {
-          durationMs: Math.round(performance.now() - startedAt),
-          ...operationalErrorMetadata(error),
-          event: "window.popout.open.failed",
-          operation: "open-popout",
-          projectId: activePopout.target.projectId,
-          reasonCode: "native-window-error",
-          status: "failed",
-          subsystem: "desktop-window",
-        });
         status.setPopoutError(errorText(error));
       } finally {
+        ownedTransferPending.current = false;
         status.setPopoutPending(false);
       }
     })();
+  };
+  const popOutTab =
+    desktopRuntime && detachOwnedPane
+      ? (surface: { paneId: string; tabKey: string; title: string }) => {
+          startOwnedTransfer(surface.paneId, surface.title, surface.tabKey);
+        }
+      : undefined;
+  const popOutPane =
+    desktopRuntime && detachOwnedPane
+      ? (surface: { paneId: string; title: string }) => {
+          startOwnedTransfer(surface.paneId, surface.title);
+        }
+      : undefined;
+  const popOutActiveView = () => {
+    if (!activePopout || status.popoutPending) return;
+    // Opening a view always uses the revisioned transfer handshake. Missing
+    // workspace authority must never fall back to a legacy local pane claim.
+    startOwnedTransfer(
+      activePopout.target.paneId,
+      activePopout.title,
+      activePopout.target.activeTabKey,
+    );
   };
   const popOutProjectOverviewView = () => {
     if (!activeProjectOverviewPopout || status.popoutPending) return;
@@ -321,6 +261,8 @@ export function useDesktopPopoutModel({
     selectedPaneOwnedElsewhere,
     paneOwnedElsewhere,
     popOutActiveView,
+    popOutTab,
+    popOutPane,
     popOutProjectOverviewView,
     resumeDetachedPane,
   } as const;
@@ -434,7 +376,8 @@ export function useDesktopPopoutEffects({
             subsystem: "desktop-window",
             surfaceId: paneId,
           });
-          resumeLocally();
+          // Observer failure is not evidence that the native owner closed.
+          // Keep its claim until destruction or a successful native lookup.
         });
     }
     return () => {
@@ -449,15 +392,42 @@ export function useOrphanedDesktopPopoutEffect({
   layout,
   layoutIsSuccess,
   popoutTarget,
+  ownership,
 }: {
   isLayoutMutationPending: boolean;
   layout: ProjectTabLayoutSummary | null | undefined;
   layoutIsSuccess: boolean;
   popoutTarget: DesktopPopoutPaneTarget | null;
+  /** null means ownership is still loading; undefined is legacy-only callers. */
+  ownership?: { layout: WorkspaceOwnership; windowId: string } | null;
 }) {
+  const usesOwnership = ownership !== undefined;
+  const owned = ownership?.layout;
+  const windowId = ownership?.windowId;
   useEffect(() => {
     if (!popoutTarget || !layoutIsSuccess || isLayoutMutationPending) return;
-    if (layout?.panes.some(({ id }) => id === popoutTarget.paneId)) return;
+    if (usesOwnership) {
+      if (!owned || !windowId || owned.projectId !== popoutTarget.projectId)
+        return;
+      if (windowId === owned.mainWindowId) return;
+      if (
+        owned.pendingTransfers?.some(
+          (transfer) =>
+            transfer.destinationWindowId === windowId ||
+            transfer.sourceWindowId === windowId,
+        )
+      )
+        return;
+      // A popout may have been split or rearranged since its launch URL was
+      // created. Its original pane is not the lifetime of the native window.
+      if (
+        owned.windows
+          .find(({ id }) => id === windowId)
+          ?.panes.some((pane) => pane.tabs.length > 0)
+      )
+        return;
+    } else if (layout?.panes.some(({ id }) => id === popoutTarget.paneId))
+      return;
     void closeCurrentDesktopWindow().catch((error: unknown) => {
       clientLogger.warn("Orphaned desktop pop-out failed to close", {
         ...operationalErrorMetadata(error),
@@ -468,7 +438,15 @@ export function useOrphanedDesktopPopoutEffect({
         subsystem: "desktop-window",
       });
     });
-  }, [popoutTarget, layout, layoutIsSuccess, isLayoutMutationPending]);
+  }, [
+    popoutTarget,
+    layout,
+    layoutIsSuccess,
+    isLayoutMutationPending,
+    usesOwnership,
+    owned,
+    windowId,
+  ]);
 }
 
 export function createDesktopPaneSelectionCommands({
@@ -479,7 +457,6 @@ export function createDesktopPaneSelectionCommands({
   model,
   revealWorkspace,
   setPopoutError,
-  setSidebarFilePreview,
   setWorkspaceSelection,
 }: {
   desktopRuntime: boolean;
@@ -489,15 +466,9 @@ export function createDesktopPaneSelectionCommands({
   model: ReturnType<typeof useDesktopPopoutModel>;
   revealWorkspace(): void;
   setPopoutError(error: string | null): void;
-  setSidebarFilePreview: Dispatch<
-    SetStateAction<SidebarFilePreviewState | null>
-  >;
   setWorkspaceSelection: Dispatch<SetStateAction<WorkspaceSelection>>;
 }) {
   const selectPaneFromSidebar = (paneId: string) => {
-    setSidebarFilePreview((current) =>
-      current ? { ...current, active: false } : null,
-    );
     if (!layout) return;
     const selectLocally = () => {
       setWorkspaceSelection((current) =>
@@ -525,7 +496,7 @@ export function createDesktopPaneSelectionCommands({
           selectLocally();
         }
       })
-      .catch(() => selectLocally());
+      .catch((error: unknown) => setPopoutError(errorText(error)));
   };
   const focusDetachedPane = (paneId: string) => {
     void focusDesktopPopoutPane(paneId)

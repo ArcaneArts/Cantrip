@@ -154,8 +154,6 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
     sidebarCollapsed,
     sidebarExpanded,
     sidebarExplorer,
-    sidebarFilePinHandoff,
-    sidebarFilePreview,
     sidebarFileWorkerId,
     sidebarFileWorkerOnline,
     sidebarRef,
@@ -402,12 +400,7 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                     fileGraphAvailable={explorerRepositoryGraphAvailable(
                       selectedProject?.capabilities,
                     )}
-                    filePreviewPath={
-                      sidebarFilePreview &&
-                      sidebarFilePreview.explorerId === sidebarExplorer?.id
-                        ? sidebarFilePreview.path
-                        : (selectedExplorer?.selectedPath ?? null)
-                    }
+                    filePreviewPath={selectedExplorer?.selectedPath ?? null}
                     fileTreeError={
                       !sidebarExplorer && createSidebarExplorerMutation.isError
                         ? errorText(createSidebarExplorerMutation.error)
@@ -421,7 +414,7 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                     fileTreePinningPath={
                       pinSidebarFileMutation.isPending
                         ? (pinSidebarFileMutation.variables?.path ?? null)
-                        : (sidebarFilePinHandoff?.sourcePath ?? null)
+                        : null
                     }
                     fileTreeWorkerId={sidebarFileWorkerId}
                     fileTreeWorkerOnline={sidebarFileWorkerOnline}

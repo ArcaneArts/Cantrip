@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type {
   EditorDocumentSession,
   EditorSelection,
@@ -27,6 +27,8 @@ export function NativeCodeEditor({
   onSave,
   active = true,
   readOnly = false,
+  onReady,
+  onViewStateChange,
 }: {
   session: EditorDocumentSession;
   path: string;
@@ -34,6 +36,9 @@ export function NativeCodeEditor({
   onSave?(): void;
   active?: boolean;
   readOnly?: boolean;
+  /** Fires after this document's DOM text, selection and scroll are installed. */
+  onReady?(session: EditorDocumentSession): void;
+  onViewStateChange?(): void;
 }) {
   const input = useRef<HTMLTextAreaElement>(null);
   const activeRef = useRef(active);
@@ -42,6 +47,20 @@ export function NativeCodeEditor({
   readOnlyRef.current = readOnly;
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  const onViewStateChangeRef = useRef(onViewStateChange);
+  onViewStateChangeRef.current = onViewStateChange;
+  const rememberSelection = (node: HTMLTextAreaElement) => {
+    if (!activeRef.current) return;
+    const next = selection(node);
+    if (
+      session.selection.start === next.start &&
+      session.selection.end === next.end &&
+      session.selection.direction === next.direction
+    )
+      return;
+    session.selection = next;
+    onViewStateChangeRef.current?.();
+  };
   const composing = useRef(false);
   const compositionStart = useRef<{
     text: string;
@@ -113,10 +132,8 @@ export function NativeCodeEditor({
       } else beforeInput.current = selection(node);
     };
     node.addEventListener("beforeinput", onBeforeInput);
-    const rememberSelection = () => {
-      if (activeRef.current) session.selection = selection(node);
-    };
-    node.addEventListener("select", rememberSelection);
+    const onNativeSelect = () => rememberSelection(node);
+    node.addEventListener("select", onNativeSelect);
     const observer = new ResizeObserver(() => {
       setHeight(node.clientHeight);
     });
@@ -130,7 +147,7 @@ export function NativeCodeEditor({
       }
       observer.disconnect();
       node.removeEventListener("beforeinput", onBeforeInput);
-      node.removeEventListener("select", rememberSelection);
+      node.removeEventListener("select", onNativeSelect);
     };
     // A document owns its input lifetime; ordinary typing must not replace it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -158,6 +175,9 @@ export function NativeCodeEditor({
     node.scrollLeft = session.scrollLeft;
     node.dispatchEvent(new Event("scroll"));
   }, [active]);
+  useEffect(() => {
+    if (input.current) onReady?.(session);
+  }, [session, onReady]);
 
   return (
     <div
@@ -232,14 +252,17 @@ export function NativeCodeEditor({
           defaultValue={session.text}
           onScroll={(event) => {
             if (!activeRef.current) return;
+            if (
+              session.scrollTop === event.currentTarget.scrollTop &&
+              session.scrollLeft === event.currentTarget.scrollLeft
+            )
+              return;
             session.scrollTop = event.currentTarget.scrollTop;
             session.scrollLeft = event.currentTarget.scrollLeft;
             redraw((value) => value + 1);
+            onViewStateChange?.();
           }}
-          onSelect={(event) => {
-            if (activeRef.current)
-              session.selection = selection(event.currentTarget);
-          }}
+          onSelect={(event) => rememberSelection(event.currentTarget)}
           onCompositionStart={(event) => {
             if (readOnly) return;
             composing.current = true;

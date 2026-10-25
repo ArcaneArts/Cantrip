@@ -906,10 +906,19 @@ pub async fn install_desktop_update(
             }
         };
 
+        let checkpoint = match crate::desktop_quit::checkpoint(app.clone()).await {
+            Ok(checkpoint) => checkpoint,
+            Err(message) => {
+                let error = DesktopUpdateError::new("update_checkpoint_failed", message, true);
+                set_failed(&coordinator, &app, &error, false);
+                return Err(error);
+            }
+        };
         if let Ok(mut state) = coordinator.state.lock() {
             state.phase = UpdatePhase::Installing;
         }
         emit_progress(&app, UpdatePhase::Installing, None, None, None, false);
+        checkpoint.retain_until_exit();
         crate::shutdown_owned_runtime(&app);
         if let Err(error) = update.install(bytes) {
             let error = map_updater_error(error, UpdateOperation::Install);

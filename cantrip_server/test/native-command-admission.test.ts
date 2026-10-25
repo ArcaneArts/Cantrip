@@ -478,6 +478,28 @@ describe("durable native command admission", () => {
     await finish(start, accepted.receipt);
   });
 
+  it.each([
+    "thread/readState/update",
+    "thread/prediction/request",
+    "account/bedrock/checkGovCloudRequirements",
+  ])(
+    "does not grant mutation authority merely by classifying %s",
+    async (method) => {
+      const context = await database.repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        chatId,
+      );
+      const result = await database.repository.nativeCommands.admit(
+        LOCAL_USER_ID,
+        admission(context, { method }),
+      );
+      expect(result.receipt).toMatchObject({
+        status: "rejected",
+        rejectionCode: "unsupported-mutation",
+      });
+    },
+  );
+
   it("persists rejected policy receipts, rejects foreign identity, and never replays uncertain dispatch", async () => {
     const context = await database.repository.getChatExecutionContext(
       LOCAL_USER_ID,

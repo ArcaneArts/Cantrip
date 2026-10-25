@@ -57,6 +57,35 @@ const event = (
 });
 
 const directProjectId = "55555555-5555-4555-8555-555555555555";
+it("refreshes document catalogs by live project scope and after reconnect", () => {
+  expect(
+    appLiveEventQueryKeys(
+      event({
+        resource: "file-document",
+        scope: { kind: "project", projectId: "one" },
+      }),
+    ),
+  ).toEqual([["file-documents", "one"]]);
+  expect(
+    appLiveEventQueryKeys(
+      event({
+        resource: "file-document",
+        scope: { kind: "current-user" },
+      }),
+    ),
+  ).toEqual([["file-documents"]]);
+  expect(
+    appLiveEventQueryKeys(
+      event({
+        resource: "file-document",
+        scope: { kind: "chat", chatId: "chat-one" },
+      }),
+    ),
+  ).toEqual([]);
+  expect(
+    appLiveScopeQueryKeys({ kind: "project", projectId: "one" }),
+  ).toContainEqual(["file-documents", "one"]);
+});
 const directWorktreeId = "worktree-one";
 
 function directFilesystemObservation(

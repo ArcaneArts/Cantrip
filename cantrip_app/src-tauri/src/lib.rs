@@ -27,6 +27,9 @@ use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 #[cfg(desktop)]
 use tauri_plugin_window_state::StateFlags;
 
+mod desktop_quit;
+#[cfg(target_os = "macos")]
+mod desktop_renderer_recovery;
 mod desktop_update;
 #[cfg(desktop)]
 mod desktop_window_placement;
@@ -509,6 +512,27 @@ fn setup_macos_application_menu(app: &tauri::App) -> tauri::Result<()> {
         true,
         Some("CmdOrCtrl+Q"),
     )?)?;
+    // Isolated native QA exposes the real tray action without ambiguous tray icons.
+    #[cfg(debug_assertions)]
+    if std::env::var("CANTRIP_QA_RESTART_ON_EXIT").as_deref() == Ok("true")
+        && std::env::var("CANTRIP_QA_BUNDLE_ID")
+            .is_ok_and(|id| id.starts_with("art.cantrip.qa.workspace"))
+    {
+        application_menu.append(&MenuItem::with_id(
+            app,
+            "qa-quit-cantrip",
+            "QA Quit Cantrip",
+            true,
+            None::<&str>,
+        )?)?;
+        application_menu.append(&MenuItem::with_id(
+            app,
+            "qa-checkpoint-abort",
+            "QA Checkpoint and Abort Install",
+            true,
+            None::<&str>,
+        )?)?;
+    }
     let file_menu = menu
         .items()?
         .into_iter()
@@ -519,6 +543,16 @@ fn setup_macos_application_menu(app: &tauri::App) -> tauri::Result<()> {
             _ => None,
         })
         .ok_or_else(|| tauri::Error::AssetNotFound("macOS File menu".into()))?;
+    #[cfg(debug_assertions)]
+    if desktop_renderer_recovery::qa_enabled(app.handle()) {
+        application_menu.append(&MenuItem::with_id(
+            app,
+            "qa-crash-renderer",
+            "QA Crash Focused Renderer",
+            true,
+            None::<&str>,
+        )?)?;
+    }
     let new_agent_chat = MenuItem::with_id(
         app,
         NEW_AGENT_CHAT_ACTION_ID,
@@ -617,8 +651,7 @@ fn request_quit_confirmation(app: &tauri::AppHandle) {
                         "subsystem": "desktop-runtime"
                     })),
                 );
-            exit_state.approved.store(true, Ordering::SeqCst);
-            app_handle.exit(0);
+            desktop_quit::prepare(app_handle.clone());
         }
     });
 }
@@ -973,6 +1006,8 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init());
+    #[cfg(target_os = "macos")]
+    let builder = builder.on_web_content_process_terminate(desktop_renderer_recovery::recover);
     #[cfg(desktop)]
     let builder = builder.plugin(
         tauri_plugin_window_state::Builder::default()
@@ -990,6 +1025,8 @@ pub fn run() {
     let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
     let builder = builder
         .invoke_handler(tauri::generate_handler![
+            desktop_quit::register_desktop_quit,
+            desktop_quit::acknowledge_desktop_quit,
             desktop_autostart_enabled,
             set_desktop_autostart,
             desktop_update::desktop_update_capability,
@@ -1098,6 +1135,7 @@ pub fn run() {
                 })),
             );
             app.manage(runtime);
+            app.manage(desktop_quit::DesktopQuit::default());
             app.manage(desktop_workers);
             app.manage(ProjectShareMounts::default());
             app.manage(TunnelForwards::default());
@@ -1114,7 +1152,21 @@ pub fn run() {
                 #[cfg(target_os = "macos")]
                 setup_macos_application_menu(app)?;
                 app.on_menu_event(|app, event| match event.id().as_ref() {
+                    #[cfg(all(debug_assertions, target_os = "macos"))]
+                    "qa-crash-renderer" => desktop_renderer_recovery::qa_crash_focused(app),
                     "close-cantrip-windows" => close_desktop_windows(app),
+                    #[cfg(debug_assertions)]
+                    "qa-quit-cantrip" => request_quit_confirmation(app),
+                    #[cfg(debug_assertions)]
+                    "qa-checkpoint-abort" => {
+                        let app = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            let result = desktop_quit::checkpoint(app).await;
+                            let protected = result.is_ok();
+                            drop(result);
+                            eprintln!("QA_EVT {}", json!({"event":"installer-checkpoint-aborted","status":"info","protected":protected}));
+                        });
+                    }
                     #[cfg(target_os = "macos")]
                     NEW_AGENT_CHAT_ACTION_ID | NEW_TERMINAL_ACTION_ID => {
                         let _ = app.emit_to("main", APP_ACTION_EVENT, event.id().as_ref());

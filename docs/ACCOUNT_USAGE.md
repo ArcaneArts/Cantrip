@@ -275,8 +275,8 @@ the resource shape.
 ### `GET /api/account/live-traffic`
 
 This endpoint returns an owner-scoped, volatile view of application traffic
-observed by the current server process. It is sampled in one-second buckets over
-a five-minute window and is intended for the active-server switcher's
+observed by the current server process. It is sampled in 250 ms buckets over
+a ten-minute window and is intended for the active-server switcher's
 live-traffic panel, not durable accounting or billing history.
 
 The response identifies the current server `instanceId`, a process-instance
@@ -287,10 +287,13 @@ cursor whose timestamp is expired or future, or whose revision is ahead of the
 server's current owner revision, sets `reset: true` and returns the current
 window so the client replaces its chart history.
 
-Each sample reports upload/download application bytes, authenticated non-WebSocket
+Each sample reports counts within its `sampleIntervalSeconds` interval, including
+upload/download application bytes, authenticated non-WebSocket
 HTTP request count, and `client-live`/`worker-control` WebSocket message counts.
 Terminal, tunnel, and Remote Surface relay traffic can contribute bytes without
-incrementing that WebSocket message count. The endpoint excludes its own
+incrementing that WebSocket message count. Clients divide these counts by the
+sample interval to display per-second rates. The meter records traffic regardless
+of whether a client is viewing the panel. The endpoint excludes its own
 observation requests entirely. It also excludes transport overhead and direct
 LOCAL, LAN, or WAN WorkerLink traffic because those bytes never cross the server
 process. The response is `Cache-Control: private, no-store` and is never
@@ -306,9 +309,11 @@ poll. A disconnected client uses a conservative one-minute fallback and
 authoritative HTTP snapshots; reconnect/resync follows the normal live-channel
 recovery barrier.
 
-The server-switcher live-traffic panel polls its volatile endpoint once per
-second only while the panel is visible. That request excludes itself from both
-live bytes and request counts. Durable resource-usage reads remain metered but
+The server-switcher live-traffic panel polls its volatile endpoint every 250 ms
+only while the panel is open and the document is visible. Closing the panel or
+hiding the app stops polling and aborts any outstanding request; reopening it
+retrieves the history recorded while it was hidden. That request excludes itself
+from both live bytes and request counts. Durable resource-usage reads remain metered but
 suppress another usage invalidation, preventing an observation feedback loop.
 
 ## Operations and troubleshooting

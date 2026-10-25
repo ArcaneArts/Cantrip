@@ -1,7 +1,14 @@
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import type { ProjectPaneRegion } from "@cantrip/protocol";
-import { CopyPlus, MoreHorizontal, Pencil, Trash2, X } from "lucide-react";
+import {
+  CopyPlus,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+  X,
+  ExternalLink,
+} from "lucide-react";
 import { useEffect, useRef, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -46,6 +53,8 @@ export interface SurfaceMenuActions {
   onDelete?: () => void;
   onDuplicate?: () => void;
   onKeepOpen?: () => void;
+  onPopOut?: () => void;
+  onPopOutPane?: () => void;
   onRename?: () => void;
   title: string;
 }
@@ -62,6 +71,8 @@ export function SurfaceMenuItems({
   onDelete,
   onDuplicate,
   onKeepOpen,
+  onPopOut,
+  onPopOutPane,
   onRename,
   title,
 }: SurfaceMenuActions & { kind: "context" | "dropdown" }) {
@@ -85,6 +96,16 @@ export function SurfaceMenuItems({
         </Item>
       ) : null}
       {onKeepOpen ? <Item onSelect={onKeepOpen}>Keep Open</Item> : null}
+      {onPopOut ? (
+        <Item onSelect={onPopOut}>
+          <ExternalLink className="size-4" /> Move Tab to New Window
+        </Item>
+      ) : null}
+      {onPopOutPane ? (
+        <Item onSelect={onPopOutPane}>
+          <ExternalLink className="size-4" /> Move Pane to New Window
+        </Item>
+      ) : null}
       {moveTargets.map((target) => (
         <Item key={target.label} onSelect={target.onSelect}>
           {target.label}

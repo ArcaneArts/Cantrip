@@ -80,7 +80,8 @@ export const workspaceRepositoryDiscoveryJobSummarySchema = z
     state: workspaceRepositoryDiscoveryJobStateSchema,
     stateRevision: z.number().int().positive(),
     attempt: z.number().int().nonnegative(),
-    depth: z.number().int().min(0).max(16),
+    // -1 means all descendants; nonnegative values support older bounded jobs.
+    depth: z.number().int().min(-1).max(16),
     diagnosticCode: workspaceRepositoryDiscoveryDiagnosticCodeSchema.nullable(),
     truncated: z.boolean(),
     counts: workspaceRepositoryDiscoveryCountsSchema.nullable(),
@@ -290,7 +291,7 @@ export const workspaceRepositoryDiscoverySnapshotSchema = z
 export const workspaceRepositoryDiscoveryStartSchema = z
   .object({
     expectedStateRevision: z.number().int().positive().optional(),
-    depth: z.number().int().min(0).max(16).default(3),
+    depth: z.number().int().min(-1).max(16).default(-1),
   })
   .strict();
 
@@ -321,7 +322,6 @@ export const workspaceRepositoryImportStartSchema = z
     candidates: z
       .array(workspaceRepositoryImportCandidateCreateSchema)
       .min(1)
-      .max(100)
       .refine(
         (candidates) =>
           new Set(candidates.map(({ candidateId }) => candidateId)).size ===
@@ -337,7 +337,7 @@ export const workspaceRepositoryDiscoveryCommandSchema = z
     jobId: z.string().uuid(),
     attempt: z.number().int().positive(),
     rootPath: repositoryRoutingHandleSchema,
-    depth: z.number().int().min(0).max(16),
+    depth: z.number().int().min(-1).max(16),
   })
   .strict();
 
@@ -388,39 +388,37 @@ export const workspaceRepositoryDiscoveryWorkerResultSchema = z
   .object({
     jobId: z.string().uuid(),
     attempt: z.number().int().positive(),
-    candidates: z
-      .array(
-        z
-          .object({
-            path: repositoryRoutingHandleSchema,
-            displayPath: repositoryRoutingHandleSchema,
-            originUrl: repositoryRoutingHandleSchema.nullable(),
-            github: projectGithubRoutingRepositorySchema.nullable(),
-            repositoryFingerprint: z.string().regex(/^[0-9a-f]{64}$/u),
-            classification: workspaceRepositoryDiscoveredClassificationSchema,
-            diagnosticCode:
-              workspaceRepositoryCandidateDiagnosticCodeSchema.nullable(),
-          })
-          .strict()
-          .superRefine((candidate, context) => {
-            if (
-              !candidateClassificationMetadataIsValid({
-                classification: candidate.classification,
-                diagnosticCode: candidate.diagnosticCode,
-                github: candidate.github,
-                origin: candidate.originUrl,
-              })
-            ) {
-              context.addIssue({
-                code: "custom",
-                message:
-                  "Repository candidate classification metadata is invalid.",
-                path: ["classification"],
-              });
-            }
-          }),
-      )
-      .max(500),
+    candidates: z.array(
+      z
+        .object({
+          path: repositoryRoutingHandleSchema,
+          displayPath: repositoryRoutingHandleSchema,
+          originUrl: repositoryRoutingHandleSchema.nullable(),
+          github: projectGithubRoutingRepositorySchema.nullable(),
+          repositoryFingerprint: z.string().regex(/^[0-9a-f]{64}$/u),
+          classification: workspaceRepositoryDiscoveredClassificationSchema,
+          diagnosticCode:
+            workspaceRepositoryCandidateDiagnosticCodeSchema.nullable(),
+        })
+        .strict()
+        .superRefine((candidate, context) => {
+          if (
+            !candidateClassificationMetadataIsValid({
+              classification: candidate.classification,
+              diagnosticCode: candidate.diagnosticCode,
+              github: candidate.github,
+              origin: candidate.originUrl,
+            })
+          ) {
+            context.addIssue({
+              code: "custom",
+              message:
+                "Repository candidate classification metadata is invalid.",
+              path: ["classification"],
+            });
+          }
+        }),
+    ),
     counts: workspaceRepositoryDiscoveryCountsSchema,
     diagnosticCode: workspaceRepositoryDiscoveryDiagnosticCodeSchema.nullable(),
     truncated: z.boolean(),

@@ -5,6 +5,10 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { UseRemoteSurfaceWorkerLinkOptions } from "@/lib/use-remote-surface-worker-link";
+import { registerRemoteDesktopTransferLifecycle } from "./remote-desktop-transfer-lifecycle";
+vi.mock("./remote-desktop-transfer-lifecycle", () => ({
+  registerRemoteDesktopTransferLifecycle: vi.fn(() => vi.fn()),
+}));
 
 const transport = vi.hoisted(() => ({
   sendFrame: vi.fn((_channel: string, _payload: Uint8Array) => true),
@@ -63,13 +67,17 @@ beforeEach(async () => {
     value: { readText: vi.fn(async () => "WQA_DESKTOP_PASTE_42") },
   });
   transport.sendFrame.mockReset().mockReturnValue(true);
+  vi.mocked(registerRemoteDesktopTransferLifecycle).mockClear();
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
   await act(async () => {
     root.render(
       <QueryClientProvider client={new QueryClient()}>
-        <ManagedRemoteDesktopView desktop={desktop} />
+        <ManagedRemoteDesktopView
+          desktop={desktop}
+          transferTabId="desktop-tab"
+        />
       </QueryClientProvider>,
     );
   });
@@ -116,6 +124,31 @@ function outboundClipboard() {
 }
 
 describe("Managed Remote Desktop clipboard toolbar", () => {
+  it("rejects transfer during an accepted clipboard read without losing the paste", async () => {
+    await grantEpoch();
+    let finish!: (text: string) => void;
+    vi.mocked(navigator.clipboard.readText).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    await paste();
+    const lifecycle = vi.mocked(registerRemoteDesktopTransferLifecycle).mock
+      .lastCall![1];
+    expect(() => lifecycle.suspendTransfer()).toThrow(
+      "pending remote desktop action",
+    );
+    await act(async () => {
+      finish("accepted before transfer");
+    });
+    expect(outboundClipboard()).toHaveLength(1);
+    let release!: () => void;
+    await act(async () => {
+      release = lifecycle.suspendTransfer();
+    });
+    await act(async () => release());
+  });
   it("reports not sent with no input epoch and emits no clipboard frame", async () => {
     await paste();
     expect(container.textContent).toContain(

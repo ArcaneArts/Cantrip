@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import type { ProjectSurface } from "@/lib/project-surface";
 
 import {
-  MAX_MOBILE_PROJECT_SURFACES,
   mobileProjectShellModel,
   mobileProjectSurfaces,
 } from "./mobile-project-navigation";
@@ -69,48 +68,56 @@ describe("mobileProjectSurfaces", () => {
       tabKey: "builtin:tasks",
     } as ProjectSurface;
 
-    expect(
-      mobileProjectSurfaces([overview, tasks, chat], overview.tabKey),
-    ).toEqual([tasks, chat]);
+    expect(mobileProjectSurfaces([overview, tasks, chat])).toEqual([
+      tasks,
+      chat,
+    ]);
   });
 
-  it("represents each worktree with one Explorer instead of file tabs", () => {
+  it("preserves distinct file and Explorer tabs within one worktree", () => {
     const root = explorer("explorer:root", null);
     const firstFile = explorer("explorer:first-file", "src/first.ts");
     const secondFile = explorer("explorer:second-file", "src/second.ts");
 
-    expect(
-      mobileProjectSurfaces([chat, firstFile, root, secondFile], "chat:one"),
-    ).toEqual([chat, root]);
+    expect(mobileProjectSurfaces([chat, firstFile, root, secondFile])).toEqual([
+      chat,
+      firstFile,
+      root,
+      secondFile,
+    ]);
   });
 
   it("keeps the active Explorer destination stable while browsing a file", () => {
     const root = explorer("explorer:root", null);
     const activeFile = explorer("explorer:file", "src/file.ts");
 
-    expect(
-      mobileProjectSurfaces([root, activeFile], activeFile.tabKey),
-    ).toEqual([activeFile]);
+    expect(mobileProjectSurfaces([root, activeFile])).toEqual([
+      root,
+      activeFile,
+    ]);
   });
 
-  it("bounds compact navigation to the active surface and recent placements", () => {
+  it("keeps every view in layout order rather than treating placement order as recency", () => {
     const surfaces = Array.from(
       { length: 8 },
       (_, index) =>
         ({ kind: "chat", tabKey: `chat:${index}` }) as ProjectSurface,
     );
-    const result = mobileProjectSurfaces(surfaces, "chat:0");
+    const result = mobileProjectSurfaces(surfaces);
 
-    expect(result).toHaveLength(MAX_MOBILE_PROJECT_SURFACES);
-    expect(result.map(({ tabKey }) => tabKey)).toEqual([
-      "chat:0",
-      "chat:4",
-      "chat:5",
-      "chat:6",
-      "chat:7",
-    ]);
+    expect(result).toEqual(surfaces);
     expect(surfaces.map(({ tabKey }) => tabKey)).toEqual(
       Array.from({ length: 8 }, (_, index) => `chat:${index}`),
     );
+  });
+
+  it("retains unresolved views and handles an empty workspace", () => {
+    const unresolved = {
+      kind: "unresolved",
+      tabKey: "loading-view",
+      entity: null,
+    } as ProjectSurface;
+    expect(mobileProjectSurfaces([unresolved])).toEqual([unresolved]);
+    expect(mobileProjectSurfaces([])).toEqual([]);
   });
 });

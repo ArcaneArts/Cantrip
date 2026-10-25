@@ -15,11 +15,11 @@ import {
 const now = "2026-09-02T12:00:00.000Z";
 
 describe("workspace repository discovery contracts", () => {
-  it("defines protected bounded worker discovery messages", () => {
+  it("accepts protected discovery results beyond the former 500-repository cap", () => {
     const jobId = "72b3b25e-dd0f-4a12-bef5-1a77cc064219";
     const handle = `ctrr_${"a".repeat(43)}`;
     const counts = {
-      candidates: 1,
+      candidates: 501,
       collapsedRepositories: 0,
       rejectedRepositories: 0,
       scannedDirectories: 4,
@@ -47,27 +47,25 @@ describe("workspace repository discovery contracts", () => {
       workspaceRepositoryDiscoveryWorkerResultSchema.parse({
         jobId,
         attempt: 1,
-        candidates: [
-          {
-            path: handle,
-            displayPath: `ctrr_${"b".repeat(43)}`,
-            originUrl: null,
-            github: null,
-            repositoryFingerprint: "c".repeat(64),
-            classification: "local-git",
-            diagnosticCode: null,
-          },
-        ],
+        candidates: Array.from({ length: 501 }, () => ({
+          path: handle,
+          displayPath: `ctrr_${"b".repeat(43)}`,
+          originUrl: null,
+          github: null,
+          repositoryFingerprint: "c".repeat(64),
+          classification: "local-git",
+          diagnosticCode: null,
+        })),
         counts,
         diagnosticCode: null,
         truncated: false,
       }).candidates,
-    ).toHaveLength(1);
+    ).toHaveLength(501);
   });
 
-  it("defaults manual scans to depth three and rejects plaintext candidate paths", () => {
+  it("defaults manual scans to all descendants and rejects plaintext candidate paths", () => {
     expect(workspaceRepositoryDiscoveryStartSchema.parse({})).toEqual({
-      depth: 3,
+      depth: -1,
     });
     expect(() =>
       workspaceRepositoryCandidateSummarySchema.parse({
@@ -214,35 +212,33 @@ describe("workspace repository discovery contracts", () => {
     ).toThrow(/classification metadata/iu);
   });
 
-  it("defines protected, revision-fenced repository imports", () => {
+  it("accepts protected, revision-fenced imports beyond the former 100-repository cap", () => {
     const handle = `ctrr_${"a".repeat(43)}`;
     const candidateId = "fe47e031-8924-44c0-9b51-677fc23397ca";
     expect(
       workspaceRepositoryImportStartSchema.parse({
         expectedStateRevision: 4,
-        candidates: [
-          {
-            candidateId,
-            projectId: "95ed0d89-a1d5-48ac-a1b7-67a2037f8373",
-            nameProtection: {
-              classification: { recordKind: "project" },
-              protectedLabel: {
-                formatVersion: 1,
+        candidates: Array.from({ length: 101 }, (_, index) => ({
+          candidateId: `fe47e031-8924-44c0-9b51-${String(index).padStart(12, "0")}`,
+          projectId: "95ed0d89-a1d5-48ac-a1b7-67a2037f8373",
+          nameProtection: {
+            classification: { recordKind: "project" },
+            protectedLabel: {
+              formatVersion: 1,
+              keyRevision: 1,
+              envelope: {
+                version: 1,
+                algorithm: "AES-256-GCM",
                 keyRevision: 1,
-                envelope: {
-                  version: 1,
-                  algorithm: "AES-256-GCM",
-                  keyRevision: 1,
-                  nonce: "AAAAAAAAAAAAAAAA",
-                  ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
-                },
+                nonce: "AAAAAAAAAAAAAAAA",
+                ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
               },
             },
-            repositoryBlindIndex: null,
           },
-        ],
-      }).expectedStateRevision,
-    ).toBe(4);
+          repositoryBlindIndex: null,
+        })),
+      }).candidates,
+    ).toHaveLength(101);
     expect(
       workspaceRepositoryImportValidateCommandSchema.parse({
         type: "workspace.repository-import.validate",

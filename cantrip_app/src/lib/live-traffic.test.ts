@@ -21,6 +21,8 @@ function payload(input: {
   epoch?: string;
   reset?: boolean;
   samples: AccountLiveTrafficSample[];
+  sampleIntervalSeconds?: AccountLiveTraffic["sampleIntervalSeconds"];
+  windowSeconds?: AccountLiveTraffic["windowSeconds"];
 }): AccountLiveTraffic {
   return {
     schemaVersion: 1,
@@ -28,8 +30,8 @@ function payload(input: {
     cursor: input.cursor,
     instanceId: "server-instance",
     scope: "current-server-instance",
-    sampleIntervalSeconds: 1,
-    windowSeconds: 300,
+    sampleIntervalSeconds: input.sampleIntervalSeconds ?? 0.25,
+    windowSeconds: input.windowSeconds ?? 600,
     generatedAt: input.samples.at(-1)!.timestamp,
     reset: input.reset ?? false,
     current: input.samples.at(-1)!,
@@ -43,7 +45,7 @@ function payload(input: {
 }
 
 describe("live traffic history", () => {
-  it("merges incremental same-second corrections without duplicates", () => {
+  it("merges incremental same-sample corrections without duplicates", () => {
     const initial = mergeLiveTrafficHistory(
       null,
       payload({ cursor: "2:1", samples: [sample(1), sample(2, 10)] }),
@@ -75,15 +77,62 @@ describe("live traffic history", () => {
     expect(restarted.samples).toEqual([sample(3)]);
   });
 
-  it("keeps only the latest five minutes", () => {
+  it("retains ten minutes at quarter-second resolution and replaces corrections", () => {
+    const samples = Array.from({ length: 2400 }, (_, index) =>
+      sample(index / 4),
+    );
+    const initial = mergeLiveTrafficHistory(
+      null,
+      payload({ cursor: "2399:1", samples }),
+    );
+    const corrected = sample(599.75, 10);
+    const latest = sample(600, 20);
+    const merged = mergeLiveTrafficHistory(
+      initial,
+      payload({ cursor: "2400:2", samples: [corrected, latest] }),
+    );
+    expect(merged.samples).toHaveLength(2400);
+    expect(merged.samples[0]).toEqual(sample(0.25));
+    expect(merged.samples.slice(-2)).toEqual([corrected, latest]);
+    expect(merged.sampleIntervalSeconds).toBe(0.25);
+    expect(merged.windowSeconds).toBe(600);
+  });
+
+  it("replaces history when the sample interval changes", () => {
+    const initial = mergeLiveTrafficHistory(
+      null,
+      payload({
+        cursor: "1:1",
+        samples: [sample(1)],
+        sampleIntervalSeconds: 1,
+      }),
+    );
+    const merged = mergeLiveTrafficHistory(
+      initial,
+      payload({ cursor: "5:1", samples: [sample(1.25)] }),
+    );
+    expect(merged.samples).toEqual([sample(1.25)]);
+  });
+
+  it("keeps only the latest five minutes for older servers", () => {
     const samples = Array.from({ length: 350 }, (_, second) => sample(second));
     const history = mergeLiveTrafficHistory(
       null,
-      payload({ cursor: "349:1", samples: samples.slice(0, 300) }),
+      payload({
+        cursor: "349:1",
+        samples: samples.slice(0, 300),
+        sampleIntervalSeconds: 1,
+        windowSeconds: 300,
+      }),
     );
     const merged = mergeLiveTrafficHistory(
       history,
-      payload({ cursor: "349:2", samples: samples.slice(300) }),
+      payload({
+        cursor: "349:2",
+        samples: samples.slice(300),
+        sampleIntervalSeconds: 1,
+        windowSeconds: 300,
+      }),
     );
 
     expect(merged.samples).toHaveLength(300);

@@ -123,9 +123,20 @@ test("deploys the exact commit promoted to release", async () => {
   try {
     let deployed;
     let webDeployed;
+    const preparedSecrets = {
+      privateKey: "deployment key",
+      environmentFile: "",
+    };
     const calls = [];
     const result = await releaseCantrip({
       root: fixture.repository,
+      prepareSecrets: async ({ root }) => {
+        calls.push("secrets");
+        assert.equal(root, fixture.repository);
+        assert.throws(() => git(fixture.remote, "rev-parse", "release"));
+        await Promise.resolve();
+        return preparedSecrets;
+      },
       deploy: async (options) => {
         calls.push("server");
         deployed = options;
@@ -136,9 +147,10 @@ test("deploys the exact commit promoted to release", async () => {
         webDeployed = options;
         return { commit: options.commit };
       },
-      verifyCompatibility: () => undefined,
+      verifyCompatibility: () => calls.push("compatibility"),
     });
-    assert.deepEqual(calls, ["web", "server"]);
+    assert.deepEqual(calls, ["compatibility", "secrets", "web", "server"]);
+    assert.equal(deployed.preparedSecrets, preparedSecrets);
     assert.equal(deployed.root, fixture.repository);
     assert.equal(webDeployed.root, fixture.repository);
     assert.equal(webDeployed.waitForActivation, false);
@@ -153,6 +165,46 @@ test("deploys the exact commit promoted to release", async () => {
     await rm(fixture.root, { force: true, recursive: true });
   }
 });
+
+for (const existingRelease of [false, true]) {
+  test(`does not publish anything when Infisical fails (${existingRelease ? "existing" : "first"} release)`, async () => {
+    const fixture = await repositoryFixture();
+    try {
+      const previous = git(fixture.repository, "rev-parse", "HEAD");
+      if (existingRelease)
+        git(fixture.repository, "push", "origin", "HEAD:release");
+      git(
+        fixture.repository,
+        "commit",
+        "--allow-empty",
+        "-m",
+        "next [skip ci]",
+      );
+      git(fixture.repository, "push", "origin", "main");
+      const calls = [];
+      const failure = new Error("Infisical session expired");
+      await assert.rejects(
+        releaseCantrip({
+          root: fixture.repository,
+          verifyCompatibility: () => undefined,
+          prepareSecrets: async () => {
+            calls.push("secrets");
+            throw failure;
+          },
+          deployWeb: async () => calls.push("web"),
+          deploy: async () => calls.push("server"),
+        }),
+        (error) => error === failure,
+      );
+      assert.deepEqual(calls, ["secrets"]);
+      if (existingRelease)
+        assert.equal(git(fixture.remote, "rev-parse", "release"), previous);
+      else assert.throws(() => git(fixture.remote, "rev-parse", "release"));
+    } finally {
+      await rm(fixture.root, { force: true, recursive: true });
+    }
+  });
+}
 
 test("reconciles release-only history with main's exact tree and deploys the promoted SHA", async () => {
   const fixture = await repositoryFixture();
@@ -174,6 +226,7 @@ test("reconciles release-only history with main's exact tree and deploys the pro
     const deployed = [];
     const result = await releaseCantrip({
       root: fixture.repository,
+      prepareSecrets: async () => ({}),
       verifyCompatibility: () => undefined,
       deploy: async (options) =>
         withProductionSource(
@@ -342,6 +395,7 @@ test("builds the promoted snapshot even if local main advances and becomes dirty
     let sourceRoot;
     const result = await releaseCantrip({
       root: fixture.repository,
+      prepareSecrets: async () => ({}),
       verifyCompatibility: () => undefined,
       deployWeb: async () => {
         await writeFile(

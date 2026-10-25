@@ -106,6 +106,7 @@ import {
 import { SettingsRepository } from "./repository/settings.js";
 import { TerminalRepository } from "./repository/terminals.js";
 import { ExplorerRepository } from "./repository/explorers.js";
+import { FileDocumentRepository } from "./repository/file-documents.js";
 import { CodeSurfaceRepository } from "./repository/code-surfaces.js";
 import { BrowserRepository } from "./repository/browsers.js";
 import { RemoteSurfaceRepository } from "./repository/remote-surfaces.js";
@@ -123,6 +124,7 @@ import { TaskSchedulingRepository } from "./task-scheduling.js";
 import { TaskDispatchRepository } from "./task-dispatch.js";
 import { TaskRetryRepository } from "./task-retries.js";
 import { ProjectTabLayoutRepository } from "./tab-layouts.js";
+import { WorkspaceLayoutRepository } from "./workspace-layouts.js";
 import { WorkspaceRepositoryDiscoveryJobRepository } from "./workspace-repository-discovery-jobs.js";
 import { ProjectExecutionRepositoryFacade } from "./repository-facade-project-execution.js";
 import {
@@ -320,6 +322,7 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
   readonly settings: SettingsRepository;
   readonly terminals: TerminalRepository;
   readonly explorers: ExplorerRepository;
+  readonly fileDocuments: FileDocumentRepository;
   readonly codeSurfaces: CodeSurfaceRepository;
   readonly browsers: BrowserRepository;
   readonly remoteSurfaces: RemoteSurfaceRepository;
@@ -340,6 +343,7 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
   readonly standaloneChatRootJobs: StandaloneChatRootJobRepository;
   readonly projectGithubConversionJobs: ProjectGithubConversionJobRepository;
   readonly tabLayouts: ProjectTabLayoutRepository;
+  readonly workspaceLayouts: WorkspaceLayoutRepository;
 
   constructor(database: RepositoryDatabase, secretVault: SecretVault) {
     super();
@@ -551,6 +555,7 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
         ),
       toTerminalWireSummary,
     });
+    this.fileDocuments = new FileDocumentRepository(database);
     this.explorers = new ExplorerRepository(database, {
       getExplorerExecutionContext: (ownerId, explorerId) =>
         this.getExplorerExecutionContext(ownerId, explorerId),
@@ -688,6 +693,7 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
         this.listProjectReplicas(ownerId, projectId),
     });
     this.tabLayouts = new ProjectTabLayoutRepository(database);
+    this.workspaceLayouts = new WorkspaceLayoutRepository(database);
   }
 
   async updateChat(

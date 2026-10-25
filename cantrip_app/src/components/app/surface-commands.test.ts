@@ -47,11 +47,47 @@ function operations() {
   } as unknown as SurfaceCrudOperations;
   const views = {
     close: { mutate: vi.fn() },
+    pin: { mutate: vi.fn() },
   } satisfies SurfaceViewOperations;
   return { creation, crud, views };
 }
 
 describe("surface command controller", () => {
+  it("routes Keep Open only for file previews to the view mutation", () => {
+    const operationSet = operations();
+    const controller = createSurfaceCommandController(operationSet);
+    const preview = {
+      kind: "file",
+      preview: true,
+      tabId: "document",
+      tabKey: "view",
+    } as ProjectSurface;
+    controller.keepSurfaceOpen(preview);
+    controller.keepSurfaceOpen({ ...preview, preview: false });
+    controller.keepSurfaceOpen({ ...preview, kind: "chat" } as ProjectSurface);
+    expect(operationSet.views.pin.mutate).toHaveBeenCalledExactlyOnceWith(
+      preview,
+    );
+    expect(operationSet.views.close.mutate).not.toHaveBeenCalled();
+  });
+  it("closes document views without routing document identities to resource mutations", () => {
+    const operationSet = operations();
+    const controller = createSurfaceCommandController(operationSet);
+    const surface = {
+      kind: "file",
+      tabId: "document",
+      tabKey: "independent-view",
+    } as ProjectSurface;
+    controller.renameSurface(surface, "other.rs");
+    controller.deleteSurfaceResource(surface);
+    controller.closeSurfaceView(surface);
+    expect(operationSet.views.close.mutate).toHaveBeenCalledWith(surface);
+    for (const operations of Object.values(operationSet.crud)) {
+      expect(operations.rename.mutate).not.toHaveBeenCalled();
+      expect(operations.delete.mutate).not.toHaveBeenCalled();
+    }
+    expect(operationSet.crud.explorer.requestDelete).not.toHaveBeenCalled();
+  });
   it("routes creation through the matching mutation and preserves placement", () => {
     const operationSet = operations();
     const controller = createSurfaceCommandController(operationSet);
@@ -175,13 +211,15 @@ describe("surface command controller", () => {
     expect(operationSet.crud.explorer.delete.mutate).not.toHaveBeenCalled();
   });
 
-  it("does not close agent views and removes them only through archive", () => {
+  it("closes agent views independently of explicit archive", () => {
     const operationSet = operations();
     const controller = createSurfaceCommandController(operationSet);
     const agent = { kind: "chat", tabId: "agent-1" } as ProjectSurface;
 
     controller.closeSurfaceView(agent);
-    expect(operationSet.views.close.mutate).not.toHaveBeenCalled();
+    expect(operationSet.views.close.mutate).toHaveBeenCalledExactlyOnceWith(
+      agent,
+    );
     expect(operationSet.crud.chat.delete.mutate).not.toHaveBeenCalled();
 
     controller.deleteSurfaceResource(agent);

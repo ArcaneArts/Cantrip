@@ -202,69 +202,98 @@ describe("DirectAttachmentCoordinator", () => {
       onLeaseFinalized: finalized,
       onLeaseRenewed: renewed,
     });
-    const ticket = await prepareDirect(coordinator, {
-      attachmentId: "attachment-lease-events",
-      authSessionId: "session-1",
-      channels: ["tunnel-data"],
-      ownerId: "owner-1",
-      resourceId: "tunnel-1",
-      resourceKind: "tunnel",
-      tunnelRoute: {
-        tunnelId: "tunnel-1",
+    const preparedAtMs = Date.now();
+    const now = vi.spyOn(Date, "now").mockReturnValue(preparedAtMs);
+    try {
+      const ticket = await prepareDirect(coordinator, {
         attachmentId: "attachment-lease-events",
-        sourceEndpointId: "desktop:client-1:attachment-lease-events",
-        destinationEndpointId: "worker:worker-1",
-        target: { kind: "tcp", host: "127.0.0.1", port: 43124 },
-      },
-      worker: worker(true),
-    });
-    const authorization = {
-      attachmentId: ticket.binding.attachmentId,
-      authSessionId: "session-1",
-      ownerId: "owner-1",
-    };
-    const observed = coordinator.getTunnelLeaseForActivation(
-      ticket.binding.capabilityId,
-      authorization,
-    );
-    expect(observed).toMatchObject({
-      attachmentId: ticket.binding.attachmentId,
-      capabilityId: ticket.binding.capabilityId,
-      mode: "direct-tunnel",
-      ownerId: "owner-1",
-      resourceId: "tunnel-1",
-      resourceKind: "tunnel",
-    });
-    expect(observed).not.toHaveProperty("secret");
-    expect(
-      coordinator.recordActivationOutcome(
+        authSessionId: "session-1",
+        channels: ["tunnel-data"],
+        ownerId: "owner-1",
+        resourceId: "tunnel-1",
+        resourceKind: "tunnel",
+        tunnelRoute: {
+          tunnelId: "tunnel-1",
+          attachmentId: "attachment-lease-events",
+          sourceEndpointId: "desktop:client-1:attachment-lease-events",
+          destinationEndpointId: "worker:worker-1",
+          target: { kind: "tcp", host: "127.0.0.1", port: 43124 },
+        },
+        worker: worker(true),
+      });
+      const authorization = {
+        attachmentId: ticket.binding.attachmentId,
+        authSessionId: "session-1",
+        ownerId: "owner-1",
+      };
+      const observed = coordinator.getTunnelLeaseForActivation(
         ticket.binding.capabilityId,
         authorization,
-        "completed",
-      ),
-    ).toBe(true);
-    await coordinator.renewActiveLease(ticket.binding.capabilityId, {
-      authSessionId: "session-1",
-      ownerId: "owner-1",
-    });
-    await coordinator.revoke(ticket.binding.capabilityId, "test finalized");
-    await vi.waitFor(() => {
+      );
+      expect(observed).toMatchObject({
+        attachmentId: ticket.binding.attachmentId,
+        capabilityId: ticket.binding.capabilityId,
+        mode: "direct-tunnel",
+        ownerId: "owner-1",
+        resourceId: "tunnel-1",
+        resourceKind: "tunnel",
+      });
+      expect(observed).not.toHaveProperty("secret");
+      expect(
+        coordinator.recordActivationOutcome(
+          ticket.binding.capabilityId,
+          authorization,
+          "completed",
+        ),
+      ).toBe(true);
+      expect(
+        await coordinator.renewActiveLease(ticket.binding.capabilityId, {
+          authSessionId: "session-1",
+          ownerId: "owner-1",
+        }),
+      ).toMatchObject({ status: "completed", renewed: false });
+      expect(renewed).not.toHaveBeenCalled();
+      // At the same instant, no extension is possible. Advance time explicitly.
+      now.mockReturnValue(preparedAtMs + 20_000);
+      expect(
+        await coordinator.renewActiveLease(ticket.binding.capabilityId, {
+          authSessionId: "session-1",
+          ownerId: "owner-1",
+        }),
+      ).toMatchObject({ status: "completed", renewed: true });
+      await coordinator.revoke(ticket.binding.capabilityId, "test finalized");
+      await vi.waitFor(() => {
+        expect(renewed).toHaveBeenCalledOnce();
+        expect(finalized).toHaveBeenCalledOnce();
+      });
+
+      const generic = await prepareDirect(coordinator, {
+        authSessionId: "session-1",
+        channels: ["probe"],
+        ownerId: "owner-1",
+        resourceId: "worker-1",
+        resourceKind: "probe",
+        worker: worker(),
+      });
+      await coordinator.revoke(
+        generic.binding.capabilityId,
+        "generic finalized",
+      );
+      await coordinator.close();
       expect(renewed).toHaveBeenCalledOnce();
       expect(finalized).toHaveBeenCalledOnce();
-    });
-
-    const generic = await prepareDirect(coordinator, {
-      authSessionId: "session-1",
-      channels: ["probe"],
-      ownerId: "owner-1",
-      resourceId: "worker-1",
-      resourceKind: "probe",
-      worker: worker(),
-    });
-    await coordinator.revoke(generic.binding.capabilityId, "generic finalized");
-    await coordinator.close();
-    expect(renewed).toHaveBeenCalledOnce();
-    expect(finalized).toHaveBeenCalledOnce();
+      expect(renewed).toHaveBeenCalledWith({
+        ...observed,
+        leaseExpiresAt: new Date(preparedAtMs + 80_000).toISOString(),
+      });
+      expect(finalized).toHaveBeenCalledWith({
+        ...observed,
+        leaseExpiresAt: new Date(preparedAtMs + 80_000).toISOString(),
+      });
+    } finally {
+      now.mockRestore();
+      await coordinator.close();
+    }
   });
 
   it("rejects renewal at the fixed-expiry boundary before a delayed timer can resurrect it", async () => {

@@ -15,6 +15,7 @@ import {
   type ProjectSurface,
 } from "@/lib/project-surface";
 import { closeProjectSurfaceView } from "@/lib/api";
+import type { WorkspaceCommandClient } from "@/lib/workspace-command-client";
 import {
   reconcileWorkspaceSelection,
   type WorkspaceSelection,
@@ -38,6 +39,11 @@ export interface ProjectSurfaceCloseCoordinator {
   ): void;
   pendingTabKeys: ReadonlySet<string>;
   rollback(input: ProjectSurfaceCloseInput): void;
+}
+
+interface WorkspaceRemovalObserver {
+  getSnapshot(): { disposed: boolean; authoritative: { projectId: string } };
+  refresh(): Promise<void>;
 }
 
 const entityCollectionByKind: Record<StoredProjectSurfaceKind, string> = {
@@ -67,9 +73,11 @@ function removePendingTabKey(
 export function useProjectSurfaceCloseCoordinator({
   queryClient,
   setWorkspaceSelection,
+  workspace,
 }: {
   queryClient: QueryClient;
   setWorkspaceSelection: Dispatch<SetStateAction<WorkspaceSelection>>;
+  workspace?: WorkspaceRemovalObserver | null;
 }): ProjectSurfaceCloseCoordinator {
   const [pendingTabKeys, setPendingTabKeys] = useState<ReadonlySet<string>>(
     () => new Set(),
@@ -79,6 +87,18 @@ export function useProjectSurfaceCloseCoordinator({
       string,
       { before: WorkspaceSelection; optimistic: WorkspaceSelection }
     >(),
+  );
+
+  const refreshOwnedLayout = useCallback(
+    (projectId: string) => {
+      if (!workspace) return;
+      const state = workspace.getSnapshot();
+      if (state.disposed || state.authoritative.projectId !== projectId) return;
+      // Refresh errors remain on the controller for recovery; a failed observation
+      // must not turn a committed deletion into a retry of that destructive action.
+      void workspace.refresh().catch(() => {});
+    },
+    [workspace],
   );
 
   const begin = useCallback(
@@ -92,6 +112,7 @@ export function useProjectSurfaceCloseCoordinator({
       if (input.kind !== "builtin") {
         void queryClient.cancelQueries({ queryKey: entityQueryKey(input) });
       }
+      if (workspace !== undefined) return;
       void queryClient.cancelQueries({ queryKey: layoutQueryKey });
       setPendingTabKeys((current) => {
         if (current.has(tabKey)) return current;
@@ -114,7 +135,7 @@ export function useProjectSurfaceCloseCoordinator({
         return optimistic;
       });
     },
-    [queryClient, setWorkspaceSelection],
+    [queryClient, setWorkspaceSelection, workspace],
   );
 
   const commit = useCallback(
@@ -130,6 +151,10 @@ export function useProjectSurfaceCloseCoordinator({
           (current) => current?.filter(({ id }) => id !== input.tabId),
         );
       }
+      if (workspace !== undefined) {
+        refreshOwnedLayout(input.projectId);
+        return;
+      }
       queryClient.setQueryData<ProjectTabLayoutSummary>(
         ["project-tab-layout", input.projectId],
         (current) =>
@@ -138,11 +163,12 @@ export function useProjectSurfaceCloseCoordinator({
       selectionBeforeCloseRef.current.delete(tabKey);
       setPendingTabKeys((current) => removePendingTabKey(current, tabKey));
     },
-    [queryClient],
+    [queryClient, workspace, refreshOwnedLayout],
   );
 
   const rollback = useCallback(
     (input: ProjectSurfaceCloseInput) => {
+      if (workspace !== undefined) return;
       const tabKey = projectSurfaceTabKey(
         input.kind,
         input.tabId,
@@ -157,11 +183,15 @@ export function useProjectSurfaceCloseCoordinator({
       }
       setPendingTabKeys((current) => removePendingTabKey(current, tabKey));
     },
-    [setWorkspaceSelection],
+    [setWorkspaceSelection, workspace],
   );
 
   const commitView = useCallback(
     (input: ProjectSurfaceCloseInput, layout: ProjectTabLayoutSummary) => {
+      if (workspace !== undefined) {
+        refreshOwnedLayout(input.projectId);
+        return;
+      }
       const tabKey = projectSurfaceTabKey(
         input.kind,
         input.tabId,
@@ -176,7 +206,7 @@ export function useProjectSurfaceCloseCoordinator({
       selectionBeforeCloseRef.current.delete(tabKey);
       setPendingTabKeys((current) => removePendingTabKey(current, tabKey));
     },
-    [queryClient, setWorkspaceSelection],
+    [queryClient, setWorkspaceSelection, workspace, refreshOwnedLayout],
   );
 
   return { begin, commit, commitView, pendingTabKeys, rollback };
@@ -185,34 +215,68 @@ export function useProjectSurfaceCloseCoordinator({
 function closeInputForSurface(
   surface: ProjectSurface,
 ): ProjectSurfaceCloseInput {
+  const kind =
+    surface.kind === "unresolved" || surface.kind === "file"
+      ? surface.member.tabKind
+      : surface.kind;
   return {
     kind:
-      surface.kind === "history" ||
-      surface.kind === "graph" ||
-      surface.kind === "issues" ||
-      surface.kind === "prs" ||
-      surface.kind === "actions" ||
-      surface.kind === "remote-desktop"
+      kind === "history" ||
+      kind === "graph" ||
+      kind === "issues" ||
+      kind === "prs" ||
+      kind === "actions" ||
+      kind === "remote-desktop"
         ? "view"
-        : surface.kind,
+        : kind,
     projectId: surface.projectId,
     tabId: surface.tabId,
   };
 }
 
+class SurfaceCloseInProgress extends Error {
+  constructor() {
+    super("This view is already closing.");
+  }
+}
+
+const closeOperationKey = (surface: ProjectSurface) =>
+  JSON.stringify([surface.projectId, surface.tabKey]);
+
 export function useProjectSurfaceViewOperations({
   beforeClose,
   onCloseError,
+  onCloseCleanupError,
   queryClient,
   surfaceClose,
+  workspace,
 }: {
-  beforeClose?: (surface: ProjectSurface) => Promise<void> | void;
+  beforeClose?: (
+    surface: ProjectSurface,
+  ) =>
+    | Promise<void | (() => void | Promise<void>)>
+    | void
+    | (() => void | Promise<void>);
   onCloseError?: (surface: ProjectSurface) => void;
+  onCloseCleanupError?: (error: unknown, surface: ProjectSurface) => void;
   queryClient: QueryClient;
   surfaceClose: ProjectSurfaceCloseCoordinator;
+  workspace?: { controller: WorkspaceCommandClient } | null;
 }) {
+  const closing = useRef(new Set<string>());
   const closeSurfaceViewMutation = useMutation({
     mutationFn: (surface: ProjectSurface) => {
+      if (workspace !== undefined) {
+        if (!workspace) throw new Error("Workspace connection is not ready.");
+        if (
+          workspace.controller.getSnapshot().authoritative.projectId !==
+          surface.projectId
+        )
+          throw new Error("Workspace command belongs to another project.");
+        return workspace.controller
+          .dispatch({ type: "close-tab", tabId: surface.tabKey })
+          .then(() => null);
+      }
       const layout = queryClient.getQueryData<ProjectTabLayoutSummary>([
         "project-tab-layout",
         surface.projectId,
@@ -225,22 +289,50 @@ export function useProjectSurfaceViewOperations({
       );
     },
     onMutate: async (surface) => {
-      if (surface.kind === "code" && !confirmNativeCodeDiscard(surface.tabId))
+      const key = closeOperationKey(surface);
+      if (closing.current.has(key)) throw new SurfaceCloseInProgress();
+      closing.current.add(key);
+      if (
+        surface.kind === "code" &&
+        !(await confirmNativeCodeDiscard(surface.tabId))
+      )
         throw new Error("Code tab close canceled.");
-      surfaceClose.begin(closeInputForSurface(surface));
-      await beforeClose?.(surface);
+      if (workspace === undefined)
+        surfaceClose.begin(closeInputForSurface(surface));
+      // Retain the prepared renderer's finalizer: authoritative close may
+      // unmount it and remove its registry entry before onSuccess runs.
+      const finalize = await beforeClose?.(surface);
+      return { finalize, committed: false };
     },
-    onError: (_error, surface) => {
-      surfaceClose.rollback(closeInputForSurface(surface));
+    onError: (error, surface, preparation) => {
+      // The duplicate never prepared this renderer and cannot release another
+      // operation's close reservation or roll back its pending placement.
+      if (error instanceof SurfaceCloseInProgress) return;
+      if (preparation?.committed) {
+        // A cleanup failure cannot undo a successful ownership mutation.
+        // Keep recovery data and report it separately from a rejected close.
+        onCloseCleanupError?.(error, surface);
+        return;
+      }
+      if (workspace === undefined)
+        surfaceClose.rollback(closeInputForSurface(surface));
       onCloseError?.(surface);
     },
-    onSuccess: (result, surface) => {
-      surfaceClose.commitView(closeInputForSurface(surface), result.layout);
+    onSuccess: async (result, surface, preparation) => {
+      if (preparation) preparation.committed = true;
+      if (result)
+        surfaceClose.commitView(closeInputForSurface(surface), result.layout);
+      await preparation?.finalize?.();
     },
-    onSettled: (_data, _error, surface) =>
-      queryClient.invalidateQueries({
-        queryKey: ["project-tab-layout", surface.projectId],
-      }),
+    onSettled: (_data, error, surface) => {
+      if (error instanceof SurfaceCloseInProgress) return;
+      closing.current.delete(closeOperationKey(surface));
+      return workspace !== undefined
+        ? undefined
+        : queryClient.invalidateQueries({
+            queryKey: ["project-tab-layout", surface.projectId],
+          });
+    },
   });
   return { closeSurfaceViewMutation } as const;
 }

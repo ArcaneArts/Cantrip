@@ -76,6 +76,15 @@ import type {
   RemoteSurfaceWorkerLinkInboundFrame,
 } from "@/lib/remote-surface-worker-link";
 
+import { useBrowserAddress } from "./use-browser-address";
+import { BrowserOperationBoundary } from "./browser-operation-boundary";
+import { registerBrowserTransferLifecycle } from "./browser-transfer-lifecycle";
+import {
+  parseBrowserViewState,
+  type BrowserViewState,
+  type BrowserTransferStaging,
+} from "./browser-view-state";
+
 const decoder = new TextDecoder();
 // The server permits a worker attachment to spend up to 30 seconds starting.
 // Keep the initial Browser veil in its recovering state for that same window so
@@ -216,11 +225,19 @@ export function browserSurfaceStartupState(input: {
 
 export function BrowserView({
   browser,
+  visible = true,
+  transferTabId,
+  initialViewState,
+  transferStaging,
   fleetDiscovery,
   onOpenService,
   onPageState,
 }: {
   browser: BrowserSummary;
+  visible?: boolean;
+  transferTabId?: string;
+  initialViewState?: BrowserViewState;
+  transferStaging?: BrowserTransferStaging;
   fleetDiscovery: boolean;
   onOpenService(service: BrowserFleetService): void;
   onPageState(state: {
@@ -232,7 +249,6 @@ export function BrowserView({
   const agentCursorRef = useRef<BrowserAgentCursorHandle>(null);
   const remoteCanvasRef = useRef<RemoteSurfaceCanvasHandle>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
-  const inputFocusedRef = useRef(false);
   const onPageStateRef = useRef(onPageState);
   const browserStateRevisionRef = useRef(browser.stateRevision);
   const pageStateRef = useRef<{ title: string; url: string } | null>(null);
@@ -242,7 +258,14 @@ export function BrowserView({
     height: 720,
     devicePixelRatio: window.devicePixelRatio || 1,
   });
-  const [address, setAddress] = useState(browser.url);
+  const {
+    address,
+    edit: editAddress,
+    commit: commitAddress,
+    followPage: followPageAddress,
+    restore: restoreAddress,
+    isDirty: addressIsDirty,
+  } = useBrowserAddress(browser.url);
   const [currentUrl, setCurrentUrl] = useState(browser.url);
   const [invalidAddress, setInvalidAddress] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -268,6 +291,27 @@ export function BrowserView({
   const [encryptionError, setEncryptionError] = useState<string | null>(null);
   const [encryptionAttempt, setEncryptionAttempt] = useState(0);
   const surfaceReady = renderedSurfaceId === browser.id;
+  const [transferRetired, setTransferRetired] = useState(false);
+  const [transferSuspended, setTransferSuspended] = useState(false);
+  const boundaryRef = useRef<BrowserOperationBoundary | null>(null);
+  const stagingRef = useRef(transferStaging);
+  stagingRef.current = transferStaging;
+  const transferredStateRef = useRef(initialViewState);
+  const [transferHydrated, setTransferHydrated] = useState(!initialViewState);
+  const viewSnapshotRef = useRef<BrowserViewState | null>(null);
+  viewSnapshotRef.current = {
+    version: 1,
+    browserId: browser.id,
+    projectId: browser.projectId,
+    workerId: browser.workerId ?? "",
+    address,
+    addressDirty: addressIsDirty(),
+    currentUrl,
+    invalidAddress,
+    serviceSearch,
+    currentWorkerId,
+    viewport: { ...viewportRef.current },
+  };
   const servicesQuery = useQuery<
     BrowserService[] | BrowserServiceFleetDiscovery
   >({
@@ -372,7 +416,7 @@ export function BrowserView({
               const normalized = normalizeBrowserAddress(privateState.url);
               if (normalized) {
                 setCurrentUrl(normalized);
-                if (!inputFocusedRef.current) setAddress(normalized);
+                followPageAddress(normalized);
                 const previous = pageStateRef.current;
                 if (
                   previous?.url !== normalized ||
@@ -382,11 +426,12 @@ export function BrowserView({
                     title: state.title,
                     url: normalized,
                   };
-                  onPageStateRef.current({
-                    previousTitle: previous?.title ?? null,
-                    title: state.title,
-                    url: normalized,
-                  });
+                  if (!stagingRef.current)
+                    onPageStateRef.current({
+                      previousTitle: previous?.title ?? null,
+                      title: state.title,
+                      url: normalized,
+                    });
                 }
               }
               setCanGoBack(state.canGoBack);
@@ -405,6 +450,9 @@ export function BrowserView({
         ).cursor;
         if (CSS.supports("cursor", cursor)) setCursor(cursor);
       } else if (frame.header.channel === "clipboard") {
+        // The passive destination may receive frames while the source still
+        // owns the view. It must not repeat a source-side clipboard action.
+        if (stagingRef.current) return;
         const clipboard = remoteBrowserClipboardMessageSchema.parse(
           JSON.parse(decoder.decode(frame.payload)),
         );
@@ -422,26 +470,34 @@ export function BrowserView({
         );
       }
     },
-    [browser.id],
+    [browser.id, followPageAddress],
   );
 
-  const { activeRoute, connectionState, error, retry, sendFrame, setError } =
-    useRemoteSurfaceWorkerLink({
-      enabled: encryptionReady && Boolean(browser.workerId),
-      streamKind: "browser",
-      surfaceKind: "browser",
-      surfaceId: browser.id,
-      workerId: browser.workerId ?? "",
-      viewport: () => viewportRef.current,
-      messages: browserTransportMessages,
-      onConnecting: () => {
-        remoteCanvasRef.current?.reset();
-        agentCursorRef.current?.reset();
-      },
-      onFrame: handleFrame,
-    });
+  const {
+    activeRoute,
+    connectionState,
+    error,
+    retry,
+    sendFrame,
+    setError,
+    drain,
+    detach,
+  } = useRemoteSurfaceWorkerLink({
+    enabled: encryptionReady && Boolean(browser.workerId) && !transferRetired,
+    streamKind: "browser",
+    surfaceKind: "browser",
+    surfaceId: browser.id,
+    workerId: browser.workerId ?? "",
+    viewport: () => viewportRef.current,
+    messages: browserTransportMessages,
+    onConnecting: () => {
+      remoteCanvasRef.current?.reset();
+      agentCursorRef.current?.reset();
+    },
+    onFrame: handleFrame,
+  });
 
-  const send = useCallback(
+  const rawSend = useCallback(
     (message: RemoteBrowserClientMessage) =>
       sendFrame(
         "control",
@@ -451,6 +507,80 @@ export function BrowserView({
       ),
     [sendFrame],
   );
+  const send = useCallback(
+    (message: RemoteBrowserClientMessage) =>
+      !stagingRef.current &&
+      boundaryRef.current?.accepting === true &&
+      rawSend(message),
+    [rawSend],
+  );
+
+  useEffect(() => {
+    const boundary = new BrowserOperationBoundary();
+    boundaryRef.current = boundary;
+    const owner = {
+      tabId: transferTabId ?? "",
+      browserId: browser.id,
+      projectId: browser.projectId,
+      workerId: browser.workerId ?? "",
+    };
+    let live = true;
+    let retired = false;
+    const unregister =
+      transferTabId && browser.workerId
+        ? registerBrowserTransferLifecycle(owner, {
+            suspendTransfer() {
+              if (stagingRef.current)
+                throw new Error(
+                  "The browser destination has not acquired ownership.",
+                );
+              const release = boundary.suspend();
+              let released = false;
+              setTransferSuspended(true);
+              setServiceMenuOpen(false);
+              return () => {
+                if (!live || released) return;
+                released = true;
+                release();
+                setTransferSuspended(false);
+                if (retired) {
+                  retired = false;
+                  setTransferRetired(false);
+                  retry();
+                }
+              };
+            },
+            async captureTransfer() {
+              await boundary.drain();
+              await drain();
+              await boundary.drain();
+              return parseBrowserViewState(viewSnapshotRef.current, owner);
+            },
+            async retireTransfer() {
+              await boundary.drain();
+              await drain();
+              await boundary.drain();
+              retired = true;
+              detach();
+              setTransferRetired(true);
+            },
+          })
+        : () => {};
+    return () => {
+      live = false;
+      unregister();
+      boundary.dispose();
+      if (boundaryRef.current === boundary) boundaryRef.current = null;
+    };
+  }, [
+    browser.id,
+    browser.projectId,
+    browser.workerId,
+    transferTabId,
+    drain,
+    detach,
+    retry,
+  ]);
 
   const detectedStartupFailure = browserSurfaceStartupState({
     error: encryptionError ?? error,
@@ -493,21 +623,55 @@ export function BrowserView({
   };
 
   useEffect(() => {
-    setAddress(browser.url);
-    setCurrentUrl(browser.url);
-    setInvalidAddress(false);
+    const incoming = transferredStateRef.current;
+    if (incoming) {
+      try {
+        const state = parseBrowserViewState(incoming, {
+          browserId: browser.id,
+          projectId: browser.projectId,
+          workerId: browser.workerId ?? "",
+        });
+        restoreAddress(state.address, state.addressDirty);
+        setCurrentUrl(state.currentUrl);
+        setInvalidAddress(state.invalidAddress);
+        setServiceSearch(state.serviceSearch);
+        setCurrentWorkerId(state.currentWorkerId);
+        viewportRef.current = { ...state.viewport };
+        setTransferHydrated(true);
+      } catch (error) {
+        stagingRef.current?.onError(error);
+      }
+    } else {
+      commitAddress(browser.url);
+      setCurrentUrl(browser.url);
+      setInvalidAddress(false);
+    }
     pageStateRef.current = null;
     seenStateOperationsRef.current.clear();
     setRuntimeStatus("ready");
     setRuntimeMessage(null);
-    setCurrentWorkerId(undefined);
+    if (!incoming) setCurrentWorkerId(undefined);
     setExternalActionMessage(null);
   }, [browser.id]);
 
   useEffect(() => {
+    if (
+      transferStaging &&
+      transferHydrated &&
+      surfaceReady &&
+      connectionState === "ready"
+    )
+      transferStaging.onRestored();
+  }, [transferStaging, transferHydrated, surfaceReady, connectionState]);
+  useEffect(() => {
+    if (transferStaging && (error || encryptionError))
+      transferStaging.onError(new Error(error ?? encryptionError!));
+  }, [transferStaging, error, encryptionError]);
+
+  useEffect(() => {
     if (pageStateRef.current?.url === browser.url) return;
     setCurrentUrl(browser.url);
-    if (!inputFocusedRef.current) setAddress(browser.url);
+    followPageAddress(browser.url);
   }, [browser.url]);
 
   useEffect(() => {
@@ -518,7 +682,14 @@ export function BrowserView({
 
   useEffect(() => {
     const surface = surfaceRef.current;
-    if (!surface) return;
+    if (
+      !surface ||
+      !visible ||
+      transferStaging ||
+      transferSuspended ||
+      transferRetired
+    )
+      return;
     const updateViewport = () => {
       const bounds = surface.getBoundingClientRect();
       const viewport = {
@@ -533,37 +704,48 @@ export function BrowserView({
     const observer = new ResizeObserver(updateViewport);
     observer.observe(surface);
     return () => observer.disconnect();
-  }, [send]);
+  }, [send, visible, transferStaging, transferSuspended, transferRetired]);
 
   useEffect(() => {
     if (connectionState === "ready") {
-      send({ type: "viewport", viewport: viewportRef.current });
+      // Attach can publish its initial image before the stream lanes open.
+      // Request a fresh image at the captured source viewport even while the
+      // destination is passive; user input still goes through the ownership gate.
+      if (transferStaging && transferHydrated)
+        rawSend({ type: "viewport", viewport: viewportRef.current });
+      else send({ type: "viewport", viewport: viewportRef.current });
     }
-  }, [connectionState, send]);
+  }, [connectionState, send, rawSend, transferStaging, transferHydrated]);
 
   const navigateTo = (value: string, workerId?: string) => {
+    if (stagingRef.current || !boundaryRef.current?.accepting) return false;
     const normalized = normalizeBrowserAddress(value);
     if (!normalized) {
       setInvalidAddress(true);
       return false;
     }
     setInvalidAddress(false);
-    setAddress(normalized);
+    commitAddress(normalized);
     setCurrentUrl(normalized);
     setCurrentWorkerId(workerId);
     setLoading(true);
     const operationId = crypto.randomUUID();
-    void surfaceTitleEncryption
-      .protectBrowserOperation(
-        browser.id,
-        operationId,
-        normalized,
-        browser.stateRevision,
-      )
-      .then((stateProtection) =>
-        send({ type: "navigate", operationId, stateProtection }),
-      )
-      .catch(() => setError("Browser encryption is locked or unavailable."));
+    void boundaryRef.current
+      .run(async (isCurrent) => {
+        const stateProtection =
+          await surfaceTitleEncryption.protectBrowserOperation(
+            browser.id,
+            operationId,
+            normalized,
+            browser.stateRevision,
+          );
+        if (
+          !isCurrent() ||
+          !rawSend({ type: "navigate", operationId, stateProtection })
+        )
+          throw new Error("Browser navigation could not be delivered.");
+      })
+      .catch((error) => setError(errorMessage(error)));
     return true;
   };
 
@@ -583,11 +765,20 @@ export function BrowserView({
   };
 
   const pasteClipboard = async () => {
-    setClipboardMessage(
-      await forwardRemoteSurfaceClipboard((text) =>
-        send({ type: "clipboard", operation: "paste-text", text }),
-      ),
-    );
+    if (stagingRef.current || !boundaryRef.current?.accepting) return;
+    try {
+      setClipboardMessage(
+        await boundaryRef.current.run(async (isCurrent) =>
+          forwardRemoteSurfaceClipboard(
+            (text) =>
+              isCurrent() &&
+              rawSend({ type: "clipboard", operation: "paste-text", text }),
+          ),
+        ),
+      );
+    } catch (error) {
+      setClipboardMessage(errorMessage(error));
+    }
   };
 
   const tunnelCurrentPage = async () => {
@@ -658,7 +849,10 @@ export function BrowserView({
   const currentPageNeedsTunnel = browserAddressRequiresTunnel(currentUrl);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-background">
+    <div
+      className="flex min-h-0 flex-1 flex-col bg-background"
+      inert={transferSuspended || transferRetired || Boolean(transferStaging)}
+    >
       <PanelToolbar
         aria-label="Browser controls"
         className="gap-1.5 bg-background"
@@ -707,15 +901,14 @@ export function BrowserView({
             <input
               aria-label="Address"
               value={address}
-              onFocus={() => {
-                inputFocusedRef.current = true;
-              }}
-              onBlur={() => {
-                inputFocusedRef.current = false;
-                setAddress(currentUrl);
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  commitAddress(currentUrl);
+                  setInvalidAddress(false);
+                }
               }}
               onChange={(event) => {
-                setAddress(event.target.value);
+                editAddress(event.target.value);
                 setInvalidAddress(false);
               }}
               className="h-8 w-full rounded-md border bg-background pl-9 pr-3 text-sm outline-none ring-ring placeholder:text-muted-foreground focus:ring-2"

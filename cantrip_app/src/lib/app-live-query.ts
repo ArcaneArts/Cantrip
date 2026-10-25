@@ -348,6 +348,12 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
         : event.scope.kind === "current-user"
           ? [["run-configurations"], ["run-configuration-secrets"]]
           : [];
+    case "file-document":
+      return projectId
+        ? [["file-documents", projectId]]
+        : event.scope.kind === "current-user"
+          ? [["file-documents"]]
+          : [];
     case "explorer":
       return projectId
         ? [["explorers", projectId]]
@@ -469,6 +475,7 @@ export function appLiveScopeQueryKeys(scope: AppLiveScope): QueryKey[] {
         ["run-configurations", scope.projectId],
         ["run-configuration-secrets", scope.projectId],
         ["explorers", scope.projectId],
+        ["file-documents", scope.projectId],
         ["explorer-directory", scope.projectId],
         ["explorer-directory-commits", scope.projectId],
         ["browsers", scope.projectId],

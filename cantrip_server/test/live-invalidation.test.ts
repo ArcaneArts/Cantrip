@@ -3,6 +3,17 @@ import { describe, expect, it } from "vitest";
 import { mutationLiveResources } from "../src/app.js";
 
 describe("live mutation invalidation", () => {
+  it("invalidates document catalogs without mutating view placement", () => {
+    expect(
+      mutationLiveResources("/api/projects/:projectId/file-documents"),
+    ).toEqual(["file-document"]);
+    expect(
+      mutationLiveResources("/api/file-documents/:documentId/operation"),
+    ).toEqual([]);
+    expect(mutationLiveResources("/api/file-documents/:documentId")).toEqual(
+      [],
+    );
+  });
   it("does not publish mutation events for protected repository reads", () => {
     const workerRoute = "/api/workers/:workerId/repository-operation";
     const worktreeRoute =

@@ -12,7 +12,8 @@ import {
   type ExplorerGraphRequest,
   type ExplorerHeaderState,
   type ExplorerLifecycleActions,
-  type TransientExplorerFile,
+  type ExplorerTransferState,
+  type IncomingEditorView,
 } from "@/components/explorer/explorer-view";
 import { clientLogger } from "@/lib/client-log-relay";
 import { explorerFileIntentContext } from "@/lib/explorer-lifecycle-trace";
@@ -23,13 +24,9 @@ const EMPTY_EXCLUDED_EXPLORER_IDS: ReadonlySet<string> = new Set();
 interface ExplorerOwnershipDiagnostic {
   active: boolean;
   explorerId: string;
-  handoffDestination: boolean;
-  handoffSource: boolean;
   openOwner: boolean;
   ownershipKind: string;
-  prewarm: boolean;
   projectId: string;
-  transient: boolean;
   worktreeId: string;
 }
 
@@ -40,13 +37,9 @@ function sameExplorerOwnershipDiagnostic(
   return (
     left?.active === right.active &&
     left.explorerId === right.explorerId &&
-    left.handoffDestination === right.handoffDestination &&
-    left.handoffSource === right.handoffSource &&
     left.openOwner === right.openOwner &&
     left.ownershipKind === right.ownershipKind &&
-    left.prewarm === right.prewarm &&
     left.projectId === right.projectId &&
-    left.transient === right.transient &&
     left.worktreeId === right.worktreeId
   );
 }
@@ -75,17 +68,13 @@ export function retainExplorerSurfaceTabs(
 export function retainRequestedExplorerSurfaceTabs(
   retained: ExplorerSummary[],
   active: ExplorerSummary | null,
-  prewarm: ExplorerSummary | null | undefined,
   dirtyIds: ReadonlySet<string>,
-  protectedIds: ReadonlySet<string> = new Set(),
-  prewarmSuccessor?: ExplorerSummary | null,
 ): ExplorerSummary[] {
-  const requested = [prewarm, prewarmSuccessor, active].filter(
+  const requested = [active].filter(
     (explorer): explorer is ExplorerSummary =>
       explorer !== null && explorer !== undefined,
   );
   const requestedIds = new Set(requested.map((explorer) => explorer.id));
-  const retainedProtectionIds = new Set([...protectedIds, ...requestedIds]);
   const next = [
     ...retained.filter((explorer) => !requestedIds.has(explorer.id)),
     ...requested.filter(
@@ -99,7 +88,7 @@ export function retainRequestedExplorerSurfaceTabs(
   return next.filter((explorer) => {
     if (
       excess > 0 &&
-      !retainedProtectionIds.has(explorer.id) &&
+      !requestedIds.has(explorer.id) &&
       !dirtyIds.has(explorer.id)
     ) {
       excess -= 1;
@@ -112,21 +101,10 @@ export function retainRequestedExplorerSurfaceTabs(
 export function ownedExplorerSurfaceTabs(
   openExplorers: readonly ExplorerSummary[],
   active: ExplorerSummary | null,
-  prewarm: ExplorerSummary | null | undefined,
-  handoff?: ExplorerSummary | null,
-  handoffSource?: ExplorerSummary | null,
-  prewarmSuccessor?: ExplorerSummary | null,
 ): ExplorerSummary[] {
   const owned: ExplorerSummary[] = [];
   const indexById = new Map<string, number>();
-  for (const explorer of [
-    ...openExplorers,
-    prewarm,
-    prewarmSuccessor,
-    handoffSource,
-    handoff,
-    active,
-  ]) {
+  for (const explorer of [...openExplorers, active]) {
     if (!explorer) continue;
     const existingIndex = indexById.get(explorer.id);
     if (existingIndex === undefined) {
@@ -141,49 +119,35 @@ export function ownedExplorerSurfaceTabs(
 
 export function PersistentExplorerViews({
   activeExplorer,
-  transientFile,
   appearance,
   graphRequest,
   gitStatuses,
-  handoffExplorer,
-  handoffSourceExplorer,
   onlineWorkerIds,
   onChanged,
   onHeaderChange,
-  onInlineCodeReady,
   onLifecycleChange,
-  onTransientLifecycleChange,
   onOpenFile,
   onOpenGraphFile,
   onRevealFolder,
   revealLabel,
   onOpenTerminal,
-  openExplorers,
-  prewarmExplorer,
-  prewarmSuccessorExplorer,
+  openExplorers: providedOpenExplorers,
   repositoryGraphAvailable,
   visiblePlacements,
   excludedIds = EMPTY_EXCLUDED_EXPLORER_IDS,
+  initialTransfers,
+  incomingViews,
 }: {
+  incomingViews?: readonly IncomingEditorView<ExplorerSummary>[];
+  initialTransfers?: ReadonlyMap<string, ExplorerTransferState>;
   activeExplorer: ExplorerSummary | null;
-  transientFile?: {
-    explorerId: string;
-    file: TransientExplorerFile;
-  };
   appearance: CodeAppearance;
   graphRequest?: ExplorerGraphRequest | null;
   gitStatuses: Readonly<Record<string, GitStatus | undefined>>;
-  handoffExplorer?: ExplorerSummary | null;
-  handoffSourceExplorer?: ExplorerSummary | null;
   onlineWorkerIds?: ReadonlySet<string>;
   onChanged?(explorer: ExplorerSummary): void;
   onHeaderChange?(state: ExplorerHeaderState | null): void;
-  onInlineCodeReady?(explorerId: string): void;
   onLifecycleChange?(
-    explorerId: string,
-    actions: ExplorerLifecycleActions | null,
-  ): void;
-  onTransientLifecycleChange?(
     explorerId: string,
     actions: ExplorerLifecycleActions | null,
   ): void;
@@ -200,8 +164,6 @@ export function PersistentExplorerViews({
   revealLabel?: string;
   onOpenTerminal?(explorer: ExplorerSummary, entry: ExplorerEntry): void;
   openExplorers?: readonly ExplorerSummary[];
-  prewarmExplorer?: ExplorerSummary | null;
-  prewarmSuccessorExplorer?: ExplorerSummary | null;
   repositoryGraphAvailable: boolean;
   excludedIds?: ReadonlySet<string>;
   visiblePlacements?: readonly {
@@ -212,6 +174,23 @@ export function PersistentExplorerViews({
     portalTarget?: Element | null;
   }[];
 }) {
+  const openExplorers = useMemo(
+    () =>
+      incomingViews
+        ? [
+            ...new Map(
+              [
+                ...incomingViews.map(({ resource }) => resource),
+                ...(providedOpenExplorers ?? []),
+              ].map((resource) => [resource.id, resource]),
+            ).values(),
+          ]
+        : providedOpenExplorers,
+    [incomingViews, providedOpenExplorers],
+  );
+  const incomingById = new Map(
+    incomingViews?.map((view) => [view.resource.id, view]) ?? [],
+  );
   const [dirtyIds, setDirtyIds] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
@@ -221,80 +200,32 @@ export function PersistentExplorerViews({
 
   useEffect(() => {
     if (openExplorers) return;
-    if (!activeExplorer && !prewarmExplorer && !prewarmSuccessorExplorer) {
+    if (!activeExplorer) {
       return;
     }
     setRetainedExplorers((current) =>
-      retainRequestedExplorerSurfaceTabs(
-        current,
-        activeExplorer,
-        prewarmExplorer,
-        dirtyIds,
-        transientFile ? new Set([transientFile.explorerId]) : undefined,
-        prewarmSuccessorExplorer,
-      ),
+      retainRequestedExplorerSurfaceTabs(current, activeExplorer, dirtyIds),
     );
-  }, [
-    activeExplorer,
-    dirtyIds,
-    openExplorers,
-    prewarmExplorer,
-    prewarmSuccessorExplorer,
-    transientFile?.explorerId,
-  ]);
+  }, [activeExplorer, dirtyIds, openExplorers]);
 
   const renderedExplorers = useMemo(
     () =>
       (openExplorers
-        ? ownedExplorerSurfaceTabs(
-            openExplorers,
-            activeExplorer,
-            prewarmExplorer,
-            handoffExplorer,
-            handoffSourceExplorer,
-            prewarmSuccessorExplorer,
-          )
+        ? ownedExplorerSurfaceTabs(openExplorers, activeExplorer)
         : ownedExplorerSurfaceTabs(
             retainRequestedExplorerSurfaceTabs(
               retainedExplorers,
               activeExplorer,
-              prewarmExplorer,
               dirtyIds,
-              transientFile ? new Set([transientFile.explorerId]) : undefined,
-              prewarmSuccessorExplorer,
             ),
             activeExplorer,
-            prewarmExplorer,
-            handoffExplorer,
-            handoffSourceExplorer,
-            prewarmSuccessorExplorer,
           )
       ).filter(({ id }) => !excludedIds.has(id)),
-    [
-      activeExplorer,
-      dirtyIds,
-      excludedIds,
-      handoffExplorer,
-      handoffSourceExplorer,
-      openExplorers,
-      prewarmExplorer,
-      prewarmSuccessorExplorer,
-      retainedExplorers,
-      transientFile?.explorerId,
-    ],
+    [activeExplorer, dirtyIds, excludedIds, openExplorers, retainedExplorers],
   );
   const inlineCodeOwnerIds = useMemo(
-    () =>
-      new Set([
-        ...(openExplorers?.map(({ id }) => id) ?? []),
-        // A pin handoff becomes an ordinary open owner after the layout
-        // refresh, without changing the keyed ExplorerView instance.
-        ...(handoffExplorer ? [handoffExplorer.id] : []),
-        // The source is captured before the pin request so query/layout
-        // reconciliation cannot release the Code owner during promotion.
-        ...(handoffSourceExplorer ? [handoffSourceExplorer.id] : []),
-      ]),
-    [handoffExplorer, handoffSourceExplorer, openExplorers],
+    () => new Set(openExplorers?.map(({ id }) => id) ?? []),
+    [openExplorers],
   );
   const placementById = useMemo(
     () =>
@@ -312,47 +243,23 @@ export function PersistentExplorerViews({
         const active = visiblePlacements
           ? placementById.has(explorer.id)
           : activeExplorer?.id === explorer.id;
-        const handoffDestination = handoffExplorer?.id === explorer.id;
-        const handoffSource = handoffSourceExplorer?.id === explorer.id;
         const openOwner = Boolean(
           openExplorers?.some(({ id }) => id === explorer.id),
         );
-        const prewarm =
-          prewarmExplorer?.id === explorer.id ||
-          prewarmSuccessorExplorer?.id === explorer.id;
-        const transient = transientFile?.explorerId === explorer.id;
         const roles = [
           active ? "active" : null,
           openOwner ? "open" : null,
-          transient ? "transient" : null,
-          prewarm ? "prewarm" : null,
-          handoffSource ? "handoff-source" : null,
-          handoffDestination ? "handoff-destination" : null,
         ].filter((role): role is string => role !== null);
         return {
           active,
           explorerId: explorer.id,
-          handoffDestination,
-          handoffSource,
           openOwner,
           ownershipKind: roles.join("+") || "retained-only",
-          prewarm,
           projectId: explorer.projectId,
-          transient,
           worktreeId: explorer.worktreeId,
         };
       }),
-    [
-      activeExplorer?.id,
-      handoffExplorer?.id,
-      handoffSourceExplorer?.id,
-      openExplorers,
-      prewarmExplorer?.id,
-      prewarmSuccessorExplorer?.id,
-      renderedExplorers,
-      transientFile?.explorerId,
-      placementById,
-    ],
+    [activeExplorer?.id, openExplorers, renderedExplorers, placementById],
   );
   const previousOwnershipRef = useRef(
     new Map<string, ExplorerOwnershipDiagnostic>(),
@@ -413,11 +320,8 @@ export function PersistentExplorerViews({
         return next;
       });
       onLifecycleChange?.(explorerId, actions);
-      if (transientFile?.explorerId === explorerId) {
-        onTransientLifecycleChange?.(explorerId, actions);
-      }
     },
-    [onLifecycleChange, onTransientLifecycleChange, transientFile?.explorerId],
+    [onLifecycleChange],
   );
 
   return renderedExplorers.map((explorer) => {
@@ -425,23 +329,18 @@ export function PersistentExplorerViews({
     const active = visiblePlacements
       ? Boolean(placement && placement.portalTarget !== null)
       : activeExplorer?.id === explorer.id;
-    const explorerTransientFile =
-      transientFile?.explorerId === explorer.id
-        ? transientFile.file
-        : undefined;
-    const transient = Boolean(explorerTransientFile);
-    const prewarm =
-      prewarmExplorer?.id === explorer.id ||
-      prewarmSuccessorExplorer?.id === explorer.id;
     const view = (
       <ExplorerView
         active={active}
         appearance={appearance}
         explorer={explorer}
+        initialTransfer={
+          incomingById.get(explorer.id)?.state ??
+          initialTransfers?.get(explorer.id)
+        }
+        transferStaging={incomingById.get(explorer.id)?.staging}
         graphRequest={
-          !transient && graphRequest?.explorerId === explorer.id
-            ? graphRequest
-            : null
+          graphRequest?.explorerId === explorer.id ? graphRequest : null
         }
         gitStatus={gitStatuses[explorer.worktreeId]}
         keepInlineCodeWarm={inlineCodeOwnerIds.has(explorer.id)}
@@ -455,20 +354,13 @@ export function PersistentExplorerViews({
               ? onHeaderChange
               : undefined
         }
-        onInlineCodeReady={
-          onInlineCodeReady ? () => onInlineCodeReady(explorer.id) : undefined
-        }
         onLifecycleChange={handleLifecycleChange}
-        onOpenFile={
-          transient || prewarm || explorer.selectedPath ? undefined : onOpenFile
-        }
+        onOpenFile={explorer.selectedPath ? undefined : onOpenFile}
         onOpenGraphFile={onOpenGraphFile}
         onRevealFolder={onRevealFolder}
         revealLabel={revealLabel}
         onOpenTerminal={onOpenTerminal}
-        prewarmInlineCode={prewarm}
-        repositoryGraphAvailable={transient ? false : repositoryGraphAvailable}
-        transientFile={explorerTransientFile}
+        repositoryGraphAvailable={repositoryGraphAvailable}
         workerOnline={
           onlineWorkerIds
             ? onlineWorkerIds.has(explorer.activeWorkerId)

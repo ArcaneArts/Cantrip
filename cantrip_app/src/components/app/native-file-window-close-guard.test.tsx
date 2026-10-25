@@ -48,6 +48,52 @@ const button = (label: string) =>
   )!;
 
 describe("native file window close dialog", () => {
+  it("defers close during an actual handoff even before dirty state is restored", async () => {
+    let busy = true;
+    await act(async () =>
+      root.render(
+        <NativeFileWindowCloseGuard
+          hasUnsavedChanges={() => false}
+          closeBlocked={() => busy}
+        />,
+      ),
+    );
+    await vi.waitFor(() => expect(native.handler).not.toBeNull());
+    await act(async () => {
+      await native.handler!({ preventDefault: vi.fn() });
+    });
+    expect(native.destroy).not.toHaveBeenCalled();
+    expect(document.querySelector('[role="alert"]')?.textContent).toContain(
+      "handoff is still running",
+    );
+    busy = false;
+    await act(async () => {
+      await native.handler!({ preventDefault: vi.fn() });
+    });
+    expect(native.destroy).toHaveBeenCalledOnce();
+  });
+
+  it("does not honor a discard confirmation if a handoff started while the dialog was open", async () => {
+    let busy = false;
+    await act(async () =>
+      root.render(
+        <NativeFileWindowCloseGuard
+          hasUnsavedChanges={() => true}
+          closeBlocked={() => busy}
+        />,
+      ),
+    );
+    await vi.waitFor(() => expect(native.handler).not.toBeNull());
+    let pending!: Promise<void>;
+    await act(async () => {
+      pending = native.handler!({ preventDefault: vi.fn() });
+    });
+    busy = true;
+    await act(async () => button("Close and discard").click());
+    await pending;
+    expect(native.destroy).not.toHaveBeenCalled();
+  });
+
   it("keeps drafts on cancellation, then closes only after explicit discard", async () => {
     await act(async () =>
       root.render(

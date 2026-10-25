@@ -62,7 +62,26 @@ describe("worker command timeout policy", () => {
 
   it("reserves the unbounded policy for streaming and safe-boundary commands", () => {
     const contexts = usageContexts("STREAMING_WORKER_COMMAND_TIMEOUT_MS");
-    expect(contexts).toHaveLength(10);
+    // Pause/resume was consolidated into one runtime in #2181. Inventory the
+    // actual owners, not the obsolete duplicated route implementations.
+    expect(
+      appSources
+        .flatMap(({ source, url }) =>
+          [
+            ...source.matchAll(
+              /timeoutMs:\s*STREAMING_WORKER_COMMAND_TIMEOUT_MS\b/gu,
+            ),
+          ].map(() => url.pathname.split("/app/")[1]),
+        )
+        .sort(),
+    ).toEqual([
+      "routes/terminal-direct-attachments.ts",
+      "routes/terminal-relay-websocket.ts",
+      "routes/worker-link-terminal-grants.ts",
+      "runtime/chat-automation-pause-runtime.ts",
+      "runtime/chat-automation-pause-runtime.ts",
+      "runtime/chat-turn-runtime.ts",
+    ]);
     expect(
       contexts.filter((context) => context.includes('type: "chat.turn"')),
     ).toHaveLength(1);
@@ -71,7 +90,7 @@ describe("worker command timeout policy", () => {
     ).toHaveLength(3);
     expect(
       contexts.filter((context) => context.includes('type: "chat.pause.set"')),
-    ).toHaveLength(6);
+    ).toHaveLength(2);
   });
 });
 

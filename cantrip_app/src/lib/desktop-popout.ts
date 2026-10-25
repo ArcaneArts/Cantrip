@@ -1,18 +1,12 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
-import type { CodeAppearance, ExplorerSummary } from "@cantrip/protocol";
 import type { BackgroundThrottlingPolicy } from "@tauri-apps/api/window";
 
-import type { DesktopExplorerWindowBroker } from "@/lib/desktop-explorer-window-broker";
 import { desktopExplorerWindowLaunchParameter } from "@/lib/desktop-explorer-window-protocol";
 import { clientLogger } from "@/lib/client-log-relay";
-import { clientEncryption } from "@/lib/client-encryption";
-import { getWorkers } from "@/lib/api";
-import { getClientSession } from "@/lib/client-session";
 import {
   isProjectOverviewSection,
   type ProjectOverviewSection,
 } from "@/lib/project-overview-section";
-import { waitForSurfacePrivateStateWorkerEncryption } from "@/lib/surface-private-state-worker-encryption";
 
 export type DesktopPopoutGroupTarget = {
   activeTabKey: string;
@@ -24,6 +18,14 @@ export type DesktopPopoutPaneTarget = {
   activeTabKey: string;
   paneId: string;
   projectId: string;
+  transfer?: DesktopWorkspaceTransferTarget;
+};
+
+export type DesktopWorkspaceTransferTarget = {
+  id: string;
+  workspaceId: string;
+  windowId: string;
+  generation: number;
 };
 
 export type DesktopProjectOverviewTarget = {
@@ -47,12 +49,6 @@ export type DesktopStandaloneChatFileTarget = {
   path: string;
 };
 
-export type DesktopExplorerFileLaunchContext = {
-  appearance: CodeAppearance;
-  explorer: ExplorerSummary;
-  projectTitle?: string;
-};
-
 const groupParameter = "cantrip-popout-group";
 const paneParameter = "cantrip-popout-pane";
 const projectOverviewParameter = "cantrip-project-overview";
@@ -61,44 +57,6 @@ const standaloneChatFileParameter = "cantrip-chat-file";
 const standaloneChatIdParameter = "cantrip-chat-id";
 const syntheticBuildProgressParameter = "cantrip-synthetic-build";
 const noDesktopListener = () => undefined;
-type ExplorerWindowBrokerRegistration = {
-  broker: DesktopExplorerWindowBroker;
-  disposePromise?: Promise<void>;
-  identityEpoch: string;
-};
-
-const explorerWindowBrokers = new Map<
-  string,
-  ExplorerWindowBrokerRegistration
->();
-const explorerFileWindowLabels = new Map<string, string>();
-const explorerFileOpenOperations = new Map<
-  string,
-  { path: string; promise: Promise<"created" | "focused"> }
->();
-const explorerEditorPrewarmPath = ".cantrip-editor-prewarm";
-let explorerWindowUnloadCleanupInstalled = false;
-let explorerWindowIdentitySubscriptionInstalled = false;
-let currentExplorerEditorIdentityEpoch: string | null = null;
-
-type ExplorerEditorWarmSlot = {
-  broker: DesktopExplorerWindowBroker;
-  identityEpoch: string;
-  key: string;
-  label: string;
-  registration: ExplorerWindowBrokerRegistration;
-};
-
-type ExplorerEditorWarmState = {
-  controller: AbortController;
-  identityEpoch: string;
-  key: string;
-  promise: Promise<ExplorerEditorWarmSlot>;
-  retired: boolean;
-};
-
-let explorerEditorWarmState: ExplorerEditorWarmState | null = null;
-
 export type DesktopPopoutWindowLifecycle = {
   listenDestroyed(listener: () => void): Promise<() => void>;
 };
@@ -112,6 +70,8 @@ export type DesktopWindowTheme = "dark" | "light" | null;
 type DesktopWindowOpenBehavior = {
   focus?: boolean;
   visible?: boolean;
+  reuseWithoutFocus?: boolean;
+  assertBeforeCreate?: () => void;
 };
 
 export function isSyntheticBuildProgressWindow(search: string): boolean {
@@ -147,8 +107,31 @@ export function parseDesktopPopoutPaneTarget(
     parameters.get(paneParameter) ?? parameters.get(groupParameter);
   const projectId = parameters.get("project");
   const activeTabKey = parameters.get("active");
+  const transferId = parameters.get("cantrip-transfer");
+  const workspaceId = parameters.get("workspace");
+  const windowId = parameters.get("window");
+  const generationText = parameters.get("generation");
+  let transfer: DesktopWorkspaceTransferTarget | undefined;
+  if (
+    [transferId, workspaceId, windowId, generationText].some(
+      (value) => value !== null,
+    )
+  ) {
+    const generation = Number(generationText);
+    if (
+      !transferId ||
+      !workspaceId ||
+      !windowId ||
+      windowId === "main" ||
+      !generationText ||
+      !/^\d+$/u.test(generationText) ||
+      !Number.isSafeInteger(generation)
+    )
+      return null;
+    transfer = { id: transferId, workspaceId, windowId, generation };
+  }
   return paneId && projectId && activeTabKey
-    ? { activeTabKey, paneId, projectId }
+    ? { activeTabKey, paneId, projectId, ...(transfer ? { transfer } : {}) }
     : null;
 }
 
@@ -171,6 +154,12 @@ export function desktopPopoutPaneSearch(
     active: target.activeTabKey,
     project: target.projectId,
   });
+  if (target.transfer) {
+    parameters.set("cantrip-transfer", target.transfer.id);
+    parameters.set("workspace", target.transfer.workspaceId);
+    parameters.set("window", target.transfer.windowId);
+    parameters.set("generation", String(target.transfer.generation));
+  }
   return `?${parameters.toString()}`;
 }
 
@@ -302,40 +291,6 @@ export function desktopStandaloneChatFileWindowLabel(
   return `cantrip-chat-file-${stableLabelHash(`${target.chatId}\0${target.path}`)}`;
 }
 
-function desktopExplorerFileTargetKey(
-  target: DesktopExplorerFileTarget,
-  context: DesktopExplorerFileLaunchContext,
-  identityEpoch: string,
-): string {
-  return [
-    target.explorerId,
-    context.explorer.worktreeId,
-    context.explorer.activeWorkerId,
-    identityEpoch,
-  ].join("\0");
-}
-
-function desktopExplorerEditorWarmKey(
-  context: DesktopExplorerFileLaunchContext,
-  identityEpoch: string,
-): string {
-  return [
-    context.explorer.id,
-    context.explorer.projectId,
-    context.explorer.worktreeId,
-    context.explorer.activeWorkerId,
-    context.appearance,
-    identityEpoch,
-  ].join("\0");
-}
-
-function desktopExplorerEditorWarmWindowLabel(
-  warmKey: string,
-  launchId: string,
-): string {
-  return `cantrip-editor-warm-${stableLabelHash(`${warmKey}\0${launchId}`)}`;
-}
-
 export function isDesktopRuntime(): boolean {
   return isTauri();
 }
@@ -399,159 +354,18 @@ async function focusWindow(label: string): Promise<boolean> {
   return true;
 }
 
-async function closeWindow(label: string): Promise<void> {
-  const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
-  const existing = await WebviewWindow.getByLabel(label);
-  if (!existing) return;
-  await existing.close();
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    if (!(await WebviewWindow.getByLabel(label))) return;
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-  throw new Error("The previous Explorer editor window did not close.");
+export async function currentDesktopWorkspaceWindowId(): Promise<
+  string | undefined
+> {
+  if (!isDesktopRuntime()) return undefined;
+  const { getCurrentWindow } = await import("@tauri-apps/api/window");
+  const label = getCurrentWindow().label;
+  return label === "main" ? undefined : label;
 }
 
-async function disposeExplorerWindowBroker(
-  label: string,
-  registration: ExplorerWindowBrokerRegistration,
-): Promise<void> {
-  if (explorerWindowBrokers.get(label) === registration) {
-    explorerWindowBrokers.delete(label);
-  }
-  for (const [targetKey, targetLabel] of explorerFileWindowLabels) {
-    if (targetLabel === label) explorerFileWindowLabels.delete(targetKey);
-  }
-  registration.disposePromise ??= registration.broker.dispose();
-  await registration.disposePromise;
-}
-
-async function closeExplorerEditorWarmSlot(
-  slot: ExplorerEditorWarmSlot,
-): Promise<void> {
-  await closeWindow(slot.label).catch(() => undefined);
-  await disposeExplorerWindowBroker(slot.label, slot.registration);
-}
-
-function retireExplorerEditorWarmState(state: ExplorerEditorWarmState): void {
-  if (state.retired) return;
-  state.retired = true;
-  state.controller.abort(
-    new DOMException("Explorer editor prewarm was superseded.", "AbortError"),
-  );
-  void state.promise
-    .then((slot) => closeExplorerEditorWarmSlot(slot))
-    .catch(() => undefined);
-}
-
-function explorerEditorIdentityEpoch(): {
-  key: string;
-  ready: boolean;
-} {
-  const session = getClientSession();
-  const snapshot = clientEncryption.getSnapshot();
-  const ready = Boolean(
-    session &&
-    snapshot.status === "ready" &&
-    snapshot.identity?.serverId === session.serverId &&
-    snapshot.identity.ownerId === session.user.id &&
-    snapshot.masterKeyRevision,
-  );
-  return {
-    key: JSON.stringify([
-      1,
-      session?.serverId ?? null,
-      session?.user.id ?? null,
-      snapshot.status,
-      snapshot.identity?.serverId ?? null,
-      snapshot.identity?.ownerId ?? null,
-      snapshot.clientId,
-      snapshot.masterKeyRevision,
-    ]),
-    ready,
-  };
-}
-
-function disposeExplorerEditorIdentityEpoch(): void {
-  if (explorerEditorWarmState) {
-    retireExplorerEditorWarmState(explorerEditorWarmState);
-    explorerEditorWarmState = null;
-  }
-  explorerFileOpenOperations.clear();
-  explorerFileWindowLabels.clear();
-  const registrations = [...explorerWindowBrokers.entries()];
-  explorerWindowBrokers.clear();
-  for (const [label, registration] of registrations) {
-    void closeWindow(label)
-      .catch(() => undefined)
-      .then(() => disposeExplorerWindowBroker(label, registration));
-  }
-}
-
-function reconcileExplorerEditorIdentityEpoch(): {
-  key: string;
-  ready: boolean;
-} {
-  const epoch = explorerEditorIdentityEpoch();
-  if (currentExplorerEditorIdentityEpoch === null) {
-    currentExplorerEditorIdentityEpoch = epoch.key;
-  } else if (currentExplorerEditorIdentityEpoch !== epoch.key) {
-    currentExplorerEditorIdentityEpoch = epoch.key;
-    disposeExplorerEditorIdentityEpoch();
-  }
-  return epoch;
-}
-
-function explorerEditorIdentityEpochIsCurrent(identityEpoch: string): boolean {
-  const current = reconcileExplorerEditorIdentityEpoch();
-  return current.ready && current.key === identityEpoch;
-}
-
-async function waitForExplorerEditorSurfaceReadiness(
-  workerId: string,
-  identityEpoch: string,
-  signal: AbortSignal,
-): Promise<void> {
-  await waitForSurfacePrivateStateWorkerEncryption({
-    isCancelled: () =>
-      signal.aborted || !explorerEditorIdentityEpochIsCurrent(identityEpoch),
-    loadWorker: async () =>
-      (await getWorkers()).find((worker) => worker.workerId === workerId),
-  });
-  signal.throwIfAborted();
-  if (!explorerEditorIdentityEpochIsCurrent(identityEpoch)) {
-    throw new DOMException(
-      "Explorer editor identity changed during prewarm.",
-      "AbortError",
-    );
-  }
-}
-
-function installExplorerWindowUnloadCleanup(): void {
-  if (explorerWindowUnloadCleanupInstalled) return;
-  explorerWindowUnloadCleanupInstalled = true;
-  window.addEventListener(
-    "pagehide",
-    () => {
-      if (explorerEditorWarmState) {
-        retireExplorerEditorWarmState(explorerEditorWarmState);
-        explorerEditorWarmState = null;
-      }
-      const registrations = [...explorerWindowBrokers.values()];
-      explorerWindowBrokers.clear();
-      explorerFileWindowLabels.clear();
-      for (const registration of registrations) {
-        void registration.broker.dispose();
-      }
-    },
-    { once: true },
-  );
-  if (!explorerWindowIdentitySubscriptionInstalled) {
-    explorerWindowIdentitySubscriptionInstalled = true;
-    currentExplorerEditorIdentityEpoch = explorerEditorIdentityEpoch().key;
-    clientEncryption.subscribe(() => {
-      reconcileExplorerEditorIdentityEpoch();
-    });
-  }
+export async function focusWorkspaceNativeWindow(label: string): Promise<void> {
+  if (!isDesktopRuntime() || !(await focusWindow(label)))
+    throw new Error("The owning workspace window is unavailable.");
 }
 
 export async function focusDesktopPopoutGroup(
@@ -573,7 +387,17 @@ export async function focusDesktopPopoutPane(paneId: string): Promise<boolean> {
 export async function discoverDesktopPopoutPaneIds(
   paneIds: readonly string[],
 ): Promise<ReadonlySet<string>> {
-  if (!isDesktopRuntime()) return new Set();
+  return new Set(
+    (await discoverDesktopPopoutPanes(paneIds)).map(({ paneId }) => paneId),
+  );
+}
+
+/** Preserve the actual native label, including legacy group windows, during
+ * migration. A failed native observation must propagate rather than reclaim. */
+export async function discoverDesktopPopoutPanes(
+  paneIds: readonly string[],
+): Promise<Array<{ paneId: string; windowId: string }>> {
+  if (!isDesktopRuntime()) return [];
   const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
   const found = await Promise.all(
     paneIds.map(async (paneId) => {
@@ -583,10 +407,13 @@ export async function discoverDesktopPopoutPaneIds(
       const legacy = canonical
         ? null
         : await WebviewWindow.getByLabel(desktopPopoutGroupWindowLabel(paneId));
-      return canonical || legacy ? paneId : null;
+      const window = canonical ?? legacy;
+      return window ? { paneId, windowId: window.label } : null;
     }),
   );
-  return new Set(found.filter((paneId): paneId is string => paneId !== null));
+  return found.filter(
+    (claim): claim is { paneId: string; windowId: string } => claim !== null,
+  );
 }
 
 export async function observeDesktopPopoutClosure(
@@ -630,6 +457,35 @@ export async function watchDesktopPopoutGroup(
   if (!isDesktopRuntime()) return noDesktopListener;
   const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
   const label = desktopPopoutGroupWindowLabel(groupId);
+  return observeDesktopPopoutClosure(async () => {
+    const popout = await WebviewWindow.getByLabel(label);
+    return popout
+      ? {
+          listenDestroyed: (listener) =>
+            popout.once("tauri://destroyed", listener),
+        }
+      : null;
+  }, onClosed);
+}
+
+/** Caller must first confirm cancellation and absence of destination ownership. */
+export async function destroyCancelledWorkspaceWindow(
+  label: string,
+): Promise<void> {
+  if (!label.startsWith("cantrip-pane-workspace-"))
+    throw new Error("Only a cancelled transfer destination may be destroyed.");
+  if (!isDesktopRuntime()) return;
+  const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
+  await (await WebviewWindow.getByLabel(label))?.destroy();
+}
+
+/** Observe an exact ownership window, rather than deriving a label from a pane. */
+export async function watchWorkspaceNativeWindow(
+  label: string,
+  onClosed: () => void,
+): Promise<() => void> {
+  if (!isDesktopRuntime()) return noDesktopListener;
+  const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
   return observeDesktopPopoutClosure(async () => {
     const popout = await WebviewWindow.getByLabel(label);
     return popout
@@ -692,30 +548,71 @@ export async function closeCurrentDesktopWindow(): Promise<void> {
   await getCurrentWebviewWindow().close();
 }
 
-export async function openDesktopPopoutGroup(
-  target: DesktopPopoutGroupTarget,
-  title: string,
-  position?: { x: number; y: number },
-): Promise<"created" | "focused"> {
-  return openDesktopWindow(
-    desktopPopoutGroupWindowLabel(target.groupId),
-    desktopPopoutGroupSearch(target),
-    title,
-    position,
-  );
+/** Bootstrap has no mounted views to return. Close only the actual retired
+ * popout hosting this renderer, never a label supplied for another window. */
+export async function closeRetiredWorkspaceWindow(
+  windowId: string,
+): Promise<void> {
+  if (!isDesktopRuntime()) return;
+  const { getCurrentWebviewWindow } =
+    await import("@tauri-apps/api/webviewWindow");
+  const current = getCurrentWebviewWindow();
+  if (current.label === "main" || current.label !== windowId)
+    throw new Error("The retired workspace window is not this native window.");
+  await current.close();
 }
 
-export async function openDesktopPopoutPane(
-  target: DesktopPopoutPaneTarget,
+/** Uses the server-reserved window identity, not a pane-derived legacy label.
+ * Native creation is not readiness: the coordinator reveals it after handoff. */
+export async function openWorkspaceTransferWindow(
+  target: DesktopPopoutPaneTarget & {
+    transfer: DesktopWorkspaceTransferTarget;
+  },
   title: string,
-  position?: { x: number; y: number },
-): Promise<"created" | "focused"> {
-  if (await focusDesktopPopoutPane(target.paneId)) return "focused";
-  return openDesktopWindow(
-    desktopPopoutPaneWindowLabel(target.paneId),
-    desktopPopoutPaneSearch(target),
+): Promise<"created" | "existing"> {
+  const search = desktopPopoutPaneSearch(target);
+  if (!parseDesktopPopoutPaneTarget(search)?.transfer)
+    throw new Error("Invalid workspace transfer window target.");
+  const result = await openDesktopWindow(
+    target.transfer.windowId,
+    search,
     title,
-    position,
+    undefined,
+    undefined,
+    { focus: false, visible: false, reuseWithoutFocus: true },
+  );
+  return result === "created" ? "created" : "existing";
+}
+
+/** Reopen a committed owner under its existing native identity. Existing
+ * windows are neither focused nor reloaded; missing owners load authorized
+ * workspace state, not the obsolete transfer snapshot. */
+export async function reopenWorkspaceWindow(
+  windowId: string,
+  target: DesktopPopoutPaneTarget,
+  isCurrent: () => boolean,
+): Promise<void> {
+  if (!isDesktopRuntime()) return;
+  const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
+  const existing = await WebviewWindow.getByLabel(windowId);
+  if (!isCurrent() || existing) return;
+  if (windowId === "main" || target.transfer)
+    throw new Error("Expected a committed detached workspace window.");
+  await openDesktopWindow(
+    windowId,
+    desktopPopoutPaneSearch(target),
+    "Workspace",
+    undefined,
+    undefined,
+    {
+      focus: false,
+      visible: true,
+      reuseWithoutFocus: true,
+      assertBeforeCreate: () => {
+        if (!isCurrent())
+          throw new Error("Workspace recovery context changed.");
+      },
+    },
   );
 }
 
@@ -743,343 +640,6 @@ export async function openDesktopStandaloneChatFile(
     undefined,
     { height: 760, minHeight: 440, minWidth: 640, width: 1100 },
   );
-}
-
-async function createExplorerEditorWarmSlot(
-  context: DesktopExplorerFileLaunchContext,
-  identityEpoch: string,
-  key: string,
-  signal: AbortSignal,
-): Promise<ExplorerEditorWarmSlot> {
-  const startedAt = Date.now();
-  // The protected-attachment API establishes tunnel-content readiness before
-  // posting the attachment. Establish the Explorer's surface grants first so
-  // automatic prewarm cannot allocate against stale server/account state.
-  await waitForExplorerEditorSurfaceReadiness(
-    context.explorer.activeWorkerId,
-    identityEpoch,
-    signal,
-  );
-  const { createDesktopExplorerWindowBroker } =
-    await import("@/lib/desktop-explorer-window-broker");
-  signal.throwIfAborted();
-  if (!explorerEditorIdentityEpochIsCurrent(identityEpoch)) {
-    throw new DOMException(
-      "Explorer editor identity changed during prewarm.",
-      "AbortError",
-    );
-  }
-  const broker = createDesktopExplorerWindowBroker(
-    {
-      ...context,
-      path: explorerEditorPrewarmPath,
-    },
-    { signal },
-  );
-  const label = desktopExplorerEditorWarmWindowLabel(key, broker.launchId);
-  const registration = { broker, identityEpoch };
-  const slot = { broker, identityEpoch, key, label, registration };
-  explorerWindowBrokers.set(label, registration);
-  try {
-    signal.throwIfAborted();
-    await openDesktopWindow(
-      label,
-      desktopExplorerFileSearch(
-        {
-          explorerId: context.explorer.id,
-          path: explorerEditorPrewarmPath,
-          projectId: context.explorer.projectId,
-        },
-        broker.launchId,
-      ),
-      "Editor",
-      undefined,
-      undefined,
-      { focus: false, visible: false },
-    );
-    signal.throwIfAborted();
-    const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
-    signal.throwIfAborted();
-    const popout = await WebviewWindow.getByLabel(label);
-    if (!popout) {
-      throw new Error("The prewarmed Explorer editor window closed.");
-    }
-    await popout.once("tauri://destroyed", () => {
-      void disposeExplorerWindowBroker(label, registration);
-    });
-    await broker.ready;
-    signal.throwIfAborted();
-    if (!explorerEditorIdentityEpochIsCurrent(identityEpoch)) {
-      throw new DOMException(
-        "Explorer editor identity changed during prewarm.",
-        "AbortError",
-      );
-    }
-    clientLogger.info("Explorer editor bridge prewarmed", {
-      durationMs: Date.now() - startedAt,
-      event: "surface.explorer.editor-window.prewarmed",
-      operation: "prewarm-editor",
-      status: "ready",
-      subsystem: "explorer",
-      surfaceId: context.explorer.id,
-    });
-    return slot;
-  } catch (error) {
-    await closeExplorerEditorWarmSlot(slot);
-    throw error;
-  }
-}
-
-export async function prewarmDesktopExplorerFile(
-  context: DesktopExplorerFileLaunchContext,
-): Promise<void> {
-  if (!isDesktopRuntime()) return;
-  installExplorerWindowUnloadCleanup();
-  const identity = reconcileExplorerEditorIdentityEpoch();
-  if (!identity.ready) {
-    clearDesktopExplorerFilePrewarm();
-    return;
-  }
-  const key = desktopExplorerEditorWarmKey(context, identity.key);
-  if (explorerEditorWarmState?.key === key) {
-    await explorerEditorWarmState.promise.catch(() => undefined);
-    return;
-  }
-  if (explorerEditorWarmState) {
-    retireExplorerEditorWarmState(explorerEditorWarmState);
-  }
-  const state: ExplorerEditorWarmState = {
-    controller: new AbortController(),
-    identityEpoch: identity.key,
-    key,
-    promise: Promise.resolve(null as never),
-    retired: false,
-  };
-  state.promise = createExplorerEditorWarmSlot(
-    context,
-    identity.key,
-    key,
-    state.controller.signal,
-  );
-  explorerEditorWarmState = state;
-  await state.promise.catch((error: unknown) => {
-    if (explorerEditorWarmState === state) explorerEditorWarmState = null;
-    clientLogger.debug("Explorer editor prewarm was unavailable", {
-      event: "surface.explorer.editor-window.prewarm-unavailable",
-      operation: "prewarm-editor",
-      reasonCode: state.retired ? "superseded" : "prewarm-failed",
-      status: state.retired ? "cancelled" : "degraded",
-      subsystem: "explorer",
-      surfaceId: context.explorer.id,
-      error: error instanceof Error ? error.message : String(error),
-    });
-  });
-}
-
-export function clearDesktopExplorerFilePrewarm(): void {
-  if (!explorerEditorWarmState) return;
-  retireExplorerEditorWarmState(explorerEditorWarmState);
-  explorerEditorWarmState = null;
-}
-
-async function takeExplorerEditorWarmSlot(
-  context: DesktopExplorerFileLaunchContext,
-  identityEpoch: string,
-): Promise<ExplorerEditorWarmSlot | null> {
-  const key = desktopExplorerEditorWarmKey(context, identityEpoch);
-  const state = explorerEditorWarmState;
-  if (
-    !state ||
-    state.identityEpoch !== identityEpoch ||
-    state.key !== key ||
-    state.retired
-  ) {
-    return null;
-  }
-  explorerEditorWarmState = null;
-  const slot = await state.promise.catch(() => null);
-  if (
-    !slot ||
-    slot.identityEpoch !== identityEpoch ||
-    !explorerEditorIdentityEpochIsCurrent(identityEpoch)
-  ) {
-    if (slot) await closeExplorerEditorWarmSlot(slot);
-    return null;
-  }
-  return slot;
-}
-
-export function openDesktopExplorerFile(
-  target: DesktopExplorerFileTarget,
-  title: string,
-  context: DesktopExplorerFileLaunchContext,
-): Promise<"created" | "focused"> {
-  installExplorerWindowUnloadCleanup();
-  const identity = reconcileExplorerEditorIdentityEpoch();
-  if (!identity.ready) {
-    return Promise.reject(
-      new Error("Encryption must be unlocked for this account."),
-    );
-  }
-  const targetKey = desktopExplorerFileTargetKey(target, context, identity.key);
-  const current = explorerFileOpenOperations.get(targetKey);
-  if (current?.path === target.path) return current.promise;
-  const operation = (current?.promise ?? Promise.resolve("focused" as const))
-    .catch(() => "focused" as const)
-    .then(() =>
-      openDesktopExplorerFileOperation(
-        target,
-        title,
-        context,
-        targetKey,
-        identity.key,
-      ),
-    )
-    .finally(() => {
-      if (explorerFileOpenOperations.get(targetKey)?.promise === operation) {
-        explorerFileOpenOperations.delete(targetKey);
-      }
-    });
-  explorerFileOpenOperations.set(targetKey, {
-    path: target.path,
-    promise: operation,
-  });
-  return operation;
-}
-
-async function openDesktopExplorerFileOperation(
-  target: DesktopExplorerFileTarget,
-  title: string,
-  context: DesktopExplorerFileLaunchContext,
-  targetKey: string,
-  identityEpoch: string,
-): Promise<"created" | "focused"> {
-  installExplorerWindowUnloadCleanup();
-  if (!explorerEditorIdentityEpochIsCurrent(identityEpoch)) {
-    throw new Error("Explorer editor identity changed before opening.");
-  }
-  const legacyLabel = desktopExplorerFileWindowLabel(
-    target.explorerId,
-    target.path,
-    context.explorer.worktreeId,
-    context.explorer.activeWorkerId,
-    identityEpoch,
-  );
-  const activeLabel = explorerFileWindowLabels.get(targetKey) ?? legacyLabel;
-  const activeRegistration = explorerWindowBrokers.get(activeLabel);
-  const activeBroker =
-    activeRegistration?.identityEpoch === identityEpoch
-      ? activeRegistration.broker
-      : undefined;
-  if (activeBroker && !activeBroker.failed) {
-    try {
-      await activeBroker.openFile(target.path);
-      if (!explorerEditorIdentityEpochIsCurrent(identityEpoch)) {
-        throw new Error("Explorer editor identity changed while opening.");
-      }
-      if (await focusWindow(activeLabel)) {
-        if (!explorerEditorIdentityEpochIsCurrent(identityEpoch)) {
-          throw new Error("Explorer editor identity changed while focusing.");
-        }
-        return "focused";
-      }
-    } catch {
-      // Replace an editor that can no longer confirm the requested file.
-    }
-  }
-  if (activeBroker) {
-    await closeWindow(activeLabel).catch(() => undefined);
-    await disposeExplorerWindowBroker(activeLabel, activeRegistration!);
-  } else if (activeRegistration) {
-    await closeWindow(activeLabel).catch(() => undefined);
-    await disposeExplorerWindowBroker(activeLabel, activeRegistration);
-  } else if (activeLabel === legacyLabel) {
-    // A child can outlive a reloaded main WebView. Its launch channel no
-    // longer has an owner, so replace it instead of focusing a permanently
-    // disconnected editor window.
-    await closeWindow(activeLabel);
-  }
-  explorerFileWindowLabels.delete(targetKey);
-
-  const requestedAtMs = Date.now();
-  const warmSlot = await takeExplorerEditorWarmSlot(context, identityEpoch);
-  if (warmSlot) {
-    try {
-      if (!explorerEditorIdentityEpochIsCurrent(identityEpoch)) {
-        throw new Error("Explorer editor identity changed before opening.");
-      }
-      await warmSlot.broker.openFile(target.path, requestedAtMs);
-      if (!explorerEditorIdentityEpochIsCurrent(identityEpoch)) {
-        throw new Error("Explorer editor identity changed while opening.");
-      }
-      const focused = await focusWindow(warmSlot.label);
-      if (!explorerEditorIdentityEpochIsCurrent(identityEpoch)) {
-        throw new Error("Explorer editor identity changed while focusing.");
-      }
-      if (!focused) {
-        throw new Error("The prewarmed Explorer editor window closed.");
-      }
-      explorerFileWindowLabels.set(targetKey, warmSlot.label);
-      clientLogger.info("Explorer file opened in a prewarmed editor", {
-        durationMs: Date.now() - requestedAtMs,
-        event: "surface.explorer.editor-window.warm-opened",
-        operation: "open-file",
-        status: "completed",
-        subsystem: "explorer",
-        surfaceId: target.explorerId,
-      });
-      return "created";
-    } catch {
-      await closeExplorerEditorWarmSlot(warmSlot);
-    }
-  }
-
-  if (!explorerEditorIdentityEpochIsCurrent(identityEpoch)) {
-    throw new Error("Explorer editor identity changed before opening.");
-  }
-  const label = legacyLabel;
-  const { createDesktopExplorerWindowBroker } =
-    await import("@/lib/desktop-explorer-window-broker");
-  if (!explorerEditorIdentityEpochIsCurrent(identityEpoch)) {
-    throw new Error("Explorer editor identity changed before opening.");
-  }
-  const broker = createDesktopExplorerWindowBroker({
-    ...context,
-    path: target.path,
-  });
-  const registration = { broker, identityEpoch };
-  explorerWindowBrokers.set(label, registration);
-  explorerFileWindowLabels.set(targetKey, label);
-  const disposeBroker = async () => {
-    await disposeExplorerWindowBroker(label, registration);
-  };
-  try {
-    const result = await openDesktopWindow(
-      label,
-      desktopExplorerFileSearch(target, broker.launchId),
-      title,
-    );
-    if (result === "focused") {
-      await disposeBroker();
-      return result;
-    }
-    const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
-    const popout = await WebviewWindow.getByLabel(label);
-    if (!popout) {
-      await disposeBroker();
-      throw new Error("The Explorer editor window closed while opening.");
-    }
-    await popout.once("tauri://destroyed", () => void disposeBroker());
-    if (!explorerEditorIdentityEpochIsCurrent(identityEpoch)) {
-      await closeWindow(label).catch(() => undefined);
-      await disposeBroker();
-      throw new Error("Explorer editor identity changed while opening.");
-    }
-    return result;
-  } catch (error) {
-    await disposeBroker();
-    throw error;
-  }
 }
 
 export async function openSyntheticBuildProgressWindow(): Promise<
@@ -1141,12 +701,22 @@ async function openDesktopWindow(
   size?: { height: number; minHeight: number; minWidth: number; width: number },
   behavior: DesktopWindowOpenBehavior = {},
 ): Promise<"created" | "focused"> {
+  const { desktopQuitCoordinator } = await import("./desktop-quit-coordinator");
+  if (desktopQuitCoordinator.preparing)
+    throw new Error("Application quit is preparing.");
   if (!isDesktopRuntime()) {
     throw new Error("Pop-out windows are only available in the desktop app.");
   }
-  if (await focusWindow(label)) return "focused";
-
   const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
+  const reuse = async () =>
+    behavior.reuseWithoutFocus
+      ? Boolean(await WebviewWindow.getByLabel(label))
+      : focusWindow(label);
+  if (await reuse()) return "focused";
+  behavior.assertBeforeCreate?.();
+  if (desktopQuitCoordinator.preparing)
+    throw new Error("Application quit is preparing.");
+
   const path = window.location.pathname || "/";
   const macos = isMacosDesktopRuntime();
   const popout = new WebviewWindow(label, {
@@ -1197,7 +767,7 @@ async function openDesktopWindow(
     // Two callers may race after both observe no owner. The stable label lets
     // the loser recover by focusing the window that won instead of surfacing a
     // duplicate-window error.
-    if (await focusWindow(label)) return "focused";
+    if (await reuse()) return "focused";
     throw error;
   }
 }

@@ -4,6 +4,7 @@ import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { chromium, webkit } from "playwright-core";
 import { startEditorRecoveryFixture } from "./editor-recovery-fixture.mjs";
+import { isEditorReloadTeardownError } from "./editor-reload-error.mjs";
 
 const cases = [
   ["chromium", chromium, false],
@@ -22,6 +23,9 @@ for (const [name, engine, mobile] of selected) {
   let browser, page;
   const networkTimings = [];
   const consoleErrors = [];
+  const runtimeErrors = [];
+  const reloadNetworkErrors = [];
+  let reloadingRenderer = false;
   const results = [],
     errors = [],
     requests = [],
@@ -56,6 +60,21 @@ for (const [name, engine, mobile] of selected) {
       hasTouch: mobile,
       isMobile: mobile,
     });
+    await context.addInitScript(() => {
+      for (const type of ["error", "unhandledrejection"]) {
+        window.addEventListener(type, (event) => {
+          const error = type === "error" ? event.error : event.reason;
+          console.debug(
+            "QA_RUNTIME_ERROR",
+            JSON.stringify({
+              type,
+              message: String(error?.message ?? error ?? event.message),
+              stack: error?.stack,
+            }),
+          );
+        });
+      }
+    });
     context.on("request", (request) => {
       const pathname = new URL(request.url()).pathname;
       requests.push(pathname);
@@ -66,9 +85,27 @@ for (const [name, engine, mobile] of selected) {
         codeCreations.push(pathname);
     });
     page = await context.newPage();
-    page.on("pageerror", (error) => errors.push(error.message));
+    page.on("pageerror", (error) => {
+      // WebKit reports a caught fetch started by pagehide cleanup as a
+      // javascript console/page error. Limit this classification to the actual
+      // deliberate reload and same-origin teardown/signaling endpoints.
+      if (
+        isEditorReloadTeardownError({
+          browser: name,
+          reloadingRenderer,
+          origin: fixture.origin,
+          message: error.message,
+        })
+      )
+        reloadNetworkErrors.push(error.message);
+      else errors.push(error.message);
+    });
     page.on("console", (message) => {
       if (message.type() === "error") consoleErrors.push(message.text());
+      if (message.text().startsWith("QA_RUNTIME_ERROR "))
+        runtimeErrors.push(
+          JSON.parse(message.text().slice("QA_RUNTIME_ERROR ".length)),
+        );
     });
     page.on("requestfinished", (request) => {
       const timing = request.timing();
@@ -359,6 +396,42 @@ for (const [name, engine, mobile] of selected) {
     record(mobile ? "native.mode-continuity" : "native.tab-continuity", {
       status: "pass",
     });
+    // Observe actual recovery completion, then destroy this renderer. This is
+    // distinct from server/worker restart tests that keep the in-memory draft.
+    await input.evaluate((node) => {
+      node.setSelectionRange(3, 8, "backward");
+      node.dispatchEvent(new Event("select", { bubbles: true }));
+    });
+    await page
+      .locator('[data-document-recovery="ready"]')
+      .filter({ has: input })
+      .waitFor();
+    const beforeReload = await input.inputValue();
+    reloadingRenderer = true;
+    try {
+      await page.reload({ waitUntil: "domcontentloaded" });
+    } finally {
+      reloadingRenderer = false;
+    }
+    await input.waitFor({ timeout: 30000 });
+    assert.equal(await input.inputValue(), beforeReload);
+    assert.deepEqual(
+      await input.evaluate((node) => [
+        node.selectionStart,
+        node.selectionEnd,
+        node.selectionDirection,
+      ]),
+      [3, 8, "backward"],
+    );
+    await input.press("ControlOrMeta+z");
+    assert.notEqual(await input.inputValue(), beforeReload);
+    await input.press("ControlOrMeta+Shift+z");
+    assert.equal(await input.inputValue(), beforeReload);
+    assert.equal(
+      (await readFile(file, "utf8")).includes("unsaved native marker"),
+      false,
+    );
+    record("native.renderer-reload-draft", { status: "pass" });
     for (const processName of ["server", "worker"]) {
       const marker =
         processName === "server"
@@ -671,6 +744,7 @@ for (const [name, engine, mobile] of selected) {
     );
     await revokedWindow.close();
     record("native.account-revocation", { status: "pass" });
+    assert.deepEqual(runtimeErrors, []);
     assert.deepEqual(errors, []);
   } catch (error) {
     record("native.failed", {
@@ -702,6 +776,8 @@ for (const [name, engine, mobile] of selected) {
           results,
           errors,
           consoleErrors,
+          runtimeErrors,
+          reloadNetworkErrors,
           networkTimings,
           resourcePaths: [...new Set(requests)],
           codeCreations,

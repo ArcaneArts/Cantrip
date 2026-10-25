@@ -154,6 +154,8 @@ export const STORAGE_ACCOUNTING_MANIFEST: readonly StorageAccountingManifestEntr
     accountOwned(schema.encryptionPrincipals, "account"),
     accountOwned(schema.encryptionKeyGrants, "account"),
     accountOwned(schema.projects, "projects"),
+    accountOwned(schema.workspaceLayouts, "projects"),
+    accountOwned(schema.workspaceCommandReceipts, "projects"),
     accountOwned(schema.tunnels, "projects"),
     accountOwned(schema.tunnelAttachments, "projects", "tunnel"),
     accountOwned(
@@ -193,6 +195,7 @@ export const STORAGE_ACCOUNTING_MANIFEST: readonly StorageAccountingManifestEntr
     chatOwned(schema.taskPlanningRounds),
     projectOwned(schema.terminals),
     projectOwned(schema.explorers),
+    projectOwned(schema.fileDocuments),
     projectOwned(schema.codeTabs),
     projectOwned(schema.browsers),
     projectOwned(schema.remoteSurfaces),

@@ -23,10 +23,12 @@ import {
 import type { WorkerCommand } from "@cantrip/protocol";
 import type { SurfaceStreamReplayGuard } from "../surface-stream-encryption.js";
 import type { WorkerEncryptionService } from "../worker-encryption.js";
+import { decodeSurfacePrivateStateForWorker } from "../surface-private-state-encryption.js";
+import { fileDocumentPrivateStateProtectedContentSchema } from "@cantrip/protocol/surface-private-state";
 
 export type ExplorerCommand = Extract<
   WorkerCommand,
-  { type: "explorer.operation" }
+  { type: "explorer.operation" | "file-document.operation" }
 >;
 export interface ExplorerCommandDependencies {
   surfaceStreamReplay: Pick<SurfaceStreamReplayGuard, "reserve" | "accept">;
@@ -40,11 +42,18 @@ export async function handleExplorerCommand(
 ): Promise<unknown> {
   const { surfaceStreamReplay, workerEncryption } = dependencies;
   switch (command.type) {
-    case "explorer.operation": {
+    case "explorer.operation":
+    case "file-document.operation": {
       const streamContext = {
         serverId: command.serverId,
-        surfaceKind: "explorer" as const,
-        surfaceId: command.explorerId,
+        surfaceKind:
+          command.type === "explorer.operation"
+            ? ("explorer" as const)
+            : ("file-document" as const),
+        surfaceId:
+          command.type === "explorer.operation"
+            ? command.explorerId
+            : command.documentId,
         operationId: command.operationId,
         direction: "request" as const,
         sequence: command.sequence,
@@ -59,6 +68,39 @@ export async function handleExplorerCommand(
       let outcome: SurfaceOperationOutcomeContent;
       let complete = true;
       try {
+        if (command.type === "file-document.operation") {
+          const location = fileDocumentPrivateStateProtectedContentSchema.parse(
+            await decodeSurfacePrivateStateForWorker({
+              ownerId: workerEncryption.ownerId(),
+              context: {
+                serverId: command.serverId,
+                resource: "file-document-row",
+                resourceId: command.documentId,
+                operationId: null,
+                recordKind: "file-document-state",
+              },
+              opaque: command.stateProtection,
+              service: workerEncryption,
+            }),
+          );
+          if (
+            location.projectId !== command.projectId ||
+            location.worktreeId !== command.worktreeId ||
+            location.workerId !== command.workerId
+          ) {
+            throw new Error("File document checkout binding does not match.");
+          }
+          if (
+            (request.type !== "explorer.file.read" &&
+              request.type !== "explorer.file.write" &&
+              request.type !== "explorer.media.read") ||
+            request.path !== location.path
+          ) {
+            throw new Error(
+              "The operation does not target this file document.",
+            );
+          }
+        }
         switch (request.type) {
           case "explorer.directory.list":
             outcome = {

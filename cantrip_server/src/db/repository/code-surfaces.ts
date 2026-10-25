@@ -10,6 +10,7 @@ import type {
 import { and, asc, eq } from "drizzle-orm";
 
 import * as schema from "../schema.js";
+import { removeResourceWorkspaceViews } from "../workspace-resource-removal.js";
 import {
   attachProjectTab,
   detachProjectTab,
@@ -247,6 +248,13 @@ export class CodeSurfaceRepository {
     );
     if (!context) return null;
     await this.database.transaction(async (transaction) => {
+      await removeResourceWorkspaceViews(
+        transaction,
+        ownerId,
+        context.codeTab.projectId,
+        "project.code",
+        codeTabId,
+      );
       await detachProjectTab(
         transaction,
         context.codeTab.projectId,

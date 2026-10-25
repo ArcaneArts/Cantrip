@@ -79,6 +79,7 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
     selectedChat,
     selectedCodeTab,
     selectedExplorer,
+    selectedFileDocument,
     selectedProject,
     selectedProjectView,
     selectedStandaloneChat,
@@ -102,8 +103,6 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
     showSettings,
     showProjectOverview,
     setShowProjectOverview,
-    sidebarFilePreview,
-    sidebarFilePreviewVisible,
     sidebarToggleVisible,
     standaloneFilesOpen,
     switchToChat,
@@ -136,6 +135,7 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
       <header
         className={cn(
           "relative z-30 flex shrink-0 items-center gap-4 px-4",
+          compactShell && "mobile-safe-top",
           overlayTitlebar ? "h-8 text-xs" : "h-16 text-sm",
         )}
         data-slot="content-titlebar"
@@ -333,22 +333,21 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
                                     ? selectedCodeTab.title
                                     : selectedBrowser
                                       ? selectedBrowser.title
-                                      : selectedExplorer
-                                        ? sidebarFilePreviewVisible &&
-                                          sidebarFilePreview
-                                          ? sidebarFileName(
-                                              sidebarFilePreview.path,
-                                            )
-                                          : selectedExplorer.title
-                                        : selectedTerminal
-                                          ? selectedTerminal.linkedChatId
-                                            ? (linkedConsoleChat?.title ??
-                                              "Agent")
-                                            : selectedTerminal.title
-                                          : selectedChat
-                                            ? selectedChat.title
-                                            : (selectedProject?.github
-                                                ?.nameWithOwner ?? "Cantrip")}
+                                      : selectedFileDocument
+                                        ? sidebarFileName(
+                                            selectedFileDocument.path,
+                                          )
+                                        : selectedExplorer
+                                          ? selectedExplorer.title
+                                          : selectedTerminal
+                                            ? selectedTerminal.linkedChatId
+                                              ? (linkedConsoleChat?.title ??
+                                                "Agent")
+                                              : selectedTerminal.title
+                                            : selectedChat
+                                              ? selectedChat.title
+                                              : (selectedProject?.github
+                                                  ?.nameWithOwner ?? "Cantrip")}
               </span>
               {appMode === "ide" &&
               !showImporter &&
@@ -489,7 +488,7 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
                 "Code")
               ) : selectedBrowser ? (
                 selectedBrowser.url
-              ) : selectedExplorer ? (
+              ) : selectedExplorer || selectedFileDocument ? (
                 explorerDisplayPath
               ) : selectedTerminal ? (
                 selectedTerminal.linkedChatId ? (

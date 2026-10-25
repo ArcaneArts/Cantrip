@@ -26,6 +26,7 @@ import type {
   ProjectPaneMemberOrder,
   ProjectPaneOrder,
   WorkspaceLayoutProfile,
+  PrivateDisplayLabelOpaque,
 } from "@cantrip/protocol";
 import {
   projectSurfaceTabKind,
@@ -54,6 +55,11 @@ import {
 } from "./center-layouts.js";
 import * as schema from "./schema.js";
 import {
+  surfaceDefinitionIdForTab,
+  definitionForTab,
+  assertTabSupportsRegion,
+} from "./tab-layout-surface-policy.js";
+import {
   TabLayoutConflictError,
   TabLayoutInvariantError,
 } from "./tab-layout-errors.js";
@@ -69,53 +75,7 @@ export type TabLayoutExecutor = Pick<
   "delete" | "insert" | "select" | "update"
 >;
 
-function surfaceDefinitionIdForTab(
-  tabKind: ProjectTabKind,
-  tabId: string,
-): ProjectSurfaceDefinitionId {
-  switch (tabKind) {
-    case "chat":
-      return "project.agent";
-    case "terminal":
-      return "project.terminal";
-    case "explorer":
-      return "project.explorer";
-    case "browser":
-      return "project.browser";
-    case "code":
-      return "project.code";
-    case "history":
-      return "project.git-history";
-    case "graph":
-      return "project.git-graph";
-    case "issues":
-      return "project.github-issues";
-    case "prs":
-      return "project.github-pull-requests";
-    case "actions":
-      return "project.github-actions";
-    case "remote-desktop":
-      return "project.remote-desktop";
-    case "builtin":
-      return projectBuiltinSurfaceDefinitionIdSchema.parse(tabId);
-  }
-}
-
-function definitionForTab(
-  tabKind: ProjectTabKind,
-  tabId: string,
-  definitionId = surfaceDefinitionIdForTab(tabKind, tabId),
-): (typeof PROJECT_SURFACE_DEFINITIONS)[number] {
-  const definition = PROJECT_SURFACE_DEFINITIONS.find(
-    ({ id }) => id === definitionId,
-  );
-  if (!definition) {
-    throw new TabLayoutInvariantError(
-      `Surface definition ${definitionId} is unavailable.`,
-    );
-  }
-  return definition;
-}
+export { surfaceDefinitionIdForTab } from "./tab-layout-surface-policy.js";
 
 async function suggestedPlacementForTab(
   database: TabLayoutExecutor,
@@ -136,22 +96,6 @@ async function suggestedPlacementForTab(
     .limit(1);
   const profile = (rows[0]?.profile ?? "hybrid") as WorkspaceLayoutProfile;
   return workspaceLayoutProfilePlacement(profile, definition.id);
-}
-
-function assertTabSupportsRegion(
-  tabKind: ProjectTabKind,
-  tabId: string,
-  region: ProjectPaneRegion,
-  definitionId = surfaceDefinitionIdForTab(tabKind, tabId),
-): void {
-  const definition = PROJECT_SURFACE_DEFINITIONS.find(
-    ({ id }) => id === definitionId,
-  );
-  if (!definition?.supportedPlacements.includes(region)) {
-    throw new TabLayoutInvariantError(
-      `${definitionId} does not support the ${region} region.`,
-    );
-  }
 }
 
 function isSinglePaneDockRegion(
@@ -503,19 +447,44 @@ export async function detachProjectTab(
   }
 }
 
-async function resolveEntitySurface(
+export async function resolveEntitySurface(
   database: TabLayoutExecutor,
   projectId: string,
   surface: ProjectSurfaceResourceRef,
-): Promise<{ tabId: string; tabKind: ProjectTabKind } | null> {
+): Promise<{
+  tabId: string;
+  tabKind: ProjectTabKind;
+  titleProtection: PrivateDisplayLabelOpaque | null;
+} | null> {
   if (surface.kind !== "entity") return null;
   const tabKind = projectSurfaceTabKind(surface);
   if (!tabKind) return null;
   const tabId = surface.resourceId;
-  let rows: Array<{ id: string }>;
+  if (surface.definitionId === "project.file") {
+    const documents = await database
+      .select({ id: schema.fileDocuments.id })
+      .from(schema.fileDocuments)
+      .where(
+        and(
+          eq(schema.fileDocuments.id, tabId),
+          eq(schema.fileDocuments.projectId, projectId),
+        ),
+      )
+      .limit(1);
+    if (documents[0]) return { tabId, tabKind, titleProtection: null };
+    // Existing Explorer-backed file placements remain readable until their
+    // protected location has been migrated by an authorized client.
+  }
+  let rows: Array<{
+    id: string;
+    titleProtection: PrivateDisplayLabelOpaque | null;
+  }>;
   if (tabKind === "chat") {
     rows = await database
-      .select({ id: schema.chats.id })
+      .select({
+        id: schema.chats.id,
+        titleProtection: schema.chats.protectedLabel,
+      })
       .from(schema.chats)
       .where(
         and(
@@ -527,7 +496,10 @@ async function resolveEntitySurface(
       .limit(1);
   } else if (tabKind === "terminal") {
     rows = await database
-      .select({ id: schema.terminals.id })
+      .select({
+        id: schema.terminals.id,
+        titleProtection: schema.terminals.protectedLabel,
+      })
       .from(schema.terminals)
       .where(
         and(
@@ -539,7 +511,10 @@ async function resolveEntitySurface(
       .limit(1);
   } else if (tabKind === "explorer") {
     rows = await database
-      .select({ id: schema.explorers.id })
+      .select({
+        id: schema.explorers.id,
+        titleProtection: schema.explorers.protectedLabel,
+      })
       .from(schema.explorers)
       .where(
         and(
@@ -550,7 +525,10 @@ async function resolveEntitySurface(
       .limit(1);
   } else if (tabKind === "browser") {
     rows = await database
-      .select({ id: schema.browsers.id })
+      .select({
+        id: schema.browsers.id,
+        titleProtection: schema.browsers.protectedLabel,
+      })
       .from(schema.browsers)
       .where(
         and(
@@ -561,7 +539,10 @@ async function resolveEntitySurface(
       .limit(1);
   } else if (tabKind === "code") {
     rows = await database
-      .select({ id: schema.codeTabs.id })
+      .select({
+        id: schema.codeTabs.id,
+        titleProtection: schema.codeTabs.protectedLabel,
+      })
       .from(schema.codeTabs)
       .where(
         and(
@@ -572,7 +553,10 @@ async function resolveEntitySurface(
       .limit(1);
   } else {
     rows = await database
-      .select({ id: schema.projectViews.id })
+      .select({
+        id: schema.projectViews.id,
+        titleProtection: schema.projectViews.protectedLabel,
+      })
       .from(schema.projectViews)
       .where(
         and(
@@ -583,7 +567,9 @@ async function resolveEntitySurface(
       )
       .limit(1);
   }
-  return rows[0] ? { tabId, tabKind } : null;
+  return rows[0]
+    ? { tabId, tabKind, titleProtection: rows[0].titleProtection }
+    : null;
 }
 
 async function updateGroupPositions(

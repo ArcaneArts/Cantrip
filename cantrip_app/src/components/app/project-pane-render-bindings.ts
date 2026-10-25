@@ -37,6 +37,8 @@ export function projectPaneRenderBindings(
   const selectedTerminal = selectedStandaloneTerminal ?? linkedConsoleTerminal;
   const selectedExplorer =
     activeSurface?.kind === "explorer" ? activeSurface.entity : undefined;
+  const selectedFileDocument =
+    activeSurface?.kind === "file" ? activeSurface.entity : undefined;
   const selectedBrowser =
     activeSurface?.kind === "browser" ? activeSurface.entity : undefined;
   const selectedCodeTab =
@@ -112,6 +114,7 @@ export function projectPaneRenderBindings(
         selectedTerminal?.activeWorkerId ??
         selectedCodeTab?.activeWorkerId ??
         selectedBrowser?.workerId ??
+        selectedFileDocument?.workerId ??
         selectedExplorer?.activeWorkerId);
   const inPane = (operation: any) => ({
     ...operation,
@@ -160,6 +163,7 @@ export function projectPaneRenderBindings(
     selectedChat,
     selectedCodeTab,
     selectedExplorer,
+    selectedFileDocument,
     selectedPane: pane,
     selectedPaneSurfaces: surfaces,
     selectedProjectToolUnavailable,
@@ -190,16 +194,12 @@ export function projectPaneRenderBindings(
     selectedWorker:
       bindings.workers.data?.find(
         ({ workerId }: { workerId: string }) => workerId === selectedWorkerId,
-      ) ?? bindings.selectedWorker,
+      ) ?? (selectedFileDocument ? undefined : bindings.selectedWorker),
     setCodeHeader: focused ? bindings.setCodeHeader : undefined,
     setExplorerHeader: focused ? bindings.setExplorerHeader : undefined,
     setGitHistoryHeader: focused
       ? bindings.setGitHistoryHeader
       : ignoreGitHistoryHeaderChange,
-    showSidebarPreviewTab: false,
-    sidebarFilePreview: null,
-    sidebarFilePreviewPaneVisible: false,
-    sidebarFilePreviewVisible: false,
     terminalSurfaceVisible: Boolean(
       selectedTerminal && selectedTerminal.kind !== "run-configuration",
     ),

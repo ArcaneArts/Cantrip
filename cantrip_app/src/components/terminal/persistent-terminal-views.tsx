@@ -6,7 +6,8 @@ import { clientLogger } from "@/lib/client-log-relay";
 import { cn } from "@/lib/utils";
 
 import { LinkedConsoleControls } from "./linked-console-controls";
-import { TerminalView } from "./terminal-view";
+import { TerminalView, type TerminalTransferStaging } from "./terminal-view";
+import type { TerminalViewState } from "./terminal-view-state";
 
 // Xterm, its addons, and a WorkerLink stay owned here after their visible host
 // is parked. Keep the selected terminal plus the eleven most-recent owners so
@@ -14,6 +15,31 @@ import { TerminalView } from "./terminal-view";
 // without bound.
 export const MAX_RETAINED_TERMINAL_VIEWS = 12;
 const EMPTY_EXCLUDED_TERMINAL_IDS: ReadonlySet<string> = new Set();
+interface IncomingTerminalView {
+  tabId: string;
+  terminal: TerminalSummary;
+  state: TerminalViewState;
+  staging?: TerminalTransferStaging;
+}
+const EMPTY_INCOMING: readonly IncomingTerminalView[] = [];
+
+function ownedTerminalViews(
+  known: readonly TerminalSummary[],
+  resolved: readonly TerminalSummary[],
+  tabIds: ReadonlyMap<string, string>,
+  excludedIds: ReadonlySet<string>,
+): TerminalSummary[] {
+  const terminals = new Map(
+    resolved.map((terminal) => [terminal.id, terminal]),
+  );
+  for (const terminal of known)
+    if (tabIds.has(terminal.id) && !terminals.has(terminal.id))
+      terminals.set(terminal.id, terminal);
+  return [...terminals.values()].filter(
+    (terminal) =>
+      !excludedIds.has(terminal.id) && terminal.kind !== "run-configuration",
+  );
+}
 
 export interface PendingTerminalInput {
   data: string;
@@ -64,8 +90,14 @@ export function PersistentTerminalViews({
   servicePanelTerminalId,
   visiblePlacements,
   excludedIds = EMPTY_EXCLUDED_TERMINAL_IDS,
+  transferTabIds: providedTransferTabIds,
+  initialTransfers,
+  incomingViews = EMPTY_INCOMING,
 }: {
   active: boolean;
+  transferTabIds?: ReadonlyMap<string, string>;
+  initialTransfers?: ReadonlyMap<string, TerminalViewState>;
+  incomingViews?: readonly IncomingTerminalView[];
   commandPaletteTerminalId: string | null;
   onCommandPaletteOpenChange(terminalId: string, open: boolean): void;
   onLinkedConsoleExit(chatId: string): void;
@@ -87,6 +119,21 @@ export function PersistentTerminalViews({
     terminal: TerminalSummary;
   }[];
 }) {
+  const transferTabIds = useMemo(
+    () =>
+      incomingViews.length
+        ? new Map([
+            ...(providedTransferTabIds ?? []),
+            ...incomingViews.map(
+              (view) => [view.terminal.id, view.tabId] as const,
+            ),
+          ])
+        : providedTransferTabIds,
+    [providedTransferTabIds, incomingViews],
+  );
+  const incomingById = new Map(
+    incomingViews.map((view) => [view.terminal.id, view]),
+  );
   const visibleTerminals = useMemo(
     () =>
       (visiblePlacements?.map(({ terminal }) => terminal) ?? []).filter(
@@ -95,8 +142,16 @@ export function PersistentTerminalViews({
     [excludedIds, visiblePlacements],
   );
   const availableOwnedTerminals = useMemo(
-    () => ownedTerminals.filter(({ id }) => !excludedIds.has(id)),
-    [excludedIds, ownedTerminals],
+    () =>
+      [
+        ...new Map(
+          [
+            ...ownedTerminals,
+            ...incomingViews.map((view) => view.terminal),
+          ].map((terminal) => [terminal.id, terminal]),
+        ).values(),
+      ].filter(({ id }) => !excludedIds.has(id)),
+    [excludedIds, ownedTerminals, incomingViews],
   );
   const availableSelectedTerminal =
     selectedTerminal && !excludedIds.has(selectedTerminal.id)
@@ -120,29 +175,49 @@ export function PersistentTerminalViews({
   );
   const renderedTerminals = useMemo(
     () =>
-      visibleTerminals.reduce(
-        (retained, terminal) =>
-          retainTerminalSurfaceTabs(
-            retained,
+      transferTabIds
+        ? ownedTerminalViews(
+            retainedTerminals,
             availableOwnedTerminals,
-            terminal,
+            transferTabIds,
+            excludedIds,
+          )
+        : visibleTerminals.reduce(
+            (retained, terminal) =>
+              retainTerminalSurfaceTabs(
+                retained,
+                availableOwnedTerminals,
+                terminal,
+              ),
+            retainTerminalSurfaceTabs(
+              retainedTerminals,
+              availableOwnedTerminals,
+              availableSelectedTerminal,
+            ),
           ),
-        retainTerminalSurfaceTabs(
-          retainedTerminals,
-          availableOwnedTerminals,
-          availableSelectedTerminal,
-        ),
-      ),
     [
       availableOwnedTerminals,
       availableSelectedTerminal,
       retainedTerminals,
       visibleTerminals,
+      transferTabIds,
+      excludedIds,
     ],
   );
   const previousOwnershipRef = useRef(new Map<string, TerminalSummary>());
 
   useEffect(() => {
+    if (transferTabIds) {
+      setRetainedTerminals((current) =>
+        ownedTerminalViews(
+          current,
+          availableOwnedTerminals,
+          transferTabIds,
+          excludedIds,
+        ),
+      );
+      return;
+    }
     setRetainedTerminals((current) =>
       visibleTerminals.reduce(
         (retained, terminal) =>
@@ -158,7 +233,13 @@ export function PersistentTerminalViews({
         ),
       ),
     );
-  }, [availableOwnedTerminals, availableSelectedTerminal, visibleTerminals]);
+  }, [
+    availableOwnedTerminals,
+    availableSelectedTerminal,
+    visibleTerminals,
+    transferTabIds,
+    excludedIds,
+  ]);
 
   useEffect(() => {
     const current = new Map(
@@ -230,6 +311,12 @@ export function PersistentTerminalViews({
           />
         ) : null}
         <TerminalView
+          transferStaging={incomingById.get(terminal.id)?.staging}
+          initialViewState={
+            incomingById.get(terminal.id)?.state ??
+            initialTransfers?.get(transferTabIds?.get(terminal.id) ?? "")
+          }
+          transferTabId={transferTabIds?.get(terminal.id)}
           commandPaletteOpen={
             visible && commandPaletteTerminalId === terminal.id
           }

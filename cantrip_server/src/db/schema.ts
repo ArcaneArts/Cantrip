@@ -265,6 +265,63 @@ const unavailableDirectBroker = {
   available: false,
 } satisfies DirectBrokerAdvertisement;
 
+export const workspaceLayouts = pgTable(
+  "workspace_layouts",
+  {
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    workspaceId: text("workspace_id").notNull(),
+    layout: jsonb("layout")
+      .$type<import("@cantrip/protocol").WorkspaceOwnership>()
+      .notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.ownerId, table.projectId, table.workspaceId],
+    }),
+  ],
+);
+
+export const workspaceCommandReceipts = pgTable(
+  "workspace_command_receipts",
+  {
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    workspaceId: text("workspace_id").notNull(),
+    operationId: text("operation_id").notNull(),
+    command: jsonb("command")
+      .$type<import("@cantrip/protocol").WorkspaceCommand>()
+      .notNull(),
+    appliedRevision: bigint("applied_revision", { mode: "number" }).notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [
+        table.ownerId,
+        table.projectId,
+        table.workspaceId,
+        table.operationId,
+      ],
+    }),
+    foreignKey({
+      columns: [table.ownerId, table.projectId, table.workspaceId],
+      foreignColumns: [
+        workspaceLayouts.ownerId,
+        workspaceLayouts.projectId,
+        workspaceLayouts.workspaceId,
+      ],
+    }).onDelete("cascade"),
+  ],
+);
+
 export const systemState = pgTable("system_state", {
   key: text("key").primaryKey(),
   value: jsonb("value").notNull().default({}),
@@ -1047,7 +1104,7 @@ export const userSettings = pgTable(
     proMode: boolean("pro_mode").notNull().default(false),
     proModeOpacity: integer("pro_mode_opacity").notNull().default(80),
     contentGutters: boolean("content_gutters").notNull().default(false),
-    eliteMode: boolean("elite_mode").notNull().default(true),
+    eliteMode: boolean("elite_mode").notNull().default(false),
     eliteRevealConfig: jsonb("elite_reveal_config")
       .$type<EliteRevealConfig>()
       .notNull()
@@ -2038,7 +2095,7 @@ export const workspaceRepositoryDiscoveryJobs = pgTable(
       .notNull(),
     stateRevision: integer("state_revision").notNull().default(1),
     attempt: integer("attempt").notNull().default(0),
-    depth: integer("depth").notNull().default(3),
+    depth: integer("depth").notNull().default(-1),
     commandId: text("command_id"),
     lastErrorCode:
       text("last_error_code").$type<WorkspaceRepositoryDiscoveryErrorCode>(),
@@ -2100,7 +2157,7 @@ export const workspaceRepositoryDiscoveryJobs = pgTable(
     ),
     check(
       "workspace_repository_discovery_jobs_depth_check",
-      sql`${table.depth} >= 0 AND ${table.depth} <= 16`,
+      sql`${table.depth} >= -1 AND ${table.depth} <= 16`,
     ),
     check(
       "workspace_repository_discovery_jobs_error_shape_check",
@@ -3815,6 +3872,29 @@ export const terminals = pgTable(
       )`,
     ),
   ],
+);
+
+/** Shared document location. View preferences live in workspace tabs. */
+export const fileDocuments = pgTable(
+  "file_documents",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    // Immutable historical bindings, not checkout retention leases. Creation and
+    // every operation join current ownership; removed checkouts leave documents
+    // recoverable but unavailable rather than cascading deletion or blocking cleanup.
+    workerId: text("worker_id").notNull(),
+    worktreeId: text("worktree_id").notNull(),
+    protectedState: jsonb("protected_state")
+      .$type<SurfacePrivateStateOpaque>()
+      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [index("file_documents_project_index").on(table.projectId)],
 );
 
 export const explorers = pgTable("explorers", {

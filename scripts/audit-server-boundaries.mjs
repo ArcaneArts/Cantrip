@@ -110,15 +110,15 @@ const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
     "601cfa1ef62b1fe37e7779ace69d80961404ad97ddc2089da85eef315183f9d9",
   applicationRoutes:
-    "80786c8fd1d6d3a502aa5546278cb9bad6c3905505040baebea3572c78615d34",
+    "c5c5c0741e1ab5c3aa8f1da83c6a7b76a6cf1f6851b56c187e0ca37c74535697",
   clientControlCommands:
     "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
   cliCommands:
     "dac89683226ba9ee6f6211eba252fb0b83a5a022aa9150f107315733a4e44251",
   liveResources:
-    "60a4250f1562ae48ad8b931cc0324b2e1653b9cb59bc5cc31cb357349a4063a1",
+    "1df67a68c239eaa16bb27951a17becba63fd86bf36c84ca235846157e1b75b1a",
   workerCommands:
-    "23c6dcf548cd2a4c274263f5ca6fb7e58276d3a326df4bf8e3d984bcbab9d066",
+    "32c03ddad943054978bbafa0eb83244b49f225c453a6bce9fc937e05c1c50b26",
   tunnelFrameKinds:
     "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8",
 };
@@ -163,6 +163,10 @@ const DURABLE_TABLE_CLASSIFICATIONS = {
   projectPolicyAssignments: "intentionally-public-control-plane",
   workspacePolicyAssignments: "intentionally-public-control-plane",
   tabGroups: "endpoint-protected",
+  // Workspace snapshots and exact-command receipts contain resource/placement
+  // identities plus opaque display-label envelopes, never document contents.
+  workspaceLayouts: "endpoint-protected",
+  workspaceCommandReceipts: "endpoint-protected",
   tabGroupMembers: "intentionally-public-control-plane",
   projectSources: "endpoint-protected",
   projectWorktrees: "endpoint-protected",
@@ -196,6 +200,7 @@ const DURABLE_TABLE_CLASSIFICATIONS = {
   taskDispatchCycles: "minimized-operational-metadata",
   terminals: "endpoint-protected",
   explorers: "endpoint-protected",
+  fileDocuments: "endpoint-protected",
   codeTabs: "endpoint-protected",
   browsers: "endpoint-protected",
   remoteSurfaces: "endpoint-protected",
@@ -1551,6 +1556,12 @@ function surfaceStreamRouteBoundaryAudit(routes, applicationText) {
   const requirements = [
     [
       "POST",
+      "/api/file-documents/:documentId/operation",
+      "surfaceStreamWireRequestSchema",
+      "opaque-file-document-operation",
+    ],
+    [
+      "POST",
       "/api/explorers/:explorerId/operation",
       "explorerOperationWireRequestSchema",
       "opaque-explorer-operation",
@@ -1620,6 +1631,7 @@ function repositoryOperationRouteBoundaryAudit(
   protocolText,
   clientText,
   workerText,
+  dispatcherText,
 ) {
   const failures = [];
   const method = "POST";
@@ -1705,11 +1717,11 @@ function repositoryOperationRouteBoundaryAudit(
     "repositoryOperationReplay.reserve",
     "openWorkerRepositoryOperationContent",
     "protectWorkerRepositoryOperationContent",
-    "cwd: command.cwd",
-    "command.repository ??",
-    "repositoryManagedOperations.get",
-    "repositoryManagedOperations.put",
-    'request.type === "git.operation.current"',
+    'from "./repository-operation-dispatch.js"',
+    "outcome = await dispatchRepositoryOperation({",
+    "store: repositoryManagedOperations",
+    "inspect: inspectGitManagedOperation",
+    "dispatch: (trustedCommand) => handleCommand(trustedCommand, emit)",
     "routingRegistry.resolveCommand",
     "routingRegistry.protectResult",
     "routingRegistry.protectMetadata",
@@ -1722,6 +1734,20 @@ function repositoryOperationRouteBoundaryAudit(
   ]) {
     if (!workerText.includes(marker)) {
       failures.push(`Worker protected repository path is missing ${marker}.`);
+    }
+  }
+  for (const marker of [
+    "export async function dispatchRepositoryOperation",
+    "cwd: command.cwd",
+    "command.repository ??",
+    "store.get(scope)",
+    "store.put(scope, stored)",
+    'request.type === "git.operation.current"',
+    "const trustedCommand = workerCommandSchema.parse({",
+    "let result = await dispatch(trustedCommand)",
+  ]) {
+    if (!dispatcherText.includes(marker)) {
+      failures.push(`Worker repository dispatcher is missing ${marker}.`);
     }
   }
   for (const marker of [
@@ -3417,9 +3443,33 @@ function durableTableContentInventory(schemaText) {
 }
 
 function applicationRouteContentClassification(route) {
+  if (
+    [
+      "/api/projects/:projectId/file-documents",
+      "/api/file-documents/:documentId",
+      "/api/file-documents/:documentId/operation",
+    ].includes(route.path)
+  ) {
+    return {
+      classification: "endpoint-protected",
+      rationale:
+        "owner/project-authorized immutable document catalog; paths use row-bound encrypted state; file requests/results use operation-bound surface-stream envelopes and exact worker-side location checks",
+    };
+  }
   const native = nativeRouteContentClassification(route);
   if (native) return native;
   const key = `${route.method} ${route.path}`;
+  if (
+    /^\/api\/projects\/:projectId\/workspace-layouts\/:workspaceId(?:\/(?:seed|commands|import-legacy-files))?$/u.test(
+      route.path,
+    )
+  ) {
+    return {
+      classification: "endpoint-protected",
+      rationale:
+        "owner/project-authorized workspace placement and idempotent command receipts; resource identities, revisions and renderer generations are routing metadata; display labels remain opaque endpoint-protected envelopes; no document contents, paths or live buffers",
+    };
+  }
   if (key === "POST /api/internal/computer-use/authority") {
     return {
       classification: "intentionally-public-control-plane",
@@ -3543,6 +3593,13 @@ function applicationRouteContentClassification(route) {
 }
 
 function workerCommandContentClassification(command) {
+  if (command === "file-document.operation") {
+    return {
+      classification: "endpoint-protected",
+      rationale:
+        "server-derived checkout authority routes encrypted document location and file payloads; worker decrypts and confines operations to the exact document",
+    };
+  }
   if (command === "label.generate") {
     return {
       classification: "endpoint-protected",
@@ -3643,6 +3700,13 @@ function workerCommandContentClassification(command) {
 }
 
 function liveResourceContentClassification(resource) {
+  if (resource === "file-document") {
+    return {
+      classification: "minimized-operational-metadata",
+      rationale:
+        "owner-scoped project catalog invalidation only; no paths, file contents, or view placement",
+    };
+  }
   if (resource === "tunnel") {
     return {
       classification: "endpoint-protected",
@@ -3865,6 +3929,10 @@ async function surfaceStreamProtocolBoundaryAudit(streamProtocolText) {
     [
       "explorer.operation",
       /type:\s*z\.literal\(["']explorer\.operation["']\)[\s\S]{0,500}surfaceStreamWireRequestSchema\.shape/u,
+    ],
+    [
+      "file-document.operation",
+      /type:\s*z\.literal\(["']file-document\.operation["']\)[\s\S]{0,500}stateProtection:\s*fileDocumentPrivateStateOpaqueSchema[\s\S]{0,100}surfaceStreamWireRequestSchema\.shape/u,
     ],
     [
       "terminal.input",
@@ -4366,6 +4434,13 @@ async function buildInventory() {
     repositoryOperationProtocolText,
     clientApiText,
     `${workerText}\n${workerRoutingText}`,
+    await readFile(
+      resolve(
+        repositoryRoot,
+        "cantrip_worker/src/repository-operation-dispatch.ts",
+      ),
+      "utf8",
+    ),
   );
   const routeKeys = parsedRoutes.map(
     ({ method, path, transport }) => `${transport} ${method} ${path}`,

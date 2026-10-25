@@ -17,13 +17,11 @@ describe("project frame visibility", () => {
     {
       docked: false,
       name: "project overview",
-      sidebarFilePreviewVisible: false,
       workspaceDestination: "overview" as const,
     },
     {
       docked: true,
       name: "sidebar file preview",
-      sidebarFilePreviewVisible: true,
       workspaceDestination: "surface" as const,
     },
   ])("keeps rails visible while showing the $name", ({ docked, ...state }) => {
@@ -39,7 +37,6 @@ describe("project frame visibility", () => {
     expect(
       projectFrameVisibility({
         ...visibleProjectFrame,
-        sidebarFilePreviewVisible: false,
         workspaceDestination: "surface",
       }),
     ).toEqual({ docked: true, railsVisible: true });
@@ -52,7 +49,6 @@ describe("project frame visibility", () => {
         projectFrameVisibility({
           ...visibleProjectFrame,
           [setting]: true,
-          sidebarFilePreviewVisible: false,
           workspaceDestination: "surface",
         }),
       ).toEqual({ docked: false, railsVisible: false });

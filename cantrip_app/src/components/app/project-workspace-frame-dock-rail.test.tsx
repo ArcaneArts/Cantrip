@@ -185,6 +185,8 @@ function textContent(node: TestRenderer.ReactTestInstance): string {
 function renderRail({
   activeTabKey,
   onClose = vi.fn(),
+  onPopOut,
+  onPopOutPane,
   onDelete = vi.fn(),
   onSelect = vi.fn(),
   pane,
@@ -194,6 +196,8 @@ function renderRail({
 }: {
   activeTabKey: string | null;
   onClose?(surface: ProjectSurface): void;
+  onPopOut?(surface: ProjectSurface): void;
+  onPopOutPane?(surface: ProjectSurface): void;
   onDelete?(surface: ProjectSurface): void;
   onSelect?(surface: ProjectSurface, active: boolean): void;
   pane?: ProjectPaneSummary;
@@ -205,6 +209,8 @@ function renderRail({
     <DockRail
       activeTabKey={activeTabKey}
       onClose={onClose}
+      onPopOut={onPopOut}
+      onPopOutPane={onPopOutPane}
       onCreate={vi.fn()}
       onDelete={onDelete}
       onMoveToRegion={vi.fn()}
@@ -228,6 +234,38 @@ function renderRail({
 }
 
 describe("dock rail tabs", () => {
+  it.each(["right", "bottom"] as const)(
+    "distinguishes tab and pane popouts in the %s rail",
+    async (region) => {
+      const item = surface("terminal", "one", "Terminal", 0);
+      const onPopOut = vi.fn();
+      const onPopOutPane = vi.fn();
+      let renderer!: TestRenderer.ReactTestRenderer;
+      await act(async () => {
+        renderer = renderRail({
+          activeTabKey: item.tabKey,
+          surfaces: [item],
+          region,
+          onPopOut,
+          onPopOutPane,
+        });
+      });
+      try {
+        for (const [label, callback] of [
+          ["Move Tab to New Window", onPopOut],
+          ["Move Pane to New Window", onPopOutPane],
+        ] as const) {
+          const action = renderer.root
+            .findAllByType("button")
+            .find((node) => textContent(node).trim() === label)!;
+          await act(async () => action.props.onClick());
+          expect(callback).toHaveBeenCalledExactlyOnceWith(item);
+        }
+      } finally {
+        await act(async () => renderer.unmount());
+      }
+    },
+  );
   beforeEach(() => {
     display.mode = "icons";
     sortableState.contexts.length = 0;
@@ -475,7 +513,7 @@ describe("dock rail tabs", () => {
     await act(async () => renderer.unmount());
   });
 
-  it("archives agent rail tabs on middle click and never offers Close View", async () => {
+  it("closes agent rail views on middle click and offers archive separately", async () => {
     const agent = surface("chat", "agent", "Agent", 0);
     const onClose = vi.fn();
     const onDelete = vi.fn();
@@ -491,7 +529,7 @@ describe("dock rail tabs", () => {
 
     const items = renderer.root.findAllByProps({ "data-menu-item": true });
     expect(items.some((item) => textContent(item).includes("Close View"))).toBe(
-      false,
+      true,
     );
     expect(
       items.some((item) => textContent(item).includes("Archive Resource")),
@@ -506,17 +544,18 @@ describe("dock rail tabs", () => {
         stopPropagation: vi.fn(),
       }),
     );
-    expect(onDelete).toHaveBeenCalledExactlyOnceWith(agent);
-    expect(onClose).not.toHaveBeenCalled();
+    expect(onDelete).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledExactlyOnceWith(agent);
     await act(async () => renderer.unmount());
   });
 
   it.each(["right", "bottom"] as const)(
-    "confirms running agent removal from the %s rail",
+    "closes a running agent view without stopping it from the %s rail",
     async (region) => {
       const agent = surface("chat", "agent", "Agent", 0);
       if (agent.kind === "chat") agent.entity.status = "running";
       const onDelete = vi.fn();
+      const onClose = vi.fn();
       const onSelect = vi.fn();
       let renderer!: TestRenderer.ReactTestRenderer;
       await act(async () => {
@@ -524,6 +563,7 @@ describe("dock rail tabs", () => {
           activeTabKey: null,
           region,
           onDelete,
+          onClose,
           onSelect,
           surfaces: [agent],
         });
@@ -541,23 +581,9 @@ describe("dock rail tabs", () => {
       await act(async () => middleClick());
       expect(onDelete).not.toHaveBeenCalled();
       expect(
-        textContent(
-          renderer.root.findByProps({ "data-agent-close-confirmation": true }),
-        ),
-      ).toContain("Are you sure you want to stop and remove this agent tab?");
-      await act(async () =>
-        renderer.root
-          .findByProps({ "data-cancel-agent-close": true })
-          .props.onClick(),
-      );
-      expect(onDelete).not.toHaveBeenCalled();
-      await act(async () => middleClick());
-      await act(async () =>
-        renderer.root
-          .findByProps({ "data-confirm-agent-close": true })
-          .props.onClick(),
-      );
-      expect(onDelete).toHaveBeenCalledExactlyOnceWith(agent, true);
+        renderer.root.findAllByProps({ "data-agent-close-confirmation": true }),
+      ).toHaveLength(0);
+      expect(onClose).toHaveBeenCalledExactlyOnceWith(agent);
       expect(onSelect).not.toHaveBeenCalled();
       await act(async () => renderer.unmount());
     },

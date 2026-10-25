@@ -48,7 +48,14 @@ Run a full release from synchronized `main`:
 pnpm release
 ```
 
-This promotes main’s exact contents to the `release` branch, preserving divergent
+The command first synchronizes `main` and reads and validates the actual
+production secrets through Infisical. Missing authentication, project access,
+or required secrets stops the release before advancing `release` or triggering
+App Platform. Run `infisical login` if authentication is missing. The successful
+secret read stays in memory and is reused by the host deployment; values are
+not printed or committed.
+
+It then promotes main’s exact contents to the `release` branch, preserving divergent
 release history through a reconciliation commit when needed, validates the DigitalOcean App
 Platform specification and triggers deployment of its `app` and `site`
 components, cross-builds the Server bundle, writes the root-only environment,

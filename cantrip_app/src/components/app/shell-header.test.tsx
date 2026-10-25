@@ -12,6 +12,28 @@ vi.mock("./use-mouse-back", () => ({
   },
 }));
 
+describe("file document header", () => {
+  it("displays the document filename and its checkout path without an Explorer", () => {
+    const markup = renderToStaticMarkup(
+      <TooltipProvider>
+        <ShellHeader
+          bindings={{
+            appMode: "ide",
+            showContentTitlebar: true,
+            isPopout: true,
+            selectedFileDocument: { path: "src/lib.rs" },
+            explorerDisplayPath: "/checkouts/feature/src/lib.rs",
+            contentHeaderActions: {},
+          }}
+        />
+      </TooltipProvider>,
+    );
+    expect(markup).toContain("lib.rs");
+    expect(markup).toContain("/checkouts/feature/src/lib.rs");
+    expect(markup).not.toContain(">Cantrip<");
+  });
+});
+
 describe("desktop settings workspace", () => {
   it.each([
     ["showSettings", "setShowSettings"],
@@ -90,6 +112,37 @@ describe("desktop settings workspace", () => {
       expect(markup).not.toContain("Expand sidebar");
       header.props.children[0].props.onClick();
       expect(setShowSettings).toHaveBeenCalledExactlyOnceWith(false);
+    },
+  );
+});
+
+describe("project overview safe area", () => {
+  it.each([
+    ["ide", true],
+    ["chat", true],
+    ["ide", false],
+    ["chat", false],
+  ])(
+    "reserves the mobile safe area only in compact %s mode (%s)",
+    (appMode, compactShell) => {
+      const setShowProjectOverview = vi.fn();
+      const header = ShellHeader({
+        bindings: {
+          appMode,
+          compactShell,
+          showProjectOverview: true,
+          setShowProjectOverview,
+        },
+      });
+
+      expect(
+        header.props.className.split(" ").includes("mobile-safe-top"),
+      ).toBe(compactShell);
+      expect(renderToStaticMarkup(header)).toContain(
+        appMode === "ide" ? "Back to Project" : "Back to Chat",
+      );
+      header.props.children[0].props.onClick();
+      expect(setShowProjectOverview).toHaveBeenCalledExactlyOnceWith(false);
     },
   );
 });

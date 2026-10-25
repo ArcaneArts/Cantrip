@@ -24,9 +24,23 @@ export const PersistentExplorerViews = lazy(() =>
   })),
 );
 
+export const PersistentFileDocumentViews = lazy(() =>
+  import("@/components/explorer/persistent-file-document-views").then(
+    (module) => ({
+      default: module.PersistentFileDocumentViews,
+    }),
+  ),
+);
+
 export const BrowserView = lazy(() =>
   import("@/components/browser/browser-view").then((module) => ({
     default: module.BrowserView,
+  })),
+);
+
+export const PersistentBrowserViews = lazy(() =>
+  import("@/components/browser/persistent-browser-views").then((module) => ({
+    default: module.PersistentBrowserViews,
   })),
 );
 

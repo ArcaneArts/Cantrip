@@ -137,8 +137,8 @@ export class WorkspaceRepositoryDiscoveryJobExecutor {
   }
 
   async #drain(): Promise<void> {
-    // Discovery is intentionally serialized. Every scan is bounded, and
-    // serial execution prevents multiple attached roots from saturating one
+    // Discovery is intentionally serialized. Serial execution prevents
+    // multiple attached roots from saturating one
     // worker's filesystem with concurrent recursive walks.
     while (!this.#stopping && this.#active.size === 0) {
       const claimed =
@@ -277,7 +277,9 @@ export class WorkspaceRepositoryDiscoveryJobExecutor {
           },
           {
             ownerId: claimed.ownerId,
-            timeoutMs: WORKSPACE_REPOSITORY_DISCOVERY_TIMEOUT_MS,
+            // The durable lease is renewed throughout the scan. A large root
+            // must not time out simply because it contains more repositories.
+            timeoutMs: null,
             onEvent: (event) => {
               if (
                 event.type !== "workspace.repositories.discovery-progress" ||

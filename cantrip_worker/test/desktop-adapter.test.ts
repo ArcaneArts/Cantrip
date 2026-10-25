@@ -794,6 +794,28 @@ describe("ManagedDesktopRemoteSurfaceAdapter", () => {
       expect(state?.type).toBe("desktop-input");
       if (state?.type !== "desktop-input")
         throw new Error("missing input epoch");
+      // The route may not be bound when initial attachment frames are emitted.
+      // The first client viewport must recover authority, without opening a
+      // second participant or resetting the existing input sequence.
+      messages.length = 0;
+      const viewport = new TextEncoder().encode(
+        JSON.stringify({
+          type: "viewport",
+          viewport: { width: 200, height: 200, devicePixelRatio: 1 },
+        }),
+      );
+      await session.handleFrame("a", "control", viewport);
+      expect(messages).toContainEqual({
+        type: "desktop-input",
+        epoch: state.epoch,
+        message: null,
+      });
+      expect(open).toHaveBeenCalledTimes(1);
+      messages.length = 0;
+      await session.handleFrame("a", "control", viewport);
+      expect(messages.some((message) => message.type === "desktop-input")).toBe(
+        false,
+      );
       const payload = new TextEncoder().encode(
         JSON.stringify({
           type: "pointer",

@@ -26,6 +26,7 @@ export function ShellOverlays({
     chatRelocationOpen,
     chatRelocations,
     closeSurfaceView,
+    keepSurfaceOpen,
     commandBarOpen,
     compactShell,
     createProjectSurface,
@@ -95,6 +96,7 @@ export function ShellOverlays({
           creatingKinds={creatingSurfaceKinds}
           onArchiveSurface={deleteSurfaceResource}
           onCloseSurface={closeSurfaceView}
+          onKeepOpen={keepSurfaceOpen}
           onCreate={(kind, target) =>
             createProjectSurface(selectedProject.id, kind, undefined, target)
           }
@@ -105,6 +107,13 @@ export function ShellOverlays({
           overviewSelected={projectOverviewSelected}
           projectName={selectedProject.name}
           surfaces={projectSurfaces}
+          recentTabIds={
+            bindings.workspaceConnection?.controllerState?.projected.windows.find(
+              (window: { id: string }) =>
+                window.id ===
+                bindings.workspaceConnection?.connection?.windowId,
+            )?.recentTabIds
+          }
         />
       ) : null}
 

@@ -394,10 +394,42 @@ const editorBindingExports = [
   "standaloneChatFileBindingSchema",
 ];
 const taskRecoveryExports = ["taskRecoveryStartSchema"];
+// Reviewed additive traffic constants from #2204, omitted from its export list.
+const liveTrafficExports = [
+  "ACCOUNT_LIVE_TRAFFIC_MAX_SAMPLES",
+  "ACCOUNT_LIVE_TRAFFIC_SAMPLE_INTERVAL_SECONDS",
+  "ACCOUNT_LIVE_TRAFFIC_WINDOW_SECONDS",
+];
+const workspaceOwnershipExports = [
+  "WorkspaceCommandError",
+  "applyWorkspaceCommand",
+  "seedWorkspaceOwnership",
+  "workspaceActionSchema",
+  "workspaceCommandSchema",
+  "workspaceOwnershipSchema",
+  "workspacePaneSchema",
+  "workspaceReceiptSchema",
+  "workspaceSeedRequestSchema",
+  "workspaceTabSchema",
+  "workspaceWindowSchema",
+];
 const taskAutomaticRetryExports = [
   "taskAutomaticRetrySchema",
   "taskFailureKindForError",
   "taskFailureKindSchema",
+];
+const fileDocumentExports = [
+  "fileDocumentCreateSchema",
+  "fileDocumentPrivateStateOpaqueSchema",
+  "fileDocumentPrivateStateProtectedContentSchema",
+  "fileDocumentWireListSchema",
+  "fileDocumentWireSummarySchema",
+];
+const legacyFileImportExports = [
+  "importWorkspaceLegacyFiles",
+  "workspaceLegacyFileImportReceiptSchema",
+  "workspaceLegacyFileImportRequestSchema",
+  "workspaceLegacyFileImportSchema",
 ];
 
 describe("protocol public surface compatibility", () => {
@@ -413,6 +445,10 @@ describe("protocol public surface compatibility", () => {
           !browserCursorExports.includes(name) &&
           !taskGoalHandoffExports.includes(name) &&
           !taskRecoveryExports.includes(name) &&
+          !liveTrafficExports.includes(name) &&
+          !workspaceOwnershipExports.includes(name) &&
+          !fileDocumentExports.includes(name) &&
+          !legacyFileImportExports.includes(name) &&
           !taskAutomaticRetryExports.includes(name) &&
           !taskConversationExports.includes(name) &&
           !chatFileReferencesExports.includes(name) &&
@@ -425,7 +461,19 @@ describe("protocol public surface compatibility", () => {
     expect(
       exportNames.filter((name) => retiredWorkbenchExports.includes(name)),
     ).toEqual([]);
-    expect(exportNames).toHaveLength(2070);
+    expect(exportNames).toHaveLength(2093);
+    expect(
+      exportNames.filter((name) => legacyFileImportExports.includes(name)),
+    ).toEqual(legacyFileImportExports);
+    expect(
+      exportNames.filter((name) => fileDocumentExports.includes(name)),
+    ).toEqual(fileDocumentExports);
+    expect(
+      exportNames.filter((name) => liveTrafficExports.includes(name)),
+    ).toEqual(liveTrafficExports);
+    expect(
+      exportNames.filter((name) => workspaceOwnershipExports.includes(name)),
+    ).toEqual(workspaceOwnershipExports);
     expect(
       exportNames.filter((name) => taskAutomaticRetryExports.includes(name)),
     ).toEqual(taskAutomaticRetryExports);
@@ -477,7 +525,10 @@ describe("protocol public surface compatibility", () => {
       (option) => option.shape.type.value,
     );
 
-    expect(commandTypes).toHaveLength(277);
+    expect(commandTypes).toHaveLength(278);
+    expect(
+      commandTypes.filter((type) => type === "file-document.operation"),
+    ).toHaveLength(1);
     expect(
       commandTypes.filter((type) => type === "git.change-summary"),
     ).toHaveLength(1);
@@ -498,6 +549,7 @@ describe("protocol public surface compatibility", () => {
         !managedWorkerCommands.includes(type) &&
         type !== "chat.files.references" &&
         type !== "label.generate" &&
+        type !== "file-document.operation" &&
         type !== "git.change-summary",
     );
     expect(baselineCommands).toHaveLength(259);

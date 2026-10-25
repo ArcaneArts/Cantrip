@@ -8,6 +8,7 @@ import type {
   TerminalWireSummary,
 } from "@cantrip/protocol";
 import { describe, expect, it } from "vitest";
+import { fileDocumentCreateSchema } from "@cantrip/protocol";
 
 import { ClientEncryptionService } from "./client-encryption";
 import type { ClientSessionContext } from "./client-session";
@@ -43,6 +44,127 @@ function fixture(): SurfaceTitleEncryptionAdapter {
 }
 
 describe("surface title encryption adapter", () => {
+  it("derives stable, scoped document IDs without exposing paths", () => {
+    const location = {
+      projectId: "project",
+      workerId: "worker",
+      worktreeId: "tree",
+      path: "private/source.rs",
+    };
+    const adapter = fixture();
+    const id = adapter.fileDocumentId(location);
+    expect(fileDocumentCreateSchema.shape.id.parse(id)).toBe(id);
+    expect(id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+    expect(fixture().fileDocumentId(location)).toBe(id);
+    for (const field of [
+      "projectId",
+      "workerId",
+      "worktreeId",
+      "path",
+    ] as const) {
+      expect(
+        adapter.fileDocumentId({ ...location, [field]: "different" }),
+      ).not.toBe(id);
+    }
+    const service = new ClientEncryptionService();
+    service.setAccountMasterKey({
+      accountMasterKey: new Uint8Array(32).fill(31),
+      identity,
+      masterKeyRevision: 9,
+    });
+    expect(
+      new SurfaceTitleEncryptionAdapter({ service, session }).fileDocumentId(
+        location,
+      ),
+    ).toBe(id);
+    service.setAccountMasterKey({
+      accountMasterKey: new Uint8Array(32).fill(32),
+      identity,
+      masterKeyRevision: 9,
+    });
+    expect(
+      new SurfaceTitleEncryptionAdapter({ service, session }).fileDocumentId(
+        location,
+      ),
+    ).not.toBe(id);
+    service.lock();
+    expect(() =>
+      new SurfaceTitleEncryptionAdapter({ service, session }).fileDocumentId(
+        location,
+      ),
+    ).toThrow();
+    expect(() => adapter.fileDocumentId({ ...location, path: "" })).toThrow();
+    for (const changedIdentity of [
+      { ...identity, serverId: "other-server" },
+      { ...identity, ownerId: "other-owner" },
+    ]) {
+      service.setAccountMasterKey({
+        accountMasterKey: new Uint8Array(32).fill(31),
+        identity: changedIdentity,
+        masterKeyRevision: 1,
+      });
+      const changedSession = () => ({
+        ...session(),
+        serverId: changedIdentity.serverId,
+        user: { ...session().user, id: changedIdentity.ownerId },
+      });
+      expect(
+        new SurfaceTitleEncryptionAdapter({
+          service,
+          session: changedSession,
+        }).fileDocumentId(location),
+      ).not.toBe(id);
+      expect(() =>
+        new SurfaceTitleEncryptionAdapter({ service, session }).fileDocumentId(
+          location,
+        ),
+      ).toThrow();
+    }
+  });
+  it("authenticates document identity and its complete checkout binding", async () => {
+    const adapter = fixture();
+    const location = {
+      projectId: "project-a",
+      workerId: "worker-a",
+      worktreeId: "worktree-a",
+      path: "private/source.rs",
+    };
+    const document = {
+      id: "00000000-0000-4000-8000-000000000108",
+      projectId: location.projectId,
+      workerId: location.workerId,
+      worktreeId: location.worktreeId,
+      createdAt: timestamp,
+      stateProtection: await adapter.protectFileDocumentState(
+        "00000000-0000-4000-8000-000000000108",
+        location,
+      ),
+    };
+    const opened = await adapter.openFileDocument(document);
+    expect(opened).toEqual({
+      id: document.id,
+      createdAt: timestamp,
+      ...location,
+    });
+    expect(opened).not.toHaveProperty("stateProtection");
+    expect(JSON.stringify(document)).not.toContain(location.path);
+    for (const field of ["projectId", "workerId", "worktreeId"] as const) {
+      await expect(
+        adapter.openFileDocument({ ...document, [field]: "different" }),
+      ).rejects.toThrow("another checkout");
+    }
+    await expect(
+      adapter.openFileDocument({
+        ...document,
+        id: "00000000-0000-4000-8000-000000000109",
+      }),
+    ).rejects.toThrow("could not be authenticated");
+    await expect(
+      adapter.protectFileDocumentState(document.id, { ...location, path: "" }),
+    ).rejects.toThrow();
+  });
   it("round-trips every encrypted surface and project-view title", async () => {
     const adapter = fixture();
     const ids = {

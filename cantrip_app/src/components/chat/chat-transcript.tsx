@@ -6,5 +6,9 @@ export type { ChatTranscriptProps };
 
 export function ChatTranscript(props: ChatTranscriptProps) {
   const controller = useChatTranscriptController(props);
-  return <ChatTranscriptView controller={controller} />;
+  return (
+    <div className="contents" inert={controller.transferLocked}>
+      <ChatTranscriptView controller={controller} />
+    </div>
+  );
 }

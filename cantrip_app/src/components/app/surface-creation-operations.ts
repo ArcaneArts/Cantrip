@@ -9,6 +9,8 @@ import type {
   ExplorerEntry,
   ExplorerSummary,
   ProjectViewKind,
+  ProjectTabKind,
+  ProjectPaneRegion,
   ProjectViewSummary,
   RemoteDesktopTarget,
   StandaloneChatSummary,
@@ -56,16 +58,19 @@ export interface PendingTerminalInput {
 
 type OpenCreatedTab = (
   projectId: string,
-  kind: "browser" | "chat" | "code" | "explorer" | "terminal" | "view",
+  kind: Exclude<ProjectTabKind, "builtin">,
   tabId: string,
+  placement?: { paneId?: string; targetRegion?: ProjectPaneRegion },
 ) => void;
 
 export function useProjectChatCreationOperation({
+  ownedPlacement = false,
   openCreatedTab,
   queryClient,
   randomAgentNames,
   resources,
 }: {
+  ownedPlacement?: boolean;
   openCreatedTab: OpenCreatedTab;
   queryClient: QueryClient;
   randomAgentNames: boolean;
@@ -117,7 +122,7 @@ export function useProjectChatCreationOperation({
         title ?? newAgentChatTitle(existingTitles, randomAgentNames),
         worktreeId,
         worktreeMode,
-        paneId,
+        ownedPlacement ? undefined : paneId,
         target,
         githubAgentContext,
         title === undefined && !randomAgentNames,
@@ -154,7 +159,7 @@ export function useProjectChatCreationOperation({
         return chat;
       });
     },
-    onSuccess: (chat, { open }) => {
+    onSuccess: (chat, { open, paneId }) => {
       queryClient.setQueryData<ChatSummary[]>(
         ["chats", chat.projectId],
         (current = []) =>
@@ -163,7 +168,7 @@ export function useProjectChatCreationOperation({
           ),
       );
       if (open !== false) {
-        openCreatedTab(chat.projectId, "chat", chat.id);
+        openCreatedTab(chat.projectId, "chat", chat.id, { paneId });
       } else {
         void queryClient.invalidateQueries({
           queryKey: ["project-tab-layout", chat.projectId],
@@ -381,10 +386,12 @@ export function useProjectTaskCreationOperation({
 }
 
 export function useTerminalCreationOperation({
+  ownedPlacement = false,
   openCreatedTab,
   queryClient,
   setPendingTerminalInputs,
 }: {
+  ownedPlacement?: boolean;
   openCreatedTab: OpenCreatedTab;
   queryClient: QueryClient;
   setPendingTerminalInputs: Dispatch<SetStateAction<PendingTerminalInput[]>>;
@@ -413,12 +420,12 @@ export function useTerminalCreationOperation({
         projectId,
         title ?? "Terminal",
         worktreeId,
-        paneId,
+        ownedPlacement ? undefined : paneId,
         target,
         directoryPath,
-        targetRegion,
+        ownedPlacement ? undefined : targetRegion,
       ),
-    onSuccess: (terminal, { initialInput }) => {
+    onSuccess: (terminal, { initialInput, paneId, targetRegion }) => {
       queryClient.setQueryData<TerminalSummary[]>(
         ["terminals", terminal.projectId],
         (current = []) =>
@@ -436,7 +443,10 @@ export function useTerminalCreationOperation({
           },
         ]);
       }
-      openCreatedTab(terminal.projectId, "terminal", terminal.id);
+      openCreatedTab(terminal.projectId, "terminal", terminal.id, {
+        paneId,
+        targetRegion,
+      });
       void queryClient.invalidateQueries({
         queryKey: ["terminals", terminal.projectId],
       });
@@ -478,11 +488,13 @@ export function useChatConsoleOperation({
 }
 
 export function useExplorerCreationOperations({
+  ownedPlacement = false,
   openCreatedTab,
   queryClient,
   setExplorerGraphRequest,
   setPopoutError,
 }: {
+  ownedPlacement?: boolean;
   openCreatedTab: OpenCreatedTab;
   queryClient: QueryClient;
   setExplorerGraphRequest: Dispatch<
@@ -501,8 +513,16 @@ export function useExplorerCreationOperations({
       paneId?: string;
       worktreeId?: string;
       target?: ExecutionTarget;
-    }) => createExplorer(projectId, "Explorer", worktreeId, paneId, target),
-    onSuccess: (explorer) => {
+    }) =>
+      createExplorer(
+        projectId,
+        "Explorer",
+        worktreeId,
+        ownedPlacement ? undefined : paneId,
+        target,
+        { attachToTabLayout: !ownedPlacement },
+      ),
+    onSuccess: (explorer, { paneId }) => {
       queryClient.setQueryData<ExplorerSummary[]>(
         ["explorers", explorer.projectId],
         (current = []) =>
@@ -510,7 +530,7 @@ export function useExplorerCreationOperations({
             (left, right) => left.position - right.position,
           ),
       );
-      openCreatedTab(explorer.projectId, "explorer", explorer.id);
+      openCreatedTab(explorer.projectId, "explorer", explorer.id, { paneId });
       void queryClient.invalidateQueries({
         queryKey: ["explorers", explorer.projectId],
       });
@@ -529,16 +549,17 @@ export function useExplorerCreationOperations({
       createExplorer(
         explorer.projectId,
         `Graph · ${entry.name}`,
-        explorer.worktreeId,
-        paneId,
+        undefined,
+        ownedPlacement ? undefined : paneId,
         {
           kind: "worktree",
           projectId: explorer.projectId,
           worktreeId: explorer.worktreeId,
         },
+        { attachToTabLayout: !ownedPlacement },
       ),
     onError: (error) => setPopoutError(errorText(error)),
-    onSuccess: (createdExplorer, { entry }) => {
+    onSuccess: (createdExplorer, { entry, paneId }) => {
       queryClient.setQueryData<ExplorerSummary[]>(
         ["explorers", createdExplorer.projectId],
         (current = []) =>
@@ -552,7 +573,12 @@ export function useExplorerCreationOperations({
         requestId: crypto.randomUUID(),
         rootPath: explorerGraphRootForEntry(entry),
       });
-      openCreatedTab(createdExplorer.projectId, "explorer", createdExplorer.id);
+      openCreatedTab(
+        createdExplorer.projectId,
+        "explorer",
+        createdExplorer.id,
+        { paneId },
+      );
       void queryClient.invalidateQueries({
         queryKey: ["explorers", createdExplorer.projectId],
       });
@@ -562,9 +588,11 @@ export function useExplorerCreationOperations({
 }
 
 export function useBrowserCodeViewCreationOperations({
+  ownedPlacement = false,
   openCreatedTab,
   queryClient,
 }: {
+  ownedPlacement?: boolean;
   openCreatedTab: OpenCreatedTab;
   queryClient: QueryClient;
 }) {
@@ -581,8 +609,15 @@ export function useBrowserCodeViewCreationOperations({
       target?: ExecutionTarget;
       title?: string;
       url?: string;
-    }) => createBrowser(projectId, title ?? "Browser", paneId, target, url),
-    onSuccess: (browser) => {
+    }) =>
+      createBrowser(
+        projectId,
+        title ?? "Browser",
+        ownedPlacement ? undefined : paneId,
+        target,
+        url,
+      ),
+    onSuccess: (browser, { paneId }) => {
       queryClient.setQueryData<BrowserSummary[]>(
         ["browsers", browser.projectId],
         (current = []) =>
@@ -590,7 +625,7 @@ export function useBrowserCodeViewCreationOperations({
             (left, right) => left.position - right.position,
           ),
       );
-      openCreatedTab(browser.projectId, "browser", browser.id);
+      openCreatedTab(browser.projectId, "browser", browser.id, { paneId });
       void queryClient.invalidateQueries({
         queryKey: ["browsers", browser.projectId],
       });
@@ -607,8 +642,15 @@ export function useBrowserCodeViewCreationOperations({
       paneId?: string;
       worktreeId?: string;
       target?: ExecutionTarget;
-    }) => createCodeTab(projectId, "Code", worktreeId, paneId, target),
-    onSuccess: (codeTab) => {
+    }) =>
+      createCodeTab(
+        projectId,
+        "Code",
+        worktreeId,
+        ownedPlacement ? undefined : paneId,
+        target,
+      ),
+    onSuccess: (codeTab, { paneId }) => {
       queryClient.setQueryData<CodeTabSummary[]>(
         ["code-tabs", codeTab.projectId],
         (current = []) =>
@@ -616,7 +658,7 @@ export function useBrowserCodeViewCreationOperations({
             (left, right) => left.position - right.position,
           ),
       );
-      openCreatedTab(codeTab.projectId, "code", codeTab.id);
+      openCreatedTab(codeTab.projectId, "code", codeTab.id, { paneId });
       void queryClient.invalidateQueries({
         queryKey: ["code-tabs", codeTab.projectId],
       });
@@ -634,9 +676,11 @@ const projectToolSurfaceTitles = {
 } as const satisfies Record<Exclude<ProjectViewKind, "remote-desktop">, string>;
 
 export function useProjectToolSurfaceCreationOperation({
+  ownedPlacement = false,
   openCreatedTab,
   queryClient,
 }: {
+  ownedPlacement?: boolean;
   openCreatedTab: OpenCreatedTab;
   queryClient: QueryClient;
 }) {
@@ -659,10 +703,10 @@ export function useProjectToolSurfaceCreationOperation({
         kind,
         projectToolSurfaceTitles[kind],
         worktreeId,
-        paneId,
-        targetRegion,
+        ownedPlacement ? undefined : paneId,
+        ownedPlacement ? undefined : targetRegion,
       ),
-    onSuccess: (view) => {
+    onSuccess: (view, { paneId, targetRegion }) => {
       queryClient.setQueryData<ProjectViewSummary[]>(
         ["project-views", view.projectId],
         (current = []) =>
@@ -670,7 +714,10 @@ export function useProjectToolSurfaceCreationOperation({
             (left, right) => left.position - right.position,
           ),
       );
-      openCreatedTab(view.projectId, "view", view.id);
+      openCreatedTab(view.projectId, view.kind, view.id, {
+        paneId,
+        targetRegion,
+      });
       void queryClient.invalidateQueries({
         queryKey: ["project-views", view.projectId],
       });
@@ -679,9 +726,11 @@ export function useProjectToolSurfaceCreationOperation({
 }
 
 export function useRemoteDesktopCreationOperation({
+  ownedPlacement = false,
   openCreatedTab,
   queryClient,
 }: {
+  ownedPlacement?: boolean;
   openCreatedTab: OpenCreatedTab;
   queryClient: QueryClient;
 }) {
@@ -696,8 +745,14 @@ export function useRemoteDesktopCreationOperation({
       paneId?: string;
       target?: ExecutionTarget;
       desktopTarget?: RemoteDesktopTarget;
-    }) => createRemoteDesktop(projectId, paneId, target, desktopTarget),
-    onSuccess: (desktop) => {
+    }) =>
+      createRemoteDesktop(
+        projectId,
+        ownedPlacement ? undefined : paneId,
+        target,
+        desktopTarget,
+      ),
+    onSuccess: (desktop, { paneId }) => {
       queryClient.setQueryData<ProjectViewSummary[]>(
         ["project-views", desktop.projectId],
         (current = []) =>
@@ -719,7 +774,9 @@ export function useRemoteDesktopCreationOperation({
       void queryClient.invalidateQueries({
         queryKey: ["remote-desktop-fleet", desktop.projectId],
       });
-      openCreatedTab(desktop.projectId, "view", desktop.id);
+      openCreatedTab(desktop.projectId, "remote-desktop", desktop.id, {
+        paneId,
+      });
       void queryClient.invalidateQueries({
         queryKey: ["project-views", desktop.projectId],
       });

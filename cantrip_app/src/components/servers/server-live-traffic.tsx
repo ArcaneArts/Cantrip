@@ -1,5 +1,5 @@
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
-import type { AccountLiveTrafficSample } from "@cantrip/protocol";
+import { ACCOUNT_LIVE_TRAFFIC_SAMPLE_INTERVAL_SECONDS } from "@cantrip/protocol";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { CantripApiError, getAccountLiveTraffic } from "@/lib/api";
@@ -23,7 +23,7 @@ export interface LiveTrafficViewState {
   status: LiveTrafficStatus;
 }
 
-const POLL_INTERVAL_MS = 1_000;
+const POLL_INTERVAL_MS = ACCOUNT_LIVE_TRAFFIC_SAMPLE_INTERVAL_SECONDS * 1_000;
 
 export function useServerLiveTraffic(
   serverId: string,
@@ -39,6 +39,20 @@ export function useServerLiveTraffic(
     status: LiveTrafficStatus;
   }>({ serverId, status: "idle" });
   const historyRef = useRef<LiveTrafficHistory | null>(null);
+  const [documentVisible, setDocumentVisible] = useState(
+    () =>
+      typeof document === "undefined" || document.visibilityState !== "hidden",
+  );
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const updateVisibility = () =>
+      setDocumentVisible(document.visibilityState !== "hidden");
+    document.addEventListener("visibilitychange", updateVisibility);
+    updateVisibility();
+    return () =>
+      document.removeEventListener("visibilitychange", updateVisibility);
+  }, []);
 
   const history =
     historyState.serverId === serverId ? historyState.history : null;
@@ -52,7 +66,7 @@ export function useServerLiveTraffic(
   }, [serverId]);
 
   useEffect(() => {
-    if (!visible) return;
+    if (!visible || !documentVisible) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let controller: AbortController | undefined;
@@ -102,7 +116,7 @@ export function useServerLiveTraffic(
       if (timer) clearTimeout(timer);
       controller?.abort();
     };
-  }, [fetchTraffic, serverId, visible]);
+  }, [documentVisible, fetchTraffic, serverId, visible]);
 
   return { history, status };
 }
@@ -202,17 +216,32 @@ function SeriesLabel({
   );
 }
 
-function TrafficCharts({ samples }: { samples: AccountLiveTrafficSample[] }) {
+function TrafficCharts({
+  samples,
+  sampleIntervalSeconds,
+  windowSeconds,
+}: Pick<
+  LiveTrafficHistory,
+  "samples" | "sampleIntervalSeconds" | "windowSeconds"
+>) {
+  const historyLabel = `${windowSeconds / 60}-minute`;
   const series = useMemo(
     () => ({
-      download: samples.map(({ downloadBytes }) => downloadBytes * 8),
-      http: samples.map(({ httpRequests }) => httpRequests),
-      upload: samples.map(({ uploadBytes }) => uploadBytes * 8),
+      download: samples.map(
+        ({ downloadBytes }) => (downloadBytes * 8) / sampleIntervalSeconds,
+      ),
+      http: samples.map(
+        ({ httpRequests }) => httpRequests / sampleIntervalSeconds,
+      ),
+      upload: samples.map(
+        ({ uploadBytes }) => (uploadBytes * 8) / sampleIntervalSeconds,
+      ),
       websocket: samples.map(
-        ({ websocketMessages }) => websocketMessages.total,
+        ({ websocketMessages }) =>
+          websocketMessages.total / sampleIntervalSeconds,
       ),
     }),
-    [samples],
+    [samples, sampleIntervalSeconds],
   );
   return (
     <div className="space-y-2">
@@ -225,7 +254,7 @@ function TrafficCharts({ samples }: { samples: AccountLiveTrafficSample[] }) {
           </span>
         </div>
         <LiveTrafficSparkline
-          ariaLabel="Five-minute upload and download bit-rate history"
+          ariaLabel={`${historyLabel} upload and download bit-rate history`}
           series={[
             {
               className: "stroke-sky-400",
@@ -244,7 +273,7 @@ function TrafficCharts({ samples }: { samples: AccountLiveTrafficSample[] }) {
         <div>
           <p className="text-[9px] text-muted-foreground">HTTP requests/s</p>
           <LiveTrafficSparkline
-            ariaLabel="Five-minute HTTP requests per second history"
+            ariaLabel={`${historyLabel} HTTP requests per second history`}
             series={[
               {
                 className: "stroke-amber-400",
@@ -259,7 +288,7 @@ function TrafficCharts({ samples }: { samples: AccountLiveTrafficSample[] }) {
             WebSocket messages/s
           </p>
           <LiveTrafficSparkline
-            ariaLabel="Five-minute WebSocket messages per second history"
+            ariaLabel={`${historyLabel} WebSocket messages per second history`}
             series={[
               {
                 className: "stroke-violet-400",
@@ -283,7 +312,7 @@ function statusMessage(status: LiveTrafficStatus): string {
     case "unsupported":
       return "This server version does not provide live traffic.";
     default:
-      return "Loading five minutes of server traffic…";
+      return "Loading server traffic history…";
   }
 }
 
@@ -302,14 +331,14 @@ export function ServerLiveTrafficPanel({
       </div>
     );
   }
-  const { current } = history;
+  const { current, sampleIntervalSeconds, windowSeconds } = history;
   return (
     <div data-live-traffic-status={status}>
       <div className="mb-2 flex items-start justify-between gap-3">
         <div>
           <p className="text-xs font-medium">Live traffic</p>
           <p className="text-[9px] text-muted-foreground">
-            Current server instance · last five minutes
+            Current server instance · last {windowSeconds / 60} minutes
           </p>
         </div>
         <span className="inline-flex items-center gap-1 text-[9px] text-muted-foreground">
@@ -324,16 +353,29 @@ export function ServerLiveTrafficPanel({
         </span>
       </div>
       <div className="mb-3 grid grid-cols-2 gap-1.5">
-        <Metric label="Download" value={formatBitRate(current.downloadBytes)} />
-        <Metric label="Upload" value={formatBitRate(current.uploadBytes)} />
-        <Metric label="HTTP" value={`${current.httpRequests} req/s`} />
         <Metric
-          detail={`${current.websocketMessages.download} down · ${current.websocketMessages.upload} up`}
+          label="Download"
+          value={formatBitRate(current.downloadBytes / sampleIntervalSeconds)}
+        />
+        <Metric
+          label="Upload"
+          value={formatBitRate(current.uploadBytes / sampleIntervalSeconds)}
+        />
+        <Metric
+          label="HTTP"
+          value={`${current.httpRequests / sampleIntervalSeconds} req/s`}
+        />
+        <Metric
+          detail={`${current.websocketMessages.download / sampleIntervalSeconds} down/s · ${current.websocketMessages.upload / sampleIntervalSeconds} up/s`}
           label="WebSocket"
-          value={`${current.websocketMessages.total} msg/s`}
+          value={`${current.websocketMessages.total / sampleIntervalSeconds} msg/s`}
         />
       </div>
-      <TrafficCharts samples={history.samples} />
+      <TrafficCharts
+        samples={history.samples}
+        sampleIntervalSeconds={sampleIntervalSeconds}
+        windowSeconds={windowSeconds}
+      />
       <p className="mt-2 text-[9px] leading-3 text-muted-foreground">
         Application payload only; direct worker traffic and transport overhead
         are excluded.

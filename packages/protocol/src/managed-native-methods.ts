@@ -22,10 +22,12 @@ const groups: Record<ManagedNativeMethodKind, readonly string[]> = {
     "thread/loaded/list",
     "thread/read",
     "thread/attachment/list",
+    "thread/attachmentOwner/list",
     "thread/settings/read",
     "thread/settings/operation/read",
     "thread/turns/list",
     "thread/items/list",
+    "thread/items/read",
     "thread/search",
     "thread/searchOccurrences",
     "thread/timeline/list",
@@ -85,6 +87,10 @@ const groups: Record<ManagedNativeMethodKind, readonly string[]> = {
     "thread/increment_elicitation",
     "thread/decrement_elicitation",
     "thread/name/set",
+    "thread/readState/update",
+    // Reserved upstream request, currently returns method-not-found. Never
+    // treat a future prediction operation as an admission-free history read.
+    "thread/prediction/request",
     "thread/goal/set",
     "thread/goal/clear",
     "thread/queue/add",
@@ -172,6 +178,8 @@ const groups: Record<ManagedNativeMethodKind, readonly string[]> = {
     "userVerification/cancel",
     "rollout/compress",
     "account/bedrock/discover",
+    // Uses current authentication and region resolution, like Bedrock discovery.
+    "account/bedrock/checkGovCloudRequirements",
     "account/bedrock/setup",
     "account/login/cancel",
     "account/logout",

@@ -56,6 +56,11 @@ import type {
   RemoteSurfaceWorkerLinkRoutes,
 } from "@/lib/remote-surface-worker-link";
 import { cn } from "@/lib/utils";
+import { useRemoteDesktopViewTransfer } from "./use-remote-desktop-view-transfer";
+import type {
+  RemoteDesktopViewState,
+  RemoteDesktopTransferStaging,
+} from "./remote-desktop-view-state";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -184,11 +189,17 @@ export function ManagedRemoteDesktopView({
   fleetDiscovery = false,
   onOpenFleetTarget,
   workerName,
+  transferTabId,
+  transferredState,
+  transferStaging,
 }: {
   desktop: RemoteDesktopSummary;
   fleetDiscovery?: boolean;
   onOpenFleetTarget?: (workerId: string, target: RemoteDesktopTarget) => void;
   workerName?: string;
+  transferTabId?: string;
+  transferredState?: RemoteDesktopViewState;
+  transferStaging?: RemoteDesktopTransferStaging;
 }) {
   const queryClient = useQueryClient();
   const remoteCanvasRef = useRef<RemoteSurfaceCanvasHandle>(null);
@@ -238,6 +249,50 @@ export function ManagedRemoteDesktopView({
   const [encryptionError, setEncryptionError] = useState<string | null>(null);
   const [encryptionAttempt, setEncryptionAttempt] = useState(0);
   const surfaceReady = renderedSurfaceId === desktop.id;
+  const pendingActionsRef = useRef(0);
+
+  const transfer = useRemoteDesktopViewTransfer({
+    owner: transferTabId
+      ? {
+          tabId: transferTabId,
+          desktopId: desktop.id,
+          projectId: desktop.projectId,
+          workerId: desktop.workerId,
+        }
+      : undefined,
+    state: transferredState,
+    staging: transferStaging,
+    cancelInput: () => {
+      if (pendingActionsRef.current > 0)
+        throw new Error(
+          "Wait for the pending remote desktop action before moving this view.",
+        );
+      cancelInput();
+    },
+    drain: () => drain(),
+    detach: () => detach(),
+    retry: () => retry(),
+    capture: () => {
+      if (updateTarget.isPending)
+        throw new Error(
+          "Wait for the remote desktop target update before moving this view.",
+        );
+      return {
+        version: 1,
+        desktopId: desktop.id,
+        projectId: desktop.projectId,
+        workerId: desktop.workerId,
+        viewport: { ...viewportRef.current },
+        fleetOpen,
+        targetSearch,
+      };
+    },
+    restore: (state) => {
+      viewportRef.current = { ...state.viewport };
+      setFleetOpen(state.fleetOpen);
+      setTargetSearch(state.targetSearch);
+    },
+  });
 
   useEffect(() => {
     let disposed = false;
@@ -267,8 +322,16 @@ export function ManagedRemoteDesktopView({
   }, [desktop.id, desktop.workerId, encryptionAttempt]);
 
   const updateTarget = useMutation({
-    mutationFn: (target: RemoteDesktopTarget) =>
-      updateRemoteDesktopTarget(desktop.id, target),
+    mutationFn: async (target: RemoteDesktopTarget) => {
+      if (!transfer.accepting())
+        throw new Error("Remote desktop input is suspended for transfer.");
+      pendingActionsRef.current++;
+      try {
+        return await updateRemoteDesktopTarget(desktop.id, target);
+      } finally {
+        pendingActionsRef.current--;
+      }
+    },
     onMutate: (target) => {
       const previous = requestedTarget;
       setRequestedTarget(target);
@@ -394,8 +457,11 @@ export function ManagedRemoteDesktopView({
     retry,
     sendFrame,
     setError,
+    drain,
+    detach,
   } = useRemoteSurfaceWorkerLink({
-    enabled: encryptionReady && Boolean(desktop.workerId),
+    enabled:
+      encryptionReady && Boolean(desktop.workerId) && transfer.attachEnabled,
     streamKind: "desktop",
     surfaceKind: "remote-desktop",
     surfaceId: desktop.id,
@@ -419,6 +485,7 @@ export function ManagedRemoteDesktopView({
 
   const send = useCallback(
     (message: RemoteDesktopClientMessage) => {
+      if (!transfer.accepting()) return false;
       if (
         message.type === "pointer" ||
         message.type === "key" ||
@@ -439,7 +506,7 @@ export function ManagedRemoteDesktopView({
         remoteDesktopInputCoalescingKey(message),
       );
     },
-    [sendFrame],
+    [sendFrame, transfer.accepting],
   );
 
   const cancelInput = useCallback(() => {
@@ -477,6 +544,8 @@ export function ManagedRemoteDesktopView({
     if (!surface) return;
     const resize = () => {
       const bounds = surface.getBoundingClientRect();
+      // Hidden retained tabs keep their last usable viewport, not a 1px stream.
+      if (bounds.width <= 0 || bounds.height <= 0) return;
       const container = {
         width: Math.max(1, Math.round(bounds.width)),
         height: Math.max(1, Math.round(bounds.height)),
@@ -552,11 +621,17 @@ export function ManagedRemoteDesktopView({
   ]);
 
   const pasteClipboard = async () => {
-    setNotice(
-      await forwardRemoteSurfaceClipboard((text) =>
-        send({ type: "clipboard", operation: "paste-text", text }),
-      ),
-    );
+    if (!transfer.accepting()) return;
+    pendingActionsRef.current++;
+    try {
+      setNotice(
+        await forwardRemoteSurfaceClipboard((text) =>
+          send({ type: "clipboard", operation: "paste-text", text }),
+        ),
+      );
+    } finally {
+      pendingActionsRef.current--;
+    }
   };
   const inventoryTargets: RemoteDesktopTarget[] = [
     ...targetInventory.monitors.map((monitor) => ({
@@ -602,7 +677,10 @@ export function ManagedRemoteDesktopView({
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-background">
+    <div
+      className="flex min-h-0 flex-1 flex-col bg-background"
+      inert={transfer.locked}
+    >
       <PanelToolbar
         aria-label="Remote Desktop controls"
         className="gap-1.5 bg-background"

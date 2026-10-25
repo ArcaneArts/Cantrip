@@ -46,6 +46,20 @@ function resolved(
 }
 
 describe("workspace repository import review", () => {
+  it("selects all 76 accessible GitHub repositories by default", () => {
+    const candidates = Array.from({ length: 76 }, (_, index) => ({
+      ...resolved({
+        id: `repository-${index}`,
+        classification: "github-accessible",
+      }),
+      github: {
+        repositoryId: String(index),
+        nameWithOwner: `owner/repository-${index}`,
+        url: `https://github.com/owner/repository-${index}`,
+      },
+    }));
+    expect(defaultWorkspaceRepositorySelection(candidates).size).toBe(76);
+  });
   it("derives portable names and permits unresolved local candidates", () => {
     const candidate = resolved();
     expect(workspaceRepositoryCandidateName(candidate)).toBe("Sentinel");

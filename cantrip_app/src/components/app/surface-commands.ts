@@ -75,6 +75,7 @@ export interface SurfaceCrudOperations {
 
 export interface SurfaceViewOperations {
   close: MutationOperation<ProjectSurface>;
+  pin: MutationOperation<ProjectSurface>;
 }
 
 const projectToolCreateKinds = new Set<ProjectSurfaceCreateKind>([
@@ -122,7 +123,12 @@ export function createSurfaceCommandController({
     }
   };
   const renameSurface = (surface: ProjectSurface, title: string) => {
-    if (surface.kind === "builtin") return;
+    if (
+      surface.kind === "builtin" ||
+      surface.kind === "unresolved" ||
+      surface.kind === "file"
+    )
+      return;
     if (surface.kind === "chat") {
       crud.chat.rename.mutate({ chatId: surface.tabId, title });
     } else if (surface.kind === "terminal") {
@@ -141,14 +147,21 @@ export function createSurfaceCommandController({
     }
   };
   const closeSurfaceView = (surface: ProjectSurface) => {
-    if (surface.kind === "chat") return;
     views.close.mutate(surface);
+  };
+  const keepSurfaceOpen = (surface: ProjectSurface) => {
+    if (surface.kind === "file" && surface.preview) views.pin.mutate(surface);
   };
   const deleteSurfaceResource = (
     surface: ProjectSurface,
     stopRunning?: true,
   ) => {
-    if (surface.kind === "builtin") return;
+    if (
+      surface.kind === "builtin" ||
+      surface.kind === "unresolved" ||
+      surface.kind === "file"
+    )
+      return;
     if (surface.kind === "chat")
       crud.chat.delete.mutate(
         stopRunning ? { chatId: surface.tabId, stopRunning } : surface.tabId,
@@ -225,6 +238,7 @@ export function createSurfaceCommandController({
     createProjectSurface,
     creatingSurfaceKinds,
     closeSurfaceView,
+    keepSurfaceOpen,
     deleteSurfaceResource,
     renameSurface,
     surfaceCreationFailure,

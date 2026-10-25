@@ -1,4 +1,5 @@
 import { AgentPanelActions } from "@/components/chat/agent-panel-actions";
+import { WorkspaceRecoveryBanner } from "./workspace-recovery-banner";
 import type { ChatSummary, TerminalSummary } from "@cantrip/protocol";
 import { DEFAULT_ELITE_REVEAL_CONFIG } from "@cantrip/glitch";
 import { TabColorDialogHost } from "@/components/workspace/tab-color";
@@ -48,7 +49,6 @@ function ShellContent({
     showServerAdmin,
     showSettings,
     showProjectOverview,
-    sidebarFilePreviewVisible,
     tabLayout,
     workspaceSelection,
   } = bindings;
@@ -68,7 +68,6 @@ function ShellContent({
     showServerAdmin,
     showSettings,
     showProjectOverview,
-    sidebarFilePreviewVisible,
     workspaceDestination: workspaceSelection.destination,
   });
   return (
@@ -77,6 +76,17 @@ function ShellContent({
       className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
     >
       <ShellHeader bindings={bindings} />
+      {bindings.legacyDocumentMigration?.dialog}
+      {appMode === "ide" &&
+      selectedProject &&
+      bindings.workspaceConnection &&
+      !showSettings &&
+      !showServerAdmin ? (
+        <WorkspaceRecoveryBanner
+          workspace={bindings.workspaceConnection}
+          migration={bindings.legacyDocumentMigration}
+        />
+      ) : null}
       {desktopProjectFrame ? (
         <ProjectWorkspaceFrame
           bindings={bindings}
@@ -333,10 +343,6 @@ export function ApplicationShellRender({
     sidebarToggleVisible,
     terminalSurfaceVisible:
       terminalSurfaceVisible && !bindings.showProjectOverview,
-    sidebarFilePreviewPaneVisible:
-      bindings.sidebarFilePreviewPaneVisible && !bindings.showProjectOverview,
-    sidebarFilePreviewVisible:
-      bindings.sidebarFilePreviewVisible && !bindings.showProjectOverview,
   };
 
   return (

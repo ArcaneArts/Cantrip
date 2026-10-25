@@ -47,10 +47,8 @@ import { projectPaneRenderBindings } from "@/components/app/project-pane-render-
 import {
   createKindsForPaneRegion,
   legacyTopStripPresentation,
-  legacyTopStripShowsSidebarPreview,
   partitionVisibleWorkspacePanes,
   responsiveProjectWorkspaceGridModel,
-  sidebarFilePreviewForPane,
   visibleWorkspacePanes,
   type VisibleProjectPane,
 } from "@/components/app/project-workspace-frame-model";
@@ -79,7 +77,6 @@ import {
   type ProjectSurfacePlacementContext,
 } from "@/components/workspace/project-surface-create-menu";
 import { ProjectSurfaceIcon } from "@/components/workspace/project-surface-icon";
-import { useAgentTabCloseConfirmation } from "@/components/workspace/use-agent-tab-close-confirmation";
 import {
   useWorkspaceDndState,
   WorkspaceDropPlaceholder,
@@ -107,7 +104,6 @@ import {
   preventMiddleMouseDefault,
 } from "@/lib/tab-middle-click";
 import { useAppLiveScope } from "@/lib/app-live-react";
-import { sidebarFileName } from "@/lib/sidebar-file-tabs";
 import { cn } from "@/lib/utils";
 import {
   type WorkspaceDndData,
@@ -127,6 +123,8 @@ function SortableDockRailTab({
   disabled,
   memberPosition,
   onClose,
+  onPopOut,
+  onPopOutPane,
   onDelete,
   onMoveToRegion,
   onSelect,
@@ -138,6 +136,8 @@ function SortableDockRailTab({
   disabled: boolean;
   memberPosition: number;
   onClose(): void;
+  onPopOut?(): void;
+  onPopOutPane?(): void;
   onDelete(stopRunning?: true): void;
   onMoveToRegion?(
     region: Extract<ProjectPaneRegion, "center" | DockRegion>,
@@ -183,9 +183,6 @@ function SortableDockRailTab({
         : "Focus";
   const needsApproval = surfaceNeedsApproval(surface);
   const running = surfaceIsRunning(surface);
-  const agentClose = useAgentTabCloseConfirmation((_surface, stopRunning) =>
-    onDelete(stopRunning),
-  );
   const actionLabel = `${action} ${surface.title}${needsApproval ? " (Approval required)" : running ? " (Running)" : ""}`;
   return (
     <>
@@ -194,13 +191,7 @@ function SortableDockRailTab({
         data-dock-rail-tab={surface.tabKey}
         data-dock-rail-tab-position={memberPosition}
         onAuxClick={(event) => {
-          if (!disabled)
-            closeTabOnMiddleClick(
-              event,
-              surface.kind === "chat"
-                ? () => agentClose.requestClose(surface)
-                : onClose,
-            );
+          if (!disabled) closeTabOnMiddleClick(event, onClose);
         }}
         onMouseDown={preventMiddleMouseDefault}
         ref={sortable.setNodeRef}
@@ -248,7 +239,11 @@ function SortableDockRailTab({
                   ) : (
                     <ProjectSurfaceIcon
                       className="size-4"
-                      kind={surface.kind}
+                      kind={
+                        surface.kind === "unresolved"
+                          ? surface.member.tabKind
+                          : surface.kind
+                      }
                     />
                   )}
                   {expanded ? (
@@ -272,7 +267,9 @@ function SortableDockRailTab({
                     region,
                     onMoveToRegion,
                   )}
-                  onClose={surface.kind === "chat" ? undefined : onClose}
+                  onClose={onClose}
+                  onPopOut={onPopOut}
+                  onPopOutPane={onPopOutPane}
                   onDelete={canDelete ? () => onDelete() : undefined}
                   title={surface.title}
                 />
@@ -281,7 +278,6 @@ function SortableDockRailTab({
           </ContextMenu.Root>
         </TabColor>
       </div>
-      {agentClose.confirmation}
     </>
   );
 }
@@ -292,6 +288,8 @@ export function DockRail({
   onCreate,
   onOpenRunning,
   onClose,
+  onPopOut,
+  onPopOutPane,
   onDelete,
   onMoveToRegion,
   onSelect,
@@ -307,6 +305,8 @@ export function DockRail({
   onCreate(kind: ProjectSurfaceCreateKind, target?: ExecutionTarget): void;
   onOpenRunning?(terminalId: string): void;
   onClose(surface: ProjectSurface): void;
+  onPopOut?(surface: ProjectSurface): void;
+  onPopOutPane?(surface: ProjectSurface): void;
   onDelete(surface: ProjectSurface, stopRunning?: true): void;
   onMoveToRegion?(
     surface: ProjectSurface,
@@ -450,6 +450,10 @@ export function DockRail({
                 disabled={pending}
                 memberPosition={memberPosition}
                 onClose={() => onClose(surface)}
+                onPopOut={onPopOut ? () => onPopOut(surface) : undefined}
+                onPopOutPane={
+                  onPopOutPane ? () => onPopOutPane(surface) : undefined
+                }
                 onDelete={(stopRunning) =>
                   stopRunning ? onDelete(surface, true) : onDelete(surface)
                 }
@@ -483,7 +487,7 @@ export function DockRail({
   );
 }
 
-function genericPaneBody(
+export function genericPaneBody(
   bindings: Readonly<Record<string, any>>,
   presentation: VisibleProjectPane,
   nested = false,
@@ -502,16 +506,12 @@ function genericPaneBody(
       </div>
     );
   }
-  if (
-    bindings.sidebarFilePreviewPaneVisible &&
-    sidebarFilePreviewForPane(presentation, bindings.sidebarFilePreview)?.active
-  ) {
-    return null;
-  }
   const kind = presentation.activeSurface?.kind;
   if (
     kind === "code" ||
     kind === "explorer" ||
+    kind === "file" ||
+    kind === "remote-desktop" ||
     (kind === "terminal" &&
       presentation.activeSurface?.entity.kind !== "run-configuration")
   ) {
@@ -537,7 +537,11 @@ function genericPaneBody(
   }
   const paneBindings = projectPaneRenderBindings(bindings, presentation);
   // The persistent layer places linked CLIs in the same host as their chat.
-  if (paneBindings.terminalSurfaceVisible) return null;
+  if (
+    paneBindings.terminalSurfaceVisible ||
+    presentation.activeSurface.kind === "browser"
+  )
+    return null;
   return (
     <div
       className={cn(
@@ -685,7 +689,7 @@ export function ProjectWorkspaceFrame({
             bindings.paneOwnedElsewhere?.(paneId),
           )
           .map(({ entity }: ProjectSurface) =>
-            "id" in entity ? entity.id : "",
+            entity && "id" in entity ? entity.id : "",
           )
           .filter(Boolean),
       ),
@@ -919,10 +923,6 @@ export function ProjectWorkspaceFrame({
     [],
   );
   const tabStrip = (presentation: VisibleProjectPane) => {
-    const sidebarPreview = sidebarFilePreviewForPane(
-      presentation,
-      bindings.sidebarFilePreview,
-    );
     return (
       <div
         className="min-w-0 overflow-hidden border-b border-transparent transition-colors duration-150 hover:border-border motion-reduce:transition-none"
@@ -951,6 +951,9 @@ export function ProjectWorkspaceFrame({
             )
           }
           onClose={bindings.closeSurfaceView}
+          onKeepOpen={bindings.keepSurfaceOpen}
+          onPopOut={bindings.popOutTab}
+          onPopOutPane={bindings.popOutPane}
           onDelete={bindings.deleteSurfaceResource}
           onMoveToRegion={bindings.moveSurfaceToRegion}
           onRename={bindings.renameSurface}
@@ -958,26 +961,6 @@ export function ProjectWorkspaceFrame({
           paneId={presentation.pane.id}
           paneRegion={presentation.pane.region}
           placement={bindings.selectedPlacementContext}
-          previewFile={
-            sidebarPreview
-              ? {
-                  active: sidebarPreview.active,
-                  onClose: bindings.closeSidebarFilePreview,
-                  onPin: () => {
-                    if (bindings.sidebarPreviewExplorer) {
-                      void bindings.pinSidebarFilePath(
-                        bindings.sidebarPreviewExplorer,
-                        sidebarPreview.path,
-                      );
-                    }
-                  },
-                  onSelect: bindings.activateSidebarFilePreview,
-                  path: sidebarPreview.path,
-                  projectId: sidebarPreview.projectId,
-                  title: sidebarFileName(sidebarPreview.path),
-                }
-              : undefined
-          }
           projectId={presentation.pane.projectId}
           surfaces={presentation.surfaces}
         />
@@ -1097,13 +1080,6 @@ export function ProjectWorkspaceFrame({
     if (!paneId || paneId === bindings.workspaceSelection.focusedPaneId) return;
     const presentation = presentations.find(({ pane }) => pane.id === paneId);
     if (!presentation) return;
-    if (
-      bindings.sidebarFilePreview?.active &&
-      bindings.sidebarFilePreview.paneId === paneId
-    ) {
-      bindings.activateSidebarFilePreview();
-      return;
-    }
     bindings.selectTopTab(presentation.activeTabKey);
   };
   const presentationMutationPending = Boolean(
@@ -1126,10 +1102,6 @@ export function ProjectWorkspaceFrame({
             : false,
           selectedPaneSurfaces: legacyTopStrip?.surfaces ?? [],
           selectedTabKey: legacyTopStrip?.activeTabKey ?? null,
-          showSidebarPreviewTab: legacyTopStripShowsSidebarPreview(
-            legacyTopStrip,
-            bindings.sidebarFilePreview,
-          ),
         }
       : bindings;
 
@@ -1289,6 +1261,8 @@ export function ProjectWorkspaceFrame({
             )
           }
           onClose={bindings.closeSurfaceView}
+          onPopOut={bindings.popOutTab}
+          onPopOutPane={bindings.popOutPane}
           onDelete={bindings.deleteSurfaceResource}
           onMoveToRegion={bindings.moveSurfaceToRegion}
           onSelect={selectDockRailSurface}
@@ -1317,6 +1291,8 @@ export function ProjectWorkspaceFrame({
             )
           }
           onClose={bindings.closeSurfaceView}
+          onPopOut={bindings.popOutTab}
+          onPopOutPane={bindings.popOutPane}
           onDelete={bindings.deleteSurfaceResource}
           onMoveToRegion={bindings.moveSurfaceToRegion}
           onSelect={selectDockRailSurface}

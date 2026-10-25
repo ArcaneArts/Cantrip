@@ -1,4 +1,7 @@
-import { accountLiveTrafficSchema } from "@cantrip/protocol/resource-usage";
+import {
+  ACCOUNT_LIVE_TRAFFIC_MAX_SAMPLES,
+  accountLiveTrafficSchema,
+} from "@cantrip/protocol/resource-usage";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -9,7 +12,7 @@ import {
 const epoch = "11111111-1111-4111-8111-111111111111";
 
 describe("LiveTrafficMeter", () => {
-  it("builds a zero-filled five-minute owner-scoped traffic window", () => {
+  it("builds a zero-filled ten-minute quarter-second owner-scoped traffic window", () => {
     let now = Date.parse("2026-08-30T12:00:00.250Z");
     const meter = new LiveTrafficMeter({
       epoch,
@@ -38,9 +41,11 @@ describe("LiveTrafficMeter", () => {
     meter.recordHttpRequest("owner-one", "/api/projects");
 
     const first = accountLiveTrafficSchema.parse(meter.snapshot("owner-one"));
-    expect(first.samples).toHaveLength(LIVE_TRAFFIC_WINDOW_SECONDS);
+    expect(first.sampleIntervalSeconds).toBe(0.25);
+    expect(first.windowSeconds).toBe(600);
+    expect(first.samples).toHaveLength(ACCOUNT_LIVE_TRAFFIC_MAX_SAMPLES);
     expect(first.current).toEqual({
-      timestamp: "2026-08-30T12:00:00.000Z",
+      timestamp: "2026-08-30T12:00:00.250Z",
       uploadBytes: 150,
       downloadBytes: 75,
       httpRequests: 1,
@@ -65,12 +70,12 @@ describe("LiveTrafficMeter", () => {
       after: first.cursor,
     });
     expect(incremental.reset).toBe(false);
-    expect(incremental.samples).toHaveLength(2);
+    expect(incremental.samples).toHaveLength(8);
     expect(incremental.samples[0]).toMatchObject({ httpRequests: 0 });
-    expect(incremental.samples[1]).toMatchObject({ httpRequests: 1 });
+    expect(incremental.samples.at(-1)).toMatchObject({ httpRequests: 1 });
   });
 
-  it("returns same-second changes and resets expired or foreign cursors", () => {
+  it("returns same-sample changes and resets expired or foreign cursors", () => {
     let now = Date.parse("2026-08-30T12:00:00.000Z");
     const meter = new LiveTrafficMeter({
       epoch,
@@ -100,7 +105,7 @@ describe("LiveTrafficMeter", () => {
       after: before.cursor,
     });
     expect(restarted.reset).toBe(true);
-    expect(restarted.samples).toHaveLength(LIVE_TRAFFIC_WINDOW_SECONDS);
+    expect(restarted.samples).toHaveLength(ACCOUNT_LIVE_TRAFFIC_MAX_SAMPLES);
 
     now += (LIVE_TRAFFIC_WINDOW_SECONDS + 1) * 1_000;
     const expired = meter.snapshot("owner-one", {
@@ -108,7 +113,52 @@ describe("LiveTrafficMeter", () => {
       after: before.cursor,
     });
     expect(expired.reset).toBe(true);
-    expect(expired.samples).toHaveLength(LIVE_TRAFFIC_WINDOW_SECONDS);
+    expect(expired.samples).toHaveLength(ACCOUNT_LIVE_TRAFFIC_MAX_SAMPLES);
+  });
+
+  it("records distinct quarter-second samples without any observer and retains ten minutes", () => {
+    let now = Date.parse("2026-08-30T12:00:00.000Z");
+    const meter = new LiveTrafficMeter({
+      epoch,
+      instanceId: "instance-one",
+      now: () => now,
+    });
+    meter.recordHttpRequest("owner-one", "/api/projects");
+    now += 249;
+    meter.recordHttpRequest("owner-one", "/api/workers");
+    now += 1;
+    meter.record({
+      ownerId: "owner-one",
+      direction: "egress",
+      channel: "http",
+      bytes: 125,
+    });
+    now += 250;
+    meter.recordHttpRequest("owner-one", "/api/projects");
+    now += 250;
+    meter.recordHttpRequest("owner-one", "/api/projects");
+    // No snapshot or UI polling occurs until five minutes later.
+    now += 300_000;
+    const history = meter.snapshot("owner-one");
+    const recorded = history.samples.filter(
+      (sample) => sample.httpRequests || sample.downloadBytes,
+    );
+    expect(recorded.map((sample) => sample.timestamp)).toEqual([
+      "2026-08-30T12:00:00.000Z",
+      "2026-08-30T12:00:00.250Z",
+      "2026-08-30T12:00:00.500Z",
+      "2026-08-30T12:00:00.750Z",
+    ]);
+    expect(recorded.map((sample) => sample.httpRequests)).toEqual([2, 0, 1, 1]);
+    expect(recorded[1]?.downloadBytes).toBe(125);
+    now += 300_000;
+    const expired = meter.snapshot("owner-one");
+    expect(expired.samples).toHaveLength(2400);
+    expect(
+      expired.samples.every(
+        (sample) => !sample.httpRequests && !sample.downloadBytes,
+      ),
+    ).toBe(true);
   });
 
   it("bounds and expires inactive owners", () => {

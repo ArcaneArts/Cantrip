@@ -9,6 +9,8 @@ import {
   ExplorerView,
   type ExplorerHeaderState,
   type ExplorerLifecycleActions,
+  type ExplorerTransferState,
+  type ExplorerTransferStaging,
 } from "@/components/explorer/explorer-view";
 import {
   nativeCodeOwnerKey,
@@ -26,21 +28,43 @@ export function CodeView({
   appearance,
   codeTab,
   onHeaderChange,
+  onOpenFile,
+  initialTransfer,
+  transferStaging,
+  filesMigrated = false,
 }: {
+  initialTransfer?: ExplorerTransferState;
+  filesMigrated?: boolean;
+  transferStaging?: ExplorerTransferStaging;
   active?: boolean;
   appearance: CodeAppearance;
   codeTab: CodeTabSummary;
   onChanged?(): void;
   onHeaderChange?(state: CodeHeaderState | null): void;
+  onOpenFile(tab: CodeTabSummary, entry: ExplorerEntry): void | Promise<void>;
 }) {
   const scope = nativeCodeScope();
+  const restored = useMemo(
+    () =>
+      filesMigrated && initialTransfer
+        ? {
+            ...initialTransfer,
+            selectedPath: null,
+            documents: { ...initialTransfer.documents, documents: [] },
+          }
+        : initialTransfer,
+    [filesMigrated, initialTransfer],
+  );
   return (
     <NativeProjectEditor
-      key={nativeCodeOwnerKey(codeTab.id, scope)}
+      key={`${nativeCodeOwnerKey(codeTab.id, scope)}:${filesMigrated ? "browser" : "legacy"}`}
       active={active}
       appearance={appearance}
       codeTab={codeTab}
+      initialTransfer={restored}
+      transferStaging={transferStaging}
       onHeaderChange={onHeaderChange}
+      onOpenFile={onOpenFile}
     />
   );
 }
@@ -49,13 +73,23 @@ function NativeProjectEditor({
   appearance,
   codeTab,
   onHeaderChange,
+  onOpenFile,
+  initialTransfer,
+  transferStaging,
 }: {
+  initialTransfer?: ExplorerTransferState;
+  transferStaging?: ExplorerTransferStaging;
   active: boolean;
   appearance: CodeAppearance;
   codeTab: CodeTabSummary;
   onHeaderChange?(state: CodeHeaderState | null): void;
+  onOpenFile(tab: CodeTabSummary, entry: ExplorerEntry): void | Promise<void>;
 }) {
-  const [path, setPath] = useState<string | null>(null);
+  // Retain only restored legacy buffers here. New browser file requests use
+  // workspace-owned document tabs, not another mutable Code selection.
+  const [path, setPath] = useState<string | null>(
+    initialTransfer?.selectedPath ?? null,
+  );
   const [header, setHeader] = useState<ExplorerHeaderState | null>(null);
   const lifecycle = useRef<ExplorerLifecycleActions | null>(null);
   const ownerKey = nativeCodeOwnerKey(codeTab.id);
@@ -80,9 +114,10 @@ function NativeProjectEditor({
     [ownerKey],
   );
   useEffect(() => () => setNativeCodeLifecycle(ownerKey, null), [ownerKey]);
-  const onOpenFile = useCallback(
-    (_explorer: ExplorerSummary, entry: ExplorerEntry) => setPath(entry.path),
-    [],
+  const openFile = useCallback(
+    (_explorer: ExplorerSummary, entry: ExplorerEntry) =>
+      onOpenFile(boundTab, entry),
+    [boundTab, onOpenFile],
   );
   const close = useCallback(() => setPath(null), []);
   useEffect(() => {
@@ -109,9 +144,11 @@ function NativeProjectEditor({
         active={active}
         appearance={appearance}
         explorer={explorer}
+        initialTransfer={initialTransfer}
+        transferStaging={transferStaging}
         onHeaderChange={setHeader}
         onLifecycleChange={onLifecycleChange}
-        onOpenFile={onOpenFile}
+        onOpenFile={openFile}
         transientFile={path ? { path, close } : undefined}
         repositoryGraphAvailable={false}
       />

@@ -5,6 +5,11 @@ import { createElement } from "react";
 import TestRenderer, { act } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { EditorDocumentSession } from "@/components/editor/document-session";
+import {
+  EditorSessionStore,
+  editorDocumentId,
+} from "@/components/editor/document-session";
+import type { ExplorerTransferState } from "@/components/explorer/explorer-view";
 
 const api = vi.hoisted(() => ({
   getExplorerFile: vi.fn(),
@@ -20,6 +25,9 @@ const editor = vi.hoisted(() => ({
   } | null,
 }));
 vi.mock("@/lib/api", () => api);
+vi.mock("@/lib/client-session", () => ({
+  getClientSession: () => ({ serverId: "server", user: { id: "owner" } }),
+}));
 vi.mock("@/components/editor/native-code-editor", () => ({
   NativeCodeEditor: (props: NonNullable<typeof editor.current>) => {
     editor.current = props;
@@ -68,6 +76,7 @@ import { CodeView, type CodeHeaderState } from "./code-view";
 import {
   confirmNativeCodeDiscard,
   prepareNativeCodeTransfer,
+  getNativeCodeLifecycle,
 } from "./native-code-lifecycle";
 (
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -86,6 +95,7 @@ const tab = {
 let renderer: TestRenderer.ReactTestRenderer;
 let client: QueryClient;
 let header: CodeHeaderState | null;
+const onOpenFile = vi.fn();
 const onHeader = (value: CodeHeaderState | null) => {
   header = value;
 };
@@ -94,10 +104,21 @@ async function settle() {
     await new Promise((resolve) => setTimeout(resolve, 15));
   });
 }
-async function render(next = tab) {
+async function render(
+  next = tab,
+  initialTransfer?: ExplorerTransferState,
+  filesMigrated = false,
+) {
   const tree = (
     <QueryClientProvider client={client}>
-      <CodeView codeTab={next} appearance="dark" onHeaderChange={onHeader} />
+      <CodeView
+        codeTab={next}
+        appearance="dark"
+        onHeaderChange={onHeader}
+        onOpenFile={onOpenFile}
+        initialTransfer={initialTransfer}
+        filesMigrated={filesMigrated}
+      />
     </QueryClientProvider>
   );
   await act(async () => {
@@ -107,10 +128,33 @@ async function render(next = tab) {
   await settle();
 }
 async function open() {
-  await act(async () =>
-    renderer.root.findByProps({ "data-open-file": true }).props.onClick(),
+  // Existing editor behavior is exercised through a restored legacy buffer.
+  // New file clicks must no longer create transient editors inside Code tabs.
+  await act(async () => renderer.unmount());
+  renderer = undefined as unknown as TestRenderer.ReactTestRenderer;
+  const store = new EditorSessionStore();
+  store.resetScope('["server","owner"]');
+  store.open(
+    editorDocumentId({
+      server: "server",
+      account: "owner",
+      worker: tab.activeWorkerId,
+      project: tab.projectId,
+      worktree: tab.worktreeId,
+      path: "main.ts",
+    }),
+    "const x = 1;",
+    "one",
   );
-  await settle();
+  await render(tab, {
+    explorerId: tab.id,
+    projectId: tab.projectId,
+    workerId: tab.activeWorkerId,
+    worktreeId: tab.worktreeId,
+    selectedPath: "main.ts",
+    fileMode: "edit",
+    documents: await store.captureTransfer(),
+  });
   await vi.waitFor(() => expect(editor.current).not.toBeNull());
 }
 beforeEach(() => {
@@ -138,7 +182,84 @@ afterEach(async () => {
 });
 
 describe("native project Code tabs", () => {
-  it("opens, views, edits and explicitly saves through the existing bound file API", async () => {
+  it("retires migrated inline drafts and does not restore them again from a stale transfer", async () => {
+    await render();
+    await open();
+    await act(async () => editor.current!.onChange("unsaved legacy draft"));
+    const source = getNativeCodeLifecycle(tab.id)!;
+    const capture = await source.captureTransfer!();
+    expect(capture.documents.documents[0]!.text).toBe("unsaved legacy draft");
+    await render(tab, capture, true);
+    expect(
+      renderer.root.findAllByProps({ "data-native-editor": true }),
+    ).toHaveLength(0);
+    expect(
+      renderer.root.findAllByProps({ "data-open-file": true }),
+    ).toHaveLength(1);
+    const browser = await getNativeCodeLifecycle(tab.id)!.captureTransfer!();
+    expect(browser.selectedPath).toBeNull();
+    expect(browser.documents.documents).toEqual([]);
+    expect(api.saveExplorerFile).not.toHaveBeenCalled();
+    await render(tab, structuredClone(capture), true);
+    expect(
+      (await getNativeCodeLifecycle(tab.id)!.captureTransfer!()).documents
+        .documents,
+    ).toEqual([]);
+  });
+  it("opens browser files through workspace ownership without creating a transient editor", async () => {
+    await render();
+    await act(async () =>
+      renderer.root.findByProps({ "data-open-file": true }).props.onClick(),
+    );
+    await settle();
+    expect(onOpenFile).toHaveBeenCalledWith(
+      tab,
+      expect.objectContaining({ path: "main.ts" }),
+    );
+    expect(editor.current).toBeNull();
+    expect(api.getExplorerFile).not.toHaveBeenCalled();
+    expect(
+      renderer.root.findAllByProps({ "data-open-file": true }),
+    ).toHaveLength(1);
+  });
+  it("opens the transferred selected file and unsaved content without a browser click", async () => {
+    const store = new EditorSessionStore();
+    store.resetScope('["server","owner"]');
+    const document = store.open(
+      editorDocumentId({
+        server: "server",
+        account: "owner",
+        worker: tab.activeWorkerId,
+        project: tab.projectId,
+        worktree: tab.worktreeId,
+        path: "main.ts",
+      }),
+      "original",
+      "one",
+    );
+    document.editExternal("unsaved transferred Code draft");
+    await render(tab, {
+      explorerId: tab.id,
+      projectId: tab.projectId,
+      workerId: tab.activeWorkerId,
+      worktreeId: tab.worktreeId,
+      selectedPath: "main.ts",
+      fileMode: "edit",
+      documents: await store.captureTransfer(),
+    });
+    expect(editor.current?.session.text).toBe("unsaved transferred Code draft");
+    expect(header?.explorer?.selectedPath).toBe("main.ts");
+    expect(header?.explorer?.dirty).toBe(true);
+    expect(api.saveExplorerFile).not.toHaveBeenCalled();
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    await act(async () => header!.explorer!.back());
+    await settle();
+    expect(
+      renderer.root.findAllByProps({ "data-open-file": true }),
+    ).toHaveLength(1);
+    expect(renderer.root.findAllByProps({ role: "alert" })).toHaveLength(0);
+  });
+  it("views, edits and explicitly saves a restored legacy buffer through its bound file API", async () => {
     await render();
     await open();
     const session = editor.current!.session;
@@ -182,7 +303,7 @@ describe("native project Code tabs", () => {
     await open();
     await act(async () => editor.current!.onChange("unsaved draft"));
     vi.spyOn(window, "confirm").mockReturnValue(false);
-    expect(confirmNativeCodeDiscard(tab.id)).toBe(false);
+    await expect(confirmNativeCodeDiscard(tab.id)).resolves.toBe(false);
     await expect(prepareNativeCodeTransfer(tab.id)).resolves.toBe(false);
     expect(editor.current!.session.text).toBe("unsaved draft");
     expect(api.saveExplorerFile).not.toHaveBeenCalled();

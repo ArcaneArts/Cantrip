@@ -1,38 +1,49 @@
 import { chatConsoleTerminal } from "@/components/chat/chat-console-state";
+import { PersistentChatViews } from "@/components/chat/persistent-chat-views";
+import { PersistentRemoteDesktopViews } from "@/components/remote-desktop/persistent-remote-desktop-views";
+import { WorkspaceChatPanel } from "@/components/chat/workspace-chat-panel";
 import type { ProjectSummary } from "@cantrip/protocol";
 import { Loader2 } from "lucide-react";
-import { Suspense, useMemo } from "react";
+import { Suspense, useMemo, useSyncExternalStore } from "react";
 import {
   PersistentCodeViews,
   PersistentExplorerViews,
+  PersistentFileDocumentViews,
   PersistentTerminalViews,
+  PersistentBrowserViews,
 } from "@/components/app/application-shell-surfaces";
 import { explorerRepositoryGraphAvailable } from "@/components/explorer/explorer-graph-routing";
-import { ProjectPaneTabStrip } from "@/components/workspace/project-tab-bar";
-import { dockPresentationsForSidebarPreview } from "@/components/app/project-workspace-frame-model";
-import { revealProjectInNativeFileManager } from "@/lib/desktop-project-share";
 import {
-  sidebarExplorerPrewarmTarget,
-  sidebarFileName,
-} from "@/lib/sidebar-file-tabs";
+  getClientSessionIdentitySnapshot,
+  onClientSessionIdentityChanged,
+} from "@/lib/client-session";
+import { ProjectPaneTabStrip } from "@/components/workspace/project-tab-bar";
+import { revealProjectInNativeFileManager } from "@/lib/desktop-project-share";
 type PersistentSurfaceBindings = Readonly<Record<string, any>>;
+const browserSessionKey = () =>
+  JSON.stringify(getClientSessionIdentitySnapshot());
+const subscribeBrowserSession = (listener: () => void) =>
+  onClientSessionIdentityChanged(listener);
 
 export function PersistentSurfaceLayer({
   bindings,
 }: {
   bindings: PersistentSurfaceBindings;
 }) {
+  const sessionKey = useSyncExternalStore(
+    subscribeBrowserSession,
+    browserSessionKey,
+    browserSessionKey,
+  );
   const {
-    activateSidebarFilePreview,
     activeProjectTaskChat,
     chatConsoleOpenChats,
     appMode,
-    closeSidebarFilePreview,
     codeAppearance,
     codeSurfaceVisible,
     compactShell,
     closeSurfaceView,
-    completeSidebarFilePinHandoff,
+    keepSurfaceOpen,
     createProjectSurface,
     creatingSurfaceKinds,
     deleteSurfaceResource,
@@ -44,21 +55,29 @@ export function PersistentSurfaceLayer({
     folderRevealLabel,
     selectedPaneOwnedElsewhere,
     handleExplorerChanged,
+    stagedExplorerTransfers,
+    stagedCodeTransfers,
+    stagedTerminalTransfers,
+    incomingTerminalViews,
+    incomingExplorerViews,
+    incomingFileDocumentViews,
+    incomingCodeViews,
+    migratedCodeTabIds,
     handleExplorerLifecycleChange,
-    handleSidebarFilePreviewLifecycleChange,
     isPopout,
     newTerminal,
     onlineWorkerIds,
     openExplorerFileWindow,
     openExplorers,
     openProjectExplorerFile,
+    persistFileViewMode,
     openTerminalLink,
     openTerminalLinkExternally,
     ownedTerminals,
     pendingTerminalInputs,
-    pinSidebarFilePath,
     selectedPaneSurfaces,
     projects,
+    projectSurfaces,
     queryClient,
     renameSurface,
     selectTopTab,
@@ -75,7 +94,6 @@ export function PersistentSurfaceLayer({
     setCodeHeader,
     setExplorerHeader,
     setPendingTerminalInputs,
-    setSidebarFilePreviewHeader,
     setTerminalCommandPaletteTerminalId,
     setTerminalServiceTerminalId,
     showArchivedStandaloneChats,
@@ -83,14 +101,6 @@ export function PersistentSurfaceLayer({
     showProjectSettings,
     showServerAdmin,
     showSettings,
-    showSidebarPreviewTab,
-    sidebarFilePinHandoff,
-    sidebarFilePreview,
-    sidebarFilePreviewPaneVisible,
-    sidebarFilePreviewVisible,
-    sidebarInlineExplorer,
-    sidebarPreviewSuccessorExplorer,
-    sidebarPreviewExplorer,
     terminalCommandPaletteTerminalId,
     terminalServiceTerminalId,
     terminalSurfaceVisible,
@@ -98,18 +108,7 @@ export function PersistentSurfaceLayer({
     worktreeStatuses,
     worktrees,
   } = bindings;
-  const {
-    activePreviewPresentation: activeSidebarPreviewPresentation,
-    surfacePresentations: surfaceDockPanePresentations,
-  } = useMemo(
-    () =>
-      dockPresentationsForSidebarPreview(
-        dockPanePresentations,
-        sidebarFilePreview,
-        sidebarFilePreviewPaneVisible,
-      ),
-    [dockPanePresentations, sidebarFilePreview, sidebarFilePreviewPaneVisible],
-  );
+  const surfaceDockPanePresentations = dockPanePresentations;
   const dockCodePlacements = useMemo(
     () =>
       surfaceDockPanePresentations?.flatMap((presentation: any) =>
@@ -121,6 +120,116 @@ export function PersistentSurfaceLayer({
                 paneId: presentation.pane.id,
                 portalTarget: presentation.portalTarget,
                 tab: presentation.activeSurface.entity,
+              },
+            ]
+          : [],
+      ),
+    [surfaceDockPanePresentations],
+  );
+  const desktopOwners = useMemo(
+    () =>
+      projectSurfaces?.flatMap((surface: any) => {
+        if (excludedPersistentSurfaceIds?.has(surface.tabKey)) return [];
+        if (surface.kind === "remote-desktop")
+          return [
+            {
+              tabId: surface.tabKey,
+              resourceId: surface.entity.id,
+              projectId: surface.entity.projectId,
+            },
+          ];
+        if (
+          surface.kind === "unresolved" &&
+          surface.member.tabKind === "remote-desktop" &&
+          selectedProjectId
+        )
+          return [
+            {
+              tabId: surface.tabKey,
+              resourceId: surface.member.tabId,
+              projectId: selectedProjectId,
+            },
+          ];
+        return [];
+      }) ?? [],
+    [projectSurfaces, excludedPersistentSurfaceIds, selectedProjectId],
+  );
+  const desktopPlacements = useMemo(
+    () =>
+      surfaceDockPanePresentations?.flatMap((presentation: any) =>
+        presentation.activeSurface?.kind === "remote-desktop"
+          ? [
+              {
+                tabId: presentation.activeSurface.tabKey,
+                portalTarget: presentation.portalTarget,
+              },
+            ]
+          : [],
+      ),
+    [surfaceDockPanePresentations],
+  );
+  const chatOwners = useMemo(
+    () =>
+      projectSurfaces?.flatMap((surface: any) =>
+        excludedPersistentSurfaceIds?.has(surface.tabKey)
+          ? []
+          : surface.kind === "chat"
+            ? [
+                {
+                  tabId: surface.tabKey,
+                  resourceId: surface.entity.id,
+                  chat: surface.entity,
+                },
+              ]
+            : surface.kind === "unresolved" && surface.member.tabKind === "chat"
+              ? [{ tabId: surface.tabKey, resourceId: surface.member.tabId }]
+              : [],
+      ) ?? [],
+    [projectSurfaces, excludedPersistentSurfaceIds],
+  );
+  const chatPlacements = useMemo(
+    () =>
+      surfaceDockPanePresentations?.flatMap((presentation: any) =>
+        presentation.activeSurface?.kind === "chat"
+          ? [
+              {
+                tabId: presentation.activeSurface.tabKey,
+                portalTarget: presentation.portalTarget,
+              },
+            ]
+          : [],
+      ),
+    [surfaceDockPanePresentations],
+  );
+  const browserOwners = useMemo(
+    () =>
+      projectSurfaces?.flatMap((surface: any) =>
+        excludedPersistentSurfaceIds?.has(surface.tabId)
+          ? []
+          : surface.kind === "browser"
+            ? [
+                {
+                  tabId: surface.tabKey,
+                  resourceId: surface.entity.id,
+                  browser: surface.entity,
+                },
+              ]
+            : surface.kind === "unresolved" &&
+                surface.member.tabKind === "browser"
+              ? [{ tabId: surface.tabKey, resourceId: surface.member.tabId }]
+              : [],
+      ) ?? [],
+    [projectSurfaces, excludedPersistentSurfaceIds],
+  );
+  const browserPlacements = useMemo(
+    () =>
+      surfaceDockPanePresentations?.flatMap((presentation: any) =>
+        presentation.activeSurface?.kind === "browser"
+          ? [
+              {
+                tabId: presentation.activeSurface.tabKey,
+                paneId: presentation.pane.id,
+                portalTarget: presentation.portalTarget,
               },
             ]
           : [],
@@ -179,30 +288,113 @@ export function PersistentSurfaceLayer({
             ]
           : [],
     );
-    if (
-      !placements ||
-      !activeSidebarPreviewPresentation ||
-      !sidebarPreviewExplorer
-    ) {
-      return placements;
-    }
-    return [
-      ...placements,
-      {
-        explorer: sidebarPreviewExplorer,
-        focused: activeSidebarPreviewPresentation.focused,
-        gridArea: activeSidebarPreviewPresentation.gridArea,
-        paneId: activeSidebarPreviewPresentation.pane.id,
-        portalTarget: activeSidebarPreviewPresentation.portalTarget,
-      },
-    ];
-  }, [
-    activeSidebarPreviewPresentation,
-    sidebarPreviewExplorer,
-    surfaceDockPanePresentations,
-  ]);
+    return placements;
+  }, [surfaceDockPanePresentations]);
   return (
     <>
+      <PersistentRemoteDesktopViews
+        key={`desktop:${sessionKey}`}
+        owners={desktopOwners}
+        selectedTabId={
+          appMode === "ide" &&
+          !showImporter &&
+          !showSettings &&
+          !bindings.showProjectOverview &&
+          !showArchivedStandaloneChats &&
+          !showServerAdmin &&
+          !showProjectSettings &&
+          !selectedPaneOwnedElsewhere
+            ? (selectedTabKey ?? null)
+            : null
+        }
+        placements={desktopPlacements}
+        incomingViews={bindings.incomingRemoteDesktopViews}
+        fleetDiscovery={
+          bindings.bootstrap?.data?.capabilities.remoteDesktopFleet ?? false
+        }
+        onOpenFleetTarget={(tabId, projectId, workerId, desktopTarget) =>
+          bindings.newRemoteDesktop.mutate({
+            projectId,
+            paneId: projectSurfaces?.find(
+              (surface: any) => surface.tabKey === tabId,
+            )?.paneId,
+            target: { kind: "worker", projectId, workerId },
+            desktopTarget,
+          })
+        }
+      />
+      <PersistentChatViews
+        key={JSON.stringify([sessionKey, selectedProjectId])}
+        owners={chatOwners}
+        incomingViews={bindings.incomingChatViews}
+        placements={chatPlacements}
+        selectedTabId={
+          appMode === "ide" &&
+          !showImporter &&
+          !showSettings &&
+          !bindings.showProjectOverview &&
+          !showArchivedStandaloneChats &&
+          !showServerAdmin &&
+          !showProjectSettings &&
+          !selectedPaneOwnedElsewhere
+            ? (selectedTabKey ?? null)
+            : null
+        }
+        renderChat={(chat, tabId, visible, incoming) => (
+          <WorkspaceChatPanel
+            tabId={tabId}
+            incoming={incoming}
+            chat={chat}
+            visible={visible && selectedTabKey === tabId}
+            bindings={bindings}
+          />
+        )}
+      />
+      <Suspense fallback={null}>
+        <PersistentBrowserViews
+          incomingViews={bindings.incomingBrowserViews}
+          key={JSON.stringify([sessionKey, selectedProjectId])}
+          owners={browserOwners}
+          placements={browserPlacements}
+          selectedTabId={
+            appMode === "ide" &&
+            !showImporter &&
+            !showSettings &&
+            !bindings.showProjectOverview &&
+            !showArchivedStandaloneChats &&
+            !showServerAdmin &&
+            !showProjectSettings &&
+            !selectedPaneOwnedElsewhere
+              ? (selectedTabKey ?? null)
+              : null
+          }
+          fleetDiscovery={
+            bindings.bootstrap?.data?.capabilities.browserFleetDiscovery ??
+            false
+          }
+          onOpenService={(browser, service, paneId) =>
+            bindings.newBrowser.mutate({
+              projectId: browser.projectId,
+              paneId,
+              target: {
+                kind: "worker",
+                projectId: browser.projectId,
+                workerId: service.workerId,
+              },
+              title:
+                service.title ?? service.processName ?? `Port ${service.port}`,
+              url: service.url,
+            })
+          }
+          onPageState={(browser, pageState) =>
+            bindings.updateBrowserMutation.mutate({
+              browserId: browser.id,
+              projectId: browser.projectId,
+              pageState,
+            })
+          }
+        />
+      </Suspense>
       {!dockPanePresentations &&
       appMode === "ide" &&
       !compactShell &&
@@ -219,9 +411,8 @@ export function PersistentSurfaceLayer({
           creatingKinds={creatingSurfaceKinds}
           surfaces={selectedPaneSurfaces}
           onCreate={(kind, target) => {
-            const paneId = sidebarFilePreview?.active
-              ? sidebarFilePreview.paneId
-              : (selectedPane?.id ?? selectedPaneSurfaces.at(-1)?.paneId);
+            const paneId =
+              selectedPane?.id ?? selectedPaneSurfaces.at(-1)?.paneId;
             if (selectedProject) {
               createProjectSurface(
                 selectedProject.id,
@@ -233,32 +424,13 @@ export function PersistentSurfaceLayer({
             }
           }}
           onClose={closeSurfaceView}
+          onKeepOpen={keepSurfaceOpen}
           onDelete={deleteSurfaceResource}
           onRename={renameSurface}
           onSelect={selectTopTab}
           paneId={selectedPane?.id}
           paneRegion={selectedPane?.region}
           placement={selectedPlacementContext}
-          previewFile={
-            showSidebarPreviewTab && sidebarFilePreview
-              ? {
-                  active: sidebarFilePreview.active,
-                  path: sidebarFilePreview.path,
-                  projectId: sidebarFilePreview.projectId,
-                  title: sidebarFileName(sidebarFilePreview.path),
-                  onClose: closeSidebarFilePreview,
-                  onPin: () => {
-                    if (sidebarPreviewExplorer) {
-                      void pinSidebarFilePath(
-                        sidebarPreviewExplorer,
-                        sidebarFilePreview.path,
-                      );
-                    }
-                  },
-                  onSelect: activateSidebarFilePreview,
-                }
-              : undefined
-          }
           projectId={selectedProject.id}
         />
       ) : null}
@@ -273,6 +445,31 @@ export function PersistentSurfaceLayer({
         }
       >
         <PersistentCodeViews
+          migratedIds={
+            new Set(
+              projectSurfaces?.flatMap((surface: any) =>
+                migratedCodeTabIds?.has(surface.tabKey) &&
+                surface.member.tabKind === "code"
+                  ? [surface.member.tabId]
+                  : [],
+              ),
+            )
+          }
+          incomingViews={incomingCodeViews}
+          unresolvedIds={
+            new Set<string>(
+              projectSurfaces?.flatMap((surface: any) =>
+                surface.kind === "unresolved" &&
+                surface.member.tabKind === "code"
+                  ? [surface.tabId]
+                  : [],
+              ),
+            )
+          }
+          openTabs={projectSurfaces?.flatMap((surface: any) =>
+            surface.kind === "code" ? [surface.entity] : [],
+          )}
+          initialTransfers={stagedCodeTransfers}
           activeTab={codeSurfaceVisible ? (selectedCodeTab ?? null) : null}
           appearance={codeAppearance}
           onChanged={(codeTab) =>
@@ -281,6 +478,13 @@ export function PersistentSurfaceLayer({
             })
           }
           onHeaderChange={setCodeHeader}
+          onOpenFile={(codeTab, entry) =>
+            openProjectExplorerFile(
+              codeTab.projectId,
+              codeTab.worktreeId,
+              entry.path,
+            )
+          }
           visiblePlacements={dockCodePlacements}
           excludedIds={excludedPersistentSurfaceIds}
         />
@@ -296,6 +500,25 @@ export function PersistentSurfaceLayer({
         }
       >
         <PersistentTerminalViews
+          incomingViews={incomingTerminalViews}
+          initialTransfers={stagedTerminalTransfers}
+          transferTabIds={
+            new Map<string, string>(
+              projectSurfaces?.flatMap((surface: any) =>
+                surface.kind === "terminal"
+                  ? [[surface.entity.id, surface.tabKey] as [string, string]]
+                  : surface.kind === "unresolved" &&
+                      surface.member.tabKind === "terminal"
+                    ? [
+                        [surface.member.tabId, surface.tabKey] as [
+                          string,
+                          string,
+                        ],
+                      ]
+                    : [],
+              ),
+            )
+          }
           active={terminalSurfaceVisible}
           commandPaletteTerminalId={terminalCommandPaletteTerminalId}
           key={selectedProjectId ?? "no-project"}
@@ -346,51 +569,58 @@ export function PersistentSurfaceLayer({
           ) : null
         }
       >
+        <PersistentFileDocumentViews
+          incomingViews={incomingFileDocumentViews}
+          key={`documents:${sessionKey}:${selectedProjectId}`}
+          surfaces={(projectSurfaces ?? []).filter(
+            (surface: any) =>
+              !excludedPersistentSurfaceIds?.has(surface.tabKey) &&
+              !excludedPersistentSurfaceIds?.has(surface.tabId),
+          )}
+          placements={surfaceDockPanePresentations?.flatMap(
+            (presentation: any) =>
+              presentation.activeSurface?.definition?.id === "project.file"
+                ? [
+                    {
+                      tabId: presentation.activeSurface.tabKey,
+                      paneId: presentation.pane.id,
+                      portalTarget: presentation.portalTarget,
+                      focused: presentation.focused,
+                    },
+                  ]
+                : [],
+          )}
+          activeTabId={selectedTabKey}
+          appearance={codeAppearance}
+          onlineWorkerIds={onlineWorkerIds}
+          onOpenFile={openProjectExplorerFile}
+          onModeChange={persistFileViewMode}
+          onHeaderChange={setExplorerHeader}
+          onLifecycleChange={handleExplorerLifecycleChange}
+        />
         <PersistentExplorerViews
+          incomingViews={incomingExplorerViews}
+          initialTransfers={stagedExplorerTransfers}
           activeExplorer={
-            appMode === "ide" && sidebarFilePreviewPaneVisible
-              ? (sidebarPreviewExplorer ?? null)
-              : explorerSurfaceVisible
-                ? (selectedExplorer ?? null)
-                : null
-          }
-          transientFile={
-            appMode === "ide" && sidebarFilePreview
-              ? {
-                  explorerId: sidebarFilePreview.explorerId,
-                  file: {
-                    close: closeSidebarFilePreview,
-                    path: sidebarFilePreview.path,
-                  },
-                }
-              : undefined
+            explorerSurfaceVisible ? (selectedExplorer ?? null) : null
           }
           appearance={codeAppearance}
           graphRequest={explorerGraphRequest}
           gitStatuses={worktreeStatuses}
-          handoffExplorer={
-            sidebarFilePinHandoff?.destinationExplorer?.projectId ===
-            selectedProjectId
-              ? sidebarFilePinHandoff.destinationExplorer
-              : null
-          }
-          handoffSourceExplorer={
-            sidebarFilePinHandoff?.sourceExplorer.projectId ===
-            selectedProjectId
-              ? sidebarFilePinHandoff.sourceExplorer
-              : null
-          }
           key={selectedProjectId ?? "no-project"}
           onChanged={handleExplorerChanged}
-          onHeaderChange={
-            sidebarFilePreviewVisible
-              ? setSidebarFilePreviewHeader
-              : setExplorerHeader
-          }
-          onInlineCodeReady={completeSidebarFilePinHandoff}
+          onHeaderChange={setExplorerHeader}
           onLifecycleChange={handleExplorerLifecycleChange}
-          onTransientLifecycleChange={handleSidebarFilePreviewLifecycleChange}
-          onOpenFile={desktopRuntime ? openExplorerFileWindow : undefined}
+          onOpenFile={
+            desktopRuntime
+              ? openExplorerFileWindow
+              : (explorer, entry) =>
+                  openProjectExplorerFile(
+                    explorer.projectId,
+                    explorer.worktreeId,
+                    entry.path,
+                  )
+          }
           onOpenGraphFile={(explorer, path) =>
             openProjectExplorerFile(
               explorer.projectId,
@@ -441,18 +671,6 @@ export function PersistentSurfaceLayer({
           }}
           onlineWorkerIds={onlineWorkerIds}
           openExplorers={openExplorers}
-          prewarmExplorer={sidebarExplorerPrewarmTarget({
-            hasOpenExplorer: openExplorers.length > 0,
-            isPopout,
-            pinInProgress: Boolean(sidebarFilePinHandoff),
-            sidebarExplorer: sidebarInlineExplorer,
-          })}
-          prewarmSuccessorExplorer={sidebarExplorerPrewarmTarget({
-            hasOpenExplorer: openExplorers.length > 0,
-            isPopout,
-            pinInProgress: Boolean(sidebarFilePinHandoff),
-            sidebarExplorer: sidebarPreviewSuccessorExplorer,
-          })}
         />
       </Suspense>
     </>

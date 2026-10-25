@@ -6,6 +6,7 @@ import type {
   ProjectWorktreeSummary,
 } from "@cantrip/protocol";
 import { QueryClient } from "@tanstack/react-query";
+import type { ProjectSurface } from "@/lib/project-surface";
 import { createElement, StrictMode } from "react";
 import TestRenderer, { act } from "react-test-renderer";
 import { describe, expect, it, vi } from "vitest";
@@ -13,7 +14,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createProjectExplorerFileOpening,
   sidebarExplorerProvisioningDetails,
-  sidebarFilePinCompletion,
+  useExplorerLifecycleRefs,
+  useExplorerLifecycleRegistration,
   useSidebarExplorerModel,
   useSidebarFileState,
 } from "./sidebar-explorer-controller";
@@ -29,105 +31,181 @@ const project = {
   capabilities: { worktrees: true },
 } as ProjectSummary;
 
-describe("project file opening", () => {
-  it.each([false, true])(
-    "opens chat links under the resolved checkout ID (desktop=%s)",
-    async (desktopRuntime) => {
-      const openSidebarFilePreviewPath = vi.fn(() => true);
-      const setPopoutError = vi.fn();
-      const showAppToast = vi.fn();
-      const queryClient = new QueryClient();
-      const worktrees = [
-        {
-          id: "primary",
-          projectId: project.id,
-          path: "/project",
-          displayPath: "/project",
-          isPrimary: true,
-        },
-        {
-          id: "task",
-          projectId: project.id,
-          path: "/managed/task",
-          displayPath: "/managed/task",
-          isPrimary: false,
-        },
-      ] as ProjectWorktreeSummary[];
-      // A task checkout may have been registered since this shell last rendered.
-      queryClient.setQueryData(["worktrees", project.id], worktrees);
-      const { openChatFileLink } = createProjectExplorerFileOpening({
-        codeAppearance: "dark",
-        desktopRuntime,
-        explorers: [],
-        explorerLifecycleRef: { current: new Map() },
-        openCreatedTab: vi.fn(),
-        openSidebarFilePreviewPath,
+describe("owned file lifecycle registration", () => {
+  it("reports dirty files without saving or closing and unregisters cleanly", async () => {
+    const onDirtyFile = vi.fn();
+    const queryClient = new QueryClient();
+    let lifecycle!: ReturnType<typeof useExplorerLifecycleRefs>;
+    let registration!: ReturnType<typeof useExplorerLifecycleRegistration>;
+    function Harness() {
+      lifecycle = useExplorerLifecycleRefs();
+      registration = useExplorerLifecycleRegistration({
+        lifecycle,
         queryClient,
-        selectedProject: project,
-        setPopoutError,
-        showAppToast,
-        worktrees: [],
+        onDirtyFile,
       });
-      const chat = {
-        projectId: project.id,
-        activeWorktreeId: "primary",
-      } as ChatSummary;
-
-      openChatFileLink(chat, "/managed/task/docs/BASELINE.md:14");
-      await Promise.resolve();
-      expect(openSidebarFilePreviewPath).toHaveBeenLastCalledWith(
-        "task",
-        "docs/BASELINE.md",
-      );
-
-      openChatFileLink(chat, "src/app.ts", "task");
-      await Promise.resolve();
-      expect(openSidebarFilePreviewPath).toHaveBeenLastCalledWith(
-        "task",
-        "src/app.ts",
-      );
-      expect(setPopoutError).not.toHaveBeenCalled();
-      expect(showAppToast).not.toHaveBeenCalled();
-      expect(chat.activeWorktreeId).toBe("primary");
-      queryClient.clear();
-    },
-  );
-
-  it("uses the sidebar editor preview before the desktop pop-out fallback", async () => {
-    const openSidebarFilePreviewPath = vi.fn(() => true);
-    const openCreatedTab = vi.fn();
-    const queryClient = {
-      invalidateQueries: vi.fn(),
-      setQueryData: vi.fn(),
-    };
-    const { openProjectExplorerFile } = createProjectExplorerFileOpening({
-      codeAppearance: "dark",
-      desktopRuntime: true,
-      explorers: [],
-      explorerLifecycleRef: { current: new Map() },
-      openCreatedTab,
-      openSidebarFilePreviewPath,
-      queryClient: queryClient as never,
-      selectedProject: undefined,
-      setPopoutError: vi.fn(),
-      showAppToast: vi.fn(),
-      worktrees: [],
+      return null;
+    }
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(createElement(Harness));
     });
-
-    openProjectExplorerFile("project-1", "worktree-1", "src/app.ts");
-    await Promise.resolve();
-
-    expect(openSidebarFilePreviewPath).toHaveBeenCalledWith(
-      "worktree-1",
-      "src/app.ts",
-    );
-    expect(queryClient.setQueryData).not.toHaveBeenCalled();
-    expect(openCreatedTab).not.toHaveBeenCalled();
+    const actions = {
+      dirty: false,
+      cancelClose: vi.fn(),
+      flushViewState: vi.fn(async () => true),
+      prepareClose: vi.fn(async () => {}),
+      reconcile: vi.fn(async () => {}),
+      save: vi.fn(async () => true),
+    };
+    registration.handleExplorerLifecycleChange("file", actions);
+    expect(onDirtyFile).not.toHaveBeenCalled();
+    const dirty = { ...actions, dirty: true };
+    registration.handleExplorerLifecycleChange("file", dirty);
+    expect(lifecycle.explorerLifecycleRef.current.get("file")).toBe(dirty);
+    expect(onDirtyFile).toHaveBeenCalledExactlyOnceWith("file");
+    registration.handleExplorerLifecycleChange("file", null);
+    expect(lifecycle.explorerLifecycleRef.current.has("file")).toBe(false);
+    expect(onDirtyFile).toHaveBeenCalledTimes(1);
+    expect(actions.save).not.toHaveBeenCalled();
+    expect(actions.prepareClose).not.toHaveBeenCalled();
+    await act(async () => renderer.unmount());
+    queryClient.clear();
   });
 });
 
+describe("project file opening", () => {
+  it("reports a removed checkout failure without retrying the chat's current checkout", async () => {
+    const openOwnedFile = vi.fn(async () => {
+      throw new Error("Project or available worktree not found.");
+    });
+    const showAppToast = vi.fn();
+    const queryClient = new QueryClient();
+    const { openChatFileLink } = createProjectExplorerFileOpening({
+      openOwnedFile,
+      showAppToast,
+      queryClient,
+      selectedProject: project,
+      worktrees: [],
+    });
+    openChatFileLink(
+      { projectId: project.id, activeWorktreeId: "primary" } as ChatSummary,
+      "entry/command-first.rs",
+      "removed-checkout",
+    );
+    await vi.waitFor(() =>
+      expect(showAppToast).toHaveBeenCalledExactlyOnceWith({
+        title: "Could not open file link",
+        message: "Project or available worktree not found.",
+        tone: "error",
+      }),
+    );
+    expect(openOwnedFile).toHaveBeenCalledExactlyOnceWith(
+      project.id,
+      "removed-checkout",
+      "entry/command-first.rs",
+    );
+    queryClient.clear();
+  });
+
+  it("opens chat links under the resolved checkout ID through workspace ownership", async () => {
+    const openOwnedFile = vi.fn(async () => {});
+    const showAppToast = vi.fn();
+    const queryClient = new QueryClient();
+    const worktrees = [
+      {
+        id: "primary",
+        projectId: project.id,
+        path: "/project",
+        displayPath: "/project",
+        isPrimary: true,
+      },
+      {
+        id: "task",
+        projectId: project.id,
+        path: "/managed/task",
+        displayPath: "/managed/task",
+        isPrimary: false,
+      },
+    ] as ProjectWorktreeSummary[];
+    // A task checkout may have been registered since this shell last rendered.
+    queryClient.setQueryData(["worktrees", project.id], worktrees);
+    const { openChatFileLink } = createProjectExplorerFileOpening({
+      openOwnedFile,
+      queryClient,
+      selectedProject: project,
+      showAppToast,
+      worktrees: [],
+    });
+    const chat = {
+      projectId: project.id,
+      activeWorktreeId: "primary",
+    } as ChatSummary;
+
+    openChatFileLink(chat, "/managed/task/docs/BASELINE.md:14");
+    await Promise.resolve();
+    expect(openOwnedFile).toHaveBeenLastCalledWith(
+      project.id,
+      "task",
+      "docs/BASELINE.md",
+    );
+
+    openChatFileLink(chat, "src/app.ts", "task");
+    await Promise.resolve();
+    expect(openOwnedFile).toHaveBeenLastCalledWith(
+      project.id,
+      "task",
+      "src/app.ts",
+    );
+    expect(showAppToast).not.toHaveBeenCalled();
+    expect(chat.activeWorktreeId).toBe("primary");
+    queryClient.clear();
+  });
+
+  it.each([false, true])(
+    "uses only the owned opener and reports failure (failure=%s)",
+    async (failure) => {
+      const openOwnedFile = vi.fn(async () => {
+        if (failure) throw new Error("workspace offline");
+      });
+      const showAppToast = vi.fn();
+      const queryClient = {
+        invalidateQueries: vi.fn(),
+        setQueryData: vi.fn(),
+      };
+      const { openProjectExplorerFile } = createProjectExplorerFileOpening({
+        openOwnedFile,
+        queryClient: queryClient as never,
+        selectedProject: undefined,
+        showAppToast,
+        worktrees: [],
+      });
+
+      openProjectExplorerFile("project-1", "worktree-1", "src/app.ts");
+      await Promise.resolve();
+
+      expect(openOwnedFile).toHaveBeenCalledExactlyOnceWith(
+        "project-1",
+        "worktree-1",
+        "src/app.ts",
+      );
+      expect(queryClient.setQueryData).not.toHaveBeenCalled();
+      if (failure)
+        expect(showAppToast).toHaveBeenCalledExactlyOnceWith({
+          title: "Could not open file",
+          message: "workspace offline",
+          tone: "error",
+        });
+      else expect(showAppToast).not.toHaveBeenCalled();
+    },
+  );
+});
+
 function explorer(workerId: string | null = "worker-explorer") {
-  return { activeWorkerId: workerId } as ExplorerSummary;
+  return {
+    activeWorkerId: workerId,
+    worktreeId: "worktree-1",
+  } as ExplorerSummary;
 }
 
 describe("sidebar Explorer provisioning", () => {
@@ -139,7 +217,6 @@ describe("sidebar Explorer provisioning", () => {
         selectedProjectWorkerId: "worker-project",
         sidebarDesiredWorktreeId: null,
         sidebarExplorer: null,
-        sidebarInlineExplorers: [],
       }).sidebarExplorerCreationInput,
     ).toBeNull();
 
@@ -150,14 +227,13 @@ describe("sidebar Explorer provisioning", () => {
         selectedProjectWorkerId: "worker-project",
         sidebarDesiredWorktreeId: "worktree-1",
         sidebarExplorer: null,
-        sidebarInlineExplorers: [],
       }),
     ).toMatchObject({
       sidebarExplorerCreationInput: {
         projectId: "project-1",
         worktreeId: "worktree-1",
       },
-      sidebarExplorerCreationKey: "project-1:worktree-1:0",
+      sidebarExplorerCreationKey: "project-1:worktree-1",
       sidebarHasDesiredExplorer: false,
     });
   });
@@ -170,7 +246,6 @@ describe("sidebar Explorer provisioning", () => {
         selectedProjectWorkerId: "worker-project",
         sidebarDesiredWorktreeId: "worktree-1",
         sidebarExplorer: explorer(),
-        sidebarInlineExplorers: [explorer(), explorer()],
       }),
     ).toMatchObject({
       sidebarFileWorkerId: "worker-explorer",
@@ -179,7 +254,7 @@ describe("sidebar Explorer provisioning", () => {
     });
   });
 
-  it("provisions one bounded warm successor while a sidebar Explorer owns preview navigation", () => {
+  it("needs only one sidebar tree and does not provision a warm successor", () => {
     const previewExplorer = explorer();
     expect(
       sidebarExplorerProvisioningDetails({
@@ -187,12 +262,10 @@ describe("sidebar Explorer provisioning", () => {
         selectedProject: project,
         selectedProjectWorkerId: "worker-project",
         sidebarDesiredWorktreeId: "worktree-1",
-        sidebarExplorer: previewExplorer,
-        sidebarInlineExplorers: [previewExplorer],
+        sidebarExplorer: { ...previewExplorer, worktreeId: "another-worktree" },
       }),
     ).toMatchObject({
-      sidebarExplorerCreationKey: "project-1:worktree-1:1",
-      sidebarExplorerPoolSize: 1,
+      sidebarExplorerCreationKey: "project-1:worktree-1",
       sidebarHasDesiredExplorer: false,
     });
 
@@ -203,107 +276,16 @@ describe("sidebar Explorer provisioning", () => {
         selectedProjectWorkerId: "worker-project",
         sidebarDesiredWorktreeId: "worktree-1",
         sidebarExplorer: previewExplorer,
-        sidebarInlineExplorers: [previewExplorer, explorer()],
       }),
     ).toMatchObject({
-      sidebarExplorerCreationKey: "project-1:worktree-1:2",
-      sidebarExplorerPoolSize: 2,
+      sidebarExplorerCreationKey: "project-1:worktree-1",
       sidebarHasDesiredExplorer: true,
     });
   });
 });
 
-describe("sidebar file pin completion", () => {
-  const source = {
-    id: "explorer-source",
-    projectId: "project-1",
-  } as ExplorerSummary;
-  const destination = {
-    id: "explorer-pinned",
-    projectId: "project-1",
-  } as ExplorerSummary;
-  const handoff = {
-    destinationExplorer: destination,
-    destinationExplorerId: destination.id,
-    ready: true,
-    sourceExplorer: source,
-    sourcePath: "scripts/setup.ps1",
-    transactionId: "pin-1",
-  };
-
-  it("activates a completed dock even if its transient preview rerendered inactive", () => {
-    expect(
-      sidebarFilePinCompletion(
-        handoff,
-        {
-          active: false,
-          explorerId: source.id,
-          paneId: "group-1",
-          path: handoff.sourcePath,
-          projectId: source.projectId,
-        },
-        source.projectId,
-      ),
-    ).toEqual({ action: "activate", clearPreview: true, destination });
-  });
-
-  it("refreshes without stealing focus after the user changes projects", () => {
-    expect(sidebarFilePinCompletion(handoff, null, "project-2")).toEqual({
-      action: "refresh",
-      destination,
-    });
-  });
-});
-
-describe("sidebar preview successor provisioning", () => {
-  it("waits event-driven for the already-provisioned successor", async () => {
-    const source = {
-      id: "explorer-source",
-      projectId: "project-1",
-      worktreeId: "worktree-1",
-    } as ExplorerSummary;
-    const successor = {
-      ...source,
-      id: "explorer-successor",
-    } as ExplorerSummary;
-    const observed: {
-      current: ReturnType<typeof useSidebarFileState> | null;
-    } = { current: null };
-    const Probe = () => {
-      observed.current = useSidebarFileState();
-      return null;
-    };
-    let renderer!: TestRenderer.ReactTestRenderer;
-
-    await act(async () => {
-      renderer = TestRenderer.create(
-        createElement(StrictMode, null, createElement(Probe)),
-      );
-    });
-    act(() => {
-      observed.current?.updateSidebarExplorerPool([source]);
-    });
-
-    let settled = false;
-    const waiting = observed
-      .current!.waitForSidebarFileSuccessor(source.id)
-      .then((value) => {
-        settled = true;
-        return value;
-      });
-    await Promise.resolve();
-    expect(settled).toBe(false);
-
-    act(() => {
-      observed.current?.updateSidebarExplorerPool([source, successor]);
-    });
-    await expect(waiting).resolves.toBe(successor);
-    await act(async () => renderer.unmount());
-  });
-});
-
-describe("sidebar preview ownership handoff", () => {
-  it("keeps the promoted preview surface addressable without returning it to the file tree under Strict Mode", async () => {
+describe("sidebar tree ownership", () => {
+  it("never repurposes a tabbed Explorer as the sidebar tree under Strict Mode", async () => {
     const pinned = {
       id: "explorer-pinned",
       projectId: "project-1",
@@ -327,17 +309,16 @@ describe("sidebar preview ownership handoff", () => {
     const worktrees = [
       { id: "worktree-1", isPrimary: true },
     ] as ProjectWorktreeSummary[];
-    const preview = {
-      active: true,
-      explorerId: pinned.id,
-      paneId: "group-1",
-      path: "src/first.ts",
-      projectId: "project-1",
-    };
     const observed: {
       current: ReturnType<typeof useSidebarExplorerModel> | null;
     } = { current: null };
-    const Probe = ({ explorers }: { explorers: ExplorerSummary[] }) => {
+    const Probe = ({
+      explorers,
+      selectedSurface,
+    }: {
+      explorers: ExplorerSummary[];
+      selectedSurface?: ProjectSurface;
+    }) => {
       observed.current = useSidebarExplorerModel({
         unavailablePaneIds: new Set(),
         environment: {
@@ -346,13 +327,9 @@ describe("sidebar preview ownership handoff", () => {
           projectOverviewPopoutTarget: null,
         },
         explorers,
-        fileState: {
-          sidebarFilePinHandoff: null,
-          sidebarFilePreview: preview,
-        },
         openCreatedTab: vi.fn(),
         selectedProjectId: "project-1",
-        selectedSurface: undefined,
+        selectedSurface,
         tabLayout,
         worktrees,
       });
@@ -369,7 +346,6 @@ describe("sidebar preview ownership handoff", () => {
         ),
       );
     });
-    expect(observed.current?.sidebarPreviewExplorer).toBe(pinned);
     expect(observed.current?.sidebarExplorer).toBeNull();
 
     await act(async () => {
@@ -381,8 +357,30 @@ describe("sidebar preview ownership handoff", () => {
         ),
       );
     });
-    expect(observed.current?.sidebarPreviewExplorer).toBe(pinned);
     expect(observed.current?.sidebarExplorer).toBe(replacement);
+    const featureTree = {
+      ...replacement,
+      id: "feature-tree",
+      worktreeId: "feature",
+    };
+    await act(async () => {
+      renderer.update(
+        createElement(
+          StrictMode,
+          null,
+          createElement(Probe, {
+            explorers: [pinned, replacement, featureTree],
+            selectedSurface: {
+              kind: "file",
+              entity: { worktreeId: "feature" },
+            } as ProjectSurface,
+          }),
+        ),
+      );
+    });
+    expect(observed.current?.sidebarDesiredWorktreeId).toBe("feature");
+    expect(observed.current?.sidebarExplorer).toBe(featureTree);
+    expect(observed.current?.openExplorers).toEqual([pinned]);
     await act(async () => renderer.unmount());
   });
 });

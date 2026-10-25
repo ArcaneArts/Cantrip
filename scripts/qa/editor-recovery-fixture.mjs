@@ -69,6 +69,8 @@ async function availablePort() {
 export async function startEditorRecoveryFixture({
   requireExplicitBootstrapRefresh = false,
   repositoryProject = false,
+  nativeLoopbackOrigin = false,
+  cuaBinary,
 } = {}) {
   const runId = randomUUID();
   const directory = path.join(root, ".qa", `editor-${runId}`);
@@ -95,6 +97,7 @@ export async function startEditorRecoveryFixture({
     renewalStatus: 503,
     rejectUpgrades: false,
     dropPong: false,
+    rejectWorkspaceDestinations: false,
   };
   const serverPort = await availablePort();
   const controlToken = randomUUID();
@@ -268,7 +271,11 @@ export async function startEditorRecoveryFixture({
     const { build, preview } = await import(appRequire.resolve("vite"));
     // This affects only this fixture process, never a persisted development profile.
     process.env.VITE_CANTRIP_LOCAL_ONLY = "true";
-    const hostname = `qa-${runId}.localhost`;
+    // Native WebViews apply transport rules differently to generated DNS names.
+    // The disposable server port and native app identifier still isolate runs.
+    const hostname = nativeLoopbackOrigin
+      ? "127.0.0.1"
+      : `qa-${runId}.localhost`;
     const appDirectory = path.join(directory, "app");
     await build({
       root: path.join(root, "cantrip_app"),
@@ -289,6 +296,30 @@ export async function startEditorRecoveryFixture({
     vite = await preview({
       root: path.join(root, "cantrip_app"),
       configFile: false,
+      plugins: [
+        {
+          name: "qa-workspace-destination-failure",
+          configurePreviewServer(server) {
+            server.middlewares.use((request, response, next) => {
+              const url = new URL(request.url ?? "/", "http://fixture.invalid");
+              if (
+                faults.rejectWorkspaceDestinations &&
+                request.method === "GET" &&
+                url.pathname === "/" &&
+                url.searchParams.has("cantrip-transfer")
+              ) {
+                event("fault.workspace-destination", {
+                  transferId: url.searchParams.get("cantrip-transfer"),
+                });
+                response.writeHead(503, { "content-type": "text/plain" });
+                response.end("Injected QA destination startup failure");
+                return;
+              }
+              next();
+            });
+          },
+        },
+      ],
       build: { outDir: appDirectory },
       preview: {
         host: "127.0.0.1",
@@ -367,7 +398,10 @@ export async function startEditorRecoveryFixture({
         ],
         {
           cwd: path.join(root, `cantrip_${name}`),
-          env: childEnvironment,
+          env:
+            name === "worker" && cuaBinary
+              ? { ...childEnvironment, CANTRIP_CUA_BIN: cuaBinary }
+              : childEnvironment,
           stdio: ["ignore", "pipe", "pipe"],
         },
       );

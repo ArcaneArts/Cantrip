@@ -12,6 +12,7 @@ import type {
 import { and, asc, eq } from "drizzle-orm";
 
 import * as schema from "../schema.js";
+import { removeResourceWorkspaceViews } from "../workspace-resource-removal.js";
 import {
   attachProjectTab,
   detachProjectTab,
@@ -329,6 +330,13 @@ export class ExplorerRepository {
     );
     if (!context) return false;
     return this.database.transaction(async (transaction) => {
+      await removeResourceWorkspaceViews(
+        transaction,
+        ownerId,
+        context.projectId,
+        "project.explorer",
+        explorerId,
+      );
       await detachProjectTab(
         transaction,
         context.projectId,

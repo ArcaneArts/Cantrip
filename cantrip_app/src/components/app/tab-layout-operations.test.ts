@@ -4,6 +4,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createElement } from "react";
 import TestRenderer, { act } from "react-test-renderer";
 import { describe, expect, it, vi } from "vitest";
+import {
+  applyWorkspaceCommand,
+  type WorkspaceOwnership,
+} from "@cantrip/protocol";
+import { WorkspaceCommandClient } from "@/lib/workspace-command-client";
 
 const apiMocks = vi.hoisted(() => ({
   moveProjectPaneMember: vi.fn(),
@@ -55,6 +60,131 @@ const layout: ProjectTabLayoutSummary = {
 };
 
 describe("workspace drop operations", () => {
+  it("routes owned layout mutations through the controller without legacy cache writes", async () => {
+    let authority: WorkspaceOwnership = {
+      version: 1,
+      id: "workspace",
+      projectId: "one",
+      revision: 0,
+      mainWindowId: "main",
+      windows: [
+        {
+          id: "main",
+          attachmentGeneration: 0,
+          centerRoot: null,
+          focusedPaneId: "pane",
+          recentPaneIds: ["pane"],
+          panes: [
+            {
+              id: "pane",
+              region: "right",
+              titleProtection: null,
+              activeTabId: "a",
+              tabs: ["a", "b"].map((id) => ({
+                id,
+                resource: { kind: "builtin", definitionId: "project.tasks" },
+                builtInState: {
+                  definitionId: "project.tasks",
+                  worktreeId: null,
+                },
+                titleProtection: null,
+                preview: false,
+                dockPresentation: null,
+              })),
+            },
+          ],
+        },
+      ],
+    };
+    const controller = new WorkspaceCommandClient(authority, "main", 0, {
+      read: async () => authority,
+      execute: async (command) => {
+        const result = applyWorkspaceCommand(authority, command);
+        authority = result.layout;
+        return {
+          ...result,
+          appliedRevision: authority.revision,
+          replayed: false,
+        };
+      },
+      classify: () => "rejected",
+    });
+    const queryClient = new QueryClient();
+    const queryKey = ["project-tab-layout", "one"];
+    queryClient.setQueryData(queryKey, layout);
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+    const write = vi.spyOn(queryClient, "setQueryData");
+    const error = vi.fn();
+    let operations!: ReturnType<typeof useTabLayoutOperations>;
+    const Probe = () => {
+      operations = useTabLayoutOperations({
+        queryClient,
+        setWorkspaceDragError: error,
+        workspace: { controller },
+      });
+      return null;
+    };
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        createElement(
+          QueryClientProvider,
+          { client: queryClient },
+          createElement(Probe),
+        ),
+      );
+    });
+    await act(async () => {
+      operations.tabLayoutMutation.mutate({
+        projectId: "one",
+        command: {
+          type: "reorder-members",
+          paneId: "pane",
+          tabKeys: ["b", "a"],
+        },
+      });
+      operations.dockPresentationMutation.mutate({
+        projectId: "one",
+        tabKey: "b",
+        presentation: {
+          preferredMode: "split",
+          splitFraction: 0.3,
+          restoreFraction: 0.4,
+        },
+      });
+      await vi.waitFor(() => expect(authority.revision).toBe(2));
+    });
+    expect(authority.windows[0]!.panes[0]!.tabs.map((tab) => tab.id)).toEqual([
+      "b",
+      "a",
+    ]);
+    expect(
+      authority.windows[0]!.panes[0]!.tabs[0]!.dockPresentation?.splitFraction,
+    ).toBe(0.3);
+    expect(write).not.toHaveBeenCalled();
+    expect(invalidate).not.toHaveBeenCalled();
+    expect(queryClient.getQueryData(queryKey)).toEqual(layout);
+    await act(async () => {
+      operations.tabLayoutMutation.mutate({
+        projectId: "foreign",
+        command: {
+          type: "reorder-members",
+          paneId: "pane",
+          tabKeys: ["a", "b"],
+        },
+      });
+      await vi.waitFor(() =>
+        expect(error).toHaveBeenCalledWith(
+          "Workspace command belongs to another project.",
+        ),
+      );
+    });
+    expect(authority.revision).toBe(2);
+    expect(write).not.toHaveBeenCalled();
+    await act(async () => renderer.unmount());
+    controller.dispose();
+    queryClient.clear();
+  });
   it("optimistically updates only the addressed tab presentation", () => {
     const preference = {
       preferredMode: "full",

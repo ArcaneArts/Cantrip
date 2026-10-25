@@ -1,9 +1,11 @@
 import { PanelToolbar } from "@/components/workspace/panel-toolbar";
+import {
+  UnresolvedProjectSurface,
+  unresolvedSurfaceCollection,
+} from "./unresolved-project-surface";
 import type {
-  BrowserFleetService,
   WorkerSummary,
   ProjectViewSummary,
-  RemoteDesktopTarget,
 } from "@cantrip/protocol";
 import type { QueryClient } from "@tanstack/react-query";
 import {
@@ -19,8 +21,6 @@ import {
 import { Suspense, type ReactNode } from "react";
 import { EmptyWorkspace } from "./empty-workspace";
 import {
-  BrowserView,
-  RemoteDesktopView,
   RunTerminalView,
 } from "@/components/app/application-shell-surfaces";
 import { ArchivedStandaloneChatsPage } from "@/components/chat/archived-standalone-chats-page";
@@ -145,11 +145,9 @@ export function GlobalContentHost({
     mobileProjectSelectorOpen,
     mobileSettingsSectionOpen,
     narrowViewport,
-    newBrowser,
     newChat,
     newCodeTab,
     newExplorer,
-    newRemoteDesktop,
     newStandaloneChat,
     newTask,
     newTerminal,
@@ -180,7 +178,6 @@ export function GlobalContentHost({
     projectWorkspaces,
     projects,
     queryClient: untypedQueryClient,
-    remoteDesktop,
     renameChatMutation,
     renameStandaloneChat,
     repositoryStats,
@@ -251,7 +248,6 @@ export function GlobalContentHost({
     standaloneFilesOpen,
     switchToChat,
     tabLayout,
-    updateBrowserMutation,
     workers,
     worktreeStatuses,
     worktrees,
@@ -473,54 +469,23 @@ export function GlobalContentHost({
           workers={workers.data ?? []}
           workspaces={projectWorkspaces.data ?? []}
         />
+      ) : bindings.selectedSurface?.kind === "unresolved" ? (
+        <UnresolvedProjectSurface
+          surface={bindings.selectedSurface}
+          query={
+            bindings[unresolvedSurfaceCollection(bindings.selectedSurface)]
+          }
+          onClose={() => bindings.closeSurfaceView(bindings.selectedSurface)}
+        />
       ) : selectedPaneOwnedElsewhere && selectedPane ? (
         <DetachedPanePlaceholder
           onFocus={() => focusDetachedPane(selectedPane.id)}
         />
       ) : (
         <ProjectSurfaceHost>
-          {selectedProjectView?.kind === "remote-desktop" ? (
-            remoteDesktop.data ? (
-              <Suspense
-                fallback={
-                  <div className="grid flex-1 place-items-center text-muted-foreground">
-                    <Loader2 className="size-5 animate-spin" />
-                  </div>
-                }
-              >
-                <RemoteDesktopView
-                  desktop={remoteDesktop.data}
-                  fleetDiscovery={
-                    bootstrap.data?.capabilities.remoteDesktopFleet ?? false
-                  }
-                  workerName={selectedWorker?.name}
-                  onOpenFleetTarget={(
-                    workerId: string,
-                    desktopTarget: RemoteDesktopTarget,
-                  ) =>
-                    newRemoteDesktop.mutate({
-                      projectId: remoteDesktop.data.projectId,
-                      paneId: selectedPane?.id,
-                      target: {
-                        kind: "worker",
-                        projectId: remoteDesktop.data.projectId,
-                        workerId,
-                      },
-                      desktopTarget,
-                    })
-                  }
-                />
-              </Suspense>
-            ) : remoteDesktop.isError ? (
-              <div className="grid flex-1 place-items-center p-6 text-center text-sm text-destructive">
-                {errorText(remoteDesktop.error)}
-              </div>
-            ) : (
-              <div className="grid flex-1 place-items-center text-muted-foreground">
-                <Loader2 className="size-5 animate-spin" />
-              </div>
-            )
-          ) : selectedBuiltInSurface && selectedProjectToolUnavailable ? (
+          {selectedProjectView?.kind ===
+          "remote-desktop" ? null : selectedBuiltInSurface &&
+            selectedProjectToolUnavailable ? (
             <EmptyState>
               <EmptyStateContent>
                 <EmptyStateIcon>
@@ -676,45 +641,8 @@ export function GlobalContentHost({
               }
               onHeaderChange={setGitHistoryHeader}
             />
-          ) : selectedCodeTab ? null : selectedBrowser ? (
-            <Suspense
-              fallback={
-                <div className="grid flex-1 place-items-center text-muted-foreground">
-                  <Loader2 className="size-5 animate-spin" />
-                </div>
-              }
-            >
-              <BrowserView
-                browser={selectedBrowser}
-                fleetDiscovery={
-                  bootstrap.data?.capabilities.browserFleetDiscovery ?? false
-                }
-                onOpenService={(service: BrowserFleetService) =>
-                  newBrowser.mutate({
-                    projectId: selectedBrowser.projectId,
-                    paneId: selectedPane?.id,
-                    target: {
-                      kind: "worker",
-                      projectId: selectedBrowser.projectId,
-                      workerId: service.workerId,
-                    },
-                    title:
-                      service.title ??
-                      service.processName ??
-                      `Port ${service.port}`,
-                    url: service.url,
-                  })
-                }
-                onPageState={(pageState) => {
-                  updateBrowserMutation.mutate({
-                    browserId: selectedBrowser.id,
-                    projectId: selectedBrowser.projectId,
-                    pageState,
-                  });
-                }}
-              />
-            </Suspense>
-          ) : selectedExplorer ? null : selectedTerminal?.kind ===
+          ) : bindings.selectedSurface?.kind ===
+            "file" ? null : selectedCodeTab ? null : selectedBrowser ? null : selectedExplorer ? null : selectedTerminal?.kind ===
             "run-configuration" ? (
             <Suspense
               fallback={
@@ -748,59 +676,7 @@ export function GlobalContentHost({
                 }
               />
             </Suspense>
-          ) : selectedTerminal ? null : selectedChat ? (
-            <>
-              <PanelToolbar aria-label="Agent controls">
-                <span className="min-w-0 flex-1 truncate text-muted-foreground">
-                  {selectedChat.title}
-                </span>
-                <div className="ml-auto flex shrink-0 items-center gap-1">
-                  {bindings.renderAgentPanelActions?.(selectedChat)}
-                </div>
-              </PanelToolbar>
-              <ChatTranscript
-                key={selectedChat.id}
-                capabilities={IDE_CHAT_SURFACE_CAPABILITIES}
-                chat={selectedChat}
-                onConfigureModels={() => openCompactRootSettings("models")}
-                githubEnabled={selectedProject?.capabilities.github ?? false}
-                inspectOnly={selectedChat.experience === "task"}
-                inspectOpen={agentInspectOpenChats.has(selectedChat.id)}
-                inspectOverlay={narrowViewport}
-                settings={settings.data}
-                syncEnabled
-                onCreateChat={() =>
-                  newChat.mutate({ projectId: selectedChat.projectId })
-                }
-                onDelete={() => {
-                  setAgentInspectOpen(selectedChat.id, false);
-                  deleteChatMutation.mutate(selectedChat.id);
-                }}
-                onForked={(forked) => {
-                  if (forked.contextKind !== "standalone") {
-                    openCreatedTab(forked.projectId, "chat", forked.id);
-                  }
-                }}
-                onInspectOpenChange={(open) =>
-                  setAgentInspectOpen(selectedChat.id, open)
-                }
-                onOpenFile={(reference, worktreeId) =>
-                  openChatFileLink(selectedChat, reference, worktreeId)
-                }
-                onOpenRelocation={() => setChatRelocationOpen(true)}
-                onToast={showAppToast}
-                onRename={(title) =>
-                  renameChatMutation.mutate({ chatId: selectedChat.id, title })
-                }
-                relocationJob={
-                  selectedProject?.capabilities.relocation
-                    ? currentRelocation
-                    : null
-                }
-                refocusOnWindowActivation={desktopRuntime}
-              />
-            </>
-          ) : selectedProject ? (
+          ) : selectedTerminal ? null : selectedChat ? null : selectedProject ? (
             <ProjectOverviewHost>
               {selectedProject.setupStatus !== "ready" ? (
                 <EmptyState>

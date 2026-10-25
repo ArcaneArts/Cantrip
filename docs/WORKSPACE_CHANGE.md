@@ -39,8 +39,7 @@ exactly one workspace.
 3. Home-worker affinity is preferred, not absolute. Imported projects prefer
    the home worker, but a project may run on another worker when a valid source
    or replica exists there.
-4. Repository discovery scans the attached root and descendants through depth
-   three by default.
+4. Repository discovery scans the attached root and all descendants by default.
 5. Discovery offers only Git repositories. Ordinary non-Git directories are
    not offered as import candidates.
 6. A GitHub checkout that the worker's current `gh` credentials cannot access
@@ -185,7 +184,7 @@ it through the server and worker command protocol.
 
 The default scan has the following behavior:
 
-- Inspect the root itself and directories up to three edges below it.
+- Inspect the root itself and all descendant directories.
 - Do not follow directory symlinks outside the canonical root.
 - Stop descending once a repository root is found, preventing submodules and
   nested repositories from being imported accidentally.
@@ -196,8 +195,12 @@ The default scan has the following behavior:
   import because they cannot satisfy the current project-source contract.
 - Skip expensive contents such as `.git` internals once their containing
   repository has been identified.
-- Apply bounded directory, candidate, output, and execution-time limits. A
-  truncated scan is successful but reports that more results may exist.
+- Do not truncate discovery by elapsed time, repository count, directory count,
+  entry count, or default depth. Individual Git/GitHub commands retain their
+  output and timeout protections; the durable scan lease renews until completion.
+  Legacy explicitly depth-bounded jobs remain readable and can be rescanned.
+  New jobs use depth -1 to represent all descendants. Import selection and
+  discovery result contracts do not impose repository-count caps.
 - Emit progress and completion events. The client must not poll continuously.
 
 Users receive a manual **Rescan** action. Worker reconnect makes an interrupted
@@ -368,7 +371,7 @@ previous stage.
    Add protected root registration, immutable worker binding, creation UI, and
    offline presentation.
 4. **Repository discovery**
-   Add depth-three bounded scanning, classification, durable jobs, live events,
+   Add complete-tree scanning, classification, durable jobs, live events,
    and manual rescan.
 5. **Review and batch import**
    Add candidate review, direct GitHub attachment, local Git fallback,
@@ -391,8 +394,8 @@ previous stage.
   workspaces can.
 - A local Tauri client can choose an attached root with the native folder
   picker; a remote worker accepts an absolute path.
-- Discovery finds repository roots through depth three, does not escape through
-  symlinks, and offers no non-Git directories.
+- Discovery finds repository roots throughout the attached tree, does not escape
+  through symlinks, and offers no non-Git directories.
 - A GitHub-accessible checkout becomes a normal GitHub project without running
   a clone.
 - A checkout without usable GitHub authorization becomes a local Git-capable

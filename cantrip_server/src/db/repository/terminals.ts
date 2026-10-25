@@ -13,6 +13,7 @@ import type {
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 
 import * as schema from "../schema.js";
+import { removeResourceWorkspaceViews } from "../workspace-resource-removal.js";
 import {
   attachProjectTab,
   detachProjectTab,
@@ -379,6 +380,13 @@ export class TerminalRepository {
       }
     }
     await this.database.transaction(async (transaction) => {
+      await removeResourceWorkspaceViews(
+        transaction,
+        ownerId,
+        context.projectId,
+        "project.terminal",
+        terminalId,
+      );
       await transaction
         .update(schema.runConfigurationRuntimes)
         .set({ terminalId: null, updatedAt: new Date() })

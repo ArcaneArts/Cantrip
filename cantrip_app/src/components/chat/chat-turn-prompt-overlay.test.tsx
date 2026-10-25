@@ -114,7 +114,7 @@ describe("chat turn prompt overlay", () => {
     expect(markup).toContain("border-primary/35");
     expect(markup).toContain("bg-background/75");
     expect(markup).toContain("backdrop-blur-2xl");
-    expect(markup).not.toContain("transition-");
+    expect(markup).not.toContain("transition-opacity");
   });
 
   it("renders the current prompt without glitch effects outside Elite Mode", () => {
@@ -140,5 +140,35 @@ describe("chat turn prompt overlay", () => {
       staggerSpreadMs: 0,
       variants: ["outline", "chromatic", "spatial-shift", "scanline"],
     });
+  });
+
+  it.each([false, true])(
+    "bounds the prompt to the chat's available width (Elite: %s)",
+    (eliteModeEnabled) => {
+      const markup = renderToStaticMarkup(
+        <ChatTurnPromptOverlay
+          eliteModeEnabled={eliteModeEnabled}
+          message={message("Keep Inspect unobscured")}
+          rightInset="min(480px, 100%)"
+          visible
+        />,
+      );
+      expect(markup).toContain('style="right:min(480px, 100%)"');
+      expect(markup).toContain("overflow-clip");
+      expect(markup).toContain("transition-[right]");
+      expect(markup).toContain("motion-reduce:transition-none");
+      expect(markup).toContain("pointer-events-none");
+    },
+  );
+
+  it("uses the full chat panel width when there is no docked sidebar", () => {
+    const markup = renderToStaticMarkup(
+      <ChatTurnPromptOverlay
+        eliteModeEnabled={false}
+        message={message("Original prompt")}
+        visible
+      />,
+    );
+    expect(markup).toContain('style="right:0"');
   });
 });

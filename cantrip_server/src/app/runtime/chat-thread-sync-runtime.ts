@@ -86,21 +86,20 @@ export function createChatThreadSyncRuntime({
         provider: runtime.provider,
       }),
     );
-    let syncExecution = context;
-    if (sync.status === "running" && !context.executionLaneId) {
-      const acquired = await repository.startChatExecutionLane(
-        applicationOwnerId(),
-        context.chatId,
-        "agent",
-        "Linked Codex console turn",
-      );
-      if (acquired?.contextKind === "project") {
-        syncExecution = acquired;
-        publishChatSummary(acquired.chatId, acquired.projectId);
-      }
-    }
+    const observesLifecycle =
+      sync.status === "running" ||
+      sync.turns.length > 0 ||
+      sync.statusSource === "native-thread";
+    const reconciliation = observesLifecycle
+      ? await repository.nativeCommands.reconcileThreadObservation(
+          applicationOwnerId(),
+          context,
+          sync.status,
+        )
+      : { applied: false, execution: context };
+    const syncExecution = reconciliation.execution;
     const syncAttribution: ChatExecutionAttribution | undefined =
-      syncExecution.executionLaneId
+      syncExecution.contextKind === "project" && syncExecution.executionLaneId
         ? {
             contextKind: "project",
             executionLaneId: syncExecution.executionLaneId,
@@ -138,16 +137,7 @@ export function createChatThreadSyncRuntime({
         syncAttribution,
       );
     }
-    if (sync.turns.length > 0 || sync.statusSource === "native-thread") {
-      if (syncExecution.executionLaneId && sync.status !== "running") {
-        await repository.finishChatExecutionLane(
-          context.chatId,
-          syncExecution.executionLaneId,
-          sync.status,
-        );
-      } else {
-        await repository.setChatStatus(context.chatId, sync.status);
-      }
+    if (reconciliation.applied) {
       publishChatSummary(context.chatId, context.projectId);
       if (sync.status === "idle") {
         if (!(await continuePendingWorktreeTransition(context.chatId))) {

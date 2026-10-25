@@ -5936,7 +5936,7 @@ describe("Cantrip protocol", () => {
       }),
     ).toMatchObject({
       desktopFrameRate: 30,
-      eliteMode: true,
+      eliteMode: false,
       eliteRevealConfig: DEFAULT_ELITE_REVEAL_CONFIG,
       showChatPromptOverlay: true,
       defaultPermissionProfileId: ":workspace",

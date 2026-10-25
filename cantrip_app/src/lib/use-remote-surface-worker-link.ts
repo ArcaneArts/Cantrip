@@ -44,6 +44,10 @@ export interface UseRemoteSurfaceWorkerLinkResult {
   connectionState: RemoteSurfaceWorkerLinkConnectionState;
   error: string | null;
   retry(): void;
+  suspendInput(): () => void;
+  drain(): Promise<void>;
+  /** Release only this renderer attachment; the worker-owned surface survives. */
+  detach(): void;
   sendFrame(
     channel: RemoteSurfaceChannel,
     payload: Uint8Array,
@@ -63,6 +67,7 @@ export function useRemoteSurfaceWorkerLink(
   const [error, setError] = useState<string | null>(null);
   const [activeRoutes, setActiveRoutes] =
     useState<RemoteSurfaceWorkerLinkRoutes | null>(null);
+  const [attachmentEpoch, setAttachmentEpoch] = useState(0);
 
   useEffect(() => {
     if (options.enabled === false) {
@@ -108,9 +113,27 @@ export function useRemoteSurfaceWorkerLink(
     options.surfaceId,
     options.surfaceKind,
     options.workerId,
+    attachmentEpoch,
   ]);
 
-  const retry = useCallback(() => clientRef.current?.retry(), []);
+  const retry = useCallback(() => {
+    if (clientRef.current) clientRef.current.retry();
+    else setAttachmentEpoch((epoch) => epoch + 1);
+  }, []);
+  const suspendInput = useCallback(() => {
+    const client = clientRef.current;
+    if (!client)
+      throw new Error("Remote surface is not attached for transfer.");
+    return client.suspendInput();
+  }, []);
+  const drain = useCallback(async () => {
+    const client = clientRef.current;
+    if (!client)
+      throw new Error("Remote surface is not attached for transfer.");
+    await client.drain();
+    if (clientRef.current !== client)
+      throw new Error("Remote surface attachment changed during input drain.");
+  }, []);
   const sendFrame = useCallback(
     (
       channel: RemoteSurfaceChannel,
@@ -119,6 +142,12 @@ export function useRemoteSurfaceWorkerLink(
     ) => clientRef.current?.send(channel, payload, coalesceKey) ?? false,
     [],
   );
+  const detach = useCallback(() => {
+    const client = clientRef.current;
+    clientRef.current = null;
+    client?.close();
+    setActiveRoutes(null);
+  }, []);
 
   return {
     activeRoute: remoteSurfaceWorkerLinkRouteLabel(activeRoutes),
@@ -126,6 +155,9 @@ export function useRemoteSurfaceWorkerLink(
     connectionState,
     error,
     retry,
+    suspendInput,
+    drain,
+    detach,
     sendFrame,
     setError,
   };

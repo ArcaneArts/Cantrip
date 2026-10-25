@@ -61,6 +61,64 @@ function picker(overrides: Record<string, unknown> = {}) {
 }
 
 describe("MobileSurfacePicker", () => {
+  it.each([true, false])(
+    "offers a separate Keep Open target only for preview=%s",
+    async (preview) => {
+      const file = {
+        kind: "file",
+        preview,
+        title: "first.ts",
+        tabKey: "view-id",
+        tabId: "document-id",
+      } as ProjectSurface;
+      const onKeepOpen = vi.fn();
+      const onSelect = vi.fn();
+      const onCloseSurface = vi.fn();
+      let renderer!: TestRenderer.ReactTestRenderer;
+      await act(async () => {
+        renderer = TestRenderer.create(
+          picker({ surfaces: [file], onKeepOpen, onSelect, onCloseSurface }),
+        );
+      });
+      const buttons = renderer.root
+        .findAllByType("button")
+        .filter(
+          (button) => button.props["aria-label"] === "Keep first.ts open",
+        );
+      expect(buttons).toHaveLength(preview ? 1 : 0);
+      if (preview) {
+        await act(async () => buttons[0]!.props.onClick());
+        expect(onKeepOpen).toHaveBeenCalledExactlyOnceWith(file);
+      }
+      expect(onSelect).not.toHaveBeenCalled();
+      expect(onCloseSurface).not.toHaveBeenCalled();
+      await act(async () => renderer.unmount());
+    },
+  );
+  it("shows actual recent identities separately without hiding open views", () => {
+    const second = {
+      ...chat,
+      tabKey: "chat:two",
+      title: "Agent Two",
+    } as ProjectSurface;
+    const markup = renderToStaticMarkup(
+      picker({
+        surfaces: [chat, second],
+        recentTabIds: ["missing", "chat:two", "chat:two", "chat:one"],
+      }),
+    );
+    expect(markup.indexOf('aria-label="Reopen recent Agent Two"')).toBeLessThan(
+      markup.indexOf('aria-label="Reopen recent Agent One"'),
+    );
+    expect(markup.match(/aria-label="Reopen recent Agent Two"/g)).toHaveLength(
+      1,
+    );
+    expect(markup).toContain('aria-label="Open Agent One"');
+    expect(markup).toContain('aria-label="Open Agent Two"');
+    expect(renderToStaticMarkup(picker())).not.toContain(
+      'aria-label="Recently used views"',
+    );
+  });
   it("shows one flat list of open views before direct creation actions", () => {
     const markup = renderToStaticMarkup(picker());
 
@@ -69,6 +127,7 @@ describe("MobileSurfacePicker", () => {
     expect(markup).toContain("Add a view");
     expect(markup).toContain('aria-label="Open Agent One"');
     expect(markup).toContain('aria-label="Archive Agent One"');
+    expect(markup).toContain('aria-label="Close Agent One view"');
     expect(markup).not.toContain(
       'aria-label="Remove Agent One from project tabs"',
     );
@@ -76,7 +135,7 @@ describe("MobileSurfacePicker", () => {
     expect(markup).not.toContain("Automatic");
   });
 
-  it("selects and archives agents through separate tap targets", async () => {
+  it("selects, closes, and archives agents through separate tap targets", async () => {
     const onArchiveSurface = vi.fn();
     const onCloseSurface = vi.fn();
     const onOpenChange = vi.fn();
@@ -85,7 +144,13 @@ describe("MobileSurfacePicker", () => {
 
     await act(async () => {
       renderer = TestRenderer.create(
-        picker({ onArchiveSurface, onCloseSurface, onOpenChange, onSelect }),
+        picker({
+          onArchiveSurface,
+          onCloseSurface,
+          onOpenChange,
+          onSelect,
+          recentTabIds: [chat.tabKey],
+        }),
       );
     });
 
@@ -95,13 +160,43 @@ describe("MobileSurfacePicker", () => {
     expect(onSelect).toHaveBeenCalledWith("chat:one");
     expect(onOpenChange).toHaveBeenCalledWith(false);
 
+    onSelect.mockClear();
+    renderer.root
+      .findByProps({ "aria-label": "Reopen recent Agent One" })
+      .props.onClick();
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith(chat.tabKey);
+    expect(onCloseSurface).not.toHaveBeenCalled();
+    expect(onArchiveSurface).not.toHaveBeenCalled();
+
+    renderer.root
+      .findByProps({ "aria-label": "Close Agent One view" })
+      .props.onClick();
+    expect(onCloseSurface).toHaveBeenCalledExactlyOnceWith(chat);
+    expect(onArchiveSurface).not.toHaveBeenCalled();
+
     renderer.root
       .findByProps({ "aria-label": "Archive Agent One" })
       .props.onClick();
     expect(onArchiveSurface).toHaveBeenCalledWith(chat);
-    expect(onCloseSurface).not.toHaveBeenCalled();
+    expect(onCloseSurface).toHaveBeenCalledTimes(1);
 
     await act(async () => renderer.unmount());
+  });
+
+  it("exposes distinct file titles in the same worktree", () => {
+    const files = ["first.ts", "second.ts"].map(
+      (title) =>
+        ({
+          kind: "explorer",
+          title,
+          tabKey: `file:${title}`,
+          entity: { selectedPath: title, worktreeId: "shared-worktree" },
+        }) as ProjectSurface,
+    );
+    const markup = renderToStaticMarkup(picker({ surfaces: files }));
+    expect(markup).toContain('aria-label="Open first.ts"');
+    expect(markup).toContain('aria-label="Open second.ts"');
+    expect(markup).not.toContain('aria-label="Open Explorer"');
   });
 
   it("creates a view without exposing desktop placement nesting", async () => {

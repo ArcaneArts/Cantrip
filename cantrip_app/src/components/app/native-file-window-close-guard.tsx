@@ -1,4 +1,5 @@
 import { isTauri } from "@tauri-apps/api/core";
+import { desktopQuitCoordinator } from "@/lib/desktop-quit-coordinator";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,22 +15,36 @@ import { bindNativeFileWindowClose } from "@/lib/native-file-window-close";
 /** Browser unload warnings do not own Tauri's native titlebar close request. */
 export function NativeFileWindowCloseGuard({
   hasUnsavedChanges,
+  closeBlocked,
   enabled = true,
 }: {
   hasUnsavedChanges(): boolean;
+  closeBlocked?(): boolean;
   enabled?: boolean;
 }) {
   const current = useRef(hasUnsavedChanges);
   current.current = hasUnsavedChanges;
+  const blocked = useRef(closeBlocked);
+  blocked.current = closeBlocked;
   const confirmation = useRef<((discard: boolean) => void) | null>(null);
   const [prompt, setPrompt] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    if (!enabled) return;
+    return desktopQuitCoordinator.register({
+      suspend: () => () => {},
+      checkpoint: async () => {
+        if (blocked.current?.() || current.current())
+          throw new Error("Legacy file recovery is still pending.");
+      },
+    });
+  }, [enabled]);
   const settle = (discard: boolean) => {
     const resolve = confirmation.current;
     confirmation.current = null;
     setPrompt(false);
-    resolve?.(discard);
+    resolve?.(discard && !blocked.current?.());
   };
   useEffect(() => {
     if (!enabled || !isTauri()) return;
@@ -49,9 +64,18 @@ export function NativeFileWindowCloseGuard({
         if (disposed) return;
         guard = bindNativeFileWindowClose(
           getCurrentWindow(),
-          () => current.current(),
+          () => Boolean(blocked.current?.()) || current.current(),
           () =>
             new Promise<boolean>((resolve) => {
+              // A protected import owns the source until its actual result.
+              // Never destroy that source while an ownership commit is pending.
+              if (blocked.current?.()) {
+                setError(
+                  "A file handoff is still running. Close the window after it finishes.",
+                );
+                resolve(false);
+                return;
+              }
               confirmation.current = resolve;
               setPrompt(true);
             }),

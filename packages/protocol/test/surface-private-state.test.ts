@@ -39,6 +39,7 @@ describe("surface private-state contracts", () => {
     expect(surfacePrivateStateRecordKindSchema.options).toEqual([
       "terminal-state",
       "explorer-state",
+      "file-document-state",
       "browser-state",
       "remote-desktop-state",
       "remote-desktop-inventory",

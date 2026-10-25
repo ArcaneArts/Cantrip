@@ -84,6 +84,7 @@ function grant(
 }
 
 class FakeStream implements WorkerLinkStream {
+  drain = vi.fn(async () => {});
   readonly channelId = crypto.randomUUID();
   readonly connectionId = crypto.randomUUID();
   readonly acknowledgements: number[] = [];
@@ -265,6 +266,81 @@ afterEach(() => {
 });
 
 describe("Remote Surface WorkerLink client", () => {
+  it.each(["browser", "desktop"] as const)(
+    "drains queued %s input through encryption, backpressure, and worker acknowledgment",
+    async (kind) => {
+      const fixture = setup(undefined, kind);
+      fixture.client.start();
+      await vi.waitFor(() => expect(fixture.readyRoutes).toHaveLength(1));
+      const stream = fixture.streamSets[0]!.interactive;
+      stream.writable = false;
+      let acknowledge!: () => void;
+      stream.drain.mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            acknowledge = resolve;
+          }),
+      );
+      expect(fixture.client.send("control", new Uint8Array([1]))).toBe(true);
+      const resume = fixture.client.suspendInput();
+      expect(fixture.client.send("control", new Uint8Array([2]))).toBe(false);
+      const drained = vi.fn();
+      const pending = fixture.client.drain().then(drained);
+      await vi.waitFor(() =>
+        expect(fixture.dependencies.protectPayload).toHaveBeenCalledOnce(),
+      );
+      expect(stream.drain).not.toHaveBeenCalled();
+      expect(drained).not.toHaveBeenCalled();
+      stream.writable = true;
+      for (const writable of stream.writableListeners) writable();
+      await vi.waitFor(() => expect(stream.drain).toHaveBeenCalledOnce());
+      expect(drained).not.toHaveBeenCalled();
+      acknowledge();
+      await pending;
+      expect(drained).toHaveBeenCalledOnce();
+      resume();
+      resume();
+      expect(fixture.client.send("control", new Uint8Array([3]))).toBe(true);
+      fixture.client.close();
+    },
+  );
+
+  it("rejects an interrupted drain rather than accepting a replacement attachment", async () => {
+    const fixture = setup();
+    fixture.client.start();
+    await vi.waitFor(() => expect(fixture.readyRoutes).toHaveLength(1));
+    fixture.streamSets[0]!.interactive.writable = false;
+    fixture.client.send("control", new Uint8Array([1]));
+    const resume = fixture.client.suspendInput();
+    const pending = expect(fixture.client.drain()).rejects.toThrow(
+      "closed before input drain",
+    );
+    fixture.client.retry();
+    await pending;
+    await vi.waitFor(() => expect(fixture.readyRoutes).toHaveLength(2));
+    expect(fixture.client.send("control", new Uint8Array([2]))).toBe(false);
+    resume();
+    expect(fixture.client.send("control", new Uint8Array([3]))).toBe(true);
+    fixture.client.close();
+  });
+
+  it("rejects unattached drains and keeps nested input suspensions independent", async () => {
+    const fixture = setup();
+    await expect(fixture.client.drain()).rejects.toThrow("not attached");
+    fixture.client.start();
+    await vi.waitFor(() => expect(fixture.readyRoutes).toHaveLength(1));
+    const first = fixture.client.suspendInput();
+    const second = fixture.client.suspendInput();
+    first();
+    first();
+    expect(fixture.client.send("control", new Uint8Array([1]))).toBe(false);
+    second();
+    expect(fixture.client.send("control", new Uint8Array([1]))).toBe(true);
+    await fixture.client.drain();
+    fixture.client.close();
+    await expect(fixture.client.drain()).rejects.toThrow("not attached");
+  });
+
   it("keeps only the newest adjacent unsent hover while transport credit is blocked", async () => {
     const fixture = setup(undefined, "desktop");
     fixture.client.start();

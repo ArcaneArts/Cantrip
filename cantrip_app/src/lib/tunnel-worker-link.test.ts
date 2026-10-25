@@ -89,6 +89,7 @@ function issued(activeSession: WorkerLinkSession): WorkerLinkTunnelGrant {
 }
 
 class FakeStream implements WorkerLinkStream {
+  drain = vi.fn(async () => {});
   readonly channelId = "33333333-3333-4333-8333-333333333333";
   readonly connectionId = "44444444-4444-4444-8444-444444444444";
   readonly lane = "stream" as const;

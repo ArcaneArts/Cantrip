@@ -2,7 +2,6 @@ import { retireLegacyEditorWorker } from "@/lib/retire-legacy-editor-worker";
 import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 
-import { DesktopExplorerWindowLoadingShell } from "@/components/explorer/desktop-explorer-window-shell";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
   clientLogger,
@@ -11,16 +10,14 @@ import {
   operationalErrorMetadata,
 } from "@/lib/client-log-relay";
 import {
-  desktopPopoutTitlebarLeftInset,
   desktopWindowThemeOverride,
-  isMacosDesktopRuntime,
   isSyntheticBuildProgressWindow,
-  parseDesktopExplorerFileTarget,
   parseDesktopStandaloneChatFileTarget,
   updateDesktopWindowTheme,
 } from "@/lib/desktop-popout";
 import { installNativeTooltipSuppression } from "@/lib/native-tooltip-suppression";
 import { readStartupThemePreference } from "@/lib/startup-theme";
+import { installDesktopQuit } from "@/lib/desktop-quit";
 
 import "./index.css";
 
@@ -28,6 +25,7 @@ installClientLogCapture();
 installNativeTooltipSuppression(document);
 
 async function start(): Promise<void> {
+  await installDesktopQuit();
   void retireLegacyEditorWorker().catch(() => undefined);
   const startupThemePreference = readStartupThemePreference();
   if (startupThemePreference) {
@@ -57,37 +55,9 @@ async function start(): Promise<void> {
     );
     return;
   }
-  const explorerWindowTarget = parseDesktopExplorerFileTarget(
-    window.location.search,
-  );
-  if (explorerWindowTarget?.launchId) {
-    void initializeClientLogPersistence().catch(() => undefined);
-    const root = createRoot(document.getElementById("root")!);
-    const overlayTitlebar = isMacosDesktopRuntime();
-    const titlebarLeftInset = desktopPopoutTitlebarLeftInset(
-      true,
-      overlayTitlebar,
-    );
-    root.render(
-      <TooltipProvider>
-        <DesktopExplorerWindowLoadingShell
-          path={explorerWindowTarget.path}
-          titlebarLeftInset={titlebarLeftInset}
-        />
-      </TooltipProvider>,
-    );
-    const { DesktopExplorerFileWindow } =
-      await import("@/components/explorer/desktop-explorer-file-window");
-    root.render(
-      <TooltipProvider>
-        <DesktopExplorerFileWindow
-          initialPath={explorerWindowTarget.path}
-          launchId={explorerWindowTarget.launchId}
-        />
-      </TooltipProvider>,
-    );
-    return;
-  }
+  // Legacy file links (including old broker launch IDs) use authenticated
+  // startup. Their project/Explorer/path route is imported into ownership by
+  // ExplorerFilePopout; a launch token is not resource authority.
   const standaloneChatFileTarget = parseDesktopStandaloneChatFileTarget(
     window.location.search,
   );

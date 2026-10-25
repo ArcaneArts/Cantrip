@@ -13,6 +13,7 @@ import { promisify } from "node:util";
 
 import type { WorkspaceRepositoryDiscoveryProgress } from "@cantrip/protocol";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { handleWorkspaceCommand } from "./commands/workspace.js";
 
 import {
   classifyWorkspaceRepositoryOrigin,
@@ -44,7 +45,7 @@ afterEach(async () => {
 });
 
 describe("discoverWorkspaceRepositories", () => {
-  it("finds primary repositories through depth three and stops at repository roots", async () => {
+  it("finds all descendant repositories and stops at repository roots", async () => {
     const root = await temporaryRoot();
     const rootRepository = path.join(root, "root-repository");
     const depthThreeRepository = path.join(root, "one", "two", "repository");
@@ -68,6 +69,7 @@ describe("discoverWorkspaceRepositories", () => {
 
     expect(result.candidates.map(({ relativePath }) => relativePath)).toEqual([
       "one/two/repository",
+      "one/two/three/repository",
       "root-repository",
     ]);
     expect(result.candidates).toEqual(
@@ -81,15 +83,15 @@ describe("discoverWorkspaceRepositories", () => {
         }),
       ]),
     );
-    expect(result.truncated).toBe(true);
+    expect(result.truncated).toBe(false);
     expect(progress[0]?.counts).toMatchObject({
       candidates: 0,
       scannedDirectories: 0,
     });
     expect(progress.at(-1)).toMatchObject({
-      counts: { candidates: 2 },
-      diagnosticCode: "scan-truncated",
-      truncated: true,
+      counts: { candidates: 3 },
+      diagnosticCode: null,
+      truncated: false,
     });
   });
 
@@ -105,6 +107,48 @@ describe("discoverWorkspaceRepositories", () => {
     expect(result.skippedSymlinks).toBe(1);
     expect(result.truncated).toBe(false);
   });
+
+  it("maps the all-descendants command to an unrestricted traversal", async () => {
+    const root = await temporaryRoot();
+    await initializeRepository(path.join(root, "a", "b", "c", "d", "repo"));
+    const result = await handleWorkspaceCommand(
+      {
+        type: "workspace.repositories.discover",
+        jobId: "72b3b25e-dd0f-4a12-bef5-1a77cc064219",
+        attempt: 1,
+        rootPath: root,
+        depth: -1,
+      },
+      () => undefined,
+    );
+    expect(result).toMatchObject({
+      candidates: [{ displayPath: "a/b/c/d/repo" }],
+      truncated: false,
+    });
+  });
+
+  it("finishes all 76 repositories even after the former total time budget", async () => {
+    const root = await temporaryRoot();
+    const names = Array.from(
+      { length: 76 },
+      (_, i) => `repo-${String(i).padStart(3, "0")}`,
+    );
+    for (const name of names) await initializeRepository(path.join(root, name));
+    let now = Date.now();
+    const clock = vi
+      .spyOn(Date, "now")
+      .mockImplementation(() => (now += 1_000));
+    try {
+      const result = await discoverWorkspaceRepositories(root);
+      expect(result.candidates.map(({ relativePath }) => relativePath)).toEqual(
+        names,
+      );
+      expect(result.truncated).toBe(false);
+      expect(result.rejectedRepositories).toBe(0);
+    } finally {
+      clock.mockRestore();
+    }
+  }, 30_000);
 
   it("retains protected-review metadata for non-GitHub origins", async () => {
     const root = await temporaryRoot();

@@ -1,6 +1,6 @@
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import { TabColor, TabIndicator } from "./tab-color";
-import { surfaceColorKey, tabColorKey } from "@/lib/tab-colors";
+import { surfaceColorKey } from "@/lib/tab-colors";
 import { useDroppable } from "@dnd-kit/core";
 import {
   horizontalListSortingStrategy,
@@ -8,7 +8,7 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Info, MoreHorizontal, Plus, X } from "lucide-react";
+import { Info, MoreHorizontal, Plus } from "lucide-react";
 import { FileTypeIcon } from "@/components/files/file-type-icon";
 import type { ExecutionTarget, ProjectPaneRegion } from "@cantrip/protocol";
 import { Fragment, useCallback, useState, type ReactNode } from "react";
@@ -18,7 +18,6 @@ import {
   useTabDisplay,
 } from "@/lib/tab-display";
 import "./tab-display.css";
-import { useAgentTabCloseConfirmation } from "./use-agent-tab-close-confirmation";
 
 import {
   ProjectSurfaceCreateMenu,
@@ -41,7 +40,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { StyledContextMenuContent } from "@/components/ui/styled-menu";
-import { nextProjectTabAfterRemoval } from "@/lib/project-pane";
 import type { ProjectSurface } from "@/lib/project-surface";
 import {
   closeTabOnMiddleClick,
@@ -63,6 +61,9 @@ export interface ProjectPaneTabStripProps {
   onCreate(kind: ProjectSurfaceCreateKind, target?: ExecutionTarget): void;
   onOpenRunning?(terminalId: string): void;
   onClose(surface: ProjectSurface): void;
+  onKeepOpen?(surface: ProjectSurface): void;
+  onPopOut?(surface: ProjectSurface): void;
+  onPopOutPane?(surface: ProjectSurface): void;
   onDelete(surface: ProjectSurface, stopRunning?: true): void;
   onRename(surface: ProjectSurface, title: string): void;
   onMoveToRegion?(
@@ -71,30 +72,28 @@ export interface ProjectPaneTabStripProps {
   ): void;
   onSelect(tabKey: string): void;
   placement?: ProjectSurfacePlacementContext;
-  previewFile?: {
-    active: boolean;
-    path: string;
-    projectId: string;
-    title: string;
-    onClose(): void;
-    onPin(): void;
-    onSelect(): void;
-  };
   paneId?: string;
   paneRegion?: ProjectPaneRegion;
   projectId?: string;
   surfaces: readonly ProjectSurface[];
 }
 
-function surfaceCanRename(surface: ProjectSurface): boolean {
+export function surfaceCanRename(surface: ProjectSurface): boolean {
   return !(
     surface.kind === "builtin" ||
+    surface.kind === "unresolved" ||
+    surface.kind === "file" ||
     (surface.kind === "terminal" && surface.entity.kind === "run-configuration")
   );
 }
 
 export function surfaceCanDelete(surface: ProjectSurface): boolean {
-  return surface.kind !== "builtin" && surface.definition.deletable;
+  return (
+    surface.kind !== "builtin" &&
+    surface.kind !== "unresolved" &&
+    surface.kind !== "file" &&
+    surface.definition.deletable
+  );
 }
 
 export function surfaceDeleteLabel(surface: ProjectSurface): string {
@@ -119,10 +118,17 @@ function SurfaceTabIcon({ surface }: { surface: ProjectSurface }) {
       className="size-3.5 shrink-0"
       definitionId={surface.entity.definitionId}
     />
+  ) : surface.kind === "file" ? (
+    <FileTypeIcon path={surface.entity.path} className="size-3.5" />
   ) : surface.kind === "explorer" && surface.entity.selectedPath ? (
     <FileTypeIcon path={surface.entity.selectedPath} className="size-3.5" />
   ) : (
-    <ProjectSurfaceIcon className="size-3.5 shrink-0" kind={surface.kind} />
+    <ProjectSurfaceIcon
+      className="size-3.5 shrink-0"
+      kind={
+        surface.kind === "unresolved" ? surface.member.tabKind : surface.kind
+      }
+    />
   );
 }
 
@@ -133,12 +139,14 @@ export function ProjectPaneTabStrip({
   onCreate,
   onOpenRunning,
   onClose,
+  onKeepOpen,
+  onPopOut,
+  onPopOutPane,
   onDelete,
   onRename,
   onMoveToRegion,
   onSelect,
   placement,
-  previewFile,
   paneId: explicitPaneId,
   paneRegion = "center",
   projectId: explicitProjectId,
@@ -147,21 +155,12 @@ export function ProjectPaneTabStrip({
   const [editingTabKey, setEditingTabKey] = useState<string | null>(null);
   const displayMode = useTabDisplay("top");
   const { setElement, width } = useTabBarWidth();
-  const expanded = expandedTabCount(
-    displayMode,
-    surfaces.length + (previewFile ? 1 : 0),
-    width,
-  );
+  const expanded = expandedTabCount(displayMode, surfaces.length, width);
   const [renameValue, setRenameValue] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<ProjectSurface | null>(null);
-  const agentClose = useAgentTabCloseConfirmation(onDelete);
   const lastSurface = surfaces.at(-1);
   const paneId = explicitPaneId ?? lastSurface?.paneId ?? "empty";
-  const projectId =
-    explicitProjectId ??
-    surfaces[0]?.projectId ??
-    previewFile?.projectId ??
-    "empty";
+  const projectId = explicitProjectId ?? surfaces[0]?.projectId ?? "empty";
   const workspaceDnd = useWorkspaceDndState();
   const crossPaneDrag =
     workspaceDnd.activeDrag?.type === "surface" &&
@@ -205,11 +204,6 @@ export function ProjectPaneTabStrip({
     if (title && title !== surface.title) onRename(surface, title);
   };
   const closeImmediately = (surface: ProjectSurface) => {
-    if (surface.kind === "chat") return;
-    if (surface.tabKey === activeTabKey) {
-      const nextTabKey = nextProjectTabAfterRemoval(surfaces, surface.tabKey);
-      if (nextTabKey) onSelect(nextTabKey);
-    }
     onClose(surface);
   };
 
@@ -240,8 +234,7 @@ export function ProjectPaneTabStrip({
             strategy={horizontalListSortingStrategy}
           >
             {surfaces.map((surface, memberPosition) => {
-              const active =
-                !previewFile?.active && surface.tabKey === activeTabKey;
+              const active = surface.tabKey === activeTabKey;
               const editing = editingTabKey === surface.tabKey;
               const tabLabel = surfaceNeedsApproval(surface)
                 ? `${surface.title} (Approval required)`
@@ -260,10 +253,15 @@ export function ProjectPaneTabStrip({
                     ? (region) => onMoveToRegion(surface, region)
                     : undefined,
                 ),
-                onClose:
-                  surface.kind === "chat"
-                    ? undefined
-                    : () => closeImmediately(surface),
+                onClose: () => closeImmediately(surface),
+                onKeepOpen:
+                  surface.kind === "file" && surface.preview && onKeepOpen
+                    ? () => onKeepOpen(surface)
+                    : undefined,
+                onPopOut: onPopOut ? () => onPopOut(surface) : undefined,
+                onPopOutPane: onPopOutPane
+                  ? () => onPopOutPane(surface)
+                  : undefined,
                 onDelete: canDelete
                   ? () => setDeleteTarget(surface)
                   : undefined,
@@ -295,6 +293,7 @@ export function ProjectPaneTabStrip({
                         <ContextMenu.Trigger asChild>
                           <div
                             data-project-tab-key={surface.tabKey}
+                            data-preview={surface.preview || undefined}
                             data-condensed={
                               !editing && memberPosition >= expanded
                             }
@@ -309,9 +308,7 @@ export function ProjectPaneTabStrip({
                             }}
                             onAuxClick={(event) =>
                               closeTabOnMiddleClick(event, () =>
-                                surface.kind === "chat"
-                                  ? agentClose.requestClose(surface)
-                                  : closeImmediately(surface),
+                                closeImmediately(surface),
                               )
                             }
                             onMouseDown={preventMiddleMouseDefault}
@@ -340,11 +337,18 @@ export function ProjectPaneTabStrip({
                                 onClick={() => onSelect(surface.tabKey)}
                                 onDoubleClick={(event) => {
                                   event.preventDefault();
-                                  if (canRename) beginRename(surface);
+                                  if (menuActions.onKeepOpen)
+                                    menuActions.onKeepOpen();
+                                  else if (canRename) beginRename(surface);
                                 }}
                               >
                                 <SurfaceTabIcon surface={surface} />
-                                <span className="truncate">
+                                <span
+                                  className={cn(
+                                    "truncate",
+                                    surface.preview && "italic",
+                                  )}
+                                >
                                   {surface.title}
                                 </span>
                               </button>
@@ -389,90 +393,6 @@ export function ProjectPaneTabStrip({
             ) : null}
           </SortableContext>
 
-          {previewFile ? (
-            <TabColor
-              colorKey={tabColorKey(
-                previewFile.projectId,
-                "",
-                previewFile.path,
-              )}
-              active={previewFile.active}
-            >
-              <ContextMenu.Root>
-                <ContextMenu.Trigger asChild>
-                  <div
-                    onAuxClick={(event) =>
-                      closeTabOnMiddleClick(event, previewFile.onClose)
-                    }
-                    onMouseDown={preventMiddleMouseDefault}
-                    className={cn(
-                      "group relative flex min-w-0 max-w-56 shrink-0 self-start items-center text-xs text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-                      previewFile.active && "text-foreground",
-                    )}
-                    data-preview-file-path={previewFile.path}
-                    data-condensed={surfaces.length >= expanded}
-                    style={{
-                      width:
-                        surfaces.length >= expanded
-                          ? 40
-                          : displayMode === "hybrid"
-                            ? 160
-                            : undefined,
-                    }}
-                    title={`${previewFile.path}\nDouble-click to keep open`}
-                  >
-                    <button
-                      aria-selected={previewFile.active}
-                      aria-label={previewFile.title}
-                      className="tab-color-content flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left italic"
-                      onClick={previewFile.onSelect}
-                      onDoubleClick={(event) => {
-                        event.preventDefault();
-                        previewFile.onPin();
-                      }}
-                      role="tab"
-                      type="button"
-                    >
-                      <FileTypeIcon
-                        path={previewFile.path}
-                        className="size-3.5"
-                      />
-                      <span className="truncate">{previewFile.title}</span>
-                    </button>
-                    <button
-                      aria-label={`Close preview ${previewFile.title}`}
-                      className="mr-1 grid size-6 shrink-0 place-items-center rounded opacity-60 hover:bg-background/70 hover:opacity-100 focus:opacity-100"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        previewFile.onClose();
-                      }}
-                      title="Close preview"
-                      type="button"
-                    >
-                      <X className="size-3.5" />
-                    </button>
-                    <TabIndicator active={previewFile.active} />
-                  </div>
-                </ContextMenu.Trigger>
-                <ContextMenu.Portal>
-                  <StyledContextMenuContent>
-                    <SurfaceMenuItems
-                      colorKey={tabColorKey(
-                        previewFile.projectId,
-                        "",
-                        previewFile.path,
-                      )}
-                      kind="context"
-                      onClose={previewFile.onClose}
-                      onKeepOpen={previewFile.onPin}
-                      title={previewFile.title}
-                    />
-                  </StyledContextMenuContent>
-                </ContextMenu.Portal>
-              </ContextMenu.Root>
-            </TabColor>
-          ) : null}
-
           <ProjectSurfaceCreateMenu
             allowedKinds={allowedCreateKinds}
             creatingKinds={creatingKinds}
@@ -492,7 +412,6 @@ export function ProjectPaneTabStrip({
           />
         </div>
       </div>
-      {agentClose.confirmation}
       <ConfirmDialog
         confirmLabel={
           deleteTarget ? surfaceDeleteLabel(deleteTarget) : "Delete Resource"
