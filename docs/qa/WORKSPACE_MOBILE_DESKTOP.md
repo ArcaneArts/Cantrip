@@ -33,11 +33,19 @@ The harness performs these UI actions automatically:
 6. Open `main.rs`. It must default to Edit mode and become the most recent view.
    Use the picker's Keep Open button; the same tab must become pinned.
    Close it through the picker; selection must return to its left neighbor.
-7. Open another file on desktop and use the context menu's Keep Open action.
-   Inject one rejected pin request: the preview must remain intact and retryable.
-   Retry successfully, retaining the same tab identity and view state.
-   Mobile's authoritative layout must remain
-   unchanged. No mobile action may have changed desktop's layout.
+7. Open and pin six additional Rust files on mobile. Verify that the navigation
+   actually overflows, every tab remains available in the picker, and Recent
+   contains the five most recently activated views (not layout order).
+8. Explicitly choose View for a Rust file. Select another file, reopen the first
+   through Explorer, and reload: its View mode and tab identity must survive.
+9. Activate a middle tab from the picker using Enter, then close it. Select its
+   right-hand neighbor, preserve the original dirty draft, and leave desktop's
+   layout unchanged.
+10. Open another file on desktop and use the context menu's Keep Open action.
+    Inject one rejected pin request: the preview must remain intact and retryable.
+    Retry successfully, retaining the same tab identity and view state.
+    Mobile's authoritative layout must remain
+    unchanged. No mobile action may have changed desktop's layout.
 
 ## Artifacts and limits
 
@@ -54,5 +62,5 @@ independent installations connected to a disposable project. Capture screenshots
 of both clients after each selection/close and after mobile reload. Verify there
 is no transient disappearance, duplicate tab, or unexpected dock insertion.
 Record device/OS versions and observations; this automated run does not establish
-physical iOS/Android rendering, overflow with many tabs, native popout handoff,
+physical iOS/Android rendering, native popout handoff,
 or every surface adapter's lifecycle behavior.
