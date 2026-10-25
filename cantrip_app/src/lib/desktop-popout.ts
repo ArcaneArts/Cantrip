@@ -563,7 +563,8 @@ export async function closeRetiredWorkspaceWindow(
 }
 
 /** Uses the server-reserved window identity, not a pane-derived legacy label.
- * Native creation is not readiness: the coordinator reveals it after handoff. */
+ * Show the shell immediately; native visibility does not grant view ownership.
+ * Incoming renderers remain staged until the coordinator commits the handoff. */
 export async function openWorkspaceTransferWindow(
   target: DesktopPopoutPaneTarget & {
     transfer: DesktopWorkspaceTransferTarget;
@@ -579,7 +580,7 @@ export async function openWorkspaceTransferWindow(
     title,
     undefined,
     undefined,
-    { focus: false, visible: false, reuseWithoutFocus: true },
+    { focus: true, visible: true, reuseWithoutFocus: true },
   );
   return result === "created" ? "created" : "existing";
 }

@@ -48,6 +48,21 @@ it("offers a migration retry without reconnecting or replaying workspace command
   expect(workspace.retryCommand).not.toHaveBeenCalled();
   await act(async () => renderer.unmount());
 });
+it("shows transfer progress until commit and prioritizes actionable errors", () => {
+  const workspace = fixture();
+  const render = (transferPending: boolean) =>
+    renderToStaticMarkup(
+      <WorkspaceRecoveryBanner
+        workspace={workspace}
+        transferPending={transferPending}
+      />,
+    );
+  expect(render(true)).toContain("Moving views into this window");
+  expect(render(false)).toBe("");
+  workspace.error = new Error("Connection lost");
+  expect(render(true)).toContain("Reconnect");
+  expect(render(true)).not.toContain("Moving views");
+});
 it.each(["read", "command", "labels", "bootstrap", "disposed"] as const)(
   "routes %s recovery without replaying other actions",
   async (kind) => {

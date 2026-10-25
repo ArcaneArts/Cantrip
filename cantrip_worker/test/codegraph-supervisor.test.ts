@@ -243,6 +243,96 @@ describe("CodeGraph project supervisor", () => {
     supervisor.close();
   });
 
+  it("keeps watched clean repositories idle until the safety sweep, without delaying explicit sync", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    const project = await gitProject("cantrip-codegraph-idle-");
+    const fake = fakeCodeGraph();
+    let now = 0;
+    const watcher = Object.assign(new EventEmitter(), {
+      close: () => undefined,
+    });
+    const supervisor = new CodeGraphProjectSupervisor({
+      authorize: async () => [project],
+      command: "/managed/codegraph",
+      execute: fake.execute,
+      now: () => new Date(now),
+      watch: () => watcher as FSWatcher,
+    });
+    const advance = async (minutes: number) => {
+      now += minutes * 60_000;
+      vi.advanceTimersByTime(minutes * 60_000);
+      await supervisor.waitForIdle();
+    };
+    try {
+      await supervisor.configure([codeGraphTarget(project.root)]);
+      await supervisor.waitForIdle();
+      const start = fake.calls.length;
+      await advance(28);
+      expect(fake.calls).toHaveLength(start);
+      await advance(2);
+      expect(fake.calls.slice(start).map(({ args }) => args[0])).toEqual([
+        "status",
+      ]);
+
+      fake.pendingChanges.set(project.root, 1);
+      supervisor.resync(project.root);
+      await supervisor.waitForIdle();
+      expect(fake.calls.slice(start + 1).map(({ args }) => args[0])).toEqual([
+        "status",
+        "sync",
+        "status",
+      ]);
+
+      const afterSync = fake.calls.length;
+      await advance(2);
+      expect(fake.calls).toHaveLength(afterSync);
+      watcher.emit("error", new Error("watcher lost"));
+      fake.pendingChanges.set(project.root, 1);
+      await advance(2);
+      expect(fake.calls.slice(afterSync).map(({ args }) => args[0])).toEqual([
+        "status",
+        "sync",
+        "status",
+      ]);
+    } finally {
+      supervisor.close();
+    }
+  });
+
+  it("does not enqueue another periodic probe while a repository operation is running", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    const project = await gitProject("cantrip-codegraph-busy-");
+    const fake = fakeCodeGraph();
+    let advanceDuringProbe = false;
+    const supervisor = new CodeGraphProjectSupervisor({
+      authorize: async () => [project],
+      command: "/managed/codegraph",
+      execute: async (command, args, options) => {
+        if (advanceDuringProbe) {
+          advanceDuringProbe = false;
+          vi.advanceTimersByTime(2 * 60_000);
+        }
+        return fake.execute(command, args, options);
+      },
+      watch: () => {
+        throw new Error("watch unavailable");
+      },
+    });
+    try {
+      await supervisor.configure([codeGraphTarget(project.root)]);
+      await supervisor.waitForIdle();
+      const start = fake.calls.length;
+      advanceDuringProbe = true;
+      supervisor.resync(project.root);
+      await supervisor.waitForIdle();
+      expect(fake.calls.slice(start).map(({ args }) => args[0])).toEqual([
+        "status",
+      ]);
+    } finally {
+      supervisor.close();
+    }
+  });
+
   it("reconciles pending changes when the filesystem watcher is unavailable", async () => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     const project = await gitProject("cantrip-codegraph-reconcile-fallback-");

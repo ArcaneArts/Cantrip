@@ -346,7 +346,7 @@ describe("desktop pop-out panes", () => {
     }
   });
 
-  it("creates and reuses a reserved transfer window without revealing or focusing it", async () => {
+  it("shows a new transfer window immediately without refocusing an existing transfer", async () => {
     tauri.isTauri.mockReturnValue(true);
     vi.stubGlobal("window", { location: { pathname: "/" } });
     const owned = {
@@ -364,8 +364,8 @@ describe("desktop pop-out panes", () => {
       ).resolves.toBe("created");
       const destination = webviews.windows.get("reserved-window")!;
       expect(destination.options).toMatchObject({
-        focus: false,
-        visible: false,
+        focus: true,
+        visible: true,
         dragDropEnabled: false,
       });
       expect(destination.options?.url).toBe(
