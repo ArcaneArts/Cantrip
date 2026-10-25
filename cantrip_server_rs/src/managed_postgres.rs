@@ -129,7 +129,18 @@ impl ManagedPostgres {
         };
         if let Err(error) = runtime.wait_for_connection().await {
             let _ = runtime.child.kill().await;
-            return Err(error);
+            let log = std::fs::read_to_string(root.join("postgres.log"))
+                .unwrap_or_else(|failure| format!("startup log unavailable: {failure}"));
+            let tail = log
+                .lines()
+                .rev()
+                .take(40)
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+                .collect::<Vec<_>>()
+                .join("\n");
+            return Err(error.context(format!("bundled PostgreSQL startup output:\n{tail}")));
         }
         Ok(runtime)
     }
