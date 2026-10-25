@@ -126,3 +126,28 @@ SIGTERM are not crash-restart triggers. The native process PID is printed as
 This checks whole-application termination with services still running. It does
 not establish isolated WebView crash handling, power-loss durability, or a crash
 at every transfer phase; test and report those separately.
+
+## Isolated WebKit renderer death (macOS debug fixture)
+
+Launch the native fixture with `CANTRIP_QA_RENDERER_CRASH=true`. Only a debug
+build whose configured identifier exactly matches its unique QA bundle exposes
+**QA Crash Focused Renderer** in the application menu. The action obtains the
+focused WKWebView's exact process ID through a diagnostic API and sends SIGKILL
+to that process. It never searches by process name, and fails explicitly if the
+diagnostic API is unavailable. The action is excluded from release builds.
+
+Create two unsaved files, detach one, focus its window, and invoke the action.
+Expect `renderer.crash-injection` followed by the production
+`desktop.renderer.terminated` event with `reload-requested`. Verify the same
+native window and tab identities return with their protected drafts, and main
+has no duplicate. Repeat with an inactive dirty tab and during destination
+startup failure. WebKit may share a renderer process across views, so inspect
+every affected window. Verify ordinary return-to-main still works and no disk
+file changes without Save. A logged reload request alone is not acceptance.
+
+The production hook responds to actual WebKit process termination, not heartbeat
+timeouts. It reloads the existing view; ordinary attachment-generation and
+transfer reconciliation then recover state. It invalidates a pending quit
+acknowledgement from the dead renderer and does not reload after shutdown has
+committed. This callback is macOS-only; it does not establish Windows/Linux
+renderer-crash coverage.

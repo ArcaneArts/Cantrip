@@ -28,6 +28,8 @@ use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use tauri_plugin_window_state::StateFlags;
 
 mod desktop_quit;
+#[cfg(target_os = "macos")]
+mod desktop_renderer_recovery;
 mod desktop_update;
 #[cfg(desktop)]
 mod desktop_window_placement;
@@ -541,6 +543,16 @@ fn setup_macos_application_menu(app: &tauri::App) -> tauri::Result<()> {
             _ => None,
         })
         .ok_or_else(|| tauri::Error::AssetNotFound("macOS File menu".into()))?;
+    #[cfg(debug_assertions)]
+    if desktop_renderer_recovery::qa_enabled(app.handle()) {
+        application_menu.append(&MenuItem::with_id(
+            app,
+            "qa-crash-renderer",
+            "QA Crash Focused Renderer",
+            true,
+            None::<&str>,
+        )?)?;
+    }
     let new_agent_chat = MenuItem::with_id(
         app,
         NEW_AGENT_CHAT_ACTION_ID,
@@ -994,6 +1006,8 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init());
+    #[cfg(target_os = "macos")]
+    let builder = builder.on_web_content_process_terminate(desktop_renderer_recovery::recover);
     #[cfg(desktop)]
     let builder = builder.plugin(
         tauri_plugin_window_state::Builder::default()
@@ -1138,6 +1152,8 @@ pub fn run() {
                 #[cfg(target_os = "macos")]
                 setup_macos_application_menu(app)?;
                 app.on_menu_event(|app, event| match event.id().as_ref() {
+                    #[cfg(all(debug_assertions, target_os = "macos"))]
+                    "qa-crash-renderer" => desktop_renderer_recovery::qa_crash_focused(app),
                     "close-cantrip-windows" => close_desktop_windows(app),
                     #[cfg(debug_assertions)]
                     "qa-quit-cantrip" => request_quit_confirmation(app),
