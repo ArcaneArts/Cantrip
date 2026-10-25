@@ -4,6 +4,7 @@ import type { ExplorerLifecycleActions } from "@/components/explorer/explorer-vi
 import { validateExplorerTransfer } from "@/components/explorer/explorer-transfer-state";
 import {
   bindLegacyDocument,
+  mergeLegacyDocumentRecovery,
   planLegacyDocuments,
 } from "@/components/explorer/legacy-document-migration";
 import { getExplorerMigrationSource } from "./api/explorers";
@@ -109,25 +110,17 @@ export async function migrateOwnedLegacyFile({
     );
     assertSource();
     if (recovered) {
+      const merged = mergeLegacyDocumentRecovery(capture, recovered, scope);
       const live = new Map(
         capture.documents.documents.map((document) => [document.id, document]),
       );
-      const restore = recovered.documents.documents.filter((document) => {
+      const restore = merged.documents.documents.filter((document) => {
         const current = live.get(document.id);
         if (!current) return true;
         const currentDirty =
           current.text !== current.baselineContent || current.saveFailed;
         const recoveredDirty =
           document.text !== document.baselineContent || document.saveFailed;
-        if (
-          currentDirty &&
-          recoveredDirty &&
-          (current.text !== document.text ||
-            current.baselineContent !== document.baselineContent)
-        )
-          throw new Error(
-            "Legacy migration recovery conflicts with a live draft. Both drafts have been retained.",
-          );
         return !currentDirty && recoveredDirty;
       });
       if (restore.length) {
@@ -186,7 +179,7 @@ export async function migrateOwnedLegacyFile({
       const targetTabId = candidate.selected
         ? tabId
         : `legacy-retained:${tabId}:${document.id}`;
-      const transfer = bindLegacyDocument(candidate, scope, {
+      let transfer = bindLegacyDocument(candidate, scope, {
         tabId: targetTabId,
         documentId: document.id,
       });
@@ -201,20 +194,29 @@ export async function migrateOwnedLegacyFile({
         tabId: targetTabId,
       });
       try {
-        await recovery.load((bytes) =>
+        const targetScope = {
+          ...scope,
+          explorerId: targetTabId,
+          documentId: document.id,
+          documentPath: document.path,
+          workerId: document.workerId,
+          worktreeId: document.worktreeId,
+        };
+        const recoveredTarget = await recovery.load((bytes) =>
           validateExplorerTransfer(
             JSON.parse(new TextDecoder().decode(bytes)),
-            {
-              ...scope,
-              explorerId: targetTabId,
-              documentId: document.id,
-              documentPath: document.path,
-              workerId: document.workerId,
-              worktreeId: document.worktreeId,
-            },
+            targetScope,
           ),
         );
         assertSource();
+        // An interrupted attempt may already have checkpointed this target.
+        // Loading it is not permission to overwrite it with a fresh disk read.
+        if (recoveredTarget)
+          transfer = mergeLegacyDocumentRecovery(
+            transfer,
+            recoveredTarget,
+            targetScope,
+          );
         const bytes = new TextEncoder().encode(JSON.stringify(transfer));
         try {
           await recovery.checkpoint(bytes);
