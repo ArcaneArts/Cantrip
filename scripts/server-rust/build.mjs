@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { rustEnvironment } from "./cargo.mjs";
 
 export const repositoryRoot = fileURLToPath(new URL("../../", import.meta.url));
 
@@ -16,7 +17,11 @@ export async function buildRustServer({ release = false } = {}) {
       "--message-format=json-render-diagnostics",
       ...(release ? ["--release"] : []),
     ],
-    { cwd: repositoryRoot, stdio: ["ignore", "pipe", "inherit"] },
+    {
+      cwd: repositoryRoot,
+      env: await rustEnvironment(),
+      stdio: ["ignore", "pipe", "inherit"],
+    },
   );
   let executable;
   const lines = createInterface({ input: child.stdout });

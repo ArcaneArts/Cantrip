@@ -48,9 +48,9 @@ Run from the repository root:
 
 ```sh
 pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol -r build
-cargo build --locked --manifest-path cantrip_server_rs/Cargo.toml
+node scripts/server-rust/build.mjs
 CANTRIP_TEST_POSTGRES_BIN_DIR=/absolute/path/to/postgres/bin \
-  cargo test --locked --manifest-path cantrip_server_rs/Cargo.toml -- --nocapture
+  node scripts/server-rust/cargo.mjs test -- --nocapture
 node scripts/server-rust/compatibility.mjs --report .qa/rust-server/foundation-http.json
 ```
 
@@ -58,6 +58,11 @@ The GitHub workflow executes real tests on Linux, macOS and Windows; scheduled
 or configured coverage is not evidence of a passing run. Windows currently
 uses the native PGlite crate's GNU target, independently of the desktop Tauri
 MSVC target. Cross-platform results must be observed before claiming support.
+The build tooling points the compiler at Cargo's resolved, checksummed native
+artifact package. This works around the upstream 0.2.7 build scripts checking
+only for an uncompressed archive, overlooking their published `.a.zst`, and
+falling back to a nonexistent Windows release download. The actual compiler
+and runtime tests still execute; no declared capability substitutes for them.
 
 Local evidence, 2026-10-25, macOS arm64: the database integration scenarios
 passed with all 235 migrations and real PGlite process reopen, PostgreSQL 18

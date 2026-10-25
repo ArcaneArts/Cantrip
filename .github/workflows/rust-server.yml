@@ -71,9 +71,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol -r build
       - run: cargo fmt --manifest-path cantrip_server_rs/Cargo.toml -- --check
-      - run: cargo clippy --locked --manifest-path cantrip_server_rs/Cargo.toml --all-targets -- -D warnings
+      - run: node scripts/server-rust/cargo.mjs clippy --all-targets -- -D warnings
       - name: Existing schema, all storage modes, transactions and real restart
-        run: cargo test --locked --manifest-path cantrip_server_rs/Cargo.toml -- --nocapture
+        run: node scripts/server-rust/cargo.mjs test -- --nocapture
       - name: Node and Rust over real HTTP connections
         run: node scripts/server-rust/compatibility.mjs --report .qa/rust-server/foundation-http.json
       - uses: actions/upload-artifact@v4
