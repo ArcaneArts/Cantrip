@@ -4,7 +4,6 @@ import { expect, it, vi } from "vitest";
 import { workspaceOwnershipSchema } from "@cantrip/protocol";
 
 import {
-  openOwnedDesktopPane,
   useDetachedDesktopPaneState,
   useDesktopPopoutEffects,
   createDesktopPaneSelectionCommands,
@@ -41,7 +40,6 @@ it("routes the active-tab popout through transfer without moving its siblings", 
         typeof useDesktopPopoutModel
       >[0]["queryClient"],
       resolvedProjectOverviewWorktreeId: null,
-      selectedExplorer: undefined,
       selectedProject: { id: "project" } as Parameters<
         typeof useDesktopPopoutModel
       >[0]["selectedProject"],
@@ -367,46 +365,53 @@ it("recovers after an observed close but ignores callbacks after unmount", async
   expect(resume).toHaveBeenCalledTimes(1);
 });
 
-it("claims before native open and releases only a failed pane", async () => {
-  const order: string[] = [];
-  const target = {
-    activeTabKey: "terminal:one",
-    paneId: "pane-a",
-    projectId: "project-a",
-  };
-  const release = vi.fn(() => order.push("release:pane-a"));
-
-  await expect(
-    openOwnedDesktopPane({
-      claim: () => order.push("claim:pane-a"),
-      complete: () => order.push("complete:pane-a"),
-      open: async () => {
-        order.push("open:pane-a");
-        throw new Error("native open failed");
+it("does not expose or start legacy popouts without workspace authority", async () => {
+  const claimPane = vi.fn();
+  const setPopoutPending = vi.fn();
+  const setPopoutError = vi.fn();
+  let model!: ReturnType<typeof useDesktopPopoutModel>;
+  function Probe() {
+    model = useDesktopPopoutModel({
+      activeProjectOverviewSection: "overview",
+      currentSurface: { tabKey: "tab", title: "Files" },
+      desktopRuntime: true,
+      detached: { ...detachedFixture(), claimPane },
+      explorerLifecycleRef: { current: new Map() },
+      isPopout: false,
+      projectOverviewSelected: false,
+      queryClient: {} as Parameters<
+        typeof useDesktopPopoutModel
+      >[0]["queryClient"],
+      resolvedProjectOverviewWorktreeId: null,
+      selectedProject: { id: "project" } as Parameters<
+        typeof useDesktopPopoutModel
+      >[0]["selectedProject"],
+      selectedProjectId: "project",
+      selectedPaneId: "pane",
+      status: {
+        popoutError: null,
+        popoutPending: false,
+        setPopoutError,
+        setPopoutPending,
       },
-      release,
-      target,
-      title: "Terminal",
-    }),
-  ).rejects.toThrow("native open failed");
-  expect(order).toEqual(["claim:pane-a", "open:pane-a", "release:pane-a"]);
-  expect(release).toHaveBeenCalledOnce();
-
-  order.length = 0;
-  await expect(
-    openOwnedDesktopPane({
-      claim: () => order.push("claim:pane-b"),
-      complete: () => order.push("complete:pane-b"),
-      open: async () => {
-        order.push("open:pane-b");
-        return "created";
-      },
-      release: () => order.push("release:pane-b"),
-      target: { ...target, paneId: "pane-b" },
-      title: "Terminal",
-    }),
-  ).resolves.toBe("created");
-  expect(order).toEqual(["claim:pane-b", "open:pane-b", "complete:pane-b"]);
+    });
+    return null;
+  }
+  let renderer!: TestRenderer.ReactTestRenderer;
+  await act(async () => {
+    renderer = TestRenderer.create(createElement(Probe));
+  });
+  try {
+    expect(model.activePopout).toBeNull();
+    expect(model.popOutTab).toBeUndefined();
+    expect(model.popOutPane).toBeUndefined();
+    await act(async () => model.popOutActiveView());
+    expect(claimPane).not.toHaveBeenCalled();
+    expect(setPopoutPending).not.toHaveBeenCalled();
+    expect(setPopoutError).not.toHaveBeenCalled();
+  } finally {
+    await act(async () => renderer.unmount());
+  }
 });
 
 it("tracks multiple detached panes and releases only the window that closes", async () => {
