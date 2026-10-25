@@ -2609,8 +2609,61 @@ including generated Rust target files and 11 source/document files. This is not
 a green repository-wide check. #2265's changed-file checks and app build/typecheck
 passed independently. Do not attribute the baseline's broad run to #2265.
 
-Remaining closure work: investigate the persistent full-suite watcher failure,
-finish source/evidence review for any requirement not yet independently covered, preserve ignored QA
-artifacts outside retained lanes, stop owned fixtures and clean up those lanes.
-No physical-mobile validation or exhaustive concurrency claim is made. Earlier
-terminal reconnection observations also remain limitations, not erased failures.
+The following final verification record supersedes this audit's pending closure
+items. No physical-mobile validation or exhaustive concurrency claim is made.
+Earlier terminal reconnection observations remain limitations, not erased failures.
+
+### Final verification and closure, 2026-10-25
+
+Implementation and acceptance are complete, subject to the explicit verification
+limitations below. All implementation cycles have merged; #2265 retired the last
+obsolete tab/pane popout producers and #2266 consolidated the acceptance evidence.
+The application shell unconditionally connects project views through
+`useWorkspaceConnection` and derives layout from its ownership presentation.
+Legacy file-window import is a compatibility transition, not an alternate
+placement authority or a disabled rollout of the new system.
+
+The final source review also checked resource-query gaps: `project-surface` keeps
+unresolved views with stable identities and order, including file preview/mode
+metadata. The presentation store publishes membership before opening labels,
+retains membership on label errors, ignores stale label responses, and clears
+presentation when its controller is disposed. The surface, window-presentation,
+and presentation-store regression tests cover these cases. A fresh rerun on
+integrated #2266 passed all three suites / 17 tests, in addition to the previously
+recorded full app run.
+
+The complete worker suite was rerun with unchanged assertions and timeouts:
+`pnpm --filter @cantrip/worker exec vitest run --maxWorkers=1` passed **267 files
+and 2,520 tests**, with 31 files / 133 tests skipped, in 500.89 seconds. Together
+with the recorded protocol, crypto, server, app, native and representative mobile
+results, this supplies the relevant acceptance coverage. The failed parallel
+`pnpm check` and repository-wide formatting check remain failed observations.
+Neither the serial pass nor the isolated passes prove why parallel filesystem
+observation failed; no speculative watcher fix or weakened timeout was added.
+
+Synthetic fixture state, encrypted recovery data and logs are retained under
+`/Users/cyberpwn/.codex/qa-evidence/`. Key archives are:
+
+- `workspace-native-input-final-20261025`: native input, multi-window/pane
+  acceptance, and broad, bounded-worker and serial-worker test logs.
+- `workspace-native-surface-acceptance-20261025`: terminal, browser, chat and
+  Code state handoff observations.
+- `workspace-quit-recovery-20261025`, `workspace-crash-recovery-20261025`, and
+  `workspace-webview-recovery-20261025`: normal quit, checkpoint failure,
+  abrupt process death, renderer death and startup recovery.
+- `workspace-draft-conflict-resolution-20261025`: recovered-draft choice events.
+- `workspace-historical-file-acceptance-20261025`: representative simultaneous
+  mobile/desktop and file-entry acceptance.
+
+`workspace-cleanup-20261025.json` records the merged heads and retained archives.
+Owned diagnostic fixtures were stopped after acceptance; stopping an old fixture
+for cleanup is not counted as a normal-quit test. Merged implementation lanes
+were removed only after preserving their non-rebuildable QA artifacts. Branches
+and merged PR history remain available. Production user documents were not saved,
+deleted, or used as test fixtures.
+
+Migration remains one-time, installation/account/server/project scoped, with
+idempotent seeding and protected document rebinds. Compatibility readers remain
+intentionally for old links and persisted windows. Physical-device mobile tests,
+exhaustive race exploration and a globally green formatting/parallel-check run
+are not claimed by this completion record.

@@ -211,7 +211,7 @@ Source: [seed](../packages/protocol/src/workspace-ownership-seed.ts),
 [bootstrap](../cantrip_app/src/lib/workspace-bootstrap.ts),
 [API](../cantrip_server/src/app/routes/workspace-layouts.ts).
 
-## Verification and remaining acceptance
+## Verification and limitations
 
 The [implementation record](WORKSPACE_OWNERSHIP.md) records evidence per cycle
 and a consolidated acceptance audit. Native two-window tests have exercised
@@ -222,8 +222,10 @@ through Explorer, chat, related files, command search, History, and graph.
 Physical iOS/Android execution is not claimed. Compatibility readers remain for
 persisted routes; the obsolete local-claim pane/tab popout producers are removed.
 
-Final work includes reconciling broad-check failures, completing the remaining
-requirement audit, and preserving evidence before cleaning retained QA lanes.
+The implementation and acceptance audit is complete. The new ownership path is
+enabled in the application shell, not held behind a disabled rollout flag.
+Retained synthetic QA evidence is archived outside implementation worktrees;
+see the final verification record in `WORKSPACE_OWNERSHIP.md`.
 
 Keep regression coverage for single-tab versus whole-pane detach; tab close
 versus window return; removed/rearranged original panes; inactive dirty files;
@@ -235,9 +237,10 @@ native WebView or mobile acceptance.
 
 The latest broad `pnpm check` did **not** pass. Worker filesystem-notification
 and image-adaptation tests failed under the full run; both files passed unchanged
-in isolation. Full-suite reruns are recorded separately from passing focused
-tests and CI. Formatting also reports existing source/document files and generated
-Rust build artifacts. Do not replace those results with a blanket green claim
+in isolation. The complete unchanged worker suite subsequently passed serially
+(2,520 tests; 133 skipped). This does not turn the failed parallel check into a
+pass or establish its failure's root cause. Formatting also reports existing
+source/document files and generated Rust build artifacts. Do not replace those results with a blanket green claim
 or weaken checks.
 Documentation-only edits require link inspection and `git diff --check`;
 protocol, server, app, and native changes require relevant tests and actual
