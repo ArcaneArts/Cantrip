@@ -2318,3 +2318,28 @@ test and reproduced seven failures: five external-history reader compatibility
 cases, missing classification for five pinned native request methods, and the
 worktree filesystem-watch assertion. These are unresolved check failures, not a
 green full-repository result; this QA-only cycle does not change those paths.
+
+### Full Explorer file opening on mobile and web
+
+The file-entry-point audit found that the full Explorer surface supplied its
+file-opening callback only in the native desktop runtime. Mobile/web could
+therefore fall back to persisting a file selection on the Explorer resource,
+instead of opening an independently owned file tab. The shell now routes these
+requests through the same project file opener used by chat links and graph
+results. Desktop retains its existing owned-file-window handoff. Legacy draft
+migration readers and protected document contents are unchanged.
+
+The new non-desktop routing test failed before the fix and passed afterward.
+All 36 focused routing, shared-opener, chat-reference, and owned-window tests
+passed. This is regression coverage for the shell wiring, not a claim of new
+physical-mobile acceptance or completion of the full entry-point matrix.
+The full app suite passed 553 files and 3,855 tests (three skipped); app
+typecheck, formatting, decomposition limits, and diff checks also passed.
+
+The previous worker failures were rechecked on integrated `8778b912e`: the
+filesystem watcher passed both alone and in its complete ten-test file, and
+the four-file rerun passed 64 of 70 tests. Six failures remain: five external
+history fixtures advertise Codex 0.160.1 against the current 0.163.x reader
+range, and the native gateway method inventory omits five pinned methods.
+These compatibility failures are not fixed or waived by this routing change;
+the earlier full-suite watcher failure is no longer consistently reproducible.
