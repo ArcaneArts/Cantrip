@@ -1,3 +1,4 @@
+import { TaskDispatchStatus } from "./task-dispatch-status";
 import {
   TASK_PRIORITY_MAX,
   TASK_PRIORITY_MIN,
@@ -949,6 +950,14 @@ export function TaskSurface({
           <ListTodo className="size-4 text-violet-500" />
           <span>
             Queued for a Task Worker. You can keep editing until it is claimed.
+            {task.data?.dispatch?.eligibilityCode ? (
+              <span className="mt-1 block">
+                <TaskDispatchStatus
+                  dispatch={task.data.dispatch}
+                  paused={chat.automationPaused}
+                />
+              </span>
+            ) : null}
           </span>
         </div>
       ) : null}

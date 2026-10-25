@@ -34,6 +34,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { TooltipButton } from "@/components/ui/tooltip";
 import { TaskDetailTabs } from "@/components/tasks/task-detail-tabs";
+import { TaskDispatchStatus } from "@/components/tasks/task-dispatch-status";
 import { PersistentTaskViews } from "@/components/tasks/persistent-task-views";
 import { TaskDialog } from "@/components/tasks/task-dialog";
 import type { TaskSurfaceHandle } from "@/components/tasks/task-surface";
@@ -102,13 +103,6 @@ const laneColors: Record<TrajectoryLane, string> = {
   tools: "bg-sky-500",
   changes: "bg-emerald-500",
 };
-
-function titleCaseCode(code: string): string {
-  return code
-    .split("-")
-    .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
-    .join(" ");
-}
 
 export function projectTaskWorkloadPresentation(
   task: TaskDetail,
@@ -474,11 +468,10 @@ function TaskWorkloadRow({
               Completed {dateTime.format(new Date(task.completedAt))}
             </span>
           ) : null}
-          {task.dispatch?.eligibilityCode ? (
-            <span className="text-amber-700 dark:text-amber-300">
-              {titleCaseCode(task.dispatch.eligibilityCode)}
-            </span>
-          ) : null}
+          <TaskDispatchStatus
+            dispatch={task.dispatch}
+            paused={paused || chat?.automationPaused}
+          />
         </div>
       </div>
       <div className="flex items-center gap-1 self-center">
