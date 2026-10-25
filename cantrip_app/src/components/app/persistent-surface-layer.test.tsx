@@ -50,6 +50,70 @@ vi.mock("@/components/workspace/project-tab-bar", () => ({
 }));
 
 describe("persistent surface layer", () => {
+  it.each(
+    [
+      "showSettings",
+      "showImporter",
+      "showServerAdmin",
+      "showProjectSettings",
+      "showProjectOverview",
+      "showArchivedStandaloneChats",
+    ].flatMap((screen) => [false, true].map((docked) => ({ screen, docked }))),
+  )(
+    "hides retained file content for $screen (docked=$docked) and restores selection on return",
+    async ({ screen, docked }) => {
+      (
+        globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+      ).IS_REACT_ACT_ENVIRONMENT = true;
+      const surface = {
+        kind: "file",
+        definition: { id: "project.file" },
+        tabKey: "readme",
+        tabId: "document",
+        entity: { id: "document" },
+      };
+      const bindings = {
+        appMode: "ide",
+        openExplorers: [],
+        selectedTabKey: "readme",
+        projectSurfaces: [surface],
+        dockPanePresentations: docked
+          ? [
+              {
+                activeSurface: surface,
+                pane: { id: "pane" },
+                portalTarget: {},
+                focused: true,
+              },
+            ]
+          : undefined,
+      };
+      let tree!: TestRenderer.ReactTestRenderer;
+      await act(async () => {
+        tree = TestRenderer.create(
+          <PersistentSurfaceLayer bindings={bindings} />,
+        );
+      });
+      expect(surfaceProps.documents?.activeTabId).toBe("readme");
+      await act(async () => {
+        tree.update(
+          <PersistentSurfaceLayer bindings={{ ...bindings, [screen]: true }} />,
+        );
+      });
+      expect(surfaceProps.documents?.activeTabId).toBeNull();
+      expect(surfaceProps.documents?.placements).toEqual(
+        docked ? [] : undefined,
+      );
+      expect(surfaceProps.documents?.surfaces).toEqual([surface]);
+      await act(async () => {
+        tree.update(<PersistentSurfaceLayer bindings={bindings} />);
+      });
+      expect(surfaceProps.documents?.activeTabId).toBe("readme");
+      expect(surfaceProps.documents?.surfaces).toEqual([surface]);
+      if (docked) expect(surfaceProps.documents?.placements).toHaveLength(1);
+      await act(async () => tree.unmount());
+    },
+  );
   it.each([false, true])(
     "routes Explorer files through ownership on desktop=%s",
     async (desktopRuntime) => {

@@ -20,6 +20,7 @@ import {
 import { ProjectPaneTabStrip } from "@/components/workspace/project-tab-bar";
 import { revealProjectInNativeFileManager } from "@/lib/desktop-project-share";
 type PersistentSurfaceBindings = Readonly<Record<string, any>>;
+const NO_VISIBLE_PLACEMENTS: readonly any[] = [];
 const browserSessionKey = () =>
   JSON.stringify(getClientSessionIdentitySnapshot());
 const subscribeBrowserSession = (listener: () => void) =>
@@ -108,7 +109,21 @@ export function PersistentSurfaceLayer({
     worktreeStatuses,
     worktrees,
   } = bindings;
-  const surfaceDockPanePresentations = dockPanePresentations;
+  // Retain owned renderers, but never let their selection or portal placements
+  // compete with a global screen such as Settings.
+  const projectContentVisible =
+    appMode === "ide" &&
+    !showImporter &&
+    !showSettings &&
+    !showServerAdmin &&
+    !showProjectSettings &&
+    !showArchivedStandaloneChats &&
+    !bindings.showProjectOverview;
+  const surfaceDockPanePresentations = projectContentVisible
+    ? dockPanePresentations
+    : dockPanePresentations
+      ? NO_VISIBLE_PLACEMENTS
+      : undefined;
   const dockCodePlacements = useMemo(
     () =>
       surfaceDockPanePresentations?.flatMap((presentation: any) =>
@@ -590,7 +605,11 @@ export function PersistentSurfaceLayer({
                   ]
                 : [],
           )}
-          activeTabId={selectedTabKey}
+          activeTabId={
+            projectContentVisible && !selectedPaneOwnedElsewhere
+              ? (selectedTabKey ?? null)
+              : null
+          }
           appearance={codeAppearance}
           onlineWorkerIds={onlineWorkerIds}
           onOpenFile={openProjectExplorerFile}
