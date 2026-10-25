@@ -18,6 +18,7 @@ import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
 import {
   protectedExplorerFields,
+  protectedDisplayLabelFields,
   protectedProjectFields,
 } from "./private-label-fixture.js";
 
@@ -305,6 +306,89 @@ it("commits all migrated views once and replays the receipt without duplicating 
     await db.repository.workspaceLayouts.execute("foreign-owner", request),
   ).toBeNull();
 });
+
+async function codeMigrationFixture() {
+  const f = await migrationFixture();
+  const code = (await db.repository.createCodeTab(owner, projectId, {
+    ...protectedDisplayLabelFields("code-tab"),
+    worktreeId,
+    attachToTabLayout: false,
+  }))!;
+  const tabId = randomUUID();
+  const opened = (await db.repository.workspaceLayouts.execute(
+    owner,
+    f.command(f.opened, {
+      type: "open",
+      tab: {
+        id: tabId,
+        resource: {
+          kind: "entity",
+          definitionId: "project.code",
+          resourceId: code.id,
+        },
+        preview: false,
+        titleProtection: null,
+        builtInState: null,
+        dockPresentation: null,
+      },
+      target: {
+        kind: "new-pane",
+        paneId: randomUUID(),
+        splitId: randomUUID(),
+        region: "center",
+      },
+    }),
+  ))!.layout;
+  const action: Extract<WorkspaceAction, { type: "migrate-code-files" }> = {
+    type: "migrate-code-files",
+    tabId,
+    codeId: code.id,
+    expectedWorkerId: code.activeWorkerId,
+    expectedWorktreeId: code.worktreeId,
+    views: [
+      { tabId: randomUUID(), documentId: f.action.documentId, mode: "edit" },
+      ...f.action.retainedViews,
+    ],
+  };
+  return { ...f, opened, action };
+}
+it("authorizes and commits Code conversion with an idempotent operation receipt", async () => {
+  const f = await codeMigrationFixture();
+  const request = f.command(f.opened, f.action);
+  const first = (await db.repository.workspaceLayouts.execute(owner, request))!;
+  expect(first.layout.legacyCodeImports).toEqual([
+    { tabId: f.action.tabId, codeId: f.action.codeId, views: f.action.views },
+  ]);
+  const replay = (await db.repository.workspaceLayouts.execute(
+    owner,
+    request,
+  ))!;
+  expect(replay.replayed).toBe(true);
+  expect(replay.layout).toEqual(first.layout);
+  expect(
+    await db.repository.workspaceLayouts.execute("foreign-owner", request),
+  ).toBeNull();
+});
+it.each(["source", "worker", "worktree", "document"] as const)(
+  "rejects unauthorized Code conversion %s without changing ownership",
+  async (field) => {
+    const f = await codeMigrationFixture();
+    if (field === "source") f.action.codeId = "missing-code";
+    if (field === "worker") f.action.expectedWorkerId = "other-worker";
+    if (field === "worktree") f.action.expectedWorktreeId = "other-tree";
+    if (field === "document")
+      f.action.views[1]!.documentId = "unavailable-document";
+    await expect(
+      db.repository.workspaceLayouts.execute(
+        owner,
+        f.command(f.opened, f.action),
+      ),
+    ).rejects.toThrow();
+    expect(
+      await db.repository.workspaceLayouts.get(owner, projectId, f.opened.id),
+    ).toEqual(f.opened);
+  },
+);
 
 it.each(["state", "worker", "worktree", "document", "retained"] as const)(
   "rejects stale or unauthorized migration %s without partial placement",

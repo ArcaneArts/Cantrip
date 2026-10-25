@@ -2114,3 +2114,39 @@ The complete app suite also passed 550 files / 3,822 tests (three skips), with
 formatting and diff checks clean. No new native visual run was performed for
 this reconciliation-only change; it does not establish completion of native
 handoff acceptance.
+
+### Restored Code buffer conversion (in progress; not merged)
+
+Draft-preservation reconciliation merged in #2249 (`ae6badf05`). The next
+isolated cycle implements `migrate-code-files`: an owner-window command adds
+adjacent, non-preview file tabs while retaining the Code browser identity.
+Identity-only conversion receipts prevent replay from resurrecting closed file
+tabs. Source Code binding and all target documents are validated under the server
+transaction; documents already owned elsewhere reject conversion rather than
+creating a competing renderer. Client migration checkpoints all buffers through
+protected recovery, including inactive files, and waits for authoritative commit
+before replacing the inline Code editor with its browser. A recovered Code
+journal also restores the selected file and mode on a browser-only restart.
+
+Current verification: 939 protocol tests, 20 server file-document tests, and the
+full app suite (550 files / 3,825 passes, three skips) passed. A subsequent
+selected-file recovery regression passes in the 14-test migration suite. App
+and server typechecks, the server-boundary audit, and seven installation
+compatibility simulations passed. Full-suite rendering failures found during
+development were fixed and the suite rerun successfully; they were not waived.
+
+Native QA passed after the disk-space interruption was resolved. The rebuilt
+macOS fixture restored two protected Code drafts into distinct file tabs and
+selected second.txt. That dirty file moved into a native popout, disappeared
+from main, and returned intact when its native window closed. Explicitly closing
+second.txt and reloading did not resurrect it; qa.txt retained its unsaved text.
+Both worker files still contained their original baseline bytes (no implicit
+save). The fixture is retained with the surviving synthetic draft.
+
+This real run exposed a lifecycle-subscription render loop: callback replacement
+was notifying parent subscribers on every render. Registration notifications now
+track mount/unmount only, while the registry still exposes the latest callbacks.
+A focused regression covers replacement, removal, and duplicate removal; the
+17-test Code lifecycle/view/migration-hook group passes. Before that final fix,
+the complete app suite passed 3,826 tests (three skips), all 939 protocol tests
+passed, and app typechecking passed. Broader goal acceptance remains incomplete.

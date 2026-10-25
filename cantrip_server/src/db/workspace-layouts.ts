@@ -255,7 +255,10 @@ export class WorkspaceLayoutRepository {
         };
       }
       let effectiveCommand = command;
-      if (command.action.type === "migrate-explorer-file")
+      if (
+        command.action.type === "migrate-explorer-file" ||
+        command.action.type === "migrate-code-files"
+      )
         await validateWorkspaceDocumentMigration(
           tx,
           ownerId,

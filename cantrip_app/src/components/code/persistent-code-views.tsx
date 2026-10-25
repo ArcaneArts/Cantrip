@@ -70,9 +70,11 @@ export function PersistentCodeViews({
   initialTransfers,
   openTabs: providedOpenTabs,
   incomingViews,
+  migratedIds = EMPTY_EXCLUDED_CODE_IDS,
   unresolvedIds = EMPTY_EXCLUDED_CODE_IDS,
 }: {
   incomingViews?: readonly IncomingEditorView<CodeTabSummary>[];
+  migratedIds?: ReadonlySet<string>;
   unresolvedIds?: ReadonlySet<string>;
   /** Explicit window ownership. An empty list releases every retained owner. */
   openTabs?: readonly CodeTabSummary[];
@@ -161,6 +163,7 @@ export function PersistentCodeViews({
         active={active}
         appearance={appearance}
         codeTab={tab}
+        filesMigrated={migratedIds.has(tab.id)}
         initialTransfer={
           incomingById.get(tab.id)?.state ?? initialTransfers?.get(tab.id)
         }

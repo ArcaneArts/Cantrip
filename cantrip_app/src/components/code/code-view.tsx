@@ -31,8 +31,10 @@ export function CodeView({
   onOpenFile,
   initialTransfer,
   transferStaging,
+  filesMigrated = false,
 }: {
   initialTransfer?: ExplorerTransferState;
+  filesMigrated?: boolean;
   transferStaging?: ExplorerTransferStaging;
   active?: boolean;
   appearance: CodeAppearance;
@@ -42,13 +44,24 @@ export function CodeView({
   onOpenFile(tab: CodeTabSummary, entry: ExplorerEntry): void | Promise<void>;
 }) {
   const scope = nativeCodeScope();
+  const restored = useMemo(
+    () =>
+      filesMigrated && initialTransfer
+        ? {
+            ...initialTransfer,
+            selectedPath: null,
+            documents: { ...initialTransfer.documents, documents: [] },
+          }
+        : initialTransfer,
+    [filesMigrated, initialTransfer],
+  );
   return (
     <NativeProjectEditor
-      key={nativeCodeOwnerKey(codeTab.id, scope)}
+      key={`${nativeCodeOwnerKey(codeTab.id, scope)}:${filesMigrated ? "browser" : "legacy"}`}
       active={active}
       appearance={appearance}
       codeTab={codeTab}
-      initialTransfer={initialTransfer}
+      initialTransfer={restored}
       transferStaging={transferStaging}
       onHeaderChange={onHeaderChange}
       onOpenFile={onOpenFile}

@@ -58,6 +58,7 @@ export function editorRepositoryFixturePlugin(seed) {
         code: `${source}\nimport { createGithubProject as qaCreateProject, getProjects as qaGetProjects } from '@/lib/project-encryption';
 import { createProjectWorktree as qaCreateWorktree, getProjectWorktrees as qaGetWorktrees } from '@/lib/api/worktrees';
 import { getExplorers as qaGetExplorers, createExplorer as qaCreateExplorer } from '@/lib/api/explorers';
+import { createCodeTab as qaCreateCode } from '@/lib/api/code';
 import { createDesktopExplorerWindowBroker as qaCreateFileBroker } from '@/lib/desktop-explorer-window-broker';
 import { desktopExplorerFileSearch as qaFileSearch, desktopStandaloneChatFileSearch as qaChatFileSearch } from '@/lib/desktop-popout';
 import { createStandaloneChat as qaCreateChat } from '@/lib/api/chats';
@@ -114,12 +115,28 @@ async function qaWorkspace() {
   const transport = qaWorkspaceTransport(qaProjectId, scope.workspaceId, identity);
   return { scope, transport, layout: await transport.read() };
 }
+if (import.meta.env.VITE_CANTRIP_CODE_MIGRATION_QA === 'true') {
+  const button = document.createElement('button');
+  button.textContent = 'QA restore Code drafts';
+  button.style.cssText = 'position:fixed;bottom:8px;left:8px;z-index:2147483647;background:#222;color:white;padding:8px';
+  button.onclick = () => { button.disabled = true;
+    if (!qaProjectId) {
+      void globalThis.__qaRepositoryFixture.create().then(() => {button.textContent = 'Open Editor-Recovery-QA, then click to restore Code';})
+        .catch(error => {button.textContent = String(error);}).finally(() => {button.disabled = false;});
+      return;
+    }
+    void globalThis.__qaRepositoryFixture.seedLegacyFile('second.txt', {
+    'qa.txt':'Code dirty qa.txt\\n', 'second.txt':'Code dirty second.txt\\n',
+  }, 'code').then(() => {button.textContent = 'Code drafts seeded';}).catch(error => {button.textContent = String(error);}).finally(() => {button.disabled = false;}); };
+  void import('@tauri-apps/api/window').then(({getCurrentWindow}) => {if (getCurrentWindow().label === 'main') document.body.append(button);});
+}
 globalThis.__qaRepositoryFixture = {
   async workspace() { return qaIdentity() ? (await qaWorkspace()).layout : null; },
-  async seedLegacyFile(path = 'qa.txt', drafts = {}) {
-    const explorer = await qaCreateExplorer(qaProjectId, 'Legacy migration QA', undefined, undefined, undefined, {
+  async seedLegacyFile(path = 'qa.txt', drafts = {}, sourceKind = 'explorer') {
+    const reader = await qaCreateExplorer(qaProjectId, 'Legacy migration QA', undefined, undefined, undefined, {
       attachToTabLayout: false, initialViewState: { selectedPath: path, fileMode: 'edit' },
     });
+    const explorer = sourceKind === 'code' ? await qaCreateCode(qaProjectId, 'Code migration QA', reader.worktreeId) : reader;
     const { scope, transport, layout } = await qaWorkspace();
     const owner = layout.windows.find(window => window.id === scope.mainWindowId);
     const tabId = crypto.randomUUID();
@@ -128,14 +145,14 @@ globalThis.__qaRepositoryFixture = {
       const store = new QaDocumentStore();
       store.resetScope(JSON.stringify([identity.serverId, identity.userId]));
       for (const [filePath, text] of Object.entries(drafts)) {
-        const file = await qaReadFile(explorer.id, filePath);
+        const file = await qaReadFile(reader.id, filePath);
         store.open(qaDocumentId({server:identity.serverId, account:identity.userId,
           worker:explorer.activeWorkerId, project:qaProjectId, worktree:explorer.worktreeId, path:filePath}),
           file.content, file.version).editExternal(text);
       }
       const recovery = new QaRecovery({serverId:identity.serverId, ownerId:identity.userId,
         workspaceId:layout.id, projectId:qaProjectId, workerId:explorer.activeWorkerId,
-        worktreeId:explorer.worktreeId, tabId, documentId:'legacy-migration:'+explorer.id});
+        worktreeId:explorer.worktreeId, tabId, documentId:(sourceKind === 'code' ? 'legacy-code-migration:' : 'legacy-migration:')+explorer.id});
       const bytes = new TextEncoder().encode(JSON.stringify({explorerId:explorer.id,projectId:qaProjectId,
         workerId:explorer.activeWorkerId,worktreeId:explorer.worktreeId,selectedPath:path,fileMode:'edit',
         documents:store.captureRecovery()}));
@@ -144,7 +161,7 @@ globalThis.__qaRepositoryFixture = {
     }
     await transport.execute({ operationId: crypto.randomUUID(), workspaceId: layout.id, projectId: qaProjectId,
       windowId: owner.id, attachmentGeneration: owner.attachmentGeneration, expectedRevision: layout.revision,
-      action: { type: 'open', tab: { id: tabId, resource: { kind: 'entity', definitionId: 'project.explorer', resourceId: explorer.id },
+      action: { type: 'open', tab: { id: tabId, resource: { kind: 'entity', definitionId: sourceKind === 'code' ? 'project.code' : 'project.explorer', resourceId: explorer.id },
         preview: false, titleProtection: null, builtInState: null, dockPresentation: null },
         target: { kind: 'new-pane', paneId: crypto.randomUUID(), region: 'center', splitId: crypto.randomUUID() } },
     });

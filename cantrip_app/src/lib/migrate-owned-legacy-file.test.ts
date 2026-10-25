@@ -103,7 +103,12 @@ beforeEach(() => {
   } as Awaited<ReturnType<typeof getExplorerMigrationSource>>);
 });
 
-function fixture(dirty = true, reject = false) {
+function fixture(
+  dirty = true,
+  reject = false,
+  sourceKind: "explorer" | "code" = "explorer",
+  selectedPath: string | null = "first.rs",
+) {
   const store = new EditorSessionStore();
   store.resetScope(JSON.stringify(["server", "owner"]));
   for (const path of ["first.rs", "second.rs"]) {
@@ -126,7 +131,7 @@ function fixture(dirty = true, reject = false) {
     projectId: "project",
     worktreeId: "tree",
     workerId: "worker",
-    selectedPath: "first.rs",
+    selectedPath,
     fileMode: "edit",
     documents: store.captureRecovery(),
   });
@@ -178,7 +183,8 @@ function fixture(dirty = true, reject = false) {
                 id: "tab",
                 resource: {
                   kind: "entity",
-                  definitionId: "project.explorer",
+                  definitionId:
+                    sourceKind === "code" ? "project.code" : "project.explorer",
                   resourceId: "explorer",
                 },
                 preview: false,
@@ -215,9 +221,50 @@ function fixture(dirty = true, reject = false) {
         explorerId: "explorer",
         lifecycle,
         queryClient: new QueryClient(),
+        sourceKind,
       }),
   };
 }
+
+it("converts all restored Code drafts without saving or replacing its browser identity", async () => {
+  const f = fixture(true, false, "code");
+  await f.run();
+  const tabs =
+    f.controller.getSnapshot().authoritative.windows[0]!.panes[0]!.tabs;
+  expect(tabs.map((tab) => tab.resource.definitionId)).toEqual([
+    "project.code",
+    "project.file",
+    "project.file",
+  ]);
+  expect(tabs[0]!.id).toBe("tab");
+  expect(io.records.get("document:first.rs")).toMatchObject({
+    explorerId: "legacy-code:tab:document:first.rs",
+    documents: { documents: [{ text: "draft:first.rs" }] },
+  });
+  expect(io.records.get("document:second.rs")).toMatchObject({
+    documents: { documents: [{ text: "draft:second.rs" }] },
+  });
+  expect(getExplorerMigrationSource).not.toHaveBeenCalled();
+  expect(f.resume).not.toHaveBeenCalled();
+});
+
+it("recovers Code journal selection and inactive drafts after a browser-only restart", async () => {
+  const prior = fixture(true, false, "code", "second.rs").capture();
+  prior.fileMode = "visual";
+  io.records.set("legacy-code-migration:explorer", prior);
+  const restarted = fixture(false, false, "code", null);
+  await restarted.run();
+  const pane =
+    restarted.controller.getSnapshot().authoritative.windows[0]!.panes[0]!;
+  expect(pane.activeTabId).toBe("legacy-code:tab:document:second.rs");
+  expect(pane.tabs[1]!.fileMode).toBe("visual");
+  expect(io.records.get("document:second.rs")).toMatchObject({
+    documents: { documents: [{ text: "draft:second.rs" }] },
+  });
+  expect(io.records.get("document:first.rs")).toMatchObject({
+    documents: { documents: [{ text: "draft:first.rs" }] },
+  });
+});
 
 it("checkpoints every buffer before committing and never resumes the retired source", async () => {
   const f = fixture();

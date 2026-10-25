@@ -151,6 +151,19 @@ export const workspaceOwnershipSchema = z
     windows: z.array(workspaceWindowSchema).min(1),
     pendingTransfers: z.array(pendingTransferSchema).max(128).optional(),
     legacyFileImports: z.array(workspaceLegacyFileImportSchema).optional(),
+    // Conversion receipts survive file-tab closure. Identity-only metadata;
+    // drafts remain in protected per-view recovery records.
+    legacyCodeImports: z
+      .array(
+        z
+          .object({
+            tabId: identity,
+            codeId: identity,
+            views: workspaceLegacyFileImportSchema.shape.views,
+          })
+          .strict(),
+      )
+      .optional(),
   })
   .strict()
   .superRefine((layout, context) => {
@@ -160,6 +173,26 @@ export const workspaceOwnershipSchema = z
     const splitIds = new Set<string>();
     const issue = (path: (string | number)[], message: string) =>
       context.addIssue({ code: "custom", path, message });
+    const codeImports = new Set<string>();
+    for (const [index, entry] of (layout.legacyCodeImports ?? []).entries()) {
+      if (codeImports.has(entry.tabId))
+        issue(
+          ["legacyCodeImports", index],
+          "Code conversion receipts must be unique.",
+        );
+      codeImports.add(entry.tabId);
+      if (
+        new Set(entry.views.map((view) => view.tabId)).size !==
+          entry.views.length ||
+        new Set(entry.views.map((view) => view.documentId)).size !==
+          entry.views.length ||
+        entry.views.some((view) => view.tabId === entry.tabId)
+      )
+        issue(
+          ["legacyCodeImports", index],
+          "Code conversion views must have distinct identities.",
+        );
+    }
     for (const [wi, window] of layout.windows.entries()) {
       const wp = ["windows", wi];
       if (windowIds.has(window.id))

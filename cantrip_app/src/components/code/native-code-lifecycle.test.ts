@@ -6,6 +6,9 @@ import {
   nativeCodeOwnerKey,
   prepareNativeCodeTransfer,
   setNativeCodeLifecycle,
+  getNativeCodeLifecycle,
+  subscribeNativeCodeLifecycle,
+  nativeCodeLifecycleRevision,
 } from "./native-code-lifecycle";
 
 vi.mock("@/lib/client-session", () => ({
@@ -28,6 +31,29 @@ afterEach(() => {
 });
 
 describe("native Code confirmation", () => {
+  it("notifies registration changes without feeding callback replacements back into renders", () => {
+    const listener = vi.fn();
+    const unsubscribe = subscribeNativeCodeLifecycle(listener);
+    try {
+      const before = nativeCodeLifecycleRevision();
+      const first = install(false);
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(nativeCodeLifecycleRevision()).toBe(before + 1);
+      const replacement = install(true);
+      expect(replacement).not.toBe(first);
+      expect(getNativeCodeLifecycle(id)).toBe(replacement);
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(nativeCodeLifecycleRevision()).toBe(before + 1);
+      setNativeCodeLifecycle(nativeCodeOwnerKey(id), null);
+      expect(listener).toHaveBeenCalledTimes(2);
+      expect(getNativeCodeLifecycle(id)).toBeUndefined();
+      setNativeCodeLifecycle(nativeCodeOwnerKey(id), null);
+      expect(listener).toHaveBeenCalledTimes(2);
+    } finally {
+      unsubscribe();
+    }
+  });
+
   it("does not prompt when the registered editor is clean", async () => {
     install(false);
     const confirm = vi.spyOn(window, "confirm");

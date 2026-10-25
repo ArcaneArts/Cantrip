@@ -11,37 +11,59 @@ export async function validateWorkspaceDocumentMigration(
   tx: RepositoryTransaction,
   ownerId: string,
   projectId: string,
-  action: Extract<WorkspaceAction, { type: "migrate-explorer-file" }>,
+  action: Extract<
+    WorkspaceAction,
+    { type: "migrate-explorer-file" | "migrate-code-files" }
+  >,
 ) {
-  const [source] = await tx
-    .select()
-    .from(schema.explorers)
-    .where(
-      and(
-        eq(schema.explorers.id, action.explorerId),
-        eq(schema.explorers.projectId, projectId),
-      ),
-    )
-    .for("share");
+  const [source] =
+    action.type === "migrate-code-files"
+      ? await tx
+          .select()
+          .from(schema.codeTabs)
+          .where(
+            and(
+              eq(schema.codeTabs.id, action.codeId),
+              eq(schema.codeTabs.projectId, projectId),
+            ),
+          )
+          .for("share")
+      : await tx
+          .select()
+          .from(schema.explorers)
+          .where(
+            and(
+              eq(schema.explorers.id, action.explorerId),
+              eq(schema.explorers.projectId, projectId),
+            ),
+          )
+          .for("share");
   if (!source)
     throw new WorkspaceCommandError(
       "missing",
-      "Legacy Explorer is unavailable in this project.",
+      "Legacy editor is unavailable in this project.",
     );
   if (
     source.activeWorkerId !== action.expectedWorkerId ||
     source.worktreeId !== action.expectedWorktreeId ||
-    !isDeepStrictEqual(source.protectedState, action.expectedStateProtection)
+    (action.type === "migrate-explorer-file" &&
+      !(
+        "protectedState" in source &&
+        isDeepStrictEqual(source.protectedState, action.expectedStateProtection)
+      ))
   )
     throw new WorkspaceCommandError(
       "invalid",
-      "Legacy Explorer binding changed before migration.",
+      "Legacy editor binding changed before migration.",
     );
 
-  const ids = [
-    action.documentId,
-    ...action.retainedViews.map((view) => view.documentId),
-  ];
+  const ids =
+    action.type === "migrate-code-files"
+      ? action.views.map((view) => view.documentId)
+      : [
+          action.documentId,
+          ...action.retainedViews.map((view) => view.documentId),
+        ];
   const documents = await tx
     .select({
       id: schema.fileDocuments.id,
@@ -85,6 +107,7 @@ export async function validateWorkspaceDocumentMigration(
       "missing",
       "Migration document is unavailable in this project.",
     );
+  if (action.type === "migrate-code-files") return;
   const selected = documents.find(
     (document) => document.id === action.documentId,
   )!;
