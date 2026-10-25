@@ -1,8 +1,10 @@
 # Workspace ownership implementation record
 
-Status: **active and incomplete**. Cycles 1–5 and the boundary-inventory follow-up
-[#2214](https://github.com/ArcaneArts/Cantrip/pull/2214) are merged. The target contract is not
-a claim that all surfaces and recovery paths already satisfy it.
+Status: **active and incomplete**. Integrated work includes the Code file-opening
+cutover in [#2243](https://github.com/ArcaneArts/Cantrip/pull/2243). See
+[the current tab contract](TABS.md) for ownership and return semantics. Entries
+below are chronological evidence, not a claim that earlier limitations remain
+current or that all surfaces and recovery paths satisfy the target contract.
 
 ## Target contract
 
@@ -1952,3 +1954,25 @@ restart, worktree notifications, and Sharp boundary checks passed unchanged in
 that serial run; this does not prove their broad-run timing failures resolved.
 Full-goal native/mobile acceptance and historical tab-documentation replacement
 remain incomplete.
+
+### Current tab contract and compatibility audit
+
+The Code browser cutover merged in #2243 (`8aab6e624`); all nine native
+editor/runtime, editor-lifecycle, and stability-recovery CI jobs passed across
+the three platforms. Primary matched the reviewed tree after synchronization.
+
+`docs/TABS.md` now replaces the old project-wide placement and disabled-popout
+placeholder design with the integrated ownership contract. The source audit
+covered the schema, command transitions and queue, bootstrap, seed conversion,
+mobile navigation, transfer protection, and return-before-native-close behavior.
+The documented return fallback preserves intervening split changes instead of
+claiming unconditional restoration of the original tree. All 21 local Markdown
+link targets resolve and `git diff --check` passes for this documentation cycle.
+
+The compatibility audit still identifies the legacy standalone Explorer-file
+receiver and restored Code inline-buffer path. New Code opens no longer use the
+latter, but safe retirement of these recovery readers is not established. Native
+validation of the new Code opening route, representative simultaneous mobile and
+desktop interaction, remaining recovery/concurrency cases, and the outstanding
+broad-check failures remain work, not waived acceptance criteria. No runtime
+behavior changes in this documentation cycle.
