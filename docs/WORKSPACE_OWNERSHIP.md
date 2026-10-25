@@ -2343,3 +2343,21 @@ history fixtures advertise Codex 0.160.1 against the current 0.163.x reader
 range, and the native gateway method inventory omits five pinned methods.
 These compatibility failures are not fixed or waived by this routing change;
 the earlier full-suite watcher failure is no longer consistently reproducible.
+
+### Full Explorer representative mobile acceptance
+
+PR #2256 merged as `4e8bf8a96`; its focused 36 tests passed again on Primary.
+The representative mobile/desktop harness now additionally opens a directory-only
+Explorer panel, selects two files from that panel (not the sidebar), returns to
+the directory between opens, and reopens the first file. It verifies distinct
+non-preview tab identities, preserved Explorer placement, no duplicate on reopen,
+and an unchanged desktop workspace.
+
+All 14 harness scenarios passed on the integrated production code, including
+the existing dirty-buffer, resize/reload, overflow, mode, adjacent-close, and
+failed-pin checks. The first attempt stopped before product interaction because
+the fresh worktree lacked its CLI build. After building and supplying the exact
+CLI output, the complete run exited zero with no surviving worker/server children
+or sockets. Both runs' synthetic evidence was retained. This establishes the
+full Explorer route in representative Chromium mobile, not physical iOS/Android
+or the remaining chat/related-file/native crash acceptance matrix.

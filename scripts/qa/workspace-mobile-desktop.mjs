@@ -4,6 +4,7 @@ import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { chromium } from "playwright-core";
 import { startEditorRecoveryFixture } from "./editor-recovery-fixture.mjs";
+import { verifyExplorerEntry } from "./workspace-explorer-entry.mjs";
 import {
   seedMobileOverflowFiles,
   verifyMobileOverflow,
@@ -374,6 +375,7 @@ try {
     "desktop.files-isolated",
     "Desktop opening/pinning another file leaves mobile authoritative layout unchanged",
   );
+  await verifyExplorerEntry({ mobile, desktop, record });
   await mobile.screenshot({
     path: path.join(fixture.directory, "mobile.png"),
     fullPage: true,
