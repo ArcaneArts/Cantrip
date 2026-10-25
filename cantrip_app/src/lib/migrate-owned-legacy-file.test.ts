@@ -16,6 +16,10 @@ import { WorkspaceCommandClient } from "./workspace-command-client";
 import { migrateOwnedLegacyFile } from "./migrate-owned-legacy-file";
 import { getExplorerMigrationSource } from "./api/explorers";
 import { getFileDocuments, createFileDocument } from "./api/file-documents";
+import {
+  bindLegacyDocument,
+  planLegacyDocuments,
+} from "@/components/explorer/legacy-document-migration";
 
 const io = vi.hoisted(() => ({
   records: new Map<string, unknown>(),
@@ -290,4 +294,73 @@ it("does not resume a source whose attachment was replaced during migration", as
   await expect(f.run()).rejects.toThrow(/ownership changed/);
   expect(f.resume).not.toHaveBeenCalled();
   expect(io.records.get("legacy-migration:explorer")).toBeTruthy();
+});
+
+function targetRecovery(capture: ExplorerTransferState, index: number) {
+  const scope = {
+    serverId: "server",
+    ownerId: "owner",
+    explorerId: "explorer",
+    projectId: "project",
+    workerId: "worker",
+    worktreeId: "tree",
+  };
+  const candidate = planLegacyDocuments(capture, scope)[index]!;
+  const documentId = `document:${candidate.path}`;
+  return bindLegacyDocument(candidate, scope, {
+    tabId: index === 0 ? "tab" : `legacy-retained:tab:${documentId}`,
+    documentId,
+  });
+}
+
+it.each([0, 1])(
+  "preserves a recovered target draft over clean source content (buffer %i)",
+  async (index) => {
+    const recovered = targetRecovery(fixture().capture(), index);
+    io.records.set(recovered.documentId!, recovered);
+    const restarted = fixture(false);
+    await restarted.run();
+    expect(io.records.get(recovered.documentId!)).toEqual(recovered);
+    expect(io.events).toContain("dispatch");
+    expect(restarted.resume).not.toHaveBeenCalled();
+  },
+);
+
+it.each([0, 1])(
+  "retains conflicting target and source drafts without converting ownership (buffer %i)",
+  async (index) => {
+    const f = fixture();
+    const recovered = targetRecovery(f.capture(), index);
+    recovered.documents.documents[0]!.text = "other unsaved target draft";
+    io.records.set(recovered.documentId!, recovered);
+    await expect(f.run()).rejects.toThrow(/conflicts with a live draft/);
+    expect(io.records.get(recovered.documentId!)).toEqual(recovered);
+    expect(io.records.get("legacy-migration:explorer")).toEqual(f.capture());
+    expect(f.capture().documents.documents[index]!.text).toMatch(/^draft:/);
+    expect(io.events).not.toContain("retire");
+    expect(io.events).not.toContain("dispatch");
+    expect(f.resume).toHaveBeenCalledOnce();
+  },
+);
+
+it("accepts an identical target draft when retrying a rejected migration", async () => {
+  const f = fixture(true, true);
+  await expect(f.run()).rejects.toThrow("server rejected");
+  const restarted = fixture();
+  await restarted.run();
+  expect(io.records.get("document:first.rs")).toEqual(
+    targetRecovery(restarted.capture(), 0),
+  );
+  expect(restarted.resume).not.toHaveBeenCalled();
+});
+
+it("does not treat equal text with a different journal baseline version as the same draft", async () => {
+  const f = fixture();
+  const recovered = structuredClone(f.capture());
+  recovered.documents.documents[0]!.version = "v2";
+  io.records.set("legacy-migration:explorer", recovered);
+  await expect(f.run()).rejects.toThrow(/conflicts with a live draft/);
+  expect(io.records.get("legacy-migration:explorer")).toEqual(recovered);
+  expect(io.events).not.toContain("dispatch");
+  expect(f.resume).toHaveBeenCalledOnce();
 });

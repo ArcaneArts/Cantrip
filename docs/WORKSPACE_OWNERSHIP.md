@@ -2084,3 +2084,33 @@ editor/runtime jobs passed on Linux, macOS and Windows. Remaining CI is still
 being observed. Restored Code buffers still use the inline compatibility reader;
 converting them into first-class file tabs, conflict reconciliation, and the
 broader native/recovery acceptance matrix remain required, not waived.
+
+### Preserve existing target drafts during legacy conversion
+
+The contract follow-up merged in #2248 (`2b5a23b0a`); all 19 remote checks
+passed. The Windows native-runtime lane passed on its unchanged rerun after
+an initial temporary-directory cleanup `EBUSY` failure.
+
+Before extending conversion to restored Code buffers, source review found that
+the owned Explorer conversion loaded a target document's recovery record but
+then discarded its contents before checkpointing. An interrupted migration could
+therefore replace an unsaved target with a clean disk read. It now reconciles
+that actual recovery payload with the source using the same validated merge as
+legacy native-window import. Recovered dirty content, history, selection, and
+scroll survive clean source reads; divergent dirty drafts reject conversion
+before source retirement or ownership mutation. Both records remain available
+and the source resumes. Source-journal reconciliation also compares baseline
+versions rather than treating identical text from different versions as equal.
+
+Six additional regression cases cover selected/inactive target preservation,
+selected/inactive conflicts, identical-target replay after server rejection,
+and mismatched journal versions. Five failed against the preceding implementation;
+all 36 focused migration tests now pass, as does the app typecheck. This change
+does not implement a conflict-resolution UI or finish the restored Code buffer
+conversion; those and the remaining native/recovery acceptance matrix are still
+required.
+
+The complete app suite also passed 550 files / 3,822 tests (three skips), with
+formatting and diff checks clean. No new native visual run was performed for
+this reconciliation-only change; it does not establish completion of native
+handoff acceptance.
