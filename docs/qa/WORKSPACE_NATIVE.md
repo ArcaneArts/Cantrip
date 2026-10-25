@@ -1,5 +1,28 @@
 # Native workspace ownership acceptance
 
+## Representative mobile and desktop interaction
+
+After the dependency and CLI builds below, run:
+
+```sh
+node scripts/qa/workspace-mobile-desktop.mjs
+```
+
+If using a custom Cargo target directory, set `CANTRIP_CLI_BIN` to the executable
+reported by `pnpm cli:build`. The harness uses separate browser installations,
+a 390×844 mobile viewport, and a disposable repository/server/worker. It clicks
+the real controls and checks authoritative workspace layouts. Results and
+screenshots are saved under `.qa/editor-*`; retain these with any observations.
+
+For optional physical-mobile confirmation, open a full Explorer panel in a
+disposable project, click two files (returning to Explorer between opens), then
+reopen the first. Expect two independent file tabs, the Explorer directory still
+available, no duplicate on reopen, and no placement changes on another device.
+Return screenshots and the fixture log if behavior differs. Representative
+Chromium results are not physical-device evidence.
+
+## Native fixture
+
 Use a disposable macOS application, server, worker and repository:
 
 ```sh
