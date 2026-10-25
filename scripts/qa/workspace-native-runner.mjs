@@ -2,12 +2,23 @@
 import { spawn } from "node:child_process";
 import { mkdir, copyFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { shouldRestartNativeFixture } from "./workspace-native-restart.mjs";
 
-async function run(command, args) {
+async function run(command, args, report = false) {
   const child = spawn(command, args, { stdio: "inherit", env: process.env });
+  if (report) {
+    console.log(
+      "QA_EVT " +
+        JSON.stringify({
+          event: "native.workspace.process",
+          status: "info",
+          pid: child.pid,
+        }),
+    );
+  }
   return new Promise((resolve, reject) => {
     child.once("error", reject);
-    child.once("exit", (code) => resolve(code ?? 1));
+    child.once("exit", (code, signal) => resolve({ code, signal }));
   });
 }
 const args = process.argv.slice(2);
@@ -17,7 +28,7 @@ const code = await run("cargo", [
   "build",
   ...args.slice(1, separator < 0 ? undefined : separator),
 ]);
-if (code !== 0) process.exit(code);
+if (code.code !== 0) process.exit(code.code ?? 1);
 const identifier = process.env.CANTRIP_QA_BUNDLE_ID;
 const directory = process.env.CANTRIP_QA_FIXTURE_DIR;
 if (
@@ -50,14 +61,16 @@ await writeFile(
 console.log(
   `QA_EVT ${JSON.stringify({ event: "native.workspace.bundle", status: "info", bundle, identifier })}`,
 );
-process.exitCode = await run(executable, []);
-if (
-  process.exitCode === 0 &&
-  process.env.CANTRIP_QA_RESTART_ON_EXIT === "true"
-) {
+let result = await run(executable, [], true);
+if (shouldRestartNativeFixture(result, process.env)) {
   console.log(
     "QA_EVT " +
-      JSON.stringify({ event: "native.workspace.restart", status: "info" }),
+      JSON.stringify({
+        event: "native.workspace.restart",
+        status: "info",
+        previous: result,
+      }),
   );
-  process.exitCode = await run(executable, []);
+  result = await run(executable, [], true);
 }
+process.exitCode = result.code ?? 1;

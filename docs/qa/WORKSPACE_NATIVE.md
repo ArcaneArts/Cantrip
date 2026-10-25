@@ -58,3 +58,31 @@ observations, screenshots of both windows, and correlated fixture logs. Startup
 alone is not acceptance. Keep recovery files and control credentials local.
 Crash, reload, interrupted-transfer and application-quit scenarios remain
 separate acceptance requirements; this checklist does not imply they passed.
+
+## Abrupt application termination and recovery
+
+Launch with `CANTRIP_QA_RESTART_AFTER_CRASH=true` to restart the fixture app once
+after an actual `SIGKILL`. The existing `CANTRIP_QA_RESTART_ON_EXIT=true` instead
+restarts after a successful normal exit; both may be set, but the runner still
+restarts at most once. Build failures, nonzero application exits, SIGINT and
+SIGTERM are not crash-restart triggers. The native process PID is printed as
+`native.workspace.process`; the restart event includes the previous exit result.
+
+1. Create two unsaved file views and detach one. Add distinctive new text in
+   both windows; make the main-window draft inactive by selecting another tab.
+2. Record the detached pane/tab identities and verify both worker files are
+   unchanged. Use only synthetic fixture contents.
+3. Resolve the printed PID to the executable inside this fixture's unique
+   application bundle. Send SIGKILL to that exact app PID only. Do not kill the
+   launcher, server, worker, production app, or shared WebKit processes.
+4. Observe the one-shot restart. Main must preserve its active view and recover
+   the inactive draft; the detached pane must reopen with its existing identity
+   and draft. Opening that file from main must focus the existing window.
+5. Open a second popout. Close its sole clean tab, then close the surviving dirty
+   popout's native window. Only the surviving tab returns; neither its draft nor
+   main's draft may disappear, and the explicitly closed tab must not return.
+6. Stop the launcher and inspect owned-process cleanup and unchanged disk files.
+
+This checks whole-application termination with services still running. It does
+not establish isolated WebView crash handling, power-loss durability, or a crash
+at every transfer phase; test and report those separately.
