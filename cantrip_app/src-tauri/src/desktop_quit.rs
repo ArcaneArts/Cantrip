@@ -40,6 +40,21 @@ struct State {
     committed: bool,
 }
 impl State {
+    #[cfg(any(test, target_os = "macos"))]
+    fn renderer_terminated(&mut self, label: &str) -> bool {
+        if self.committed {
+            return false;
+        }
+        if let Some(round) = self.round.as_mut() {
+            if round.expected.contains_key(label) {
+                // An earlier acknowledgement cannot prove the dead renderer's
+                // checkpoint is still sufficient for this shutdown round.
+                round.failed = true;
+            }
+        }
+        true
+    }
+
     fn cancel(&mut self, id: u64) -> bool {
         if self.round.as_ref().is_none_or(|round| round.id != id) {
             return false;
@@ -53,6 +68,19 @@ impl State {
 pub struct DesktopQuit {
     state: Mutex<State>,
     changed: Condvar,
+}
+
+impl DesktopQuit {
+    #[cfg(target_os = "macos")]
+    pub fn renderer_terminated(&self, label: &str) -> bool {
+        let recover = self
+            .state
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .renderer_terminated(label);
+        self.changed.notify_all();
+        recover
+    }
 }
 
 #[tauri::command]
@@ -262,6 +290,41 @@ pub fn prepare(app: tauri::AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn renderer_death_invalidates_its_pending_checkpoint_but_not_another_window() {
+        let mut state = State {
+            round: Some(Round {
+                id: 1,
+                expected: BTreeMap::from([("main".into(), "a".into())]),
+                replies: BTreeMap::from([("main".into(), true)]),
+                ..Round::default()
+            }),
+            ..State::default()
+        };
+        assert!(state.renderer_terminated("unrelated"));
+        assert!(state.round.as_ref().unwrap().ready());
+        assert!(state.renderer_terminated("main"));
+        assert!(!state.round.as_ref().unwrap().ready());
+        state
+            .round
+            .as_mut()
+            .unwrap()
+            .acknowledge("main", "a", 1, true)
+            .unwrap();
+        assert!(!state.round.as_ref().unwrap().ready());
+        assert!(state.cancel(1));
+        assert!(state.renderer_terminated("main"));
+    }
+
+    #[test]
+    fn renderer_death_does_not_restart_a_committed_shutdown() {
+        let mut state = State {
+            committed: true,
+            ..State::default()
+        };
+        assert!(!state.renderer_terminated("main"));
+        assert!(state.committed);
+    }
     #[test]
     fn cancelling_a_checkpoint_releases_only_its_own_shutdown_fence() {
         let mut state = State {

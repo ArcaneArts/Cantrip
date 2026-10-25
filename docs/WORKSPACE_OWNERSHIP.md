@@ -2405,3 +2405,40 @@ malformed metadata test now verifies that discovery actually reached the native
 reader. Worker typecheck, formatting, and diff checks passed. Full-repository
 verification is running; this cycle does not establish the remaining native
 crash, remote-input, migration, or file-entry-point acceptance requirements.
+
+### Native renderer-death recovery
+
+PR #2259 merged as `19a53e75b`; all 19 CI checks passed, including a successful
+rerun of a Windows Vitest process exit. Full local verification cleared the six
+compatibility failures, passed 1,606 server tests and 3,855 app tests, but failed
+two existing worker tests (filesystem notification debounce and a 15-second
+image-processing timeout). Both files passed all 38 tests in isolation. A
+separate formatting check found 11 unchanged files with existing style issues.
+These are recorded limitations, not a passing full-repository check.
+
+The next source audit found no registered macOS WebKit content-process-death
+callback. A dead view therefore had no native reload trigger even though a
+replacement renderer can recover ownership. This lane connects the actual
+termination event to same-view reload, preserves ownership identities, and
+invalidates pending quit acknowledgements without reopening a committed
+shutdown. A debug-only, opt-in QA action targets the exact focused view's WebKit
+PID, restricted to the disposable QA application identity.
+
+All 134 native tests passed, including shutdown and QA-scope regressions; Rust
+formatting and diff checks passed. Strict Clippy reports existing warnings in
+unchanged tunnel and logging files. After unlocking the Mac, the rebuilt native
+fixture passed real WebKit process-death acceptance: a detached dirty editor
+reloaded with its tab identity and draft; main reloaded with its inactive dirty
+tab and selection intact; and source death during an HTTP-503 destination startup
+recovered the draft at source. Clearing the fault allowed a new detach and normal
+return. Opening the other detached file focused its existing window, and closing
+that window returned its surviving draft without duplication. Both disk files
+remained at their original baseline throughout. The native app PID survived all
+three renderer kills. Fixture app/server/worker processes exited after cleanup.
+
+Evidence: `.qa/20261025-104533-validate-native-webkit-renderer/` observations and
+`native-crash-acceptance.log` (disposable fixture
+`editor-a793b390-9414-48ee-b0ef-64716bd999c5`). This macOS acceptance does not claim
+Windows/Linux renderer-death recovery, all transfer phases, or the remaining
+remote-input, migration and file-entry-point requirements. PR integration is the
+next step for this lane.
