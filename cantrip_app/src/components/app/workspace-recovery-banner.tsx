@@ -6,7 +6,9 @@ type Connection = ReturnType<typeof useWorkspaceConnection>;
 export function WorkspaceRecoveryBanner({
   workspace,
   migration,
+  transferPending = false,
 }: {
+  transferPending?: boolean;
   migration?: { error: unknown; retry(): void };
   workspace: Pick<
     Connection,
@@ -58,12 +60,14 @@ export function WorkspaceRecoveryBanner({
                 }
               : null;
   if (!issue)
-    return workspace.loading ? (
+    return workspace.loading || transferPending ? (
       <div
         role="status"
         className="shrink-0 px-3 py-2 text-sm text-muted-foreground"
       >
-        Loading workspace…
+        {workspace.loading
+          ? "Loading workspace…"
+          : "Moving views into this window…"}
       </div>
     ) : null;
   return (

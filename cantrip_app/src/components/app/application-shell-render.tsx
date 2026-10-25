@@ -85,6 +85,11 @@ function ShellContent({
         <WorkspaceRecoveryBanner
           workspace={bindings.workspaceConnection}
           migration={bindings.legacyDocumentMigration}
+          transferPending={bindings.workspaceConnection.controllerState?.authoritative.pendingTransfers?.some(
+            (transfer: { destinationWindowId: string }) =>
+              transfer.destinationWindowId ===
+              bindings.workspaceConnection.connection?.windowId,
+          )}
         />
       ) : null}
       {desktopProjectFrame ? (
