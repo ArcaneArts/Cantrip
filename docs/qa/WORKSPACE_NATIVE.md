@@ -21,6 +21,23 @@ available, no duplicate on reopen, and no placement changes on another device.
 Return screenshots and the fixture log if behavior differs. Representative
 Chromium results are not physical-device evidence.
 
+### Chat file-entry acceptance in the representative mobile harness
+
+`node scripts/qa/workspace-mobile-desktop.mjs` also creates an idle project chat
+with fixture-only synthetic assistant history. It clicks relative and absolute
+Markdown file links in the real transcript, edits both resulting files without
+saving, returns to the chat, and opens both through the related-file tree.
+Expect distinct non-preview file tabs, Edit mode, the same tab IDs and unsaved
+contents on reopen, and no changes to the other device's authoritative layout.
+
+Only the history reader for that synthetic chat is replaced in the disposable
+build. Production transcript rendering, link callbacks, file-reference metadata,
+checkout resolution, workspace commands, encryption, and worker reads are used.
+This does not validate model output, encrypted history ingestion, removed
+historical checkouts, or native cross-window focus. The fixture does not ship in
+the production app. Return `workspace-mobile-desktop.log` and the generated
+mobile/desktop screenshots from `.qa/editor-*`; do not share recovery secrets.
+
 ## Native fixture
 
 Use a disposable macOS application, server, worker and repository:

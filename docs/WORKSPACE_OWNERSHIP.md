@@ -2361,3 +2361,27 @@ CLI output, the complete run exited zero with no surviving worker/server childre
 or sockets. Both runs' synthetic evidence was retained. This establishes the
 full Explorer route in representative Chromium mobile, not physical iOS/Android
 or the remaining chat/related-file/native crash acceptance matrix.
+
+### Chat Markdown and related-file entry acceptance
+
+PR #2257 merged as `c46e3c57b`; Linux, macOS, and Windows contract checks passed.
+The representative mobile harness now renders a synthetic assistant response in
+an ordinary project chat. Relative and absolute Markdown links open two distinct
+non-preview file tabs in Edit mode through the production chat callback, worker
+file resolution, and owned-file controller. After editing both without saving,
+the related-file tree reopens the same tab identities and unsaved contents. The
+chat remains present and the concurrent desktop layout is unchanged.
+
+All 15 scenarios passed. The final mobile screenshot shows the actual transcript
+links and file summary; fixture worker/server cleanup reported zero surviving
+children or sockets. Three fixture-transform unit tests and 47 focused app tests
+passed, as did formatting, syntax, and diff checks. Setup retries corrected an
+unbuilt shared-package dependency and two fixture schema fields; they are not
+counted as passing product tests.
+
+Only synthetic history delivery is substituted in the disposable build, scoped
+to its generated chat ID. History decryption/ingestion, removed historical
+checkouts, native cross-window chat-link focus, isolated WebView transfer crashes,
+remote-desktop input handoff, and the remaining entry-point/requirement audit are
+not established by this run. The six worker compatibility failures remain
+unresolved; the full goal and full-repository check are not complete.
