@@ -214,6 +214,7 @@ dependencies = [
  "tokio",
  "tokio-postgres",
  "uuid",
+ "windows-sys",
 ]
 
 [[package]]

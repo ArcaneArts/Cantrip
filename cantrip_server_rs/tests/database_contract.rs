@@ -127,7 +127,9 @@ async fn native_pglite_runs_the_existing_schema_and_survives_reopen() -> Result<
     }
     // A real server restarts in a new process. Native PostgreSQL also owns
     // process-wide signal handlers, so keep it out of the PostgreSQL-child test.
-    let root = tempfile::tempdir()?;
+    let root = tempfile::Builder::new()
+        .prefix("cantrip pglite ")
+        .tempdir()?;
     for phase in ["seed", "reopen"] {
         let status = tokio::process::Command::new(std::env::current_exe()?)
             .args([
@@ -149,7 +151,9 @@ async fn native_pglite_runs_the_existing_schema_and_survives_reopen() -> Result<
 async fn postgres_runs_the_same_schema_and_contract() -> Result<()> {
     // CI and developer invocations supply real PostgreSQL executables explicitly.
     let binary_directory = PathBuf::from(std::env::var("CANTRIP_TEST_POSTGRES_BIN_DIR")?);
-    let root = tempfile::tempdir()?;
+    let root = tempfile::Builder::new()
+        .prefix("cantrip postgres ")
+        .tempdir()?;
     let runtime = ManagedPostgres::start(root.path(), &binary_directory).await?;
     let database = Arc::new(Database::postgres(runtime.configuration()).await?);
     exercise(&database).await?;
@@ -195,6 +199,94 @@ async fn postgres_runs_the_same_schema_and_contract() -> Result<()> {
             .await?[0]
             .get::<i64>(0)?,
         2
+    );
+    database.close().await?;
+    runtime.close().await?;
+    Ok(())
+}
+
+#[cfg(windows)]
+#[tokio::test]
+async fn postgres_windows_owner_exit_kills_descendants_and_retains_data() -> Result<()> {
+    use std::{
+        io::Write,
+        os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle},
+    };
+    use tokio::io::{AsyncBufReadExt, BufReader};
+    use windows_sys::Win32::{
+        Foundation::{WAIT_OBJECT_0, WAIT_TIMEOUT},
+        System::Threading::{OpenProcess, PROCESS_SYNCHRONIZE, WaitForSingleObject},
+    };
+
+    let binary_directory = PathBuf::from(std::env::var("CANTRIP_TEST_POSTGRES_BIN_DIR")?);
+    if let Ok(path) = std::env::var("CANTRIP_POSTGRES_OWNER_EXIT_ROOT") {
+        let root = PathBuf::from(path);
+        let runtime = ManagedPostgres::start(&root, &binary_directory).await?;
+        let database = Database::postgres(runtime.configuration()).await?;
+        database
+            .execute("CREATE TABLE owner_exit_probe (value text NOT NULL); INSERT INTO owner_exit_probe VALUES ('retained after owner exit')")
+            .await?;
+        database.close().await?;
+        let pid = std::fs::read_to_string(root.join("data/postmaster.pid"))?
+            .lines()
+            .next()
+            .unwrap()
+            .parse::<u32>()?;
+        println!("CANTRIP_POSTGRES_OWNER_READY={pid}");
+        std::io::stdout().flush()?;
+        std::future::pending::<()>().await;
+        drop(runtime);
+        return Ok(());
+    }
+    let root = tempfile::Builder::new()
+        .prefix("cantrip postgres owner ")
+        .tempdir()?;
+    let mut owner = tokio::process::Command::new(std::env::current_exe()?)
+        .args([
+            "--exact",
+            "postgres_windows_owner_exit_kills_descendants_and_retains_data",
+            "--nocapture",
+        ])
+        .env("CANTRIP_POSTGRES_OWNER_EXIT_ROOT", root.path())
+        .stdout(std::process::Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()?;
+    let mut output = BufReader::new(owner.stdout.take().unwrap()).lines();
+    let pid = tokio::time::timeout(Duration::from_secs(60), async {
+        while let Some(line) = output.next_line().await? {
+            if let Some(pid) = line.strip_prefix("CANTRIP_POSTGRES_OWNER_READY=") {
+                return Ok(pid.parse::<u32>()?);
+            }
+        }
+        bail!("database owner exited without reporting actual readiness");
+    })
+    .await??;
+    // Observe the exact live postmaster before killing its owner. Holding only
+    // a process handle cannot keep the owner's non-inherited job handle alive.
+    let raw = unsafe { OpenProcess(PROCESS_SYNCHRONIZE, 0, pid) };
+    if raw.is_null() {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    let postmaster = unsafe { OwnedHandle::from_raw_handle(raw) };
+    owner.kill().await?;
+    tokio::time::timeout(Duration::from_secs(30), async {
+        loop {
+            match unsafe { WaitForSingleObject(postmaster.as_raw_handle(), 0) } {
+                WAIT_OBJECT_0 => return Ok::<_, anyhow::Error>(()),
+                WAIT_TIMEOUT => tokio::time::sleep(Duration::from_millis(50)).await,
+                _ => return Err(std::io::Error::last_os_error().into()),
+            }
+        }
+    })
+    .await??;
+    let runtime = ManagedPostgres::start(root.path(), &binary_directory).await?;
+    let database = Database::postgres(runtime.configuration()).await?;
+    assert_eq!(
+        database
+            .query("SELECT value FROM owner_exit_probe", &[])
+            .await?[0]
+            .get::<String>(0)?,
+        "retained after owner exit"
     );
     database.close().await?;
     runtime.close().await?;

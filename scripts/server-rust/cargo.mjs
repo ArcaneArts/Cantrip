@@ -11,7 +11,7 @@ export async function rustEnvironment() {
   const { stdout: version } = await execute("rustc", ["-vV"], {
     cwd: repositoryRoot,
   });
-  const host = version.match(/^host: (.+)$/m)?.[1];
+  const host = version.match(/^host: (.+)$/m)?.[1].trim();
   const target =
     environment.CARGO_BUILD_TARGET ??
     (process.platform === "win32" && !environment.PGLITE_LIB_DIR

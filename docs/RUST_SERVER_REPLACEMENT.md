@@ -29,6 +29,13 @@ NOTIFY, and verify retained data after reopening in a new process. PostgreSQL
 tests start a real private cluster and also invoke the executable in external
 connection mode. They never connect to a developer's ordinary database.
 
+Windows private-cluster startup uses PostgreSQL's own `pg_ctl` restricted-token
+launch path. A kill-on-close Windows Job Object owns the launcher and its
+descendants, assigned during process creation so startup cannot outrun process
+ownership. The Windows integration test abruptly kills the owner, observes the
+actual postmaster exit, and reopens the cluster to verify committed data after
+crash recovery. Passing execution of that test is still required evidence.
+
 PGlite candidate: `pglite-rs` 0.2.7 statically embeds Electric's
 `postgres-pglite` fork. It reports PostgreSQL 17.5. The current JavaScript
 PGlite 0.5.4 reports PostgreSQL 18.3. **Physical directories are not compatible

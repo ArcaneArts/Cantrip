@@ -2,18 +2,26 @@ use std::{
     fs::OpenOptions,
     net::TcpListener,
     path::{Path, PathBuf},
-    process::Stdio,
     time::Duration,
 };
 
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use tokio::{
-    process::{Child, Command},
+    process::Command,
     time::{Instant, sleep},
 };
 use tokio_postgres::{Config, NoTls};
 use uuid::Uuid;
+
+#[cfg(not(windows))]
+use std::process::Stdio;
+#[cfg(not(windows))]
+use tokio::process::Child;
+#[cfg(windows)]
+mod windows;
+#[cfg(windows)]
+use windows::PostgresProcess as Child;
 
 #[derive(Serialize, Deserialize)]
 struct Credentials {
@@ -21,7 +29,7 @@ struct Credentials {
     password: String,
 }
 
-/// Owns the actual postmaster child. The caller closes database sessions first.
+/// Owns the postmaster child or Windows process job. Close database sessions first.
 pub struct ManagedPostgres {
     child: Child,
     binary_directory: PathBuf,
@@ -98,6 +106,9 @@ impl ManagedPostgres {
             .append(true)
             .create(true)
             .open(root.join("postgres.log"))?;
+        #[cfg(windows)]
+        let child = Child::start(binary_directory, &data_directory, port, log)?;
+        #[cfg(not(windows))]
         let child = Command::new(binary(binary_directory, "postgres"))
             .arg("-D")
             .arg(&data_directory)
