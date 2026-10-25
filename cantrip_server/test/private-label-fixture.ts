@@ -8,7 +8,7 @@ import type { SurfacePrivateStateOpaque } from "@cantrip/protocol/surface-privat
 
 export function protectedDisplayLabelFields(
   recordKind: PrivateDisplayLabelRecordKind,
-  id = randomUUID(),
+  id: string = randomUUID(),
 ): {
   id: string;
   titleProtection: PrivateDisplayLabelOpaque;
@@ -32,7 +32,7 @@ export function protectedDisplayLabelFields(
   };
 }
 
-export function protectedProjectFields(id = randomUUID()): {
+export function protectedProjectFields(id: string = randomUUID()): {
   id: string;
   nameProtection: PrivateDisplayLabelOpaque;
 } {
@@ -55,14 +55,14 @@ export function protectedProjectFields(id = randomUUID()): {
   };
 }
 
-export function protectedChatFields(id = randomUUID()): {
+export function protectedChatFields(id: string = randomUUID()): {
   id: string;
   titleProtection: PrivateDisplayLabelOpaque;
 } {
   return protectedDisplayLabelFields("chat", id);
 }
 
-export function protectedTerminalFields(id = randomUUID()): {
+export function protectedTerminalFields(id: string = randomUUID()): {
   id: string;
   titleProtection: PrivateDisplayLabelOpaque;
   stateProtection: SurfacePrivateStateOpaque;
@@ -86,7 +86,7 @@ export function protectedTerminalFields(id = randomUUID()): {
   };
 }
 
-export function protectedExplorerFields(id = randomUUID()): {
+export function protectedExplorerFields(id: string = randomUUID()): {
   id: string;
   titleProtection: PrivateDisplayLabelOpaque;
   stateProtection: SurfacePrivateStateOpaque;
@@ -161,7 +161,7 @@ export function protectedRemoteDesktopInventory(): SurfacePrivateStateOpaque {
   };
 }
 
-export function protectedRemoteDesktopFields(id = randomUUID()): {
+export function protectedRemoteDesktopFields(id: string = randomUUID()): {
   id: string;
   stateProtection: SurfacePrivateStateOpaque;
   titleProtection: PrivateDisplayLabelOpaque;
@@ -172,7 +172,7 @@ export function protectedRemoteDesktopFields(id = randomUUID()): {
   };
 }
 
-export function protectedBrowserFields(id = randomUUID()): {
+export function protectedBrowserFields(id: string = randomUUID()): {
   id: string;
   titleProtection: PrivateDisplayLabelOpaque;
   stateProtection: SurfacePrivateStateOpaque;
@@ -183,7 +183,9 @@ export function protectedBrowserFields(id = randomUUID()): {
   };
 }
 
-export function protectedBrowserRemoteSurfaceFields(id = randomUUID()): {
+export function protectedBrowserRemoteSurfaceFields(
+  id: string = randomUUID(),
+): {
   id: string;
   stateProtection: SurfacePrivateStateOpaque;
   titleProtection: PrivateDisplayLabelOpaque;

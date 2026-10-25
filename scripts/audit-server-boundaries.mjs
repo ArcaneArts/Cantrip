@@ -1631,6 +1631,7 @@ function repositoryOperationRouteBoundaryAudit(
   protocolText,
   clientText,
   workerText,
+  dispatcherText,
 ) {
   const failures = [];
   const method = "POST";
@@ -1716,11 +1717,11 @@ function repositoryOperationRouteBoundaryAudit(
     "repositoryOperationReplay.reserve",
     "openWorkerRepositoryOperationContent",
     "protectWorkerRepositoryOperationContent",
-    "cwd: command.cwd",
-    "command.repository ??",
-    "repositoryManagedOperations.get",
-    "repositoryManagedOperations.put",
-    'request.type === "git.operation.current"',
+    'from "./repository-operation-dispatch.js"',
+    "outcome = await dispatchRepositoryOperation({",
+    "store: repositoryManagedOperations",
+    "inspect: inspectGitManagedOperation",
+    "dispatch: (trustedCommand) => handleCommand(trustedCommand, emit)",
     "routingRegistry.resolveCommand",
     "routingRegistry.protectResult",
     "routingRegistry.protectMetadata",
@@ -1733,6 +1734,20 @@ function repositoryOperationRouteBoundaryAudit(
   ]) {
     if (!workerText.includes(marker)) {
       failures.push(`Worker protected repository path is missing ${marker}.`);
+    }
+  }
+  for (const marker of [
+    "export async function dispatchRepositoryOperation",
+    "cwd: command.cwd",
+    "command.repository ??",
+    "store.get(scope)",
+    "store.put(scope, stored)",
+    'request.type === "git.operation.current"',
+    "const trustedCommand = workerCommandSchema.parse({",
+    "let result = await dispatch(trustedCommand)",
+  ]) {
+    if (!dispatcherText.includes(marker)) {
+      failures.push(`Worker repository dispatcher is missing ${marker}.`);
     }
   }
   for (const marker of [
@@ -4419,6 +4434,13 @@ async function buildInventory() {
     repositoryOperationProtocolText,
     clientApiText,
     `${workerText}\n${workerRoutingText}`,
+    await readFile(
+      resolve(
+        repositoryRoot,
+        "cantrip_worker/src/repository-operation-dispatch.ts",
+      ),
+      "utf8",
+    ),
   );
   const routeKeys = parsedRoutes.map(
     ({ method, path, transport }) => `${transport} ${method} ${path}`,
