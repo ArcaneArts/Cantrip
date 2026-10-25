@@ -46,10 +46,34 @@ PL/pgSQL needs backend symbols exported from the final executable on macOS and
 Linux. The native runtime and its license/artifact distribution still need
 release review and packaging integration.
 
-The Rust command requires an explicit data directory during development. It
-uses the canonical `server-db` root and never falls back to a fresh root when
-opening the chosen database fails. Bundled mode currently requires a directory
-containing PostgreSQL executables; automatic runtime packaging remains pending.
+The Rust command reads the existing server environment configuration, including
+auth/deployment/bootstrap modes, hosted startup protections, origins, proxies,
+cookies, key rings, limits, WorkerLink policy, TURN and WebRTC settings. The
+configuration itself is implemented; authentication handlers and transport
+domains remain unported. CLI host, port, data directory and database options
+override their environment settings. Explicit CLI port zero supports ephemeral
+process tests; environment ports retain the existing 1–65535 range.
+
+Data paths resolve lexically before native PostgreSQL can change the process
+working directory. The default remains `../.cantrip/dev` relative to the launch
+directory. The canonical `server-db` root is preserved; an opening failure never
+selects an empty replacement. Bundled mode still needs PostgreSQL executables
+through `CANTRIP_POSTGRES_BIN_DIR` or the CLI option until packaging is integrated.
+
+Storage selection uses `CANTRIP_DATABASE_MODE=pglite|bundled-postgres|postgres`.
+When unset, a nonempty `DATABASE_URL` selects external PostgreSQL; otherwise
+PGlite preserves the existing behavior. Explicit embedded/private modes also
+work with hosted configuration while retaining its authentication, key-ring,
+origin, proxy and cookie protections. Storage selection is independent from
+deployment; this does not assert that the remaining hosted service is ported.
+
+A differential configuration test executes the actual Node parser for 977
+scenarios and compares every resulting field or validation error with Rust.
+Inputs cover all bounded numeric settings, booleans, Unicode, key rings, nested
+policy validation, host/origin/proxy handling, multi-instance quota division,
+and error precedence. Executable tests exercise configuration rejection before
+storage writes, CLI precedence, relative paths and real PGlite process reopen.
+The Node oracle is development-only and is not called by the server executable.
 
 Run from the repository root:
 
@@ -84,7 +108,8 @@ or product-flow acceptance matrix.
 1. Establish cross-platform foundation results and legacy PGlite logical
    export/import evidence; evaluate native runtime limitations against actual
    operations before selecting final packaged database artifacts.
-2. Port configuration, shared wire validation and version/build identity.
+2. Finish shared wire validation, version/build identity and runtime logging;
+   configuration parity is implemented and requires cross-platform acceptance.
 3. Port authentication, sessions, tenant authorization, encryption envelopes,
    worker enrollment and revocation.
 4. Complete an unchanged app-to-worker operation, including ordered events,
