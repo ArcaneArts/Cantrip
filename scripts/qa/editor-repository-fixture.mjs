@@ -59,7 +59,7 @@ export function editorRepositoryFixturePlugin(seed) {
         return null;
       return {
         code: `${source}\nimport { createGithubProject as qaCreateProject, getProjects as qaGetProjects } from '@/lib/project-encryption';
-import { createProjectWorktree as qaCreateWorktree, getProjectWorktrees as qaGetWorktrees } from '@/lib/api/worktrees';
+import { createProjectWorktree as qaCreateWorktree, getProjectWorktrees as qaGetWorktrees, removeProjectWorktree as qaRemoveWorktree } from '@/lib/api/worktrees';
 import { getExplorers as qaGetExplorers, createExplorer as qaCreateExplorer } from '@/lib/api/explorers';
 import { createCodeTab as qaCreateCode } from '@/lib/api/code';
 import { createFileDocument as qaCreateDocument } from '@/lib/api/file-documents';
@@ -156,11 +156,13 @@ if (import.meta.env.VITE_CANTRIP_CODE_MIGRATION_QA === 'true') {
 }
 globalThis.__qaRepositoryFixture = {
   async workspace() { return qaIdentity() ? (await qaWorkspace()).layout : null; },
-  async seedFileLinkChat() {
+  async seedFileLinkChat(historical = null) {
     const chat = await qaCreateProjectChat(qaProjectId, 'File link QA');
     sessionStorage.setItem('__qaChatFileHistory', JSON.stringify({
-      chatId: chat.id, messageId: crypto.randomUUID(), worktreeId: chat.activeWorktreeId,
-      text: '[Relative QA file](chat-relative.rs) and [Absolute QA file](' + ${JSON.stringify(seed.repository)} + '/chat-absolute.rs:1).',
+      chatId: chat.id, messageId: crypto.randomUUID(), worktreeId: historical?.id ?? chat.activeWorktreeId,
+      text: historical
+        ? '[Historical relative file](entry/command-first.rs) and [Historical absolute file](' + historical.path + '/entry/command-first.rs:1).'
+        : '[Relative QA file](chat-relative.rs) and [Absolute QA file](' + ${JSON.stringify(seed.repository)} + '/chat-absolute.rs:1).',
     }));
     const { scope, transport, layout } = await qaWorkspace();
     const owner = layout.windows.find(window => window.id === scope.mainWindowId);
@@ -227,6 +229,7 @@ globalThis.__qaRepositoryFixture = {
   async project() { return (await qaGetProjects()).find(project => project.id === qaProjectId); },
   async worktrees() { return qaGetWorktrees(qaProjectId); },
   async createWorktree(input) { return qaCreateWorktree(qaProjectId, input); },
+  async removeWorktree(id) { return qaRemoveWorktree(qaProjectId, id, {allowExternal:false,force:false}); },
   async createChat() { return qaCreateChat('Native editor QA Chat'); },
   chatFileSearch(chatId, path) { return qaChatFileSearch({ chatId, path }); },
   revokeOwner() { qaClearSession(); },
