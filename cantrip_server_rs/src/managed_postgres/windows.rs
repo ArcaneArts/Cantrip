@@ -121,13 +121,10 @@ impl PostgresProcess {
         command
             .arg("-D")
             .arg(data_directory)
-            .args(["start", "-w", "-t", "30", "-l"])
-            .arg(
-                data_directory
-                    .parent()
-                    .context("PostgreSQL root")?
-                    .join("postgres.log"),
-            )
+            // Inherit the owned append handle below. pg_ctl's -l redirection
+            // would reopen that same file through cmd.exe with incompatible
+            // Windows sharing semantics.
+            .args(["start", "-w", "-t", "30"])
             .arg("-o")
             .arg(format!(
                 "-h 127.0.0.1 -p {port} -c unix_socket_directories="
