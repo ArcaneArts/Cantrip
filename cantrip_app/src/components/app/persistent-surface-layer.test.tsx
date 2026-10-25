@@ -50,6 +50,39 @@ vi.mock("@/components/workspace/project-tab-bar", () => ({
 }));
 
 describe("persistent surface layer", () => {
+  it("routes Code browser file requests to the shared project file opener", async () => {
+    (
+      globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+    ).IS_REACT_ACT_ENVIRONMENT = true;
+    const openProjectExplorerFile = vi.fn();
+    let tree!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      tree = TestRenderer.create(
+        <PersistentSurfaceLayer
+          bindings={{
+            appMode: "ide",
+            openExplorers: [],
+            projectSurfaces: [],
+            openProjectExplorerFile,
+          }}
+        />,
+      );
+    });
+    const open = surfaceProps.code!.onOpenFile as (
+      tab: { projectId: string; worktreeId: string },
+      entry: { path: string },
+    ) => void;
+    open(
+      { projectId: "project", worktreeId: "checkout" },
+      { path: "src/main.rs" },
+    );
+    expect(openProjectExplorerFile).toHaveBeenCalledWith(
+      "project",
+      "checkout",
+      "src/main.rs",
+    );
+    await act(async () => tree.unmount());
+  });
   it("routes chats by tab identity and grants activation focus only to the selected tab", async () => {
     (
       globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }

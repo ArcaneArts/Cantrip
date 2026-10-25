@@ -94,6 +94,7 @@ const tab = {
 let renderer: TestRenderer.ReactTestRenderer;
 let client: QueryClient;
 let header: CodeHeaderState | null;
+const onOpenFile = vi.fn();
 const onHeader = (value: CodeHeaderState | null) => {
   header = value;
 };
@@ -109,6 +110,7 @@ async function render(next = tab, initialTransfer?: ExplorerTransferState) {
         codeTab={next}
         appearance="dark"
         onHeaderChange={onHeader}
+        onOpenFile={onOpenFile}
         initialTransfer={initialTransfer}
       />
     </QueryClientProvider>
@@ -120,10 +122,33 @@ async function render(next = tab, initialTransfer?: ExplorerTransferState) {
   await settle();
 }
 async function open() {
-  await act(async () =>
-    renderer.root.findByProps({ "data-open-file": true }).props.onClick(),
+  // Existing editor behavior is exercised through a restored legacy buffer.
+  // New file clicks must no longer create transient editors inside Code tabs.
+  await act(async () => renderer.unmount());
+  renderer = undefined as unknown as TestRenderer.ReactTestRenderer;
+  const store = new EditorSessionStore();
+  store.resetScope('["server","owner"]');
+  store.open(
+    editorDocumentId({
+      server: "server",
+      account: "owner",
+      worker: tab.activeWorkerId,
+      project: tab.projectId,
+      worktree: tab.worktreeId,
+      path: "main.ts",
+    }),
+    "const x = 1;",
+    "one",
   );
-  await settle();
+  await render(tab, {
+    explorerId: tab.id,
+    projectId: tab.projectId,
+    workerId: tab.activeWorkerId,
+    worktreeId: tab.worktreeId,
+    selectedPath: "main.ts",
+    fileMode: "edit",
+    documents: await store.captureTransfer(),
+  });
   await vi.waitFor(() => expect(editor.current).not.toBeNull());
 }
 beforeEach(() => {
@@ -151,6 +176,22 @@ afterEach(async () => {
 });
 
 describe("native project Code tabs", () => {
+  it("opens browser files through workspace ownership without creating a transient editor", async () => {
+    await render();
+    await act(async () =>
+      renderer.root.findByProps({ "data-open-file": true }).props.onClick(),
+    );
+    await settle();
+    expect(onOpenFile).toHaveBeenCalledWith(
+      tab,
+      expect.objectContaining({ path: "main.ts" }),
+    );
+    expect(editor.current).toBeNull();
+    expect(api.getExplorerFile).not.toHaveBeenCalled();
+    expect(
+      renderer.root.findAllByProps({ "data-open-file": true }),
+    ).toHaveLength(1);
+  });
   it("opens the transferred selected file and unsaved content without a browser click", async () => {
     const store = new EditorSessionStore();
     store.resetScope('["server","owner"]');
@@ -188,7 +229,7 @@ describe("native project Code tabs", () => {
     ).toHaveLength(1);
     expect(renderer.root.findAllByProps({ role: "alert" })).toHaveLength(0);
   });
-  it("opens, views, edits and explicitly saves through the existing bound file API", async () => {
+  it("views, edits and explicitly saves a restored legacy buffer through its bound file API", async () => {
     await render();
     await open();
     const session = editor.current!.session;

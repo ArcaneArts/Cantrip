@@ -1920,3 +1920,35 @@ Local verification passed all 14 Explorer tests and the worker source typecheck.
 Windows CI must verify the platform-specific correction. Remaining native
 acceptance, legacy-path cleanup, and the replacement of the historical tab
 documentation remain outstanding; this correction does not complete the goal.
+
+### Code browser file-opening cutover
+
+The file-creation collision correction merged in #2242 (`a8c7c793e`) after all
+six worker command/runtime CI jobs passed, including Windows repeated terminal
+replay. Primary was synchronized and its tree matched the reviewed commit.
+Recoverable worktree archival remains unavailable because registration hits the
+app's attachment limit; the clean checkout was retained rather than removed
+without its recovery snapshot.
+
+The Code browser was still opening new files through a local transient path.
+It now requires the shared project-file opener, forwarded through the persistent
+surface layer. New requests therefore use ordinary document/tab ownership,
+including existing-tab focus, rather than creating a second inline file view.
+Restored legacy Code buffers retain their existing transfer, dirty-state, save,
+and close protections; their presence is compatibility recovery, not permission
+to create new transient file views.
+
+Regression coverage checks that browser clicks request the bound project and
+checkout without reading an inline file, that shell wiring reaches the shared
+opener, and that restored legacy drafts retain editing and lifecycle behavior.
+The final focused run passed 40 tests; app typechecking also passes after adding
+the required opener callback to existing transfer fixtures.
+
+The full check from the preceding contract cycle terminated with 10 worker-test
+failures across six files (2,503 passed). A serial rerun of those six files passed
+104 tests, with six failures remaining in external-history reader-version checks
+and the pinned native-gateway method inventory. MCP restart, history-outbox
+restart, worktree notifications, and Sharp boundary checks passed unchanged in
+that serial run; this does not prove their broad-run timing failures resolved.
+Full-goal native/mobile acceptance and historical tab-documentation replacement
+remain incomplete.

@@ -3,7 +3,11 @@ import type {
   ExplorerTransferState,
   IncomingEditorView,
 } from "@/components/explorer/explorer-view";
-import type { CodeAppearance, CodeTabSummary } from "@cantrip/protocol";
+import type {
+  CodeAppearance,
+  CodeTabSummary,
+  ExplorerEntry,
+} from "@cantrip/protocol";
 import { useEffect, useMemo, useState } from "react";
 
 import { CodeView, type CodeHeaderState } from "./code-view";
@@ -60,6 +64,7 @@ export function PersistentCodeViews({
   appearance,
   onChanged,
   onHeaderChange,
+  onOpenFile,
   visiblePlacements,
   excludedIds = EMPTY_EXCLUDED_CODE_IDS,
   initialTransfers,
@@ -76,6 +81,7 @@ export function PersistentCodeViews({
   appearance: CodeAppearance;
   onChanged?(codeTab: CodeTabSummary): void;
   onHeaderChange?(state: CodeHeaderState | null): void;
+  onOpenFile(tab: CodeTabSummary, entry: ExplorerEntry): void | Promise<void>;
   excludedIds?: ReadonlySet<string>;
   visiblePlacements?: readonly {
     focused: boolean;
@@ -160,6 +166,7 @@ export function PersistentCodeViews({
         }
         transferStaging={incomingById.get(tab.id)?.staging}
         onChanged={() => onChanged?.(tab)}
+        onOpenFile={onOpenFile}
         onHeaderChange={
           visiblePlacements
             ? placement?.focused

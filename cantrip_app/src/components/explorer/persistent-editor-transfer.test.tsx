@@ -67,6 +67,7 @@ it.each(["explorer", "code"])(
             repositoryGraphAvailable: false,
           })
         : createElement(PersistentCodeViews, {
+            onOpenFile: vi.fn(),
             activeTab: committed ? resource : null,
             openTabs: committed ? [resource] : [],
             incomingViews,
@@ -143,6 +144,7 @@ it("routes a Code snapshot by its owner, not by the selected file or another edi
     await act(async () => {
       renderer = TestRenderer.create(
         createElement(PersistentCodeViews, {
+          onOpenFile: vi.fn(),
           activeTab: tab,
           appearance: "dark",
           initialTransfers: new Map([
@@ -182,6 +184,7 @@ it("mounts every owned Code tab, including inactive transfers beyond the cache l
     unresolvedIds = new Set<string>(),
   ) =>
     createElement(PersistentCodeViews, {
+      onOpenFile: vi.fn(),
       activeTab: tabs[0]!,
       openTabs,
       unresolvedIds,
