@@ -1976,3 +1976,23 @@ validation of the new Code opening route, representative simultaneous mobile and
 desktop interaction, remaining recovery/concurrency cases, and the outstanding
 broad-check failures remain work, not waived acceptance criteria. No runtime
 behavior changes in this documentation cycle.
+
+### Retire the unused Explorer file-window producer
+
+The current tab contract merged in #2244 (`1c93fc6c9`). The next compatibility
+audit found no production callers of the old `openDesktopExplorerFile` or its
+prewarm API: new project file windows already use `useOwnedFileWindow` and the
+workspace transfer coordinator. The unused producer, warm-slot state, parallel
+window/broker maps, and identity-subscription cleanup are removed from
+`desktop-popout.ts` rather than retained as a competing way to open file views.
+
+Legacy target parsing/labels and both receiver paths remain unchanged so this
+cleanup does not discard existing drafts or break restored links. The removed
+tests exclusively exercised the retired producer (including same-window path
+replacement, which conflicts with first-class file tabs). Route compatibility,
+receiver authority/revocation, and the owned opening/transfer tests remain. A
+small API regression test prevents reintroducing the retired exports.
+
+All 89 tests in eight focused desktop/receiver/owned-file/transfer suites pass;
+the app source typecheck passes. This is unused-path cleanup, not acceptance of
+the still-retained receivers or proof of the remaining native/mobile matrix.
