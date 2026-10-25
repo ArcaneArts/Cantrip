@@ -9,10 +9,75 @@ vi.mock("@tauri-apps/api/core", () => tauri);
 
 import {
   openLocalLogsDirectory,
+  logDumpSources,
+  dumpLocalLogs,
   readLocalServiceLogs,
 } from "./local-service-logs";
 
 describe("local service log bridge", () => {
+  it("selects local service logs and only workers for the active server", () => {
+    const workers = [
+      {
+        name: "remote",
+        running: true,
+        serverUrl: "https://remote.example",
+        workerId: "desktop-remote",
+      },
+      {
+        name: "other",
+        running: true,
+        serverUrl: "https://other.example",
+        workerId: "desktop-other",
+      },
+    ];
+    expect(
+      logDumpSources(
+        "http://localhost:4310",
+        "http://localhost:4310/",
+        workers,
+      ),
+    ).toEqual([
+      { source: "client" },
+      { source: "server" },
+      { source: "worker" },
+    ]);
+    expect(
+      logDumpSources(
+        "https://remote.example/",
+        "http://localhost:4310",
+        workers,
+      ),
+    ).toEqual([
+      { source: "client" },
+      { source: "linkedWorker", workerId: "desktop-remote" },
+    ]);
+  });
+
+  it("still dumps client logs when optional source discovery fails", async () => {
+    tauri.invoke.mockImplementation((command: string) =>
+      command === "dump_local_logs"
+        ? Promise.resolve({
+            directory: "/Downloads/Cantrip-logs-test",
+            files: ["client.jsonl"],
+            warnings: [],
+          })
+        : Promise.reject(new Error("unavailable")),
+    );
+    const result = await dumpLocalLogs("https://remote.example");
+    expect(tauri.invoke).toHaveBeenCalledWith("dump_local_logs", {
+      sources: [{ source: "client" }],
+    });
+    expect(result.warnings).toHaveLength(2);
+  });
+
+  it("rejects dumps outside the desktop app", async () => {
+    tauri.isTauri.mockReturnValue(false);
+    await expect(dumpLocalLogs("https://remote.example")).rejects.toThrow(
+      "desktop app",
+    );
+    expect(tauri.invoke).not.toHaveBeenCalled();
+  });
+
   beforeEach(() => {
     tauri.invoke.mockReset();
     tauri.isTauri.mockReturnValue(true);

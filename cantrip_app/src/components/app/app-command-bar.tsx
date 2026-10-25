@@ -8,11 +8,15 @@ import type {
 import { isWorkerBoundFolderProject } from "@cantrip/protocol";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Command as CommandPrimitive } from "cmdk";
+import { isTauri } from "@tauri-apps/api/core";
+import { dumpLocalLogs } from "@/lib/local-service-logs";
+import { getActiveServerUrl } from "@/lib/server-connections";
 import {
   Bot,
   Check,
   CornerDownLeft,
   FileCode2,
+  FileDown,
   Folder,
   FolderGit2,
   FolderOpen,
@@ -220,6 +224,8 @@ export function AppCommandBar({
   const [debouncedFileQuery, setDebouncedFileQuery] = useState("");
   const [scopes, setScopes] = useState<CommandBarScope[]>([]);
   const [folderSubmitting, setFolderSubmitting] = useState(false);
+  const [dumpingLogs, setDumpingLogs] = useState(false);
+  const dumpingLogsRef = useRef(false);
   const [pendingRepositoryId, setPendingRepositoryId] = useState<string | null>(
     null,
   );
@@ -678,6 +684,45 @@ export function AppCommandBar({
                   </CommandGroup>
                 ) : null}
                 <CommandGroup heading="Actions">
+                  {isTauri() ? (
+                    <CommandItem
+                      value="action Dump logs export diagnostics client server worker downloads"
+                      disabled={dumpingLogs}
+                      className="gap-3 rounded-lg px-3 py-2.5"
+                      onSelect={() => {
+                        if (dumpingLogsRef.current) return;
+                        dumpingLogsRef.current = true;
+                        setDumpingLogs(true);
+                        setOperationError(null);
+                        void dumpLocalLogs(getActiveServerUrl())
+                          .then((result) => {
+                            if (result.warnings.length) {
+                              setOperationError(
+                                `Logs saved to ${result.directory}. ${result.warnings.join(" ")}`,
+                              );
+                            } else {
+                              onOpenChange(false);
+                            }
+                          })
+                          .catch((error: unknown) =>
+                            setOperationError(errorMessage(error)),
+                          )
+                          .finally(() => {
+                            dumpingLogsRef.current = false;
+                            setDumpingLogs(false);
+                          });
+                      }}
+                    >
+                      {dumpingLogs ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <FileDown className="size-4" />
+                      )}
+                      <span className="font-medium">
+                        {dumpingLogs ? "Dumping logs…" : "Dump logs"}
+                      </span>
+                    </CommandItem>
+                  ) : null}
                   {actions.map((action) => (
                     <CommandItem
                       key={action.id}

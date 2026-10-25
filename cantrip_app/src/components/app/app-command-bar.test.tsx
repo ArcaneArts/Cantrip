@@ -9,6 +9,11 @@ import { describe, expect, it, vi } from "vitest";
 
 import { AppCommandBar } from "./app-command-bar";
 
+vi.mock("@tauri-apps/api/core", () => ({
+  isTauri: () => true,
+  invoke: vi.fn(),
+}));
+
 vi.mock("@/components/ui/dialog", () => ({
   Dialog: ({ children }: PropsWithChildren) => <>{children}</>,
   DialogContent: ({
@@ -117,6 +122,7 @@ describe("app command bar", () => {
     expect(markup).not.toContain("top-[15vh]");
     expect(markup).toContain("Projects");
     expect(markup).toContain("Project scripts");
+    expect(markup).toContain("Dump logs");
     expect(markup).not.toContain("Files");
     expect(markup).toContain("pnpm run dev");
     expect(markup).toContain("ArcaneArts/Cantrip · Primary");

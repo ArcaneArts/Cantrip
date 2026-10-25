@@ -991,6 +991,166 @@ pub fn open_local_logs_directory(
         .map_err(|error| format!("Could not open the Cantrip logs directory: {error}"))
 }
 
+#[derive(Serialize)]
+pub struct LogDumpResult {
+    directory: String,
+    files: Vec<String>,
+    warnings: Vec<String>,
+}
+
+fn copy_latest_log(
+    directory: &Path,
+    source: &str,
+    destination: &Path,
+) -> Result<Option<String>, String> {
+    let entries = match fs::read_dir(directory) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(format!("Could not list {source} logs: {error}")),
+    };
+    let mut latest: Option<ManagedArchiveFile> = None;
+    for entry in entries {
+        let entry = entry.map_err(|error| format!("Could not list {source} logs: {error}"))?;
+        // Do not export symlink targets or archives, only managed JSONL files.
+        if !entry
+            .file_type()
+            .map_err(|error| error.to_string())?
+            .is_file()
+        {
+            continue;
+        }
+        if let Some(file) = parse_managed_archive_file(entry.path(), source) {
+            if !file.compressed
+                && latest
+                    .as_ref()
+                    .is_none_or(|old| (&file.day, file.part) > (&old.day, old.part))
+            {
+                latest = Some(file);
+            }
+        }
+    }
+    let Some(latest) = latest else {
+        return Ok(None);
+    };
+    let name = latest
+        .path
+        .file_name()
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
+    fs::create_dir_all(destination).map_err(|error| error.to_string())?;
+    let output = destination.join(&name);
+    let mut input = File::open(&latest.path)
+        .map_err(|error| error.to_string())?
+        .take(latest.size);
+    let mut target = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&output)
+        .map_err(|error| error.to_string())?;
+    set_private_file_permissions(&output);
+    std::io::copy(&mut input, &mut target)
+        .map_err(|error| format!("Could not copy {source} log: {error}"))?;
+    Ok(Some(output.to_string_lossy().into_owned()))
+}
+
+#[tauri::command]
+pub async fn dump_local_logs(
+    app: AppHandle,
+    logs: State<'_, LocalServiceLogs>,
+    workers: State<'_, DesktopWorkers>,
+    sources: Vec<LocalServiceLogReadRequest>,
+) -> Result<LogDumpResult, String> {
+    let downloads = app
+        .path()
+        .download_dir()
+        .map_err(|error| format!("Could not resolve Downloads: {error}"))?;
+    let mut selected = Vec::new();
+    let mut warnings = Vec::new();
+    for request in sources {
+        let (directory, source, label) = match request.source {
+            LocalLogSource::Client => (
+                logs.client_directory.clone(),
+                "client",
+                "client".to_string(),
+            ),
+            LocalLogSource::Server => (
+                logs.server_directory.clone(),
+                "server",
+                "server".to_string(),
+            ),
+            LocalLogSource::Worker => (
+                logs.worker_directory.clone(),
+                "worker",
+                "worker".to_string(),
+            ),
+            LocalLogSource::LinkedWorker => {
+                let id = request
+                    .worker_id
+                    .as_deref()
+                    .ok_or("Choose a linked worker.")?;
+                match workers.service_log_path(id) {
+                    Ok(directory) => (directory, "worker", id.to_string()),
+                    Err(error) => {
+                        warnings.push(error);
+                        continue;
+                    }
+                }
+            }
+        };
+        if !selected.iter().any(|(path, _, _)| path == &directory) {
+            selected.push((directory, source, label));
+        }
+    }
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let directory = create_log_dump_directory(&downloads)?;
+        let mut result = LogDumpResult {
+            directory: directory.to_string_lossy().into_owned(),
+            files: Vec::new(),
+            warnings,
+        };
+        for (path, source, label) in selected {
+            let destination = if label == source {
+                directory.clone()
+            } else {
+                directory.join(label)
+            };
+            match copy_latest_log(&path, source, &destination) {
+                Ok(Some(file)) => result.files.push(file),
+                Ok(None) => {}
+                Err(error) => result.warnings.push(error),
+            }
+        }
+        if result.files.is_empty() {
+            result
+                .warnings
+                .push("No uncompressed logs were available.".into());
+        }
+        Ok::<_, String>(result)
+    })
+    .await
+    .map_err(|error| error.to_string())??;
+    app.opener()
+        .open_path(&result.directory, None::<&str>)
+        .map_err(|error| {
+            format!(
+                "Logs saved to {}, but could not open the folder: {error}",
+                result.directory
+            )
+        })?;
+    Ok(result)
+}
+
+fn create_log_dump_directory(downloads: &Path) -> Result<PathBuf, String> {
+    let directory = downloads.join(format!(
+        "Cantrip-logs-{}-{}",
+        chrono::Local::now().format("%Y-%m-%d_%H-%M-%S%.3f"),
+        uuid::Uuid::new_v4()
+    ));
+    fs::create_dir(&directory).map_err(|error| format!("Could not create log dump: {error}"))?;
+    Ok(directory)
+}
+
 #[tauri::command]
 pub fn read_local_service_logs(
     request: LocalServiceLogReadRequest,
@@ -1050,6 +1210,67 @@ fn timestamp_now() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dump_folders_are_timestamped_and_never_reused() {
+        let root = tempfile::tempdir().unwrap();
+        let first = create_log_dump_directory(root.path()).unwrap();
+        let second = create_log_dump_directory(root.path()).unwrap();
+        assert_ne!(first, second);
+        assert!(first.is_dir() && second.is_dir());
+        let name = first.file_name().unwrap().to_string_lossy();
+        assert!(name.starts_with("Cantrip-logs-"));
+        chrono::NaiveDateTime::parse_from_str(&name[13..36], "%Y-%m-%d_%H-%M-%S%.3f").unwrap();
+    }
+
+    #[test]
+    fn dump_copies_only_latest_uncompressed_part_and_keeps_originals() {
+        let root = tempfile::tempdir().unwrap();
+        let output = tempfile::tempdir().unwrap();
+        for (name, content) in [
+            ("client-2026-10-24.part-0001.jsonl", "older"),
+            ("client-2026-10-25.part-0001.jsonl", "first"),
+            ("client-2026-10-25.part-0002.jsonl", "latest\n"),
+            ("client-2026-10-26.part-0001.jsonl.gz", "compressed"),
+            ("server-2026-10-26.part-0001.jsonl", "other source"),
+        ] {
+            fs::write(root.path().join(name), content).unwrap();
+        }
+        let copied = copy_latest_log(root.path(), "client", output.path())
+            .unwrap()
+            .unwrap();
+        assert!(copied.ends_with("client-2026-10-25.part-0002.jsonl"));
+        assert_eq!(fs::read_to_string(copied).unwrap(), "latest\n");
+        assert_eq!(fs::read_dir(output.path()).unwrap().count(), 1);
+        assert_eq!(fs::read_dir(root.path()).unwrap().count(), 5);
+    }
+
+    #[test]
+    fn dump_skips_missing_or_compressed_only_sources() {
+        let root = tempfile::tempdir().unwrap();
+        let output = root.path().join("output");
+        assert_eq!(
+            copy_latest_log(&root.path().join("missing"), "worker", &output).unwrap(),
+            None
+        );
+        fs::write(
+            root.path().join("worker-2026-10-25.part-0001.jsonl.gz"),
+            "compressed",
+        )
+        .unwrap();
+        assert_eq!(
+            copy_latest_log(root.path(), "worker", &output).unwrap(),
+            None
+        );
+        assert!(!output.exists());
+        fs::write(
+            root.path().join("worker-2026-10-25.part-0002.jsonl"),
+            "latest",
+        )
+        .unwrap();
+        fs::write(&output, "not a directory").unwrap();
+        assert!(copy_latest_log(root.path(), "worker", &output).is_err());
+    }
 
     #[test]
     fn source_enum_rejects_paths() {
