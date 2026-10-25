@@ -42,10 +42,10 @@ The harness performs these UI actions automatically:
    right-hand neighbor, preserve the original dirty draft, and leave desktop's
    layout unchanged.
 10. Open another file on desktop and use the context menu's Keep Open action.
-   Inject one rejected pin request: the preview must remain intact and retryable.
-   Retry successfully, retaining the same tab identity and view state.
-   Mobile's authoritative layout must remain
-   unchanged. No mobile action may have changed desktop's layout.
+    Inject one rejected pin request: the preview must remain intact and retryable.
+    Retry successfully, retaining the same tab identity and view state.
+    Mobile's authoritative layout must remain
+    unchanged. No mobile action may have changed desktop's layout.
 
 ## Artifacts and limits
 
