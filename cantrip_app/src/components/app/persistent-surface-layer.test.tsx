@@ -50,6 +50,55 @@ vi.mock("@/components/workspace/project-tab-bar", () => ({
 }));
 
 describe("persistent surface layer", () => {
+  it.each([false, true])(
+    "routes Explorer files through ownership on desktop=%s",
+    async (desktopRuntime) => {
+      (
+        globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+      ).IS_REACT_ACT_ENVIRONMENT = true;
+      const openProjectExplorerFile = vi.fn();
+      const openExplorerFileWindow = vi.fn(async () => {});
+      const explorer = { projectId: "project", worktreeId: "checkout" };
+      const entry = { path: "src/main.rs" };
+      let tree!: TestRenderer.ReactTestRenderer;
+      await act(async () => {
+        tree = TestRenderer.create(
+          <PersistentSurfaceLayer
+            bindings={{
+              appMode: "ide",
+              openExplorers: [],
+              projectSurfaces: [],
+              desktopRuntime,
+              openProjectExplorerFile,
+              openExplorerFileWindow,
+            }}
+          />,
+        );
+      });
+      try {
+        const open = surfaceProps.explorer!.onOpenFile as Function;
+        expect(open).toBeTypeOf("function");
+        await open(explorer, entry);
+        if (desktopRuntime) {
+          expect(openExplorerFileWindow).toHaveBeenCalledExactlyOnceWith(
+            explorer,
+            entry,
+          );
+          expect(openProjectExplorerFile).not.toHaveBeenCalled();
+        } else {
+          expect(openProjectExplorerFile).toHaveBeenCalledExactlyOnceWith(
+            "project",
+            "checkout",
+            "src/main.rs",
+          );
+          expect(openExplorerFileWindow).not.toHaveBeenCalled();
+        }
+      } finally {
+        await act(async () => tree.unmount());
+      }
+    },
+  );
+
   it("matches Code migration receipts by view identity, not resource identity", async () => {
     (
       globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }

@@ -611,7 +611,16 @@ export function PersistentSurfaceLayer({
           onChanged={handleExplorerChanged}
           onHeaderChange={setExplorerHeader}
           onLifecycleChange={handleExplorerLifecycleChange}
-          onOpenFile={desktopRuntime ? openExplorerFileWindow : undefined}
+          onOpenFile={
+            desktopRuntime
+              ? openExplorerFileWindow
+              : (explorer, entry) =>
+                  openProjectExplorerFile(
+                    explorer.projectId,
+                    explorer.worktreeId,
+                    entry.path,
+                  )
+          }
           onOpenGraphFile={(explorer, path) =>
             openProjectExplorerFile(
               explorer.projectId,
