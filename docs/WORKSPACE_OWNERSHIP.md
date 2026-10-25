@@ -2064,3 +2064,23 @@ passed 30. The final close-in-flight refinement is unit-tested; the native build
 used for this run predates that refinement. Source review is complete; PR
 delivery and the wider goal acceptance matrix remain outstanding at this
 checkpoint. This record does not claim goal completion.
+
+### Legacy import contract verification follow-up
+
+Legacy native file import merged in #2247 (`a5e9e82a1`). Primary was fast-forwarded
+and matched the reviewed tree. Its cross-platform CI exposed two omitted contract
+updates: the root protocol export baseline did not enumerate the four additive
+legacy-import exports, and the reviewed server-route inventory omitted the new
+import endpoint. The original baseline fingerprint remains unchanged; the new
+exports are explicitly named and asserted. The endpoint was reviewed against its
+strict identity-only request, owner/project authorization, immutable document
+lookup, and opaque-label response before updating the inventory digest. The
+generated inventory adds exactly that route, with associated counts and source
+line updates; it does not reclassify unrelated routes.
+
+The follow-up passes all 694 protocol tests, the actual server-boundary audit,
+and 19 route-parser/content-classification tests. The preceding cycle's native
+editor/runtime jobs passed on Linux, macOS and Windows. Remaining CI is still
+being observed. Restored Code buffers still use the inline compatibility reader;
+converting them into first-class file tabs, conflict reconciliation, and the
+broader native/recovery acceptance matrix remain required, not waived.
