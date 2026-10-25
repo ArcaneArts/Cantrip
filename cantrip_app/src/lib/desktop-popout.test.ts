@@ -92,8 +92,6 @@ import {
   observeDesktopWindowFocus,
   watchWorkspaceNativeWindow,
   openSyntheticBuildProgressWindow,
-  openDesktopPopoutGroup,
-  openDesktopPopoutPane,
   openWorkspaceTransferWindow,
   reopenWorkspaceWindow,
   openDesktopStandaloneChatFile,
@@ -193,7 +191,7 @@ describe("desktop pop-out groups", () => {
     expect(desktopBackgroundThrottlingPolicy).toBe("disabled");
   });
 
-  it("lets detached chat groups receive frontend file drops", async () => {
+  it("lets workspace-owned chat windows receive frontend file drops", async () => {
     tauri.isTauri.mockReturnValue(true);
     vi.stubGlobal("window", {
       location: { pathname: "/" },
@@ -201,13 +199,25 @@ describe("desktop pop-out groups", () => {
 
     try {
       await expect(
-        openDesktopPopoutGroup(target, "Detached chat"),
+        openWorkspaceTransferWindow(
+          {
+            activeTabKey: target.activeTabKey,
+            paneId: target.groupId,
+            projectId: target.projectId,
+            transfer: {
+              id: "transfer",
+              workspaceId: "workspace",
+              windowId: "owned-chat",
+              generation: 0,
+            },
+          },
+          "Detached chat",
+        ),
       ).resolves.toBe("created");
 
-      expect(
-        webviews.windows.get(desktopPopoutGroupWindowLabel(target.groupId))
-          ?.options,
-      ).toMatchObject({ dragDropEnabled: false });
+      expect(webviews.windows.get("owned-chat")?.options).toMatchObject({
+        dragDropEnabled: false,
+      });
     } finally {
       for (const window of webviews.windows.values()) await window.close();
       tauri.isTauri.mockReturnValue(false);
@@ -407,25 +417,6 @@ describe("desktop pop-out panes", () => {
     expect(desktopPopoutPaneWindowLabel("pane with spaces")).toBe(
       "cantrip-pane-pane_with_spaces",
     );
-  });
-
-  it("opens the canonical pane window", async () => {
-    tauri.isTauri.mockReturnValue(true);
-    vi.stubGlobal("window", { location: { pathname: "/" } });
-    try {
-      await expect(
-        openDesktopPopoutPane(target, "Detached pane"),
-      ).resolves.toBe("created");
-      expect(
-        webviews.windows.get(desktopPopoutPaneWindowLabel(target.paneId))
-          ?.options,
-      ).toMatchObject({ dragDropEnabled: false });
-    } finally {
-      for (const window of webviews.windows.values()) await window.close();
-      tauri.isTauri.mockReturnValue(false);
-      webviews.windows.clear();
-      vi.unstubAllGlobals();
-    }
   });
 
   it("discovers multiple canonical and compatibility pane windows", async () => {

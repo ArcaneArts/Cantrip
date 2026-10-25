@@ -1683,7 +1683,6 @@ export function App() {
     projectOverviewSelected,
     queryClient,
     resolvedProjectOverviewWorktreeId,
-    selectedExplorer,
     selectedProject,
     selectedProjectId,
     selectedPaneId: selectedPane?.id ?? null,

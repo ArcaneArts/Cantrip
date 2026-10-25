@@ -2527,3 +2527,39 @@ focused suites pass 49 tests and app typechecking passes. This does not establis
 remote input delivery or full detach/return acceptance. A fresh broad baseline
 check stopped at the unchanged 5-second maximum-size crypto round-trip timeout;
 that exact file passed both tests when rerun alone. The full check is not green.
+
+### Native ownership acceptance and obsolete popout producer retirement
+
+PR #2264 merged as `0d5df9dc1`. Subsequent native acceptance used a separate
+AppKit counter/text target to remove same-process focus ambiguity. Remote input
+advanced the counter before detach, while detached, and after returning to main;
+keyboard input reached the target after return. WorkerLink logs show source
+closure before destination start and destination closure before main restart,
+with the same resource ID. The rebuilt popout used the full pane width.
+
+Two simultaneously detached owners left main empty, without disabled duplicate
+tabs or a vacated split. Closing Remote Desktop's last view closed only that
+window. Opening the dirty file from main's Explorer focused its existing native
+owner. Closing that window returned its draft without resurrecting the closed
+Remote Desktop view. A whole-pane move then preserved two dirty files, including
+the inactive one, at the destination and after return. Both disk files retained
+their original baseline bytes. Evidence is retained in the native-input lane's
+`.qa/20261025-124712-verify-visible-native-remote-des/` observations and audit.
+
+The source audit found the obsolete local-claim/save-before-popout producer still
+behind the owned transfer branch. It is removed, along with unused group/pane
+native creation helpers. A selected view without a workspace connection exposes
+no detach action and cannot fall back to legacy claims or save-before-move.
+Old route parsing, native-label discovery and import remain for persisted-window
+compatibility; the revisioned transfer coordinator is the only producer of new
+tab/pane popouts. Project overview and standalone chat-file windows are unchanged.
+
+The new regression covers missing authority; existing tests retain transfer
+success, failure and synchronous duplicate-action suppression. Frontend file-drop
+coverage now exercises the actual workspace-owned native creation path rather
+than a retired group producer. All five focused suites passed (65 tests), app
+typechecking and production build passed, and formatting/diff checks passed.
+The first fresh-worktree test attempt could not load unbuilt shared packages;
+building dependencies resolved that setup failure. No assertion was weakened.
+This increment is not a full-goal completion claim; the fresh full check and
+remaining requirement audit are still pending.

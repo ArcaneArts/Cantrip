@@ -562,33 +562,6 @@ export async function closeRetiredWorkspaceWindow(
   await current.close();
 }
 
-export async function openDesktopPopoutGroup(
-  target: DesktopPopoutGroupTarget,
-  title: string,
-  position?: { x: number; y: number },
-): Promise<"created" | "focused"> {
-  return openDesktopWindow(
-    desktopPopoutGroupWindowLabel(target.groupId),
-    desktopPopoutGroupSearch(target),
-    title,
-    position,
-  );
-}
-
-export async function openDesktopPopoutPane(
-  target: DesktopPopoutPaneTarget,
-  title: string,
-  position?: { x: number; y: number },
-): Promise<"created" | "focused"> {
-  if (await focusDesktopPopoutPane(target.paneId)) return "focused";
-  return openDesktopWindow(
-    desktopPopoutPaneWindowLabel(target.paneId),
-    desktopPopoutPaneSearch(target),
-    title,
-    position,
-  );
-}
-
 /** Uses the server-reserved window identity, not a pane-derived legacy label.
  * Native creation is not readiness: the coordinator reveals it after handoff. */
 export async function openWorkspaceTransferWindow(
