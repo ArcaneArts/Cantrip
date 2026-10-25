@@ -25,6 +25,7 @@ const webviews = vi.hoisted(() => {
     });
     private destroyed: (() => void) | undefined;
     readonly hide = vi.fn(async () => undefined);
+    readonly destroy = this.close;
     readonly setFocus = vi.fn(async () => undefined);
     readonly show = vi.fn(async () => undefined);
     readonly unminimize = vi.fn(async () => undefined);
@@ -54,6 +55,22 @@ vi.mock("@tauri-apps/api/webviewWindow", () => ({
   WebviewWindow: webviews.MockWebviewWindow,
 }));
 vi.mock("@/lib/client-log-relay", () => ({ clientLogger: logs }));
+
+it("destroys only a cancelled workspace destination, never main", async () => {
+  tauri.isTauri.mockReturnValue(true);
+  const window = new webviews.MockWebviewWindow(
+    "cantrip-pane-workspace-cancelled",
+  );
+  try {
+    await desktopPopout.destroyCancelledWorkspaceWindow(window.label);
+    expect(window.destroy).toHaveBeenCalledOnce();
+    await expect(
+      desktopPopout.destroyCancelledWorkspaceWindow("main"),
+    ).rejects.toThrow("cancelled transfer destination");
+  } finally {
+    tauri.isTauri.mockReturnValue(false);
+  }
+});
 import {
   desktopBackgroundThrottlingPolicy,
   desktopExplorerFileSearch,

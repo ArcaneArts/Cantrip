@@ -148,6 +148,7 @@ function setup(returning = false) {
     }),
   };
   const dependencies = {
+    destroyCancelled: vi.fn(async (_id: string) => {}),
     allocateId: () => `identity-${++serial}`,
     watch: vi.fn(async (_id: string, _onClosed: () => void) => vi.fn()),
     open: vi.fn(async () => {
@@ -189,6 +190,59 @@ function setup(returning = false) {
   };
 }
 
+it.each(["readiness", "restoration"] as const)(
+  "cancels a destination that never acknowledges %s before resuming drafts",
+  async (phase) => {
+    vi.useFakeTimers();
+    try {
+      const f = setup();
+      if (phase === "readiness")
+        f.dependencies.open.mockResolvedValue("created");
+      else f.channel.sendSnapshot.mockResolvedValue(undefined);
+      const outcome = expect(
+        detachWorkspaceViews(f.input, f.dependencies),
+      ).rejects.toThrow("Workspace transfer timed out");
+      await vi.advanceTimersByTimeAsync(29_999);
+      expect(f.lease.resume).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      await outcome;
+      expect(f.events.slice(-2)).toEqual(["cancel-transfer", "resume"]);
+      expect(f.layout().pendingTransfers ?? []).toEqual([]);
+      expect(f.layout().windows[0]!.panes[0]!.tabs[0]!.id).toBe("tab");
+      expect(f.lease.retire).not.toHaveBeenCalled();
+      expect(f.dependencies.destroyCancelled).toHaveBeenCalledOnce();
+      expect(f.channel.dispose).toHaveBeenCalledOnce();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  },
+);
+
+it("does not infer cancellation or destroy a destination when timeout recovery fails", async () => {
+  vi.useFakeTimers();
+  try {
+    const f = setup();
+    const original = f.dispatch.getMockImplementation()!;
+    f.dispatch.mockImplementation(async (action) => {
+      if (action.type === "cancel-transfer")
+        throw new Error("server unavailable");
+      return original(action);
+    });
+    f.dependencies.open.mockResolvedValue("created");
+    const outcome = expect(
+      detachWorkspaceViews(f.input, f.dependencies),
+    ).rejects.toThrow("retained pending ownership recovery");
+    await vi.advanceTimersByTimeAsync(30_000);
+    await outcome;
+    expect(f.layout().pendingTransfers).toHaveLength(1);
+    expect(f.lease.resume).not.toHaveBeenCalled();
+    expect(f.dependencies.destroyCancelled).not.toHaveBeenCalled();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
 it("resumes a live return source after authoritative destination replacement", async () => {
   const f = setup(true);
   f.channel.sendSnapshot.mockImplementation(async () => {});
@@ -202,9 +256,58 @@ it("resumes a live return source after authoritative destination replacement", a
   expect(f.lease.resume).toHaveBeenCalledOnce();
   expect(f.lease.retire).not.toHaveBeenCalled();
   expect(f.events).not.toContain("cancel-transfer");
+  expect(f.dependencies.destroyCancelled).not.toHaveBeenCalled();
   expect(
     f.layout().windows.find(({ id }) => id === "popout")!.panes[0]!.tabs[0]!.id,
   ).toBe("tab");
+});
+
+it("keeps a failed return window alive when main does not acknowledge readiness", async () => {
+  vi.useFakeTimers();
+  try {
+    const f = setup(true);
+    f.input.activate.mockResolvedValue(undefined);
+    const outcome = expect(
+      detachWorkspaceViews(f.input, f.dependencies),
+    ).rejects.toThrow("destination readiness");
+    await vi.advanceTimersByTimeAsync(30_000);
+    await outcome;
+    expect(f.lease.resume).toHaveBeenCalledOnce();
+    expect(f.dependencies.destroyCancelled).not.toHaveBeenCalled();
+    expect(
+      f.layout().windows.find(({ id }) => id === "popout")!.panes[0]!.tabs[0]!
+        .id,
+    ).toBe("tab");
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("never applies the acknowledgement deadline to a pending commit", async () => {
+  vi.useFakeTimers();
+  try {
+    const f = setup();
+    const original = f.dispatch.getMockImplementation()!;
+    let finish!: () => void;
+    const held = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    f.dispatch.mockImplementation(async (action) => {
+      if (action.type === "commit-transfer") await held;
+      return original(action);
+    });
+    const result = detachWorkspaceViews(f.input, f.dependencies);
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(f.lease.retire).toHaveBeenCalledOnce();
+    expect(f.lease.resume).not.toHaveBeenCalled();
+    expect(f.events).not.toContain("cancel-transfer");
+    expect(vi.getTimerCount()).toBe(0);
+    finish();
+    await result;
+    expect(f.layout().windows[0]!.panes).toEqual([]);
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 it("never resumes the old source after its attachment is replaced", async () => {

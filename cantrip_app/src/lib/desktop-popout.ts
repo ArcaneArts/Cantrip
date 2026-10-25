@@ -468,6 +468,17 @@ export async function watchDesktopPopoutGroup(
   }, onClosed);
 }
 
+/** Caller must first confirm cancellation and absence of destination ownership. */
+export async function destroyCancelledWorkspaceWindow(
+  label: string,
+): Promise<void> {
+  if (!label.startsWith("cantrip-pane-workspace-"))
+    throw new Error("Only a cancelled transfer destination may be destroyed.");
+  if (!isDesktopRuntime()) return;
+  const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
+  await (await WebviewWindow.getByLabel(label))?.destroy();
+}
+
 /** Observe an exact ownership window, rather than deriving a label from a pane. */
 export async function watchWorkspaceNativeWindow(
   label: string,
