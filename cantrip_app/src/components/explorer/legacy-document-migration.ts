@@ -15,6 +15,21 @@ export interface LegacyDocumentCandidate {
   documents: EditorDocumentTransfer[];
 }
 
+export type LegacyDraftChoice = "live" | "recovered";
+export class LegacyDraftConflict extends Error {
+  constructor(
+    readonly live: EditorDocumentTransfer,
+    readonly recovered: EditorDocumentTransfer,
+  ) {
+    super(
+      "Legacy migration recovery conflicts with a live draft. Both drafts have been retained.",
+    );
+  }
+}
+export type ResolveLegacyDraft = (
+  conflict: LegacyDraftConflict,
+) => Promise<LegacyDraftChoice | null>;
+
 /** Merge an interrupted migration journal without allowing a fresh disk read
  * to replace an unsaved buffer. Divergent dirty versions need user resolution;
  * neither snapshot may be checkpointed over the other in that case. */
@@ -22,6 +37,7 @@ export function mergeLegacyDocumentRecovery(
   live: unknown,
   recovered: unknown,
   scope: ExplorerTransferScope,
+  choices: ReadonlyMap<string, LegacyDraftChoice> = new Map(),
 ): ExplorerTransferState {
   const current = validateExplorerTransfer(live, scope);
   const previous = validateExplorerTransfer(recovered, scope);
@@ -44,16 +60,48 @@ export function mergeLegacyDocumentRecovery(
       (active.text !== document.text ||
         active.baselineContent !== document.baselineContent ||
         active.version !== document.version)
-    )
-      throw new Error(
-        "Legacy migration recovery conflicts with a live draft. Both drafts have been retained.",
-      );
+    ) {
+      const choice = choices.get(document.id);
+      if (!choice) throw new LegacyDraftConflict(active, document);
+      if (choice === "recovered") documents.set(document.id, document);
+      continue;
+    }
     if (!activeDirty && recoveredDirty) documents.set(document.id, document);
   }
   return {
     ...current,
     documents: { ...current.documents, documents: [...documents.values()] },
   };
+}
+
+/** Choices apply only to these validated snapshots, never to a later retry.
+ * No persistence occurs until every conflict is resolved and ownership is
+ * checked again. Cancellation leaves both inputs unchanged. */
+export async function reconcileLegacyDocumentRecovery(
+  live: unknown,
+  recovered: unknown,
+  scope: ExplorerTransferScope,
+  resolve: ResolveLegacyDraft | undefined,
+  assertCurrent: () => void,
+): Promise<ExplorerTransferState> {
+  const current = validateExplorerTransfer(live, scope);
+  const previous = validateExplorerTransfer(recovered, scope);
+  const choices = new Map<string, LegacyDraftChoice>();
+  for (;;) {
+    assertCurrent();
+    try {
+      return mergeLegacyDocumentRecovery(current, previous, scope, choices);
+    } catch (error) {
+      if (!(error instanceof LegacyDraftConflict) || !resolve) throw error;
+      const choice = await resolve(error);
+      assertCurrent();
+      if (choice !== "live" && choice !== "recovered")
+        throw new Error(
+          "File migration cancelled. Both drafts have been retained.",
+        );
+      choices.set(error.live.id, choice);
+    }
+  }
 }
 
 /** Partition a captured legacy view without discarding inactive buffers. This

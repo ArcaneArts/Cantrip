@@ -10,6 +10,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import type { ExplorerLifecycleActions } from "@/components/explorer/explorer-view";
 import { migrateOwnedLegacyFile } from "@/lib/migrate-owned-legacy-file";
 import type { WorkspaceCommandClient } from "@/lib/workspace-command-client";
+import { useLegacyDraftResolution } from "@/components/explorer/use-legacy-draft-resolution";
 import {
   getNativeCodeLifecycle,
   nativeCodeLifecycleRevision,
@@ -53,6 +54,7 @@ export function useLegacyDocumentMigration({
     [controller, windowId],
   );
   const [revision, setRevision] = useState(0);
+  const resolution = useLegacyDraftResolution(context);
   useEffect(() => {
     if (!controller || !windowId || !state || state.disposed || context.running)
       return;
@@ -103,6 +105,7 @@ export function useLegacyDocumentMigration({
             lifecycle,
             queryClient,
             sourceKind: code ? "code" : "explorer",
+            resolveConflict: resolution.resolve,
           }),
         )
         .catch((error: unknown) => {
@@ -125,6 +128,7 @@ export function useLegacyDocumentMigration({
     codeRevision,
     queryClient,
     revision,
+    resolution.resolve,
   ]);
   const retry = useCallback(() => {
     for (const tabId of context.failures.keys())
@@ -132,5 +136,9 @@ export function useLegacyDocumentMigration({
     context.failures.clear();
     setRevision((value) => value + 1);
   }, [context]);
-  return { error: context.failures.values().next().value ?? null, retry };
+  return {
+    error: context.failures.values().next().value ?? null,
+    retry,
+    dialog: resolution.dialog,
+  };
 }

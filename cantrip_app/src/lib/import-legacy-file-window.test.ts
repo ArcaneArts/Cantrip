@@ -12,6 +12,7 @@ import type {
   ExplorerTransferState,
 } from "@/components/explorer/explorer-view";
 import { createLegacyFileWindowImporter } from "./import-legacy-file-window";
+import type { ResolveLegacyDraft } from "@/components/explorer/legacy-document-migration";
 
 const io = vi.hoisted(() => ({
   records: new Map<string, unknown>(),
@@ -182,16 +183,67 @@ function fixture() {
     activate,
     edit: (text: string) =>
       store.get(capture().documents.documents[0]!.id)!.editExternal(text),
-    run: () =>
+    run: (resolveConflict?: ResolveLegacyDraft) =>
       importLegacyFileWindow({
         projectId: "project",
         explorerId: "explorer",
         path: "first.rs",
         lifecycle,
         activate,
+        resolveConflict,
       }),
   };
 }
+it("imports the chosen recovered journal version without saving the legacy live buffer", async () => {
+  const f = fixture();
+  const capture = structuredClone(f.capture());
+  capture.documents.documents[0]!.text = "chosen recovered legacy draft";
+  io.records.set("cantrip-editor-old/legacy-window:explorer", {
+    capture,
+    request: null,
+  });
+  await f.run(async () => "recovered");
+  expect(
+    io.records.get(
+      "legacy-window:cantrip-editor-old:doc:first.rs/doc:first.rs",
+    ),
+  ).toMatchObject({
+    documents: { documents: [{ text: "chosen recovered legacy draft" }] },
+  });
+  expect(f.capture().documents.documents[0]!.text).toBe("dirty:first.rs");
+  expect(f.activate).toHaveBeenCalledOnce();
+});
+it("cancels legacy-window reconciliation without changing recovery or activating ownership", async () => {
+  const f = fixture();
+  const capture = structuredClone(f.capture());
+  capture.documents.documents[0]!.text = "other legacy draft";
+  const journal = { capture, request: null };
+  io.records.set("cantrip-editor-old/legacy-window:explorer", journal);
+  await expect(f.run(async () => null)).rejects.toThrow("cancelled");
+  expect(io.records.get("cantrip-editor-old/legacy-window:explorer")).toEqual(
+    journal,
+  );
+  expect(io.events).not.toContain("retire");
+  expect(f.activate).not.toHaveBeenCalled();
+  expect(io.events).toContain("resume");
+});
+it("does not persist a legacy-window choice after the account changes", async () => {
+  const f = fixture();
+  const capture = structuredClone(f.capture());
+  capture.documents.documents[0]!.text = "other legacy draft";
+  const journal = { capture, request: null };
+  io.records.set("cantrip-editor-old/legacy-window:explorer", journal);
+  await expect(
+    f.run(async () => {
+      io.current = false;
+      return "live";
+    }),
+  ).rejects.toThrow("account changed");
+  expect(io.records.get("cantrip-editor-old/legacy-window:explorer")).toEqual(
+    journal,
+  );
+  expect(f.activate).not.toHaveBeenCalled();
+});
 it("checkpoints selected and inactive drafts before importing and activating the same host", async () => {
   const f = fixture();
   await f.run();

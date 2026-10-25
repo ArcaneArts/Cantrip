@@ -18,6 +18,7 @@ import { clientLogger, operationalErrorMetadata } from "@/lib/client-log-relay";
 import { createLegacyFileWindowImporter } from "@/lib/import-legacy-file-window";
 import { activateWorkspaceWindowRoute } from "@/lib/workspace-window-route";
 import { Button } from "@/components/ui/button";
+import { useLegacyDraftResolution } from "./use-legacy-draft-resolution";
 
 function fileName(path: string): string {
   return path.split("/").at(-1) || path;
@@ -52,6 +53,7 @@ export function ExplorerFilePopout({
     () => createLegacyFileWindowImporter(),
     [explorer?.id, path],
   );
+  const resolution = useLegacyDraftResolution(importLegacyFileWindow);
   const onLifecycleChange = useCallback(
     (_id: string, actions: ExplorerLifecycleActions | null) => {
       lifecycle.current = actions;
@@ -83,6 +85,7 @@ export function ExplorerFilePopout({
           path,
           lifecycle: actions,
           activate: activateWorkspaceWindowRoute,
+          resolveConflict: resolution.resolve,
         }),
       )
       .catch((failure: unknown) => {
@@ -103,6 +106,7 @@ export function ExplorerFilePopout({
     lifecycleRevision,
     attempt,
     importLegacyFileWindow,
+    resolution.resolve,
   ]);
 
   useEffect(() => {
@@ -122,6 +126,7 @@ export function ExplorerFilePopout({
 
   return (
     <main className="flex h-svh min-h-0 flex-col overflow-hidden bg-background text-foreground">
+      {resolution.dialog}
       {overlayTitlebar ? (
         <header
           className="h-8 shrink-0 bg-background"

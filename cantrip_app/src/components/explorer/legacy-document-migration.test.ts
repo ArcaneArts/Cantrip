@@ -1,4 +1,4 @@
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import {
   EditorSessionStore,
   editorDocumentId,
@@ -7,6 +7,7 @@ import {
   bindLegacyDocument,
   planLegacyDocuments,
   mergeLegacyDocumentRecovery,
+  reconcileLegacyDocumentRecovery,
 } from "./legacy-document-migration";
 import type { ExplorerTransferState } from "./explorer-view";
 
@@ -18,6 +19,80 @@ const scope = {
   workerId: "worker",
   worktreeId: "worktree",
 };
+
+it.each(["live", "recovered"] as const)(
+  "resolves each conflicting draft using explicit %s choices",
+  async (choice) => {
+    const live = fixture();
+    const recovered = structuredClone(live);
+    for (const doc of recovered.documents.documents) doc.text += " recovered";
+    const before = structuredClone([live, recovered]);
+    const resolve = vi.fn(async () => choice);
+    const result = await reconcileLegacyDocumentRecovery(
+      live,
+      recovered,
+      scope,
+      resolve,
+      () => {},
+    );
+    expect(result.documents).toEqual(
+      (choice === "live" ? live : recovered).documents,
+    );
+    expect(resolve).toHaveBeenCalledTimes(2);
+    expect([live, recovered]).toEqual(before);
+  },
+);
+
+it("cancels without applying earlier per-file choices or mutating snapshots", async () => {
+  const live = fixture();
+  const recovered = structuredClone(live);
+  for (const doc of recovered.documents.documents) doc.text += " recovered";
+  const before = structuredClone([live, recovered]);
+  const resolve = vi
+    .fn()
+    .mockResolvedValueOnce("recovered")
+    .mockResolvedValueOnce(null);
+  await expect(
+    reconcileLegacyDocumentRecovery(live, recovered, scope, resolve, () => {}),
+  ).rejects.toThrow("cancelled");
+  expect([live, recovered]).toEqual(before);
+});
+
+it("rejects ownership changes while the conflict choice is pending", async () => {
+  const live = fixture();
+  const recovered = structuredClone(live);
+  recovered.documents.documents[0]!.version = "new-version";
+  let current = true;
+  await expect(
+    reconcileLegacyDocumentRecovery(
+      live,
+      recovered,
+      scope,
+      async () => {
+        current = false;
+        return "recovered";
+      },
+      () => {
+        if (!current) throw new Error("owner changed");
+      },
+    ),
+  ).rejects.toThrow("owner changed");
+});
+
+it("does not prompt or mutate on invalid recovered scope", async () => {
+  const live = fixture();
+  const resolve = vi.fn();
+  await expect(
+    reconcileLegacyDocumentRecovery(
+      live,
+      { ...live, projectId: "foreign" },
+      scope,
+      resolve,
+      () => {},
+    ),
+  ).rejects.toThrow();
+  expect(resolve).not.toHaveBeenCalled();
+});
 
 function fixture(): ExplorerTransferState {
   const store = new EditorSessionStore();

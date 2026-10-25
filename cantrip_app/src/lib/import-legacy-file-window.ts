@@ -7,7 +7,8 @@ import type { ExplorerLifecycleActions } from "@/components/explorer/explorer-vi
 import { validateExplorerTransfer } from "@/components/explorer/explorer-transfer-state";
 import {
   bindLegacyDocument,
-  mergeLegacyDocumentRecovery,
+  reconcileLegacyDocumentRecovery,
+  type ResolveLegacyDraft,
   planLegacyDocuments,
 } from "@/components/explorer/legacy-document-migration";
 import { workspaceLayoutTransport } from "./api/workspace-layouts";
@@ -34,6 +35,7 @@ type ImportInput = {
   path: string;
   lifecycle: ExplorerLifecycleActions;
   activate(search: string): void;
+  resolveConflict?: ResolveLegacyDraft;
 };
 
 /** Only this live source can advance a checkpoint it wrote itself. A new
@@ -124,10 +126,12 @@ async function importLegacyFileWindow(
         capture.documents.documents.map((document) => [document.id, document]),
       );
       if (knownCheckpoints.get(journalKey) !== JSON.stringify(recovered))
-        capture = mergeLegacyDocumentRecovery(
+        capture = await reconcileLegacyDocumentRecovery(
           capture,
           recovered.capture,
           scope,
+          input.resolveConflict,
+          assertIdentity,
         );
       // The session store correctly refuses to replace any live dirty buffer,
       // even with identical content. Restore only missing/clean sessions.
@@ -237,7 +241,13 @@ async function importLegacyFileWindow(
         );
         assertIdentity();
         if (saved && knownCheckpoints.get(targetKey) !== JSON.stringify(saved))
-          transfer = mergeLegacyDocumentRecovery(transfer, saved, targetScope);
+          transfer = await reconcileLegacyDocumentRecovery(
+            transfer,
+            saved,
+            targetScope,
+            input.resolveConflict,
+            assertIdentity,
+          );
         const bytes = new TextEncoder().encode(JSON.stringify(transfer));
         try {
           await recovery.checkpoint(bytes);

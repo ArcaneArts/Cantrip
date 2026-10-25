@@ -19,6 +19,7 @@ import { getFileDocuments, createFileDocument } from "./api/file-documents";
 import {
   bindLegacyDocument,
   planLegacyDocuments,
+  type ResolveLegacyDraft,
 } from "@/components/explorer/legacy-document-migration";
 
 const io = vi.hoisted(() => ({
@@ -213,7 +214,7 @@ function fixture(
     capture,
     resume,
     controller,
-    run: () =>
+    run: (resolveConflict?: ResolveLegacyDraft) =>
       migrateOwnedLegacyFile({
         controller,
         windowId: "main",
@@ -222,6 +223,7 @@ function fixture(
         lifecycle,
         queryClient: new QueryClient(),
         sourceKind,
+        resolveConflict,
       }),
   };
 }
@@ -246,6 +248,46 @@ it("converts all restored Code drafts without saving or replacing its browser id
   });
   expect(getExplorerMigrationSource).not.toHaveBeenCalled();
   expect(f.resume).not.toHaveBeenCalled();
+});
+
+it("migrates the explicitly selected recovered journal draft without replacing the suspended live buffer", async () => {
+  const f = fixture();
+  const recovered = structuredClone(f.capture());
+  recovered.documents.documents[0]!.text = "chosen recovery";
+  io.records.set("legacy-migration:explorer", recovered);
+  await f.run(async () => "recovered");
+  expect(io.records.get("document:first.rs")).toMatchObject({
+    documents: { documents: [{ text: "chosen recovery" }] },
+  });
+  expect(f.capture().documents.documents[0]!.text).toBe("draft:first.rs");
+  expect(io.events).toContain("dispatch");
+});
+
+it("cancels a target conflict without retiring the source or replacing target recovery", async () => {
+  const f = fixture();
+  const recovered = targetRecovery(f.capture(), 0);
+  recovered.documents.documents[0]!.text = "target alternative";
+  io.records.set(recovered.documentId!, recovered);
+  await expect(f.run(async () => null)).rejects.toThrow("cancelled");
+  expect(io.records.get(recovered.documentId!)).toEqual(recovered);
+  expect(io.events).not.toContain("retire");
+  expect(io.events).not.toContain("dispatch");
+  expect(f.resume).toHaveBeenCalledOnce();
+});
+
+it("checks source ownership again after a user chooses a conflicting target", async () => {
+  const f = fixture();
+  const recovered = targetRecovery(f.capture(), 0);
+  recovered.documents.documents[0]!.text = "target alternative";
+  io.records.set(recovered.documentId!, recovered);
+  await expect(
+    f.run(async () => {
+      f.controller.dispose(new Error("replaced"));
+      return "live";
+    }),
+  ).rejects.toThrow(/ownership changed/);
+  expect(io.records.get(recovered.documentId!)).toEqual(recovered);
+  expect(io.events).not.toContain("dispatch");
 });
 
 it("recovers Code journal selection and inactive drafts after a browser-only restart", async () => {
