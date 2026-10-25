@@ -1,0 +1,78 @@
+name: Rust server replacement
+
+on:
+  pull_request:
+    paths:
+      - cantrip_server_rs/**
+      - cantrip_server/drizzle/**
+      - scripts/server-rust/**
+      - package.json
+      - .github/workflows/rust-server.yml
+      - pnpm-lock.yaml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-server-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contracts:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.93.0
+          components: rustfmt, clippy
+      - name: Windows native PGlite toolchain
+        if: runner.os == 'Windows'
+        uses: egor-tensin/setup-mingw@v2
+        with:
+          platform: x64
+      - name: Windows Rust target and PostgreSQL
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          rustup target add x86_64-pc-windows-gnu
+          choco install postgresql17 --no-progress -y --params '/Password:cantrip-fixture-only /Port:54329'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "CARGO_BUILD_TARGET=x86_64-pc-windows-gnu" >> $env:GITHUB_ENV
+          "CANTRIP_TEST_POSTGRES_BIN_DIR=C:\Program Files\PostgreSQL\17\bin" >> $env:GITHUB_ENV
+      - name: Linux PostgreSQL
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql libssl-dev
+          echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(pg_config --bindir)" >> "$GITHUB_ENV"
+      - name: macOS PostgreSQL
+        if: runner.os == 'macOS'
+        run: |
+          brew install postgresql@18
+          echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(brew --prefix postgresql@18)/bin" >> "$GITHUB_ENV"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol -r build
+      - run: cargo fmt --manifest-path cantrip_server_rs/Cargo.toml -- --check
+      - run: cargo clippy --locked --manifest-path cantrip_server_rs/Cargo.toml --all-targets -- -D warnings
+      - name: Existing schema, all storage modes, transactions and real restart
+        run: cargo test --locked --manifest-path cantrip_server_rs/Cargo.toml -- --nocapture
+      - name: Node and Rust over real HTTP connections
+        run: node scripts/server-rust/compatibility.mjs --report .qa/rust-server/foundation-http.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rust-server-${{ matrix.os }}
+          path: .qa/rust-server/
