@@ -114,6 +114,100 @@ function input() {
   });
 }
 
+it("imports legacy native file windows once, with project authority and immutable document bindings", async () => {
+  const document = (await db.repository.fileDocuments.create(
+    owner,
+    projectId,
+    input(),
+  ))!;
+  const layout = (await db.repository.workspaceLayouts.seed(
+    owner,
+    projectId,
+    randomUUID(),
+    "main",
+  ))!;
+  const request = {
+    windowId: `cantrip-editor-${randomUUID()}`,
+    paneId: randomUUID(),
+    expectedRevision: layout.revision,
+    views: [
+      { tabId: randomUUID(), documentId: document.id, mode: "edit" as const },
+    ],
+  };
+  expect(
+    await db.repository.workspaceLayouts.importLegacyFiles(
+      "other-owner",
+      projectId,
+      layout.id,
+      request,
+    ),
+  ).toBeNull();
+  await expect(
+    db.repository.workspaceLayouts.importLegacyFiles(
+      owner,
+      projectId,
+      layout.id,
+      {
+        ...request,
+        expectedRevision: layout.revision + 1,
+      },
+    ),
+  ).rejects.toMatchObject({ code: "revision" });
+  const explorer = (await db.repository.createExplorer(owner, projectId, {
+    ...protectedExplorerFields(),
+    worktreeId,
+    attachToTabLayout: false,
+  }))!;
+  await expect(
+    db.repository.workspaceLayouts.importLegacyFiles(
+      owner,
+      projectId,
+      layout.id,
+      {
+        ...request,
+        views: [{ ...request.views[0]!, documentId: explorer.id }],
+      },
+    ),
+  ).rejects.toMatchObject({ code: "missing" });
+  expect(
+    await db.repository.workspaceLayouts.get(owner, projectId, layout.id),
+  ).toEqual(layout);
+  const first = (await db.repository.workspaceLayouts.importLegacyFiles(
+    owner,
+    projectId,
+    layout.id,
+    request,
+  ))!;
+  expect(first.replayed).toBe(false);
+  expect(
+    first.layout.windows.find((window) => window.id === request.windowId)
+      ?.panes[0]?.tabs[0]?.resource,
+  ).toEqual({
+    kind: "entity",
+    definitionId: "project.file",
+    resourceId: document.id,
+  });
+  expect(
+    await db.repository.workspaceLayouts.importLegacyFiles(
+      owner,
+      projectId,
+      layout.id,
+      request,
+    ),
+  ).toEqual({ ...first, replayed: true });
+  await expect(
+    db.repository.workspaceLayouts.importLegacyFiles(
+      owner,
+      projectId,
+      layout.id,
+      {
+        ...request,
+        paneId: randomUUID(),
+      },
+    ),
+  ).rejects.toMatchObject({ code: "invalid" });
+});
+
 async function migrationFixture() {
   const explorer = (await db.repository.createExplorer(owner, projectId, {
     ...protectedExplorerFields(),

@@ -1,6 +1,7 @@
 export * from "./native-settings-state.js";
 export * from "./file-documents.js";
 export * from "./workspace-ownership.js";
+export * from "./workspace-legacy-file-import.js";
 export * from "./workspace-command.js";
 export * from "./workspace-command-apply.js";
 export * from "./workspace-receipt.js";

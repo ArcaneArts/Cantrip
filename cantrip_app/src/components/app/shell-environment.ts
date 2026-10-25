@@ -1,4 +1,8 @@
-import { useMemo } from "react";
+import { useMemo, useSyncExternalStore } from "react";
+import {
+  readWorkspaceWindowRoute,
+  subscribeWorkspaceWindowRoute,
+} from "@/lib/workspace-window-route";
 import {
   parseDesktopExplorerFileTarget,
   parseDesktopPopoutPaneTarget,
@@ -19,6 +23,11 @@ import {
 import { parseGitHistoryRoute } from "@/lib/git-history-navigation";
 
 export function useShellEnvironment() {
+  const search = useSyncExternalStore(
+    subscribeWorkspaceWindowRoute,
+    readWorkspaceWindowRoute,
+    () => "",
+  );
   const desktopRuntime = useMemo(() => isDesktopRuntime(), []);
   const projectRevealLabel = useMemo(
     () => desktopProjectRevealLabel(desktopRuntime, navigator.userAgent),
@@ -37,25 +46,16 @@ export function useShellEnvironment() {
     [desktopRuntime],
   );
   const popoutTarget = useMemo(
-    () =>
-      desktopRuntime
-        ? parseDesktopPopoutPaneTarget(window.location.search)
-        : null,
-    [desktopRuntime],
+    () => (desktopRuntime ? parseDesktopPopoutPaneTarget(search) : null),
+    [desktopRuntime, search],
   );
   const projectOverviewPopoutTarget = useMemo(
-    () =>
-      desktopRuntime
-        ? parseDesktopProjectOverviewTarget(window.location.search)
-        : null,
-    [desktopRuntime],
+    () => (desktopRuntime ? parseDesktopProjectOverviewTarget(search) : null),
+    [desktopRuntime, search],
   );
   const explorerFileTarget = useMemo(
-    () =>
-      desktopRuntime
-        ? parseDesktopExplorerFileTarget(window.location.search)
-        : null,
-    [desktopRuntime],
+    () => (desktopRuntime ? parseDesktopExplorerFileTarget(search) : null),
+    [desktopRuntime, search],
   );
   const gitHistoryTarget = useMemo(
     () => parseGitHistoryRoute(window.location.search),

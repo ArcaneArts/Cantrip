@@ -70,6 +70,44 @@ import { EditorSessionStore as QaDocumentStore, editorDocumentId as qaDocumentId
 import { DocumentRecoverySession as QaRecovery } from '@/lib/document-recovery-session';
 const qaFileBrokers = new Set();
 let qaProjectId = sessionStorage.getItem("__qaRepositoryProjectId");
+async function qaLegacyNativeWindow(withLaunchId) {
+  if (!qaProjectId) await globalThis.__qaRepositoryFixture.create();
+  const explorer = await qaCreateExplorer(qaProjectId, 'Native legacy import QA', undefined, undefined, undefined, {
+    attachToTabLayout: false, initialViewState: { selectedPath: 'qa.txt', fileMode: 'edit' },
+  });
+  const identity = qaIdentity();
+  const scope = await qaWorkspaceIdentity(identity, qaProjectId);
+  const windowId = 'cantrip-editor-qa-' + crypto.randomUUID();
+  const store = new QaDocumentStore();
+  store.resetScope(JSON.stringify([identity.serverId, identity.userId]));
+  for (const filePath of ['qa.txt', 'second.txt']) {
+    const file = await qaReadFile(explorer.id, filePath);
+    store.open(qaDocumentId({server:identity.serverId, account:identity.userId, worker:explorer.activeWorkerId,
+      project:qaProjectId, worktree:explorer.worktreeId, path:filePath}), file.content, file.version).editExternal('Imported dirty ' + filePath + '\\n');
+  }
+  const recovery = new QaRecovery({serverId:identity.serverId, ownerId:identity.userId, workspaceId:scope.workspaceId,
+    projectId:qaProjectId, workerId:explorer.activeWorkerId, worktreeId:explorer.worktreeId,
+    tabId:windowId, documentId:'legacy-window:'+explorer.id});
+  const bytes = new TextEncoder().encode(JSON.stringify({request:null, capture:{explorerId:explorer.id,
+    projectId:qaProjectId,workerId:explorer.activeWorkerId,worktreeId:explorer.worktreeId,selectedPath:'qa.txt',fileMode:'edit',documents:store.captureRecovery()}}));
+  try { await recovery.load(bytes=>JSON.parse(new TextDecoder().decode(bytes))); await recovery.checkpoint(bytes); }
+  finally { bytes.fill(0); recovery.dispose(); }
+  const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+  const search = qaFileSearch({explorerId:explorer.id, projectId:qaProjectId, path:'qa.txt'}, withLaunchId ? crypto.randomUUID() : undefined);
+  new WebviewWindow(windowId, {url:'/' + search, title:'Legacy import QA', width:900, height:700});
+}
+if (import.meta.env.VITE_CANTRIP_LEGACY_WINDOW_QA === 'true') {
+  const controls = document.createElement('div');
+  controls.style.cssText = 'position:fixed;bottom:8px;left:8px;z-index:2147483647;background:#222;color:white;padding:8px';
+  for (const [title, withLaunchId] of [['QA legacy window', false], ['QA legacy launch link', true]]) {
+    const button = document.createElement('button'); button.textContent = title; button.style.marginRight = '12px';
+    button.onclick = () => { button.disabled = true; void qaLegacyNativeWindow(withLaunchId).catch(error => {
+      controls.append(document.createTextNode(String(error)));
+    }).finally(() => {button.disabled = false;}); };
+    controls.append(button);
+  }
+  void import('@tauri-apps/api/window').then(({getCurrentWindow}) => {if (getCurrentWindow().label === 'main') document.body.append(controls);});
+}
 async function qaWorkspace() {
   const identity = qaIdentity();
   const scope = await qaWorkspaceIdentity(identity, qaProjectId);

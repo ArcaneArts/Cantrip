@@ -6,6 +6,7 @@ import {
 import {
   bindLegacyDocument,
   planLegacyDocuments,
+  mergeLegacyDocumentRecovery,
 } from "./legacy-document-migration";
 import type { ExplorerTransferState } from "./explorer-view";
 
@@ -43,6 +44,41 @@ function fixture(): ExplorerTransferState {
     documents: store.captureRecovery(),
   };
 }
+
+it("restores dirty recovery over disk content and keeps inactive recovered buffers", () => {
+  const recovered = fixture();
+  const live = structuredClone(recovered);
+  live.documents.documents = live.documents.documents.slice(0, 1);
+  live.documents.documents[0]!.text =
+    live.documents.documents[0]!.baselineContent;
+  const before = structuredClone(live);
+  expect(mergeLegacyDocumentRecovery(live, recovered, scope).documents).toEqual(
+    recovered.documents,
+  );
+  expect(live).toEqual(before);
+});
+
+it("does not overwrite a live draft with clean recovery", () => {
+  const live = fixture();
+  const recovered = structuredClone(live);
+  for (const document of recovered.documents.documents)
+    document.text = document.baselineContent;
+  expect(mergeLegacyDocumentRecovery(live, recovered, scope).documents).toEqual(
+    live.documents,
+  );
+});
+
+it.each(["text", "baselineContent", "version"] as const)(
+  "retains divergent dirty recovery when %s differs",
+  (field) => {
+    const live = fixture();
+    const recovered = structuredClone(live);
+    recovered.documents.documents[0]![field] += "different";
+    expect(() => mergeLegacyDocumentRecovery(live, recovered, scope)).toThrow(
+      "Both drafts have been retained",
+    );
+  },
+);
 
 it("preserves selected mode and every inactive draft with independent document bindings", () => {
   const original = fixture();

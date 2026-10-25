@@ -2020,3 +2020,47 @@ The five focused suites pass 70 tests and the app source typecheck passes.
 Native reproduction of the fix remains required; the prior failing fixture and
 both drafts are retained in workspace-retire-file-producer/.qa. This does not
 close the remaining compatibility, full-suite, or native acceptance requirements.
+
+### Import legacy native file windows
+
+The destination-deadline fix merged in #2246 (`77dfb000e`). Fresh native QA
+confirmed that an actual HTTP 503 destination times out, resumes both source
+drafts, and permits a successful retry and return with unchanged disk contents.
+The Windows installation fixture and both Windows/macOS transport jobs passed.
+
+Legacy Explorer-file links now use authenticated startup, including links with
+obsolete broker launch IDs. They no longer select the standalone broker renderer
+in production startup. The compatibility receiver defers workspace attachment
+until its actual native label has been imported, so absence before migration is
+not mistaken for a retired owner. It captures and encrypts all retained buffers,
+creates/reuses authorized immutable file documents, checkpoints each target view,
+and commits the import under the workspace revision lock. Replay tombstones
+survive normal view/window closure. Explorer IDs cannot masquerade as document
+IDs at the import endpoint, and project ownership is checked server-side.
+
+Successful import replaces the route within the same JavaScript context and
+mounts the ordinary owned pane. Close requests are deferred while import is
+actually running. Real failures retain the source and encrypted journal for
+retry; a live source may advance only checkpoints it wrote itself. A new renderer
+with divergent dirty data, or a document that already has another owned view,
+requires reconciliation rather than silently replacing either draft.
+
+Native QA imported two encrypted dirty files, selected the inactive file, edited
+it without saving, and returned both tabs to main by closing the native window.
+Both draft contents survived; disk baselines were unchanged. An obsolete launch
+link in the same workspace entered authenticated import and reported the expected
+existing-view conflict while preserving its source. The standalone broker
+component remains only for the older file-polish QA fixture, not production
+startup. Conflict-resolution UX and the restored Code inline-buffer audit remain
+follow-up work, as does the broader goal acceptance matrix.
+
+An independent native fixture also passed obsolete launch-link import and return:
+both dirty tabs returned to main and both disk baselines remained unchanged.
+The final full app suite passed 550 files / 3,816 tests (three skips), app and
+server typechecks passed, and installation compatibility passed all seven
+contract/recovery simulations plus the workflow-removal contract. Focused
+protocol ownership tests passed 146 tests and the server file/ownership suites
+passed 30. The final close-in-flight refinement is unit-tested; the native build
+used for this run predates that refinement. Source review is complete; PR
+delivery and the wider goal acceptance matrix remain outstanding at this
+checkpoint. This record does not claim goal completion.

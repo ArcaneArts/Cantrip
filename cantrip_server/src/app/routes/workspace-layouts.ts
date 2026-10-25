@@ -3,6 +3,8 @@ import {
   workspaceCommandSchema,
   workspaceReceiptSchema,
   workspaceSeedRequestSchema,
+  workspaceLegacyFileImportRequestSchema,
+  workspaceLegacyFileImportReceiptSchema,
 } from "@cantrip/protocol";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import type { TabLayoutRouteDependencies } from "./tab-layouts.js";
@@ -81,4 +83,27 @@ export function installWorkspaceLayoutRoutes(
       return failure(error, reply);
     }
   });
+  app.post<{ Params: Params }>(
+    `${base}/import-legacy-files`,
+    async (request, reply) => {
+      const input = workspaceLegacyFileImportRequestSchema.safeParse(
+        request.body,
+      );
+      if (!input.success)
+        return reply.code(400).send(invalidBody(input.error.issues));
+      try {
+        const result = await repository.workspaceLayouts.importLegacyFiles(
+          applicationOwnerId(),
+          request.params.projectId,
+          request.params.workspaceId,
+          input.data,
+        );
+        return result
+          ? reply.send(workspaceLegacyFileImportReceiptSchema.parse(result))
+          : reply.code(404).send({ error: "Workspace not found." });
+      } catch (error) {
+        return failure(error, reply);
+      }
+    },
+  );
 }

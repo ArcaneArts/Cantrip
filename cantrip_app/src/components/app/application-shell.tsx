@@ -264,7 +264,9 @@ export function App() {
     workspaceSelection: seedWorkspaceSelection,
   } = useProjectWorkspaceSelectionState({ popoutProjectId, popoutTarget });
   const workspaceConnection = useWorkspaceConnection(
-    selectedProjectId,
+    // Legacy native hosts checkpoint/import their files before attaching to
+    // ownership. Absence before that import does not mean a retired window.
+    explorerFileTarget ? null : selectedProjectId,
     seedWorkspaceSelection,
   );
   const workspaceSelection = workspaceConnection.workspaceSelection;

@@ -15,6 +15,47 @@ export interface LegacyDocumentCandidate {
   documents: EditorDocumentTransfer[];
 }
 
+/** Merge an interrupted migration journal without allowing a fresh disk read
+ * to replace an unsaved buffer. Divergent dirty versions need user resolution;
+ * neither snapshot may be checkpointed over the other in that case. */
+export function mergeLegacyDocumentRecovery(
+  live: unknown,
+  recovered: unknown,
+  scope: ExplorerTransferScope,
+): ExplorerTransferState {
+  const current = validateExplorerTransfer(live, scope);
+  const previous = validateExplorerTransfer(recovered, scope);
+  const documents = new Map(
+    current.documents.documents.map((document) => [document.id, document]),
+  );
+  for (const document of previous.documents.documents) {
+    const active = documents.get(document.id);
+    if (!active) {
+      documents.set(document.id, document);
+      continue;
+    }
+    const activeDirty =
+      active.text !== active.baselineContent || active.saveFailed;
+    const recoveredDirty =
+      document.text !== document.baselineContent || document.saveFailed;
+    if (
+      activeDirty &&
+      recoveredDirty &&
+      (active.text !== document.text ||
+        active.baselineContent !== document.baselineContent ||
+        active.version !== document.version)
+    )
+      throw new Error(
+        "Legacy migration recovery conflicts with a live draft. Both drafts have been retained.",
+      );
+    if (!activeDirty && recoveredDirty) documents.set(document.id, document);
+  }
+  return {
+    ...current,
+    documents: { ...current.documents, documents: [...documents.values()] },
+  };
+}
+
 /** Partition a captured legacy view without discarding inactive buffers. This
  * does not authorize resources or mutate ownership: the caller must create and
  * checkpoint every document before atomically replacing the legacy binding. */
