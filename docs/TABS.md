@@ -2,7 +2,7 @@
 
 The identity-based workspace path is integrated into the application. This
 document replaces the retired project-wide placement/local-popout-claim design.
-Implementation and acceptance are still **incomplete**: the chronological
+Final verification and cleanup are still **incomplete**: the chronological
 [implementation record](WORKSPACE_OWNERSHIP.md) records merged cycles, actual
 verification, failures, and outstanding work.
 
@@ -166,8 +166,9 @@ preserved; return focuses the returned view.
 Application quit is distinct from normal window return and must not start
 return/reopen loops. Reloads/reconnects use generations and recorded transfer
 state. A heartbeat timeout, HTTP failure, or observer error alone does not prove
-a renderer died. Acceptance of all crash/shutdown/concurrent-return combinations
-remains open.
+a renderer died. Native validation has exercised normal quit, failed quit
+checkpoint, abrupt process termination, WebKit renderer death, and interrupted
+destination startup. This does not claim exhaustive concurrent interleavings.
 
 Source: [source coordinator](../cantrip_app/src/lib/workspace-transfer-source.ts),
 [destination](../cantrip_app/src/lib/workspace-transfer-destination.ts),
@@ -212,11 +213,17 @@ Source: [seed](../packages/protocol/src/workspace-ownership-seed.ts),
 
 ## Verification and remaining acceptance
 
-The [implementation record](WORKSPACE_OWNERSHIP.md) records evidence per cycle;
-this contract does not assert that every scenario has passed. Native two-window
-tests have exercised dirty editors and several live surfaces. Remaining work
-includes compatibility cleanup, mobile interaction evidence, file-entry-point
-coverage, and recovery/concurrency combinations.
+The [implementation record](WORKSPACE_OWNERSHIP.md) records evidence per cycle
+and a consolidated acceptance audit. Native two-window tests have exercised
+active and inactive dirty editors, terminal shell state, browser document state,
+chat drafts, and remote input. Representative simultaneous mobile/desktop tests
+cover isolated placement, overflow, preview/pin, explicit modes, and file entry
+through Explorer, chat, related files, command search, History, and graph.
+Physical iOS/Android execution is not claimed. Compatibility readers remain for
+persisted routes; the obsolete local-claim pane/tab popout producers are removed.
+
+Final work includes reconciling broad-check failures, completing the remaining
+requirement audit, and preserving evidence before cleaning retained QA lanes.
 
 Keep regression coverage for single-tab versus whole-pane detach; tab close
 versus window return; removed/rearranged original panes; inactive dirty files;
@@ -226,9 +233,12 @@ every file-opening route; preview/pin/mode preservation; authorization; and
 deterministic keyboard/focus behavior. Mocked transitions alone cannot establish
 native WebView or mobile acceptance.
 
-The latest broad `pnpm check` did **not** pass. Its worker failures and serial
-rerun with unchanged timeouts are recorded separately from passing focused tests
-and CI. Do not replace that result with a blanket green claim or weaken checks.
+The latest broad `pnpm check` did **not** pass. Worker filesystem-notification
+and image-adaptation tests failed under the full run; both files passed unchanged
+in isolation. Full-suite reruns are recorded separately from passing focused
+tests and CI. Formatting also reports existing source/document files and generated
+Rust build artifacts. Do not replace those results with a blanket green claim
+or weaken checks.
 Documentation-only edits require link inspection and `git diff --check`;
 protocol, server, app, and native changes require relevant tests and actual
 interaction validation.
