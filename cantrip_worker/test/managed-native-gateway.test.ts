@@ -323,6 +323,52 @@ describe("managed native gateway", () => {
     });
   });
 
+  it.each(["thread/attachmentOwner/list", "thread/items/read"])(
+    "forwards pinned read %s while enforcing the bound thread",
+    async (method) => {
+      const admission = vi.fn(async () => admitted());
+      const f = await fixture(admission);
+      expect(
+        (await f.request(method, { threadId: "other" })).error.message,
+      ).toMatch(/another managed session/);
+      expect(f.messages.filter((frame) => frame.method === method)).toEqual([]);
+      expect(
+        (await f.request(method, { threadId: identity.threadId })).result,
+      ).toEqual({ accepted: method });
+      expect(admission).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    "thread/readState/update",
+    "thread/prediction/request",
+    "account/bedrock/checkGovCloudRequirements",
+  ])(
+    "requires admission and records the native result for %s",
+    async (method) => {
+      const settle = vi.fn(async () => {});
+      const admission = vi
+        .fn()
+        .mockRejectedValueOnce(new Error("Policy denied."))
+        .mockResolvedValue(admitted(settle));
+      const f = await fixture(admission);
+      const params = { threadId: identity.threadId };
+      expect((await f.request(method, params)).error.message).toBe(
+        "Policy denied.",
+      );
+      expect(f.messages.filter((frame) => frame.method === method)).toEqual([]);
+      expect((await f.request(method, params)).result).toEqual({
+        accepted: method,
+      });
+      expect(admission).toHaveBeenLastCalledWith(
+        expect.objectContaining({ kind: "mutation", method, identity }),
+      );
+      expect(settle).toHaveBeenCalledWith(
+        expect.objectContaining({ result: { accepted: method } }),
+      );
+    },
+  );
+
   it("rejects denied, unknown, cross-session and expired operations without native mutation", async () => {
     const admission = vi.fn(async () => {
       throw new Error("Policy denied.");
