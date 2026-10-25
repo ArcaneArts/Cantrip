@@ -2385,3 +2385,23 @@ checkouts, native cross-window chat-link focus, isolated WebView transfer crashe
 remote-desktop input handoff, and the remaining entry-point/requirement audit are
 not established by this run. The six worker compatibility failures remain
 unresolved; the full goal and full-repository check are not complete.
+
+### Pinned runtime compatibility verification repair
+
+PR #2258 merged as `b784856f9`, with all three platform contract checks passing.
+The next verification cycle updates external-history reader fixtures to the
+pinned 0.163.0 runtime while retaining 0.160.1 recorded thread metadata. It also
+classifies the five previously missing pinned native methods after inspecting
+their upstream handlers. Unknown methods remain rejected, reads retain session
+scope checks, and mutations require admission. Classification does not expand
+the server mutation allowlist: the three newly classified mutations still
+receive `unsupported-mutation`. Prediction is reserved but not implemented
+upstream; this change does not claim to enable it.
+
+The focused four-file worker rerun passed all 77 tests; method classification
+passed 19 tests, and server admission passed 62 tests including three explicit
+no-new-authority regressions. Unsupported reader versions still fail, and the
+malformed metadata test now verifies that discovery actually reached the native
+reader. Worker typecheck, formatting, and diff checks passed. Full-repository
+verification is running; this cycle does not establish the remaining native
+crash, remote-input, migration, or file-entry-point acceptance requirements.

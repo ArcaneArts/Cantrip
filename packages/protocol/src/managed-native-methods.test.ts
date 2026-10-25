@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { managedNativeMethods } from "./managed-native-methods.js";
 
-describe("Codex 0.160 managed method inventory", () => {
+describe("Codex 0.163 managed method inventory", () => {
   it.each([
     ["thread/attachment/list", "read"],
+    ["thread/attachmentOwner/list", "read"],
+    ["thread/items/read", "read"],
+    ["thread/readState/update", "mutation"],
+    ["thread/prediction/request", "mutation"],
+    ["account/bedrock/checkGovCloudRequirements", "mutation"],
     ["userVerification/status", "read"],
     ["memory/status", "read"],
     ["thread/attachment/add", "mutation"],

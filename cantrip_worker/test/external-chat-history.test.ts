@@ -47,6 +47,7 @@ function thread(overrides: Record<string, unknown> = {}) {
     updatedAt: 1_786_810_000,
     status: { type: "notLoaded" },
     cwd: "/workspace/Cantrip",
+    // Older recorded threads remain importable through the current reader.
     cliVersion: "0.160.1",
     source: "vscode",
     gitInfo: {
@@ -63,6 +64,7 @@ function sourceWithResponses(
   responses: unknown[],
   requests: Array<{ method: string; params: unknown }>,
   attachmentStore?: ExternalChatAttachmentStagingStore,
+  runtimeVersion = "0.163.0",
 ) {
   return new CodexExternalChatHistorySource({
     binary: "/bin/codex",
@@ -74,7 +76,7 @@ function sourceWithResponses(
     pathExists: async () => true,
     resolvePath: async (candidate) => candidate,
     resolveGitOrigin: async () => "github.com/arcanearts/cantrip",
-    readRuntimeVersion: async () => "codex-cli 0.160.1",
+    readRuntimeVersion: async () => `codex-cli ${runtimeVersion}`,
     attachmentStore,
     createClient: () => ({
       async request(method, params) {
@@ -83,7 +85,7 @@ function sourceWithResponses(
           return {
             id: 1,
             result: {
-              userAgent: "codex-cli/0.160.1",
+              userAgent: `codex-cli/${runtimeVersion}`,
               platformFamily: "unix",
               platformOs: "macos",
             },
@@ -109,7 +111,7 @@ describe("external Codex chat history discovery", () => {
       pathExists: async () => false,
       resolvePath: async (candidate) => candidate,
       resolveGitOrigin: async () => null,
-      readRuntimeVersion: async () => "codex-cli 0.160.1",
+      readRuntimeVersion: async () => "codex-cli 0.163.0",
       createClient: () => {
         created = true;
         throw new Error("Unexpected Codex client creation.");
@@ -144,7 +146,7 @@ describe("external Codex chat history discovery", () => {
       pathExists: async () => true,
       resolvePath: async (candidate) => candidate,
       resolveGitOrigin: async () => null,
-      readRuntimeVersion: async () => "codex-cli 0.160.1",
+      readRuntimeVersion: async () => "codex-cli 0.163.0",
       createClient: (codexHome) => {
         openedHomes.push(codexHome);
         return {
@@ -154,7 +156,7 @@ describe("external Codex chat history discovery", () => {
               return {
                 id: 1,
                 result: {
-                  userAgent: "codex-cli/0.160.1",
+                  userAgent: "codex-cli/0.163.0",
                   platformFamily: "windows",
                   platformOs: "windows",
                 },
@@ -271,6 +273,33 @@ describe("external Codex chat history discovery", () => {
     });
   });
 
+  it.each(["0.160.1", "0.164.0"])(
+    "rejects unsupported reader %s before requesting history",
+    async (version) => {
+      const requests: Array<{ method: string; params: unknown }> = [];
+      const source = sourceWithResponses([], requests, undefined, version);
+      const result = await source.discover({
+        includeArchived: false,
+        targets: [target],
+      });
+      expect(result[0]).toMatchObject({
+        availability: "incompatible",
+        threads: [],
+        message: "The bundled Codex reader is outside Cantrip's tested range.",
+      });
+      await expect(
+        source.read({
+          chatId,
+          ownerId,
+          sourceId: result[0]!.sourceId,
+          sourceThreadId: thread().id,
+          targets: [target],
+        }),
+      ).rejects.toThrow(/outside Cantrip's tested range/u);
+      expect(requests).toEqual([]);
+    },
+  );
+
   it("fails closed when Codex returns an incompatible metadata shape", async () => {
     const requests: Array<{ method: string; params: unknown }> = [];
     const source = sourceWithResponses([{ data: "invalid" }], requests);
@@ -284,6 +313,10 @@ describe("external Codex chat history discovery", () => {
       availability: "incompatible",
       threads: [],
     });
+    expect(requests.map(({ method }) => method)).toEqual([
+      "initialize",
+      "thread/list",
+    ]);
   });
 
   it("revalidates and reads a selected source thread without mutating it", async () => {
