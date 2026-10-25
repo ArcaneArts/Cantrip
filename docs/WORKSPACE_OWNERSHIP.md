@@ -2255,3 +2255,26 @@ isolated QA menu exposes this checkpoint-and-abort scenario; it never invokes an
 installer. This establishes checkpoint/abort/restart behavior, not a live signed
 update or Windows installer run. Forced termination, mobile acceptance and the
 remaining broad workspace audit are still outstanding.
+
+Merged in PR #2253 (`c0e688859`). The macOS and Windows native transport jobs
+and Windows installation fixture passed after merge observation.
+
+### Mobile overflow and explicit view-mode acceptance
+
+The concurrent mobile/desktop harness now opens and pins six additional Rust
+files, creating seven distinct mobile file tabs. It verifies real horizontal
+overflow, complete picker membership, five-entry interaction recency, keyboard
+picker activation, and adjacent selection after closing a middle active tab.
+Explicit View mode survives another-file selection, Explorer reopening, and
+reload without changing tab identity or order. The original unsaved draft and
+desktop's authoritative layout remain unchanged. The existing rejected-pin and
+successful retry scenarios still run afterward.
+
+Verification: `node scripts/qa/workspace-mobile-desktop.mjs` passed all 13
+scenario assertions in touch-enabled Chromium at 390 × 844 with a separate
+desktop context. The final mobile screenshot shows the unsaved buffer and
+overflowing bottom navigation. Owned server/worker processes exited cleanly,
+with zero surviving children or sockets. This is representative mobile browser
+acceptance, not a physical iOS/Android or native crash test. Forced termination,
+multi-window concurrency, remaining surface runtime checks, and the complete
+file-entry-point audit remain open; the full goal is not complete.

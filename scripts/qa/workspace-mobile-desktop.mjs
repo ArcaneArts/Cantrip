@@ -4,6 +4,10 @@ import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { chromium } from "playwright-core";
 import { startEditorRecoveryFixture } from "./editor-recovery-fixture.mjs";
+import {
+  seedMobileOverflowFiles,
+  verifyMobileOverflow,
+} from "./workspace-mobile-overflow.mjs";
 
 const fixture = await startEditorRecoveryFixture({ repositoryProject: true });
 const events = [];
@@ -18,6 +22,7 @@ try {
     path.join(fixture.repositorySeed.repository, "main.rs"),
     "fn main() {}\n",
   );
+  await seedMobileOverflowFiles(fixture.repositorySeed.repository);
   browser = await chromium.launch({ headless: true });
   desktop = await browser.newPage({
     acceptDownloads: true,
@@ -277,6 +282,7 @@ try {
     "mobile.code-close-recent",
     "Code defaults to Edit; recent list follows interaction; closing active last file selects its left neighbor",
   );
+  await verifyMobileOverflow({ mobile, desktop, desktopBefore, record });
   assert.deepEqual(
     await desktop.evaluate(() => window.__qaRepositoryFixture.workspace()),
     desktopBefore,
