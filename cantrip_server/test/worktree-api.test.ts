@@ -2,13 +2,18 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { dispatchRepositoryOperation } from "../../cantrip_worker/src/repository-operation-dispatch.js";
+import { RepositoryManagedOperationStore } from "../../cantrip_worker/src/repository-managed-operation-store.js";
+import {
+  decryptRepositoryOperationPayload,
+  encryptRepositoryOperationPayload,
+} from "../../packages/crypto/src/repository-operation.js";
 
 import {
   cantripCliCommandResultSchema,
   appLiveServerMessageSchema,
   chatPauseStateSchema,
   chatWireSummarySchema,
-  chatMessageListSchema,
   chatMessageWireListSchema,
   encryptedChatTurnCreateSchema,
   codeTabWireSummarySchema,
@@ -26,6 +31,7 @@ import {
   gitConflictResolutionResultSchema,
   gitManagedOperationPreviewSchema,
   gitManagedOperationResponseSchema,
+  gitManagedOperationWorkerStateSchema,
   gitComparisonSchema,
   gitFileDiffSchema,
   gitForcePushPreviewSchema,
@@ -64,12 +70,21 @@ import {
   terminalWireSummarySchema,
   unprobedCodexRuntimeReport,
   worktreeStatusResultSchema,
+  workerCommandSchema,
+  serverBootstrapSchema,
   type WorkerWorktreeSummary,
   type WorkerCommand,
   type GitManagedOperationContext,
   type ThreadGoal,
   type AppLiveServerMessage,
 } from "@cantrip/protocol";
+import {
+  repositoryOperationAccess,
+  repositoryOperationRequestContentSchema,
+  repositoryOperationOutcomeContentSchema,
+  repositoryOperationWireResponseSchema,
+  type RepositoryOperationType,
+} from "@cantrip/protocol/repository-operation";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { WebSocket } from "ws";
 
@@ -95,6 +110,11 @@ const dataDirectory = await mkdtemp(
   path.join(tmpdir(), "cantrip-worktree-api-"),
 );
 const primaryPath = path.join(dataDirectory, "repositories", "Cantrip");
+const repositoryComponentKey = randomBytes(32);
+let repositoryManagedOperations = new RepositoryManagedOperationStore(
+  dataDirectory,
+);
+const encryptedOperationIds = new Set<string>();
 const externalPath = path.join(dataDirectory, "external", "review");
 const config: ServerConfig = {
   agentModel: "gemma4:26b",
@@ -684,7 +704,7 @@ const workerBridge = {
   subscribeSurfaceFrames() {
     return () => undefined;
   },
-  async request(_workerId, command, options) {
+  async request(_workerId, command, options): Promise<unknown> {
     if (!connected) throw new WorkerUnavailableError("Worker is offline.");
     switch (command.type) {
       case "repository.operation":
@@ -699,6 +719,76 @@ const workerBridge = {
             await new Promise((resolve) =>
               setTimeout(resolve, repositoryOperationDelayMs),
             );
+          }
+          if (encryptedOperationIds.has(command.operationId)) {
+            if (!options?.ownerId)
+              throw new Error("Repository operation owner missing.");
+            const context = {
+              serverId: command.serverId,
+              projectId: command.projectId,
+              worktreeId: command.worktreeId,
+              operationId: command.operationId,
+              direction: "request" as const,
+            };
+            const protection = {
+              ownerId: options.ownerId,
+              componentKey: repositoryComponentKey,
+              keyRevision: 1,
+            };
+            const bytes = await decryptRepositoryOperationPayload({
+              ...protection,
+              context,
+              opaque: command.protectedRequest,
+            });
+            try {
+              const request = repositoryOperationRequestContentSchema.parse(
+                JSON.parse(Buffer.from(bytes).toString("utf8")),
+              );
+              expect(command.access).toBe(
+                repositoryOperationAccess(request.type),
+              );
+              // Exercise the same managed-operation dispatch as the worker;
+              // only leaf Git commands are simulated by this bridge fixture.
+              const outcome = await dispatchRepositoryOperation({
+                command,
+                request,
+                scope: {
+                  ownerId: options.ownerId,
+                  serverId: command.serverId,
+                  projectId: command.projectId,
+                  worktreeId: command.worktreeId,
+                  workerId: _workerId,
+                },
+                store: repositoryManagedOperations,
+                inspect: async (cwd, context) =>
+                  gitManagedOperationWorkerStateSchema.parse(
+                    await workerBridge.request(
+                      _workerId,
+                      { type: "git.operation.inspect", cwd, context },
+                      options,
+                    ),
+                  ),
+                repositoryForCheckout: async () => null,
+                dispatch: (nestedCommand) =>
+                  workerBridge.request(_workerId, nestedCommand, options),
+              }).catch((error: unknown) => ({
+                ok: false as const,
+                error:
+                  error instanceof Error
+                    ? error.message
+                    : "Repository operation failed.",
+              }));
+              return {
+                operationId: command.operationId,
+                protectedResponse: await encryptRepositoryOperationPayload({
+                  ...protection,
+                  context: { ...context, direction: "response" },
+                  plaintext: Buffer.from(JSON.stringify(outcome)),
+                }),
+              };
+            } finally {
+              bytes.fill(0);
+            }
           }
           return {
             operationId: command.operationId,
@@ -1865,6 +1955,77 @@ let routedChatId: string;
 let routedTerminalId: string;
 let linkedConsoleId: string;
 
+// Model the client/worker encrypted round trip. The server sees only the
+// declared access mode and ciphertext; worker command assertions below inspect
+// the decrypted fixture dispatch, never server-visible private arguments.
+async function repositoryOperation(
+  worktreeId: string,
+  type: RepositoryOperationType,
+  args: Record<string, unknown> = {},
+) {
+  const bootstrap = serverBootstrapSchema.parse(
+    (await app.inject({ method: "GET", url: "/api/bootstrap" })).json(),
+  );
+  const context = {
+    serverId: bootstrap.server.id,
+    projectId,
+    worktreeId,
+    operationId: randomUUID(),
+    direction: "request" as const,
+  };
+  const protection = {
+    ownerId: LOCAL_USER_ID,
+    componentKey: repositoryComponentKey,
+    keyRevision: 1,
+  };
+  const protectedRequest = await encryptRepositoryOperationPayload({
+    ...protection,
+    context,
+    plaintext: Buffer.from(
+      JSON.stringify(
+        repositoryOperationRequestContentSchema.parse({
+          type,
+          arguments: args,
+        }),
+      ),
+    ),
+  });
+  encryptedOperationIds.add(context.operationId);
+  try {
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${worktreeId}/repository-operation`,
+      payload: {
+        operationId: context.operationId,
+        protectedRequest,
+        access: repositoryOperationAccess(type),
+      },
+    });
+    if (response.statusCode !== 200) return response;
+    const wire = repositoryOperationWireResponseSchema.parse(response.json());
+    expect(wire.operationId).toBe(context.operationId);
+    const bytes = await decryptRepositoryOperationPayload({
+      ...protection,
+      context: { ...context, direction: "response" },
+      opaque: wire.protectedResponse,
+    });
+    try {
+      const outcome = repositoryOperationOutcomeContentSchema.parse(
+        JSON.parse(Buffer.from(bytes).toString("utf8")),
+      );
+      return {
+        statusCode: response.statusCode,
+        body: response.body,
+        json: () => (outcome.ok ? outcome.result : { error: outcome.error }),
+      };
+    } finally {
+      bytes.fill(0);
+    }
+  } finally {
+    encryptedOperationIds.delete(context.operationId);
+  }
+}
+
 beforeAll(async () => {
   database = await connectDatabase(config);
   await database.repository.ensureDefaultModelConfiguration(
@@ -1950,6 +2111,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await app?.close();
+  repositoryComponentKey.fill(0);
   await rm(dataDirectory, { recursive: true, force: true });
 });
 
@@ -4152,48 +4314,69 @@ describe.sequential("server worktree control plane", () => {
     const observedHead = "4".repeat(40);
     workerWorktrees.find(({ path }) => path === target.path)!.head =
       observedHead;
-    const statusResponse = await app.inject({
-      method: "GET",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/status`,
-    });
+    const statusResponse = await repositoryOperation(
+      target.id,
+      "worktree.status",
+    );
     expect(statusResponse.statusCode, statusResponse.body).toBe(200);
     expect(
       worktreeStatusResultSchema.parse(statusResponse.json()).worktree.path,
     ).toBe(target.path);
+    // Opaque status reads do not let the server inspect worker Git metadata.
+    // Reconciliation remains the explicit durable inventory update.
+    const reconcile = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/reconcile`,
+    });
+    expect(reconcile.statusCode, reconcile.body).toBe(200);
     expect(
       (
         await database.repository.listProjectWorktrees(LOCAL_USER_ID, projectId)
       ).find(({ id }) => id === target.id)?.head,
     ).toBe(observedHead);
     connected = false;
-    const offlineStatus = await app.inject({
+    const offlineStatus = await repositoryOperation(
+      target.id,
+      "worktree.status",
+    );
+    expect(offlineStatus.statusCode).toBe(503);
+    const offlineInventory = await app.inject({
       method: "GET",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/status`,
+      url: `/api/projects/${projectId}/worktrees`,
     });
-    expect(offlineStatus.statusCode).toBe(200);
+    expect(offlineInventory.statusCode, offlineInventory.body).toBe(200);
     expect(
-      worktreeStatusResultSchema.parse(offlineStatus.json()),
-    ).toMatchObject({ worktree: { path: target.path, head: observedHead } });
+      projectWorktreeListSchema
+        .parse(offlineInventory.json())
+        .find(({ id }) => id === target.id),
+    ).toMatchObject({ path: target.path, head: observedHead });
     connected = true;
-    const historyResponse = await app.inject({
-      method: "GET",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/history`,
-    });
+    const historyResponse = await repositoryOperation(
+      target.id,
+      "git.history",
+      {
+        cursor: 0,
+        limit: 100,
+        revisions: [],
+        // Private arguments must not override the server-authorized checkout.
+        cwd: path.join(dataDirectory, "unrelated-checkout"),
+      },
+    );
     expect(gitHistorySchema.parse(historyResponse.json()).commits).toHaveLength(
       1,
     );
     expect(gitHistoryCommands.at(-1)).toMatchObject({
       cwd: target.path,
-      revisions: expect.arrayContaining(
-        workerWorktrees
-          .map(({ head }) => head)
-          .filter((head): head is string => typeof head === "string"),
-      ),
+      revisions: [],
     });
-    const graphSnapshotResponse = await app.inject({
-      method: "GET",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/graph/snapshot?rootPath=src&maxNodes=500`,
-    });
+    const graphSnapshotResponse = await repositoryOperation(
+      target.id,
+      "git.graph.snapshot",
+      {
+        rootPath: "src",
+        maxNodes: 500,
+      },
+    );
     expect(graphSnapshotResponse.statusCode).toBe(200);
     expect(
       gitGraphSnapshotSchema.parse(graphSnapshotResponse.json()),
@@ -4205,10 +4388,14 @@ describe.sequential("server worktree control plane", () => {
       rootPath: "src",
       maxNodes: 500,
     });
-    const graphMetricsResponse = await app.inject({
-      method: "GET",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/graph/metrics?revision=${"1".repeat(40)}&includeBlame=true`,
-    });
+    const graphMetricsResponse = await repositoryOperation(
+      target.id,
+      "git.graph.metrics",
+      {
+        revision: "1".repeat(40),
+        includeBlame: true,
+      },
+    );
     expect(graphMetricsResponse.statusCode).toBe(200);
     expect(
       gitGraphMetricsSchema.parse(graphMetricsResponse.json()),
@@ -4221,10 +4408,14 @@ describe.sequential("server worktree control plane", () => {
       maxNodes: 100_000,
       includeBlame: true,
     });
-    const graphOverlayResponse = await app.inject({
-      method: "GET",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/graph/commits/${"1".repeat(40)}?rootPath=src`,
-    });
+    const graphOverlayResponse = await repositoryOperation(
+      target.id,
+      "git.graph.commit-overlay",
+      {
+        revision: "1".repeat(40),
+        rootPath: "src",
+      },
+    );
     expect(graphOverlayResponse.statusCode).toBe(200);
     expect(
       gitGraphCommitOverlaySchema.parse(graphOverlayResponse.json()),
@@ -4239,28 +4430,29 @@ describe.sequential("server worktree control plane", () => {
       revision: "1".repeat(40),
       rootPath: "src",
     });
-    const invalidOverlayResponse = await app.inject({
-      method: "GET",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/graph/commits/short`,
-    });
-    expect(invalidOverlayResponse.statusCode).toBe(400);
-    const invalidGraphResponse = await app.inject({
-      method: "GET",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/graph/snapshot?rootPath=..%2Foutside`,
-    });
-    expect(invalidGraphResponse.statusCode).toBe(400);
-    const actionResponse = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/actions`,
-      payload: { type: "stageAll" },
+    expect(() =>
+      workerCommandSchema.parse({
+        type: "git.graph.commit-overlay",
+        cwd: target.path,
+        revision: "short",
+      }),
+    ).toThrow();
+    expect(() =>
+      workerCommandSchema.parse({
+        type: "git.graph.snapshot",
+        cwd: target.path,
+        rootPath: "../outside",
+      }),
+    ).toThrow();
+    const actionResponse = await repositoryOperation(target.id, "git.action", {
+      action: { type: "stageAll" },
     });
     gitActionResultSchema.parse(actionResponse.json());
     expect(gitActionPaths.at(-1)).toBe(target.path);
-    const forcePreviewResponse = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/force-push/preview`,
-      payload: {},
-    });
+    const forcePreviewResponse = await repositoryOperation(
+      target.id,
+      "git.force-push.preview",
+    );
     expect(
       gitForcePushPreviewSchema.parse(forcePreviewResponse.json()),
     ).toMatchObject({
@@ -4271,11 +4463,13 @@ describe.sequential("server worktree control plane", () => {
       type: "git.force-push.preview",
       cwd: target.path,
     });
-    const forceApplyResponse = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/force-push/apply`,
-      payload: { token: "f".repeat(64) },
-    });
+    const forceApplyResponse = await repositoryOperation(
+      target.id,
+      "git.force-push.apply",
+      {
+        token: "f".repeat(64),
+      },
+    );
     expect(gitActionResultSchema.parse(forceApplyResponse.json()).output).toBe(
       "forced with lease",
     );
@@ -4284,9 +4478,9 @@ describe.sequential("server worktree control plane", () => {
       cwd: target.path,
       token: "f".repeat(64),
     });
-    const diffResponse = await app.inject({
-      method: "GET",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/diff?path=src%2Fapp.ts&scope=unstaged`,
+    const diffResponse = await repositoryOperation(target.id, "git.diff", {
+      path: "src/app.ts",
+      scope: "unstaged",
     });
     expect(gitFileDiffSchema.parse(diffResponse.json())).toMatchObject({
       path: "src/app.ts",
@@ -4302,11 +4496,13 @@ describe.sequential("server worktree control plane", () => {
       path: "src/app.ts",
       hunks: [{ hunkIndex: 0, lineIndexes: [0, 1] }],
     };
-    const patchPreviewResponse = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/patch/preview`,
-      payload: patchRequest,
-    });
+    const patchPreviewResponse = await repositoryOperation(
+      target.id,
+      "git.patch.preview",
+      {
+        request: patchRequest,
+      },
+    );
     expect(
       gitPartialPatchPreviewSchema.parse(patchPreviewResponse.json()),
     ).toMatchObject({
@@ -4318,11 +4514,14 @@ describe.sequential("server worktree control plane", () => {
       cwd: target.path,
       request: patchRequest,
     });
-    const patchApplyResponse = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/patch/apply`,
-      payload: { request: patchRequest, token: "a".repeat(64) },
-    });
+    const patchApplyResponse = await repositoryOperation(
+      target.id,
+      "git.patch.apply",
+      {
+        request: patchRequest,
+        token: "a".repeat(64),
+      },
+    );
     expect(
       gitActionResultSchema.parse(patchApplyResponse.json()),
     ).toMatchObject({
@@ -4335,36 +4534,36 @@ describe.sequential("server worktree control plane", () => {
     });
     maximumConcurrentGitMutations = 0;
     await Promise.all([
-      app.inject({
-        method: "POST",
-        url: `/api/projects/${projectId}/worktrees/${target.id}/git/patch/apply`,
-        payload: { request: patchRequest, token: "a".repeat(64) },
+      repositoryOperation(target.id, "git.patch.apply", {
+        request: patchRequest,
+        token: "a".repeat(64),
       }),
-      app.inject({
-        method: "POST",
-        url: `/api/projects/${projectId}/worktrees/${target.id}/git/actions`,
-        payload: { type: "stageAll" },
+      repositoryOperation(target.id, "git.action", {
+        action: { type: "stageAll" },
       }),
     ]);
     expect(maximumConcurrentGitMutations).toBe(1);
-    const invalidPatchPath = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/patch/preview`,
-      payload: { ...patchRequest, path: "../secret" },
-    });
-    expect(invalidPatchPath.statusCode).toBe(400);
+    expect(() =>
+      workerCommandSchema.parse({
+        type: "git.patch.preview",
+        cwd: target.path,
+        request: { ...patchRequest, path: "../secret" },
+      }),
+    ).toThrow();
     connected = false;
-    const offlinePatchPreview = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/patch/preview`,
-      payload: patchRequest,
-    });
+    const offlinePatchPreview = await repositoryOperation(
+      target.id,
+      "git.patch.preview",
+      {
+        request: patchRequest,
+      },
+    );
     expect(offlinePatchPreview.statusCode).toBe(503);
     connected = true;
-    const stashListResponse = await app.inject({
-      method: "GET",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/stashes`,
-    });
+    const stashListResponse = await repositoryOperation(
+      target.id,
+      "git.stash.list",
+    );
     expect(gitStashListSchema.parse(stashListResponse.json()).stashes).toEqual([
       expect.objectContaining({ hash: stashFixture.hash }),
     ]);
@@ -4372,16 +4571,18 @@ describe.sequential("server worktree control plane", () => {
       type: "git.stash.list",
       cwd: target.path,
     });
-    const stashCreateResponse = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/stashes`,
-      payload: {
-        message: "Scoped shelf",
-        includeStaged: false,
-        includeUnstaged: true,
-        includeUntracked: true,
+    const stashCreateResponse = await repositoryOperation(
+      target.id,
+      "git.stash.create",
+      {
+        request: {
+          message: "Scoped shelf",
+          includeStaged: false,
+          includeUnstaged: true,
+          includeUntracked: true,
+        },
       },
-    });
+    );
     expect(
       gitStashMutationResultSchema.parse(stashCreateResponse.json()),
     ).toMatchObject({ stash: { message: "Scoped shelf" } });
@@ -4390,10 +4591,14 @@ describe.sequential("server worktree control plane", () => {
       cwd: target.path,
       request: { message: "Scoped shelf" },
     });
-    const stashDiffResponse = await app.inject({
-      method: "GET",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/stashes/${stashFixture.hash}/diff?path=src%2Fapp.ts`,
-    });
+    const stashDiffResponse = await repositoryOperation(
+      target.id,
+      "git.stash.diff",
+      {
+        hash: stashFixture.hash,
+        path: "src/app.ts",
+      },
+    );
     expect(
       gitStashFileDiffSchema.parse(stashDiffResponse.json()),
     ).toMatchObject({
@@ -4405,19 +4610,24 @@ describe.sequential("server worktree control plane", () => {
       ref: stashFixture.ref,
       hash: stashFixture.hash,
     };
-    const stashPreviewResponse = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/stashes/actions/preview`,
-      payload: popAction,
-    });
+    const stashPreviewResponse = await repositoryOperation(
+      target.id,
+      "git.stash.action.preview",
+      {
+        action: popAction,
+      },
+    );
     expect(
       gitStashActionPreviewSchema.parse(stashPreviewResponse.json()),
     ).toMatchObject({ action: popAction, token: "e".repeat(64) });
-    const stashApplyResponse = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/stashes/actions/apply`,
-      payload: { action: popAction, token: "e".repeat(64) },
-    });
+    const stashApplyResponse = await repositoryOperation(
+      target.id,
+      "git.stash.action.apply",
+      {
+        action: popAction,
+        token: "e".repeat(64),
+      },
+    );
     expect(
       gitStashMutationResultSchema.parse(stashApplyResponse.json()),
     ).toMatchObject({ output: "stash action complete" });
@@ -4428,61 +4638,80 @@ describe.sequential("server worktree control plane", () => {
     });
     stashActionConflicts = true;
     managedOperationState = "conflicted";
-    const stashConflictPreviewResponse = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/stashes/actions/preview`,
-      payload: popAction,
-    });
+    const stashConflictPreviewResponse = await repositoryOperation(
+      target.id,
+      "git.stash.action.preview",
+      {
+        action: popAction,
+      },
+    );
     expect(stashConflictPreviewResponse.statusCode).toBe(200);
-    const stashConflictApplyResponse = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/stashes/actions/apply`,
-      payload: { action: popAction, token: "e".repeat(64) },
-    });
+    const stashConflictApplyResponse = await repositoryOperation(
+      target.id,
+      "git.stash.action.apply",
+      {
+        action: popAction,
+        token: "e".repeat(64),
+      },
+    );
     expect(
       gitStashMutationResultSchema.parse(stashConflictApplyResponse.json()),
     ).toMatchObject({
       operation: { type: "stash", state: "conflicted" },
       conflictedPaths: ["src/app.ts"],
     });
-    const stashOperation = await database.repository.getActiveGitOperation(
-      LOCAL_USER_ID,
-      projectId,
-      target.id,
-    );
+    const stashOperation = gitManagedOperationResponseSchema.parse(
+      (await repositoryOperation(target.id, "git.operation.current")).json(),
+    ).operation;
     expect(stashOperation).toMatchObject({
       type: "stash",
       state: "conflicted",
       sourceRevision: stashFixture.hash,
     });
-    const blockedStashCreate = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/stashes`,
-      payload: {
-        message: "Blocked while resolving",
-        includeStaged: true,
-        includeUnstaged: true,
-        includeUntracked: false,
+    expect(
+      await database.repository.getActiveGitOperation(
+        LOCAL_USER_ID,
+        projectId,
+        target.id,
+      ),
+    ).toBeNull();
+    const blockedStashCreate = await repositoryOperation(
+      target.id,
+      "git.stash.create",
+      {
+        request: {
+          message: "Blocked while resolving",
+          includeStaged: true,
+          includeUnstaged: true,
+          includeUntracked: false,
+        },
       },
-    });
-    expect(blockedStashCreate.statusCode).toBe(409);
+    );
+    // The transport succeeds; the private worker error remains encrypted.
+    expect(blockedStashCreate.statusCode).toBe(200);
     expect(blockedStashCreate.json()).toMatchObject({
-      error: "Finish or abort the active stash operation first.",
+      error: "Finish or abort the active Git operation first.",
     });
-    const blockedStashPreview = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/stashes/actions/preview`,
-      payload: popAction,
-    });
-    expect(blockedStashPreview.statusCode).toBe(409);
+    expect(blockedStashCreate.body).not.toContain("Finish or abort");
+    const blockedStashPreview = await repositoryOperation(
+      target.id,
+      "git.stash.action.preview",
+      {
+        action: popAction,
+      },
+    );
+    expect(blockedStashPreview.statusCode).toBe(200);
     expect(blockedStashPreview.json()).toMatchObject({
-      error: "Finish or abort the active stash operation first.",
+      error: "Finish or abort the active Git operation first.",
     });
-    const abortStashResponse = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/operations/${stashOperation!.id}/control`,
-      payload: { action: "abort" },
-    });
+    const abortStashResponse = await repositoryOperation(
+      target.id,
+      "git.operation.control",
+      {
+        operationId: stashOperation!.id,
+        action: "abort",
+      },
+    );
     expect(
       gitManagedOperationResponseSchema.parse(abortStashResponse.json())
         .operation,
@@ -4490,42 +4719,38 @@ describe.sequential("server worktree control plane", () => {
     stashActionConflicts = false;
     maximumConcurrentGitMutations = 0;
     await Promise.all([
-      app.inject({
-        method: "POST",
-        url: `/api/projects/${projectId}/worktrees/${target.id}/git/stashes`,
-        payload: {
+      repositoryOperation(target.id, "git.stash.create", {
+        request: {
           message: "Serialized shelf",
           includeStaged: true,
           includeUnstaged: true,
           includeUntracked: false,
         },
       }),
-      app.inject({
-        method: "POST",
-        url: `/api/projects/${projectId}/worktrees/${target.id}/git/stashes/actions/apply`,
-        payload: { action: popAction, token: "e".repeat(64) },
+      repositoryOperation(target.id, "git.stash.action.apply", {
+        action: popAction,
+        token: "e".repeat(64),
       }),
     ]);
     expect(maximumConcurrentGitMutations).toBe(1);
-    const invalidStashDiff = await app.inject({
-      method: "GET",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/stashes/not-a-hash/diff?path=..%2Fsecret`,
-    });
-    expect(invalidStashDiff.statusCode).toBe(400);
+    expect(() =>
+      workerCommandSchema.parse({
+        type: "git.stash.diff",
+        cwd: target.path,
+        hash: "not-a-hash",
+        path: "../secret",
+      }),
+    ).toThrow();
     connected = false;
     expect(
-      (
-        await app.inject({
-          method: "GET",
-          url: `/api/projects/${projectId}/worktrees/${target.id}/git/stashes`,
-        })
-      ).statusCode,
+      (await repositoryOperation(target.id, "git.stash.list")).statusCode,
     ).toBe(503);
     connected = true;
-    const branchListResponse = await app.inject({
-      method: "GET",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/branches`,
-    });
+    const branchListResponse = await repositoryOperation(
+      target.id,
+      "git.branch.list",
+      {},
+    );
     expect(gitBranchListSchema.parse(branchListResponse.json())).toMatchObject({
       currentBranch: "main",
       defaultRemote: "origin",
@@ -4535,11 +4760,11 @@ describe.sequential("server worktree control plane", () => {
       cwd: target.path,
     });
     const fetchAction = { type: "fetch" as const, remote: null, prune: true };
-    const branchPreviewResponse = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/branches/actions/preview`,
-      payload: fetchAction,
-    });
+    const branchPreviewResponse = await repositoryOperation(
+      target.id,
+      "git.branch.action.preview",
+      { action: fetchAction },
+    );
     expect(
       gitBranchActionPreviewSchema.parse(branchPreviewResponse.json()),
     ).toMatchObject({
@@ -4547,11 +4772,11 @@ describe.sequential("server worktree control plane", () => {
       destructive: true,
       token: "f".repeat(64),
     });
-    const branchApplyResponse = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/branches/actions/apply`,
-      payload: { action: fetchAction, token: "f".repeat(64) },
-    });
+    const branchApplyResponse = await repositoryOperation(
+      target.id,
+      "git.branch.action.apply",
+      { action: fetchAction, token: "f".repeat(64) },
+    );
     expect(
       gitBranchMutationResultSchema.parse(branchApplyResponse.json()),
     ).toMatchObject({ output: "branch action complete" });
@@ -4560,40 +4785,36 @@ describe.sequential("server worktree control plane", () => {
       cwd: target.path,
       action: fetchAction,
     });
-    const invalidBranchAction = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/branches/actions/preview`,
-      payload: { type: "fetch", remote: "--upload-pack=bad", prune: false },
+    const invalidBranchAction = await repositoryOperation(
+      target.id,
+      "git.branch.action.preview",
+      { action: { type: "fetch", remote: "--upload-pack=bad", prune: false } },
+    );
+    expect(invalidBranchAction.statusCode).toBe(200);
+    expect(invalidBranchAction.json()).toMatchObject({
+      error: expect.any(String),
     });
-    expect(invalidBranchAction.statusCode).toBe(400);
     maximumConcurrentGitMutations = 0;
     await Promise.all([
-      app.inject({
-        method: "POST",
-        url: `/api/projects/${projectId}/worktrees/${target.id}/git/branches/actions/apply`,
-        payload: { action: fetchAction, token: "f".repeat(64) },
+      repositoryOperation(target.id, "git.branch.action.apply", {
+        action: fetchAction,
+        token: "f".repeat(64),
       }),
-      app.inject({
-        method: "POST",
-        url: `/api/projects/${projectId}/worktrees/${target.id}/git/actions`,
-        payload: { type: "stageAll" },
+      repositoryOperation(target.id, "git.action", {
+        action: { type: "stageAll" },
       }),
     ]);
     expect(maximumConcurrentGitMutations).toBe(1);
     connected = false;
     expect(
-      (
-        await app.inject({
-          method: "GET",
-          url: `/api/projects/${projectId}/worktrees/${target.id}/git/branches`,
-        })
-      ).statusCode,
+      (await repositoryOperation(target.id, "git.branch.list", {})).statusCode,
     ).toBe(503);
     connected = true;
-    const remoteListResponse = await app.inject({
-      method: "GET",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/remotes`,
-    });
+    const remoteListResponse = await repositoryOperation(
+      target.id,
+      "git.remote.list",
+      {},
+    );
     expect(gitRemoteListSchema.parse(remoteListResponse.json())).toMatchObject({
       remotes: [expect.objectContaining({ name: "origin" })],
     });
@@ -4606,19 +4827,19 @@ describe.sequential("server worktree control plane", () => {
       remote: "origin",
       prune: true,
     };
-    const remotePreviewResponse = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/remotes/actions/preview`,
-      payload: remoteAction,
-    });
+    const remotePreviewResponse = await repositoryOperation(
+      target.id,
+      "git.remote.action.preview",
+      { action: remoteAction },
+    );
     expect(
       gitRemoteActionPreviewSchema.parse(remotePreviewResponse.json()),
     ).toMatchObject({ action: remoteAction, destructive: true });
-    const remoteApplyResponse = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/remotes/actions/apply`,
-      payload: { action: remoteAction, token: "a".repeat(64) },
-    });
+    const remoteApplyResponse = await repositoryOperation(
+      target.id,
+      "git.remote.action.apply",
+      { action: remoteAction, token: "a".repeat(64) },
+    );
     expect(
       gitRemoteMutationResultSchema.parse(remoteApplyResponse.json()),
     ).toMatchObject({ output: "remote action complete" });
@@ -4627,22 +4848,28 @@ describe.sequential("server worktree control plane", () => {
       cwd: target.path,
       action: remoteAction,
     });
-    const invalidRemoteResponse = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/remotes/actions/preview`,
-      payload: {
-        type: "add",
-        name: "evil",
-        fetchUrl: "--upload-pack=bad",
-        pushUrl: null,
+    const invalidRemoteResponse = await repositoryOperation(
+      target.id,
+      "git.remote.action.preview",
+      {
+        action: {
+          type: "add",
+          name: "evil",
+          fetchUrl: "--upload-pack=bad",
+          pushUrl: null,
+        },
       },
+    );
+    expect(invalidRemoteResponse.statusCode).toBe(200);
+    expect(invalidRemoteResponse.json()).toMatchObject({
+      error: expect.any(String),
     });
-    expect(invalidRemoteResponse.statusCode).toBe(400);
 
-    const submoduleListResponse = await app.inject({
-      method: "GET",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/submodules`,
-    });
+    const submoduleListResponse = await repositoryOperation(
+      target.id,
+      "git.submodule.list",
+      {},
+    );
     expect(
       gitSubmoduleListSchema.parse(submoduleListResponse.json()),
     ).toMatchObject({
@@ -4662,19 +4889,19 @@ describe.sequential("server worktree control plane", () => {
       path: "modules/library",
       recursive: true,
     };
-    const submodulePreviewResponse = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/submodules/actions/preview`,
-      payload: submoduleAction,
-    });
+    const submodulePreviewResponse = await repositoryOperation(
+      target.id,
+      "git.submodule.action.preview",
+      { action: submoduleAction },
+    );
     expect(
       gitSubmoduleActionPreviewSchema.parse(submodulePreviewResponse.json()),
     ).toMatchObject({ action: submoduleAction, token: "9".repeat(64) });
-    const submoduleApplyResponse = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/submodules/actions/apply`,
-      payload: { action: submoduleAction, token: "9".repeat(64) },
-    });
+    const submoduleApplyResponse = await repositoryOperation(
+      target.id,
+      "git.submodule.action.apply",
+      { action: submoduleAction, token: "9".repeat(64) },
+    );
     expect(
       gitSubmoduleMutationResultSchema.parse(submoduleApplyResponse.json()),
     ).toMatchObject({
@@ -4693,21 +4920,27 @@ describe.sequential("server worktree control plane", () => {
       cwd: target.path,
       action: submoduleAction,
     });
-    const invalidSubmoduleResponse = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/submodules/actions/preview`,
-      payload: {
-        type: "deinitialize",
-        path: "../outside",
-        force: true,
+    const invalidSubmoduleResponse = await repositoryOperation(
+      target.id,
+      "git.submodule.action.preview",
+      {
+        action: {
+          type: "deinitialize",
+          path: "../outside",
+          force: true,
+        },
       },
+    );
+    expect(invalidSubmoduleResponse.statusCode).toBe(200);
+    expect(invalidSubmoduleResponse.json()).toMatchObject({
+      error: expect.any(String),
     });
-    expect(invalidSubmoduleResponse.statusCode).toBe(400);
 
-    const lfsStatusResponse = await app.inject({
-      method: "GET",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/lfs`,
-    });
+    const lfsStatusResponse = await repositoryOperation(
+      target.id,
+      "git.lfs.status",
+      { refreshLocks: false },
+    );
     expect(gitLfsStatusSchema.parse(lfsStatusResponse.json())).toMatchObject({
       available: true,
       files: [expect.objectContaining({ path: "asset.bin" })],
@@ -4721,19 +4954,19 @@ describe.sequential("server worktree control plane", () => {
       type: "track" as const,
       pattern: "*.archive",
     };
-    const lfsPreviewResponse = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/lfs/actions/preview`,
-      payload: lfsAction,
-    });
+    const lfsPreviewResponse = await repositoryOperation(
+      target.id,
+      "git.lfs.action.preview",
+      { action: lfsAction },
+    );
     expect(
       gitLfsActionPreviewSchema.parse(lfsPreviewResponse.json()),
     ).toMatchObject({ action: lfsAction, token: "8".repeat(64) });
-    const lfsApplyResponse = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/lfs/actions/apply`,
-      payload: { action: lfsAction, token: "8".repeat(64) },
-    });
+    const lfsApplyResponse = await repositoryOperation(
+      target.id,
+      "git.lfs.action.apply",
+      { action: lfsAction, token: "8".repeat(64) },
+    );
     expect(
       gitLfsMutationResultSchema.parse(lfsApplyResponse.json()),
     ).toMatchObject({ output: "Git LFS action complete" });
@@ -4742,17 +4975,21 @@ describe.sequential("server worktree control plane", () => {
       cwd: target.path,
       action: lfsAction,
     });
-    const invalidLfsResponse = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/lfs/actions/preview`,
-      payload: { type: "lock", path: "../outside" },
+    const invalidLfsResponse = await repositoryOperation(
+      target.id,
+      "git.lfs.action.preview",
+      { action: { type: "lock", path: "../outside" } },
+    );
+    expect(invalidLfsResponse.statusCode).toBe(200);
+    expect(invalidLfsResponse.json()).toMatchObject({
+      error: expect.any(String),
     });
-    expect(invalidLfsResponse.statusCode).toBe(400);
 
-    const tagListResponse = await app.inject({
-      method: "GET",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/tags`,
-    });
+    const tagListResponse = await repositoryOperation(
+      target.id,
+      "git.tag.list",
+      {},
+    );
     expect(tagListResponse.statusCode, tagListResponse.body).toBe(200);
     expect(gitTagListSchema.parse(tagListResponse.json())).toMatchObject({
       tags: [expect.objectContaining({ name: tagFixture.name })],
@@ -4761,10 +4998,11 @@ describe.sequential("server worktree control plane", () => {
       type: "git.tag.list",
       cwd: target.path,
     });
-    const tagDetailResponse = await app.inject({
-      method: "GET",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/tags/${encodeURIComponent(tagFixture.name)}`,
-    });
+    const tagDetailResponse = await repositoryOperation(
+      target.id,
+      "git.tag.get",
+      { name: tagFixture.name },
+    );
     expect(gitTagDetailSchema.parse(tagDetailResponse.json())).toMatchObject({
       name: tagFixture.name,
       message: expect.stringContaining("Signed release"),
@@ -4774,39 +5012,45 @@ describe.sequential("server worktree control plane", () => {
       name: tagFixture.name,
       remote: "origin",
     };
-    const tagPreviewResponse = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/tags/actions/preview`,
-      payload: tagAction,
-    });
+    const tagPreviewResponse = await repositoryOperation(
+      target.id,
+      "git.tag.action.preview",
+      { action: tagAction },
+    );
     expect(
       gitTagActionPreviewSchema.parse(tagPreviewResponse.json()),
     ).toMatchObject({ action: tagAction });
-    const tagApplyResponse = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/tags/actions/apply`,
-      payload: { action: tagAction, token: "b".repeat(64) },
-    });
+    const tagApplyResponse = await repositoryOperation(
+      target.id,
+      "git.tag.action.apply",
+      { action: tagAction, token: "b".repeat(64) },
+    );
     expect(
       gitTagMutationResultSchema.parse(tagApplyResponse.json()),
     ).toMatchObject({ output: "tag action complete" });
-    const invalidTagResponse = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/tags/actions/preview`,
-      payload: {
-        type: "create",
-        name: "v2",
-        target: null,
-        annotated: true,
-        message: null,
+    const invalidTagResponse = await repositoryOperation(
+      target.id,
+      "git.tag.action.preview",
+      {
+        action: {
+          type: "create",
+          name: "v2",
+          target: null,
+          annotated: true,
+          message: null,
+        },
       },
+    );
+    expect(invalidTagResponse.statusCode).toBe(200);
+    expect(invalidTagResponse.json()).toMatchObject({
+      error: expect.any(String),
     });
-    expect(invalidTagResponse.statusCode).toBe(400);
 
-    const releaseListResponse = await app.inject({
-      method: "GET",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/github/releases`,
-    });
+    const releaseListResponse = await repositoryOperation(
+      target.id,
+      "github.releases.list",
+      {},
+    );
     expect(
       githubReleaseListSchema.parse(releaseListResponse.json()),
     ).toMatchObject({ releases: [expect.objectContaining({ id: 42 })] });
@@ -4815,10 +5059,11 @@ describe.sequential("server worktree control plane", () => {
       cwd: target.path,
       repository: "ArcaneArts/Cantrip",
     });
-    const releaseDetailResponse = await app.inject({
-      method: "GET",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/github/releases/42`,
-    });
+    const releaseDetailResponse = await repositoryOperation(
+      target.id,
+      "github.release.get",
+      { releaseId: 42 },
+    );
     expect(
       githubReleaseSummarySchema.parse(releaseDetailResponse.json()),
     ).toMatchObject({ id: 42, tagName: tagFixture.name });
@@ -4829,12 +5074,12 @@ describe.sequential("server worktree control plane", () => {
       draft: true,
       prerelease: false,
     };
-    const releaseCreateResponse = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/github/releases`,
-      payload: releaseCreate,
-    });
-    expect(releaseCreateResponse.statusCode).toBe(201);
+    const releaseCreateResponse = await repositoryOperation(
+      target.id,
+      "github.release.create",
+      { request: releaseCreate },
+    );
+    expect(releaseCreateResponse.statusCode).toBe(200);
     expect(
       githubReleaseSummarySchema.parse(releaseCreateResponse.json()),
     ).toMatchObject(releaseCreate);
@@ -4846,26 +5091,18 @@ describe.sequential("server worktree control plane", () => {
     });
     maximumConcurrentGitMutations = 0;
     await Promise.all([
-      app.inject({
-        method: "POST",
-        url: `/api/projects/${projectId}/worktrees/${target.id}/git/remotes/actions/apply`,
-        payload: { action: remoteAction, token: "a".repeat(64) },
+      repositoryOperation(target.id, "git.remote.action.apply", {
+        action: remoteAction,
+        token: "a".repeat(64),
       }),
-      app.inject({
-        method: "POST",
-        url: `/api/projects/${projectId}/worktrees/${target.id}/github/releases`,
-        payload: releaseCreate,
+      repositoryOperation(target.id, "github.release.create", {
+        request: releaseCreate,
       }),
     ]);
     expect(maximumConcurrentGitMutations).toBe(1);
     connected = false;
     expect(
-      (
-        await app.inject({
-          method: "GET",
-          url: `/api/projects/${projectId}/worktrees/${target.id}/git/tags`,
-        })
-      ).statusCode,
+      (await repositoryOperation(target.id, "git.tag.list", {})).statusCode,
     ).toBe(503);
     connected = true;
     const actionRevision = "3".repeat(40);
@@ -4876,11 +5113,11 @@ describe.sequential("server worktree control plane", () => {
         revisions: [actionRevision],
       },
     };
-    const commitActionPreviewResponse = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/commits/actions/preview`,
-      payload: commitAction,
-    });
+    const commitActionPreviewResponse = await repositoryOperation(
+      target.id,
+      "git.commit.action.preview",
+      { action: commitAction },
+    );
     expect(
       gitCommitActionPreviewSchema.parse(commitActionPreviewResponse.json()),
     ).toMatchObject({
@@ -4893,11 +5130,11 @@ describe.sequential("server worktree control plane", () => {
       cwd: target.path,
       action: commitAction,
     });
-    const commitActionApplyResponse = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/commits/actions/apply`,
-      payload: { action: commitAction, token: "c".repeat(64) },
-    });
+    const commitActionApplyResponse = await repositoryOperation(
+      target.id,
+      "git.commit.action.apply",
+      { action: commitAction, token: "c".repeat(64) },
+    );
     expect(
       gitCommitActionResultSchema.parse(commitActionApplyResponse.json()),
     ).toMatchObject({
@@ -4910,11 +5147,11 @@ describe.sequential("server worktree control plane", () => {
       action: commitAction,
     });
     managedOperationState = "conflicted";
-    const operationPreviewResponse = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/operations/preview`,
-      payload: managedOperationAction,
-    });
+    const operationPreviewResponse = await repositoryOperation(
+      target.id,
+      "git.operation.preview",
+      { action: managedOperationAction },
+    );
     expect(
       gitManagedOperationPreviewSchema.parse(operationPreviewResponse.json()),
     ).toMatchObject({
@@ -4922,16 +5159,16 @@ describe.sequential("server worktree control plane", () => {
       token: "d".repeat(64),
       wouldConflict: true,
     });
-    const operationStartResponse = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/operations`,
-      payload: {
+    const operationStartResponse = await repositoryOperation(
+      target.id,
+      "git.operation.start",
+      {
         action: managedOperationAction,
         token: "d".repeat(64),
       },
-    });
+    );
     expect(operationStartResponse.statusCode, operationStartResponse.body).toBe(
-      201,
+      200,
     );
     const startedOperation = gitManagedOperationResponseSchema.parse(
       operationStartResponse.json(),
@@ -4950,34 +5187,44 @@ describe.sequential("server worktree control plane", () => {
       cwd: target.path,
       action: managedOperationAction,
     });
-    const blockedOperationPreview = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/operations/preview`,
-      payload: { type: "merge", sourceRef: "feature" },
+    const blockedOperationPreview = await repositoryOperation(
+      target.id,
+      "git.operation.preview",
+      { action: { type: "merge", sourceRef: "feature" } },
+    );
+    expect(blockedOperationPreview.statusCode).toBe(200);
+    expect(blockedOperationPreview.json()).toEqual({
+      error: "Finish or abort the active Git operation first.",
     });
-    expect(blockedOperationPreview.statusCode).toBe(409);
     connected = false;
-    const offlineOperation = await app.inject({
-      method: "GET",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/operations/current`,
-    });
-    expect(offlineOperation.statusCode).toBe(200);
-    expect(
-      gitManagedOperationResponseSchema.parse(offlineOperation.json())
-        .operation,
-    ).toMatchObject({ id: startedOperation.id, state: "conflicted" });
+    const offlineOperation = await repositoryOperation(
+      target.id,
+      "git.operation.current",
+      {},
+    );
+    expect(offlineOperation.statusCode).toBe(503);
     connected = true;
-    const conflictListResponse = await app.inject({
-      method: "GET",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/conflicts`,
-    });
+    repositoryManagedOperations = new RepositoryManagedOperationStore(
+      dataDirectory,
+    );
+    expect(
+      gitManagedOperationResponseSchema.parse(
+        (await repositoryOperation(target.id, "git.operation.current")).json(),
+      ).operation,
+    ).toMatchObject({ id: startedOperation.id, state: "conflicted" });
+    const conflictListResponse = await repositoryOperation(
+      target.id,
+      "git.conflicts.list",
+      {},
+    );
     expect(
       gitConflictListSchema.parse(conflictListResponse.json()).files[0],
     ).toMatchObject({ path: "src/app.ts", kind: "both-modified" });
-    const conflictDetailResponse = await app.inject({
-      method: "GET",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/conflicts/detail?path=${encodeURIComponent("src/app.ts")}`,
-    });
+    const conflictDetailResponse = await repositoryOperation(
+      target.id,
+      "git.conflicts.get",
+      { path: "src/app.ts" },
+    );
     expect(
       gitConflictDetailSchema.parse(conflictDetailResponse.json()).theirs
         .content,
@@ -4987,19 +5234,19 @@ describe.sequential("server worktree control plane", () => {
       strategy: "manual" as const,
       content: "resolved\n",
     };
-    const conflictPreviewResponse = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/conflicts/preview`,
-      payload: conflictResolution,
-    });
+    const conflictPreviewResponse = await repositoryOperation(
+      target.id,
+      "git.conflicts.preview",
+      { request: conflictResolution },
+    );
     expect(
       gitConflictResolutionPreviewSchema.parse(conflictPreviewResponse.json()),
     ).toMatchObject({ token: "e".repeat(64), request: conflictResolution });
-    const conflictApplyResponse = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/conflicts/apply`,
-      payload: { request: conflictResolution, token: "e".repeat(64) },
-    });
+    const conflictApplyResponse = await repositoryOperation(
+      target.id,
+      "git.conflicts.apply",
+      { request: conflictResolution, token: "e".repeat(64) },
+    );
     expect(
       gitConflictResolutionResultSchema.parse(conflictApplyResponse.json()),
     ).toMatchObject({ resolved: true, remainingPaths: [] });
@@ -5009,21 +5256,19 @@ describe.sequential("server worktree control plane", () => {
       request: conflictResolution,
     });
     expect(
-      await database.repository.getLatestGitOperation(
-        LOCAL_USER_ID,
-        projectId,
-        target.id,
-      ),
+      gitManagedOperationResponseSchema.parse(
+        (await repositoryOperation(target.id, "git.operation.current")).json(),
+      ).operation,
     ).toMatchObject({
       id: startedOperation.id,
       state: "awaiting-user-action",
       conflictedPaths: [],
     });
-    const operationControlResponse = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/operations/${startedOperation.id}/control`,
-      payload: { action: "continue" },
-    });
+    const operationControlResponse = await repositoryOperation(
+      target.id,
+      "git.operation.control",
+      { operationId: startedOperation.id, ...{ action: "continue" } },
+    );
     expect(
       gitManagedOperationResponseSchema.parse(operationControlResponse.json())
         .operation,
@@ -5034,11 +5279,9 @@ describe.sequential("server worktree control plane", () => {
       pendingCommits: [],
     });
     expect(
-      await database.repository.getLatestGitOperation(
-        LOCAL_USER_ID,
-        projectId,
-        target.id,
-      ),
+      gitManagedOperationResponseSchema.parse(
+        (await repositoryOperation(target.id, "git.operation.current")).json(),
+      ).operation,
     ).toMatchObject({ id: startedOperation.id, state: "completed" });
     const rewriteAction = {
       type: "interactiveRebase" as const,
@@ -5051,11 +5294,11 @@ describe.sequential("server worktree control plane", () => {
         },
       ],
     };
-    const rewritePreviewResponse = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/operations/preview`,
-      payload: rewriteAction,
-    });
+    const rewritePreviewResponse = await repositoryOperation(
+      target.id,
+      "git.operation.preview",
+      { action: rewriteAction },
+    );
     expect(
       gitManagedOperationPreviewSchema.parse(rewritePreviewResponse.json()),
     ).toMatchObject({
@@ -5063,13 +5306,13 @@ describe.sequential("server worktree control plane", () => {
       destructive: true,
       todo: rewriteAction.todo,
     });
-    const rewriteStartResponse = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/operations`,
-      payload: { action: rewriteAction, token: "d".repeat(64) },
-    });
+    const rewriteStartResponse = await repositoryOperation(
+      target.id,
+      "git.operation.start",
+      { action: rewriteAction, token: "d".repeat(64) },
+    );
     expect(rewriteStartResponse.statusCode, rewriteStartResponse.body).toBe(
-      201,
+      200,
     );
     const rewriteOperation = gitManagedOperationResponseSchema.parse(
       rewriteStartResponse.json(),
@@ -5080,11 +5323,14 @@ describe.sequential("server worktree control plane", () => {
       checkpointRef: "refs/cantrip/checkpoints/rewrite-test",
       pausedAction: "edit",
     });
-    const rewriteAmendResponse = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/operations/${rewriteOperation.id}/amend`,
-      payload: { message: "Edited through Cantrip" },
-    });
+    const rewriteAmendResponse = await repositoryOperation(
+      target.id,
+      "git.operation.amend",
+      {
+        operationId: rewriteOperation.id,
+        ...{ message: "Edited through Cantrip" },
+      },
+    );
     expect(
       gitManagedOperationResponseSchema.parse(rewriteAmendResponse.json())
         .operation,
@@ -5099,11 +5345,11 @@ describe.sequential("server worktree control plane", () => {
       goodRef: "HEAD~7",
       badRef: "HEAD",
     };
-    const bisectPreviewResponse = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/operations/preview`,
-      payload: bisectAction,
-    });
+    const bisectPreviewResponse = await repositoryOperation(
+      target.id,
+      "git.operation.preview",
+      { action: bisectAction },
+    );
     expect(
       gitManagedOperationPreviewSchema.parse(bisectPreviewResponse.json()),
     ).toMatchObject({
@@ -5114,12 +5360,12 @@ describe.sequential("server worktree control plane", () => {
         targetRef: "HEAD",
       },
     });
-    const bisectStartResponse = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/operations`,
-      payload: { action: bisectAction, token: "d".repeat(64) },
-    });
-    expect(bisectStartResponse.statusCode, bisectStartResponse.body).toBe(201);
+    const bisectStartResponse = await repositoryOperation(
+      target.id,
+      "git.operation.start",
+      { action: bisectAction, token: "d".repeat(64) },
+    );
+    expect(bisectStartResponse.statusCode, bisectStartResponse.body).toBe(200);
     const bisectOperation = gitManagedOperationResponseSchema.parse(
       bisectStartResponse.json(),
     ).operation!;
@@ -5131,20 +5377,26 @@ describe.sequential("server worktree control plane", () => {
       targetRef: "HEAD",
     });
     connected = false;
-    const offlineBisectResponse = await app.inject({
-      method: "GET",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/operations/current`,
-    });
-    expect(
-      gitManagedOperationResponseSchema.parse(offlineBisectResponse.json())
-        .operation,
-    ).toMatchObject({ id: bisectOperation.id, type: "bisect" });
+    const offlineBisectResponse = await repositoryOperation(
+      target.id,
+      "git.operation.current",
+      {},
+    );
+    expect(offlineBisectResponse.statusCode).toBe(503);
     connected = true;
-    const bisectGoodResponse = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/operations/${bisectOperation.id}/control`,
-      payload: { action: "good" },
-    });
+    repositoryManagedOperations = new RepositoryManagedOperationStore(
+      dataDirectory,
+    );
+    expect(
+      gitManagedOperationResponseSchema.parse(
+        (await repositoryOperation(target.id, "git.operation.current")).json(),
+      ).operation,
+    ).toMatchObject({ id: bisectOperation.id, type: "bisect" });
+    const bisectGoodResponse = await repositoryOperation(
+      target.id,
+      "git.operation.control",
+      { operationId: bisectOperation.id, ...{ action: "good" } },
+    );
     expect(
       gitManagedOperationResponseSchema.parse(bisectGoodResponse.json())
         .operation,
@@ -5158,11 +5410,11 @@ describe.sequential("server worktree control plane", () => {
       cwd: target.path,
       action: "good",
     });
-    const bisectResetResponse = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/operations/${bisectOperation.id}/control`,
-      payload: { action: "reset" },
-    });
+    const bisectResetResponse = await repositoryOperation(
+      target.id,
+      "git.operation.control",
+      { operationId: bisectOperation.id, ...{ action: "reset" } },
+    );
     expect(
       gitManagedOperationResponseSchema.parse(bisectResetResponse.json())
         .operation,
@@ -5171,52 +5423,55 @@ describe.sequential("server worktree control plane", () => {
       type: "bisect",
       state: "completed",
     });
-    const invalidOperation = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/operations/preview`,
-      payload: { type: "rebase", sourceRef: "bad\nref" },
+    const invalidOperation = await repositoryOperation(
+      target.id,
+      "git.operation.preview",
+      { action: { type: "rebase", sourceRef: "bad\nref" } },
+    );
+    expect(invalidOperation.statusCode).toBe(200);
+    expect(invalidOperation.json()).toMatchObject({
+      error: expect.any(String),
     });
-    expect(invalidOperation.statusCode).toBe(400);
-    const invalidCommitAction = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/commits/actions/preview`,
-      payload: {
-        type: "revert",
-        revision: "HEAD~1",
-        mainlineParent: null,
+    const invalidCommitAction = await repositoryOperation(
+      target.id,
+      "git.commit.action.preview",
+      {
+        action: {
+          type: "revert",
+          revision: "HEAD~1",
+          mainlineParent: null,
+        },
       },
+    );
+    expect(invalidCommitAction.statusCode).toBe(200);
+    expect(invalidCommitAction.json()).toMatchObject({
+      error: expect.any(String),
     });
-    expect(invalidCommitAction.statusCode).toBe(400);
     maximumConcurrentGitMutations = 0;
     await Promise.all([
-      app.inject({
-        method: "POST",
-        url: `/api/projects/${projectId}/worktrees/${target.id}/git/commits/actions/preview`,
-        payload: commitAction,
+      repositoryOperation(target.id, "git.commit.action.preview", {
+        action: commitAction,
       }),
-      app.inject({
-        method: "POST",
-        url: `/api/projects/${projectId}/worktrees/${target.id}/git/actions`,
-        payload: { type: "stageAll" },
+      repositoryOperation(target.id, "git.action", {
+        action: { type: "stageAll" },
       }),
     ]);
     expect(maximumConcurrentGitMutations).toBe(1);
     connected = false;
     expect(
       (
-        await app.inject({
-          method: "POST",
-          url: `/api/projects/${projectId}/worktrees/${target.id}/git/commits/actions/preview`,
-          payload: commitAction,
+        await repositoryOperation(target.id, "git.commit.action.preview", {
+          action: commitAction,
         })
       ).statusCode,
     ).toBe(503);
     connected = true;
     const revision = "1".repeat(40);
-    const commitResponse = await app.inject({
-      method: "GET",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/commits/${revision}?parent=0`,
-    });
+    const commitResponse = await repositoryOperation(
+      target.id,
+      "git.commit.get",
+      { revision, parentIndex: 0, revisions: [] },
+    );
     expect(gitCommitDetailSchema.parse(commitResponse.json())).toMatchObject({
       hash: revision,
       filesChanged: 1,
@@ -5225,12 +5480,13 @@ describe.sequential("server worktree control plane", () => {
       cwd: target.path,
       revision,
       parentIndex: 0,
-      revisions: expect.arrayContaining([revision]),
+      revisions: [],
     });
-    const signatureResponse = await app.inject({
-      method: "GET",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/commits/${revision}/signature`,
-    });
+    const signatureResponse = await repositoryOperation(
+      target.id,
+      "git.commit.signature.get",
+      { revision },
+    );
     expect(signatureResponse.json()).toMatchObject({
       status: "valid",
       signer: "Cantrip Test",
@@ -5239,10 +5495,11 @@ describe.sequential("server worktree control plane", () => {
       cwd: target.path,
       revision,
     });
-    const revisionDiffResponse = await app.inject({
-      method: "GET",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/revisions/${revision}/diff?path=src%2Fapp.ts`,
-    });
+    const revisionDiffResponse = await repositoryOperation(
+      target.id,
+      "git.revision.diff",
+      { revision, baseRevision: null, path: "src/app.ts" },
+    );
     expect(
       gitRevisionFileDiffSchema.parse(revisionDiffResponse.json()),
     ).toMatchObject({ revision, path: "src/app.ts", baseRevision: null });
@@ -5252,44 +5509,51 @@ describe.sequential("server worktree control plane", () => {
       baseRevision: null,
       path: "src/app.ts",
     });
-    const invalidRevision = await app.inject({
-      method: "GET",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/commits/HEAD~1`,
-    });
-    expect(invalidRevision.statusCode).toBe(400);
-    const invalidPath = await app.inject({
-      method: "GET",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/revisions/${revision}/diff?path=..%2Fsecret`,
-    });
-    expect(invalidPath.statusCode).toBe(400);
-    const invalidParent = await app.inject({
-      method: "GET",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/commits/${revision}?parent=1oops`,
-    });
-    expect(invalidParent.statusCode).toBe(400);
-    const refsResponse = await app.inject({
-      method: "GET",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/refs`,
-    });
+    const invalidRevision = await repositoryOperation(
+      target.id,
+      "git.commit.get",
+      { revision: "HEAD~1", parentIndex: 0, revisions: [] },
+    );
+    expect(invalidRevision.statusCode).toBe(200);
+    expect(invalidRevision.json()).toMatchObject({ error: expect.any(String) });
+    const invalidPath = await repositoryOperation(
+      target.id,
+      "git.revision.diff",
+      { revision, baseRevision: null, path: "../secret" },
+    );
+    expect(invalidPath.statusCode).toBe(200);
+    expect(invalidPath.json()).toMatchObject({ error: expect.any(String) });
+    const invalidParent = await repositoryOperation(
+      target.id,
+      "git.commit.get",
+      { revision, parentIndex: "1oops", revisions: [] },
+    );
+    expect(invalidParent.statusCode).toBe(200);
+    expect(invalidParent.json()).toMatchObject({ error: expect.any(String) });
+    const refsResponse = await repositoryOperation(
+      target.id,
+      "git.refs.list",
+      {},
+    );
     const candidates = gitRevisionCandidateListSchema.parse(
       refsResponse.json(),
     );
-    expect(candidates).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ name: "main", kind: "local" }),
-        expect.objectContaining({
-          name: `${target.name} worktree`,
-          kind: "worktree",
-          worktreeId: target.id,
-        }),
-      ]),
-    );
+    // The encrypted result preserves worker refs, without server-side
+    // augmentation of private labels or revisions from other worktrees.
+    expect(candidates).toEqual([
+      expect.objectContaining({
+        name: "main",
+        kind: "local",
+        worktreeId: null,
+      }),
+    ]);
     expect(gitRefsCommands.at(-1)?.cwd).toBe(target.path);
     const right = "2".repeat(40);
-    const comparisonResponse = await app.inject({
-      method: "GET",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/compare?left=${revision}&right=${right}&mode=merge-base`,
-    });
+    const comparisonResponse = await repositoryOperation(
+      target.id,
+      "git.compare",
+      { left: revision, right, mode: "merge-base" },
+    );
     expect(gitComparisonSchema.parse(comparisonResponse.json())).toMatchObject({
       left: revision,
       right,
@@ -5301,11 +5565,15 @@ describe.sequential("server worktree control plane", () => {
       right,
       mode: "merge-base",
     });
-    const invalidComparison = await app.inject({
-      method: "GET",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/compare?left=main&right=${right}&mode=direct`,
+    const invalidComparison = await repositoryOperation(
+      target.id,
+      "git.compare",
+      { left: "main", right, mode: "direct" },
+    );
+    expect(invalidComparison.statusCode).toBe(200);
+    expect(invalidComparison.json()).toMatchObject({
+      error: expect.any(String),
     });
-    expect(invalidComparison.statusCode).toBe(400);
   });
 
   it("rejects plaintext Git agent drafts and relays opaque agent requests", async () => {

@@ -1,37 +1,79 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
+import type { FastifyInstance } from "fastify";
+import {
+  encryptChatMessageProtectedContent,
+  decryptChatMessageProtectedContent,
+  encryptQueuedPromptProtectedContent,
+  decryptQueuedPromptProtectedContent,
+} from "../../packages/crypto/src/communication-content.js";
+import { chatMessageOpaqueSummarySchema } from "@cantrip/protocol/communication-content";
+import {
+  attachmentContentDigest,
+  encryptAttachmentMetadata,
+  decryptAttachmentMetadata,
+  encryptAttachmentChunk,
+  decryptAttachmentChunk,
+} from "../../packages/crypto/src/attachment-content.js";
+import {
+  attachmentDownloadOpaqueSchema,
+  chatAttachmentOpaqueSummarySchema,
+} from "@cantrip/protocol/attachment-content";
+import {
+  encryptSurfacePrivateState,
+  decryptSurfacePrivateState,
+} from "../../packages/crypto/src/surface-private-state.js";
+import {
+  decryptRepositoryOperationPayload,
+  encryptRepositoryOperationPayload,
+} from "../../packages/crypto/src/repository-operation.js";
+import {
+  repositoryOperationAccess,
+  repositoryOperationOutcomeContentSchema,
+  repositoryOperationRequestContentSchema,
+  repositoryOperationWireResponseSchema,
+  repositoryMetadataValuesSchema,
+  repositoryMetadataResultSchema,
+  type RepositoryOperationType,
+} from "@cantrip/protocol/repository-operation";
 
 import {
   agentInteractionRequestListSchema,
+  agentInteractionRequestWireListSchema,
+  agentInteractionRequestWireSchema,
+  nativeCommandAdmissionSchema,
+  nativeSettingsUpdateReceiptSchema,
+  type NativeSettingsEvidence,
   agentInteractionRequestSchema,
   agentThreadSyncSchema,
   appLiveServerMessageSchema,
-  browserListSchema,
-  browserSummarySchema,
+  browserWireSummarySchema,
+  browserWireListSchema,
   customizationContentScopeSchema,
   chatAttachmentSummarySchema,
   decodeRemoteSurfaceFrame,
   encodeRemoteSurfaceFrame,
-  chatListSchema,
+  chatWireListSchema,
   chatGoalResponseSchema,
   chatMessageListSchema,
+  chatMessageWireListSchema,
   chatMessageSchema,
+  chatMessageContentSchema,
   chatPauseStateSchema,
   chatPermissionProfileStateSchema,
   chatPlanStateSchema,
-  chatSummarySchema,
-  codeProtectedAttachmentIntentSchema,
-  codeProtectedAttachmentWireSchema,
-  codeRuntimeStatusSchema,
-  codeSaveAllResultSchema,
-  codeTabSummarySchema,
+  encryptedChatPlanWireStateSchema,
+  chatWireSummarySchema,
+  codeTabWireListSchema,
+  codeTabWireSummarySchema,
   explorerDirectorySchema,
   explorerDirectoryCommitsSchema,
   explorerFileSchema,
-  explorerListSchema,
-  explorerSummarySchema,
+  explorerMediaFileChunkSchema,
+  explorerWireSummarySchema,
+  explorerWireListSchema,
   gitActionResultSchema,
   gitBlameSchema,
   gitFileHistorySchema,
@@ -47,11 +89,14 @@ import {
   githubIssueDetailSchema,
   githubPullRequestCreateResultSchema,
   githubPullRequestCheckoutResultSchema,
+  githubPullRequestCheckoutPreparedSchema,
+  projectWorktreeSummarySchema,
   githubPullRequestDetailSchema,
+  githubPullRequestListSchema,
   githubPullRequestLifecyclePreviewSchema,
   modelProfileSummarySchema,
-  modelProviderAccountListSchema,
-  modelProviderSummarySchema,
+  modelProviderAccountWireListSchema,
+  modelProviderWireSummarySchema,
   projectWireListSchema,
   projectReplicaJobListSchema,
   projectReplicaListSchema,
@@ -59,30 +104,31 @@ import {
   projectShareAttachmentWireSchema,
   projectWireSummarySchema,
   projectTokenUsageSchema,
-  projectTabLayoutSummarySchema,
+  projectTabLayoutWireSummarySchema,
   projectWorkspaceWireListSchema,
   projectWorkspaceWireSummarySchema,
-  projectViewListSchema,
-  projectViewSummarySchema,
-  queuedPromptListSchema,
+  projectViewWireListSchema,
+  projectViewWireSummarySchema,
+  encryptedQueuedPromptSchema,
+  encryptedQueuedPromptListSchema,
   queuedPromptSchema,
-  remoteDesktopListSchema,
-  remoteDesktopSummarySchema,
-  remoteSurfaceListSchema,
+  remoteDesktopWireListSchema,
+  remoteDesktopWireSummarySchema,
+  remoteSurfaceWireListSchema,
   remoteSurfaceConnectionMessageSchema,
-  remoteSurfaceSummarySchema,
+  remoteSurfaceWireSummarySchema,
   serverBootstrapSchema,
-  settingsBundleSchema,
+  settingsBundleWireSchema,
   protectedScriptCommandListSchema,
   protectedCustomizationResponseSchema,
   protectedCustomizationRequestSchema,
-  terminalListSchema,
-  terminalSummarySchema,
-  tunnelListSchema,
+  terminalWireListSchema,
+  terminalWireSummarySchema,
   tunnelWireListSchema,
   unprobedCodexRuntimeReport,
   workerListSchema,
   workerManagementListSchema,
+  workerCommandSchema,
 } from "@cantrip/protocol";
 import type {
   AgentInteractionRequestCreate,
@@ -99,11 +145,46 @@ import { afterAll, describe, expect, it, vi } from "vitest";
 import type { WebSocket } from "ws";
 
 import { buildApp } from "../src/app.js";
+import { WorkerRoutingRegistry } from "../../cantrip_worker/src/routing-registry.js";
+import {
+  openEncryptedChatTurn,
+  protectChatTurn,
+  encryptChatTurnResult,
+  EncryptedChatEventSealer,
+} from "../../cantrip_worker/src/chat-message-encryption.js";
+import { openChatPlanState } from "../../cantrip_worker/src/chat-plan-encryption.js";
+import {
+  protectAgentInteractionRequest,
+  protectAgentInteractionResponse,
+  openAgentInteractionResponse,
+} from "../../cantrip_worker/src/interaction-encryption.js";
+import { WorkerEncryptionService } from "../../cantrip_worker/src/worker-encryption.js";
+import { readExplorerMediaFile } from "../../cantrip_worker/src/explorer.js";
+import {
+  openWorkerSurfaceStreamContent,
+  protectWorkerSurfaceStreamContent,
+} from "../../cantrip_worker/src/surface-stream-encryption.js";
+import {
+  explorerOperationRequestContentSchema,
+  explorerOperationResultContentSchema,
+  surfaceOperationOutcomeContentSchema,
+  surfaceStreamWireResponseSchema,
+  type ExplorerOperationRequestContent,
+} from "@cantrip/protocol/surface-stream";
 import type { ServerConfig } from "../src/config.js";
 import { connectDatabase } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
+import { effectivePermissionProfile } from "../src/chats/execution-helpers.js";
+import { settingsEnvelope } from "./native-settings-repository-fixture.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
-import { protectedProjectFields } from "./private-label-fixture.js";
+import {
+  protectedProjectFields,
+  protectedDisplayLabelFields,
+  protectedBrowserRemoteSurfaceFields,
+  protectedTerminalFields,
+  protectedExplorerFields,
+  protectedChatFields,
+} from "./private-label-fixture.js";
 import {
   protectedProviderCredentialFixture,
   providerCredentialMetadataFixture,
@@ -138,6 +219,13 @@ const protectedScriptCommands = {
     ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
   },
 };
+
+function protectedProviderAccount() {
+  return {
+    id: randomUUID(),
+    protectedLabel: protectedProjectFields().nameProtection.protectedLabel,
+  };
+}
 
 const protectedCustomizationContent = {
   ...protectedScriptCommands,
@@ -222,9 +310,20 @@ const exhaustedProviderIds = new Set<string>();
 const authUsageByCredentialHomeKey = new Map<string, number>();
 const steeredPrompts: string[] = [];
 const steeredAttachmentIds: string[][] = [];
+type QueuedNativeCommand = Extract<
+  WorkerCommand,
+  {
+    type: "chat.turn" | "chat.steer" | "chat.native-control";
+  }
+>;
+let beginQueuedNativeCommand:
+  | ((
+      command: QueuedNativeCommand,
+    ) => Promise<(() => Promise<void>) | undefined>)
+  | undefined;
 const pauseCommands: Array<{ chatId: string; paused: boolean }> = [];
 const interruptCommands: Array<
-  Extract<WorkerCommand, { type: "chat.interrupt" }>
+  Extract<WorkerCommand, { type: "chat.interrupt" | "chat.native-control" }>
 > = [];
 const explorerWrites: Array<{
   content: string;
@@ -232,6 +331,10 @@ const explorerWrites: Array<{
   version: string;
 }> = [];
 const explorerMediaBytes = Buffer.alloc(256 * 1_024 + 14, 0x5a);
+for (let index = 0; index < explorerMediaBytes.length; index += 1) {
+  explorerMediaBytes[index] = index % 251;
+}
+await writeFile(path.join(dataDirectory, "preview.png"), explorerMediaBytes);
 const explorerMediaModifiedAt = "2026-08-07T12:00:00.000Z";
 const terminalServiceReconciliations: Array<
   Extract<WorkerCommand, { type: "terminal.services.reconcile" }>
@@ -239,6 +342,9 @@ const terminalServiceReconciliations: Array<
 const terminalServiceRestarts: string[] = [];
 const closedTerminalIds: string[] = [];
 let codexGoal: ThreadGoal | null = null;
+const goalUpdateCommands: Array<
+  Extract<WorkerCommand, { type: "chat.goal.update" }>
+> = [];
 let codexPlanMode: PlanMode = "default";
 let releasePlanQuestion: (() => void) | null = null;
 let releaseAgentInteraction: (() => void) | null = null;
@@ -350,7 +456,7 @@ const surfaceAttachCommands: Array<
 > = [];
 const attachmentUploads = new Map<
   string,
-  { chunks: Buffer[]; fileName: string; sizeBytes: number }
+  { chunks: Buffer[]; fileName: string; sizeBytes: number; sha256: string }
 >();
 const attachmentFiles = new Map<string, Buffer>();
 const surfaceFrameListeners = new Set<
@@ -360,8 +466,326 @@ const surfaceFrameListeners = new Set<
   ) => void
 >();
 let releaseHeldTurn: (() => void) | null = null;
+let heldTurnCommand: Extract<WorkerCommand, { type: "chat.turn" }> | null =
+  null;
 let heldProjectCloneName: string | null = null;
 let releaseProjectClone: (() => void) | null = null;
+// Only the simulated client and worker hold this key; the HTTP server relays
+// opaque payloads and must not learn the repository arguments or result.
+const repositoryComponentKey = randomBytes(32);
+const chatComponentKey = randomBytes(32);
+const chatProtection = {
+  ownerId: LOCAL_USER_ID,
+  keyRevision: 1,
+  componentKey: chatComponentKey,
+};
+async function openQueuedPrompt(value: unknown) {
+  const wire = encryptedQueuedPromptSchema.parse(value);
+  const content = await decryptQueuedPromptProtectedContent({
+    ...chatProtection,
+    promptId: wire.id,
+    encrypted: wire.protectedContent,
+    publicClassification: wire.classification,
+  });
+  const attachments = await Promise.all(
+    wire.attachments.map(async (attachment) =>
+      chatAttachmentSummarySchema.parse({
+        ...attachment,
+        ...(await decryptAttachmentMetadata({
+          ...attachmentProtection,
+          chatId: wire.chatId,
+          attachmentId: attachment.id,
+          encrypted: attachment.protectedMetadata,
+        })),
+      }),
+    ),
+  );
+  return queuedPromptSchema.parse({
+    ...wire,
+    ...content.classification,
+    text: content.text,
+    attachments,
+  });
+}
+const chatEncryptionService = await WorkerEncryptionService.open({
+  dataDirectory: path.join(dataDirectory, "chat-encryption"),
+  serverUrl: "http://127.0.0.1:4310",
+  workerId: "local-foundation-worker",
+});
+vi.spyOn(chatEncryptionService, "ownerId").mockReturnValue(LOCAL_USER_ID);
+vi.spyOn(chatEncryptionService, "componentKey").mockImplementation(() => ({
+  key: Uint8Array.from(chatComponentKey),
+  keyRevision: 1,
+}));
+const surfaceComponentKey = randomBytes(32);
+const surfaceEncryptionService = await WorkerEncryptionService.open({
+  dataDirectory: path.join(dataDirectory, "surface-encryption"),
+  serverUrl: "http://127.0.0.1:4310",
+  workerId: "local-foundation-worker",
+});
+vi.spyOn(surfaceEncryptionService, "ownerId").mockReturnValue(LOCAL_USER_ID);
+vi.spyOn(surfaceEncryptionService, "componentKey").mockImplementation(() => ({
+  key: Uint8Array.from(surfaceComponentKey),
+  keyRevision: 1,
+}));
+
+async function explorerFixture(
+  command: ExplorerOperationRequestContent,
+): Promise<unknown> {
+  switch (command.type) {
+    case "explorer.directory.list":
+      return {
+        path: command.path,
+        entries: [
+          {
+            name: "README.md",
+            path: "README.md",
+            kind: "file",
+            size: 18,
+            modifiedAt: "2026-08-07T12:00:00.000Z",
+            viewable: true,
+            markdown: true,
+          },
+          {
+            name: "preview.png",
+            path: "preview.png",
+            kind: "file",
+            size: explorerMediaBytes.byteLength,
+            modifiedAt: explorerMediaModifiedAt,
+            viewable: true,
+            markdown: false,
+          },
+        ],
+        truncated: false,
+      };
+    case "explorer.directory.commits":
+      return {
+        path: command.path,
+        available: true,
+        entries: [
+          {
+            path: "README.md",
+            tracked: true,
+            lastCommit: {
+              hash: "a".repeat(40),
+              shortHash: "aaaaaaa",
+              subject: "Document Explorer",
+              authorName: "Cantrip Test",
+              authorEmail: "cantrip@example.com",
+              authoredAt: "2026-08-07T12:00:00.000Z",
+            },
+          },
+        ],
+      };
+    case "explorer.file.read":
+      return {
+        path: command.path,
+        content: "# Cantrip explorer\n",
+        size: 18,
+        markdown: true,
+        version: "a".repeat(64),
+      };
+    case "explorer.media.read": {
+      return readExplorerMediaFile(
+        dataDirectory,
+        command.path,
+        command.offset,
+        command.limit,
+      );
+    }
+    case "explorer.file.write":
+      explorerWrites.push({
+        content: command.content,
+        path: command.path,
+        version: command.version,
+      });
+      return {
+        path: command.path,
+        content: command.content,
+        size: Buffer.byteLength(command.content),
+        markdown: true,
+        version: "b".repeat(64),
+      };
+    default:
+      throw new Error(
+        `Unsupported Explorer fixture operation: ${command.type}`,
+      );
+  }
+}
+
+async function explorerOperation(
+  app: FastifyInstance,
+  serverId: string,
+  explorerId: string,
+  request: ExplorerOperationRequestContent,
+): Promise<unknown> {
+  const context = {
+    serverId,
+    surfaceKind: "explorer" as const,
+    surfaceId: explorerId,
+    operationId: randomUUID(),
+    direction: "request" as const,
+    sequence: 0,
+  };
+  const response = await app.inject({
+    method: "POST",
+    url: `/api/explorers/${explorerId}/operation`,
+    payload: {
+      operationId: context.operationId,
+      sequence: context.sequence,
+      protectedRequest: await protectWorkerSurfaceStreamContent({
+        context,
+        content: request,
+        schema: explorerOperationRequestContentSchema,
+        service: surfaceEncryptionService,
+      }),
+    },
+  });
+  expect(response.statusCode, response.body).toBe(200);
+  const wire = surfaceStreamWireResponseSchema.parse(response.json());
+  expect(wire.operationId).toBe(context.operationId);
+  expect(wire.sequence).toBe(context.sequence);
+  const outcome = await openWorkerSurfaceStreamContent({
+    context: { ...context, direction: "response" },
+    opaque: wire.protectedResponse,
+    schema: surfaceOperationOutcomeContentSchema,
+    service: surfaceEncryptionService,
+  });
+  if (!outcome.ok) throw new Error(outcome.error);
+  return explorerOperationResultContentSchema.parse(outcome.result).value;
+}
+const attachmentComponentKey = randomBytes(32);
+const attachmentProtection = {
+  ownerId: LOCAL_USER_ID,
+  componentKey: attachmentComponentKey,
+  keyRevision: 1,
+};
+async function uploadTextAttachment(
+  app: FastifyInstance,
+  chatId: string,
+  fileName: string,
+  text: string,
+) {
+  const attachmentId = randomUUID();
+  const operationId = randomUUID();
+  const scope = { ...attachmentProtection, chatId, attachmentId };
+  const metadata = {
+    version: 1 as const,
+    fileName,
+    mimeType: "text/plain",
+    kind: "text" as const,
+    source: "file" as const,
+    previewText: text,
+    error: null,
+    sha256: attachmentContentDigest(Buffer.from(text)),
+  };
+  const protectedMetadata = await encryptAttachmentMetadata({
+    ...scope,
+    content: metadata,
+  });
+  const chunk = await encryptAttachmentChunk({
+    ...scope,
+    operationId,
+    direction: "upload",
+    sequence: 0,
+    eof: true,
+    plaintext: Buffer.from(text),
+  });
+  const response = await app.inject({
+    method: "POST",
+    url: `/api/chats/${chatId}/attachments`,
+    headers: { "content-type": "application/octet-stream" },
+    payload: Buffer.from(
+      JSON.stringify({
+        attachmentId,
+        operationId,
+        sizeBytes: Buffer.byteLength(text),
+        protectedMetadata,
+        chunks: [chunk],
+      }),
+    ),
+  });
+  expect(response.statusCode, response.body).toBe(201);
+  const wire = chatAttachmentOpaqueSummarySchema.parse(response.json());
+  const opened = await decryptAttachmentMetadata({
+    ...scope,
+    encrypted: wire.protectedMetadata,
+  });
+  expect(opened).toEqual(metadata);
+  expect(wire).toMatchObject({
+    id: attachmentId,
+    chatId,
+    sizeBytes: Buffer.byteLength(text),
+  });
+  return chatAttachmentSummarySchema.parse({ ...wire, ...opened });
+}
+const routingRegistry = new WorkerRoutingRegistry(
+  path.join(dataDirectory, "worker-routing"),
+);
+
+async function workerRepositoryOperation(
+  app: FastifyInstance,
+  serverId: string,
+  type: RepositoryOperationType,
+  args: Record<string, unknown> = {},
+  target?: { projectId: string; worktreeId: string },
+): Promise<unknown> {
+  const context = {
+    serverId,
+    projectId: target?.projectId ?? "foundation-repository-catalog",
+    worktreeId: target?.worktreeId ?? "test-worker",
+    operationId: randomUUID(),
+    direction: "request" as const,
+  };
+  const protection = {
+    ownerId: LOCAL_USER_ID,
+    componentKey: repositoryComponentKey,
+    keyRevision: 1,
+  };
+  const protectedRequest = await encryptRepositoryOperationPayload({
+    ...protection,
+    context,
+    plaintext: Buffer.from(
+      JSON.stringify(
+        repositoryOperationRequestContentSchema.parse({
+          type,
+          arguments: args,
+        }),
+      ),
+    ),
+  });
+  const response = await app.inject({
+    method: "POST",
+    url: target
+      ? `/api/projects/${target.projectId}/worktrees/${target.worktreeId}/repository-operation`
+      : "/api/workers/test-worker/repository-operation",
+    payload: {
+      ...(!target ? { scopeId: context.projectId } : {}),
+      operationId: context.operationId,
+      protectedRequest,
+      access: repositoryOperationAccess(type),
+    },
+  });
+  expect(response.statusCode, response.body).toBe(200);
+  const wire = repositoryOperationWireResponseSchema.parse(response.json());
+  expect(wire.operationId).toBe(context.operationId);
+  const bytes = await decryptRepositoryOperationPayload({
+    ...protection,
+    context: { ...context, direction: "response" },
+    opaque: wire.protectedResponse,
+  });
+  try {
+    const outcome = repositoryOperationOutcomeContentSchema.parse(
+      JSON.parse(Buffer.from(bytes).toString("utf8")),
+    );
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) throw new Error(outcome.error);
+    return outcome.result;
+  } finally {
+    bytes.fill(0);
+  }
+}
+
 const workerBridge = {
   attach() {},
   close() {},
@@ -383,19 +807,144 @@ const workerBridge = {
     surfaceFrameListeners.add(listener);
     return () => surfaceFrameListeners.delete(listener);
   },
-  async request(_workerId, command, options) {
+  async request(_workerId, command, options): Promise<unknown> {
+    command = await routingRegistry.resolveCommand(command);
     switch (command.type) {
-      case "attachment.upload.begin":
+      case "explorer.operation": {
+        const context = {
+          serverId: command.serverId,
+          surfaceKind: "explorer" as const,
+          surfaceId: command.explorerId,
+          operationId: command.operationId,
+          direction: "request" as const,
+          sequence: command.sequence,
+        };
+        const request = await openWorkerSurfaceStreamContent({
+          context,
+          opaque: command.protectedRequest,
+          schema: explorerOperationRequestContentSchema,
+          service: surfaceEncryptionService,
+        });
+        // Reuse the existing filesystem fixture behind the encrypted transport.
+        const type =
+          request.type === "explorer.file.read" ||
+          request.type === "explorer.file.write"
+            ? "explorer.file"
+            : request.type === "explorer.media.read"
+              ? "explorer.media"
+              : request.type;
+        let outcome;
+        try {
+          outcome = surfaceOperationOutcomeContentSchema.parse({
+            ok: true,
+            result: { type, value: await explorerFixture(request) },
+          });
+        } catch (error) {
+          outcome = surfaceOperationOutcomeContentSchema.parse({
+            ok: false,
+            error:
+              error instanceof Error
+                ? error.message
+                : "Explorer operation failed.",
+          });
+        }
+        return {
+          operationId: command.operationId,
+          sequence: command.sequence,
+          protectedResponse: await protectWorkerSurfaceStreamContent({
+            context: { ...context, direction: "response" },
+            content: outcome,
+            schema: surfaceOperationOutcomeContentSchema,
+            service: surfaceEncryptionService,
+          }),
+        };
+      }
+      case "repository.operation": {
+        if (!options?.ownerId)
+          throw new Error("Repository operation owner missing.");
+        const context = {
+          serverId: command.serverId,
+          projectId: command.projectId,
+          worktreeId: command.worktreeId,
+          operationId: command.operationId,
+          direction: "request" as const,
+        };
+        const protection = {
+          ownerId: options.ownerId,
+          componentKey: repositoryComponentKey,
+          keyRevision: 1,
+        };
+        const bytes = await decryptRepositoryOperationPayload({
+          ...protection,
+          context,
+          opaque: command.protectedRequest,
+        });
+        try {
+          const request = repositoryOperationRequestContentSchema.parse(
+            JSON.parse(Buffer.from(bytes).toString("utf8")),
+          );
+          expect(command.access).toBe(repositoryOperationAccess(request.type));
+          const nestedCommand =
+            request.type === "repository.metadata.register"
+              ? null
+              : workerCommandSchema.parse({
+                  ...request.arguments,
+                  type: request.type,
+                  cwd: command.cwd,
+                  sourcePath: command.sourcePath,
+                  worktreePath: command.cwd,
+                  repository: command.repository,
+                });
+          const result = nestedCommand
+            ? await workerBridge.request(_workerId, nestedCommand, options)
+            : {
+                values: await routingRegistry.protectMetadata(
+                  repositoryMetadataValuesSchema.parse(
+                    request.arguments.values,
+                  ),
+                ),
+              };
+          return {
+            operationId: command.operationId,
+            protectedResponse: await encryptRepositoryOperationPayload({
+              ...protection,
+              context: { ...context, direction: "response" },
+              plaintext: Buffer.from(JSON.stringify({ ok: true, result })),
+            }),
+          };
+        } finally {
+          bytes.fill(0);
+        }
+      }
+      case "attachment.upload.begin": {
+        const metadata = await decryptAttachmentMetadata({
+          ...attachmentProtection,
+          chatId: command.chatId,
+          attachmentId: command.attachmentId,
+          encrypted: command.protectedMetadata,
+        });
         attachmentUploads.set(command.attachmentId, {
           chunks: [],
-          fileName: command.fileName,
+          fileName: metadata.fileName,
           sizeBytes: command.sizeBytes,
+          sha256: metadata.sha256,
         });
         return { accepted: true };
+      }
       case "attachment.upload.chunk": {
         const upload = attachmentUploads.get(command.attachmentId);
         if (!upload) throw new Error("Attachment upload was not started.");
-        upload.chunks[command.chunkIndex] = Buffer.from(command.data, "base64");
+        upload.chunks[command.chunk.sequence] = Buffer.from(
+          await decryptAttachmentChunk({
+            ...attachmentProtection,
+            chatId: command.chatId,
+            attachmentId: command.attachmentId,
+            operationId: command.operationId,
+            direction: command.direction,
+            sequence: command.chunk.sequence,
+            encrypted: command.chunk,
+          }),
+        );
         return { accepted: true };
       }
       case "attachment.upload.complete": {
@@ -405,14 +954,9 @@ const workerBridge = {
         attachmentFiles.set(command.attachmentId, bytes);
         attachmentUploads.delete(command.attachmentId);
         return {
-          path: path.join(
-            dataDirectory,
-            "attachments",
-            command.chatId,
-            command.attachmentId,
-            upload.fileName,
-          ),
-          sha256: "0".repeat(64),
+          verified:
+            bytes.byteLength === upload.sizeBytes &&
+            attachmentContentDigest(bytes) === upload.sha256,
           sizeBytes: bytes.byteLength,
         };
       }
@@ -424,8 +968,16 @@ const workerBridge = {
           command.offset + command.limit,
         );
         return {
-          data: chunk.toString("base64"),
-          eof: command.offset + chunk.byteLength >= bytes.byteLength,
+          chunk: await encryptAttachmentChunk({
+            ...attachmentProtection,
+            chatId: command.chatId,
+            attachmentId: command.attachmentId,
+            operationId: command.operationId,
+            direction: command.direction,
+            sequence: command.sequence,
+            eof: command.offset + chunk.byteLength >= bytes.byteLength,
+            plaintext: chunk,
+          }),
           sizeBytes: bytes.byteLength,
         };
       }
@@ -790,6 +1342,9 @@ const workerBridge = {
           attempt: command.attempt,
           path: path.join(
             dataDirectory,
+            ...(command.workspaceStorage.kind === "managed"
+              ? ["workspaces", command.workspaceStorage.workspaceId]
+              : []),
             "repositories",
             command.repository.nameWithOwner.split("/").at(-1)!,
           ),
@@ -1014,96 +1569,6 @@ const workerBridge = {
           },
           output: "Git action complete",
         };
-      case "explorer.directory.list":
-        return {
-          path: command.path,
-          entries: [
-            {
-              name: "README.md",
-              path: "README.md",
-              kind: "file",
-              size: 18,
-              modifiedAt: "2026-08-07T12:00:00.000Z",
-              viewable: true,
-              markdown: true,
-            },
-            {
-              name: "preview.png",
-              path: "preview.png",
-              kind: "file",
-              size: explorerMediaBytes.byteLength,
-              modifiedAt: explorerMediaModifiedAt,
-              viewable: true,
-              markdown: false,
-            },
-          ],
-          truncated: false,
-        };
-      case "explorer.directory.commits":
-        return {
-          path: command.path,
-          available: true,
-          entries: [
-            {
-              path: "README.md",
-              tracked: true,
-              lastCommit: {
-                hash: "a".repeat(40),
-                shortHash: "aaaaaaa",
-                subject: "Document Explorer",
-                authorName: "Cantrip Test",
-                authorEmail: "cantrip@example.com",
-                authoredAt: "2026-08-07T12:00:00.000Z",
-              },
-            },
-          ],
-        };
-      case "explorer.file.read":
-        return {
-          path: command.path,
-          content: "# Cantrip explorer\n",
-          size: 18,
-          markdown: true,
-          version: "a".repeat(64),
-        };
-      case "explorer.media.stat":
-        return {
-          path: command.path,
-          kind: "image",
-          mimeType: "image/png",
-          size: explorerMediaBytes.byteLength,
-          modifiedAt: explorerMediaModifiedAt,
-        };
-      case "explorer.media.read": {
-        const bytes = explorerMediaBytes.subarray(
-          command.offset,
-          command.offset + command.limit,
-        );
-        return {
-          path: command.path,
-          kind: "image",
-          mimeType: "image/png",
-          size: explorerMediaBytes.byteLength,
-          modifiedAt: explorerMediaModifiedAt,
-          offset: command.offset,
-          data: bytes.toString("base64"),
-          eof:
-            command.offset + bytes.byteLength >= explorerMediaBytes.byteLength,
-        };
-      }
-      case "explorer.file.write":
-        explorerWrites.push({
-          content: command.content,
-          path: command.path,
-          version: command.version,
-        });
-        return {
-          path: command.path,
-          content: command.content,
-          size: Buffer.byteLength(command.content),
-          markdown: true,
-          version: "b".repeat(64),
-        };
       case "skills.list":
         return protectedCustomizationResponse(
           command.operationId,
@@ -1203,7 +1668,10 @@ const workerBridge = {
           ],
           reason: null,
         };
+      case "terminal.prepare-state":
+        return protectedTerminalFields(command.terminalId);
       case "terminal.open":
+        await options?.onEvent?.({ type: "terminal.ready" });
         return { status: "detached" };
       case "terminal.detach":
       case "terminal.input":
@@ -1229,7 +1697,90 @@ const workerBridge = {
         return { accepted: true };
       case "surface.desktop.probe":
         return { available: true, message: null };
+      case "chat.messages.reprotect":
+        return Promise.all(
+          command.messages.map(async ({ source, id, idempotencyKey }) => {
+            const classification = {
+              role: source.role,
+              mode: source.mode,
+              attachmentIds: source.attachmentIds,
+            };
+            const content = await decryptChatMessageProtectedContent({
+              ...chatProtection,
+              messageId: source.id,
+              encrypted: source.protectedContent,
+              publicClassification: classification,
+            });
+            return {
+              id,
+              idempotencyKey,
+              classification,
+              reasoningEffort: source.reasoningEffort,
+              protectedContent: await encryptChatMessageProtectedContent({
+                ...chatProtection,
+                messageId: id,
+                content,
+              }),
+            };
+          }),
+        );
+      case "chat.message.protect": {
+        const attachments = command.attachments;
+        const content = await Promise.all(
+          command.message.content.map(async (entry) => {
+            if (entry.type !== "attachment") return entry;
+            const attachment = attachments.find(
+              (value) => value.id === entry.attachment.id,
+            );
+            if (!attachment) return entry;
+            return {
+              ...entry,
+              attachment: chatAttachmentSummarySchema.parse({
+                ...attachment,
+                ...(await decryptAttachmentMetadata({
+                  ...attachmentProtection,
+                  chatId: attachment.chatId,
+                  attachmentId: attachment.id,
+                  encrypted: attachment.protectedMetadata,
+                })),
+              }),
+            };
+          }),
+        );
+        const classification = {
+          role: command.message.role,
+          mode: command.message.mode ?? "default",
+          attachmentIds: content.flatMap((entry) =>
+            entry.type === "attachment" ? [entry.attachment.id] : [],
+          ),
+        };
+        return {
+          id: command.message.id,
+          classification,
+          idempotencyKey: command.message.idempotencyKey,
+          reasoningEffort: command.message.reasoningEffort ?? null,
+          protectedContent: await encryptChatMessageProtectedContent({
+            ...chatProtection,
+            messageId: command.message.id,
+            content: { version: 1, classification, content },
+          }),
+        };
+      }
       case "chat.turn": {
+        const completeQueuedCommand = await beginQueuedNativeCommand?.(command);
+        if (command.protectedPrompt) {
+          command = {
+            ...command,
+            prompt: await openEncryptedChatTurn({
+              service: chatEncryptionService,
+              prompt: command.protectedPrompt,
+              history: command.protectedHistory,
+              threadId: command.threadId,
+            }),
+          };
+        }
+        if (command.prompt === undefined)
+          throw new Error("Chat turn prompt missing.");
         if (command.prompt !== "Render rich events") {
           turnRequests += 1;
           turnModelIds.push(command.model.id);
@@ -1250,54 +1801,68 @@ const workerBridge = {
         }
         codexPlanMode = command.planMode;
         if (command.prompt === "Finish the long-running goal") {
-          await options?.onEvent?.({
-            type: "agent.checkpoint",
-            turnId: "goal-turn-1",
-            text: "Finished the first goal milestone.",
-          });
+          const goalSealer = new EncryptedChatEventSealer(
+            chatEncryptionService,
+            command.chatId,
+            { explanation: null, steps: [], question: null },
+          );
+          await options?.onEvent?.(
+            await goalSealer.checkpoint({
+              turnId: "goal-turn-1",
+              text: "Finished the first goal milestone.",
+            }),
+          );
         }
         if (command.prompt === "Draft a deployment plan") {
-          await options?.onEvent?.({
-            type: "agent.plan.updated",
-            turnId: "plan-turn-1",
-            explanation: "Choose the deployment topology.",
-            steps: [
-              { step: "Inspect the runtime", status: "completed" },
-              { step: "Choose a topology", status: "inProgress" },
-            ],
-          });
-          await options?.onEvent?.({
-            type: "agent.interaction.requested",
-            request: {
-              requestKey: "plan-question-1",
-              threadId: command.threadId ?? "codex-plan-thread-1",
+          const planSealer = new EncryptedChatEventSealer(
+            chatEncryptionService,
+            command.chatId,
+            { explanation: null, steps: [], question: null },
+          );
+          await options?.onEvent?.(
+            await planSealer.plan({
               turnId: "plan-turn-1",
-              itemId: "plan-item-1",
-              payload: {
-                kind: "userInput",
-                questions: [
-                  {
-                    id: "topology",
-                    header: "Topology",
-                    question: "Which topology should the plan target?",
-                    isOther: true,
-                    isSecret: false,
-                    options: [
-                      {
-                        label: "Four nodes",
-                        description: "Load balance across four servers.",
-                      },
-                    ],
-                  },
-                ],
-                autoResolutionMs: null,
-              },
-              expiresAt: "2030-08-08T18:30:00.000Z",
-            },
-          });
+              explanation: "Choose the deployment topology.",
+              steps: [
+                { step: "Inspect the runtime", status: "completed" },
+                { step: "Choose a topology", status: "inProgress" },
+              ],
+            }),
+          );
           await options?.onEvent?.({
-            type: "agent.plan.question",
-            question: {
+            type: "agent.interaction.requested.protected",
+            request: await protectAgentInteractionRequest({
+              service: chatEncryptionService,
+              request: {
+                requestKey: "plan-question-1",
+                threadId: command.threadId ?? "codex-plan-thread-1",
+                turnId: "plan-turn-1",
+                itemId: "plan-item-1",
+                payload: {
+                  kind: "userInput",
+                  questions: [
+                    {
+                      id: "topology",
+                      header: "Topology",
+                      question: "Which topology should the plan target?",
+                      isOther: true,
+                      isSecret: false,
+                      options: [
+                        {
+                          label: "Four nodes",
+                          description: "Load balance across four servers.",
+                        },
+                      ],
+                    },
+                  ],
+                  autoResolutionMs: null,
+                },
+                expiresAt: "2030-08-08T18:30:00.000Z",
+              },
+            }),
+          });
+          await options?.onEvent?.(
+            await planSealer.planQuestion({
               id: "plan-question-1",
               threadId: command.threadId ?? "codex-plan-thread-1",
               turnId: "plan-turn-1",
@@ -1318,37 +1883,43 @@ const workerBridge = {
                   ],
                 },
               ],
-            },
-          });
+            }),
+          );
           await new Promise<void>((resolve) => {
             releasePlanQuestion = resolve;
           });
+          await options?.onEvent?.(
+            await planSealer.planQuestionResolved("plan-question-1"),
+          );
         }
         if (command.prompt === "Request a command approval") {
           await options?.onEvent?.({
-            type: "agent.interaction.requested",
-            request: {
-              requestKey: "runtime-bridge:approval-1",
-              threadId: command.threadId ?? "codex-approval-thread-1",
-              turnId: "approval-turn-1",
-              itemId: "approval-item-1",
-              payload: {
-                kind: "commandExecution",
-                startedAtMs: 1_786_665_600_000,
-                approvalId: null,
-                environmentId: null,
-                reason: "Run the verification suite",
-                command: "pnpm check",
-                cwd: command.cwd,
-                commandActions: null,
-                networkApprovalContext: null,
-                additionalPermissions: null,
-                proposedExecpolicyAmendment: null,
-                proposedNetworkPolicyAmendments: null,
-                availableDecisions: ["accept", "decline", "cancel"],
+            type: "agent.interaction.requested.protected",
+            request: await protectAgentInteractionRequest({
+              service: chatEncryptionService,
+              request: {
+                requestKey: "runtime-bridge:approval-1",
+                threadId: command.threadId ?? "codex-approval-thread-1",
+                turnId: "approval-turn-1",
+                itemId: "approval-item-1",
+                payload: {
+                  kind: "commandExecution",
+                  startedAtMs: 1_786_665_600_000,
+                  approvalId: null,
+                  environmentId: null,
+                  reason: "Run the verification suite",
+                  command: "pnpm check",
+                  cwd: command.cwd,
+                  commandActions: null,
+                  networkApprovalContext: null,
+                  additionalPermissions: null,
+                  proposedExecpolicyAmendment: null,
+                  proposedNetworkPolicyAmendments: null,
+                  availableDecisions: ["accept", "decline", "cancel"],
+                },
+                expiresAt: "2030-08-08T18:30:00.000Z",
               },
-              expiresAt: "2030-08-08T18:30:00.000Z",
-            },
+            }),
           });
           await new Promise<void>((resolve) => {
             releaseAgentInteraction = resolve;
@@ -1439,12 +2010,20 @@ const workerBridge = {
               correlation: richCorrelation("turn/completed", null),
             },
           });
-          return {
+          const richResult = {
             threadId: "codex-rich-thread-1",
             // Keep turnId absent: older/provider-specific workers may omit it.
             text: "Rich events are preserved.",
-            status: "completed",
+            status: "completed" as const,
           };
+          return command.resultMode.kind === "chat-message-encrypted"
+            ? encryptChatTurnResult({
+                service: chatEncryptionService,
+                result: richResult,
+                messageId: command.resultMode.messageId,
+                idempotencyKey: command.resultMode.idempotencyKey,
+              })
+            : richResult;
         }
         await options?.onEvent?.({
           type: "agent.activity",
@@ -1480,14 +2059,50 @@ const workerBridge = {
           },
         });
         if (command.prompt.includes("Hold queue open.")) {
+          heldTurnCommand = command;
           await new Promise<void>((resolve) => {
             releaseHeldTurn = resolve;
           });
         }
+        const structuredResult =
+          command.resultMode.kind === "chat-message-encrypted"
+            ? {
+                message: {
+                  id: command.resultMode.messageId,
+                  idempotencyKey: command.resultMode.idempotencyKey,
+                  classification: {
+                    role: "assistant",
+                    mode: "default",
+                    attachmentIds: [],
+                  },
+                  protectedContent: await encryptChatMessageProtectedContent({
+                    ...chatProtection,
+                    messageId: command.resultMode.messageId,
+                    content: {
+                      version: 1,
+                      classification: {
+                        role: "assistant",
+                        mode: "default",
+                        attachmentIds: [],
+                      },
+                      content: [
+                        {
+                          type: "text",
+                          text: "The local agent replied.",
+                          phase: "final_answer",
+                        },
+                      ],
+                    },
+                  }),
+                },
+              }
+            : undefined;
+        await completeQueuedCommand?.();
         return {
           threadId: command.threadId ?? "codex-thread-1",
           text: "The local agent replied.",
           status: "completed",
+          structuredResult,
         };
       }
       case "chat.compact":
@@ -1495,7 +2110,11 @@ const workerBridge = {
         return { accepted: true };
       case "chat.pause.set":
         pauseCommands.push({ chatId: command.chatId, paused: command.paused });
-        return { paused: command.paused };
+        return { paused: command.paused, active: null };
+      case "chat.automation.resume":
+        // This fixture has no native autonomous goal to resume; queued input
+        // remains the server's next action.
+        return { resumed: false };
       case "chat.interrupt":
         interruptCommands.push(command);
         return { interrupted: true };
@@ -1514,6 +2133,7 @@ const workerBridge = {
         };
         return { goal: codexGoal };
       case "chat.goal.update":
+        goalUpdateCommands.push(command);
         if (!codexGoal) return { goal: null };
         codexGoal = {
           ...codexGoal,
@@ -1537,6 +2157,53 @@ const workerBridge = {
           mode: codexPlanMode,
           threadId: command.threadId ?? "codex-plan-thread-1",
         };
+      case "chat.native-control":
+        if (command.control.kind === "interrupt") {
+          interruptCommands.push(command);
+          return { interrupted: true };
+        }
+        if (command.control.kind === "steer") {
+          const completeQueuedCommand =
+            await beginQueuedNativeCommand?.(command);
+          const prompt = command.control.protectedPrompt;
+          const content = await decryptChatMessageProtectedContent({
+            ...chatProtection,
+            messageId: prompt.id,
+            encrypted: prompt.protectedContent,
+            publicClassification: prompt.classification,
+          });
+          steeredPrompts.push(
+            chatMessageContentSchema
+              .parse(content.content)
+              .filter((item) => item.type === "text")
+              .map((item) => item.text)
+              .join("\n"),
+          );
+          steeredAttachmentIds.push(
+            command.control.attachments.map(({ id }) => id),
+          );
+          await completeQueuedCommand?.();
+          return { steered: true, turnId: "turn-held" };
+        }
+        if (command.control.kind !== "reply")
+          throw new Error(
+            `Unsupported foundation native control: ${command.control.kind}`,
+          );
+        if (command.control.response)
+          deliveredAgentInteractionResponses.push(command.control.response);
+        if (command.control.protectedResponse)
+          deliveredAgentInteractionResponses.push(
+            await openAgentInteractionResponse({
+              requestKey: command.control.requestKey,
+              response: command.control.protectedResponse,
+              service: chatEncryptionService,
+            }),
+          );
+        releaseAgentInteraction?.();
+        releaseAgentInteraction = null;
+        releasePlanQuestion?.();
+        releasePlanQuestion = null;
+        return { accepted: true };
       case "agent.interaction.respond":
         deliveredAgentInteractionResponses.push(command.response);
         releaseAgentInteraction?.();
@@ -1545,6 +2212,13 @@ const workerBridge = {
         releasePlanQuestion = null;
         return { accepted: true };
       case "agent.interaction.respond.protected":
+        deliveredAgentInteractionResponses.push(
+          await openAgentInteractionResponse({
+            requestKey: command.requestKey,
+            response: command.response,
+            service: chatEncryptionService,
+          }),
+        );
         releaseAgentInteraction?.();
         releaseAgentInteraction = null;
         releasePlanQuestion?.();
@@ -1554,12 +2228,29 @@ const workerBridge = {
         releaseAgentInteraction?.();
         releaseAgentInteraction = null;
         return { accepted: true };
-      case "chat.steer":
-        steeredPrompts.push(command.prompt);
+      case "chat.steer": {
+        const completeQueuedCommand = await beginQueuedNativeCommand?.(command);
+        const prompt = command.protectedPrompt;
+        if (!prompt) throw new Error("Protected steering prompt missing.");
+        const content = await decryptChatMessageProtectedContent({
+          ...chatProtection,
+          messageId: prompt.id,
+          encrypted: prompt.protectedContent,
+          publicClassification: prompt.classification,
+        });
+        steeredPrompts.push(
+          chatMessageContentSchema
+            .parse(content.content)
+            .filter((item) => item.type === "text")
+            .map((item) => item.text)
+            .join("\n"),
+        );
         steeredAttachmentIds.push(
           command.attachments.map((attachment) => attachment.id),
         );
+        await completeQueuedCommand?.();
         return { steered: true, turnId: "turn-held" };
+      }
       case "chat.sync":
         return {
           threadId: command.threadId,
@@ -1661,6 +2352,10 @@ const workerBridge = {
 } satisfies WorkerCommandBus;
 
 afterAll(async () => {
+  repositoryComponentKey.fill(0);
+  chatComponentKey.fill(0);
+  surfaceComponentKey.fill(0);
+  attachmentComponentKey.fill(0);
   await rm(dataDirectory, { recursive: true, force: true });
 });
 
@@ -1709,7 +2404,7 @@ describe("local server foundation", () => {
     expect(bootstrap.capabilities.remoteDesktopFleet).toBe(true);
     expect(bootstrap.capabilities.gitSync).toBe(true);
 
-    const initialSettings = settingsBundleSchema.parse(
+    const initialSettings = settingsBundleWireSchema.parse(
       (await firstApp.inject({ method: "GET", url: "/api/settings" })).json(),
     );
     expect(initialSettings.preferences).toMatchObject({
@@ -1750,6 +2445,7 @@ describe("local server foundation", () => {
       url: "/api/settings/providers",
       payload: {
         id: "00000000-0000-4000-8000-000000000941",
+        initialAccount: null,
         name: "Test provider",
         kind: "openai-compatible",
         baseUrl: "https://models.example.test/v1",
@@ -1766,11 +2462,14 @@ describe("local server foundation", () => {
         },
       },
     });
+    expect(providerResponse.statusCode, providerResponse.body).toBe(201);
     expect(providerResponse.body).not.toContain("server-only-secret");
     expect(providerResponse.body).not.toContain("apiKey");
-    const provider = modelProviderSummarySchema.parse(providerResponse.json());
+    const provider = modelProviderWireSummarySchema.parse(
+      providerResponse.json(),
+    );
     expect(provider.hasApiKey).toBe(true);
-    const editedProvider = modelProviderSummarySchema.parse(
+    const editedProvider = modelProviderWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "PATCH",
@@ -1842,7 +2541,7 @@ describe("local server foundation", () => {
       payload: { proModeOpacity: 101 },
     });
     expect(invalidProModeOpacity.statusCode).toBe(400);
-    const updatedSettings = settingsBundleSchema.parse(
+    const updatedSettings = settingsBundleWireSchema.parse(
       (
         await firstApp.inject({
           method: "PATCH",
@@ -1885,6 +2584,7 @@ describe("local server foundation", () => {
       ).json(),
     );
     expect(updatedSettings.preferences).toEqual({
+      ...initialSettings.preferences,
       theme: "dark",
       highContrast: true,
       proMode: true,
@@ -1925,7 +2625,7 @@ describe("local server foundation", () => {
         "project-1": ["group-1", null],
       },
     });
-    const mergedMobileTabs = settingsBundleSchema.parse(
+    const mergedMobileTabs = settingsBundleWireSchema.parse(
       (
         await firstApp.inject({
           method: "PATCH",
@@ -1945,20 +2645,22 @@ describe("local server foundation", () => {
       },
     );
     expect(
-      settingsBundleSchema.parse(
+      settingsBundleWireSchema.parse(
         (await firstApp.inject({ method: "GET", url: "/api/settings" })).json(),
       ).preferences.mobileProjectTabConfigurations,
     ).toEqual({
       "project-1": ["group-1", null],
       "project-2": ["group-2"],
     });
-    const chatGptProvider = modelProviderSummarySchema.parse(
+    const initialChatGptAccount = protectedProviderAccount();
+    const chatGptProvider = modelProviderWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
           url: "/api/settings/providers",
           payload: {
             id: "00000000-0000-4000-8000-000000000943",
+            initialAccount: initialChatGptAccount,
             name: "Personal ChatGPT",
             kind: "chatgpt",
             baseUrl: "https://api.openai.com/v1",
@@ -1968,7 +2670,7 @@ describe("local server foundation", () => {
     );
     expect(chatGptProvider.accounts).toEqual([
       expect.objectContaining({
-        label: "ChatGPT account",
+        ...initialChatGptAccount,
         position: 0,
       }),
     ]);
@@ -2019,12 +2721,13 @@ describe("local server foundation", () => {
           synchronize: false,
           remove: false,
           exactRevision: true,
+          workspaceScopedRoots: true,
         },
         startedAt: "2026-08-07T12:00:00.000Z",
       },
     });
     expect(heartbeatResponse.statusCode).toBe(202);
-    const placementSettings = settingsBundleSchema.parse(
+    const placementSettings = settingsBundleWireSchema.parse(
       (
         await firstApp.inject({
           method: "PATCH",
@@ -2104,14 +2807,22 @@ describe("local server foundation", () => {
       protectedProviderCredentialFixture("B"),
       providerCredentialMetadataFixture(),
     );
-    const additionalAccount = (
-      await firstApp.inject({
-        method: "POST",
-        url: `/api/settings/providers/${chatGptProvider.id}/accounts`,
-        payload: { label: "Work" },
-      })
-    ).json<{ id: string; label: string; position: number }>();
-    expect(additionalAccount).toMatchObject({ label: "Work", position: 1 });
+    const workAccount = protectedProviderAccount();
+    const additionalAccountResponse = await firstApp.inject({
+      method: "POST",
+      url: `/api/settings/providers/${chatGptProvider.id}/accounts`,
+      payload: workAccount,
+    });
+    expect(
+      additionalAccountResponse.statusCode,
+      additionalAccountResponse.body,
+    ).toBe(201);
+    const additionalAccount = additionalAccountResponse.json<{
+      id: string;
+      position: number;
+    }>();
+    expect(additionalAccount).toMatchObject({ ...workAccount, position: 1 });
+    expect(additionalAccount).not.toHaveProperty("label");
     const reorderAccountsResponse = await firstApp.inject({
       method: "PATCH",
       url: `/api/settings/providers/${chatGptProvider.id}/accounts/order`,
@@ -2122,7 +2833,7 @@ describe("local server foundation", () => {
       reorderAccountsResponse.body,
     ).toBe(204);
     expect(
-      modelProviderAccountListSchema
+      modelProviderAccountWireListSchema
         .parse(
           (
             await firstApp.inject({
@@ -2150,7 +2861,7 @@ describe("local server foundation", () => {
       }),
     ).toMatchObject({ statusCode: 200 });
     expect(authCredentialHomeKeys.at(-1)).toBe(chatGptProvider.id);
-    const pooledSettings = settingsBundleSchema.parse(
+    const pooledSettings = settingsBundleWireSchema.parse(
       (await firstApp.inject({ method: "GET", url: "/api/settings" })).json(),
     );
     expect(
@@ -2159,7 +2870,6 @@ describe("local server foundation", () => {
         ?.accounts.find((account) => account.id === additionalAccount.id),
     ).toMatchObject({
       credentialState: "signed-out",
-      email: null,
       workerBindings: [],
     });
     expect(
@@ -2168,19 +2878,22 @@ describe("local server foundation", () => {
         url: "/api/settings/providers",
         payload: {
           id: "00000000-0000-4000-8000-000000000944",
+          initialAccount: protectedProviderAccount(),
           name: "Another ChatGPT",
           kind: "chatgpt",
           baseUrl: "https://api.openai.com/v1",
         },
       }),
     ).toMatchObject({ statusCode: 409 });
-    const grokProvider = modelProviderSummarySchema.parse(
+    const initialGrokAccount = protectedProviderAccount();
+    const grokProvider = modelProviderWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
           url: "/api/settings/providers",
           payload: {
             id: "00000000-0000-4000-8000-000000000945",
+            initialAccount: initialGrokAccount,
             name: "SuperGrok",
             kind: "grok",
             baseUrl: "https://cli-chat-proxy.grok.com/v1",
@@ -2189,7 +2902,7 @@ describe("local server foundation", () => {
       ).json(),
     );
     expect(grokProvider.accounts).toEqual([
-      expect.objectContaining({ label: "Grok account", position: 0 }),
+      expect.objectContaining({ ...initialGrokAccount, position: 0 }),
     ]);
     await firstDatabase.repository.storeModelProviderAccountCredential(
       LOCAL_USER_ID,
@@ -2214,21 +2927,23 @@ describe("local server foundation", () => {
     });
     expect(authProviderKinds.at(-1)).toBe("chatgpt");
     expect(authCredentialHomeKeys.at(-1)).toBe(chatGptProvider.id);
+    const backupGrokAccount = protectedProviderAccount();
     expect(
       (
         await firstApp.inject({
           method: "POST",
           url: `/api/settings/providers/${grokProvider.id}/accounts`,
-          payload: { label: "Backup Grok" },
+          payload: backupGrokAccount,
         })
       ).json(),
-    ).toMatchObject({ label: "Backup Grok", position: 1 });
+    ).toMatchObject({ ...backupGrokAccount, position: 1 });
     expect(
       await firstApp.inject({
         method: "POST",
         url: "/api/settings/providers",
         payload: {
           id: "00000000-0000-4000-8000-000000000946",
+          initialAccount: protectedProviderAccount(),
           name: "Another Grok",
           kind: "grok",
           baseUrl: "https://cli-chat-proxy.grok.com/v1",
@@ -2237,41 +2952,40 @@ describe("local server foundation", () => {
     ).toMatchObject({ statusCode: 409 });
     expect(
       githubRepositoryListSchema.parse(
-        (
-          await firstApp.inject({
-            method: "GET",
-            url: "/api/github/repositories/cache?workerId=test-worker&login=cantrip-test",
-          })
-        ).json(),
+        await workerRepositoryOperation(
+          firstApp,
+          bootstrap.server.id,
+          "github.repositories.cached",
+          { login: "cantrip-test" },
+        ),
       ),
     ).toMatchObject([{ nameWithOwner: "ArcaneArts/Cantrip", imported: false }]);
     expect(
       githubRepositoryOwnerListSchema.parse(
-        (
-          await firstApp.inject({
-            method: "GET",
-            url: "/api/github/repository-owners?workerId=test-worker",
-          })
-        ).json(),
+        await workerRepositoryOperation(
+          firstApp,
+          bootstrap.server.id,
+          "github.repository-owners.list",
+        ),
       ),
     ).toEqual([
       { login: "cantrip-test", kind: "user" },
       { login: "ArcaneArts", kind: "organization" },
     ]);
-    const createdRepositoryResponse = await firstApp.inject({
-      method: "POST",
-      url: "/api/github/repositories?workerId=test-worker",
-      payload: {
-        owner: "ArcaneArts",
-        name: "cantrip-labs",
-        description: "A Cantrip project",
-        visibility: "private",
+    const createdRepository = await workerRepositoryOperation(
+      firstApp,
+      bootstrap.server.id,
+      "github.repositories.create",
+      {
+        request: {
+          owner: "ArcaneArts",
+          name: "cantrip-labs",
+          description: "A Cantrip project",
+          visibility: "private",
+        },
       },
-    });
-    expect(createdRepositoryResponse.statusCode).toBe(201);
-    expect(
-      githubRepositorySchema.parse(createdRepositoryResponse.json()),
-    ).toMatchObject({
+    );
+    expect(githubRepositorySchema.parse(createdRepository)).toMatchObject({
       id: "github-created-repository",
       nameWithOwner: "ArcaneArts/cantrip-labs",
       isPrivate: true,
@@ -2285,6 +2999,40 @@ describe("local server foundation", () => {
       visibility: "private",
     });
 
+    const cantripRepositoryFields: Record<string, string> = {
+      ...repositoryMetadataResultSchema.parse(
+        await workerRepositoryOperation(
+          firstApp,
+          bootstrap.server.id,
+          "repository.metadata.register",
+          {
+            values: {
+              repositoryId: "github-repository-1",
+              nameWithOwner: "ArcaneArts/Cantrip",
+              url: "https://github.com/ArcaneArts/Cantrip",
+            },
+          },
+        ),
+      ).values,
+      repositoryBlindIndex: randomBytes(32).toString("base64url"),
+    };
+    const parallelRepositoryFields = {
+      ...repositoryMetadataResultSchema.parse(
+        await workerRepositoryOperation(
+          firstApp,
+          bootstrap.server.id,
+          "repository.metadata.register",
+          {
+            values: {
+              repositoryId: "github-repository-2",
+              nameWithOwner: "ArcaneArts/ParallelClone",
+              url: "https://github.com/ArcaneArts/ParallelClone",
+            },
+          },
+        ),
+      ).values,
+      repositoryBlindIndex: randomBytes(32).toString("base64url"),
+    };
     heldProjectCloneName = "ArcaneArts/Cantrip";
     const projectResponse = await firstApp.inject({
       method: "POST",
@@ -2292,12 +3040,10 @@ describe("local server foundation", () => {
       payload: {
         ...protectedProjectFields(),
         workerId: "test-worker",
-        repositoryId: "github-repository-1",
-        nameWithOwner: "ArcaneArts/Cantrip",
-        url: "https://github.com/ArcaneArts/Cantrip",
+        ...cantripRepositoryFields,
       },
     });
-    expect(projectResponse.statusCode).toBe(202);
+    expect(projectResponse.statusCode, projectResponse.body).toBe(202);
     const queuedProject = projectWireSummarySchema.parse(
       projectResponse.json(),
     );
@@ -2338,9 +3084,7 @@ describe("local server foundation", () => {
       payload: {
         ...protectedProjectFields(),
         workerId: "test-worker",
-        repositoryId: "github-repository-2",
-        nameWithOwner: "ArcaneArts/ParallelClone",
-        url: "https://github.com/ArcaneArts/ParallelClone",
+        ...parallelRepositoryFields,
       },
     });
     expect(parallelResponse.statusCode).toBe(202);
@@ -2414,6 +3158,7 @@ describe("local server foundation", () => {
           workerId: "test-worker",
           expectedRevision: null,
           idempotencyKey: "duplicate-existing-replica",
+          repository: cantripRepositoryFields.nameWithOwner,
         },
       }),
     ).toMatchObject({ statusCode: 409 });
@@ -2642,16 +3387,17 @@ describe("local server foundation", () => {
       ).json(),
     );
     expect(reusedProjectShare.attachmentId).toBe(projectShare.attachmentId);
+    const staleShareTunnelId = randomUUID();
     const staleShareResponse = await firstApp.inject({
       method: "POST",
       url: `/api/projects/${project.id}/network-shares`,
       payload: {
-        tunnelId: randomUUID(),
+        tunnelId: staleShareTunnelId,
         workerId: project.source?.workerId,
-        protectedRecord: projectShareRecord(randomUUID(), 1),
+        protectedRecord: projectShareRecord(staleShareTunnelId, 1),
       },
     });
-    expect(staleShareResponse.statusCode).toBe(409);
+    expect(staleShareResponse.statusCode, staleShareResponse.body).toBe(409);
     expect(staleShareResponse.json()).toMatchObject({
       code: "project-share-state-stale",
       failureStage: "share-state-validation",
@@ -2709,142 +3455,63 @@ describe("local server foundation", () => {
         ).json(),
       ),
     ).toEqual([]);
-    const codeTab = codeTabSummarySchema.parse(
+    const codeTab = codeTabWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
           url: `/api/projects/${project.id}/code-tabs`,
-          payload: { title: "Code" },
+          payload: protectedDisplayLabelFields("code-tab"),
         })
       ).json(),
     );
-    const codeIntent = codeProtectedAttachmentIntentSchema.parse(
-      (
-        await firstApp.inject({
-          method: "POST",
-          url: `/api/code-tabs/${codeTab.id}/protected-attachment-intents`,
-          payload: {
-            appearance: "high-contrast-dark",
-            expectedWorkerId: codeTab.activeWorkerId,
-            expectedWorktreeId: codeTab.worktreeId,
-          },
-        })
-      ).json(),
+    // Native Code tabs retain metadata and file authority, not embedded
+    // workbench sessions. File read/save coverage lives in native-code-file-context.
+    const renamedCodeFields = protectedDisplayLabelFields(
+      "code-tab",
+      codeTab.id,
     );
-    const codeTunnelId = randomUUID();
-    const codeAttachment = codeProtectedAttachmentWireSchema.parse(
-      (
-        await firstApp.inject({
-          method: "POST",
-          url: `/api/code-tabs/${codeTab.id}/protected-attachments`,
-          payload: {
-            expectedWorkerId: codeTab.activeWorkerId,
-            expectedWorktreeId: codeTab.worktreeId,
-            sessionId: codeIntent.sessionId,
-            tunnelId: codeTunnelId,
-            protectedRecord: projectShareRecord(codeTunnelId, 1),
-          },
-        })
-      ).json(),
-    );
-    expect(codeAttachment).toMatchObject({
-      attachmentId: codeTunnelId,
-      sessionId: codeIntent.sessionId,
-      tunnelId: codeTunnelId,
-      runtime: { status: "running", processInstanceId: "code-process-1" },
+    const renamedCodeResponse = await firstApp.inject({
+      method: "PATCH",
+      url: `/api/code-tabs/${codeTab.id}`,
+      payload: { titleProtection: renamedCodeFields.titleProtection },
     });
+    expect(renamedCodeResponse.statusCode, renamedCodeResponse.body).toBe(200);
+    const renamedCode = codeTabWireSummarySchema.parse(
+      renamedCodeResponse.json(),
+    );
+    expect(renamedCode).toMatchObject({
+      id: codeTab.id,
+      projectId: project.id,
+      activeWorkerId: codeTab.activeWorkerId,
+      worktreeId: codeTab.worktreeId,
+      titleProtection: renamedCodeFields.titleProtection,
+    });
+    expect(
+      codeTabWireListSchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/projects/${project.id}/code-tabs`,
+          })
+        ).json(),
+      ),
+    ).toEqual([renamedCode]);
+    for (const suffix of [
+      "protected-attachment-intents",
+      "protected-attachments",
+      "save-all",
+      "theme",
+      "stop",
+    ]) {
+      const retiredResponse = await firstApp.inject({
+        method: "POST",
+        url: `/api/code-tabs/${codeTab.id}/${suffix}`,
+        payload: {},
+      });
+      expect(retiredResponse.statusCode, suffix).toBe(404);
+    }
     expect(
       tunnelWireListSchema.parse(
-        (
-          await firstApp.inject({
-            method: "GET",
-            url: `/api/projects/${project.id}/tunnels`,
-          })
-        ).json(),
-      ),
-    ).toEqual([
-      expect.objectContaining({
-        projectId: project.id,
-        origin: "code",
-        protocolHint: "http-websocket",
-        source: { kind: "desktop-loopback" },
-        destination: expect.objectContaining({
-          kind: "worker-adapter",
-          workerId: "test-worker",
-          adapter: "code",
-          resourceId: codeTunnelId,
-        }),
-        managedBy: { kind: "code", id: codeTunnelId },
-        attachments: [],
-        protectedRecord: expect.objectContaining({ revision: 1 }),
-      }),
-    ]);
-    expect(
-      codeRuntimeStatusSchema.parse(
-        (
-          await firstApp.inject({
-            method: "GET",
-            url: `/api/code-tabs/${codeTab.id}/sessions/${codeIntent.sessionId}/runtime`,
-          })
-        ).json(),
-      ),
-    ).toMatchObject({
-      sessionId: codeIntent.sessionId,
-      bridgeConnected: true,
-      status: "running",
-    });
-    expect(
-      await firstApp.inject({
-        method: "DELETE",
-        url: `/api/code-attachments/${codeAttachment.attachmentId}`,
-      }),
-    ).toMatchObject({ statusCode: 204 });
-    expect(
-      tunnelListSchema.parse(
-        (
-          await firstApp.inject({
-            method: "GET",
-            url: `/api/projects/${project.id}/tunnels`,
-          })
-        ).json(),
-      ),
-    ).toEqual([]);
-    expect(
-      codeSaveAllResultSchema.parse(
-        (
-          await firstApp.inject({
-            method: "POST",
-            url: `/api/code-tabs/${codeTab.id}/save-all`,
-          })
-        ).json(),
-      ),
-    ).toMatchObject({ saved: ["file:///workspace/Cantrip/README.md"] });
-    expect(
-      codeTabSummarySchema.parse(
-        (
-          await firstApp.inject({
-            method: "POST",
-            url: `/api/code-tabs/${codeTab.id}/theme`,
-            payload: {
-              themeMode: "follow-cantrip",
-              appearance: "light",
-            },
-          })
-        ).json(),
-      ).themeMode,
-    ).toBe("follow-cantrip");
-    expect(
-      codeRuntimeStatusSchema.parse(
-        (
-          await firstApp.inject({
-            method: "POST",
-            url: `/api/code-tabs/${codeTab.id}/stop`,
-          })
-        ).json(),
-      ).status,
-    ).toBe("stopped");
-    expect(
-      tunnelListSchema.parse(
         (
           await firstApp.inject({
             method: "GET",
@@ -2859,17 +3526,17 @@ describe("local server foundation", () => {
         url: `/api/code-tabs/${codeTab.id}`,
       }),
     ).toMatchObject({ statusCode: 204 });
-    const remoteSurface = remoteSurfaceSummarySchema.parse(
+    const remoteSurfaceFields = protectedBrowserRemoteSurfaceFields();
+    const remoteSurface = remoteSurfaceWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
           url: `/api/projects/${project.id}/remote-surfaces`,
           payload: {
             workerId: "test-worker",
-            title: "Worker browser",
+            ...remoteSurfaceFields,
             configuration: {
               kind: "browser",
-              initialUrl: "https://example.com/",
             },
           },
         })
@@ -2880,14 +3547,14 @@ describe("local server foundation", () => {
       kind: "browser",
       status: "idle",
       preferredTransport: "websocket",
+      ...remoteSurfaceFields,
       configuration: {
         kind: "browser",
-        initialUrl: "https://example.com/",
         profileId: null,
       },
     });
     expect(
-      remoteSurfaceListSchema.parse(
+      remoteSurfaceWireListSchema.parse(
         (
           await firstApp.inject({
             method: "GET",
@@ -2896,19 +3563,23 @@ describe("local server foundation", () => {
         ).json(),
       ),
     ).toHaveLength(1);
+    const renamedSurfaceFields = protectedDisplayLabelFields(
+      "remote-surface",
+      remoteSurface.id,
+    );
     expect(
-      remoteSurfaceSummarySchema.parse(
+      remoteSurfaceWireSummarySchema.parse(
         (
           await firstApp.inject({
             method: "PATCH",
             url: `/api/remote-surfaces/${remoteSurface.id}`,
-            payload: { title: "Renamed worker browser" },
+            payload: { titleProtection: renamedSurfaceFields.titleProtection },
           })
         ).json(),
-      ).title,
-    ).toBe("Renamed worker browser");
+      ).titleProtection,
+    ).toEqual(renamedSurfaceFields.titleProtection);
     expect(
-      remoteSurfaceSummarySchema.parse(
+      remoteSurfaceWireSummarySchema.parse(
         (
           await firstApp.inject({
             method: "POST",
@@ -2918,7 +3589,7 @@ describe("local server foundation", () => {
       ).status,
     ).toBe("suspended");
     expect(
-      remoteSurfaceSummarySchema.parse(
+      remoteSurfaceWireSummarySchema.parse(
         (
           await firstApp.inject({
             method: "POST",
@@ -3029,14 +3700,27 @@ describe("local server foundation", () => {
         workerId: "test-worker",
       },
     ]);
+    const [primaryWorktree] =
+      await firstDatabase.repository.listProjectWorktrees(
+        LOCAL_USER_ID,
+        project.id,
+      );
+    expect(primaryWorktree).toBeDefined();
+    const repositoryOperation = (
+      type: RepositoryOperationType,
+      args: Record<string, unknown> = {},
+    ) =>
+      workerRepositoryOperation(firstApp, bootstrap.server.id, type, args, {
+        projectId: project.id,
+        worktreeId: primaryWorktree!.id,
+      });
     expect(
       githubPullRequestListSchema.parse(
-        (
-          await firstApp.inject({
-            method: "GET",
-            url: `/api/projects/${project.id}/github/issues?kind=pull-request&state=open&cursor=cursor-3&limit=25`,
-          })
-        ).json(),
+        await repositoryOperation("github.pull-requests.list", {
+          state: "open",
+          cursor: "cursor-3",
+          limit: 25,
+        }),
       ),
     ).toMatchObject({
       total: 1,
@@ -3048,18 +3732,13 @@ describe("local server foundation", () => {
       cursor: "cursor-3",
       limit: 25,
     });
-    const issueCreateResponse = await firstApp.inject({
-      method: "POST",
-      url: `/api/projects/${project.id}/github/issues`,
-      payload: {
+    const createdIssue = await repositoryOperation("github.issue.create", {
+      request: {
         title: "Issue created from Cantrip",
         body: "Issue details from the Git tab.",
       },
     });
-    expect(issueCreateResponse.statusCode).toBe(201);
-    expect(
-      githubIssueDetailSchema.parse(issueCreateResponse.json()),
-    ).toMatchObject({
+    expect(githubIssueDetailSchema.parse(createdIssue)).toMatchObject({
       number: 43,
       title: "Issue created from Cantrip",
       body: "Issue details from the Git tab.",
@@ -3068,75 +3747,62 @@ describe("local server foundation", () => {
       title: "Issue created from Cantrip",
       body: "Issue details from the Git tab.",
     });
+    // The server cannot validate encrypted arguments. The worker command
+    // schema retains these input boundaries before dispatch.
     expect(
-      await firstApp.inject({
-        method: "POST",
-        url: `/api/projects/${project.id}/github/issues`,
-        payload: { title: "   " },
-      }),
-    ).toMatchObject({ statusCode: 400 });
+      workerCommandSchema.safeParse({
+        type: "github.issue.create",
+        repository: "ArcaneArts/Cantrip",
+        request: { title: "   " },
+      }).success,
+    ).toBe(false);
     expect(
-      await firstApp.inject({
-        method: "GET",
-        url: `/api/projects/${project.id}/github/issues?kind=discussion`,
-      }),
-    ).toMatchObject({ statusCode: 400 });
+      workerCommandSchema.safeParse({
+        type: "github.inbox.list",
+        repository: "ArcaneArts/Cantrip",
+        state: "open",
+        kind: "discussion",
+      }).success,
+    ).toBe(false);
     expect(
       githubIssueDetailSchema.parse(
-        (
-          await firstApp.inject({
-            method: "GET",
-            url: `/api/projects/${project.id}/github/issues/42`,
-          })
-        ).json(),
+        await repositoryOperation("github.issue.get", { number: 42 }),
       ),
     ).toMatchObject({ number: 42, body: "Issue details" });
-    await firstApp.inject({
-      method: "POST",
-      url: `/api/projects/${project.id}/github/issues/42/comments`,
-      payload: { body: "Comment from Cantrip" },
+    await repositoryOperation("github.issue.comment", {
+      number: 42,
+      body: "Comment from Cantrip",
     });
     expect(issueComments).toContain("Comment from Cantrip");
     expect(
       githubIssueDetailSchema.parse(
-        (
-          await firstApp.inject({
-            method: "POST",
-            url: `/api/projects/${project.id}/github/issues/42/close`,
-            payload: { comment: "Closing from Cantrip" },
-          })
-        ).json(),
+        await repositoryOperation("github.issue.close", {
+          number: 42,
+          comment: "Closing from Cantrip",
+        }),
       ).state,
     ).toBe("closed");
     expect(closedIssues).toContainEqual({
       number: 42,
       comment: "Closing from Cantrip",
     });
-    const [primaryWorktree] =
-      await firstDatabase.repository.listProjectWorktrees(
-        LOCAL_USER_ID,
-        project.id,
-      );
-    expect(primaryWorktree).toBeDefined();
-    const pullRequestCreateResponse = await firstApp.inject({
-      method: "POST",
-      url: `/api/projects/${project.id}/worktrees/${primaryWorktree!.id}/github/pull-requests`,
-      payload: {
-        base: "main",
-        head: "feature/pr-ui",
-        title: "feat: add pull request creation",
-        body: "Creates pull requests from Cantrip.",
-        draft: true,
-        labels: ["feature"],
-        reviewers: ["reviewer"],
-        linkedIssueNumbers: [42],
+    const createdPullRequest = await repositoryOperation(
+      "github.pull-request.create",
+      {
+        request: {
+          base: "main",
+          head: "feature/pr-ui",
+          title: "feat: add pull request creation",
+          body: "Creates pull requests from Cantrip.",
+          draft: true,
+          labels: ["feature"],
+          reviewers: ["reviewer"],
+          linkedIssueNumbers: [42],
+        },
       },
-    });
-    expect(pullRequestCreateResponse.statusCode).toBe(201);
+    );
     expect(
-      githubPullRequestCreateResultSchema.parse(
-        pullRequestCreateResponse.json(),
-      ),
+      githubPullRequestCreateResultSchema.parse(createdPullRequest),
     ).toMatchObject({
       pullRequest: {
         number: 44,
@@ -3159,13 +3825,12 @@ describe("local server foundation", () => {
         linkedIssueNumbers: [42],
       },
     });
-    const pullRequestDetailResponse = await firstApp.inject({
-      method: "GET",
-      url: `/api/projects/${project.id}/worktrees/${primaryWorktree!.id}/github/pull-requests/44`,
-    });
-    expect(pullRequestDetailResponse.statusCode).toBe(200);
+    const pullRequestDetail = await repositoryOperation(
+      "github.pull-request.get",
+      { number: 44 },
+    );
     expect(
-      githubPullRequestDetailSchema.parse(pullRequestDetailResponse.json()),
+      githubPullRequestDetailSchema.parse(pullRequestDetail),
     ).toMatchObject({
       number: 44,
       mergeable: true,
@@ -3178,19 +3843,25 @@ describe("local server foundation", () => {
       number: 44,
     });
     expect(
-      await firstApp.inject({
-        method: "GET",
-        url: `/api/projects/${project.id}/worktrees/${primaryWorktree!.id}/github/pull-requests/not-a-number`,
-      }),
-    ).toMatchObject({ statusCode: 400 });
+      workerCommandSchema.safeParse({
+        type: "github.pull-request.get",
+        cwd: primaryWorktree!.path,
+        repository: "ArcaneArts/Cantrip",
+        number: "not-a-number",
+      }).success,
+    ).toBe(false);
     expect(
       await firstApp.inject({
-        method: "GET",
-        url: `/api/projects/${project.id}/worktrees/missing-worktree/github/pull-requests/44`,
+        method: "POST",
+        url: `/api/projects/${project.id}/worktrees/missing-worktree/repository-operation`,
+        payload: {
+          operationId: randomUUID(),
+          access: "read",
+          protectedRequest:
+            protectedProjectFields().nameProtection.protectedLabel,
+        },
       }),
     ).toMatchObject({ statusCode: 404 });
-    const pullRequestBaseUrl = `/api/projects/${project.id}/worktrees/${primaryWorktree!.id}/github/pull-requests/44`;
-    const pullRequestActionUrl = `${pullRequestBaseUrl}/actions`;
     for (const payload of [
       { type: "comment", body: "General feedback" },
       {
@@ -3208,15 +3879,14 @@ describe("local server foundation", () => {
       },
       { type: "reply", commentId: 99, body: "Updated." },
     ]) {
-      const response = await firstApp.inject({
-        method: "POST",
-        url: pullRequestActionUrl,
-        payload,
-      });
-      expect(response.statusCode).toBe(200);
-      expect(githubPullRequestDetailSchema.parse(response.json()).number).toBe(
-        44,
+      const result = await repositoryOperation(
+        "github.pull-request.review.mutate",
+        {
+          number: 44,
+          action: payload,
+        },
       );
+      expect(githubPullRequestDetailSchema.parse(result).number).toBe(44);
     }
     expect(pullRequestReviewCommands.slice(-4)).toMatchObject([
       {
@@ -3245,45 +3915,49 @@ describe("local server foundation", () => {
       },
     ]);
     expect(
-      await firstApp.inject({
-        method: "POST",
-        url: pullRequestActionUrl,
-        payload: {
+      workerCommandSchema.safeParse({
+        type: "github.pull-request.review.mutate",
+        cwd: primaryWorktree!.path,
+        repository: "ArcaneArts/Cantrip",
+        number: 44,
+        action: {
           type: "submit-review",
           review: { event: "request-changes", body: "" },
         },
-      }),
-    ).toMatchObject({ statusCode: 400 });
-    const lifecyclePreviewResponse = await firstApp.inject({
-      method: "POST",
-      url: `${pullRequestBaseUrl}/lifecycle/preview`,
-      payload: {
-        type: "merge",
-        method: "squash",
-        commitTitle: "feat: lifecycle",
-        commitMessage: null,
+      }).success,
+    ).toBe(false);
+    const lifecyclePreviewResult = await repositoryOperation(
+      "github.pull-request.lifecycle.preview",
+      {
+        number: 44,
+        action: {
+          type: "merge",
+          method: "squash",
+          commitTitle: "feat: lifecycle",
+          commitMessage: null,
+        },
       },
-    });
-    expect(lifecyclePreviewResponse.statusCode).toBe(200);
+    );
     const lifecyclePreview = githubPullRequestLifecyclePreviewSchema.parse(
-      lifecyclePreviewResponse.json(),
+      lifecyclePreviewResult,
     );
     expect(lifecyclePreview).toMatchObject({
       confirmationPhrase: "squash #44",
       destructive: true,
     });
-    const lifecycleApplyResponse = await firstApp.inject({
-      method: "POST",
-      url: `${pullRequestBaseUrl}/lifecycle/apply`,
-      payload: {
-        action: lifecyclePreview.action,
-        token: lifecyclePreview.token,
-        confirmation: "squash #44",
+    const lifecycleApplyResult = await repositoryOperation(
+      "github.pull-request.lifecycle.apply",
+      {
+        number: 44,
+        request: {
+          action: lifecyclePreview.action,
+          token: lifecyclePreview.token,
+          confirmation: "squash #44",
+        },
       },
-    });
-    expect(lifecycleApplyResponse.statusCode).toBe(200);
+    );
     expect(
-      githubPullRequestDetailSchema.parse(lifecycleApplyResponse.json()),
+      githubPullRequestDetailSchema.parse(lifecycleApplyResult),
     ).toMatchObject({ state: "closed", merged: true });
     expect(pullRequestLifecyclePreviewCommands.at(-1)).toMatchObject({
       cwd: primaryWorktree!.path,
@@ -3300,14 +3974,48 @@ describe("local server foundation", () => {
         confirmation: "squash #44",
       },
     });
+    const preparedCheckout = githubPullRequestCheckoutPreparedSchema.parse(
+      await repositoryOperation("github.pull-request.checkout.prepare", {
+        number: 44,
+      }),
+    );
+    const checkoutMetadata = repositoryMetadataResultSchema.parse(
+      await repositoryOperation("repository.metadata.register", {
+        values: {
+          name: preparedCheckout.name,
+          branch: preparedCheckout.branch,
+          startPoint: preparedCheckout.headSha,
+        },
+      }),
+    ).values;
     const checkoutResponse = await firstApp.inject({
       method: "POST",
-      url: `${pullRequestBaseUrl}/checkout`,
-      payload: {},
+      url: `/api/projects/${project.id}/worktrees`,
+      payload: {
+        name: checkoutMetadata.name,
+        mode: {
+          type: "newBranch",
+          branch: checkoutMetadata.branch,
+          startPoint: checkoutMetadata.startPoint,
+        },
+      },
     });
-    expect(checkoutResponse.statusCode).toBe(200);
+    expect(checkoutResponse.statusCode, checkoutResponse.body).toBe(201);
+    const checkoutWorktree = projectWorktreeSummarySchema.parse(
+      checkoutResponse.json(),
+    );
     expect(
-      githubPullRequestCheckoutResultSchema.parse(checkoutResponse.json()),
+      githubPullRequestCheckoutResultSchema.parse({
+        pullRequest: preparedCheckout.pullRequest,
+        worktree: {
+          ...checkoutWorktree,
+          name: await routingRegistry.resolveToken(checkoutWorktree.name),
+          branch:
+            checkoutWorktree.branch &&
+            (await routingRegistry.resolveToken(checkoutWorktree.branch)),
+        },
+        reused: false,
+      }),
     ).toMatchObject({
       pullRequest: { number: 44 },
       worktree: {
@@ -3333,24 +4041,19 @@ describe("local server foundation", () => {
       },
     });
     const history = gitHistorySchema.parse(
-      (
-        await firstApp.inject({
-          method: "GET",
-          url: `/api/projects/${project.id}/git/history`,
-        })
-      ).json(),
+      await repositoryOperation("git.history"),
     );
     expect(history).toMatchObject({
       branch: "main",
       commits: [{ subject: "feat: test history" }],
     });
     const fileHistory = gitFileHistorySchema.parse(
-      (
-        await firstApp.inject({
-          method: "GET",
-          url: `/api/projects/${project.id}/worktrees/${primaryWorktree!.id}/git/files/history?path=README.md&revision=HEAD&cursor=0&limit=25`,
-        })
-      ).json(),
+      await repositoryOperation("git.file.history", {
+        path: "README.md",
+        revision: "HEAD",
+        cursor: 0,
+        limit: 25,
+      }),
     );
     expect(fileHistory).toMatchObject({
       path: "README.md",
@@ -3364,12 +4067,12 @@ describe("local server foundation", () => {
       limit: 25,
     });
     const blame = gitBlameSchema.parse(
-      (
-        await firstApp.inject({
-          method: "GET",
-          url: `/api/projects/${project.id}/worktrees/${primaryWorktree!.id}/git/files/blame?path=README.md&revision=main&cursor=200&limit=100`,
-        })
-      ).json(),
+      await repositoryOperation("git.file.blame", {
+        path: "README.md",
+        revision: "main",
+        cursor: 200,
+        limit: 100,
+      }),
     );
     expect(blame).toMatchObject({
       path: "README.md",
@@ -3382,12 +4085,16 @@ describe("local server foundation", () => {
       limit: 100,
     });
     const searchResult = gitCommitSearchResultSchema.parse(
-      (
-        await firstApp.inject({
-          method: "GET",
-          url: `/api/projects/${project.id}/worktrees/${primaryWorktree!.id}/git/commits/search?message=searched&author=Cantrip&path=README.md&branch=main&cursor=10&limit=25`,
-        })
-      ).json(),
+      await repositoryOperation("git.commit.search", {
+        query: {
+          message: "searched",
+          author: "Cantrip",
+          path: "README.md",
+          branch: "main",
+        },
+        cursor: 10,
+        limit: 25,
+      }),
     );
     expect(searchResult).toMatchObject({
       query: {
@@ -3404,14 +4111,12 @@ describe("local server foundation", () => {
       cursor: 10,
       limit: 25,
     });
-    const recoveryBase = `/api/projects/${project.id}/worktrees/${primaryWorktree!.id}/git/recovery`;
     const recoveryList = gitRecoveryCandidateListSchema.parse(
-      (
-        await firstApp.inject({
-          method: "GET",
-          url: `${recoveryBase}?kind=reflog&cursor=20&limit=25`,
-        })
-      ).json(),
+      await repositoryOperation("git.recovery.list", {
+        kind: "reflog",
+        cursor: 20,
+        limit: 25,
+      }),
     );
     expect(recoveryList.entries[0]).toMatchObject({ kind: "reflog" });
     const recoveryAction = {
@@ -3420,26 +4125,18 @@ describe("local server foundation", () => {
       target: "1".repeat(40),
     };
     const recoveryPreview = gitRecoveryPreviewSchema.parse(
-      (
-        await firstApp.inject({
-          method: "POST",
-          url: `${recoveryBase}/preview`,
-          payload: recoveryAction,
-        })
-      ).json(),
+      await repositoryOperation("git.recovery.preview", {
+        action: recoveryAction,
+      }),
     );
     const recoveryApply = gitRecoveryResultSchema.parse(
-      (
-        await firstApp.inject({
-          method: "POST",
-          url: `${recoveryBase}/apply`,
-          payload: {
-            action: recoveryAction,
-            token: recoveryPreview.token,
-            confirmation: recoveryPreview.confirmation,
-          },
-        })
-      ).json(),
+      await repositoryOperation("git.recovery.apply", {
+        request: {
+          action: recoveryAction,
+          token: recoveryPreview.token,
+          confirmation: recoveryPreview.confirmation,
+        },
+      }),
     );
     expect(recoveryApply).toMatchObject({
       action: recoveryAction,
@@ -3460,28 +4157,21 @@ describe("local server foundation", () => {
         }),
       ]),
     );
-    expect(
-      await firstApp.inject({ method: "GET", url: recoveryBase }),
-    ).toMatchObject({ statusCode: 400 });
-    expect(
-      await firstApp.inject({
-        method: "GET",
-        url: `/api/projects/${project.id}/worktrees/${primaryWorktree!.id}/git/commits/search`,
-      }),
-    ).toMatchObject({ statusCode: 400 });
-    expect(
-      await firstApp.inject({
-        method: "GET",
-        url: `/api/projects/${project.id}/worktrees/${primaryWorktree!.id}/git/files/history?path=../secret`,
-      }),
-    ).toMatchObject({ statusCode: 400 });
+    for (const invalidCommand of [
+      { type: "git.recovery.list" },
+      { type: "git.commit.search", query: {} },
+      { type: "git.file.history", path: "../secret" },
+    ]) {
+      expect(
+        workerCommandSchema.safeParse({
+          ...invalidCommand,
+          cwd: primaryWorktree!.path,
+        }).success,
+        invalidCommand.type,
+      ).toBe(false);
+    }
     const gitStatus = gitStatusSchema.parse(
-      (
-        await firstApp.inject({
-          method: "GET",
-          url: `/api/projects/${project.id}/git/status`,
-        })
-      ).json(),
+      await repositoryOperation("git.status"),
     );
     expect(gitStatus).toMatchObject({
       branch: "main",
@@ -3489,38 +4179,52 @@ describe("local server foundation", () => {
       files: [{ path: "README.md", unstaged: true }],
     });
     const gitAction = gitActionResultSchema.parse(
-      (
-        await firstApp.inject({
-          method: "POST",
-          url: `/api/projects/${project.id}/git/actions`,
-          payload: { type: "stageAll" },
-        })
-      ).json(),
+      await repositoryOperation("git.action", { action: { type: "stageAll" } }),
     );
     expect(gitAction).toMatchObject({
       output: "Git action complete",
       status: { files: [] },
     });
-    const terminal = terminalSummarySchema.parse(
+    const terminalFields = protectedTerminalFields();
+    const terminalProtection = {
+      ownerId: LOCAL_USER_ID,
+      componentKey: surfaceComponentKey,
+      keyRevision: 1,
+      context: {
+        serverId: bootstrap.server.id,
+        resource: "terminal-row" as const,
+        resourceId: terminalFields.id,
+        operationId: null,
+        recordKind: "terminal-state" as const,
+      },
+    };
+    const terminalContent = {
+      version: 1 as const,
+      classification: { recordKind: "terminal-state" as const },
+      directory: { kind: "relative-path" as const, path: "packages/app" },
+      serviceCommand: "",
+    };
+    terminalFields.stateProtection = await encryptSurfacePrivateState({
+      ...terminalProtection,
+      content: terminalContent,
+    });
+    const terminal = terminalWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
           url: `/api/projects/${project.id}/terminals`,
-          payload: {
-            title: "Dev shell",
-            directoryPath: "packages/app",
-          },
+          payload: terminalFields,
         })
       ).json(),
     );
     expect(terminal).toMatchObject({
       projectId: project.id,
-      title: "Dev shell",
+      ...terminalFields,
       activeWorkerId: "test-worker",
-      service: { enabled: false, command: "" },
+      serviceEnabled: false,
     });
     expect(
-      terminalListSchema.parse(
+      terminalWireListSchema.parse(
         (
           await firstApp.inject({
             method: "GET",
@@ -3529,37 +4233,61 @@ describe("local server foundation", () => {
         ).json(),
       ),
     ).toHaveLength(1);
+    const renamedTerminal = protectedDisplayLabelFields(
+      "terminal",
+      terminal.id,
+    );
     expect(
-      terminalSummarySchema.parse(
+      terminalWireSummarySchema.parse(
         (
           await firstApp.inject({
             method: "PATCH",
             url: `/api/terminals/${terminal.id}`,
-            payload: { title: "Renamed shell" },
+            payload: { titleProtection: renamedTerminal.titleProtection },
           })
         ).json(),
-      ).title,
-    ).toBe("Renamed shell");
-    const enabledService = terminalSummarySchema.parse(
+      ).titleProtection,
+    ).toEqual(renamedTerminal.titleProtection);
+    const serviceState = await encryptSurfacePrivateState({
+      ...terminalProtection,
+      content: { ...terminalContent, serviceCommand: "pnpm dev" },
+    });
+    const enabledService = terminalWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "PUT",
           url: `/api/terminals/${terminal.id}/service`,
-          payload: { enabled: true, command: "pnpm dev" },
+          payload: { enabled: true, stateProtection: serviceState },
         })
       ).json(),
     );
     expect(enabledService).toMatchObject({
       status: "running",
-      service: { enabled: true, command: "pnpm dev" },
+      serviceEnabled: true,
+      stateProtection: serviceState,
     });
     expect(terminalServiceReconciliations.at(-1)?.services).toEqual([
       expect.objectContaining({
         terminalId: terminal.id,
-        command: "pnpm dev",
-        cwd: `${primaryWorktree!.path}/packages/app`,
+        serverId: bootstrap.server.id,
+        worktreePath: primaryWorktree!.path,
+        stateProtection: serviceState,
       }),
     ]);
+    const service = terminalServiceReconciliations.at(-1)!.services[0]!;
+    expect(
+      await decryptSurfacePrivateState({
+        ...terminalProtection,
+        context: {
+          ...terminalProtection.context,
+          serverId: service.serverId,
+          resourceId: service.terminalId,
+        },
+        opaque: service.stateProtection,
+      }),
+    ).toEqual({ ...terminalContent, serviceCommand: "pnpm dev" });
+    expect(JSON.stringify(service)).not.toContain("pnpm dev");
+    expect(JSON.stringify(service)).not.toContain("packages/app");
     expect(
       (
         await firstApp.inject({
@@ -3569,18 +4297,19 @@ describe("local server foundation", () => {
       ).statusCode,
     ).toBe(202);
     expect(terminalServiceRestarts).toContain(terminal.id);
-    const disabledService = terminalSummarySchema.parse(
+    const disabledService = terminalWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "PUT",
           url: `/api/terminals/${terminal.id}/service`,
-          payload: { enabled: false, command: "pnpm dev" },
+          payload: { enabled: false, stateProtection: serviceState },
         })
       ).json(),
     );
     expect(disabledService).toMatchObject({
       status: "idle",
-      service: { enabled: false, command: "pnpm dev" },
+      serviceEnabled: false,
+      stateProtection: serviceState,
     });
     expect(terminalServiceReconciliations.at(-1)?.services).toEqual([]);
     expect(
@@ -3588,7 +4317,7 @@ describe("local server foundation", () => {
         await firstApp.inject({
           method: "PUT",
           url: `/api/terminals/${terminal.id}/service`,
-          payload: { enabled: true, command: "pnpm dev" },
+          payload: { enabled: true, stateProtection: serviceState },
         })
       ).statusCode,
     ).toBe(200);
@@ -3608,9 +4337,7 @@ describe("local server foundation", () => {
       payload: {
         ...protectedProjectFields(),
         workerId: "test-worker",
-        repositoryId: "github-repository-1",
-        nameWithOwner: "ArcaneArts/Cantrip",
-        url: "https://github.com/ArcaneArts/Cantrip",
+        ...cantripRepositoryFields,
       },
     });
     expect(duplicateResponse.statusCode).toBe(409);
@@ -3618,40 +4345,102 @@ describe("local server foundation", () => {
     const chatResponse = await firstApp.inject({
       method: "POST",
       url: `/api/projects/${project.id}/chats`,
-      payload: { title: "Foundation" },
+      payload: protectedChatFields(),
     });
-    const chat = chatSummarySchema.parse(chatResponse.json());
+    expect(chatResponse.statusCode, chatResponse.body).toBe(201);
+    const chat = chatWireSummarySchema.parse(chatResponse.json());
     const attachmentText = "A durable worker-owned attachment.";
-    const uploadedAttachment = chatAttachmentSummarySchema.parse(
+    const attachmentId = randomUUID();
+    const uploadOperationId = randomUUID();
+    const attachmentScope = {
+      ...attachmentProtection,
+      chatId: chat.id,
+      attachmentId,
+    };
+    const protectedMetadata = await encryptAttachmentMetadata({
+      ...attachmentScope,
+      content: {
+        version: 1,
+        fileName: "notes.txt",
+        mimeType: "text/plain",
+        kind: "text",
+        source: "paste",
+        previewText: attachmentText,
+        error: null,
+        sha256: attachmentContentDigest(Buffer.from(attachmentText)),
+      },
+    });
+    const uploadChunk = await encryptAttachmentChunk({
+      ...attachmentScope,
+      operationId: uploadOperationId,
+      direction: "upload",
+      sequence: 0,
+      eof: true,
+      plaintext: Buffer.from(attachmentText),
+    });
+    const uploadedAttachment = chatAttachmentOpaqueSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
           url: `/api/chats/${chat.id}/attachments`,
           headers: {
             "content-type": "application/octet-stream",
-            "x-cantrip-file-name": encodeURIComponent("notes.txt"),
-            "x-cantrip-mime-type": "text/plain",
-            "x-cantrip-attachment-kind": "text",
-            "x-cantrip-attachment-source": "paste",
           },
-          payload: Buffer.from(attachmentText),
+          payload: Buffer.from(
+            JSON.stringify({
+              attachmentId,
+              operationId: uploadOperationId,
+              sizeBytes: Buffer.byteLength(attachmentText),
+              protectedMetadata,
+              chunks: [uploadChunk],
+            }),
+          ),
         })
       ).json(),
     );
     expect(uploadedAttachment).toMatchObject({
       chatId: chat.id,
+      id: attachmentId,
+      protectedMetadata,
+      sizeBytes: Buffer.byteLength(attachmentText),
+    });
+    expect(
+      await decryptAttachmentMetadata({
+        ...attachmentScope,
+        encrypted: uploadedAttachment.protectedMetadata,
+      }),
+    ).toMatchObject({
       fileName: "notes.txt",
       kind: "text",
       previewText: attachmentText,
       source: "paste",
     });
+    const downloadOperationId = randomUUID();
     const attachmentContent = await firstApp.inject({
       method: "GET",
-      url: `/api/attachments/${uploadedAttachment.id}/content`,
+      url: `/api/attachments/${uploadedAttachment.id}/content?operationId=${downloadOperationId}`,
     });
     expect(attachmentContent.statusCode).toBe(200);
-    expect(attachmentContent.body).toBe(attachmentText);
-    const selectedChat = chatSummarySchema.parse(
+    const downloaded = attachmentDownloadOpaqueSchema.parse(
+      attachmentContent.json(),
+    );
+    expect(downloaded.operationId).toBe(downloadOperationId);
+    const downloadedBytes = await Promise.all(
+      downloaded.chunks.map((chunk) =>
+        decryptAttachmentChunk({
+          ...attachmentScope,
+          operationId: downloaded.operationId,
+          direction: "download",
+          sequence: chunk.sequence,
+          encrypted: chunk,
+        }),
+      ),
+    );
+    expect(Buffer.concat(downloadedBytes).toString()).toBe(attachmentText);
+    downloadedBytes.forEach((bytes) => bytes.fill(0));
+    expect(attachmentContent.body).not.toContain(attachmentText);
+    expect(attachmentContent.body).not.toContain("notes.txt");
+    const selectedChat = chatWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "PATCH",
@@ -3709,41 +4498,171 @@ describe("local server foundation", () => {
       url: "/api/settings",
       payload: { defaultPermissionProfileId: ":read-only" },
     });
-    const selectedPermissionProfile = chatPermissionProfileStateSchema.parse(
-      (
-        await firstApp.inject({
+    // Bound settings are commands, not immediate server-side selection writes.
+    // Simulate the native worker's admission and evidence against the real DB.
+    const nativeCommands = firstDatabase.repository.nativeCommands;
+    let nativeSettingsRevision = 0;
+    await nativeCommands.refreshSettingsState(
+      LOCAL_USER_ID,
+      chat.id,
+      async (scope) => ({
+        context: {
+          chatId: scope.chatId,
+          workerId: scope.workerId,
+          threadId: scope.threadId,
+          runtimeGeneration: "foundation-runtime",
+          settingsVersion: { epoch: "foundation-epoch", revision: "0" },
+        },
+        protectedContent: settingsEnvelope,
+        contentFingerprint: "c".repeat(64),
+      }),
+    );
+    const changePermission = async (id: string | null, rejected = false) => {
+      const before = (await firstDatabase.repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        chat.id,
+      ))!;
+      const state = (await nativeCommands.settingsState(
+        LOCAL_USER_ID,
+        chat.id,
+      ))!;
+      const operationId = randomUUID();
+      let evidence: NativeSettingsEvidence | undefined;
+      const originalRequest = workerBridge.request.bind(workerBridge);
+      const requestSpy = vi
+        .spyOn(workerBridge, "request")
+        .mockImplementation(async (workerId, command, options) => {
+          if (command.type !== "chat.permissions.update")
+            return originalRequest(workerId, command, options);
+          expect(command.binding.bindingId).toBe(state.binding!.bindingId);
+          const input = nativeCommandAdmissionSchema.parse({
+            workerId,
+            operationId: command.operationId,
+            origin: "gui",
+            method: "thread/settings/update",
+            session: {
+              chatId: chat.id,
+              threadId: before.threadId,
+              contextKind: before.contextKind,
+              projectId: before.projectId,
+              placementId: before.worktreeId ?? before.scratchRootId,
+              modelRouteId: before.modelRouteId,
+              providerAccountId: before.providerAccountId,
+              runtimeGeneration: "foundation-runtime",
+              connectionId: "foundation-view",
+            },
+            payloadDigest: "a".repeat(64),
+            protectedPayload: settingsEnvelope,
+            expectedActivationGeneration: (
+              await nativeCommands.controlContext(LOCAL_USER_ID, chat.id)
+            ).activationGeneration,
+            intent: {
+              scope: "thread",
+              settingKeys: ["permissions", "approvalPolicy"],
+              nativeSettingsOperationId: randomUUID(),
+              settingsBindingId: command.binding.bindingId,
+              permissionProfileId:
+                effectivePermissionProfile(before).effectiveId,
+              permissionTransition: command.permissionTransition,
+              expectedTurnId: null,
+            },
+          });
+          const admitted = await nativeCommands.admit(LOCAL_USER_ID, input);
+          expect(admitted.receipt.status).toBe("accepted");
+          await nativeCommands.dispatch(LOCAL_USER_ID, {
+            workerId,
+            operationId,
+            operationGeneration: admitted.receipt.operationGeneration,
+            payloadDigest: input.payloadDigest,
+            session: input.session,
+          });
+          evidence = {
+            workerId,
+            operationId,
+            operationGeneration: admitted.receipt.operationGeneration,
+            eventId: randomUUID(),
+            threadId: input.session.threadId!,
+            runtimeGeneration: "foundation-runtime",
+            nativeOperationId: input.intent.nativeSettingsOperationId!,
+            submissionId: operationId,
+            kind: rejected ? "rejected" : "applied",
+            resultDigest: "b".repeat(64),
+            protectedResult: settingsEnvelope,
+            ...(!rejected
+              ? {
+                  permissionPolicy: {
+                    effectiveId: command.permissionTransition.effectiveId,
+                    settingsVersion: {
+                      epoch: "foundation-epoch",
+                      revision: String(++nativeSettingsRevision),
+                    },
+                  },
+                }
+              : {}),
+          };
+          await nativeCommands.recordSettingsEvidence(LOCAL_USER_ID, {
+            ...evidence,
+            eventId: randomUUID(),
+            kind: "queued",
+            permissionPolicy: undefined,
+          });
+          return { operationId, submissionId: operationId, status: "queued" };
+        });
+      try {
+        const response = await firstApp.inject({
           method: "PATCH",
           url: `/api/chats/${chat.id}/permission-profile`,
-          payload: { id: ":danger-full-access" },
-        })
-      ).json(),
+          payload: {
+            id,
+            operationId,
+            bindingId: state.binding!.bindingId,
+            expectedRevision: state.permissionPolicy?.revision ?? "0",
+          },
+        });
+        expect(response.statusCode, response.body).toBe(200);
+        expect(
+          nativeSettingsUpdateReceiptSchema.parse(response.json()),
+        ).toMatchObject({ operationId, status: "queued" });
+        expect(
+          (await firstDatabase.repository.getChatExecutionContext(
+            LOCAL_USER_ID,
+            chat.id,
+          ))!.permissionProfileId,
+        ).toBe(before.permissionProfileId);
+        expect(evidence).toBeDefined();
+        await nativeCommands.recordSettingsEvidence(LOCAL_USER_ID, evidence!);
+        return chatPermissionProfileStateSchema.parse(
+          (
+            await firstApp.inject({
+              method: "GET",
+              url: `/api/chats/${chat.id}/permission-profiles`,
+            })
+          ).json(),
+        );
+      } finally {
+        requestSpy.mockRestore();
+      }
+    };
+    const selectedPermissionProfile = await changePermission(
+      ":danger-full-access",
     );
     expect(selectedPermissionProfile).toMatchObject({
       selectedId: ":danger-full-access",
       effectiveId: ":danger-full-access",
     });
-    const selectedYoloProfile = chatPermissionProfileStateSchema.parse(
-      (
-        await firstApp.inject({
-          method: "PATCH",
-          url: `/api/chats/${chat.id}/permission-profile`,
-          payload: { id: ":yolo" },
-        })
-      ).json(),
-    );
+    const selectedYoloProfile = await changePermission(":yolo");
     expect(selectedYoloProfile).toMatchObject({
       selectedId: ":yolo",
       effectiveId: ":yolo",
     });
+    expect(await changePermission(":blocked", true)).toMatchObject({
+      selectedId: ":yolo",
+      effectiveId: ":yolo",
+    });
     expect(
-      (
-        await firstApp.inject({
-          method: "PATCH",
-          url: `/api/chats/${chat.id}/permission-profile`,
-          payload: { id: ":blocked" },
-        })
-      ).statusCode,
-    ).toBe(409);
+      (await nativeCommands.settingsState(LOCAL_USER_ID, chat.id))
+        ?.desiredStatus,
+    ).toBe("rejected");
     await firstApp.inject({
       method: "PATCH",
       url: `/api/projects/${project.id}/worktree-policy`,
@@ -3769,15 +4688,54 @@ describe("local server foundation", () => {
       payload: { policy: "agent-managed" },
     });
 
+    const approvalContext =
+      (await firstDatabase.repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        chat.id,
+      ))!;
+    const approvalTurn = nativeCommandAdmissionSchema.parse({
+      workerId: approvalContext.workerId,
+      operationId: randomUUID(),
+      origin: "gui",
+      method: "turn/start",
+      session: {
+        chatId: chat.id,
+        threadId: approvalContext.threadId,
+        contextKind: approvalContext.contextKind,
+        projectId: approvalContext.projectId,
+        placementId:
+          approvalContext.worktreeId ?? approvalContext.scratchRootId,
+        modelRouteId: approvalContext.modelRouteId,
+        providerAccountId: approvalContext.providerAccountId,
+        runtimeGeneration: "foundation-runtime",
+        connectionId: "foundation-view",
+      },
+      payloadDigest: "d".repeat(64),
+      protectedPayload: settingsEnvelope,
+      expectedActivationGeneration: null,
+      intent: { scope: "thread", settingKeys: [], expectedTurnId: null },
+    });
+    const approvalGrant = await nativeCommands.admit(
+      LOCAL_USER_ID,
+      approvalTurn,
+    );
+    expect(approvalGrant.receipt.status).toBe("accepted");
+    await nativeCommands.dispatch(LOCAL_USER_ID, {
+      workerId: approvalTurn.workerId,
+      operationId: approvalTurn.operationId,
+      operationGeneration: approvalGrant.receipt.operationGeneration,
+      payloadDigest: approvalTurn.payloadDigest,
+      session: approvalTurn.session,
+    });
     const approvalInput: AgentInteractionRequestCreate = {
       requestKey: "runtime-1:approval-1",
       projectId: project.id,
       provenance: {
         chatId: chat.id,
-        threadId: "thread-approval",
+        threadId: approvalTurn.session.threadId,
         turnId: "turn-approval",
         itemId: "item-approval",
-        executionLaneId: null,
+        executionLaneId: approvalGrant.receipt.executionLaneId,
         workerId: "test-worker",
       },
       payload: {
@@ -3826,16 +4784,7 @@ describe("local server foundation", () => {
         ).json(),
       ),
     ).toMatchObject([{ id: approval.id, status: "pending" }]);
-    const permissionChangedDuringApproval =
-      chatPermissionProfileStateSchema.parse(
-        (
-          await firstApp.inject({
-            method: "PATCH",
-            url: `/api/chats/${chat.id}/permission-profile`,
-            payload: { id: null },
-          })
-        ).json(),
-      );
+    const permissionChangedDuringApproval = await changePermission(null);
     expect(permissionChangedDuringApproval).toMatchObject({
       selectedId: ":read-only",
       defaultId: ":read-only",
@@ -3905,7 +4854,16 @@ describe("local server foundation", () => {
         )
       )?.status,
     ).toBe("running");
-    await firstDatabase.repository.setChatStatus(chat.id, "idle");
+    await nativeCommands.settle(LOCAL_USER_ID, {
+      workerId: approvalTurn.workerId,
+      operationId: approvalTurn.operationId,
+      operationGeneration: approvalGrant.receipt.operationGeneration,
+      status: "applied",
+      resultDigest: "e".repeat(64),
+      protectedResult: settingsEnvelope,
+      rejectionCode: null,
+      executionComplete: true,
+    });
 
     const expiringRequest =
       await firstDatabase.repository.recordAgentInteractionRequest({
@@ -4122,7 +5080,9 @@ describe("local server foundation", () => {
       operation: "customization.inventory.read",
       scope: customizationTarget,
     });
-    expect(customizationInventoryThreadIds.at(-1)).toBeNull();
+    expect(customizationInventoryThreadIds.at(-1)).toBe(
+      approvalTurn.session.threadId,
+    );
     const previewOperationId = "4d299a12-8c01-4d19-8eaf-0e966d8db12a";
     expect(
       protectedCustomizationResponseSchema.parse(
@@ -4291,21 +5251,87 @@ describe("local server foundation", () => {
       lifecycle: "completed",
     });
 
-    const messagePayload = {
-      text: "$skill-creator Persist this message.",
+    const messageText = "$skill-creator Persist this message.";
+    const messageId = randomUUID();
+    const promptId = randomUUID();
+    const classification = {
+      role: "user" as const,
+      mode: "default" as const,
       attachmentIds: [uploadedAttachment.id],
-      idempotencyKey: "first-message",
     };
-    const firstMessage = chatMessageSchema.parse(
-      (
-        await firstApp.inject({
-          method: "POST",
-          url: `/api/chats/${chat.id}/turns`,
-          payload: messagePayload,
-        })
-      ).json().message,
+    const readableAttachment = chatAttachmentSummarySchema.parse({
+      ...uploadedAttachment,
+      ...(await decryptAttachmentMetadata({
+        ...attachmentScope,
+        encrypted: uploadedAttachment.protectedMetadata,
+      })),
+    });
+    const message = {
+      id: messageId,
+      classification,
+      idempotencyKey: "first-message",
+      reasoningEffort: null,
+      protectedContent: await encryptChatMessageProtectedContent({
+        ...chatProtection,
+        messageId,
+        content: {
+          version: 1,
+          classification,
+          content: [
+            { type: "text", text: messageText },
+            { type: "attachment", attachment: readableAttachment },
+          ],
+        },
+      }),
+    };
+    const queueClassification = {
+      mode: classification.mode,
+      attachmentIds: classification.attachmentIds,
+    };
+    const messagePayload = {
+      message,
+      modelId: selectedModel.id,
+      queuedPrompt: {
+        id: promptId,
+        classification: queueClassification,
+        modelId: selectedModel.id,
+        idempotencyKey: "first-message",
+        pendingMessage: message,
+        protectedContent: await encryptQueuedPromptProtectedContent({
+          ...chatProtection,
+          promptId,
+          content: {
+            version: 1,
+            classification: queueClassification,
+            text: messageText,
+          },
+        }),
+      },
+    };
+    expect(JSON.stringify(messagePayload)).not.toContain(messageText);
+    const firstMessageResponse = await firstApp.inject({
+      method: "POST",
+      url: `/api/chats/${chat.id}/turns`,
+      payload: messagePayload,
+    });
+    expect(firstMessageResponse.statusCode, firstMessageResponse.body).toBe(
+      202,
     );
-    const repeatedMessage = chatMessageSchema.parse(
+    const firstOpaqueMessage = chatMessageOpaqueSummarySchema.parse(
+      firstMessageResponse.json().message,
+    );
+    const firstMessage = chatMessageSchema.parse({
+      ...firstOpaqueMessage,
+      content: (
+        await decryptChatMessageProtectedContent({
+          ...chatProtection,
+          messageId: firstOpaqueMessage.id,
+          encrypted: firstOpaqueMessage.protectedContent,
+          publicClassification: classification,
+        })
+      ).content,
+    });
+    const repeatedMessage = chatMessageOpaqueSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
@@ -4315,25 +5341,51 @@ describe("local server foundation", () => {
       ).json().message,
     );
     expect(repeatedMessage.id).toBe(firstMessage.id);
-    await vi.waitFor(async () => {
-      const messages = chatMessageListSchema.parse(
-        (
-          await firstApp.inject({
-            method: "GET",
-            url: `/api/chats/${chat.id}/messages`,
-          })
-        ).json(),
+    const readChatMessages = async (chatId = chat.id, app = firstApp) => {
+      const response = await app.inject({
+        method: "GET",
+        url: `/api/chats/${chatId}/messages`,
+      });
+      expect(response.statusCode, response.body).toBe(200);
+      const wire = chatMessageWireListSchema.parse(response.json());
+      expect(wire.kind).toBe("chat-encrypted");
+      return Promise.all(
+        wire.messages.map(async (value) =>
+          chatMessageSchema.parse({
+            ...value,
+            content: (
+              await decryptChatMessageProtectedContent({
+                ...chatProtection,
+                messageId: value.id,
+                encrypted: value.protectedContent,
+                publicClassification: {
+                  role: value.role,
+                  mode: value.mode,
+                  attachmentIds: value.attachmentIds,
+                },
+              })
+            ).content,
+          }),
+        ),
       );
-      expect(messages).toHaveLength(4);
+    };
+    await vi.waitFor(async () => {
+      const messages = await readChatMessages();
+      expect(messages, `worker turns dispatched: ${turnRequests}`).toHaveLength(
+        4,
+      );
     });
     expect(turnRequests).toBe(1);
     expect(turnPolicyContexts[0]).toEqual({ policies: [] });
     expect(JSON.stringify(turnPolicyContexts[0])).not.toContain("bodyMarkdown");
-    expect(turnSkillNames[0]).toEqual(["skill-creator"]);
+    // The relay cannot extract skill names from ciphertext; the worker receives
+    // the original mention when it opens the protected prompt.
+    expect(turnSkillNames[0]).toEqual([]);
+    expect(turnPrompts[0]).toBe(messageText);
     expect(turnAttachmentIds[0]).toEqual([uploadedAttachment.id]);
     expect(firstMessage.content).toContainEqual({
       type: "attachment",
-      attachment: uploadedAttachment,
+      attachment: readableAttachment,
     });
     expect(turnTimeouts).toEqual([null]);
     expect(turnModelIds).toContain(selectedModel.id);
@@ -4358,14 +5410,7 @@ describe("local server foundation", () => {
       method: "POST",
       url: `/api/chats/${chat.id}/sync`,
     });
-    const completedMessages = chatMessageListSchema.parse(
-      (
-        await firstApp.inject({
-          method: "GET",
-          url: `/api/chats/${chat.id}/messages`,
-        })
-      ).json(),
-    );
+    const completedMessages = await readChatMessages();
     expect(completedMessages.at(-1)).toMatchObject({
       role: "assistant",
       content: [{ type: "text", text: "8", phase: "final_answer" }],
@@ -4387,54 +5432,65 @@ describe("local server foundation", () => {
     ).toEqual(
       expect.arrayContaining(["reasoning", "contextCompaction", "turnSummary"]),
     );
-    const renamedChat = chatSummarySchema.parse(
+    const renamedChatFields = protectedChatFields(chat.id);
+    const renamedChat = chatWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "PATCH",
           url: `/api/chats/${chat.id}`,
-          payload: { title: "Renamed foundation" },
+          payload: { titleProtection: renamedChatFields.titleProtection },
         })
       ).json(),
     );
-    expect(renamedChat.title).toBe("Renamed foundation");
-    const forkedChat = chatSummarySchema.parse(
+    expect(renamedChat.titleProtection).toEqual(
+      renamedChatFields.titleProtection,
+    );
+    const forkedChat = chatWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
           url: `/api/chats/${chat.id}/fork`,
           payload: {
+            ...protectedChatFields(),
             messageId: completedMessages.at(-1)?.id,
           },
         })
       ).json(),
     );
-    const duplicatedChat = chatSummarySchema.parse(
+    const duplicatedChat = chatWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
           url: `/api/chats/${chat.id}/fork`,
-          payload: {},
+          payload: protectedChatFields(),
         })
       ).json(),
     );
+    const forkedMessages = await readChatMessages(forkedChat.id);
+    expect(forkedMessages).toHaveLength(completedMessages.length);
+    expect(forkedMessages.map((message) => message.content)).toEqual(
+      completedMessages.map((message) => message.content),
+    );
     expect(
-      chatMessageListSchema.parse(
-        (
-          await firstApp.inject({
-            method: "GET",
-            url: `/api/chats/${forkedChat.id}/messages`,
-          })
-        ).json(),
+      forkedMessages.every(
+        (message) =>
+          !completedMessages.some((source) => source.id === message.id),
       ),
-    ).toHaveLength(completedMessages.length);
+    ).toBe(true);
     expect(
       await firstApp.inject({
         method: "POST",
         url: `/api/chats/${forkedChat.id}/turns`,
-        payload: {
+        payload: await protectChatTurn({
+          service: chatEncryptionService,
+          messageId: randomUUID(),
+          promptId: randomUUID(),
+          mode: "default",
+          modelId: selectedModel.id,
+          reasoningEffort: null,
           text: "Continue from the fork.",
           idempotencyKey: "fork-follow-up",
-        },
+        }),
       }),
     ).toMatchObject({ statusCode: 202 });
     await vi.waitFor(() => expect(turnPrompts).toHaveLength(2));
@@ -4444,22 +5500,15 @@ describe("local server foundation", () => {
     );
     expect(turnPrompts[1]).toContain("The local agent replied.");
     await vi.waitFor(async () => {
-      const forkMessages = chatMessageListSchema.parse(
-        (
-          await firstApp.inject({
-            method: "GET",
-            url: `/api/chats/${forkedChat.id}/messages`,
-          })
-        ).json(),
-      );
+      const forkMessages = await readChatMessages(forkedChat.id);
       expect(forkMessages).toHaveLength(completedMessages.length + 4);
     });
-    const richChat = chatSummarySchema.parse(
+    const richChat = chatWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
           url: `/api/projects/${project.id}/chats`,
-          payload: { title: "Rich events" },
+          payload: protectedChatFields(),
         })
       ).json(),
     );
@@ -4513,18 +5562,20 @@ describe("local server foundation", () => {
     await firstApp.inject({
       method: "POST",
       url: `/api/chats/${richChat.id}/turns`,
-      payload: { text: "Render rich events", idempotencyKey: "rich-events" },
+      payload: await protectChatTurn({
+        service: chatEncryptionService,
+        messageId: randomUUID(),
+        promptId: randomUUID(),
+        mode: "default",
+        modelId: selectedModel.id,
+        reasoningEffort: null,
+        text: "Render rich events",
+        idempotencyKey: "rich-events",
+      }),
     });
     let richMessages = chatMessageListSchema.parse([]);
     await vi.waitFor(async () => {
-      richMessages = chatMessageListSchema.parse(
-        (
-          await firstApp.inject({
-            method: "GET",
-            url: `/api/chats/${richChat.id}/messages`,
-          })
-        ).json(),
-      );
+      richMessages = await readChatMessages(richChat.id);
       expect(richMessages).toHaveLength(7);
     });
     expect(richMessages.map((message) => message.content[0])).toMatchObject([
@@ -4589,14 +5640,50 @@ describe("local server foundation", () => {
         ),
       ),
     ).toHaveLength(1);
-    await vi.waitFor(() => {
+    await vi.waitFor(async () => {
       const streamedMessages = richLiveEvents.filter(
         (event) => event.type === "event" && event.resource === "chat-message",
       );
-      expect(streamedMessages).toHaveLength(7);
+      // The user row is published at insertion and again when model attribution
+      // is attached. Both updates retain one message identity and sequence.
+      expect(streamedMessages).toHaveLength(8);
+      const updates = streamedMessages.map((event) => {
+        if (event.type !== "event") throw new Error("Expected a message event");
+        const message = chatMessageOpaqueSummarySchema.parse(event.payload);
+        expect(event.entityId).toBe(message.id);
+        expect(event.revision).toBe(message.sequence);
+        expect(event.action).toBe("updated");
+        return message;
+      });
+      expect(updates.map(({ id }) => id)).toEqual([
+        richMessages[0]!.id,
+        ...richMessages.map(({ id }) => id),
+      ]);
+      expect(updates[0]!.modelRouteId).toBeNull();
+      expect(updates[1]!.modelRouteId).toBe(richMessages[0]!.modelRouteId);
+      expect(updates[0]!.protectedContent).toEqual(
+        updates[1]!.protectedContent,
+      );
+      const latest = new Map(updates.map((message) => [message.id, message]));
       expect(
-        streamedMessages.map((event) =>
-          event.type === "event" ? event.payload : null,
+        await Promise.all(
+          [...latest.values()].map(async (message) =>
+            chatMessageSchema.parse({
+              ...message,
+              content: (
+                await decryptChatMessageProtectedContent({
+                  ...chatProtection,
+                  messageId: message.id,
+                  encrypted: message.protectedContent,
+                  publicClassification: {
+                    role: message.role,
+                    mode: message.mode,
+                    attachmentIds: message.attachmentIds,
+                  },
+                })
+              ).content,
+            }),
+          ),
         ),
       ).toEqual(richMessages);
       expect(
@@ -4672,7 +5759,7 @@ describe("local server foundation", () => {
       reasoningOutputTokens: 250,
       totalTokens: 2_250,
     });
-    const usageSettings = settingsBundleSchema.parse(
+    const usageSettings = settingsBundleWireSchema.parse(
       (await firstApp.inject({ method: "GET", url: "/api/settings" })).json(),
     );
     expect(
@@ -4696,12 +5783,12 @@ describe("local server foundation", () => {
         url: "/api/projects/missing-project/token-usage",
       }),
     ).toMatchObject({ statusCode: 404 });
-    const reorderedTerminal = terminalSummarySchema.parse(
+    const reorderedTerminal = terminalWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
           url: `/api/projects/${project.id}/terminals`,
-          payload: { title: "Sortable shell" },
+          payload: protectedTerminalFields(),
         })
       ).json(),
     );
@@ -4721,21 +5808,22 @@ describe("local server foundation", () => {
       worktreeId: reorderedTerminal.id,
       protectedCommands: protectedScriptCommands,
     });
-    const explorer = explorerSummarySchema.parse(
+    const explorerFields = protectedExplorerFields();
+    const explorer = explorerWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
           url: `/api/projects/${project.id}/explorers`,
-          payload: { title: "Project files" },
+          payload: explorerFields,
         })
       ).json(),
     );
     expect(explorer).toMatchObject({
-      selectedPath: null,
+      stateProtection: explorerFields.stateProtection,
       fileMode: "preview",
     });
     expect(
-      explorerListSchema.parse(
+      explorerWireListSchema.parse(
         (
           await firstApp.inject({
             method: "GET",
@@ -4746,22 +5834,18 @@ describe("local server foundation", () => {
     ).toHaveLength(1);
     expect(
       explorerDirectorySchema.parse(
-        (
-          await firstApp.inject({
-            method: "GET",
-            url: `/api/explorers/${explorer.id}/directory?path=`,
-          })
-        ).json(),
+        await explorerOperation(firstApp, bootstrap.server.id, explorer.id, {
+          type: "explorer.directory.list",
+          path: "",
+        }),
       ).entries[0],
     ).toMatchObject({ name: "README.md", markdown: true });
     expect(
       explorerDirectoryCommitsSchema.parse(
-        (
-          await firstApp.inject({
-            method: "GET",
-            url: `/api/explorers/${explorer.id}/directory/commits?path=`,
-          })
-        ).json(),
+        await explorerOperation(firstApp, bootstrap.server.id, explorer.id, {
+          type: "explorer.directory.commits",
+          path: "",
+        }),
       ).entries[0],
     ).toMatchObject({
       path: "README.md",
@@ -4770,62 +5854,62 @@ describe("local server foundation", () => {
     });
     expect(
       explorerFileSchema.parse(
-        (
-          await firstApp.inject({
-            method: "GET",
-            url: `/api/explorers/${explorer.id}/file?path=README.md`,
-          })
-        ).json(),
+        await explorerOperation(firstApp, bootstrap.server.id, explorer.id, {
+          type: "explorer.file.read",
+          path: "README.md",
+        }),
       ).content,
     ).toContain("Cantrip explorer");
-    const mediaResponse = await firstApp.inject({
-      method: "GET",
-      url: `/api/explorers/${explorer.id}/media?path=preview.png`,
+    // Media now travels as encrypted chunks, not plaintext HTTP Range bodies.
+    const readMedia = async (offset: number, limit: number) =>
+      explorerMediaFileChunkSchema.parse(
+        await explorerOperation(firstApp, bootstrap.server.id, explorer.id, {
+          type: "explorer.media.read",
+          path: "preview.png",
+          offset,
+          limit,
+        }),
+      );
+    const firstChunk = await readMedia(0, 256 * 1_024);
+    const lastChunk = await readMedia(256 * 1_024, 256 * 1_024);
+    expect(firstChunk).toMatchObject({
+      mimeType: "image/png",
+      size: explorerMediaBytes.byteLength,
+      offset: 0,
+      eof: false,
     });
-    expect(mediaResponse.statusCode).toBe(200);
-    expect(mediaResponse.headers).toMatchObject({
-      "accept-ranges": "bytes",
-      "cache-control": "private, no-store",
-      "content-length": String(explorerMediaBytes.byteLength),
-      "content-type": "image/png",
+    expect(lastChunk).toMatchObject({
+      size: explorerMediaBytes.byteLength,
+      offset: 256 * 1_024,
+      eof: true,
     });
-    expect(mediaResponse.rawPayload).toEqual(explorerMediaBytes);
-    const rangedMediaResponse = await firstApp.inject({
-      method: "GET",
-      url: `/api/explorers/${explorer.id}/media?path=preview.png`,
-      headers: { range: "bytes=2-7" },
-    });
-    expect(rangedMediaResponse.statusCode).toBe(206);
-    expect(rangedMediaResponse.headers).toMatchObject({
-      "content-length": "6",
-      "content-range": `bytes 2-7/${explorerMediaBytes.byteLength}`,
-    });
-    expect(rangedMediaResponse.rawPayload).toEqual(
+    expect(
+      Buffer.concat([
+        Buffer.from(firstChunk.data, "base64"),
+        Buffer.from(lastChunk.data, "base64"),
+      ]),
+    ).toEqual(explorerMediaBytes);
+    const rangedMedia = await readMedia(2, 6);
+    expect(rangedMedia).toMatchObject({ offset: 2, eof: false });
+    expect(Buffer.from(rangedMedia.data, "base64")).toEqual(
       explorerMediaBytes.subarray(2, 8),
     );
-    const invalidMediaRangeResponse = await firstApp.inject({
-      method: "GET",
-      url: `/api/explorers/${explorer.id}/media?path=preview.png`,
-      headers: { range: "bytes=999999-" },
-    });
-    expect(invalidMediaRangeResponse.statusCode).toBe(416);
-    expect(invalidMediaRangeResponse.headers["content-range"]).toBe(
-      `bytes */${explorerMediaBytes.byteLength}`,
+    await expect(readMedia(999999, 6)).rejects.toThrow(
+      "The media read offset is outside the file.",
     );
+    expect(await readMedia(explorerMediaBytes.byteLength, 6)).toMatchObject({
+      data: "",
+      eof: true,
+    });
     const explorerWriteVersion = "a".repeat(64);
     expect(
       explorerFileSchema.parse(
-        (
-          await firstApp.inject({
-            method: "PUT",
-            url: `/api/explorers/${explorer.id}/file`,
-            payload: {
-              path: "README.md",
-              content: "# Edited in Monaco\n",
-              version: explorerWriteVersion,
-            },
-          })
-        ).json(),
+        await explorerOperation(firstApp, bootstrap.server.id, explorer.id, {
+          type: "explorer.file.write",
+          path: "README.md",
+          content: "# Edited in Monaco\n",
+          version: explorerWriteVersion,
+        }),
       ),
     ).toMatchObject({
       content: "# Edited in Monaco\n",
@@ -4836,19 +5920,49 @@ describe("local server foundation", () => {
       content: "# Edited in Monaco\n",
       version: explorerWriteVersion,
     });
-    const explorerEditorState = explorerSummarySchema.parse(
+    const explorerProtection = {
+      ownerId: LOCAL_USER_ID,
+      componentKey: surfaceComponentKey,
+      keyRevision: 1,
+      context: {
+        serverId: bootstrap.server.id,
+        resource: "explorer-row" as const,
+        resourceId: explorer.id,
+        operationId: null,
+        recordKind: "explorer-state" as const,
+      },
+    };
+    const explorerStateContent = {
+      version: 1 as const,
+      classification: { recordKind: "explorer-state" as const },
+      selectedPath: "README.md",
+    };
+    const explorerStateProtection = await encryptSurfacePrivateState({
+      ...explorerProtection,
+      content: explorerStateContent,
+    });
+    const explorerEditorState = explorerWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "PATCH",
           url: `/api/explorers/${explorer.id}/view-state`,
-          payload: { selectedPath: "README.md", fileMode: "edit" },
+          payload: {
+            stateProtection: explorerStateProtection,
+            fileMode: "edit",
+          },
         })
       ).json(),
     );
     expect(explorerEditorState).toMatchObject({
-      selectedPath: "README.md",
+      stateProtection: explorerStateProtection,
       fileMode: "edit",
     });
+    expect(
+      await decryptSurfacePrivateState({
+        ...explorerProtection,
+        opaque: explorerEditorState.stateProtection,
+      }),
+    ).toEqual(explorerStateContent);
     expect(
       await firstApp.inject({
         method: "PATCH",
@@ -4857,7 +5971,7 @@ describe("local server foundation", () => {
       }),
     ).toMatchObject({ statusCode: 400 });
     expect(
-      explorerListSchema.parse(
+      explorerWireListSchema.parse(
         (
           await firstApp.inject({
             method: "GET",
@@ -4865,29 +5979,62 @@ describe("local server foundation", () => {
           })
         ).json(),
       )[0],
-    ).toMatchObject({ selectedPath: "README.md", fileMode: "edit" });
+    ).toMatchObject({
+      stateProtection: explorerStateProtection,
+      fileMode: "edit",
+    });
+    const renamedExplorer = protectedDisplayLabelFields(
+      "explorer",
+      explorer.id,
+    );
     expect(
-      explorerSummarySchema.parse(
+      explorerWireSummarySchema.parse(
         (
           await firstApp.inject({
             method: "PATCH",
             url: `/api/explorers/${explorer.id}`,
-            payload: { title: "Source browser" },
+            payload: { titleProtection: renamedExplorer.titleProtection },
           })
         ).json(),
-      ).title,
-    ).toBe("Source browser");
-    const browser = browserSummarySchema.parse(
+      ).titleProtection,
+    ).toEqual(renamedExplorer.titleProtection);
+    const browserFields = protectedDisplayLabelFields("browser");
+    const browserProtection = {
+      ownerId: LOCAL_USER_ID,
+      componentKey: surfaceComponentKey,
+      keyRevision: 1,
+      context: {
+        serverId: bootstrap.server.id,
+        resource: "browser-row" as const,
+        resourceId: browserFields.id,
+        operationId: null,
+        recordKind: "browser-state" as const,
+      },
+    };
+    const browserState = (revision: number, url: string) =>
+      encryptSurfacePrivateState({
+        ...browserProtection,
+        content: {
+          version: 1,
+          classification: { recordKind: "browser-state" },
+          revision,
+          url,
+        },
+      });
+    const browser = browserWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
           url: `/api/projects/${project.id}/browsers`,
-          payload: { title: "Project web" },
+          payload: {
+            ...browserFields,
+            stateProtection: await browserState(1, "https://example.com"),
+          },
         })
       ).json(),
     );
     expect(
-      remoteSurfaceListSchema.parse(
+      remoteSurfaceWireListSchema.parse(
         (
           await firstApp.inject({
             method: "GET",
@@ -4902,58 +6049,118 @@ describe("local server foundation", () => {
         workerId: "test-worker",
       }),
     );
+    const renamedBrowser = protectedDisplayLabelFields("browser", browser.id);
+    const browserDocsState = await browserState(2, "https://example.com/docs");
     expect(
-      browserSummarySchema.parse(
+      browserWireSummarySchema.parse(
         (
           await firstApp.inject({
             method: "PATCH",
             url: `/api/browsers/${browser.id}`,
-            payload: { title: "Docs", url: "https://example.com/docs" },
+            payload: {
+              titleProtection: renamedBrowser.titleProtection,
+              stateProtection: browserDocsState,
+              expectedStateRevision: browser.stateRevision,
+            },
           })
         ).json(),
       ),
-    ).toMatchObject({ title: "Docs", url: "https://example.com/docs" });
-    expect(
-      remoteSurfaceListSchema
-        .parse(
-          (
-            await firstApp.inject({
-              method: "GET",
-              url: `/api/projects/${project.id}/remote-surfaces`,
-            })
-          ).json(),
-        )
-        .find(({ id }) => id === browser.id)?.configuration,
     ).toMatchObject({
-      kind: "browser",
-      initialUrl: "https://example.com/docs",
+      titleProtection: renamedBrowser.titleProtection,
+      stateProtection: browserDocsState,
+      stateRevision: 2,
     });
-    const projectView = projectViewSummarySchema.parse(
+    expect(
+      await firstApp.inject({
+        method: "PATCH",
+        url: `/api/browsers/${browser.id}`,
+        payload: {
+          expectedStateRevision: browser.stateRevision,
+          stateProtection: await browserState(2, "https://example.com/stale"),
+        },
+      }),
+    ).toMatchObject({ statusCode: 409 });
+    const browserSurface = remoteSurfaceWireListSchema
+      .parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/projects/${project.id}/remote-surfaces`,
+          })
+        ).json(),
+      )
+      .find(({ id }) => id === browser.id)!;
+    expect(browserSurface.configuration).toEqual({
+      kind: "browser",
+      profileId: null,
+    });
+    expect(browserSurface.stateRevision).toBe(2);
+    if (!browserSurface.stateProtection)
+      throw new Error("Browser protected state missing.");
+    expect(
+      await decryptSurfacePrivateState({
+        ...browserProtection,
+        opaque: browserSurface.stateProtection,
+      }),
+    ).toMatchObject({ revision: 2, url: "https://example.com/docs" });
+    const projectView = projectViewWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
           url: `/api/projects/${project.id}/views`,
-          payload: { kind: "history", title: "History" },
+          payload: {
+            kind: "history",
+            ...protectedDisplayLabelFields("project-view"),
+          },
         })
       ).json(),
     );
+    const renamedProjectView = protectedDisplayLabelFields(
+      "project-view",
+      projectView.id,
+    );
     expect(
-      projectViewSummarySchema.parse(
+      projectViewWireSummarySchema.parse(
         (
           await firstApp.inject({
             method: "PATCH",
             url: `/api/project-views/${projectView.id}`,
-            payload: { title: "Repository history" },
+            payload: { titleProtection: renamedProjectView.titleProtection },
           })
         ).json(),
       ),
-    ).toMatchObject({ kind: "history", title: "Repository history" });
-    const remoteDesktop = remoteDesktopSummarySchema.parse(
+    ).toMatchObject({
+      kind: "history",
+      titleProtection: renamedProjectView.titleProtection,
+    });
+    const desktopFields = protectedDisplayLabelFields("project-view");
+    const desktopProtection = {
+      ownerId: LOCAL_USER_ID,
+      componentKey: surfaceComponentKey,
+      keyRevision: 1,
+      context: {
+        serverId: bootstrap.server.id,
+        resource: "remote-desktop-row" as const,
+        resourceId: desktopFields.id,
+        operationId: null,
+        recordKind: "remote-desktop-state" as const,
+      },
+    };
+    const initialDesktopState = await encryptSurfacePrivateState({
+      ...desktopProtection,
+      content: {
+        version: 1,
+        classification: { recordKind: "remote-desktop-state" },
+        revision: 1,
+        target: { kind: "monitor", id: null, name: null },
+      },
+    });
+    const remoteDesktop = remoteDesktopWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
           url: `/api/projects/${project.id}/remote-desktops`,
-          payload: {},
+          payload: { ...desktopFields, stateProtection: initialDesktopState },
         })
       ).json(),
     );
@@ -4961,11 +6168,11 @@ describe("local server foundation", () => {
       projectId: project.id,
       workerId: "test-worker",
       status: "idle",
-      target: { kind: "monitor", id: null, name: null },
+      stateProtection: initialDesktopState,
     });
     expect(JSON.stringify(remoteDesktop)).not.toContain("password");
     expect(
-      remoteDesktopListSchema.parse(
+      remoteDesktopWireListSchema.parse(
         (
           await firstApp.inject({
             method: "GET",
@@ -4974,30 +6181,42 @@ describe("local server foundation", () => {
         ).json(),
       ),
     ).toContainEqual(expect.objectContaining({ id: remoteDesktop.id }));
-    const targetedDesktop = remoteDesktopSummarySchema.parse(
+    const desktopTarget = {
+      kind: "window" as const,
+      id: "window-42",
+      application: "Code",
+      title: "Cantrip",
+    };
+    const targetedDesktopState = await encryptSurfacePrivateState({
+      ...desktopProtection,
+      content: {
+        version: 1,
+        classification: { recordKind: "remote-desktop-state" },
+        revision: 2,
+        target: desktopTarget,
+      },
+    });
+    const targetedDesktop = remoteDesktopWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "PATCH",
           url: `/api/remote-desktops/${remoteDesktop.id}`,
           payload: {
-            target: {
-              kind: "window",
-              id: "window-42",
-              application: "Code",
-              title: "Cantrip",
-            },
+            expectedStateRevision: remoteDesktop.stateRevision,
+            stateProtection: targetedDesktopState,
           },
         })
       ).json(),
     );
-    expect(targetedDesktop.target).toEqual({
-      kind: "window",
-      id: "window-42",
-      application: "Code",
-      title: "Cantrip",
-    });
+    expect(targetedDesktop.stateRevision).toBe(2);
     expect(
-      projectViewListSchema
+      await decryptSurfacePrivateState({
+        ...desktopProtection,
+        opaque: targetedDesktop.stateProtection,
+      }),
+    ).toMatchObject({ revision: 2, target: desktopTarget });
+    expect(
+      projectViewWireListSchema
         .parse(
           (
             await firstApp.inject({
@@ -5007,8 +6226,11 @@ describe("local server foundation", () => {
           ).json(),
         )
         .find(({ id }) => id === remoteDesktop.id),
-    ).toMatchObject({ kind: "remote-desktop", title: "Remote Desktop" });
-    const initialTabLayout = projectTabLayoutSummarySchema.parse(
+    ).toMatchObject({
+      kind: "remote-desktop",
+      titleProtection: desktopFields.titleProtection,
+    });
+    const initialTabLayout = projectTabLayoutWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "GET",
@@ -5017,8 +6239,26 @@ describe("local server foundation", () => {
       ).json(),
     );
     expect(
-      initialTabLayout.panes.every(({ members }) => members.length === 1),
+      initialTabLayout.panes
+        .filter(({ region }) => region === "center")
+        .every(({ members }) => members.length === 1),
     ).toBe(true);
+    expect(
+      initialTabLayout.panes
+        .filter(({ region }) => region === "right")
+        .map(({ members }) => members.map(({ tabKey }) => tabKey)),
+    ).toEqual([
+      [
+        `browser:${browser.id}`,
+        `view:${projectView.id}`,
+        `view:${remoteDesktop.id}`,
+      ],
+    ]);
+    expect(
+      initialTabLayout.panes
+        .filter(({ region }) => region === "bottom")
+        .map(({ members }) => members.map(({ tabKey }) => tabKey)),
+    ).toEqual([[`terminal:${reorderedTerminal.id}`]]);
     expect(
       initialTabLayout.panes.flatMap(({ members }) =>
         members.map(({ tabKey }) => tabKey),
@@ -5027,20 +6267,20 @@ describe("local server foundation", () => {
     const explorerPane = initialTabLayout.panes.find(({ members }) =>
       members.some(({ tabKey }) => tabKey === `explorer:${explorer.id}`),
     )!;
-    const groupedIssuesView = projectViewSummarySchema.parse(
+    const groupedIssuesView = projectViewWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
           url: `/api/projects/${project.id}/views`,
           payload: {
             kind: "issues",
-            title: "Issues",
+            ...protectedDisplayLabelFields("project-view"),
             paneId: explorerPane.id,
           },
         })
       ).json(),
     );
-    const groupedTabLayout = projectTabLayoutSummarySchema.parse(
+    const groupedTabLayout = projectTabLayoutWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "GET",
@@ -5055,31 +6295,38 @@ describe("local server foundation", () => {
         ?.members.map(({ tabKey }) => tabKey),
     ).toEqual([`explorer:${explorer.id}`, `view:${groupedIssuesView.id}`]);
     expect(
-      groupedTabLayout.panes.find(({ id }) => id === explorerPane.id)?.title,
-    ).toBe("Source browser");
-    const renamedGroupLayout = projectTabLayoutSummarySchema.parse(
+      groupedTabLayout.panes.find(({ id }) => id === explorerPane.id)
+        ?.titleProtection,
+    ).toBeNull();
+    const paneLabel = protectedDisplayLabelFields("tab-group", explorerPane.id);
+    const renamedGroupLayout = projectTabLayoutWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "PATCH",
           url: `/api/projects/${project.id}/panes/${explorerPane.id}`,
           payload: {
             revision: groupedTabLayout.revision,
-            title: "Research",
+            titleProtection: paneLabel.titleProtection,
           },
         })
       ).json(),
     );
     expect(
-      renamedGroupLayout.panes.find(({ id }) => id === explorerPane.id)?.title,
-    ).toBe("Research");
+      renamedGroupLayout.panes.find(({ id }) => id === explorerPane.id)
+        ?.titleProtection,
+    ).toEqual(paneLabel.titleProtection);
+    const trackerLabel = protectedDisplayLabelFields(
+      "project-view",
+      groupedIssuesView.id,
+    );
     expect(
       await firstApp.inject({
         method: "PATCH",
         url: `/api/project-views/${groupedIssuesView.id}`,
-        payload: { title: "Tracker" },
+        payload: { titleProtection: trackerLabel.titleProtection },
       }),
     ).toMatchObject({ statusCode: 200 });
-    const independentlyNamedLayout = projectTabLayoutSummarySchema.parse(
+    const independentlyNamedLayout = projectTabLayoutWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "GET",
@@ -5090,10 +6337,13 @@ describe("local server foundation", () => {
     expect(
       independentlyNamedLayout.panes.find(({ id }) => id === explorerPane.id),
     ).toMatchObject({
-      title: "Research",
-      members: [{ title: "Source browser" }, { title: "Tracker" }],
+      titleProtection: paneLabel.titleProtection,
+      members: [
+        { titleProtection: renamedExplorer.titleProtection },
+        { titleProtection: trackerLabel.titleProtection },
+      ],
     });
-    const reorderedTabLayout = projectTabLayoutSummarySchema.parse(
+    const reorderedTabLayout = projectTabLayoutWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "PATCH",
@@ -5126,7 +6376,7 @@ describe("local server foundation", () => {
         },
       }),
     ).toMatchObject({ statusCode: 409 });
-    const splitTabLayout = projectTabLayoutSummarySchema.parse(
+    const splitTabLayout = projectTabLayoutWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "PATCH",
@@ -5142,13 +6392,17 @@ describe("local server foundation", () => {
       ).json(),
     );
     expect(splitTabLayout.panes[0]?.members).toMatchObject([
-      { tabKey: `view:${groupedIssuesView.id}`, title: "Tracker" },
+      {
+        tabKey: `view:${groupedIssuesView.id}`,
+        titleProtection: trackerLabel.titleProtection,
+      },
     ]);
-    expect(splitTabLayout.panes[0]?.title).toBe("Tracker");
+    expect(splitTabLayout.panes[0]?.titleProtection).toBeNull();
     expect(
-      splitTabLayout.panes.find(({ id }) => id === explorerPane.id)?.title,
-    ).toBe("Source browser");
-    const reorderedGroupsLayout = projectTabLayoutSummarySchema.parse(
+      splitTabLayout.panes.find(({ id }) => id === explorerPane.id)
+        ?.titleProtection,
+    ).toBeNull();
+    const reorderedGroupsLayout = projectTabLayoutWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "PATCH",
@@ -5156,15 +6410,25 @@ describe("local server foundation", () => {
           payload: {
             revision: splitTabLayout.revision,
             region: "center",
-            paneIds: splitTabLayout.panes.map(({ id }) => id).reverse(),
+            paneIds: splitTabLayout.panes
+              .filter(({ region }) => region === "center")
+              .map(({ id }) => id)
+              .reverse(),
           },
         })
       ).json(),
     );
-    expect(reorderedGroupsLayout.panes.map(({ id }) => id)).toEqual(
-      splitTabLayout.panes.map(({ id }) => id).reverse(),
+    expect(
+      reorderedGroupsLayout.panes
+        .filter(({ region }) => region === "center")
+        .map(({ id }) => id),
+    ).toEqual(
+      splitTabLayout.panes
+        .filter(({ region }) => region === "center")
+        .map(({ id }) => id)
+        .reverse(),
     );
-    const mergedTabLayout = projectTabLayoutSummarySchema.parse(
+    const mergedTabLayout = projectTabLayoutWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "PATCH",
@@ -5182,7 +6446,7 @@ describe("local server foundation", () => {
       mergedTabLayout.panes.find(({ id }) => id === explorerPane.id),
     ).toMatchObject({
       anchorTabKey: `explorer:${explorer.id}`,
-      title: "Source browser",
+      titleProtection: null,
       members: [
         { tabKey: `explorer:${explorer.id}` },
         { tabKey: `view:${groupedIssuesView.id}` },
@@ -5195,7 +6459,9 @@ describe("local server foundation", () => {
         payload: {
           revision: mergedTabLayout.revision,
           region: "center",
-          paneIds: mergedTabLayout.panes.map(({ id }) => id),
+          paneIds: mergedTabLayout.panes
+            .filter(({ region }) => region === "center")
+            .map(({ id }) => id),
         },
       }),
       firstApp.inject({
@@ -5204,7 +6470,10 @@ describe("local server foundation", () => {
         payload: {
           revision: mergedTabLayout.revision,
           region: "center",
-          paneIds: mergedTabLayout.panes.map(({ id }) => id).reverse(),
+          paneIds: mergedTabLayout.panes
+            .filter(({ region }) => region === "center")
+            .map(({ id }) => id)
+            .reverse(),
         },
       }),
     ]);
@@ -5233,10 +6502,22 @@ describe("local server foundation", () => {
       targetFps: 60,
       quality: "balanced",
     });
-    expect(surfaceAttachCommands.at(-1)?.configuration).toMatchObject({
-      kind: "desktop",
-      target: { kind: "window", application: "Code", title: "Cantrip" },
+    const desktopAttach = surfaceAttachCommands.at(-1)!;
+    expect(desktopAttach).toMatchObject({
+      configuration: { kind: "desktop" },
+      stateResource: "remote-desktop-row",
+      stateRevision: 2,
+      surfaceId: remoteDesktop.id,
+      projectId: project.id,
+      serverId: bootstrap.server.id,
+      stateProtection: targetedDesktopState,
     });
+    expect(
+      await decryptSurfacePrivateState({
+        ...desktopProtection,
+        opaque: desktopAttach.stateProtection!,
+      }),
+    ).toMatchObject({ revision: 2, target: desktopTarget });
     desktopSocket.terminate();
     expect(
       await firstApp.inject({
@@ -5245,7 +6526,7 @@ describe("local server foundation", () => {
       }),
     ).toMatchObject({ statusCode: 204 });
     expect(
-      projectTabLayoutSummarySchema
+      projectTabLayoutWireSummarySchema
         .parse(
           (
             await firstApp.inject({
@@ -5258,12 +6539,12 @@ describe("local server foundation", () => {
           members.some(({ tabKey }) => tabKey === `view:${remoteDesktop.id}`),
         ),
     ).toBe(false);
-    const consoleFirstChat = chatSummarySchema.parse(
+    const consoleFirstChat = chatWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
           url: `/api/projects/${project.id}/chats`,
-          payload: { title: "Console-first chat" },
+          payload: protectedChatFields(),
         })
       ).json(),
     );
@@ -5272,11 +6553,12 @@ describe("local server foundation", () => {
       url: `/api/chats/${consoleFirstChat.id}/model`,
       payload: { modelId: selectedModel.id },
     });
-    const consoleFirstTerminal = terminalSummarySchema.parse(
+    const consoleFirstTerminal = terminalWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
           url: `/api/chats/${consoleFirstChat.id}/console`,
+          payload: protectedTerminalFields(),
         })
       ).json(),
     );
@@ -5298,25 +6580,41 @@ describe("local server foundation", () => {
       method: "DELETE",
       url: `/api/chats/${consoleFirstChat.id}`,
     });
-    const linkedConsole = terminalSummarySchema.parse(
+    const linkedConsoleFields = protectedTerminalFields();
+    const existingLinkedConsole = terminalWireListSchema
+      .parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/projects/${project.id}/terminals`,
+          })
+        ).json(),
+      )
+      .find(({ linkedChatId }) => linkedChatId === chat.id);
+    expect(existingLinkedConsole).toBeDefined();
+    const linkedConsole = terminalWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
           url: `/api/chats/${chat.id}/console`,
+          payload: linkedConsoleFields,
         })
       ).json(),
     );
     expect(linkedConsole).toMatchObject({
       linkedChatId: chat.id,
       projectId: project.id,
-      title: "Codex console",
+      id: existingLinkedConsole!.id,
+      titleProtection: existingLinkedConsole!.titleProtection,
+      stateProtection: existingLinkedConsole!.stateProtection,
     });
     expect(
-      terminalSummarySchema.parse(
+      terminalWireSummarySchema.parse(
         (
           await firstApp.inject({
             method: "POST",
             url: `/api/chats/${chat.id}/console`,
+            payload: linkedConsoleFields,
           })
         ).json(),
       ).id,
@@ -5346,29 +6644,34 @@ describe("local server foundation", () => {
       payload: { modelId: selectedModel.id },
     });
     expect(changedModelResponse.statusCode).toBe(200);
-    expect(chatSummarySchema.parse(changedModelResponse.json()).modelId).toBe(
-      selectedModel.id,
-    );
+    expect(
+      chatWireSummarySchema.parse(changedModelResponse.json()).modelId,
+    ).toBe(selectedModel.id);
     expect(
       await firstApp.inject({
         method: "POST",
         url: `/api/chats/${chat.id}/turns`,
-        payload: {
+        payload: await protectChatTurn({
+          service: chatEncryptionService,
+          messageId: randomUUID(),
+          promptId: randomUUID(),
+          mode: "default",
+          reasoningEffort: null,
           text: "Use the newly selected model.",
           idempotencyKey: "dynamic-model-turn",
           modelId: selectedModel.id,
-        },
+        }),
       }),
     ).toMatchObject({ statusCode: 202 });
     await vi.waitFor(() => expect(turnModelIds).toHaveLength(3));
     expect(turnModelIds.at(-1)).toBe(selectedModel.id);
 
-    const queueChat = chatSummarySchema.parse(
+    const queueChat = chatWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
           url: `/api/projects/${project.id}/chats`,
-          payload: { title: "Prompt queue" },
+          payload: protectedChatFields(),
         })
       ).json(),
     );
@@ -5377,34 +6680,58 @@ describe("local server foundation", () => {
       url: `/api/chats/${queueChat.id}/model`,
       payload: { modelId: selectedModel.id },
     });
-    const queuedAttachment = chatAttachmentSummarySchema.parse(
-      (
-        await firstApp.inject({
-          method: "POST",
-          url: `/api/chats/${queueChat.id}/attachments`,
-          headers: {
-            "content-type": "application/octet-stream",
-            "x-cantrip-file-name": encodeURIComponent("queued.txt"),
-            "x-cantrip-mime-type": "text/plain",
-            "x-cantrip-attachment-kind": "text",
-            "x-cantrip-attachment-source": "file",
-          },
-          payload: Buffer.from("queued attachment"),
-        })
-      ).json(),
+    const queuedAttachment = await uploadTextAttachment(
+      firstApp,
+      queueChat.id,
+      "queued.txt",
+      "queued attachment",
     );
     await firstApp.inject({
       method: "POST",
       url: `/api/chats/${queueChat.id}/turns`,
-      payload: { text: "Hold queue open.", idempotencyKey: "queue-running" },
+      payload: await protectChatTurn({
+        service: chatEncryptionService,
+        messageId: randomUUID(),
+        promptId: randomUUID(),
+        mode: "default",
+        reasoningEffort: null,
+        modelId: selectedModel.id,
+        text: "Hold queue open.",
+        idempotencyKey: "queue-running",
+      }),
     });
     await vi.waitFor(() => expect(releaseHeldTurn).not.toBeNull());
+    const heldReceipt = heldTurnCommand!.nativeCommandReceipt!;
+    expect(heldReceipt.status).toBe("accepted");
+    const queueContext =
+      (await firstDatabase.repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        queueChat.id,
+      ))!;
+    const heldDispatch = await nativeCommands.dispatch(LOCAL_USER_ID, {
+      workerId: queueContext.workerId,
+      operationId: heldReceipt.operationId,
+      operationGeneration: heldReceipt.operationGeneration,
+      payloadDigest: heldReceipt.payloadDigest,
+      session: {
+        chatId: queueChat.id,
+        threadId: queueContext.threadId,
+        contextKind: queueContext.contextKind,
+        projectId: queueContext.projectId,
+        placementId: queueContext.worktreeId ?? queueContext.scratchRootId,
+        modelRouteId: queueContext.modelRouteId,
+        providerAccountId: queueContext.providerAccountId,
+        runtimeGeneration: "foundation-queue-runtime",
+        connectionId: "foundation-queue-view",
+      },
+    });
+    expect(heldDispatch.receipt.status).toBe("dispatched");
     expect(
       await firstDatabase.repository.getChatExecutionContext(
         LOCAL_USER_ID,
         queueChat.id,
       ),
-    ).toMatchObject({ status: "running", threadId: null });
+    ).toMatchObject({ status: "running", threadId: "codex-console-thread-1" });
     expect(
       (
         await firstApp.inject({
@@ -5414,62 +6741,187 @@ describe("local server foundation", () => {
       ).json(),
     ).toEqual({ interrupted: true });
     expect(interruptCommands.at(-1)).toMatchObject({
+      type: "chat.native-control",
       chatId: queueChat.id,
-      threadId: null,
+      threadId: "codex-console-thread-1",
+      nativeActivationGeneration: heldReceipt.activationGeneration,
+      control: { kind: "interrupt" },
     });
 
-    const firstQueued = queuedPromptSchema.parse(
+    beginQueuedNativeCommand = async (command) => {
+      if (command.chatId !== queueChat.id) return;
+      const context = (await firstDatabase.repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        queueChat.id,
+      ))!;
+      const session = {
+        chatId: queueChat.id,
+        threadId: context.threadId,
+        contextKind: context.contextKind,
+        projectId: context.projectId,
+        placementId: context.worktreeId ?? context.scratchRootId,
+        modelRouteId: context.modelRouteId,
+        providerAccountId: context.providerAccountId,
+        runtimeGeneration: "foundation-queue-runtime",
+        connectionId: "foundation-queue-view",
+      };
+      const receipt =
+        command.type === "chat.turn"
+          ? command.nativeCommandReceipt!
+          : (
+              await nativeCommands.admit(
+                LOCAL_USER_ID,
+                nativeCommandAdmissionSchema.parse({
+                  workerId: context.workerId,
+                  operationId: command.operationId,
+                  origin: "gui",
+                  method: "turn/steer",
+                  session,
+                  queueClaim: command.queueClaim,
+                  payloadDigest: "d".repeat(64),
+                  protectedPayload: settingsEnvelope,
+                  expectedActivationGeneration: (
+                    await nativeCommands.controlContext(
+                      LOCAL_USER_ID,
+                      queueChat.id,
+                    )
+                  ).activationGeneration,
+                  intent: {
+                    scope: "thread",
+                    settingKeys: [],
+                    expectedTurnId: null,
+                  },
+                }),
+              )
+            ).receipt;
+      expect(receipt.status, receipt.rejectionCode ?? undefined).toBe(
+        "accepted",
+      );
+      await nativeCommands.dispatch(LOCAL_USER_ID, {
+        workerId: context.workerId,
+        operationId: receipt.operationId,
+        operationGeneration: receipt.operationGeneration,
+        payloadDigest: receipt.payloadDigest,
+        session,
+      });
+      return async () => {
+        await nativeCommands.settle(LOCAL_USER_ID, {
+          workerId: context.workerId,
+          operationId: receipt.operationId,
+          operationGeneration: receipt.operationGeneration,
+          status: "applied",
+          resultDigest: "d".repeat(64),
+          protectedResult: settingsEnvelope,
+          rejectionCode: null,
+          executionComplete: command.type === "chat.turn",
+        });
+      };
+    };
+
+    const firstQueuedTurn = await protectChatTurn({
+      service: chatEncryptionService,
+      messageId: randomUUID(),
+      promptId: randomUUID(),
+      mode: "default",
+      reasoningEffort: null,
+      modelId: selectedModel.id,
+      text: "First follow-up",
+      attachments: [queuedAttachment],
+      idempotencyKey: "queued-first",
+    });
+    const firstQueued = await openQueuedPrompt(
       (
         await firstApp.inject({
           method: "POST",
           url: `/api/chats/${queueChat.id}/turns`,
-          payload: {
-            text: "First follow-up",
-            attachmentIds: [queuedAttachment.id],
-            idempotencyKey: "queued-first",
-          },
+          payload: firstQueuedTurn,
         })
       ).json().prompt,
     );
     expect(firstQueued.attachments).toEqual([queuedAttachment]);
-    const secondQueued = queuedPromptSchema.parse(
+    const secondQueuedTurn = await protectChatTurn({
+      service: chatEncryptionService,
+      messageId: randomUUID(),
+      promptId: randomUUID(),
+      mode: "plan",
+      reasoningEffort: null,
+      modelId: selectedModel.id,
+      text: "Second follow-up",
+      idempotencyKey: "queued-second",
+    });
+    const secondQueued = await openQueuedPrompt(
       (
         await firstApp.inject({
           method: "POST",
           url: `/api/chats/${queueChat.id}/turns`,
-          payload: {
-            text: "Second follow-up",
-            mode: "plan",
-            idempotencyKey: "queued-second",
-          },
+          payload: secondQueuedTurn,
         })
       ).json().prompt,
     );
+    const queueSnapshot = (
+      await firstApp.inject({
+        method: "GET",
+        url: `/api/chats/${queueChat.id}/queue`,
+      })
+    ).json();
     expect(
-      queuedPromptListSchema
-        .parse(
-          (
-            await firstApp.inject({
-              method: "GET",
-              url: `/api/chats/${queueChat.id}/queue`,
-            })
-          ).json(),
-        )
+      encryptedQueuedPromptListSchema
+        .parse(queueSnapshot.items)
         .map(({ id }) => id),
     ).toEqual([firstQueued.id, secondQueued.id]);
+    const unversionedReorder = await firstApp.inject({
+      method: "PATCH",
+      url: `/api/chats/${queueChat.id}/queue/order`,
+      payload: { ids: [secondQueued.id, firstQueued.id] },
+    });
+    expect(unversionedReorder.statusCode).toBe(409);
+    expect(unversionedReorder.json()).toEqual({
+      code: "queue-revision-required",
+    });
     expect(
       await firstApp.inject({
         method: "PATCH",
         url: `/api/chats/${queueChat.id}/queue/order`,
-        payload: { ids: [secondQueued.id, firstQueued.id] },
+        payload: {
+          ids: [secondQueued.id, firstQueued.id],
+          expectedRevision: queueSnapshot.revision,
+          operationId: randomUUID(),
+        },
       }),
     ).toMatchObject({ statusCode: 204 });
-    const editedQueued = queuedPromptSchema.parse(
+    const editedQueuedTurn = await protectChatTurn({
+      service: chatEncryptionService,
+      messageId: secondQueuedTurn.message.id,
+      promptId: secondQueued.id,
+      mode: "plan",
+      reasoningEffort: null,
+      modelId: selectedModel.id,
+      text: "Edited second follow-up",
+      idempotencyKey: "queued-second",
+    });
+    const reorderedQueue = (
+      await firstApp.inject({
+        method: "GET",
+        url: `/api/chats/${queueChat.id}/queue`,
+      })
+    ).json();
+    const reorderedItems = encryptedQueuedPromptListSchema.parse(
+      reorderedQueue.items,
+    );
+    expect(reorderedItems.map(({ id }) => id)).toEqual([
+      secondQueued.id,
+      firstQueued.id,
+    ]);
+    const editedQueued = await openQueuedPrompt(
       (
         await firstApp.inject({
           method: "PATCH",
           url: `/api/queued-prompts/${secondQueued.id}`,
-          payload: { text: "Edited second follow-up", frozen: true },
+          payload: {
+            prompt: { ...editedQueuedTurn.queuedPrompt, frozen: true },
+            expectedItemRevision: reorderedItems[0]!.revision,
+            operationId: randomUUID(),
+          },
         })
       ).json(),
     );
@@ -5480,37 +6932,134 @@ describe("local server foundation", () => {
       mode: "plan",
       text: "Edited second follow-up",
     });
-    expect(
-      await firstApp.inject({
-        method: "POST",
-        url: `/api/queued-prompts/${secondQueued.id}/steer`,
-      }),
-    ).toMatchObject({ statusCode: 409 });
-    await firstApp.inject({
+    const readQueueItem = async (id: string) => {
+      const response = await firstApp.inject({
+        method: "GET",
+        url: `/api/chats/${queueChat.id}/queue`,
+      });
+      expect(response.statusCode).toBe(200);
+      const item = encryptedQueuedPromptListSchema
+        .parse(response.json().items)
+        .find((prompt) => prompt.id === id);
+      expect(item).toBeDefined();
+      return item!;
+    };
+    const planSteerResponse = await firstApp.inject({
+      method: "POST",
+      url: `/api/queued-prompts/${secondQueued.id}/steer`,
+      payload: {
+        expectedItemRevision: (await readQueueItem(secondQueued.id)).revision,
+        operationId: randomUUID(),
+      },
+    });
+    expect(planSteerResponse.statusCode).toBe(409);
+    expect(planSteerResponse.json()).toEqual({
+      error:
+        "Plan and Goal mode prompts cannot steer an active turn. Leave this prompt queued for the next turn.",
+    });
+    const frozenFirstResponse = await firstApp.inject({
       method: "PATCH",
       url: `/api/queued-prompts/${firstQueued.id}`,
-      payload: { frozen: true },
+      payload: {
+        prompt: { ...firstQueuedTurn.queuedPrompt, frozen: true },
+        expectedItemRevision: (await readQueueItem(firstQueued.id)).revision,
+        operationId: randomUUID(),
+      },
     });
+    expect(frozenFirstResponse.statusCode).toBe(200);
     expect(
       await firstApp.inject({
         method: "POST",
         url: `/api/queued-prompts/${firstQueued.id}/steer`,
+        payload: {
+          expectedItemRevision: encryptedQueuedPromptSchema.parse(
+            frozenFirstResponse.json(),
+          ).revision,
+          operationId: randomUUID(),
+        },
       }),
     ).toMatchObject({ statusCode: 200 });
     expect(steeredPrompts).toContain("First follow-up");
     expect(steeredAttachmentIds).toContainEqual([queuedAttachment.id]);
 
-    expect(
-      chatPauseStateSchema.parse(
-        (
-          await firstApp.inject({
-            method: "PATCH",
-            url: `/api/chats/${queueChat.id}/pause`,
-            payload: { paused: true },
-          })
-        ).json(),
-      ),
-    ).toEqual({ paused: true });
+    const originalPauseRequest = workerBridge.request.bind(workerBridge);
+    const pauseRequestSpy = vi
+      .spyOn(workerBridge, "request")
+      .mockImplementation(async (workerId, command, options) => {
+        if (
+          command.type !== "chat.native-control" ||
+          command.control.kind !== "pause"
+        )
+          return originalPauseRequest(workerId, command, options);
+        expect(command.chatId).toBe(queueChat.id);
+        const paused = command.control.paused;
+        const input = nativeCommandAdmissionSchema.parse({
+          workerId,
+          operationId: randomUUID(),
+          origin: "gui",
+          method: "turn/pause",
+          session: {
+            chatId: queueChat.id,
+            threadId: queueContext.threadId,
+            contextKind: queueContext.contextKind,
+            projectId: queueContext.projectId,
+            placementId: queueContext.worktreeId ?? queueContext.scratchRootId,
+            modelRouteId: queueContext.modelRouteId,
+            providerAccountId: queueContext.providerAccountId,
+            runtimeGeneration: "foundation-queue-runtime",
+            connectionId: "foundation-queue-view",
+          },
+          payloadDigest: "f".repeat(64),
+          protectedPayload: settingsEnvelope,
+          expectedActivationGeneration: command.nativeActivationGeneration,
+          intent: {
+            scope: "thread",
+            settingKeys: [],
+            expectedTurnId: null,
+            paused,
+            resumeAutonomy: !paused,
+          },
+        });
+        const grant = await nativeCommands.admit(LOCAL_USER_ID, input);
+        expect(grant.receipt.status).toBe("accepted");
+        await nativeCommands.dispatch(LOCAL_USER_ID, {
+          workerId,
+          operationId: input.operationId,
+          operationGeneration: grant.receipt.operationGeneration,
+          payloadDigest: input.payloadDigest,
+          session: input.session,
+        });
+        await nativeCommands.settle(LOCAL_USER_ID, {
+          workerId,
+          operationId: input.operationId,
+          operationGeneration: grant.receipt.operationGeneration,
+          status: "applied",
+          resultDigest: null,
+          protectedResult: null,
+          rejectionCode: null,
+          executionComplete: false,
+        });
+        pauseCommands.push({ chatId: command.chatId, paused });
+        return {
+          paused,
+          active: { threadId: queueContext.threadId!, turnId: "turn-held" },
+        };
+      });
+    const queuePauseResponse = await (async () => {
+      try {
+        return await firstApp.inject({
+          method: "PATCH",
+          url: `/api/chats/${queueChat.id}/pause`,
+          payload: { paused: true },
+        });
+      } finally {
+        pauseRequestSpy.mockRestore();
+      }
+    })();
+    expect(queuePauseResponse.statusCode, queuePauseResponse.body).toBe(200);
+    expect(chatPauseStateSchema.parse(queuePauseResponse.json())).toEqual({
+      paused: true,
+    });
     expect(pauseCommands.at(-1)).toEqual({
       chatId: queueChat.id,
       paused: true,
@@ -5519,17 +7068,32 @@ describe("local server foundation", () => {
     const turnsBeforeRelease = turnRequests;
     releaseHeldTurn?.();
     releaseHeldTurn = null;
-    await new Promise((resolve) => setTimeout(resolve, 25));
-    expect(turnRequests).toBe(turnsBeforeRelease);
-    await firstApp.inject({
-      method: "PATCH",
-      url: `/api/queued-prompts/${secondQueued.id}`,
-      payload: { frozen: false },
+    await nativeCommands.settle(LOCAL_USER_ID, {
+      workerId: queueContext.workerId,
+      operationId: heldReceipt.operationId,
+      operationGeneration: heldReceipt.operationGeneration,
+      status: "applied",
+      resultDigest: "e".repeat(64),
+      protectedResult: settingsEnvelope,
+      rejectionCode: null,
+      executionComplete: true,
     });
     await new Promise((resolve) => setTimeout(resolve, 25));
     expect(turnRequests).toBe(turnsBeforeRelease);
+    const unfrozenSecondResponse = await firstApp.inject({
+      method: "PATCH",
+      url: `/api/queued-prompts/${secondQueued.id}`,
+      payload: {
+        prompt: { ...editedQueuedTurn.queuedPrompt, frozen: false },
+        expectedItemRevision: (await readQueueItem(secondQueued.id)).revision,
+        operationId: randomUUID(),
+      },
+    });
+    expect(unfrozenSecondResponse.statusCode).toBe(200);
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(turnRequests).toBe(turnsBeforeRelease);
     expect(
-      chatListSchema
+      chatWireListSchema
         .parse(
           (
             await firstApp.inject({
@@ -5540,47 +7104,37 @@ describe("local server foundation", () => {
         )
         .find(({ id }) => id === queueChat.id),
     ).toMatchObject({ automationPaused: true, status: "idle" });
-    expect(
-      chatPauseStateSchema.parse(
-        (
-          await firstApp.inject({
-            method: "PATCH",
-            url: `/api/chats/${queueChat.id}/pause`,
-            payload: { paused: false },
-          })
-        ).json(),
-      ),
-    ).toEqual({ paused: false });
+    const queueResumeResponse = await firstApp.inject({
+      method: "PATCH",
+      url: `/api/chats/${queueChat.id}/pause`,
+      payload: { paused: false },
+    });
+    expect(queueResumeResponse.statusCode, queueResumeResponse.body).toBe(200);
+    expect(chatPauseStateSchema.parse(queueResumeResponse.json())).toEqual({
+      paused: false,
+    });
     await vi.waitFor(() =>
       expect(turnPrompts).toContain("Edited second follow-up"),
     );
     await vi.waitFor(async () => {
-      const remaining = queuedPromptListSchema.parse(
+      const remaining = encryptedQueuedPromptListSchema.parse(
         (
           await firstApp.inject({
             method: "GET",
             url: `/api/chats/${queueChat.id}/queue`,
           })
-        ).json(),
+        ).json().items,
       );
       expect(remaining).toHaveLength(0);
     });
+    beginQueuedNativeCommand = undefined;
     expect(
-      chatMessageListSchema
-        .parse(
-          (
-            await firstApp.inject({
-              method: "GET",
-              url: `/api/chats/${queueChat.id}/messages`,
-            })
-          ).json(),
-        )
-        .find((message) =>
-          message.content.some(
-            (item) =>
-              item.type === "text" && item.text === "Edited second follow-up",
-          ),
-        )?.mode,
+      (await readChatMessages(queueChat.id)).find((message) =>
+        message.content.some(
+          (item) =>
+            item.type === "text" && item.text === "Edited second follow-up",
+        ),
+      )?.mode,
     ).toBe("plan");
 
     const routedModel = modelProfileSummarySchema.parse(
@@ -5636,23 +7190,28 @@ describe("local server foundation", () => {
       resetsAt: null,
       usedPercent: 37,
     });
-    const pooledChat = chatSummarySchema.parse(
+    const pooledChat = chatWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
           url: `/api/projects/${project.id}/chats`,
-          payload: { title: "ChatGPT account routing" },
+          payload: protectedChatFields(),
         })
       ).json(),
     );
     const pooledTurn = await firstApp.inject({
       method: "POST",
       url: `/api/chats/${pooledChat.id}/turns`,
-      payload: {
+      payload: await protectChatTurn({
+        service: chatEncryptionService,
+        messageId: randomUUID(),
+        promptId: randomUUID(),
+        mode: "default",
+        reasoningEffort: null,
         text: "Use the account with healthy weekly usage.",
         idempotencyKey: "pooled-account-turn",
         modelId: routedModel.id,
-      },
+      }),
     });
     expect(pooledTurn.statusCode).toBe(202);
     await vi.waitFor(() =>
@@ -5679,13 +7238,21 @@ describe("local server foundation", () => {
     const stickyTurn = await firstApp.inject({
       method: "POST",
       url: `/api/chats/${pooledChat.id}/turns`,
-      payload: {
+      payload: await protectChatTurn({
+        service: chatEncryptionService,
+        messageId: randomUUID(),
+        promptId: randomUUID(),
+        mode: "default",
+        reasoningEffort: null,
         text: "Continue on the current account.",
         idempotencyKey: "pooled-account-sticky-turn",
         modelId: routedModel.id,
-      },
+      }),
     });
     expect(stickyTurn.statusCode).toBe(202);
+    await vi.waitFor(() =>
+      expect(turnPrompts.at(-1)).toBe("Continue on the current account."),
+    );
     await vi.waitFor(() =>
       expect(turnProviderAccountIds.at(-1)).toBe(additionalAccount.id),
     );
@@ -5722,11 +7289,16 @@ describe("local server foundation", () => {
     const switchedTurn = await firstApp.inject({
       method: "POST",
       url: `/api/chats/${pooledChat.id}/turns`,
-      payload: {
+      payload: await protectChatTurn({
+        service: chatEncryptionService,
+        messageId: randomUUID(),
+        promptId: randomUUID(),
+        mode: "default",
+        reasoningEffort: null,
         text: "Move past the account below reserve.",
         idempotencyKey: "pooled-account-switch-turn",
         modelId: routedModel.id,
-      },
+      }),
     });
     expect(switchedTurn.statusCode).toBe(202);
     await vi.waitFor(() =>
@@ -5737,7 +7309,16 @@ describe("local server foundation", () => {
     expect(turnCredentialHomeKeys.at(-1)).toBe(chatGptProvider.id);
     expect(turnThreadIds.at(-1)).toBeNull();
     expect(turnPrompts.at(-1)).toContain(
-      "Continue this existing Cantrip conversation. The server-owned history follows:",
+      "Continue this existing Cantrip conversation. The encrypted endpoint history follows:",
+    );
+    expect(turnPrompts.at(-1)).toContain(
+      "USER: Use the account with healthy weekly usage.",
+    );
+    expect(turnPrompts.at(-1)).toContain(
+      "USER: Continue on the current account.",
+    );
+    expect(turnPrompts.at(-1)).toContain(
+      "USER: Move past the account below reserve.",
     );
     await vi.waitFor(async () => {
       expect(
@@ -5769,23 +7350,28 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    const grokChat = chatSummarySchema.parse(
+    const grokChat = chatWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
           url: `/api/projects/${project.id}/chats`,
-          payload: { title: "Grok account routing" },
+          payload: protectedChatFields(),
         })
       ).json(),
     );
     const grokTurn = await firstApp.inject({
       method: "POST",
       url: `/api/chats/${grokChat.id}/turns`,
-      payload: {
+      payload: await protectChatTurn({
+        service: chatEncryptionService,
+        messageId: randomUUID(),
+        promptId: randomUUID(),
+        mode: "default",
+        reasoningEffort: null,
         text: "Use the SuperGrok subscription.",
         idempotencyKey: "grok-account-turn",
         modelId: grokModel.id,
-      },
+      }),
     });
     expect(grokTurn.statusCode).toBe(202);
     await vi.waitFor(() =>
@@ -5815,26 +7401,33 @@ describe("local server foundation", () => {
         usedPercent: 100,
       });
     }
-    const routedChat = chatSummarySchema.parse(
+    const routedChat = chatWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
           url: `/api/projects/${project.id}/chats`,
-          payload: { title: "Provider failover" },
+          payload: protectedChatFields(),
         })
       ).json(),
     );
     const routedTurn = await firstApp.inject({
       method: "POST",
       url: `/api/chats/${routedChat.id}/turns`,
-      payload: {
+      payload: await protectChatTurn({
+        service: chatEncryptionService,
+        messageId: randomUUID(),
+        promptId: randomUUID(),
+        mode: "default",
+        reasoningEffort: null,
         text: "Use the first available provider.",
         idempotencyKey: "priority-route-turn",
         modelId: routedModel.id,
-      },
+      }),
     });
     expect(routedTurn.statusCode).toBe(202);
-    expect(chatMessageSchema.parse(routedTurn.json().message)).toMatchObject({
+    expect(
+      chatMessageOpaqueSummarySchema.parse(routedTurn.json().message),
+    ).toMatchObject({
       modelId: routedModel.id,
       modelRouteId: routedModel.routes[1]?.id,
       providerId: provider.id,
@@ -5843,12 +7436,12 @@ describe("local server foundation", () => {
     await vi.waitFor(() => expect(turnProviderIds.at(-1)).toBe(provider.id));
     expect(turnRouteIds.at(-1)).toBe(routedModel.routes[1]?.id);
 
-    const planChat = chatSummarySchema.parse(
+    const planChat = chatWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
           url: `/api/projects/${project.id}/chats`,
-          payload: { title: "Deployment plan" },
+          payload: protectedChatFields(),
         })
       ).json(),
     );
@@ -5860,25 +7453,41 @@ describe("local server foundation", () => {
     const planTurn = await firstApp.inject({
       method: "POST",
       url: `/api/chats/${planChat.id}/turns`,
-      payload: {
+      payload: await protectChatTurn({
+        service: chatEncryptionService,
+        messageId: randomUUID(),
+        promptId: randomUUID(),
+        reasoningEffort: null,
         text: "Draft a deployment plan",
         mode: "plan",
         idempotencyKey: "plan-turn",
         modelId: selectedModel.id,
-      },
+      }),
     });
     expect(planTurn.statusCode).toBe(202);
-    expect(chatMessageSchema.parse(planTurn.json().message).mode).toBe("plan");
+    expect(
+      chatMessageOpaqueSummarySchema.parse(planTurn.json().message).mode,
+    ).toBe("plan");
     await vi.waitFor(() => expect(turnPlanModes.at(-1)).toBe("plan"));
+    const readPlanState = async () => {
+      const response = await firstApp.inject({
+        method: "GET",
+        url: `/api/chats/${planChat.id}/plan`,
+      });
+      expect(response.statusCode, response.body).toBe(200);
+      const wire = encryptedChatPlanWireStateSchema.parse(response.json());
+      expect(wire.chatId).toBe(planChat.id);
+      return chatPlanStateSchema.parse({
+        mode: wire.mode,
+        ...(await openChatPlanState({
+          chatId: planChat.id,
+          protectedState: wire.state,
+          service: chatEncryptionService,
+        })),
+      });
+    };
     const pendingPlan = await vi.waitFor(async () => {
-      const state = chatPlanStateSchema.parse(
-        (
-          await firstApp.inject({
-            method: "GET",
-            url: `/api/chats/${planChat.id}/plan`,
-          })
-        ).json(),
-      );
+      const state = await readPlanState();
       expect(state.question?.id).toBe("plan-question-1");
       return state;
     });
@@ -5886,18 +7495,9 @@ describe("local server foundation", () => {
       { status: "completed" },
       { status: "inProgress" },
     ]);
+    expect((await readPlanState()).question?.id).toBe("plan-question-1");
     expect(
-      chatPlanStateSchema.parse(
-        (
-          await firstApp.inject({
-            method: "GET",
-            url: `/api/chats/${planChat.id}/plan`,
-          })
-        ).json(),
-      ).question?.id,
-    ).toBe("plan-question-1");
-    expect(
-      chatListSchema
+      chatWireListSchema
         .parse(
           (
             await firstApp.inject({
@@ -5908,15 +7508,26 @@ describe("local server foundation", () => {
         )
         .find(({ id }) => id === planChat.id)?.hasPendingPlanQuestion,
     ).toBe(true);
-    expect(
-      (
-        await firstApp.inject({
-          method: "POST",
-          url: `/api/chats/${planChat.id}/plan/answer`,
-          payload: { answers: { topology: ["Four nodes"] } },
-        })
-      ).json(),
-    ).toEqual({ accepted: true });
+    const planRequest =
+      await firstDatabase.repository.getAgentInteractionRequestByKey(
+        LOCAL_USER_ID,
+        "plan-question-1",
+      );
+    expect(planRequest).toMatchObject({ status: "pending" });
+    const planAnswer = await protectAgentInteractionResponse({
+      requestKey: "plan-question-1",
+      service: chatEncryptionService,
+      response: {
+        kind: "userInput",
+        answers: { topology: { answers: ["Four nodes"] } },
+      },
+    });
+    const planAnswerResponse = await firstApp.inject({
+      method: "POST",
+      url: `/api/agent-requests/${planRequest!.id}/respond`,
+      payload: planAnswer,
+    });
+    expect(planAnswerResponse.statusCode, planAnswerResponse.body).toBe(200);
     expect(
       await firstDatabase.repository.getAgentInteractionRequestByKey(
         LOCAL_USER_ID,
@@ -5924,13 +7535,14 @@ describe("local server foundation", () => {
       ),
     ).toMatchObject({
       status: "resolved",
-      response: {
-        kind: "userInput",
-        answers: { topology: { answers: ["Four nodes"] } },
-      },
+      protectedResponse: planAnswer.protectedResponse,
+    });
+    expect(deliveredAgentInteractionResponses.at(-1)).toEqual({
+      kind: "userInput",
+      answers: { topology: { answers: ["Four nodes"] } },
     });
     await vi.waitFor(async () => {
-      const current = chatListSchema
+      const current = chatWireListSchema
         .parse(
           (
             await firstApp.inject({
@@ -5949,34 +7561,30 @@ describe("local server foundation", () => {
     const defaultTurn = await firstApp.inject({
       method: "POST",
       url: `/api/chats/${planChat.id}/turns`,
-      payload: {
+      payload: await protectChatTurn({
+        service: chatEncryptionService,
+        messageId: randomUUID(),
+        promptId: randomUUID(),
+        mode: "default",
+        reasoningEffort: null,
         text: "Implement the approved plan",
         idempotencyKey: "default-after-plan",
         modelId: selectedModel.id,
-      },
+      }),
     });
     expect(defaultTurn.statusCode).toBe(202);
-    expect(chatMessageSchema.parse(defaultTurn.json().message).mode).toBe(
-      "default",
-    );
-    await vi.waitFor(() => expect(turnPlanModes.at(-1)).toBe("default"));
     expect(
-      chatPlanStateSchema.parse(
-        (
-          await firstApp.inject({
-            method: "GET",
-            url: `/api/chats/${planChat.id}/plan`,
-          })
-        ).json(),
-      ).mode,
+      chatMessageOpaqueSummarySchema.parse(defaultTurn.json().message).mode,
     ).toBe("default");
+    await vi.waitFor(() => expect(turnPlanModes.at(-1)).toBe("default"));
+    expect((await readPlanState()).mode).toBe("default");
 
-    const goalChat = chatSummarySchema.parse(
+    const goalChat = chatWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
           url: `/api/projects/${project.id}/chats`,
-          payload: { title: "Long-running goal" },
+          payload: protectedChatFields(),
         })
       ).json(),
     );
@@ -5995,18 +7603,39 @@ describe("local server foundation", () => {
         ).json(),
       ).goal,
     ).toBeNull();
+    // Goal creation is a distinct API operation; the encrypted turn's mode
+    // classifies its message but does not create native autonomy.
+    const createGoalResponse = await firstApp.inject({
+      method: "POST",
+      url: `/api/chats/${goalChat.id}/goal`,
+      payload: { objective: "Finish the long-running goal" },
+    });
+    expect(createGoalResponse.statusCode, createGoalResponse.body).toBe(202);
+    expect(
+      chatGoalResponseSchema.parse(createGoalResponse.json()).goal,
+    ).toMatchObject({
+      objective: "Finish the long-running goal",
+      status: "active",
+      tokenBudget: null,
+    });
     const goalTurn = await firstApp.inject({
       method: "POST",
       url: `/api/chats/${goalChat.id}/turns`,
-      payload: {
+      payload: await protectChatTurn({
+        service: chatEncryptionService,
+        messageId: randomUUID(),
+        promptId: randomUUID(),
+        reasoningEffort: null,
         text: "Finish the long-running goal",
         mode: "goal",
         idempotencyKey: "goal-mode-turn",
         modelId: selectedModel.id,
-      },
+      }),
     });
     expect(goalTurn.statusCode).toBe(202);
-    expect(chatMessageSchema.parse(goalTurn.json().message).mode).toBe("goal");
+    expect(
+      chatMessageOpaqueSummarySchema.parse(goalTurn.json().message).mode,
+    ).toBe("goal");
     const createdGoal = await vi.waitFor(async () => {
       const goal = chatGoalResponseSchema.parse(
         (
@@ -6028,14 +7657,7 @@ describe("local server foundation", () => {
       expect(turnPrompts).toContain("Finish the long-running goal"),
     );
     await vi.waitFor(async () => {
-      const goalMessages = chatMessageListSchema.parse(
-        (
-          await firstApp.inject({
-            method: "GET",
-            url: `/api/chats/${goalChat.id}/messages`,
-          })
-        ).json(),
-      );
+      const goalMessages = await readChatMessages(goalChat.id);
       expect(goalMessages).toContainEqual(
         expect.objectContaining({
           role: "assistant",
@@ -6050,7 +7672,7 @@ describe("local server foundation", () => {
       );
     });
     await vi.waitFor(async () => {
-      const current = chatListSchema
+      const current = chatWireListSchema
         .parse(
           (
             await firstApp.inject({
@@ -6085,10 +7707,18 @@ describe("local server foundation", () => {
         ).json(),
       ).goal?.status,
     ).toBe("active");
-    await vi.waitFor(() =>
-      expect(turnRequests).toBe(turnsBeforeGoalResume + 1),
-    );
-    expect(turnPrompts.at(-1)).toContain("Continue working toward");
+    // Managed native runtimes own Goal continuation. The server must route the
+    // resume to that session, not start a competing synthetic chat turn.
+    expect(goalUpdateCommands.slice(-2).map(({ status }) => status)).toEqual([
+      "paused",
+      "active",
+    ]);
+    expect(goalUpdateCommands.at(-1)).toMatchObject({
+      chatId: goalChat.id,
+      status: "active",
+      session: expect.any(Object),
+    });
+    expect(turnRequests).toBe(turnsBeforeGoalResume);
     expect(turnPolicyContexts).toHaveLength(turnRequests);
     expect(
       turnPolicyContexts.every((context) => context.policies.length === 0),
@@ -6113,12 +7743,12 @@ describe("local server foundation", () => {
     ).toBeNull();
 
     deliveredAgentInteractionResponses.length = 0;
-    const bridgedApprovalChat = chatSummarySchema.parse(
+    const bridgedApprovalChat = chatWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "POST",
           url: `/api/projects/${project.id}/chats`,
-          payload: { title: "Bridged approval" },
+          payload: protectedChatFields(),
         })
       ).json(),
     );
@@ -6175,16 +7805,21 @@ describe("local server foundation", () => {
         await firstApp.inject({
           method: "POST",
           url: `/api/chats/${bridgedApprovalChat.id}/turns`,
-          payload: {
+          payload: await protectChatTurn({
+            service: chatEncryptionService,
+            messageId: randomUUID(),
+            promptId: randomUUID(),
+            mode: "default",
+            reasoningEffort: null,
             text: "Request a command approval",
             idempotencyKey: "bridged-approval-turn",
             modelId: selectedModel.id,
-          },
+          }),
         })
       ).statusCode,
     ).toBe(202);
     const bridgedApproval = await vi.waitFor(async () => {
-      const pending = agentInteractionRequestListSchema.parse(
+      const pending = agentInteractionRequestWireListSchema.parse(
         (
           await firstApp.inject({
             method: "GET",
@@ -6213,18 +7848,21 @@ describe("local server foundation", () => {
       ).toHaveLength(1),
     );
     expect(
-      agentInteractionRequestSchema.parse(
+      agentInteractionRequestWireSchema.parse(
         (
           await firstApp.inject({
             method: "POST",
             url: `/api/agent-requests/${bridgedApproval.id}/respond`,
-            payload: {
-              idempotencyKey: "bridged-resolution-1",
+            payload: await protectAgentInteractionResponse({
+              service: chatEncryptionService,
+              requestKey: "runtime-bridge:approval-1",
               response: {
                 kind: "commandExecution",
                 decision: "decline",
+                execpolicyAmendment: null,
+                networkPolicyAmendment: null,
               },
-            },
+            }),
           })
         ).json(),
       ).status,
@@ -6374,7 +8012,7 @@ describe("local server foundation", () => {
       worktreeCount: 1,
     });
 
-    const layoutBeforeRestart = projectTabLayoutSummarySchema.parse(
+    const layoutBeforeRestart = projectTabLayoutWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "GET",
@@ -6398,30 +8036,16 @@ describe("local server foundation", () => {
     const workers = workerListSchema.parse(
       (await secondApp.inject({ method: "GET", url: "/api/workers" })).json(),
     );
-    const restoredSettings = settingsBundleSchema.parse(
+    const restoredSettings = settingsBundleWireSchema.parse(
       (await secondApp.inject({ method: "GET", url: "/api/settings" })).json(),
     );
-    const messages = chatMessageListSchema.parse(
-      (
-        await secondApp.inject({
-          method: "GET",
-          url: `/api/chats/${chat.id}/messages`,
-        })
-      ).json(),
-    );
-    const restoredRichMessages = chatMessageListSchema.parse(
-      (
-        await secondApp.inject({
-          method: "GET",
-          url: `/api/chats/${richChat.id}/messages`,
-        })
-      ).json(),
-    );
+    const messages = await readChatMessages(chat.id, secondApp);
+    const restoredRichMessages = await readChatMessages(richChat.id, secondApp);
 
     expect(projects).toHaveLength(1);
     expect(workers).toHaveLength(2);
     expect(workers[0]?.codexRuntime).toEqual(unprobedCodexRuntimeReport);
-    const restoredTabLayout = projectTabLayoutSummarySchema.parse(
+    const restoredTabLayout = projectTabLayoutWireSummarySchema.parse(
       (
         await secondApp.inject({
           method: "GET",
@@ -6473,6 +8097,7 @@ describe("local server foundation", () => {
       },
     });
     expect(restoredSettings.preferences).toEqual({
+      ...initialSettings.preferences,
       theme: "dark",
       highContrast: true,
       proMode: true,
@@ -6515,7 +8140,7 @@ describe("local server foundation", () => {
       },
     });
     expect(
-      explorerListSchema.parse(
+      explorerWireListSchema.parse(
         (
           await secondApp.inject({
             method: "GET",
@@ -6523,9 +8148,16 @@ describe("local server foundation", () => {
           })
         ).json(),
       ),
-    ).toMatchObject([{ id: explorer.id, title: "Source browser" }]);
+    ).toMatchObject([
+      {
+        id: explorer.id,
+        titleProtection: renamedExplorer.titleProtection,
+        stateProtection: explorerStateProtection,
+        fileMode: "edit",
+      },
+    ]);
     expect(
-      browserListSchema.parse(
+      browserWireListSchema.parse(
         (
           await secondApp.inject({
             method: "GET",
@@ -6534,7 +8166,12 @@ describe("local server foundation", () => {
         ).json(),
       ),
     ).toMatchObject([
-      { id: browser.id, title: "Docs", url: "https://example.com/docs" },
+      {
+        id: browser.id,
+        titleProtection: renamedBrowser.titleProtection,
+        stateProtection: browserDocsState,
+        stateRevision: 2,
+      },
     ]);
     expect(
       await secondApp.inject({
@@ -6542,7 +8179,7 @@ describe("local server foundation", () => {
         url: `/api/browsers/${browser.id}`,
       }),
     ).toMatchObject({ statusCode: 204 });
-    const layoutAfterBrowserDelete = projectTabLayoutSummarySchema.parse(
+    const layoutAfterBrowserDelete = projectTabLayoutWireSummarySchema.parse(
       (
         await secondApp.inject({
           method: "GET",
@@ -6561,7 +8198,7 @@ describe("local server foundation", () => {
         url: `/api/explorers/${explorer.id}`,
       }),
     ).toMatchObject({ statusCode: 204 });
-    const layoutAfterSurfaceDeletes = projectTabLayoutSummarySchema.parse(
+    const layoutAfterSurfaceDeletes = projectTabLayoutWireSummarySchema.parse(
       (
         await secondApp.inject({
           method: "GET",
@@ -6575,12 +8212,17 @@ describe("local server foundation", () => {
       ),
     ).toMatchObject({
       anchorTabKey: `view:${groupedIssuesView.id}`,
-      title: "Tracker",
+      titleProtection: null,
       members: [{ tabKey: `view:${groupedIssuesView.id}` }],
     });
-    expect(
-      layoutAfterSurfaceDeletes.panes.map(({ position }) => position),
-    ).toEqual(layoutAfterSurfaceDeletes.panes.map((_, position) => position));
+    for (const region of ["center", "right", "bottom"] as const) {
+      const panes = layoutAfterSurfaceDeletes.panes.filter(
+        (pane) => pane.region === region,
+      );
+      expect(panes.map(({ position }) => position)).toEqual(
+        panes.map((_, position) => position),
+      );
+    }
 
     const unlinkResponse = await secondApp.inject({
       method: "DELETE",
@@ -6605,9 +8247,7 @@ describe("local server foundation", () => {
           payload: {
             ...protectedProjectFields(),
             workerId: "test-worker",
-            repositoryId: "github-repository-1",
-            nameWithOwner: "ArcaneArts/Cantrip",
-            url: "https://github.com/ArcaneArts/Cantrip",
+            ...cantripRepositoryFields,
           },
         })
       ).json(),
@@ -6620,7 +8260,7 @@ describe("local server foundation", () => {
           ).json(),
         )
         .find((candidate) => candidate.id === queuedRelinked.id);
-      expect(current?.setupStatus).toBe("ready");
+      expect(current?.setupStatus, JSON.stringify(current)).toBe("ready");
       return current!;
     });
     await secondDatabase.repository.completeGithubProjectSetup(
@@ -6642,10 +8282,7 @@ describe("local server foundation", () => {
         payload: { deleteLocalFiles: true },
       }),
     ).toMatchObject({ statusCode: 204 });
-    expect(deletedProjectPaths).toEqual([
-      path.join(dataDirectory, "repositories", "Cantrip"),
-      secondaryPath,
-    ]);
+    expect(deletedProjectPaths).toEqual([relinked.source!.path, secondaryPath]);
 
     await secondApp.close();
   }, 15_000);

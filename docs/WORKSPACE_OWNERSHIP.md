@@ -1870,3 +1870,34 @@ using a shared Cargo target directory; all four helper build/bundle regression
 tests passed, including actual-output selection and rejection of failed/stale
 build results. Both changed JavaScript files passed syntax checks. Full native
 acceptance, remaining transport findings and the final scope audit remain open.
+
+### Protected server contract verification
+
+The native helper correction merged in #2240 (`37bc405a9`). This verification
+cycle updates the foundation and worktree integration fixtures to exercise the
+current protected contracts instead of retired plaintext routes. It preserves
+checks for scope, ordering, revision conflicts, restart recovery, native queue
+receipts, approvals, and resource lifecycles. Private results are decrypted in
+the test client, not made visible to the server to satisfy old assertions.
+
+Repository operations now exercise the production worker dispatch function,
+extracted without changing its behavior from the worker entry point. The
+fixture uses the real protected request/response codecs and worker-managed Git
+operation store; leaf Git execution remains simulated. Managed-operation
+restart checks reopen that store and read through the protected operation
+endpoint. An offline worker returns a transport error rather than server-cached
+private Git state. Separate dispatcher tests cover trusted path precedence,
+empty operation state, invalid operation control, and peer-worktree rejection.
+
+The full server suite passed 1,600 tests across 263 files (57 existing skipped
+tests across eight files). After the final fixture corrections, sequential
+focused verification again passed all 55 server tests across foundation,
+worktree API, and attachment coordination. Six worker dispatcher/store tests
+and server/worker source typechecks passed. The extra test-file type audit found fixture
+issues not covered by the source-only server typecheck; new-line findings were
+corrected, while existing test-file errors remain outside that check. The
+boundary audit now checks the extracted dispatcher and its production wiring,
+retaining the trusted-path and worker-local operation-store requirements.
+These contract checks do
+not establish the remaining native acceptance, documentation replacement, or
+full-goal completion requirements.
