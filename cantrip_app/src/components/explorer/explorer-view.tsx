@@ -474,12 +474,6 @@ export function ExplorerView({
     ],
   });
 
-  useEffect(() => {
-    if (!graphRequest || graphRequest.explorerId !== explorer.id) return;
-    setGraphStatus(null);
-    setRevealedPath(null);
-    setGraphRootPath(graphRequest.rootPath);
-  }, [explorer.id, graphRequest]);
   const commitFetches = useIsFetching({
     queryKey: [
       "explorer-directory-commits",
@@ -716,6 +710,15 @@ export function ExplorerView({
     setGraphStatus(null);
     setRevealedPath(null);
   }, [explorer.id, explorer.worktreeId]);
+
+  // Apply an explicit graph request after resetting the previous surface.
+  // New graph tabs mount with their request already present.
+  useEffect(() => {
+    if (!graphRequest || graphRequest.explorerId !== explorer.id) return;
+    setGraphStatus(null);
+    setRevealedPath(null);
+    setGraphRootPath(graphRequest.rootPath);
+  }, [explorer.id, graphRequest]);
 
   useEffect(() => {
     if (

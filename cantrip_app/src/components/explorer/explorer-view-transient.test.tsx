@@ -81,6 +81,48 @@ import { ExplorerView } from "./explorer-view";
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
 describe("ExplorerView transient selection", () => {
+  it.each([null, "entry"])(
+    "keeps the initial graph request for root %s",
+    async (rootPath) => {
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      const explorer = {
+        activeWorkerId: "worker-one",
+        fileMode: "preview",
+        id: "explorer-one",
+        projectId: "project-one",
+        selectedPath: null,
+        worktreeId: "worktree-one",
+      } as ExplorerSummary;
+      let renderer!: TestRenderer.ReactTestRenderer;
+      await act(async () => {
+        renderer = TestRenderer.create(
+          createElement(
+            QueryClientProvider,
+            { client },
+            createElement(ExplorerView, {
+              active: true,
+              appearance: "dark",
+              explorer,
+              graphRequest: {
+                explorerId: explorer.id,
+                requestId: "graph-one",
+                rootPath,
+              },
+              repositoryGraphAvailable: true,
+            }),
+          ),
+        );
+      });
+      expect(
+        renderer.root.findAllByProps({ "data-repository-graph": true }),
+      ).toHaveLength(1);
+      await act(async () => renderer.unmount());
+      client.clear();
+    },
+  );
+
   it("routes graph files to the workspace editor instead of the Explorer file callback", async () => {
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } },

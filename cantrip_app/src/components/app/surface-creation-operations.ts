@@ -520,6 +520,7 @@ export function useExplorerCreationOperations({
         worktreeId,
         ownedPlacement ? undefined : paneId,
         target,
+        { attachToTabLayout: !ownedPlacement },
       ),
     onSuccess: (explorer, { paneId }) => {
       queryClient.setQueryData<ExplorerSummary[]>(
@@ -548,13 +549,14 @@ export function useExplorerCreationOperations({
       createExplorer(
         explorer.projectId,
         `Graph · ${entry.name}`,
-        explorer.worktreeId,
+        undefined,
         ownedPlacement ? undefined : paneId,
         {
           kind: "worktree",
           projectId: explorer.projectId,
           worktreeId: explorer.worktreeId,
         },
+        { attachToTabLayout: !ownedPlacement },
       ),
     onError: (error) => setPopoutError(errorText(error)),
     onSuccess: (createdExplorer, { entry, paneId }) => {

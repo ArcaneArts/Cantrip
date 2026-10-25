@@ -2465,3 +2465,25 @@ and visible target interaction has not passed acceptance. This fixes the lost
 authority announcement only; it does not establish native input delivery or the
 full remote-desktop detach/return acceptance requirement. Temporary fixture-only
 tracing was removed from production source before delivery.
+
+### Command-bar, History, and graph file-entry acceptance
+
+PR #2261 merged as `9055025da`; all six CI jobs passed. Real desktop/mobile
+acceptance then exposed two graph-entry defects: creation supplied both a legacy
+worktree ID and an execution target (rejected by the actual request schema), and
+the Explorer mount reset erased its initial graph request. Graph creation now
+uses the explicit target alone, and graph requests apply after the surface reset.
+Owned Explorer creation also explicitly disables legacy layout attachment.
+
+The extended production-UI harness passed all 18 scenarios, including command-bar
+search, History comparison Open file, and keyboard activation of a graph file.
+Each entry point reused existing file identities and unsaved drafts without
+changing the mobile workspace. Two focused regression suites cover request
+validation/placement and initial root/directory graph requests; seven focused
+files passed 45 tests. App typecheck and diff checks passed. Fixture cleanup left
+no child processes or sockets. Evidence is recorded in
+`.qa/20261025-122131-validate-command-bar-and-graph-h/graph-mount-acceptance.log`.
+
+This does not complete native input delivery, removed-checkout file-entry cases,
+the remaining concurrent-window/recovery matrix, migration/authorization audit,
+or full-repository verification. The overall ownership goal remains incomplete.
