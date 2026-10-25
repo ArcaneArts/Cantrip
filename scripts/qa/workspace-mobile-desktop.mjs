@@ -6,6 +6,10 @@ import { chromium } from "playwright-core";
 import { startEditorRecoveryFixture } from "./editor-recovery-fixture.mjs";
 import { verifyExplorerEntry } from "./workspace-explorer-entry.mjs";
 import {
+  seedChatLinkFiles,
+  verifyChatFileEntry,
+} from "./workspace-chat-file-entry.mjs";
+import {
   seedMobileOverflowFiles,
   verifyMobileOverflow,
 } from "./workspace-mobile-overflow.mjs";
@@ -24,6 +28,7 @@ try {
     "fn main() {}\n",
   );
   await seedMobileOverflowFiles(fixture.repositorySeed.repository);
+  await seedChatLinkFiles(fixture.repositorySeed.repository);
   browser = await chromium.launch({ headless: true });
   desktop = await browser.newPage({
     acceptDownloads: true,
@@ -376,6 +381,7 @@ try {
     "Desktop opening/pinning another file leaves mobile authoritative layout unchanged",
   );
   await verifyExplorerEntry({ mobile, desktop, record });
+  await verifyChatFileEntry({ mobile, desktop, record });
   await mobile.screenshot({
     path: path.join(fixture.directory, "mobile.png"),
     fullPage: true,

@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
+import { transformChatHistoryFixture } from "./workspace-chat-history-fixture.mjs";
 
 const exec = promisify(execFile);
 
@@ -52,6 +53,8 @@ export function editorRepositoryFixturePlugin(seed) {
     name: "cantrip-qa-repository-seed",
     enforce: "pre",
     transform(source, id) {
+      const history = transformChatHistoryFixture(source, id);
+      if (history) return history;
       if (!id.replaceAll("\\", "/").endsWith("/cantrip_app/src/main.tsx"))
         return null;
       return {
@@ -65,6 +68,7 @@ import { bindLegacyDocument as qaBindDocument, planLegacyDocuments as qaPlanDocu
 import { createDesktopExplorerWindowBroker as qaCreateFileBroker } from '@/lib/desktop-explorer-window-broker';
 import { desktopExplorerFileSearch as qaFileSearch, desktopStandaloneChatFileSearch as qaChatFileSearch } from '@/lib/desktop-popout';
 import { createStandaloneChat as qaCreateChat } from '@/lib/api/chats';
+import { createChat as qaCreateProjectChat } from '@/lib/api/chats';
 import { clearClientSession as qaClearSession } from '@/lib/client-session';
 import { getClientSessionIdentitySnapshot as qaIdentity } from '@/lib/client-session';
 import { readWorkspaceDeviceIdentity as qaWorkspaceIdentity } from '@/lib/workspace-device-identity';
@@ -152,6 +156,23 @@ if (import.meta.env.VITE_CANTRIP_CODE_MIGRATION_QA === 'true') {
 }
 globalThis.__qaRepositoryFixture = {
   async workspace() { return qaIdentity() ? (await qaWorkspace()).layout : null; },
+  async seedFileLinkChat() {
+    const chat = await qaCreateProjectChat(qaProjectId, 'File link QA');
+    sessionStorage.setItem('__qaChatFileHistory', JSON.stringify({
+      chatId: chat.id, messageId: crypto.randomUUID(), worktreeId: chat.activeWorktreeId,
+      text: '[Relative QA file](chat-relative.rs) and [Absolute QA file](' + ${JSON.stringify(seed.repository)} + '/chat-absolute.rs:1).',
+    }));
+    const { scope, transport, layout } = await qaWorkspace();
+    const owner = layout.windows.find(window => window.id === scope.mainWindowId);
+    const tabId = crypto.randomUUID();
+    await transport.execute({operationId:crypto.randomUUID(),workspaceId:layout.id,projectId:qaProjectId,
+      windowId:owner.id,attachmentGeneration:owner.attachmentGeneration,expectedRevision:layout.revision,
+      action:{type:'open',tab:{id:tabId,resource:{kind:'entity',definitionId:'project.agent',resourceId:chat.id},
+        preview:false,titleProtection:null,builtInState:null,dockPresentation:null},
+        target:{kind:'new-pane',paneId:crypto.randomUUID(),region:'center',splitId:crypto.randomUUID()}},
+    });
+    return {chatId:chat.id,tabId};
+  },
   async seedLegacyFile(path = 'qa.txt', drafts = {}, sourceKind = 'explorer', targetDrafts = {}) {
     const reader = await qaCreateExplorer(qaProjectId, 'Legacy migration QA', undefined, undefined, undefined, {
       attachToTabLayout: false, initialViewState: { selectedPath: path, fileMode: 'edit' },
