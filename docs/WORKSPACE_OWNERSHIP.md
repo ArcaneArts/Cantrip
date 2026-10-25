@@ -2442,3 +2442,26 @@ Evidence: `.qa/20261025-104533-validate-native-webkit-renderer/` observations an
 Windows/Linux renderer-death recovery, all transfer phases, or the remaining
 remote-input, migration and file-entry-point requirements. PR integration is the
 next step for this lane.
+
+### Remote-desktop attachment authority resynchronization
+
+PR #2260 merged as `9283fb569`; all three native CI lanes passed. The next
+native acceptance pass found that a ready video stream could silently withhold
+input: the worker's initial input-authority announcement can precede client
+stream binding. The first viewport already republishes capture state and target
+inventory, but did not republish the existing input epoch.
+
+Viewport resynchronization now reannounces input authority using the existing
+participant attachment. It does not create another participant or rotate its
+epoch. Regression coverage discards initial announcements, verifies recovery
+with the same epoch and one participant, and checks that later viewport updates
+do not repeat the announcement. The regression failed without the fix and passed
+with it; three focused worker files passed 25 tests (one skipped).
+
+In the disposable native fixture, pointer and keyboard events previously never
+reached the worker input handler. With the fix they reached native dispatch with
+matching epochs. Dispatch receipts still report window delivery as unverified,
+and visible target interaction has not passed acceptance. This fixes the lost
+authority announcement only; it does not establish native input delivery or the
+full remote-desktop detach/return acceptance requirement. Temporary fixture-only
+tracing was removed from production source before delivery.

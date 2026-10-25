@@ -330,6 +330,9 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
         );
         this.scheduleCapture(0);
         await this.publishTargets(attachmentId);
+        // Attachment setup may publish before the client has bound its stream.
+        // Resynchronize input authority alongside state on the first viewport.
+        await this.#participantInput?.attach(attachmentId, this.#activeTarget);
       }
       this.scheduleCapture(0);
       return;
