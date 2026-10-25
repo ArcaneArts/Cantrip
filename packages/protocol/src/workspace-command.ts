@@ -7,11 +7,24 @@ import {
   projectDockPresentationPreferenceSchema,
 } from "./project-tabs.js";
 import { privateDisplayLabelOpaqueSchema } from "./private-labels.js";
-import { workspaceTabSchema } from "./workspace-ownership.js";
+import {
+  workspaceTabSchema,
+  workspaceLegacyFileImportSchema,
+} from "./workspace-ownership.js";
 import { explorerPrivateStateOpaqueSchema } from "./surface-private-state.js";
 
 const id = z.string().min(1);
 export const workspaceActionSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("migrate-code-files"),
+      tabId: id,
+      codeId: id,
+      expectedWorkerId: id,
+      expectedWorktreeId: id,
+      views: workspaceLegacyFileImportSchema.shape.views,
+    })
+    .strict(),
   z
     .object({
       type: z.literal("migrate-explorer-file"),

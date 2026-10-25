@@ -10,6 +10,11 @@ import type { QueryClient } from "@tanstack/react-query";
 import type { ExplorerLifecycleActions } from "@/components/explorer/explorer-view";
 import { migrateOwnedLegacyFile } from "@/lib/migrate-owned-legacy-file";
 import type { WorkspaceCommandClient } from "@/lib/workspace-command-client";
+import {
+  getNativeCodeLifecycle,
+  nativeCodeLifecycleRevision,
+  subscribeNativeCodeLifecycle,
+} from "@/components/code/native-code-lifecycle";
 
 const noSubscription = () => () => {};
 const noSnapshot = () => null;
@@ -30,6 +35,10 @@ export function useLegacyDocumentMigration({
   queryClient: QueryClient;
 }) {
   const controller = workspace?.controller;
+  const codeRevision = useSyncExternalStore(
+    subscribeNativeCodeLifecycle,
+    nativeCodeLifecycleRevision,
+  );
   const windowId = workspace?.windowId;
   const state = useSyncExternalStore(
     controller?.subscribe ?? noSubscription,
@@ -53,8 +62,18 @@ export function useLegacyDocumentMigration({
     for (const tab of owner?.panes.flatMap((pane) => pane.tabs) ?? []) {
       if (
         tab.resource.kind !== "entity" ||
-        tab.resource.definitionId !== "project.explorer" ||
+        !["project.explorer", "project.code"].includes(
+          tab.resource.definitionId,
+        ) ||
         context.attempted.has(tab.id)
+      )
+        continue;
+      const code = tab.resource.definitionId === "project.code";
+      if (
+        code &&
+        state.authoritative.legacyCodeImports?.some(
+          (entry) => entry.tabId === tab.id,
+        )
       )
         continue;
       if (
@@ -67,8 +86,10 @@ export function useLegacyDocumentMigration({
       const explorer = explorers?.find(
         (explorer) => explorer.id === explorerId,
       );
-      const lifecycle = lifecycles.get(explorerId);
-      if (!explorer?.selectedPath || !lifecycle) continue;
+      const lifecycle = code
+        ? getNativeCodeLifecycle(explorerId)
+        : lifecycles.get(explorerId);
+      if ((!code && !explorer?.selectedPath) || !lifecycle) continue;
       context.attempted.add(tab.id);
       context.running = true;
       // Run outside the effect commit so suspension can flush the inert state.
@@ -81,6 +102,7 @@ export function useLegacyDocumentMigration({
             explorerId,
             lifecycle,
             queryClient,
+            sourceKind: code ? "code" : "explorer",
           }),
         )
         .catch((error: unknown) => {
@@ -100,6 +122,7 @@ export function useLegacyDocumentMigration({
     explorers,
     lifecycles,
     lifecycleRevision,
+    codeRevision,
     queryClient,
     revision,
   ]);

@@ -157,6 +157,85 @@ export function applyWorkspaceCommand(
       "The destination is reserved for a pending transfer.",
     );
   switch (action.type) {
+    case "migrate-code-files": {
+      const { pane, tab } = tabById(action.tabId);
+      if (
+        tab.resource.kind !== "entity" ||
+        tab.resource.definitionId !== "project.code" ||
+        tab.resource.resourceId !== action.codeId
+      )
+        throw new WorkspaceCommandError(
+          "invalid",
+          "Legacy Code binding changed.",
+        );
+      const prior = layout.legacyCodeImports?.find(
+        (entry) => entry.tabId === tab.id,
+      );
+      const receipt = {
+        tabId: tab.id,
+        codeId: action.codeId,
+        views: action.views,
+      };
+      if (prior) {
+        if (JSON.stringify(prior) !== JSON.stringify(receipt))
+          throw new WorkspaceCommandError(
+            "invalid",
+            "Code conversion receipt does not match.",
+          );
+        // Never recreate a migrated file which the user subsequently closed.
+        break;
+      }
+      if (
+        layout.pendingTransfers?.some((transfer) =>
+          transfer.tabIds.includes(tab.id),
+        )
+      )
+        throw new WorkspaceCommandError(
+          "invalid",
+          "Legacy view is reserved for a pending transfer.",
+        );
+      const allTabs = layout.windows.flatMap((owner) =>
+        owner.panes.flatMap((pane) => pane.tabs),
+      );
+      const occupied = new Set(allTabs.map((tab) => tab.id));
+      const documents = new Set(
+        allTabs.flatMap((tab) =>
+          tab.resource.kind === "entity" &&
+          tab.resource.definitionId === "project.file"
+            ? [tab.resource.resourceId]
+            : [],
+        ),
+      );
+      for (const view of action.views) {
+        if (occupied.has(view.tabId) || documents.has(view.documentId))
+          throw new WorkspaceCommandError(
+            "invalid",
+            "Migration view or document identity is already in use.",
+          );
+        occupied.add(view.tabId);
+        documents.add(view.documentId);
+      }
+      const files: WorkspaceTab[] = action.views.map((view) => ({
+        id: view.tabId,
+        resource: {
+          kind: "entity",
+          definitionId: "project.file",
+          resourceId: view.documentId,
+        },
+        preview: false,
+        fileMode: view.mode,
+        titleProtection: null,
+        builtInState: null,
+        dockPresentation: tab.dockPresentation,
+      }));
+      pane.tabs.splice(pane.tabs.indexOf(tab) + 1, 0, ...files);
+      if (pane.activeTabId === tab.id) {
+        if (window.focusedPaneId === pane.id) focus(window, pane, files[0]!.id);
+        else pane.activeTabId = files[0]!.id;
+      }
+      (layout.legacyCodeImports ??= []).push(receipt);
+      break;
+    }
     case "migrate-explorer-file": {
       const { pane, tab } = tabById(action.tabId);
       if (

@@ -62,6 +62,7 @@ export function PersistentSurfaceLayer({
     incomingExplorerViews,
     incomingFileDocumentViews,
     incomingCodeViews,
+    migratedCodeTabIds,
     handleExplorerLifecycleChange,
     isPopout,
     newTerminal,
@@ -444,6 +445,16 @@ export function PersistentSurfaceLayer({
         }
       >
         <PersistentCodeViews
+          migratedIds={
+            new Set(
+              projectSurfaces?.flatMap((surface: any) =>
+                migratedCodeTabIds?.has(surface.tabId) &&
+                surface.member.tabKind === "code"
+                  ? [surface.member.tabId]
+                  : [],
+              ),
+            )
+          }
           incomingViews={incomingCodeViews}
           unresolvedIds={
             new Set<string>(

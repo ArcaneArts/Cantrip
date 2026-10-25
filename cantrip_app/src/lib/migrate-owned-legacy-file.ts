@@ -30,6 +30,7 @@ export async function migrateOwnedLegacyFile({
   explorerId,
   lifecycle,
   queryClient,
+  sourceKind = "explorer",
 }: {
   controller: WorkspaceCommandClient;
   windowId: string;
@@ -37,6 +38,7 @@ export async function migrateOwnedLegacyFile({
   explorerId: string;
   lifecycle: ExplorerLifecycleActions;
   queryClient: QueryClient;
+  sourceKind?: "explorer" | "code";
 }) {
   const identity = getClientSessionIdentitySnapshot();
   if (!identity) throw new Error("Sign in before migrating a file view.");
@@ -57,7 +59,8 @@ export async function migrateOwnedLegacyFile({
       clientSessionIdentityMatches(identity) &&
       window?.attachmentGeneration === generation &&
       tab?.resource.kind === "entity" &&
-      tab.resource.definitionId === "project.explorer" &&
+      tab.resource.definitionId ===
+        (sourceKind === "code" ? "project.code" : "project.explorer") &&
       tab.resource.resourceId === explorerId
     );
   };
@@ -95,12 +98,12 @@ export async function migrateOwnedLegacyFile({
       worktreeId: capture.worktreeId,
     };
     capture = validateExplorerTransfer(capture, scope);
-    if (capture.selectedPath === null) return;
+    if (sourceKind === "explorer" && capture.selectedPath === null) return;
     journal = new DocumentRecoverySession({
       ...scope,
       workspaceId: initial.id,
       tabId,
-      documentId: `legacy-migration:${explorerId}`,
+      documentId: `legacy-${sourceKind === "code" ? "code-" : ""}migration:${explorerId}`,
     });
     const recovered = await journal.load((bytes) =>
       validateExplorerTransfer(
@@ -131,7 +134,17 @@ export async function migrateOwnedLegacyFile({
         capture = await lifecycle.captureTransfer();
         assertSource();
       }
+      // Code has no durable selected-path field. On a fresh browser mount the
+      // protected journal is the only surviving selection/mode authority.
+      if (sourceKind === "code" && capture.selectedPath === null)
+        capture = {
+          ...capture,
+          selectedPath: recovered.selectedPath,
+          fileMode: recovered.fileMode,
+        };
     }
+    const candidates = planLegacyDocuments(capture, scope);
+    if (!candidates.length) return;
     const bytes = new TextEncoder().encode(JSON.stringify(capture));
     try {
       await journal.checkpoint(bytes);
@@ -139,15 +152,16 @@ export async function migrateOwnedLegacyFile({
       clearSensitiveBytes(bytes);
     }
     assertSource();
-    const { wire, explorer } = await getExplorerMigrationSource(
-      initial.projectId,
-      explorerId,
-    );
+    const source =
+      sourceKind === "explorer"
+        ? await getExplorerMigrationSource(initial.projectId, explorerId)
+        : null;
     assertSource();
     if (
-      explorer.activeWorkerId !== capture.workerId ||
-      explorer.worktreeId !== capture.worktreeId ||
-      explorer.selectedPath !== capture.selectedPath
+      source &&
+      (source.explorer.activeWorkerId !== capture.workerId ||
+        source.explorer.worktreeId !== capture.worktreeId ||
+        source.explorer.selectedPath !== capture.selectedPath)
     )
       throw new Error("Legacy Explorer location changed during migration.");
     const catalog = await getFileDocuments(initial.projectId);
@@ -157,7 +171,7 @@ export async function migrateOwnedLegacyFile({
       tabId: string;
       mode: typeof capture.fileMode;
     }[] = [];
-    for (const candidate of planLegacyDocuments(capture, scope)) {
+    for (const candidate of candidates) {
       const binding = {
         projectId: initial.projectId,
         workerId: candidate.workerId,
@@ -176,9 +190,12 @@ export async function migrateOwnedLegacyFile({
           id: surfaceTitleEncryption.fileDocumentId(binding),
         }));
       assertSource();
-      const targetTabId = candidate.selected
-        ? tabId
-        : `legacy-retained:${tabId}:${document.id}`;
+      const targetTabId =
+        sourceKind === "code"
+          ? `legacy-code:${tabId}:${document.id}`
+          : candidate.selected
+            ? tabId
+            : `legacy-retained:${tabId}:${document.id}`;
       let transfer = bindLegacyDocument(candidate, scope, {
         tabId: targetTabId,
         documentId: document.id,
@@ -229,6 +246,7 @@ export async function migrateOwnedLegacyFile({
       assertSource();
       targets.push({ document, tabId: targetTabId, mode: candidate.mode });
     }
+    if (!targets.length) return;
     queryClient.setQueryData<FileDocument[]>(
       ["file-documents", initial.projectId],
       (current = []) => {
@@ -242,21 +260,36 @@ export async function migrateOwnedLegacyFile({
     );
     assertSource();
     lifecycle.retireTransfer();
-    await controller.dispatch({
-      type: "migrate-explorer-file",
-      tabId,
-      explorerId,
-      expectedWorkerId: capture.workerId,
-      expectedWorktreeId: capture.worktreeId,
-      expectedStateProtection: wire.stateProtection,
-      documentId: targets[0]!.document.id,
-      mode: targets[0]!.mode,
-      retainedViews: targets.slice(1).map((target) => ({
-        tabId: target.tabId,
-        documentId: target.document.id,
-        mode: target.mode,
-      })),
-    });
+    await controller.dispatch(
+      sourceKind === "code"
+        ? {
+            type: "migrate-code-files",
+            tabId,
+            codeId: explorerId,
+            expectedWorkerId: capture.workerId,
+            expectedWorktreeId: capture.worktreeId,
+            views: targets.map((target) => ({
+              tabId: target.tabId,
+              documentId: target.document.id,
+              mode: target.mode,
+            })),
+          }
+        : {
+            type: "migrate-explorer-file",
+            tabId,
+            explorerId,
+            expectedWorkerId: capture.workerId,
+            expectedWorktreeId: capture.worktreeId,
+            expectedStateProtection: source!.wire.stateProtection,
+            documentId: targets[0]!.document.id,
+            mode: targets[0]!.mode,
+            retainedViews: targets.slice(1).map((target) => ({
+              tabId: target.tabId,
+              documentId: target.document.id,
+              mode: target.mode,
+            })),
+          },
+    );
     committed = true;
     await journal.checkpoint(null);
   } catch (error) {

@@ -7,6 +7,15 @@ export const nativeCodeScope = () => {
   return JSON.stringify([session?.serverId, session?.user.id]);
 };
 const owners = new Map<string, ExplorerLifecycleActions>();
+const listeners = new Set<() => void>();
+let revision = 0;
+export const nativeCodeLifecycleRevision = () => revision;
+export const subscribeNativeCodeLifecycle = (listener: () => void) => {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+};
 export const nativeCodeOwnerKey = (id: string, scope = nativeCodeScope()) =>
   `${scope}:${id}`;
 export function getNativeCodeLifecycle(
@@ -18,8 +27,16 @@ export function setNativeCodeLifecycle(
   key: string,
   actions: ExplorerLifecycleActions | null,
 ): void {
+  if (owners.get(key) === (actions ?? undefined)) return;
+  const wasMounted = owners.has(key);
   if (actions) owners.set(key, actions);
   else owners.delete(key);
+  // Migration waits for registration, not changing editor callbacks. Publishing
+  // every callback replacement makes subscriber renders feed back into this
+  // registry through the editor's lifecycle effect.
+  if (wasMounted === owners.has(key)) return;
+  revision++;
+  for (const listener of listeners) listener();
 }
 export async function confirmNativeCodeDiscard(id: string): Promise<boolean> {
   const lifecycle = owners.get(nativeCodeOwnerKey(id));

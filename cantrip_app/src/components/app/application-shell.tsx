@@ -2128,6 +2128,7 @@ export function App() {
   // into sidebar, header, persistent-surface, content-host, and overlay views.
   // prettier-ignore
   const renderBindings = {
+    migratedCodeTabIds: new Set(workspaceConnection.controllerState?.authoritative.legacyCodeImports?.map((entry) => entry.tabId) ?? []),
     persistFileViewMode: async (tabId: string, mode: import("@cantrip/protocol").ExplorerFileMode) => {
       if (!ownedWorkspace) throw new Error("File view ownership is unavailable.");
       await ownedWorkspace.controller.dispatch({ type: "file-mode", tabId, mode });

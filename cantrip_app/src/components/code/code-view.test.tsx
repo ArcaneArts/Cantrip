@@ -76,6 +76,7 @@ import { CodeView, type CodeHeaderState } from "./code-view";
 import {
   confirmNativeCodeDiscard,
   prepareNativeCodeTransfer,
+  getNativeCodeLifecycle,
 } from "./native-code-lifecycle";
 (
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -103,7 +104,11 @@ async function settle() {
     await new Promise((resolve) => setTimeout(resolve, 15));
   });
 }
-async function render(next = tab, initialTransfer?: ExplorerTransferState) {
+async function render(
+  next = tab,
+  initialTransfer?: ExplorerTransferState,
+  filesMigrated = false,
+) {
   const tree = (
     <QueryClientProvider client={client}>
       <CodeView
@@ -112,6 +117,7 @@ async function render(next = tab, initialTransfer?: ExplorerTransferState) {
         onHeaderChange={onHeader}
         onOpenFile={onOpenFile}
         initialTransfer={initialTransfer}
+        filesMigrated={filesMigrated}
       />
     </QueryClientProvider>
   );
@@ -176,6 +182,30 @@ afterEach(async () => {
 });
 
 describe("native project Code tabs", () => {
+  it("retires migrated inline drafts and does not restore them again from a stale transfer", async () => {
+    await render();
+    await open();
+    await act(async () => editor.current!.onChange("unsaved legacy draft"));
+    const source = getNativeCodeLifecycle(tab.id)!;
+    const capture = await source.captureTransfer!();
+    expect(capture.documents.documents[0]!.text).toBe("unsaved legacy draft");
+    await render(tab, capture, true);
+    expect(
+      renderer.root.findAllByProps({ "data-native-editor": true }),
+    ).toHaveLength(0);
+    expect(
+      renderer.root.findAllByProps({ "data-open-file": true }),
+    ).toHaveLength(1);
+    const browser = await getNativeCodeLifecycle(tab.id)!.captureTransfer!();
+    expect(browser.selectedPath).toBeNull();
+    expect(browser.documents.documents).toEqual([]);
+    expect(api.saveExplorerFile).not.toHaveBeenCalled();
+    await render(tab, structuredClone(capture), true);
+    expect(
+      (await getNativeCodeLifecycle(tab.id)!.captureTransfer!()).documents
+        .documents,
+    ).toEqual([]);
+  });
   it("opens browser files through workspace ownership without creating a transient editor", async () => {
     await render();
     await act(async () =>

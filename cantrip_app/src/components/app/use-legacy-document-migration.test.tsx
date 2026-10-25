@@ -6,18 +6,22 @@ import type { ExplorerLifecycleActions } from "@/components/explorer/explorer-vi
 import type { WorkspaceCommandClient } from "@/lib/workspace-command-client";
 import { migrateOwnedLegacyFile } from "@/lib/migrate-owned-legacy-file";
 import { useLegacyDocumentMigration } from "./use-legacy-document-migration";
+import {
+  setNativeCodeLifecycle,
+  nativeCodeOwnerKey,
+} from "@/components/code/native-code-lifecycle";
 
 vi.mock("@/lib/migrate-owned-legacy-file", () => ({
   migrateOwnedLegacyFile: vi.fn(),
 }));
 beforeEach(() => vi.resetAllMocks());
 
-function fixture(reserved = false) {
+function fixture(reserved = false, code = false) {
   const tab = (id: string) => ({
     id,
     resource: {
       kind: "entity",
-      definitionId: "project.explorer",
+      definitionId: code ? "project.code" : "project.explorer",
       resourceId: id,
     },
   });
@@ -57,6 +61,46 @@ function fixture(reserved = false) {
   }
   return { Harness, result: () => result, options };
 }
+
+it("converts Code only after its lifecycle mounts and ignores durable conversion receipts", async () => {
+  const f = fixture(false, true);
+  let renderer!: ReturnType<typeof create>;
+  await act(async () => {
+    renderer = create(<f.Harness />);
+  });
+  expect(migrateOwnedLegacyFile).not.toHaveBeenCalled();
+  await act(async () =>
+    setNativeCodeLifecycle(
+      nativeCodeOwnerKey("local"),
+      {} as ExplorerLifecycleActions,
+    ),
+  );
+  expect(migrateOwnedLegacyFile).toHaveBeenCalledWith(
+    expect.objectContaining({
+      sourceKind: "code",
+      tabId: "local",
+      explorerId: "local",
+    }),
+  );
+  await act(async () => renderer.unmount());
+  vi.mocked(migrateOwnedLegacyFile).mockClear();
+  f.options.workspace.controller.getSnapshot().authoritative.legacyCodeImports =
+    [
+      {
+        tabId: "local",
+        codeId: "local",
+        views: [{ tabId: "file", documentId: "document", mode: "edit" }],
+      },
+    ];
+  await act(async () => {
+    renderer = create(<f.Harness />);
+  });
+  expect(migrateOwnedLegacyFile).not.toHaveBeenCalled();
+  await act(async () => {
+    renderer.unmount();
+    setNativeCodeLifecycle(nativeCodeOwnerKey("local"), null);
+  });
+});
 
 it("automatically migrates only the current window's mounted legacy files", async () => {
   const f = fixture();

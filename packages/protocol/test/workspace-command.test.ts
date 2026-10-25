@@ -304,6 +304,98 @@ function migrationFixture() {
   return initial;
 }
 
+function codeMigration(): Extract<
+  WorkspaceAction,
+  { type: "migrate-code-files" }
+> {
+  return {
+    type: "migrate-code-files",
+    tabId: "a2",
+    codeId: "legacy",
+    expectedWorkerId: "worker",
+    expectedWorktreeId: "worktree",
+    views: [
+      { tabId: "code-first", documentId: "first", mode: "visual" },
+      { tabId: "code-second", documentId: "second", mode: "edit" },
+    ],
+  };
+}
+function codeMigrationFixture() {
+  const initial = fixture();
+  initial.windows[0]!.panes[0]!.tabs[1]!.resource = {
+    kind: "entity",
+    definitionId: "project.code",
+    resourceId: "legacy",
+  };
+  return initial;
+}
+it("converts Code buffers into adjacent file tabs while preserving the browser", () => {
+  const initial = codeMigrationFixture();
+  const result = run(codeMigration(), initial).layout;
+  const pane = result.windows[0]!.panes[0]!;
+  expect(pane.tabs.map((tab) => tab.id)).toEqual([
+    "a1",
+    "a2",
+    "code-first",
+    "code-second",
+    "a3",
+  ]);
+  expect(pane.activeTabId).toBe("code-first");
+  expect(pane.tabs[1]).toEqual(initial.windows[0]!.panes[0]!.tabs[1]);
+  expect(pane.tabs[2]).toMatchObject({
+    fileMode: "visual",
+    resource: { definitionId: "project.file", resourceId: "first" },
+  });
+  expect(result.windows[0]!.centerRoot).toEqual(initial.windows[0]!.centerRoot);
+  expect(result.windows[1]).toEqual(initial.windows[1]);
+});
+it("does not steal selection while converting inactive Code buffers", () => {
+  const initial = codeMigrationFixture();
+  initial.windows[0]!.panes[0]!.activeTabId = "a3";
+  expect(
+    run(codeMigration(), initial).layout.windows[0]!.panes[0]!.activeTabId,
+  ).toBe("a3");
+});
+it("does not resurrect closed Code files when conversion is replayed", () => {
+  let layout = run(codeMigration(), codeMigrationFixture()).layout;
+  layout = run({ type: "close-tab", tabId: "code-first" }, layout).layout;
+  layout = run(codeMigration(), layout).layout;
+  expect(
+    layout.windows
+      .flatMap((window) => window.panes.flatMap((pane) => pane.tabs))
+      .some((tab) => tab.id === "code-first"),
+  ).toBe(false);
+  expect(() =>
+    run(
+      {
+        ...codeMigration(),
+        views: [{ tabId: "replacement", documentId: "other", mode: "edit" }],
+      },
+      layout,
+    ),
+  ).toThrow(/receipt does not match/);
+});
+it("rejects Code migration into a document already owned by another window", () => {
+  const initial = codeMigrationFixture();
+  initial.windows[1]!.panes[0]!.tabs[0]!.resource = {
+    kind: "entity",
+    definitionId: "project.file",
+    resourceId: "first",
+  };
+  const before = structuredClone(initial);
+  expect(() => run(codeMigration(), initial)).toThrow(
+    /identity is already in use/,
+  );
+  expect(initial).toEqual(before);
+});
+it("rejects Code migration with duplicate new view identities", () => {
+  const action = codeMigration();
+  action.views[1]!.tabId = action.views[0]!.tabId;
+  expect(() => run(action, codeMigrationFixture())).toThrow(
+    /identity is already in use/,
+  );
+});
+
 it("migrates legacy files atomically without changing tab identity, selection or splits", () => {
   const initial = migrationFixture();
   const before = structuredClone(initial);
