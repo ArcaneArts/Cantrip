@@ -303,7 +303,7 @@ describe("workspace repository discovery executor", () => {
         rootPath: pathHandle,
         depth: 3,
       },
-      expect.objectContaining({ ownerId: "owner-one", timeoutMs: 60_000 }),
+      expect.objectContaining({ ownerId: "owner-one", timeoutMs: null }),
     );
     expect(complete).toHaveBeenCalledWith(active.id, "command-one", {
       attempt: 1,

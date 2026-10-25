@@ -2095,7 +2095,7 @@ export const workspaceRepositoryDiscoveryJobs = pgTable(
       .notNull(),
     stateRevision: integer("state_revision").notNull().default(1),
     attempt: integer("attempt").notNull().default(0),
-    depth: integer("depth").notNull().default(3),
+    depth: integer("depth").notNull().default(-1),
     commandId: text("command_id"),
     lastErrorCode:
       text("last_error_code").$type<WorkspaceRepositoryDiscoveryErrorCode>(),
@@ -2157,7 +2157,7 @@ export const workspaceRepositoryDiscoveryJobs = pgTable(
     ),
     check(
       "workspace_repository_discovery_jobs_depth_check",
-      sql`${table.depth} >= 0 AND ${table.depth} <= 16`,
+      sql`${table.depth} >= -1 AND ${table.depth} <= 16`,
     ),
     check(
       "workspace_repository_discovery_jobs_error_shape_check",

@@ -71,11 +71,13 @@ interface SearchDirectory {
 }
 
 const DEFAULT_LIMITS: WorkspaceRepositoryDiscoveryLimits = {
-  durationMs: 30_000,
-  maxCandidates: 500,
-  maxDepth: 3,
-  maxDirectories: 10_000,
-  maxEntries: 100_000,
+  // Scan the entire attached tree. Only individual subprocesses are bounded;
+  // workspace size or slow classification must not discard later repositories.
+  durationMs: Infinity,
+  maxCandidates: Infinity,
+  maxDepth: Infinity,
+  maxDirectories: Infinity,
+  maxEntries: Infinity,
   maxGitOutputBytes: 1_024 * 1_024,
   perGitCommandTimeoutMs: 5_000,
 };
@@ -92,6 +94,7 @@ function importValidationError(
 }
 
 function boundedInteger(value: number, minimum: number): number {
+  if (value === Infinity) return value;
   if (!Number.isFinite(value)) return minimum;
   return Math.max(minimum, Math.floor(value));
 }

@@ -64,6 +64,45 @@ async function fixture() {
 }
 
 describe("workspace repository discovery jobs", () => {
+  it("persists all results beyond the former 500-candidate limit", async () => {
+    const { client, repository } = await fixture();
+    try {
+      const jobs = repository.workspaceRepositoryDiscoveryJobs;
+      expect((await jobs.queue(LOCAL_USER_ID, workspaceId)).depth).toBe(-1);
+      const claimed = (await jobs.claimNext())!;
+      const candidates = Array.from({ length: 501 }, (_, index) => ({
+        pathHandle: `ctrr_${String(index).padStart(43, "a")}`,
+        displayHandle: `ctrr_${String(index).padStart(43, "b")}`,
+        originUrlHandle: null,
+        github: null,
+        repositoryFingerprint: index.toString(16).padStart(64, "0"),
+        classification: "local-git" as const,
+        diagnosticCode: null,
+      }));
+      const completed = await jobs.complete(claimed.job.id, claimed.commandId, {
+        attempt: claimed.job.attempt,
+        candidates,
+        counts: {
+          candidates: 501,
+          collapsedRepositories: 0,
+          rejectedRepositories: 0,
+          scannedDirectories: 502,
+          scannedEntries: 1002,
+          skippedSymlinks: 0,
+          unreadableDirectories: 0,
+        },
+        truncated: false,
+      });
+      expect(completed.candidates).toHaveLength(501);
+      expect(completed.job).toMatchObject({
+        state: "succeeded",
+        truncated: false,
+      });
+    } finally {
+      await client.close();
+    }
+  }, 30_000);
+
   it("retains local candidates through a mixed-origin rescan and imports only the explicit selection", async () => {
     const { client, database, repository } = await fixture();
     const jobs = repository.workspaceRepositoryDiscoveryJobs;
@@ -339,7 +378,7 @@ describe("workspace repository discovery jobs", () => {
         state: "queued",
         stateRevision: 1,
         attempt: 0,
-        depth: 3,
+        depth: -1,
       });
 
       const claimed =
