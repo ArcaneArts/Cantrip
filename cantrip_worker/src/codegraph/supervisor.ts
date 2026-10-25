@@ -28,6 +28,7 @@ const EXCLUDE_END = "# END CANTRIP CODEGRAPH";
 const EXCLUDE_BLOCK = `${EXCLUDE_BEGIN}\n/${INDEX_DIRECTORY}/\n${EXCLUDE_END}`;
 const CHANGE_DEBOUNCE_MS = 1_000;
 const RECONCILE_INTERVAL_MS = 2 * 60_000;
+const WATCHED_RECONCILE_INTERVAL_MS = 30 * 60_000;
 const MAX_CONCURRENT_OPERATIONS = 2;
 const MAX_CONCURRENT_AUTHORIZATIONS = 4;
 const MAX_OUTPUT_CHARACTERS = 256_000;
@@ -479,6 +480,20 @@ export class CodeGraphProjectSupervisor {
     if (!this.#reconcileTimer) {
       this.#reconcileTimer = setInterval(() => {
         for (const project of this.#projects.values()) {
+          // A status probe launches the CLI (and its Git inspection). Watchers
+          // and agent catch-up handle active work; keep only a slow safety sweep
+          // for indexes whose last real status confirmed they were clean.
+          if (project.running || project.queued || project.retryTimer) continue;
+          if (
+            project.watcher &&
+            project.state === "ready" &&
+            project.pendingChanges === 0 &&
+            project.lastSuccessfulSyncAt &&
+            this.#now().getTime() - Date.parse(project.lastSuccessfulSyncAt) <
+              WATCHED_RECONCILE_INTERVAL_MS
+          ) {
+            continue;
+          }
           this.#schedule(project, "sync");
         }
       }, RECONCILE_INTERVAL_MS);
