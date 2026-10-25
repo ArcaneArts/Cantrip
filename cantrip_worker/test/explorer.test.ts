@@ -3,7 +3,9 @@ import {
   mkdtemp,
   mkdir,
   link,
+  lstat,
   readFile,
+  readlink,
   rm,
   symlink,
   writeFile,
@@ -139,6 +141,15 @@ describe("project explorer", () => {
     await expect(readFile(path.join(root, "keep.txt"), "utf8")).resolves.toBe(
       "keep me",
     );
+    expect((await lstat(path.join(root, "broken.txt"))).isSymbolicLink()).toBe(
+      true,
+    );
+    await expect(readlink(path.join(root, "broken.txt"))).resolves.toBe(
+      path.join(root, "missing"),
+    );
+    await expect(lstat(path.join(root, "missing"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
     const concurrent = await Promise.allSettled([
       createExplorerFile(root, "", "once.txt"),
       createExplorerFile(root, "", "once.txt"),

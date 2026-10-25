@@ -1901,3 +1901,22 @@ retaining the trusted-path and worker-local operation-store requirements.
 These contract checks do
 not establish the remaining native acceptance, documentation replacement, or
 full-goal completion requirements.
+
+### File-creation collision verification follow-up
+
+The protected server contract cycle merged in #2241 (`5078aa0a8`). Its native
+editor/runtime, app API, and computer-use foundation CI lanes passed. The worker
+command matrix exposed a Windows-only failure in the existing Explorer collision
+test: exclusive open accepted a dangling symbolic link as a new file.
+
+File creation now inspects the destination entry with `lstat`, rejecting existing
+links without following their targets. Errors other than a missing entry remain
+errors; exclusive open is retained to reject competing regular-file creation.
+The regression also verifies that the dangling link survives unchanged and its
+target is not created. This is not a claim of atomic protection against a hostile
+symlink swap between inspection and open on Windows.
+
+Local verification passed all 14 Explorer tests and the worker source typecheck.
+Windows CI must verify the platform-specific correction. Remaining native
+acceptance, legacy-path cleanup, and the replacement of the historical tab
+documentation remain outstanding; this correction does not complete the goal.

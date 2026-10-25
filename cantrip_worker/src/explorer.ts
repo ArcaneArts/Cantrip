@@ -246,12 +246,22 @@ export async function createExplorerFile(
 ): Promise<ExplorerEntry> {
   const name = explorerEntryNameSchema.parse(requestedName);
   const { directoryPath } = await resolveMutableDirectory(root, relativePath);
+  const destination = path.join(directoryPath, name);
+  // Windows exclusive open can replace a dangling symlink. Inspect the entry
+  // itself (not its target) so an existing link is a collision there too.
+  const existing = await lstat(destination).catch(
+    (error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return null;
+      throw error;
+    },
+  );
+  if (existing) throw new Error("An entry with that name already exists.");
   let handle;
   try {
-    // Creating and checking for collisions is one filesystem operation. Never
-    // truncate an existing file or follow an existing link at the destination.
+    // Keep exclusive creation: a competing regular-file create after lstat
+    // must still fail rather than truncate the winner's file.
     handle = await open(
-      path.join(directoryPath, name),
+      destination,
       constants.O_WRONLY |
         constants.O_CREAT |
         constants.O_EXCL |
