@@ -40,17 +40,22 @@ jobs:
           components: rustfmt, clippy
       - name: Windows native PGlite toolchain
         if: runner.os == 'Windows'
-        uses: egor-tensin/setup-mingw@v2
+        id: mingw
+        uses: msys2/setup-msys2@v2
         with:
-          platform: x64
+          msystem: MINGW64
+          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-zlib
       - name: Windows Rust target and PostgreSQL
         if: runner.os == 'Windows'
         shell: pwsh
+        env:
+          CANTRIP_MINGW_BIN: ${{ steps.mingw.outputs.msys2-location }}\mingw64\bin
         run: |
           rustup target add x86_64-pc-windows-gnu
           choco install postgresql17 --no-progress -y --params '/Password:cantrip-fixture-only /Port:54329'
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           "CARGO_BUILD_TARGET=x86_64-pc-windows-gnu" >> $env:GITHUB_ENV
+          "$env:CANTRIP_MINGW_BIN" >> $env:GITHUB_PATH
           "CANTRIP_TEST_POSTGRES_BIN_DIR=C:\Program Files\PostgreSQL\17\bin" >> $env:GITHUB_ENV
       - name: Linux PostgreSQL
         if: runner.os == 'Linux'
