@@ -728,6 +728,9 @@ async function openDesktopWindow(
   size?: { height: number; minHeight: number; minWidth: number; width: number },
   behavior: DesktopWindowOpenBehavior = {},
 ): Promise<"created" | "focused"> {
+  const { desktopQuitCoordinator } = await import("./desktop-quit-coordinator");
+  if (desktopQuitCoordinator.preparing)
+    throw new Error("Application quit is preparing.");
   if (!isDesktopRuntime()) {
     throw new Error("Pop-out windows are only available in the desktop app.");
   }
@@ -738,6 +741,8 @@ async function openDesktopWindow(
       : focusWindow(label);
   if (await reuse()) return "focused";
   behavior.assertBeforeCreate?.();
+  if (desktopQuitCoordinator.preparing)
+    throw new Error("Application quit is preparing.");
 
   const path = window.location.pathname || "/";
   const macos = isMacosDesktopRuntime();

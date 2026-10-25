@@ -1,4 +1,5 @@
 import { PanelToolbar } from "@/components/workspace/panel-toolbar";
+import { useEditorQuit } from "./use-editor-quit";
 import {
   ExplorerFileCloseButton,
   ExplorerHeaderActions,
@@ -1565,6 +1566,7 @@ export function ExplorerView({
   );
 
   const transferLifecycleRef = useRef(lifecycle);
+  useEditorQuit(lifecycle, Boolean(documentRecovery));
   transferLifecycleRef.current = lifecycle;
   useEffect(() => {
     if (

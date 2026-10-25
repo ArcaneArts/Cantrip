@@ -1,4 +1,5 @@
 import { isTauri } from "@tauri-apps/api/core";
+import { desktopQuitCoordinator } from "./desktop-quit-coordinator";
 
 export interface NativeFileCloseEvent {
   preventDefault(): void;
@@ -25,6 +26,7 @@ export function bindNativeFileWindowClose(
     .onCloseRequested(async (event) => {
       // Tauri's helper otherwise calls destroy() itself after awaiting us.
       event.preventDefault();
+      if (desktopQuitCoordinator.preparing) return;
       if (disposed || closing) return;
       closing = true;
       try {

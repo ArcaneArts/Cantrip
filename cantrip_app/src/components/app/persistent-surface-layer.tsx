@@ -448,7 +448,7 @@ export function PersistentSurfaceLayer({
           migratedIds={
             new Set(
               projectSurfaces?.flatMap((surface: any) =>
-                migratedCodeTabIds?.has(surface.tabId) &&
+                migratedCodeTabIds?.has(surface.tabKey) &&
                 surface.member.tabKind === "code"
                   ? [surface.member.tabId]
                   : [],

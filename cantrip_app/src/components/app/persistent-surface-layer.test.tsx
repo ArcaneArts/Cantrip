@@ -50,6 +50,42 @@ vi.mock("@/components/workspace/project-tab-bar", () => ({
 }));
 
 describe("persistent surface layer", () => {
+  it("matches Code migration receipts by view identity, not resource identity", async () => {
+    (
+      globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+    ).IS_REACT_ACT_ENVIRONMENT = true;
+    let tree!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      tree = TestRenderer.create(
+        <PersistentSurfaceLayer
+          bindings={{
+            appMode: "ide",
+            openExplorers: [],
+            migratedCodeTabIds: new Set(["migrated-view", "wrong-resource"]),
+            projectSurfaces: [
+              {
+                kind: "code",
+                tabKey: "migrated-view",
+                tabId: "code-resource",
+                member: { tabKind: "code", tabId: "code-resource" },
+                entity: { id: "code-resource" },
+              },
+              {
+                kind: "code",
+                tabKey: "unmigrated-view",
+                tabId: "wrong-resource",
+                member: { tabKind: "code", tabId: "wrong-resource" },
+                entity: { id: "wrong-resource" },
+              },
+            ],
+          }}
+        />,
+      );
+    });
+    expect(surfaceProps.code!.migratedIds).toEqual(new Set(["code-resource"]));
+    await act(async () => tree.unmount());
+  });
+
   it("routes Code browser file requests to the shared project file opener", async () => {
     (
       globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
