@@ -507,7 +507,9 @@ export function genericPaneBody(
     );
   }
   const kind = presentation.activeSurface?.kind;
+  // Persistent owners already fill this host; a second flex body steals width.
   if (
+    kind === "chat" ||
     kind === "code" ||
     kind === "explorer" ||
     kind === "file" ||

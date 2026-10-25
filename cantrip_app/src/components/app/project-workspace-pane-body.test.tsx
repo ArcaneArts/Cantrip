@@ -16,19 +16,27 @@ vi.mock("./project-pane-render-bindings", () => ({
 function presentation(kind?: string): VisibleProjectPane {
   return {
     pane: { id: "pane", region: "center" },
-    activeSurface: kind ? { kind } : undefined,
+    activeSurface: kind ? { kind, entity: { kind: "terminal" } } : undefined,
     surfaces: [],
     gridArea: "center-body",
   } as unknown as VisibleProjectPane;
 }
 
 describe("generic pane body alongside persistent surfaces", () => {
-  it.each([false, true])(
-    "does not consume layout space beside a persistent remote desktop (nested=%s)",
-    (nested) => {
-      expect(
-        genericPaneBody({}, presentation("remote-desktop"), nested),
-      ).toBeNull();
+  it.each(
+    [
+      "chat",
+      "browser",
+      "code",
+      "explorer",
+      "file",
+      "remote-desktop",
+      "terminal",
+    ].flatMap((kind) => [false, true].map((nested) => ({ kind, nested }))),
+  )(
+    "does not consume layout space beside persistent $kind (nested=$nested)",
+    ({ kind, nested }) => {
+      expect(genericPaneBody({}, presentation(kind), nested)).toBeNull();
     },
   );
 
