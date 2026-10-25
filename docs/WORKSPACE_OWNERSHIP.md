@@ -2191,6 +2191,10 @@ native contract CI platforms passed.
 
 ### Checkpoint-protected normal desktop quit
 
+Merged in PR #2252 (`7651506ee`). All six remote checks passed, including
+Linux/macOS/Windows contracts, both native transport jobs, and the Windows
+installation fixture.
+
 Normal confirmed Quit now freezes editor input in every registered native
 renderer and waits for actual protected recovery writes, including inactive
 documents. A failed checkpoint, renderer replacement, or missing acknowledgement
@@ -2222,3 +2226,32 @@ large-file and decomposition checks passed. Initial simultaneous native/app/QA
 runs timed out in Graph status and native loopback tests; unchanged reruns after
 stopping the extra QA fixtures passed, including both full suites. Fixture data
 and synthetic protected drafts were retained; the final fixture exited normally.
+
+### Installation uses the same protected checkpoint
+
+The release updater and cached synthetic-build installer now await the actual
+per-renderer checkpoint before stopping services or beginning installation.
+The shared checkpoint runs off the native main thread. Its owned guard releases
+the renderer freeze and registration fence if preparation or staging fails;
+successful installation retains the fence through exit/restart. A stale guard
+cannot cancel a newer round. Synthetic handoff helpers already wait for process
+exit, so they now launch before services stop: a helper launch error leaves the
+running application usable instead of stranding it with stopped services.
+
+Verification: 131 native Rust tests passed, including stale-round cancellation;
+10 renderer checkpoint tests passed. The release-profile Rust check passed,
+covering the packaged updater branch. Formatting, diff, large-file and app
+decomposition checks passed. Initial transport/QA attempts in the fresh worktree
+failed on missing built JavaScript dependencies; building those dependencies
+allowed unchanged reruns to pass.
+
+Native macOS QA used two unsaved file tabs in separate windows. An injected
+failure cancelled the checkpoint. A five-second successful checkpoint was then
+deliberately dropped without installing anything, releasing both renderers.
+Typing a new line in main succeeded; another checkpoint succeeded. Normal quit
+and fixture restart restored that new line and the other window's unsaved draft,
+with exclusive tab placement and unchanged repository file bytes. The debug-only
+isolated QA menu exposes this checkpoint-and-abort scenario; it never invokes an
+installer. This establishes checkpoint/abort/restart behavior, not a live signed
+update or Windows installer run. Forced termination, mobile acceptance and the
+remaining broad workspace audit are still outstanding.

@@ -476,7 +476,7 @@ pub fn synthetic_build_identity(
 }
 
 #[tauri::command]
-pub fn install_cached_synthetic_build(
+pub async fn install_cached_synthetic_build(
     artifact_id: String,
     request: InstallSyntheticBuildRequest,
     app: AppHandle,
@@ -513,6 +513,11 @@ pub fn install_cached_synthetic_build(
         overlay_digest: artifact.overlay_digest,
         installed_at: Utc::now().to_rfc3339(),
     };
+    let checkpoint = crate::desktop_quit::checkpoint(app.clone())
+        .await
+        .map_err(|message| {
+            SyntheticBuildError::new("synthetic_install_checkpoint_failed", message, true)
+        })?;
     fs::write(
         coordinator.root().join("installs/pending.json"),
         serde_json::to_vec_pretty(&identity).unwrap(),
@@ -520,7 +525,6 @@ pub fn install_cached_synthetic_build(
     .map_err(|error| {
         SyntheticBuildError::new("synthetic_install_stage_failed", error.to_string(), true)
     })?;
-    crate::shutdown_owned_runtime(&app);
     let active_identity = coordinator.root().join("installs/active.json");
     #[cfg(target_os = "macos")]
     launch_install_handoff(&artifact_path, &active_identity, &identity.install_id)?;
@@ -534,6 +538,10 @@ pub fn install_cached_synthetic_build(
             .join("rollback")
             .join(&identity.install_id),
     )?;
+    // Both helpers wait for this process to exit. A launch failure must leave
+    // services alive and release the checkpoint so the user can retry.
+    checkpoint.retain_until_exit();
+    crate::shutdown_owned_runtime(&app);
     let _ = app.emit("cantrip-synthetic-build-install", &identity);
     let exit_app = app.clone();
     tauri::async_runtime::spawn(async move {

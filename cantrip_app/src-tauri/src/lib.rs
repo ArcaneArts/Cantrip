@@ -523,6 +523,13 @@ fn setup_macos_application_menu(app: &tauri::App) -> tauri::Result<()> {
             true,
             None::<&str>,
         )?)?;
+        application_menu.append(&MenuItem::with_id(
+            app,
+            "qa-checkpoint-abort",
+            "QA Checkpoint and Abort Install",
+            true,
+            None::<&str>,
+        )?)?;
     }
     let file_menu = menu
         .items()?
@@ -1134,6 +1141,16 @@ pub fn run() {
                     "close-cantrip-windows" => close_desktop_windows(app),
                     #[cfg(debug_assertions)]
                     "qa-quit-cantrip" => request_quit_confirmation(app),
+                    #[cfg(debug_assertions)]
+                    "qa-checkpoint-abort" => {
+                        let app = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            let result = desktop_quit::checkpoint(app).await;
+                            let protected = result.is_ok();
+                            drop(result);
+                            eprintln!("QA_EVT {}", json!({"event":"installer-checkpoint-aborted","status":"info","protected":protected}));
+                        });
+                    }
                     #[cfg(target_os = "macos")]
                     NEW_AGENT_CHAT_ACTION_ID | NEW_TERMINAL_ACTION_ID => {
                         let _ = app.emit_to("main", APP_ACTION_EVENT, event.id().as_ref());
