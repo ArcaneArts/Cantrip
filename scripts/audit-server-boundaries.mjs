@@ -110,7 +110,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
     "601cfa1ef62b1fe37e7779ace69d80961404ad97ddc2089da85eef315183f9d9",
   applicationRoutes:
-    "17506e8b974f8db337034a2d29f93248839df8cb66a6369f88a9d254e31e3ccb",
+    "c5c5c0741e1ab5c3aa8f1da83c6a7b76a6cf1f6851b56c187e0ca37c74535697",
   clientControlCommands:
     "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
   cliCommands:
@@ -3460,7 +3460,7 @@ function applicationRouteContentClassification(route) {
   if (native) return native;
   const key = `${route.method} ${route.path}`;
   if (
-    /^\/api\/projects\/:projectId\/workspace-layouts\/:workspaceId(?:\/(?:seed|commands))?$/u.test(
+    /^\/api\/projects\/:projectId\/workspace-layouts\/:workspaceId(?:\/(?:seed|commands|import-legacy-files))?$/u.test(
       route.path,
     )
   ) {

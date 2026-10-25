@@ -425,6 +425,12 @@ const fileDocumentExports = [
   "fileDocumentWireListSchema",
   "fileDocumentWireSummarySchema",
 ];
+const legacyFileImportExports = [
+  "importWorkspaceLegacyFiles",
+  "workspaceLegacyFileImportReceiptSchema",
+  "workspaceLegacyFileImportRequestSchema",
+  "workspaceLegacyFileImportSchema",
+];
 
 describe("protocol public surface compatibility", () => {
   it("preserves the root runtime export baseline with reviewed CUA and managed-session additions", () => {
@@ -442,6 +448,7 @@ describe("protocol public surface compatibility", () => {
           !liveTrafficExports.includes(name) &&
           !workspaceOwnershipExports.includes(name) &&
           !fileDocumentExports.includes(name) &&
+          !legacyFileImportExports.includes(name) &&
           !taskAutomaticRetryExports.includes(name) &&
           !taskConversationExports.includes(name) &&
           !chatFileReferencesExports.includes(name) &&
@@ -454,7 +461,10 @@ describe("protocol public surface compatibility", () => {
     expect(
       exportNames.filter((name) => retiredWorkbenchExports.includes(name)),
     ).toEqual([]);
-    expect(exportNames).toHaveLength(2089);
+    expect(exportNames).toHaveLength(2093);
+    expect(
+      exportNames.filter((name) => legacyFileImportExports.includes(name)),
+    ).toEqual(legacyFileImportExports);
     expect(
       exportNames.filter((name) => fileDocumentExports.includes(name)),
     ).toEqual(fileDocumentExports);

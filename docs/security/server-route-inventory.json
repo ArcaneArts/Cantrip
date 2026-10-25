@@ -200,15 +200,15 @@
     "workerCommands": "packages/protocol/src/index.ts"
   },
   "summary": {
-    "application-principal": 474,
+    "application-principal": 475,
     "external-credential": 1,
     "public-authentication": 3,
     "public-bootstrap": 3,
     "worker-control": 38,
-    "http": 512,
+    "http": 513,
     "legacyLocalOwnerRoutes": 0,
-    "requestPrincipalRoutes": 426,
-    "total": 519,
+    "requestPrincipalRoutes": 427,
+    "total": 520,
     "websocket": 7,
     "workerCredentialRoutes": 38,
     "durableTables": 110,
@@ -229,7 +229,7 @@
   },
   "contractSetDigests": {
     "agentOperations": "601cfa1ef62b1fe37e7779ace69d80961404ad97ddc2089da85eef315183f9d9",
-    "applicationRoutes": "17506e8b974f8db337034a2d29f93248839df8cb66a6369f88a9d254e31e3ccb",
+    "applicationRoutes": "c5c5c0741e1ab5c3aa8f1da83c6a7b76a6cf1f6851b56c187e0ca37c74535697",
     "cliCommands": "dac89683226ba9ee6f6211eba252fb0b83a5a022aa9150f107315733a4e44251",
     "clientControlCommands": "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
     "liveResources": "1df67a68c239eaa16bb27951a17becba63fd86bf36c84ca235846157e1b75b1a",
@@ -4757,7 +4757,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/workspace-layouts.ts",
-      "line": 27,
+      "line": 29,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/workspace-layouts/:workspaceId",
@@ -4770,7 +4770,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/workspace-layouts.ts",
-      "line": 60,
+      "line": 62,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/workspace-layouts/:workspaceId/commands",
@@ -4783,7 +4783,20 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/workspace-layouts.ts",
-      "line": 37,
+      "line": 86,
+      "method": "POST",
+      "ownerEvidence": "request-principal",
+      "path": "/api/projects/:projectId/workspace-layouts/:workspaceId/import-legacy-files",
+      "transport": "http",
+      "contentBoundary": {
+        "classification": "endpoint-protected",
+        "rationale": "owner/project-authorized workspace placement and idempotent command receipts; resource identities, revisions and renderer generations are routing metadata; display labels remain opaque endpoint-protected envelopes; no document contents, paths or live buffers"
+      }
+    },
+    {
+      "boundary": "application-principal",
+      "file": "cantrip_server/src/app/routes/workspace-layouts.ts",
+      "line": 39,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/workspace-layouts/:workspaceId/seed",
