@@ -28,6 +28,7 @@ export function CodeView({
   appearance,
   codeTab,
   onHeaderChange,
+  onOpenFile,
   initialTransfer,
   transferStaging,
 }: {
@@ -38,6 +39,7 @@ export function CodeView({
   codeTab: CodeTabSummary;
   onChanged?(): void;
   onHeaderChange?(state: CodeHeaderState | null): void;
+  onOpenFile(tab: CodeTabSummary, entry: ExplorerEntry): void | Promise<void>;
 }) {
   const scope = nativeCodeScope();
   return (
@@ -49,6 +51,7 @@ export function CodeView({
       initialTransfer={initialTransfer}
       transferStaging={transferStaging}
       onHeaderChange={onHeaderChange}
+      onOpenFile={onOpenFile}
     />
   );
 }
@@ -57,6 +60,7 @@ function NativeProjectEditor({
   appearance,
   codeTab,
   onHeaderChange,
+  onOpenFile,
   initialTransfer,
   transferStaging,
 }: {
@@ -66,7 +70,10 @@ function NativeProjectEditor({
   appearance: CodeAppearance;
   codeTab: CodeTabSummary;
   onHeaderChange?(state: CodeHeaderState | null): void;
+  onOpenFile(tab: CodeTabSummary, entry: ExplorerEntry): void | Promise<void>;
 }) {
+  // Retain only restored legacy buffers here. New browser file requests use
+  // workspace-owned document tabs, not another mutable Code selection.
   const [path, setPath] = useState<string | null>(
     initialTransfer?.selectedPath ?? null,
   );
@@ -94,9 +101,10 @@ function NativeProjectEditor({
     [ownerKey],
   );
   useEffect(() => () => setNativeCodeLifecycle(ownerKey, null), [ownerKey]);
-  const onOpenFile = useCallback(
-    (_explorer: ExplorerSummary, entry: ExplorerEntry) => setPath(entry.path),
-    [],
+  const openFile = useCallback(
+    (_explorer: ExplorerSummary, entry: ExplorerEntry) =>
+      onOpenFile(boundTab, entry),
+    [boundTab, onOpenFile],
   );
   const close = useCallback(() => setPath(null), []);
   useEffect(() => {
@@ -127,7 +135,7 @@ function NativeProjectEditor({
         transferStaging={transferStaging}
         onHeaderChange={setHeader}
         onLifecycleChange={onLifecycleChange}
-        onOpenFile={onOpenFile}
+        onOpenFile={openFile}
         transientFile={path ? { path, close } : undefined}
         repositoryGraphAvailable={false}
       />

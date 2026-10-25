@@ -30,6 +30,7 @@ it("unmounts the main Code owner before a detached pane can own it", async () =>
   await act(async () => {
     renderer = TestRenderer.create(
       createElement(PersistentCodeViews, {
+        onOpenFile: vi.fn(),
         activeTab: tab,
         appearance: "dark",
       }),
@@ -40,6 +41,7 @@ it("unmounts the main Code owner before a detached pane can own it", async () =>
   await act(async () => {
     renderer.update(
       createElement(PersistentCodeViews, {
+        onOpenFile: vi.fn(),
         activeTab: tab,
         appearance: "dark",
         excludedIds: new Set([tab.id]),

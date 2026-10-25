@@ -467,6 +467,13 @@ export function PersistentSurfaceLayer({
             })
           }
           onHeaderChange={setCodeHeader}
+          onOpenFile={(codeTab, entry) =>
+            openProjectExplorerFile(
+              codeTab.projectId,
+              codeTab.worktreeId,
+              entry.path,
+            )
+          }
           visiblePlacements={dockCodePlacements}
           excludedIds={excludedPersistentSurfaceIds}
         />
