@@ -22,7 +22,7 @@ export async function handleWorkspaceCommand(
     case "workspace.repositories.discover": {
       const result = await discoverWorkspaceRepositories(
         command.rootPath,
-        { maxDepth: command.depth },
+        { maxDepth: command.depth === -1 ? Infinity : command.depth },
         (progress) => {
           emit({
             type: "workspace.repositories.discovery-progress",

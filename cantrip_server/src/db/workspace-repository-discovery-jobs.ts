@@ -950,8 +950,8 @@ export class WorkspaceRepositoryDiscoveryJobRepository {
     input: { depth?: number; expectedStateRevision?: number } = {},
   ): Promise<WorkspaceRepositoryDiscoveryJobSummary | null> {
     const now = new Date();
-    const depth = input.depth ?? 3;
-    if (!Number.isInteger(depth) || depth < 0 || depth > 16) {
+    const depth = input.depth ?? -1;
+    if (!Number.isInteger(depth) || depth < -1 || depth > 16) {
       throw new WorkspaceRepositoryDiscoveryInvariantError(
         "Workspace repository discovery depth is invalid.",
       );
@@ -1228,11 +1228,6 @@ export class WorkspaceRepositoryDiscoveryJobRepository {
     if (parsedCounts.candidates !== input.candidates.length) {
       throw new WorkspaceRepositoryDiscoveryInvariantError(
         "Repository discovery candidate counts do not match.",
-      );
-    }
-    if (input.candidates.length > 500) {
-      throw new WorkspaceRepositoryDiscoveryInvariantError(
-        "Repository discovery returned too many candidates.",
       );
     }
     const candidates = input.candidates.map((candidate) => ({

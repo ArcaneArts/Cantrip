@@ -617,8 +617,9 @@ export function WorkspaceRepositoryDiscoveryReview({
                     : "No Git repositories found"}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  The scan searched the workspace root through depth{" "}
-                  {snapshot.job.depth}.
+                  {snapshot.job.depth === -1
+                    ? "The scan searched the workspace root and all descendants."
+                    : `The scan searched the workspace root through depth ${snapshot.job.depth}.`}
                 </p>
               </div>
             </div>
@@ -643,7 +644,8 @@ export function WorkspaceRepositoryDiscoveryReview({
             ) : null}
             {snapshot.job.diagnosticCode === "scan-truncated" ? (
               <span className="text-destructive">
-                Results reached the bounded scan limit.
+                This scan was incomplete. Rescan with an updated worker to
+                search the entire workspace.
               </span>
             ) : null}
             {metadata.isError ? (
