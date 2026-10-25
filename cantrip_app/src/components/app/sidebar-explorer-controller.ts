@@ -141,7 +141,6 @@ export function createProjectExplorerFileOpening({
   openOwnedFile,
   queryClient,
   selectedProject,
-  setPopoutError,
   showAppToast,
   worktrees,
 }: {
@@ -152,7 +151,6 @@ export function createProjectExplorerFileOpening({
   ) => Promise<void>;
   queryClient: QueryClient;
   selectedProject: ProjectSummary | undefined;
-  setPopoutError: (error: string | null) => void;
   showAppToast: (toast: AppToastInput) => void;
   worktrees: ProjectWorktreeSummary[] | undefined;
 }) {
@@ -162,7 +160,11 @@ export function createProjectExplorerFileOpening({
     path: string,
   ) => {
     void openOwnedFile(projectId, worktreeId, path).catch((error: unknown) =>
-      setPopoutError(errorText(error)),
+      showAppToast({
+        title: "Could not open file",
+        message: errorText(error),
+        tone: "error",
+      }),
     );
   };
   const openChatFileLink = (
@@ -203,13 +205,19 @@ export function createProjectExplorerFileOpening({
           });
           return;
         }
-        openProjectExplorerFile(
+        return openOwnedFile(
           chat.projectId,
           resolved.worktreeId,
           resolved.path,
         );
       })
-      .catch((error: unknown) => setPopoutError(errorText(error)));
+      .catch((error: unknown) =>
+        showAppToast({
+          title: "Could not open file link",
+          message: errorText(error),
+          tone: "error",
+        }),
+      );
   };
   return { openChatFileLink, openProjectExplorerFile } as const;
 }

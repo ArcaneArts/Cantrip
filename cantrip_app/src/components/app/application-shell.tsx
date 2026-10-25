@@ -2054,7 +2054,6 @@ export function App() {
       },
       queryClient,
       selectedProject,
-      setPopoutError,
       showAppToast,
       worktrees: worktrees.data,
     });

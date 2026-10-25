@@ -8,6 +8,7 @@ import { chromium } from "playwright-core";
 import { startEditorRecoveryFixture } from "./editor-recovery-fixture.mjs";
 import { verifyExplorerEntry } from "./workspace-explorer-entry.mjs";
 import { verifyCommandFileEntry } from "./workspace-command-file-entry.mjs";
+import { verifyHistoricalFileEntry } from "./workspace-historical-file-entry.mjs";
 import {
   seedChatLinkFiles,
   verifyChatFileEntry,
@@ -406,6 +407,7 @@ try {
   await verifyExplorerEntry({ mobile, desktop, record });
   await verifyChatFileEntry({ mobile, desktop, record });
   await verifyCommandFileEntry({ mobile, desktop, record });
+  await verifyHistoricalFileEntry({ mobile, desktop, record });
   await mobile.screenshot({
     path: path.join(fixture.directory, "mobile.png"),
     fullPage: true,

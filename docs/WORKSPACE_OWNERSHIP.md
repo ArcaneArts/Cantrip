@@ -2487,3 +2487,27 @@ no child processes or sockets. Evidence is recorded in
 This does not complete native input delivery, removed-checkout file-entry cases,
 the remaining concurrent-window/recovery matrix, migration/authorization audit,
 or full-repository verification. The overall ownership goal remains incomplete.
+
+### Historical checkout file-entry failures
+
+PR #2262 merged as `d0721b270`; Linux, macOS, and Windows runtime-contract CI
+passed. The next acceptance cycle creates and removes a disposable worktree,
+then clicks relative and absolute historical chat links bound to it. A matching
+file exists in Primary, so unchanged placement verifies that failure does not
+silently substitute the current checkout.
+
+Source inspection and a failing regression exposed an error-reporting gap:
+owned file-open failures were stored as popout-button errors, which mobile does
+not display. File and chat-link openers now report the actual failure through
+the shared toast, and the chat promise chain observes the owned opener's
+rejection. Checkout resolution and server authorization are unchanged.
+
+All 19 desktop/mobile acceptance scenarios passed, including both historical
+link errors and unchanged device layouts. Three focused files passed 40 tests;
+app typecheck, script syntax, and diff checks passed. Fixture cleanup reported
+no surviving processes or sockets. Evidence:
+`.qa/20261025-123955-verify-historical-file-links-aft/fixed-acceptance.log`.
+The initial harness run incorrectly expected a `removed` state; the real
+removal/reconciliation contract uses `missing`, and the assertion was corrected.
+This cycle does not establish native input delivery, concurrent-window recovery,
+or the remaining comprehensive migration/authorization and broad-check audit.

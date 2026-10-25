@@ -75,9 +75,41 @@ describe("owned file lifecycle registration", () => {
 });
 
 describe("project file opening", () => {
+  it("reports a removed checkout failure without retrying the chat's current checkout", async () => {
+    const openOwnedFile = vi.fn(async () => {
+      throw new Error("Project or available worktree not found.");
+    });
+    const showAppToast = vi.fn();
+    const queryClient = new QueryClient();
+    const { openChatFileLink } = createProjectExplorerFileOpening({
+      openOwnedFile,
+      showAppToast,
+      queryClient,
+      selectedProject: project,
+      worktrees: [],
+    });
+    openChatFileLink(
+      { projectId: project.id, activeWorktreeId: "primary" } as ChatSummary,
+      "entry/command-first.rs",
+      "removed-checkout",
+    );
+    await vi.waitFor(() =>
+      expect(showAppToast).toHaveBeenCalledExactlyOnceWith({
+        title: "Could not open file link",
+        message: "Project or available worktree not found.",
+        tone: "error",
+      }),
+    );
+    expect(openOwnedFile).toHaveBeenCalledExactlyOnceWith(
+      project.id,
+      "removed-checkout",
+      "entry/command-first.rs",
+    );
+    queryClient.clear();
+  });
+
   it("opens chat links under the resolved checkout ID through workspace ownership", async () => {
     const openOwnedFile = vi.fn(async () => {});
-    const setPopoutError = vi.fn();
     const showAppToast = vi.fn();
     const queryClient = new QueryClient();
     const worktrees = [
@@ -102,7 +134,6 @@ describe("project file opening", () => {
       openOwnedFile,
       queryClient,
       selectedProject: project,
-      setPopoutError,
       showAppToast,
       worktrees: [],
     });
@@ -126,7 +157,6 @@ describe("project file opening", () => {
       "task",
       "src/app.ts",
     );
-    expect(setPopoutError).not.toHaveBeenCalled();
     expect(showAppToast).not.toHaveBeenCalled();
     expect(chat.activeWorktreeId).toBe("primary");
     queryClient.clear();
@@ -138,7 +168,7 @@ describe("project file opening", () => {
       const openOwnedFile = vi.fn(async () => {
         if (failure) throw new Error("workspace offline");
       });
-      const setPopoutError = vi.fn();
+      const showAppToast = vi.fn();
       const queryClient = {
         invalidateQueries: vi.fn(),
         setQueryData: vi.fn(),
@@ -147,8 +177,7 @@ describe("project file opening", () => {
         openOwnedFile,
         queryClient: queryClient as never,
         selectedProject: undefined,
-        setPopoutError,
-        showAppToast: vi.fn(),
+        showAppToast,
         worktrees: [],
       });
 
@@ -162,8 +191,12 @@ describe("project file opening", () => {
       );
       expect(queryClient.setQueryData).not.toHaveBeenCalled();
       if (failure)
-        expect(setPopoutError).toHaveBeenCalledWith("workspace offline");
-      else expect(setPopoutError).not.toHaveBeenCalled();
+        expect(showAppToast).toHaveBeenCalledExactlyOnceWith({
+          title: "Could not open file",
+          message: "workspace offline",
+          tone: "error",
+        });
+      else expect(showAppToast).not.toHaveBeenCalled();
     },
   );
 });
