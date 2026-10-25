@@ -2278,3 +2278,43 @@ with zero surviving children or sockets. This is representative mobile browser
 acceptance, not a physical iOS/Android or native crash test. Forced termination,
 multi-window concurrency, remaining surface runtime checks, and the complete
 file-entry-point audit remain open; the full goal is not complete.
+
+Merged mobile acceptance in PR #2254 (`7ffdc109f`). Linux/macOS/Windows contract
+checks passed. Windows initially failed removing a process-guard test's temporary
+directory with EBUSY; the unchanged failed-job rerun passed.
+
+### Native abrupt-process recovery acceptance
+
+The isolated native QA runner now supports one explicitly requested restart
+after SIGKILL, separately from its existing normal-exit restart. It reports the
+exact app PID and previous exit result. Three unit tests cover explicit opt-in,
+normal versus abrupt termination, and refusing unrelated errors/shutdown signals.
+No production recovery behavior is changed by this harness increment.
+
+Real macOS validation killed only the resolved fixture app executable while two
+dirty files belonged to separate windows. Both had additional unsaved text typed
+after migration; the main draft was inactive. On restart, main preserved its
+selected browser view and recovered its inactive draft, and the detached file
+reopened with the same pane/tab identities and updated unsaved contents. Opening
+the detached file from main's Explorer focused that window without duplication.
+
+A second popout was then opened alongside the first. Closing its sole clean tab
+closed only that window. Closing the surviving dirty popout returned its tab to
+main with its contents intact; the previously closed tab did not reappear.
+The fixture repository stayed clean with original file bytes. Final app cleanup
+used SIGTERM, not the graceful-quit confirmation path; the launcher exited zero
+and stopped its owned server/worker with zero surviving children or sockets.
+
+This proves the exercised whole-app termination/restart and independent-window
+close paths. It does not yet establish isolated WebView crashes during transfer,
+all concurrent-operation interleavings, remote-desktop input handoff, or every
+file-opening entry point. Those acceptance items and the complete requirement
+audit remain open.
+
+The fresh full `pnpm check` on the preceding production tree passed all 553 app
+files (3,853 tests, three skips) and 263 server files (1,606 tests, 57 skips), but
+failed eight worker tests. An isolated one-worker rerun passed the image-boundary
+test and reproduced seven failures: five external-history reader compatibility
+cases, missing classification for five pinned native request methods, and the
+worktree filesystem-watch assertion. These are unresolved check failures, not a
+green full-repository result; this QA-only cycle does not change those paths.
