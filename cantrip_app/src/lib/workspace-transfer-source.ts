@@ -5,6 +5,7 @@ import type {
 } from "./client-encryption";
 import {
   openWorkspaceTransferWindow,
+  destroyCancelledWorkspaceWindow,
   watchWorkspaceNativeWindow,
 } from "./desktop-popout";
 import type { WorkspaceCommandClient } from "./workspace-command-client";
@@ -32,6 +33,28 @@ function acknowledgement() {
   return { promise, resolve, reject };
 }
 
+/** An observation deadline is not evidence that an owner died. The caller must
+ * still cancel the reservation authoritatively before resuming source inputs. */
+async function waitForAcknowledgement(promise: Promise<void>, phase: string) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () =>
+            reject(
+              new Error(`Workspace transfer timed out waiting for ${phase}.`),
+            ),
+          30_000,
+        );
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function detachWorkspaceViews(
   input: {
     controller: Pick<
@@ -56,6 +79,7 @@ export async function detachWorkspaceViews(
     open: openWorkspaceTransferWindow,
     watch: watchWorkspaceNativeWindow,
     channel: createWorkspaceTransferChannel,
+    destroyCancelled: destroyCancelledWorkspaceWindow,
   },
 ) {
   const { controller } = input;
@@ -208,7 +232,7 @@ export async function detachWorkspaceViews(
           fail(new Error("Workspace transfer destination window closed."));
       },
     );
-    await ready.promise;
+    await waitForAcknowledgement(ready.promise, "destination readiness");
     assertLive();
     const bytes = await lease.capture();
     try {
@@ -217,7 +241,10 @@ export async function detachWorkspaceViews(
     } finally {
       clearSensitiveBytes(bytes);
     }
-    await restored.promise;
+    await waitForAcknowledgement(
+      restored.promise,
+      "destination state restoration",
+    );
     assertLive();
     await lease.retire();
     assertLive();
@@ -241,6 +268,14 @@ export async function detachWorkspaceViews(
             "The previous renderer cannot resume views it no longer owns.",
           );
         await lease?.resume();
+        if (
+          !input.returnToMain &&
+          !controller
+            .getSnapshot()
+            .authoritative.windows.some(({ id }) => id === destinationWindowId)
+        ) {
+          await dependencies.destroyCancelled(destinationWindowId);
+        }
       } catch (recoveryError) {
         throw new AggregateError(
           [error, recoveryError],

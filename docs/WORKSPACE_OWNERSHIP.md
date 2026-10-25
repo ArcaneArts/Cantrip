@@ -1996,3 +1996,27 @@ small API regression test prevents reintroducing the retired exports.
 All 89 tests in eight focused desktop/receiver/owned-file/transfer suites pass;
 the app source typecheck passes. This is unused-path cleanup, not acceptance of
 the still-retained receivers or proof of the remaining native/mobile matrix.
+
+### Bound destination acknowledgements after reproduced HTTP startup failure
+
+Fresh native QA on #2245 moved a Code browser and two unsaved file tabs to a
+popout and back. Both active and inactive drafts survived; main had no duplicate
+placement and disk contents remained unchanged. The representative mobile run
+also passed its ten device-isolation, preview, pin, reload, and selection checks.
+
+Injecting HTTP 503 into the actual destination startup request exposed a hang:
+the destination stayed hidden while source inputs stayed suspended indefinitely.
+The transfer coordinator now waits at most 30 seconds for each application-ready
+and restored-state acknowledgement. Expiry uses the existing authoritative
+cancel path before resuming the retained source lease. Unknown server mutation
+outcomes are not raced or inferred from this observation deadline. A cancelled,
+unowned new destination is destroyed; return-to-main never destroys main or the
+returning source. Main receives the native destroy capability needed for this
+cleanup, and the helper rejects non-workspace labels.
+
+Regression coverage includes missing readiness/restoration, cancellation failure,
+failed return readiness, native cleanup, and a delayed commit beyond the deadline.
+The five focused suites pass 70 tests and the app source typecheck passes.
+Native reproduction of the fix remains required; the prior failing fixture and
+both drafts are retained in workspace-retire-file-producer/.qa. This does not
+close the remaining compatibility, full-suite, or native acceptance requirements.
