@@ -7,6 +7,9 @@ pub(super) fn apply(
     path: &[Value],
     message: Option<&str>,
 ) -> Result<(), ValidationError> {
+    if super::projects::refine(tag, result, path)? {
+        return Ok(());
+    }
     if super::live::refine(tag, result, path, message)? {
         return Ok(());
     }
@@ -22,6 +25,16 @@ pub(super) fn apply(
     };
     let wrapper = &value["passwordWrappedMasterKey"];
     match tag {
+        "model-configuration" => {
+            if value["customSubagentModel"] == Value::Bool(true)
+                && !super::coercion::truthy(value.get("subagentModelId"))
+            {
+                custom(
+                    &["subagentModelId"],
+                    "A custom subagent model must be selected.",
+                );
+            }
+        }
         "canonical-base64url" => {
             let value = value.as_js_string().ok_or(ValidationError::Operation)?;
             let len = value.len();

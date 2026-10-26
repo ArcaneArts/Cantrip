@@ -15,6 +15,7 @@ mod account;
 mod audit;
 mod body;
 mod encryption;
+mod live_socket;
 mod middleware;
 mod sessions;
 mod websocket;
@@ -88,6 +89,7 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(account::routes())
         .merge(workers::routes())
         .merge(worker_socket::routes())
+        .merge(live_socket::routes())
         .fallback(not_found)
         .method_not_allowed_fallback(not_found)
         .layer(axum::middleware::from_fn_with_state(

@@ -16,6 +16,10 @@ use std::{
     collections::HashSet,
     future::Future,
     pin::Pin,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     task::{Context, Poll},
     time::Duration,
 };
@@ -28,40 +32,81 @@ use tungstenite::{
 };
 
 type NativeSocket = WebSocketStream<TokioIo<Upgraded>>;
-pub(super) struct WebSocket(Option<NativeSocket>);
+#[derive(Default)]
+struct Completion(Option<Box<dyn FnOnce() + Send>>);
+impl Drop for Completion {
+    fn drop(&mut self) {
+        if let Some(completed) = self.0.take() {
+            completed();
+        }
+    }
+}
+pub(super) struct WebSocket {
+    socket: Option<NativeSocket>,
+    completed: Completion,
+    force_close: Arc<AtomicBool>,
+    close_deadline: tokio::sync::watch::Sender<Option<tokio::time::Instant>>,
+}
 impl WebSocket {
     pub async fn recv(&mut self) -> Option<Result<Message, Error>> {
         futures::StreamExt::next(self).await
+    }
+    pub fn on_closed(&mut self, completed: impl FnOnce() + Send + 'static) {
+        let previous = std::mem::take(&mut self.completed);
+        self.completed = Completion(Some(Box::new(move || {
+            completed();
+            drop(previous);
+        })));
+    }
+    pub fn force_close_signal(&self) -> Arc<AtomicBool> {
+        self.force_close.clone()
+    }
+    pub fn close_deadline_signal(
+        &self,
+    ) -> tokio::sync::watch::Sender<Option<tokio::time::Instant>> {
+        self.close_deadline.clone()
     }
 }
 impl Stream for WebSocket {
     type Item = Result<Message, Error>;
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        Pin::new(self.0.as_mut().unwrap()).poll_next(cx)
+        Pin::new(self.socket.as_mut().unwrap()).poll_next(cx)
     }
 }
 impl Sink<Message> for WebSocket {
     type Error = Error;
     fn poll_ready(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
-        Pin::new(self.0.as_mut().unwrap()).poll_ready(cx)
+        Pin::new(self.socket.as_mut().unwrap()).poll_ready(cx)
     }
     fn start_send(mut self: Pin<&mut Self>, message: Message) -> Result<(), Error> {
-        Pin::new(self.0.as_mut().unwrap()).start_send(message)
+        Pin::new(self.socket.as_mut().unwrap()).start_send(message)
     }
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
-        Pin::new(self.0.as_mut().unwrap()).poll_flush(cx)
+        Pin::new(self.socket.as_mut().unwrap()).poll_flush(cx)
     }
     fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
-        Pin::new(self.0.as_mut().unwrap()).poll_close(cx)
+        Pin::new(self.socket.as_mut().unwrap()).poll_close(cx)
     }
 }
 impl Drop for WebSocket {
     fn drop(&mut self) {
-        let Some(socket) = self.0.take() else { return };
+        let Some(socket) = self.socket.take() else {
+            return;
+        };
+        let completed = std::mem::take(&mut self.completed);
+        let deadline = self
+            .close_deadline
+            .borrow()
+            .unwrap_or_else(|| tokio::time::Instant::now() + Duration::from_secs(30));
+        if self.force_close.load(Ordering::Acquire) {
+            drop(socket);
+            drop(completed);
+            return;
+        }
         if let Ok(runtime) = tokio::runtime::Handle::try_current() {
             runtime.spawn(async move {
                 let mut socket = socket;
-                let _ = tokio::time::timeout(Duration::from_secs(30), async {
+                let _ = tokio::time::timeout_at(deadline, async {
                     // Reading a client Close queues its automatic ACK even
                     // when a subsequent explicit Close cannot be written.
                     let _ = socket.flush().await;
@@ -73,7 +118,11 @@ impl Drop for WebSocket {
                     while io.read(&mut discard).await.is_ok_and(|bytes| bytes > 0) {}
                 })
                 .await;
+                drop(completed);
             });
+        } else {
+            drop(socket);
+            drop(completed);
         }
     }
 }
@@ -142,14 +191,19 @@ where
             protocols.push(protocol.to_owned());
         }
     }
-    let selected = [
-        "cantrip-worker-auth-ready-v2",
-        "cantrip-worker-auth-ready-v1",
-    ]
-    .into_iter()
-    .find(|name| protocols.iter().any(|s| s == name))
-    .map(String::from)
-    .or_else(|| protocols.first().cloned());
+    let worker_route = request.uri().path() == "/api/internal/workers/connect";
+    let selected = worker_route
+        .then(|| {
+            [
+                "cantrip-worker-auth-ready-v2",
+                "cantrip-worker-auth-ready-v1",
+            ]
+            .into_iter()
+            .find(|name| protocols.iter().any(|s| s == name))
+            .map(String::from)
+        })
+        .flatten()
+        .or_else(|| protocols.first().cloned());
     let on_upgrade = hyper::upgrade::on(&mut request);
     let mut response = Response::builder()
         .status(StatusCode::SWITCHING_PROTOCOLS)
@@ -170,7 +224,16 @@ where
             let socket =
                 WebSocketStream::from_raw_socket(TokioIo::new(io), Role::Server, Some(config))
                     .await;
-            callback(WebSocket(Some(socket)), selected).await;
+            callback(
+                WebSocket {
+                    socket: Some(socket),
+                    completed: Completion::default(),
+                    force_close: Arc::new(AtomicBool::new(false)),
+                    close_deadline: tokio::sync::watch::channel(None).0,
+                },
+                selected,
+            )
+            .await;
         }
     });
     let mut response = response.body(Body::empty()).unwrap();

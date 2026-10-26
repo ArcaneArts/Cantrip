@@ -50,6 +50,9 @@ export const contractRoots = [
   "appLiveServerMessageSchema",
   "appLiveEventPayloadSchema",
   "clientControlRequestSchema",
+  "projectWireSummarySchema",
+  "projectWireListSchema",
+  "modelConfigurationSchema",
 ];
 
 const refinements = new Map([
@@ -100,6 +103,11 @@ registerChecks(protocol.clientNotificationOpaqueSchema, [
   "live-notification-domain",
 ]);
 registerChecks(protocol.appLiveEventPayloadSchema, ["live-payload-bytes"]);
+registerChecks(protocol.projectWireSummarySchema, ["project-wire-summary"]);
+registerChecks(protocol.encryptedPrivateDisplayLabelSchema, [
+  "private-label-envelope",
+]);
+registerChecks(protocol.modelConfigurationSchema, ["model-configuration"]);
 const transforms = new Map([
   [protocol.appLiveEventPayloadSchema._zod.def.out, "live-json-object"],
 ]);
@@ -207,6 +215,8 @@ export function buildContractManifest() {
       }
       if (!allowedChecks.has(c.check))
         throw new Error(`Unimplemented native check ${c.check}: ${where}`);
+      if (c.format === "url" && (c.normalize || c.hostname || c.protocol))
+        throw new Error(`Unimplemented native URL options: ${where}`);
       const result = {};
       for (const key of [
         "check",

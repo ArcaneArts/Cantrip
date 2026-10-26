@@ -159,7 +159,116 @@ const credentialSummary = {
 };
 const credential = `ctwk_${"A".repeat(43)}`;
 const code = `ctwl_${"A".repeat(32)}`;
+export const projectLabel = {
+  classification: { recordKind: "project" },
+  protectedLabel: {
+    formatVersion: 1,
+    keyRevision: 1,
+    envelope: {
+      version: 1,
+      algorithm: "AES-256-GCM",
+      keyRevision: 1,
+      nonce: bytes(12),
+      ciphertext: bytes(32),
+    },
+  },
+};
+export const projectReplica = {
+  id: "source-one",
+  projectId: "project-one",
+  sourceKind: "git",
+  workerId: "fixture-worker",
+  workerName: "Fixture worker",
+  workerOnline: true,
+  path: "/fixture/project",
+  displayPath: "/fixture/project",
+  placementMode: "managed",
+  ownershipKind: "cantrip",
+  requestedPath: null,
+  linkPath: null,
+  repositoryFingerprint: null,
+  primaryWorktreeId: "worktree-one",
+  branch: "main",
+  head: "abcdef",
+  dirty: false,
+  ready: true,
+  worktreeCount: 1,
+  lastObservedAt: timestamp,
+  createdAt: timestamp,
+  updatedAt: timestamp,
+};
+export const projectWire = {
+  id: "project-one",
+  nameProtection: projectLabel,
+  position: 0,
+  originKind: "github",
+  folderManagement: null,
+  capabilities: {
+    git: true,
+    github: true,
+    worktrees: true,
+    replicas: true,
+    relocation: true,
+  },
+  setupStatus: "ready",
+  setupError: null,
+  worktreePolicy: "agent-managed",
+  preferredWorkerId: null,
+  github: null,
+  source: null,
+  replicas: [],
+  createdAt: timestamp,
+  updatedAt: timestamp,
+};
 export const securityFixtures = {
+  modelConfigurationSchema: [
+    { modelId: null },
+    {
+      modelId: "fixture-model",
+      reasoningEffort: "medium",
+      customSubagentModel: true,
+      subagentModelId: "fixture-subagent",
+      subagentReasoningEffort: "high",
+    },
+  ],
+  projectWireSummarySchema: [
+    projectWire,
+    {
+      ...projectWire,
+      github: {
+        repositoryId: "repository",
+        nameWithOwner: "ArcaneArts/Cantrip",
+        url: "https://github.com/ArcaneArts/Cantrip",
+      },
+      source: projectReplica,
+      replicas: [projectReplica],
+    },
+    {
+      ...projectWire,
+      originKind: "managed-folder",
+      folderManagement: "external",
+      capabilities: {
+        git: false,
+        github: false,
+        worktrees: false,
+        replicas: false,
+        relocation: false,
+      },
+    },
+    {
+      ...projectWire,
+      originKind: "managed-folder",
+      folderManagement: "managed",
+      capabilities: {
+        git: true,
+        github: false,
+        worktrees: false,
+        replicas: true,
+        relocation: true,
+      },
+    },
+  ],
+  projectWireListSchema: [[], [projectWire]],
   appLiveEventPayloadSchema: [
     {},
     { nested: { values: [null, true, 42, "🦀\udfff"] } },

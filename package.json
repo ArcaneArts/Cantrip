@@ -12,6 +12,7 @@
     "server:rust:test": "pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol -r build && node scripts/server-rust/cargo.mjs test",
     "server:rust:compatibility": "pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol -r build && node scripts/server-rust/compatibility.mjs",
     "server:rust:auth:compatibility": "pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol -r build && node --import tsx scripts/server-rust/auth-compatibility.mjs",
+    "server:rust:live:compatibility": "pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol --filter @cantrip/crypto --filter @cantrip/glitch -r build && node --import tsx scripts/server-rust/live-compatibility.mjs",
     "codex:sync": "node scripts/cantrip-codex/sync-upstream.mjs",
     "codex:verify": "node scripts/cantrip-codex/verify-upstream.mjs",
     "codex:verify:runtime": "node scripts/cantrip-codex/verify-built-runtime.mjs",

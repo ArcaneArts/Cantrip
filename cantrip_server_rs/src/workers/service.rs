@@ -8,7 +8,7 @@ use anyhow::{Context, Result};
 use serde_json::json;
 use std::{
     collections::{HashMap, HashSet},
-    sync::{Arc, Mutex, RwLock, atomic::AtomicUsize},
+    sync::{Arc, Mutex, OnceLock, RwLock, atomic::AtomicUsize},
     time::Duration,
 };
 use tokio::{
@@ -22,6 +22,7 @@ pub struct Invalidation {
     pub resource: &'static str,
     pub entity: String,
 }
+type InvalidationSink = Arc<dyn Fn(&Invalidation) + Send + Sync>;
 pub struct RequestLimiters {
     api: SlidingWindow,
     pairing: SlidingWindow,
@@ -32,6 +33,7 @@ pub struct WorkerService {
     pub repository: WorkerRepository,
     pub bridge: Arc<WorkerBridge>,
     pub invalidations: broadcast::Sender<Invalidation>,
+    publication: OnceLock<InvalidationSink>,
     pub revoked: RwLock<HashSet<String>>,
     pub handshakes: Arc<Semaphore>,
     pub buffered_authentication_bytes: &'static AtomicUsize,
@@ -47,6 +49,7 @@ impl WorkerService {
             repository: WorkerRepository::new(database),
             bridge: WorkerBridge::new(Duration::from_secs(15)),
             invalidations: broadcast::channel(4096).0,
+            publication: OnceLock::new(),
             revoked: RwLock::new(HashSet::new()),
             handshakes: Arc::new(Semaphore::new(32)),
             buffered_authentication_bytes: {
@@ -66,11 +69,21 @@ impl WorkerService {
         })
     }
     pub fn invalidate(&self, owner: &str, resource: &'static str, id: &str) {
-        let _ = self.invalidations.send(Invalidation {
+        let event = Invalidation {
             owner: owner.into(),
             resource,
             entity: id.into(),
-        });
+        };
+        if let Some(publish) = self.publication.get() {
+            publish(&event);
+        }
+        let _ = self.invalidations.send(event);
+    }
+    pub fn on_invalidation(&self, publish: InvalidationSink) {
+        assert!(
+            self.publication.set(publish).is_ok(),
+            "Worker publication initialized twice"
+        );
     }
     pub fn forget_presence(&self, id: &str) {
         self.presence.lock().unwrap().remove(id);

@@ -2,6 +2,7 @@
 //! by the development exporter/oracle; requests execute these Rust operations.
 pub(crate) mod coercion;
 pub(crate) mod live;
+mod projects;
 mod refinements;
 pub mod value;
 pub use value::{JsString, Value};
@@ -662,6 +663,25 @@ impl Contracts {
                     .as_ref()
                     .and_then(Value::as_js_string)
                     .expect("validated string");
+                if check.format == "url" {
+                    let trimmed = value.trim();
+                    // Zod trims its output, while the URL constructor accepts
+                    // a USVString. Preserve the original UTF-16 in the output.
+                    if url::Url::parse(&trimmed.lossy()).is_ok() {
+                        result.value = Some(Value::String(trimmed));
+                    } else {
+                        result.issue(
+                            json!({"code":"invalid_format","format":"url"}),
+                            path,
+                            check
+                                .message
+                                .clone()
+                                .unwrap_or_else(|| "Invalid URL".into()),
+                            check.abort,
+                        );
+                    }
+                    return Ok(());
+                }
                 if check
                     .compiled
                     .as_ref()

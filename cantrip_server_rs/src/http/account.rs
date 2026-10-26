@@ -75,14 +75,18 @@ async fn execute(
         .context("authenticated account owner")?;
     let repository = &service.repository;
     if path == "/api/account/sessions" {
-        return output(
-            "accountSessionListSchema",
-            json!(
-                repository
-                    .list_sessions(&user.id, ctx.principal.session_id.as_deref())
-                    .await?
-            ),
-        );
+        let mut sessions = repository
+            .list_sessions(&user.id, ctx.principal.session_id.as_deref())
+            .await?;
+        for session in &mut sessions {
+            if session["id"]
+                .as_str()
+                .is_some_and(|id| service.live.sessions.connected(id))
+            {
+                session["connected"] = json!(true);
+            }
+        }
+        return output("accountSessionListSchema", json!(sessions));
     }
     if path.starts_with("/api/admin/") && !matches!(user.role, UserRole::Owner | UserRole::Admin) {
         return Ok(error(403, "Administrator access is required."));

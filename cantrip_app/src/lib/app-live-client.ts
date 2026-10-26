@@ -118,7 +118,14 @@ function browserWebSocket(url: string): AppLiveClientSocket {
     get readyState() {
       return socket.readyState;
     },
-    close: (code, reason) => socket.close(code, reason),
+    // Browsers permit 1000 or application codes 3000..4999 when initiating
+    // Close. Keep internal protocol reasons while using their private-use
+    // counterparts on this browser-owned transport (e.g. 1012 -> 4012).
+    close: (code, reason) =>
+      socket.close(
+        code !== undefined && code > 1000 && code < 2000 ? code + 3000 : code,
+        reason,
+      ),
     onClose: (listener) =>
       socket.addEventListener("close", (event) =>
         listener({ code: event.code, reason: event.reason }),

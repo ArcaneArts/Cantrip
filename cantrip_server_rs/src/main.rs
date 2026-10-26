@@ -154,6 +154,7 @@ async fn main() -> Result<()> {
                 let _ = closed.send(());
             });
         }
+        let shutdown_service = service.clone();
         axum::serve(
             listener,
             http::router(service.clone())
@@ -161,9 +162,12 @@ async fn main() -> Result<()> {
         )
         .with_graceful_shutdown(async move {
             tokio::select! { _=shutdown()=>{}, _=receiver, if watch_parent=>{} }
-            service.workers.close();
+            shutdown_service.live.transports.pre_close();
+            shutdown_service.live.close();
+            shutdown_service.workers.close();
         })
         .await?;
+        service.live.transports.drained().await;
     }
     database.close().await?;
     if let Some(runtime) = managed {

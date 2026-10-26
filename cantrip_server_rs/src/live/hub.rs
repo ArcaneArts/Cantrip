@@ -669,8 +669,11 @@ impl Hub {
         )
     }
     pub fn revoke_session(&self, session: &str) -> usize {
+        self.revoke_optional_session(Some(session))
+    }
+    pub fn revoke_optional_session(&self, session: Option<&str>) -> usize {
         self.revoke(
-            |c| c.context.session.as_deref() == Some(session),
+            |c| c.context.session.as_deref() == session,
             "Session was revoked",
         )
     }

@@ -67,6 +67,7 @@ pub struct AuthService {
     pub registration: Mutex<()>,
     pub revocations: broadcast::Sender<Revocation>,
     pub workers: Arc<crate::workers::service::WorkerService>,
+    pub live: Arc<crate::live::LiveService>,
     rate_limit: Mutex<AuthRateLimiter>,
 }
 
@@ -75,7 +76,7 @@ impl AuthService {
         database: Arc<Database>,
         config: Arc<ServerConfig>,
     ) -> Result<Arc<Self>> {
-        let repository = AuthRepository::new(database);
+        let repository = AuthRepository::new(database.clone());
         // The existing connector always provisions the retained local identity,
         // including on an account server; only its principal is mode-dependent.
         let local = repository.local_user().await?;
@@ -98,6 +99,13 @@ impl AuthService {
         let rate_limit = Mutex::new(AuthRateLimiter::new(config.auth_rate_limit as usize));
         let workers =
             crate::workers::service::WorkerService::new(repository.database.clone(), &config);
+        let live = crate::live::LiveService::new(database, &config)?;
+        let publisher = Arc::downgrade(&live);
+        workers.on_invalidation(Arc::new(move |event| {
+            if let Some(live) = publisher.upgrade() {
+                live.invalidate(&event.owner, event.resource, &event.entity);
+            }
+        }));
         Ok(Arc::new(Self {
             config,
             repository,
@@ -108,6 +116,7 @@ impl AuthService {
             normalized_admin,
             rate_limit,
             workers,
+            live,
             registration: Mutex::new(()),
             revocations: broadcast::channel(256).0,
         }))
@@ -193,11 +202,17 @@ impl AuthService {
     }
     pub async fn revoke(&self, id: &str, owner: bool, reason: &str) -> Result<usize> {
         let count = self.repository.revoke(id, owner, reason).await?;
-        let _ = self.revocations.send(if owner {
+        self.revoke_connections(if owner {
             Revocation::Owner(id.into())
         } else {
             Revocation::Session(Some(id.into()))
         });
         Ok(count)
+    }
+    pub fn revoke_connections(&self, revocation: Revocation) {
+        // Complete local socket side effects before the logout/revoke response.
+        // The broadcast remains available to other asynchronous consumers.
+        self.live.revoke(&revocation);
+        let _ = self.revocations.send(revocation);
     }
 }
