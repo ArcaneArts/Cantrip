@@ -271,3 +271,46 @@ executes the same tests; configured checks are not passing evidence.
 Worker enrollment/control, live transports, account usage and other resource
 and execution domains, usable legacy conversion/rollback, desktop packaging and
 Winterhold delivery remain required work.
+
+## Native JSON lifetime and authentication boundaries
+
+An actual Node/Rust comparison found that a roughly 4 KiB request containing
+2,048 nested arrays aborted the native process with a stack overflow over both
+HTTP and App Live. Node accepted the HTTP enrollment request after stripping its
+unknown field and returned the existing invalid-message error over Live, while
+remaining healthy. The native parser previously reparsed each subtree through a
+fresh Serde visitor, and tree clone/drop/serialization also recursed.
+
+The native wire representation now validates syntax once with `RawValue`, then
+constructs the tree iteratively. Clone, equality, serialization, destruction and
+HTTP poison-key scanning also use explicit stacks. It retains UTF-16 strings,
+JavaScript numbers, duplicate-key replacement and ECMAScript property ordering;
+the existing transport byte limits and endpoint schemas still decide admission.
+No new nesting rejection limit substitutes for parsing valid inputs.
+
+Authentication requests now use the same exported native protocol contracts as
+the other ported APIs. They retain raw UTF-16 through validation, including issue
+keys/messages, and convert explicitly to UTF-8 at password hashing and database
+text boundaries. This removes the recursive conversion of an entire unvalidated
+request into `serde_json::Value` and the separate handwritten auth validator.
+
+The socket suite compares 52 HTTP and 27 WebSocket cases per backend, including
+20,000-level accepted unknown fields, deep wrong types, truncated JSON, poison
+keys, escapes, overflowing numbers, duplicate keys and lone UTF-16 units. It
+checks subsequent health and usable Live initialization/ping/close. A native
+test uses a 256 KiB thread stack for 32,768 nested arrays and 12,000 alternating
+object/array pairs, including clone, equality, stringify, Serde output and drop.
+These tests and all three storage socket profiles passed locally on macOS arm64;
+the changed implementation still requires its own supported-platform CI results.
+
+```sh
+pnpm server:rust:json:compatibility --report .qa/rust-server/json-pglite-http.json
+pnpm server:rust:json:compatibility --database bundled-postgres --report .qa/rust-server/json-bundled-http.json
+pnpm server:rust:json:compatibility --database postgres --report .qa/rust-server/json-external-http.json
+```
+
+Supply `CANTRIP_TEST_POSTGRES_BIN_DIR` for disposable PostgreSQL fixtures. Live
+parser cases run before enrollment mutations: the latter still lack some
+resource-domain publications, which a retained comparison exposed as divergent
+Live cursors. Remaining schemas, coercion/refinement boundaries, authenticated
+serialization, domain publishers and complete product acceptance remain required.

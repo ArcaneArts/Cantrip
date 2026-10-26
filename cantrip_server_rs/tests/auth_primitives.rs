@@ -352,11 +352,18 @@ fn request_validation_matches_the_actual_protocol_schemas() -> Result<()> {
     }
     let expected = oracle(&json!(requests))?;
     for (index, (request, expected)) in requests.iter().zip(expected).enumerate() {
-        let actual =
-            match validation::validate(request["kind"].as_str().unwrap(), request.get("body")) {
-                Ok(value) => json!({"ok":value}),
-                Err(value) => value,
-            };
+        let body = request
+            .get("body")
+            .map(cantrip_server::wire::Value::from_serialize);
+        let actual = match validation::validate(request["kind"].as_str().unwrap(), body.as_ref()) {
+            Ok(value) => json!({"ok": value}),
+            Err(cantrip_server::wire::ValidationError::Invalid(issues)) => {
+                json!({"error": "Invalid request body", "issues": issues})
+            }
+            Err(cantrip_server::wire::ValidationError::Operation) => {
+                anyhow::bail!("Unexpected validation operation failure in case {index}")
+            }
+        };
         assert_eq!(actual, expected, "case {index}: {request}");
     }
     println!("{} Node/Rust request-schema cases matched", requests.len());

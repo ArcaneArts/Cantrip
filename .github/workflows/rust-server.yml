@@ -111,6 +111,12 @@ jobs:
         run: node scripts/server-rust/cargo.mjs test -- --nocapture
       - name: Node and Rust over real HTTP connections
         run: node scripts/server-rust/compatibility.mjs --report .qa/rust-server/foundation-http.json
+      - name: Deep and malformed JSON with native PGlite
+        run: node --import tsx scripts/server-rust/json-compatibility.mjs --report .qa/rust-server/json-pglite-http.json
+      - name: Deep and malformed JSON with private PostgreSQL
+        run: node --import tsx scripts/server-rust/json-compatibility.mjs --database bundled-postgres --report .qa/rust-server/json-bundled-http.json
+      - name: Deep and malformed JSON with external PostgreSQL
+        run: node --import tsx scripts/server-rust/json-compatibility.mjs --database postgres --report .qa/rust-server/json-external-http.json
       - name: Actual Node and Rust Live hub protocol, replay and control oracle
         run: node --import tsx scripts/server-rust/live-hub-oracle.mjs --report .qa/rust-server/live-hub-oracle.json
       - name: Full project mapping with native PGlite

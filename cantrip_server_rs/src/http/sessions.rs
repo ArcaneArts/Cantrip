@@ -1,5 +1,5 @@
 use super::{
-    body::parse as body,
+    body::parse_js as body,
     json_response,
     middleware::{self, Context, cookies, value},
 };
@@ -11,6 +11,7 @@ use crate::{
         validation,
     },
     config::AuthMode,
+    wire::{ValidationError, Value as WireValue},
 };
 use anyhow::Result;
 use axum::{
@@ -135,7 +136,7 @@ async fn execute(
     ctx: &Context,
     path: &str,
     headers: &axum::http::HeaderMap,
-    body: Option<&Value>,
+    body: Option<&WireValue>,
 ) -> Result<Response> {
     let mode = service.config.auth_mode;
     if path == "/api/auth/session" {
@@ -177,10 +178,19 @@ async fn execute(
     let input = if let Some(kind) = kind {
         match validation::validate(kind, body) {
             Ok(value) => value,
-            Err(body) => return Ok(response(400, body)),
+            Err(ValidationError::Invalid(issues)) => {
+                return Ok(json_response(
+                    StatusCode::BAD_REQUEST,
+                    WireValue::object([
+                        ("error", WireValue::String("Invalid request body".into())),
+                        ("issues", WireValue::Array(issues)),
+                    ]),
+                ));
+            }
+            Err(ValidationError::Operation) => anyhow::bail!("Request validation failed."),
         }
     } else {
-        Value::Null
+        WireValue::Null
     };
     match path {
         "/api/auth/register" => {
@@ -228,7 +238,13 @@ async fn execute(
             let created = async {
                 let hash = service
                     .passwords
-                    .hash(input["password"].as_str().unwrap().into())
+                    .hash(
+                        input["password"]
+                            .as_js_string()
+                            .unwrap()
+                            .lossy()
+                            .into_owned(),
+                    )
                     .await?;
                 let role = if first {
                     "owner"
@@ -240,7 +256,7 @@ async fn execute(
                 let user = service
                     .repository
                     .create_account(
-                        input["displayName"].as_str().unwrap(),
+                        &input["displayName"].as_js_string().unwrap().lossy(),
                         crate::text::trim(email),
                         &normalized,
                         &hash,
@@ -281,7 +297,7 @@ async fn execute(
         "/api/auth/login" => {
             let identity = input
                 .get("email")
-                .and_then(Value::as_str)
+                .and_then(WireValue::as_str)
                 .map(crypto::normalize_email)
                 .unwrap_or("single-user".into());
             if let Some(response) = limited(service, ctx, "login", &identity).await {
@@ -320,7 +336,14 @@ async fn execute(
                 .map_or(crypto::DUMMY_PASSWORD_HASH, |(_, hash)| hash.as_str());
             let valid = service
                 .passwords
-                .verify(hash.into(), input["password"].as_str().unwrap().into())
+                .verify(
+                    hash.into(),
+                    input["password"]
+                        .as_js_string()
+                        .unwrap()
+                        .lossy()
+                        .into_owned(),
+                )
                 .await;
             if !valid || credential.is_none() {
                 audit(
@@ -382,7 +405,14 @@ async fn execute(
             };
             if !service
                 .passwords
-                .verify(hash.into(), input["password"].as_str().unwrap().into())
+                .verify(
+                    hash.into(),
+                    input["password"]
+                        .as_js_string()
+                        .unwrap()
+                        .lossy()
+                        .into_owned(),
+                )
                 .await
             {
                 audit(
