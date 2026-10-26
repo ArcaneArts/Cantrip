@@ -82,7 +82,12 @@ export class HttpFixture {
   async close() {
     const server = this.server;
     this.server = undefined;
-    await server?.close();
+    try {
+      await server?.close();
+    } catch (error) {
+      error.message = `${this.name}/${this.kind}: ${error.message}`;
+      throw error;
+    }
   }
   normalize(value, key = "") {
     if (Array.isArray(value)) return value.map((v) => this.normalize(v));

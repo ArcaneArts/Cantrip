@@ -6,6 +6,7 @@ import { createRequire } from "node:module";
 import { mkdtemp, mkdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { chromium } from "playwright-core";
 import { WorkerConnection } from "../../cantrip_worker/src/transport.ts";
@@ -32,7 +33,9 @@ const databaseMode = option("--database") ?? "pglite",
 assert.ok(["pglite", "bundled-postgres", "postgres"].includes(databaseMode));
 const appRoot = path.join(repositoryRoot, "cantrip_app");
 const appRequire = createRequire(path.join(appRoot, "package.json"));
-const { createServer } = await import(appRequire.resolve("vite"));
+const { createServer } = await import(
+  pathToFileURL(appRequire.resolve("vite")).href
+);
 const executable =
   process.env.CANTRIP_RUST_SERVER_BINARY ?? (await buildRustServer());
 const root = await mkdtemp(path.join(tmpdir(), "cantrip-worker-client-"));

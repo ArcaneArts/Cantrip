@@ -38,6 +38,24 @@ const hash = await hashPassword(password),
     profiles: [],
   };
 let postgresOwner, failure;
+function describeFailure(error) {
+  return {
+    message: error.message,
+    actual: error.actual,
+    expected: error.expected,
+    ...(error instanceof AggregateError
+      ? { errors: [...error.errors].map(describeFailure) }
+      : {}),
+  };
+}
+function cleanupFailure(primary, errors) {
+  return new AggregateError(
+    [...(primary ? [primary] : []), ...errors],
+    primary
+      ? `Worker scenario and cleanup failed: ${primary.message}`
+      : "Worker fixture cleanup",
+  );
+}
 const principal = "33333333-3333-4333-8333-333333333333",
   replacementPrincipal = "88888888-8888-4888-8888-888888888888";
 const profiles = [
@@ -91,6 +109,7 @@ try {
       return actual;
     }
     const mutate = { csrf: true };
+    let profileFailure;
     const credentials = (f) => f.records.get("paired").credential;
     const workerRequest = (f, credential = credentials(f)) => ({
       authorization: `Bearer ${credential}`,
@@ -580,14 +599,20 @@ try {
           );
         }
         if (databaseMode === "postgres" && profile.name === "development") {
-          const expected = await workerAuthenticationFaults(pair[0]),
-            actual = await workerAuthenticationFaults(pair[1]);
+          const progress = (result.authenticationFaults = {
+            reference: { cases: [] },
+            actual: { cases: [] },
+          });
+          const expected = await workerAuthenticationFaults(
+              pair[0],
+              progress.reference,
+            ),
+            actual = await workerAuthenticationFaults(pair[1], progress.actual);
           assert.deepEqual(
             actual,
             expected,
             "Worker authentication database-fault compatibility",
           );
-          result.authenticationFaults = actual;
         }
         const expected = await workerSocketFlow(pair[0]),
           actual = await workerSocketFlow(pair[1]);
@@ -604,25 +629,31 @@ try {
       }
       await visit("worker audit", "GET", "/api/account/audit-events?limit=200");
       result.passed = true;
+    } catch (error) {
+      profileFailure = error;
+      throw error;
     } finally {
       const results = await Promise.allSettled(pair.map((f) => f.close()));
       const errors = results
         .filter((r) => r.status === "rejected")
         .map((r) => r.reason);
-      if (errors.length)
-        throw new AggregateError(errors, "Worker fixture cleanup");
+      if (errors.length) throw cleanupFailure(profileFailure, errors);
     }
   }
 } catch (error) {
   failure = error;
-  report.failure = {
-    message: error.message,
-    actual: error.actual,
-    expected: error.expected,
-  };
 } finally {
-  await postgresOwner?.close();
-  await rm(root, { recursive: true, force: true });
+  try {
+    await postgresOwner?.close();
+  } catch (error) {
+    failure = cleanupFailure(failure, [error]);
+  }
+  try {
+    await rm(root, { recursive: true, force: true });
+  } catch (error) {
+    failure = cleanupFailure(failure, [error]);
+  }
+  if (failure) report.failure = describeFailure(failure);
   if (reportPath) {
     await mkdir(path.dirname(path.resolve(reportPath)), { recursive: true });
     await writeFile(reportPath, JSON.stringify(report, null, 2) + "\n");

@@ -57,6 +57,14 @@ client closure. Fault cases restart the fixture against its retained database
 between cases so unfinished owner lookups from one case cannot consume the next
 case's handshake slots.
 
+Reference-server shutdown drains worker authentication handlers, including those
+whose sockets have already closed, before closing the database pool. Ending the
+postgres-js pool while authentication transactions are queued can leave reopened
+connections alive after `end()` resolves. Shutdown regression tests cover both
+credential and owner lookup completion, including a failed owner lookup. Harness
+failures retain fixture identity, completed fault cases and primary errors when
+cleanup also fails; the shutdown and authentication deadlines remain unchanged.
+
 The browser suite uses real Chromium with the unchanged app API modules and the
 unchanged worker enrollment, heartbeat, `WorkerConnection` and credential store.
 Its controlled handler implements credential rotation and rejects other domain

@@ -121,7 +121,8 @@ export function installInternalWorkerWebsocketRoute(
     synchronizeTerminalServicesForWorker,
     workspaceRepositoryDiscoveryJobExecutor,
   }: InternalWorkerWebsocketRouteDependencies,
-): void {
+): () => Promise<void> {
+  const pendingAuthentications = new Set<Promise<void>>();
   app.get<{
     Querystring: { connectionGeneration?: string; workerId?: string };
   }>(
@@ -136,6 +137,11 @@ export function installInternalWorkerWebsocketRoute(
         return;
       }
       const workerSocket = new BufferedWorkerSocket(socket);
+      let completeAuthentication!: () => void;
+      const authentication = new Promise<void>((resolve) => {
+        completeAuthentication = resolve;
+      });
+      pendingAuthentications.add(authentication);
       const authenticationTimeout = setTimeout(() => {
         workerSocket.close(1013, "Worker authentication timed out");
       }, WORKER_HANDSHAKE_TIMEOUT_MS);
@@ -436,7 +442,12 @@ export function installInternalWorkerWebsocketRoute(
         clearTimeout(authenticationTimeout);
         workerSocket.disposePending();
         releasePendingHandshake();
+        pendingAuthentications.delete(authentication);
+        completeAuthentication();
       }
     },
   );
+  return async () => {
+    await Promise.all(pendingAuthentications);
+  };
 }
