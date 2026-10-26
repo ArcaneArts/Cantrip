@@ -156,10 +156,12 @@ async fn main() -> Result<()> {
         }
         axum::serve(
             listener,
-            http::router(service).into_make_service_with_connect_info::<std::net::SocketAddr>(),
+            http::router(service.clone())
+                .into_make_service_with_connect_info::<std::net::SocketAddr>(),
         )
         .with_graceful_shutdown(async move {
             tokio::select! { _=shutdown()=>{}, _=receiver, if watch_parent=>{} }
+            service.workers.close();
         })
         .await?;
     }

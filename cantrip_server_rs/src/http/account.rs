@@ -43,7 +43,7 @@ fn input(schema: &str, value: Option<&Value>) -> Result<Result<Value, Response>>
 }
 // find-my-way's query parser accumulates duplicate names in arrays. Axum's
 // ordinary Query extractor rejects those before the protocol can coerce them.
-fn query(uri: &axum::http::Uri) -> Value {
+pub(super) fn query(uri: &axum::http::Uri) -> Value {
     let mut pairs = crate::wire::value::Object::new();
     for (key, value) in url::form_urlencoded::parse(uri.query().unwrap_or("").as_bytes()) {
         let key = key.into_owned();

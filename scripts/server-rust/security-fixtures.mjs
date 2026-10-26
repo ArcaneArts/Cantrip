@@ -160,6 +160,36 @@ const credentialSummary = {
 const credential = `ctwk_${"A".repeat(43)}`;
 const code = `ctwl_${"A".repeat(32)}`;
 export const securityFixtures = {
+  workerListSchema: [[worker]],
+  workerConnectionEnvelopeSchema: [
+    {
+      kind: "connection",
+      state: "pending",
+      protocolVersion: 1,
+      connectionGeneration: owner,
+    },
+    {
+      kind: "connection",
+      state: "ready",
+      protocolVersion: 2,
+      connectionGeneration: owner,
+      serverControlPlaneGeneration: clientId,
+    },
+  ],
+  workerResponseEnvelopeSchema: [
+    {
+      kind: "response",
+      requestId: "fixture-request",
+      ok: true,
+      result: { opaque: "fixture result" },
+    },
+    {
+      kind: "response",
+      requestId: "fixture-request",
+      ok: false,
+      error: { message: "Fixture command failed", code: "fixture-error" },
+    },
+  ],
   accountRegistrationSchema: [
     {
       displayName: "  Fixture 🦀  ",

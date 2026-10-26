@@ -17,6 +17,9 @@ mod body;
 mod encryption;
 mod middleware;
 mod sessions;
+mod websocket;
+mod worker_socket;
+mod workers;
 
 fn timestamp() -> String {
     Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
@@ -83,6 +86,8 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(sessions::routes())
         .merge(encryption::routes())
         .merge(account::routes())
+        .merge(workers::routes())
+        .merge(worker_socket::routes())
         .fallback(not_found)
         .method_not_allowed_fallback(not_found)
         .layer(axum::middleware::from_fn_with_state(

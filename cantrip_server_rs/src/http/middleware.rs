@@ -250,6 +250,15 @@ fn finish(
     requested_headers: Option<&str>,
     mut response: Response,
 ) -> Response {
+    // Fastify's WebSocket plugin writes the upgrade directly to the socket;
+    // ordinary onSend headers and cookies are absent from the 101 handshake.
+    if response
+        .extensions()
+        .get::<super::websocket::RawUpgradeResponse>()
+        .is_some()
+    {
+        return response;
+    }
     let headers = response.headers_mut();
     for (name, value) in [
         (
@@ -412,7 +421,7 @@ pub(super) async fn guard(
         }
     };
     let path = request.uri().path();
-    let rejection = if service.config.auth_mode != AuthMode::None {
+    let mut rejection = if service.config.auth_mode != AuthMode::None {
         if !public(path) && !principal.authenticated() {
             Some(json_response(
                 StatusCode::UNAUTHORIZED,
@@ -458,6 +467,44 @@ pub(super) async fn guard(
         .extensions()
         .get::<axum::extract::MatchedPath>()
         .map_or_else(|| audit_path.clone(), |v| v.as_str().to_owned());
+    if rejection.is_none() {
+        let route = audit_pattern
+            .split('/')
+            .map(|segment| {
+                segment
+                    .strip_prefix('{')
+                    .and_then(|s| s.strip_suffix('}'))
+                    .map_or_else(|| segment.to_owned(), |s| format!(":{s}"))
+            })
+            .collect::<Vec<_>>()
+            .join("/");
+        if let Some((category, retry)) = service.workers.limit(
+            &service.config,
+            principal.user.as_ref().map(|u| u.id.as_str()),
+            &ip,
+            request.method().as_str(),
+            &route,
+            value(request.headers(), "upgrade")
+                .is_some_and(|s| s.eq_ignore_ascii_case("websocket")),
+        ) {
+            let unit = if retry == 1 { "second" } else { "seconds" };
+            let message = if category == "api" {
+                format!(
+                    "Cantrip server request limit reached for this operation. Retry after {retry} {unit}."
+                )
+            } else {
+                format!("Request rate limit reached. Retry after {retry} {unit}.")
+            };
+            let mut response = json_response(
+                StatusCode::TOO_MANY_REQUESTS,
+                json!({"code":format!("{category}-rate-limited"),"error":message,"retryAfterSeconds":retry}),
+            );
+            response
+                .headers_mut()
+                .insert(header::RETRY_AFTER, retry.to_string().parse().unwrap());
+            rejection = Some(response);
+        }
+    }
     let response = if let Some(response) = rejection {
         response
     } else {

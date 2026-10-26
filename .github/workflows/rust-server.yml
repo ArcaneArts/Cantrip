@@ -10,6 +10,17 @@ on:
       - cantrip_server/src/app/routes/auth-sessions.ts
       - cantrip_server/src/app/routes/system-status.ts
       - cantrip_server/src/app/routes/account-security.ts
+      - cantrip_server/src/app/routes/internal-worker*.ts
+      - cantrip_server/src/app/routes/worker-*.ts
+      - cantrip_server/src/workers/**
+      - cantrip_server/src/db/repository/workers.ts
+      - cantrip_worker/src/transport.ts
+      - cantrip_worker/src/enrollment.ts
+      - cantrip_worker/src/heartbeat.ts
+      - cantrip_worker/src/credential-store.ts
+      - cantrip_app/src/lib/api/workers.ts
+      - cantrip_app/src/lib/api/account.ts
+      - cantrip_app/src/lib/api-client.ts
       - cantrip_server/src/app/http/**
       - cantrip_server/src/db/repository/accounts.ts
       - cantrip_server/src/db/encryption-registry.ts
@@ -80,7 +91,9 @@ jobs:
           brew install postgresql@18
           echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(brew --prefix postgresql@18)/bin" >> "$GITHUB_ENV"
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol -r build
+      - run: pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol --filter @cantrip/crypto --filter @cantrip/glitch -r build
+      - name: Browser for unchanged client and worker control integration
+        run: node node_modules/playwright-core/cli.js install --with-deps chromium
       - run: cargo fmt --manifest-path cantrip_server_rs/Cargo.toml -- --check
       - run: node scripts/server-rust/cargo.mjs clippy --all-targets -- -D warnings
       - name: Configuration parity, existing schema, all storage modes and restart
@@ -101,6 +114,18 @@ jobs:
         run: node --import tsx scripts/server-rust/security-compatibility.mjs --database postgres --report .qa/rust-server/security-external-http.json
       - name: Synthetic build metadata and existing wire-version rejection
         run: node scripts/server-rust/version-compatibility.mjs
+      - name: Worker enrollment, credentials and sockets with native PGlite
+        run: node --import tsx scripts/server-rust/worker-compatibility.mjs --report .qa/rust-server/worker-pglite-http.json
+      - name: Worker enrollment, credentials and sockets with private PostgreSQL
+        run: node --import tsx scripts/server-rust/worker-compatibility.mjs --database bundled-postgres --report .qa/rust-server/worker-bundled-http.json
+      - name: Worker control with external PostgreSQL and real authentication lock faults
+        run: node --import tsx scripts/server-rust/worker-compatibility.mjs --database postgres --report .qa/rust-server/worker-external-http.json
+      - name: Actual Chromium client APIs and unchanged worker components with PGlite
+        run: node --import tsx scripts/server-rust/worker-client-compatibility.mjs --report .qa/rust-server/worker-client-pglite.json
+      - name: Actual Chromium client APIs and unchanged worker components with private PostgreSQL
+        run: node --import tsx scripts/server-rust/worker-client-compatibility.mjs --database bundled-postgres --report .qa/rust-server/worker-client-bundled.json
+      - name: Actual Chromium client APIs and unchanged worker components with external PostgreSQL
+        run: node --import tsx scripts/server-rust/worker-client-compatibility.mjs --database postgres --report .qa/rust-server/worker-client-external.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -66,6 +66,7 @@ pub struct AuthService {
     pub normalized_admin: Option<String>,
     pub registration: Mutex<()>,
     pub revocations: broadcast::Sender<Revocation>,
+    pub workers: Arc<crate::workers::service::WorkerService>,
     rate_limit: Mutex<AuthRateLimiter>,
 }
 
@@ -95,6 +96,8 @@ impl AuthService {
             .map(|e| crypto::normalize_email(e));
         let cookies = CookiePolicy::new(&config)?;
         let rate_limit = Mutex::new(AuthRateLimiter::new(config.auth_rate_limit as usize));
+        let workers =
+            crate::workers::service::WorkerService::new(repository.database.clone(), &config);
         Ok(Arc::new(Self {
             config,
             repository,
@@ -104,6 +107,7 @@ impl AuthService {
             server_id,
             normalized_admin,
             rate_limit,
+            workers,
             registration: Mutex::new(()),
             revocations: broadcast::channel(256).0,
         }))

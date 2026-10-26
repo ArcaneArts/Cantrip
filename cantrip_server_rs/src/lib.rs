@@ -7,3 +7,4 @@ pub mod managed_postgres;
 pub mod migrations;
 mod text;
 pub mod wire;
+pub mod workers;
