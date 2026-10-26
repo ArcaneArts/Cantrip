@@ -95,7 +95,9 @@ jobs:
       - name: Browser for unchanged client and worker control integration
         run: node node_modules/playwright-core/cli.js install --with-deps chromium
       - name: Reference worker authentication shutdown and socket ordering
-        run: pnpm --filter @cantrip/server exec vitest run test/worker-authentication-shutdown.test.ts test/worker-notification-connect-order.test.ts test/buffered-worker-socket.test.ts test/websocket-subprotocol.test.ts --maxWorkers=2
+        # Each integration file initializes PGlite's WASM runtime and full SQL
+        # schema. Avoid competing cold initializations on the hosted runners.
+        run: pnpm --filter @cantrip/server exec vitest run test/worker-authentication-shutdown.test.ts test/worker-notification-connect-order.test.ts test/buffered-worker-socket.test.ts test/websocket-subprotocol.test.ts --maxWorkers=1
       - run: cargo fmt --manifest-path cantrip_server_rs/Cargo.toml -- --check
       - run: node scripts/server-rust/cargo.mjs clippy --all-targets -- -D warnings
       - name: Configuration parity, existing schema, all storage modes and restart
