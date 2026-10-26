@@ -118,6 +118,14 @@ impl ManagedPostgres {
             .arg(port.to_string())
             .arg("-c")
             .arg("unix_socket_directories=")
+            .args([
+                "-c",
+                "log_min_messages=fatal",
+                "-c",
+                "log_min_error_statement=panic",
+                "-c",
+                "log_error_verbosity=terse",
+            ])
             .stdin(Stdio::null())
             .stdout(log.try_clone()?)
             .stderr(log)

@@ -89,9 +89,21 @@ impl Transaction<'_> {
 
 impl Database {
     pub async fn pglite(directory: &Path) -> Result<Self> {
-        let database = pglite::PGlite::open(directory)
-            .await
-            .context("open native PGlite")?;
+        let database = pglite::PGlite::open_with(
+            directory,
+            pglite::PGliteOptions {
+                // Return database errors to the caller without printing SQL or
+                // user values through PostgreSQL's process-global stderr logger.
+                start_params: vec![
+                    "log_min_messages=fatal".into(),
+                    "log_min_error_statement=panic".into(),
+                    "log_error_verbosity=terse".into(),
+                ],
+                ..Default::default()
+            },
+        )
+        .await
+        .context("open native PGlite")?;
         Ok(Self {
             backend: Mutex::new(Some(Backend::Pglite(database))),
             connection: Mutex::new(None),

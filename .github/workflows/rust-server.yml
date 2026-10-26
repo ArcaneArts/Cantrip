@@ -6,8 +6,15 @@ on:
       - cantrip_server_rs/**
       - cantrip_server/drizzle/**
       - cantrip_server/src/config.ts
+      - cantrip_server/src/auth/**
+      - cantrip_server/src/app/routes/auth-sessions.ts
+      - cantrip_server/src/app/routes/system-status.ts
+      - cantrip_server/src/app/http/**
+      - cantrip_server/src/db/repository/accounts.ts
       - packages/protocol/**
       - scripts/server-rust/**
+      - scripts/version.mjs
+      - version.json
       - package.json
       - .github/workflows/rust-server.yml
       - pnpm-lock.yaml
@@ -27,7 +34,7 @@ jobs:
       matrix:
         os: [ubuntu-24.04, macos-15, windows-2025]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
@@ -77,6 +84,14 @@ jobs:
         run: node scripts/server-rust/cargo.mjs test -- --nocapture
       - name: Node and Rust over real HTTP connections
         run: node scripts/server-rust/compatibility.mjs --report .qa/rust-server/foundation-http.json
+      - name: Authentication over real HTTP with native PGlite
+        run: node --import tsx scripts/server-rust/auth-compatibility.mjs --report .qa/rust-server/auth-pglite-http.json
+      - name: Authentication over real HTTP with private PostgreSQL
+        run: node --import tsx scripts/server-rust/auth-compatibility.mjs --database bundled-postgres --report .qa/rust-server/auth-bundled-http.json
+      - name: Authentication over external PostgreSQL and Node/Rust retained state
+        run: node --import tsx scripts/server-rust/auth-compatibility.mjs --database postgres --report .qa/rust-server/auth-external-http.json
+      - name: Synthetic build metadata and existing wire-version rejection
+        run: node scripts/server-rust/version-compatibility.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
