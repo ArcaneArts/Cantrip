@@ -49,6 +49,13 @@ blocked while `/api/account/sessions` completes over a TLS server connection:
 node scripts/server-rust/postgres-connections.mjs --report .qa/rust-server/postgres-connections.json
 ```
 
+The Live lock fault checks the actual blocking backend and verifies that its
+granted table lock survives transport ping and close, with no subscription
+reply. It retains the authorizer backend's post-close state separately: Node
+may keep it waiting, while Rust may already have cancelled and disposed it.
+Requiring the abandoned query to remain blocked made the older assertion race
+with successful cancellation; the actual lock and transport deadlines remain.
+
 Supply `CANTRIP_TEST_POSTGRES_BIN_DIR` and an OpenSSL CLI for this disposable
 fixture. The Windows workflow installs that test dependency explicitly. Local
 macOS arm64 results passed; this milestone still requires observed platform CI.
@@ -59,6 +66,12 @@ interrupted-network recovery and deployment artifacts remain required. A
 successful CancelRequest is not an acknowledgment of remote statement rollback
 during a network partition; retained execution recovery still needs its domain
 tests. This does not establish complete database or server replacement.
+
+The TLS fixture's PostgreSQL launcher inherits a real append log and null
+stdin, matching the native Windows owner instead of leaving a daemon attached
+to captured launcher pipes. Cleanup attempts actual `pg_ctl stop` after every
+start attempt, including a launcher observation failure. Logs indicating a
+listening server do not substitute for the actual connection checks.
 
 Windows private-cluster startup uses PostgreSQL's own `pg_ctl` restricted-token
 launch path. A kill-on-close Windows Job Object owns the launcher and its

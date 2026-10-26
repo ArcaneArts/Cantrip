@@ -15,8 +15,9 @@ export async function liveAuthorizationFault(fixture) {
   const locked = Promise.withResolvers(),
     release = Promise.withResolvers();
   const transaction = lockSql.begin(async (sql) => {
+    const [{ pid }] = await sql`SELECT pg_backend_pid() AS pid`;
     await sql`LOCK TABLE projects IN ACCESS EXCLUSIVE MODE`;
-    locked.resolve();
+    locked.resolve(pid);
     await release.promise;
   });
   transaction.catch(locked.reject);
@@ -24,17 +25,19 @@ export async function liveAuthorizationFault(fixture) {
   try {
     await probe.open();
     await probe.initialized();
-    await locked.promise;
+    const lockerPid = await locked.promise;
     probe.send({
       type: "subscribe",
       requestId: "blocked-project",
       scopes: [{ kind: "project", projectId: "project-one" }],
     });
     const expires = Date.now() + 15000;
+    let blocked;
     while (true) {
       const rows =
-        await observer`SELECT pid FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid() AND state='active' AND wait_event_type='Lock' AND query ILIKE '%projects%'`;
-      if (rows.length) break;
+        await observer`SELECT pid, pg_blocking_pids(pid) AS blockers FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid() AND state='active' AND wait_event_type='Lock' AND query ILIKE '%projects%'`;
+      blocked = rows.find((row) => row.blockers.includes(lockerPid));
+      if (blocked) break;
       assert.ok(
         Date.now() < expires,
         "Actual project authorization query must be observed waiting on the held database lock",
@@ -65,12 +68,18 @@ export async function liveAuthorizationFault(fixture) {
       "transport ping while project authorization is locked",
     );
     await probe.close();
-    const waiting =
-      await observer`SELECT pid FROM pg_stat_activity WHERE datname=current_database() AND state='active' AND wait_event_type='Lock' AND query ILIKE '%projects%'`;
-    assert.ok(
-      waiting.length,
-      "Transport close completed before the blocked repository operation was released",
+    // Socket closure may cancel the abandoned operation and dispose its actual
+    // PostgreSQL backend. Requiring that query to remain blocked would require
+    // leaking it. Prove the lock itself stayed held through the real close.
+    const held =
+      await observer`SELECT pid, mode, granted FROM pg_locks WHERE pid=${lockerPid} AND relation='public.projects'::regclass AND mode='AccessExclusiveLock' AND granted`;
+    assert.equal(
+      held.length,
+      1,
+      "The actual project table lock must remain granted after transport close",
     );
+    const activity =
+      await observer`SELECT pid, state, wait_event_type, pg_blocking_pids(pid) AS blockers FROM pg_stat_activity WHERE pid=${blocked.pid}`;
     assert.equal(
       probe.history.some((frame) => frame.requestId === "blocked-project"),
       false,
@@ -80,6 +89,8 @@ export async function liveAuthorizationFault(fixture) {
         "real database lock does not stall WebSocket ping or close acknowledgment",
       blockedQueryObserved: true,
       closedBeforeDatabaseRelease: true,
+      heldLockObservedAfterClose: true,
+      diagnostics: { lockerPid, blockedPid: blocked.pid, held, activity },
     };
   } finally {
     release.resolve();

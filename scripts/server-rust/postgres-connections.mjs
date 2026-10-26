@@ -8,6 +8,7 @@ import {
   chmod,
   mkdir,
   mkdtemp,
+  open,
   readFile,
   rm,
   writeFile,
@@ -40,13 +41,14 @@ const report = {
 };
 const binary = (name) =>
   path.join(bin, process.platform === "win32" ? name + ".exe" : name);
-let started = false,
+let startAttempted = false,
   failure;
 
-function run(executable, args) {
+function run(executable, args, options = {}) {
   const result = spawnSync(executable, args, {
     encoding: "utf8",
     timeout: 30000,
+    ...options,
   });
   if (result.error) throw result.error;
   if (result.status !== 0)
@@ -201,17 +203,18 @@ try {
     path.join(directory, "postgresql.conf"),
     `\nlisten_addresses = '127.0.0.1'\nport = ${port}\nunix_socket_directories = ''\nssl = on\n`,
   );
-  run(binary("pg_ctl"), [
-    "-D",
-    directory,
-    "-l",
-    path.join(root, "postgres.log"),
-    "-w",
-    "-t",
-    "15",
-    "start",
-  ]);
-  started = true;
+  const log = await open(path.join(root, "postgres.log"), "a");
+  try {
+    startAttempted = true;
+    // A detached Windows postmaster can keep captured launcher pipes open
+    // after pg_ctl exits. Match the native owner: inherit null stdin and the
+    // append log directly, without -l reopening that Windows file handle.
+    run(binary("pg_ctl"), ["-D", directory, "-w", "-t", "15", "start"], {
+      stdio: ["ignore", log.fd, log.fd],
+    });
+  } finally {
+    await log.close();
+  }
   const base = `postgres://cantrip_tls_fixture@127.0.0.1:${port}/postgres`;
   const admin = postgres(base, { ssl: false, max: 1 });
   try {
@@ -361,7 +364,9 @@ try {
 } finally {
   report.databaseStopped = false;
   try {
-    if (started)
+    // A launcher observation error does not prove the database never started.
+    // Always attempt actual shutdown for this unique owned data directory.
+    if (startAttempted)
       run(binary("pg_ctl"), [
         "-D",
         directory,
@@ -372,7 +377,7 @@ try {
         "15",
         "stop",
       ]);
-    report.databaseStopped = started;
+    report.databaseStopped = startAttempted;
   } catch (error) {
     report.cleanupFailure = error.stack;
     failure = failure
