@@ -8,10 +8,13 @@ use axum::{
     routing::get,
 };
 use chrono::{SecondsFormat, Utc};
-use serde_json::{Value, json};
+use serde_json::json;
 
 use crate::auth::service::AuthService;
+mod account;
+mod audit;
 mod body;
+mod encryption;
 mod middleware;
 mod sessions;
 
@@ -19,7 +22,7 @@ fn timestamp() -> String {
     Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
 }
 
-pub(super) fn json_response(status: StatusCode, value: Value) -> Response {
+pub(super) fn json_response<T: serde::Serialize>(status: StatusCode, value: T) -> Response {
     (
         status,
         [(CONTENT_TYPE, "application/json; charset=utf-8")],
@@ -78,6 +81,8 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .route("/healthz", get(health))
         .route("/readyz", get(ready))
         .merge(sessions::routes())
+        .merge(encryption::routes())
+        .merge(account::routes())
         .fallback(not_found)
         .method_not_allowed_fallback(not_found)
         .layer(axum::middleware::from_fn_with_state(

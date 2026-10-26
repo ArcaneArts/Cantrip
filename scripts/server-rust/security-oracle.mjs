@@ -1,0 +1,168 @@
+// Only development tests invoke this process. Expectations execute the actual
+// exported protocol schemas, not the native manifest or its interpreter.
+import * as protocol from "../../packages/protocol/dist/index.js";
+import { buildContractManifest } from "./contracts.mjs";
+import { securityFixtures } from "./security-fixtures.mjs";
+
+function outcome(schema, input) {
+  try {
+    const parsed = schema.safeParse(input);
+    return parsed.success
+      ? { ok: parsed.data }
+      : { issues: parsed.error.issues };
+  } catch (error) {
+    return { thrown: error.name };
+  }
+}
+function paths(value, prefix = [], result = []) {
+  if (value && typeof value === "object")
+    for (const [key, child] of Object.entries(value)) {
+      const path = [...prefix, Array.isArray(value) ? +key : key];
+      result.push(path);
+      paths(child, path, result);
+    }
+  return result;
+}
+function mutate(input, path, value, remove = false) {
+  const result = structuredClone(input);
+  let parent = result;
+  for (const key of path.slice(0, -1)) parent = parent[key];
+  const key = path.at(-1);
+  if (remove) {
+    if (Array.isArray(parent)) parent.splice(key, 1);
+    else delete parent[key];
+  } else parent[key] = value;
+  return result;
+}
+function vectors(name) {
+  const schema = protocol[name],
+    samples = securityFixtures[name];
+  if (!schema || !samples) throw new Error(`Missing oracle fixture ${name}`);
+  const cases = [];
+  function append(input, present = true) {
+    const canonical = present ? JSON.parse(JSON.stringify(input)) : undefined;
+    cases.push({
+      ...(present ? { input: canonical } : {}),
+      outcome: outcome(schema, canonical),
+    });
+  }
+  append(undefined, false);
+  for (const input of [null, [], {}, false, 42, ""]) append(input);
+  for (const sample of samples) {
+    const baseline = schema.parse(sample);
+    append(sample);
+    append(baseline);
+    const variants = [
+      null,
+      false,
+      true,
+      0,
+      -1,
+      1.5,
+      2147483648,
+      9007199254740992,
+      "",
+      " ",
+      "bad\nvalue",
+      [],
+      {},
+      { length: 0 },
+      { length: "0x10" },
+      { length: [] },
+      { length: { toString: null } },
+    ];
+    for (const path of paths(baseline)) {
+      append(mutate(baseline, path, null, true));
+      for (const value of variants) append(mutate(baseline, path, value));
+      const original = path.reduce((value, key) => value[key], baseline);
+      if (typeof original === "string") {
+        for (const value of [
+          "🦀",
+          "\ufeff  fixture  \ufeff",
+          "a".repeat(513),
+          original + "\n",
+          original + "=",
+          original.slice(0, -1) + "B",
+        ])
+          append(mutate(baseline, path, value));
+      }
+      if (
+        original &&
+        typeof original === "object" &&
+        !Array.isArray(original)
+      ) {
+        append(mutate(baseline, path, { ...original, unknownFixture: true }));
+        append(
+          mutate(baseline, path, {
+            ...original,
+            ["unknown\ud800Fixture"]: true,
+            ["\udfff"]: false,
+          }),
+        );
+      }
+    }
+    if (baseline && typeof baseline === "object" && !Array.isArray(baseline)) {
+      append({ ...baseline, unknownFixture: true });
+      append({
+        ...baseline,
+        ["unknown\ud800Fixture"]: true,
+        ["\udfff"]: false,
+      });
+    }
+  }
+  return { schema: name, cases };
+}
+function jsonVectors() {
+  const raw = [
+    "null",
+    "true",
+    "false",
+    "-0",
+    "0.0",
+    "1e999",
+    "-1e999",
+    "1e-999",
+    "9007199254740993",
+    "1000000000000000128",
+    "1e-7",
+    "1e-6",
+    "1e20",
+    "1e21",
+    '{"z":0,"10":10,"2":2,"a":1,"0":0,"01":1,"4294967294":4,"4294967295":5,"z":2}',
+    '{"\\ud800":"\\udfff","\\ud800":"second","😀":"pair","1":"index"}',
+    '["\\ud800","\\udfff","\\ud800\\udfff","\\udfff\\ud800","\\u0000","\\u2028","\\u2029","\\ud800x\\udfff"]',
+  ];
+  for (let unit = 0; unit <= 65535; unit++)
+    raw.push(`"\\u${unit.toString(16).padStart(4, "0")}"`);
+  const bytes = new ArrayBuffer(8),
+    view = new DataView(bytes);
+  let state = 0x1ba5e;
+  for (let i = 0; i < 4096; i++) {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    view.setUint32(0, state);
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    view.setUint32(4, state);
+    const number = view.getFloat64(0);
+    if (Number.isFinite(number)) raw.push(number.toExponential(17));
+  }
+  return raw.map((raw) => ({ raw, expected: JSON.stringify(JSON.parse(raw)) }));
+}
+if (process.argv.includes("--json-vectors"))
+  process.stdout.write(JSON.stringify(jsonVectors()));
+else if (process.argv.includes("--fixtures"))
+  process.stdout.write(JSON.stringify(securityFixtures));
+else if (process.argv.includes("--manifest"))
+  process.stdout.write(JSON.stringify(buildContractManifest()));
+else if (process.argv.includes("--vectors"))
+  process.stdout.write(JSON.stringify(vectors(process.argv.at(-1))));
+else {
+  let input = "";
+  for await (const chunk of process.stdin) input += chunk;
+  process.stdout.write(
+    JSON.stringify(
+      JSON.parse(input).map(({ schema, input }) =>
+        outcome(protocol[schema], input),
+      ),
+    ),
+  );
+}

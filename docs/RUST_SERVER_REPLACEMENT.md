@@ -35,7 +35,8 @@ launch path. A kill-on-close Windows Job Object owns the launcher and its
 descendants, assigned during process creation so startup cannot outrun process
 ownership. The Windows integration test abruptly kills the owner, observes the
 actual postmaster exit, and reopens the cluster to verify committed data after
-crash recovery. Passing execution of that test is still required evidence.
+crash recovery. This test passed in the observed Windows run linked below;
+future changes still require their own execution results.
 
 PGlite candidate: `pglite-rs` 0.2.7 statically embeds Electric's
 `postgres-pglite` fork. It reports PostgreSQL 17.5. The current JavaScript
@@ -149,8 +150,7 @@ Node, Bun, Deno or the old TypeScript server. Node may remain for the unchanged
 worker, frontend builds, compatibility tests and bounded legacy conversion.
 
 No complete replacement, production cutover, existing-data migration,
-cross-platform acceptance, packaged release or Winterhold deployment is claimed
-by the foundation work.
+packaged release or Winterhold deployment is claimed by the foundation work.
 
 ## Account and session milestone
 
@@ -209,9 +209,65 @@ legacy CSRF rotation, settings/workspace provisioning, configured-administrator
 updates and PGlite/PostgreSQL retained state. Request-schema tests execute the
 actual TypeScript protocol schemas rather than reproducing their expectations.
 
-Account-security administration, encryption registries, worker enrollment,
-worker control, live transports, all other resource/execution domains, usable
-legacy conversion/rollback, desktop packaging and Winterhold delivery remain
-required work. Local session results do not establish Windows/Linux or full
-product readiness; observed platform CI and final product acceptance remain
-necessary.
+The session milestone merged as [PR 2277](https://github.com/ArcaneArts/Cantrip/pull/2277),
+commit `d759084a30cba3e8641878bd51b69a7c936c4155`. Its
+[observed workflow run](https://github.com/ArcaneArts/Cantrip/actions/runs/40254773601)
+passed on Linux, macOS and Windows, including all three database socket suites,
+retained-state tests, configuration contracts and database/process recovery.
+This establishes that milestone's platform results, not full product readiness.
+
+## Encryption registry and account security
+
+The current slice adds the account encryption profile, initialization,
+migration-status updates, password rewrapping, principals, approvals,
+revocations, and grant APIs. It stores existing opaque envelopes and their
+metadata in the original schema. Password-hash and wrapper changes commit
+atomically under the existing profile revision check. Revoking a principal
+cascades to its active grants; retained revoked grants still prevent duplicate
+component/revision inserts. Worker-principal repository operations retain
+credential/owner checks and atomic identity rotation, while the worker
+enrollment/bootstrap HTTP integration remains unported.
+
+Account session lists, owner/admin audit queries and license-whitelist APIs
+are also present. Session connection indicators currently cover the current
+session; additional connected sessions require the remaining live transport.
+Mutation auditing covers the existing account/encryption responses. The final
+streaming lifecycle still needs to attach audit completion after body delivery,
+matching Fastify's `onResponse` timing.
+
+`contracts/security.json` is generated from 36 actual protocol exports by
+`scripts/server-rust/contracts.mjs`. The native validator preserves defaults,
+stripping/strictness, issue paths/order/messages, coercion, unions and explicit
+custom refinements. Unknown exporter operations fail the development export;
+normal server startup never invokes the exporter or JavaScript. Differential
+tests execute the actual protocol independently, compare the generated manifest
+and run 27,252 mutation cases, including lone UTF-16 code units in keys and
+values. The native JSON representation retains UTF-16 and JavaScript number and
+property-order semantics. A further 69,647 JSON round trips compare every
+UTF-16 code unit and deterministic floating-point edge cases with Node.
+Global malformed/deep-JSON behavior and the remaining domains' schema semantics
+still require acceptance; these counts do not close those contracts.
+
+The security socket harness compares entire responses, security/cache/CORS
+headers, cookies, errors, tenant boundaries, revision conflicts and retained
+state. It uses the existing client crypto implementation to create real HPKE
+and password wrappers, fetch and decrypt them, change passwords without
+changing the master key, reject wrong-owner/tampered wrappers, and repeat after
+restart. External PostgreSQL additionally runs Node initialization, Rust
+password/wrapper writes, and Node reopening those writes with the original
+client keys. This is encryption/account evidence, not full-server rollback or
+legacy PGlite conversion.
+
+```sh
+node --import tsx scripts/server-rust/security-compatibility.mjs --report .qa/rust-server/security-pglite-http.json
+node --import tsx scripts/server-rust/security-compatibility.mjs --database bundled-postgres --report .qa/rust-server/security-bundled-http.json
+node --import tsx scripts/server-rust/security-compatibility.mjs --database postgres --report .qa/rust-server/security-external-http.json
+```
+
+Supply `CANTRIP_TEST_POSTGRES_BIN_DIR` for the PostgreSQL fixtures. These
+databases and the client key material are disposable. Linux/macOS/Windows CI
+executes the same tests; configured checks are not passing evidence.
+
+Worker enrollment/control, live transports, account usage and other resource
+and execution domains, usable legacy conversion/rollback, desktop packaging and
+Winterhold delivery remain required work.

@@ -2,6 +2,7 @@ pub mod cookie;
 pub mod crypto;
 pub mod rate_limit;
 pub mod repository;
+pub mod security_repository;
 pub mod service;
 pub mod validation;
 
