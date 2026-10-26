@@ -46,6 +46,10 @@ export const contractRoots = [
   "accountAdminSummarySchema",
   "auditEventQuerySchema",
   "auditEventListSchema",
+  "appLiveClientMessageSchema",
+  "appLiveServerMessageSchema",
+  "appLiveEventPayloadSchema",
+  "clientControlRequestSchema",
 ];
 
 const refinements = new Map([
@@ -65,6 +69,40 @@ const refinements = new Map([
   [protocol.managedWebRuntimeCapabilitiesSchema, "managed-runtime-components"],
   [protocol.managedWebRuntimeProgressSchema, "managed-runtime-progress"],
 ]);
+// Register individual checks where safeExtend/refine reuses them, including
+// schemas with multiple custom checks. Never infer an unknown callback's meaning.
+const explicitChecks = new Map();
+function registerChecks(schema, tags) {
+  const checks = (schema._zod.def.checks ?? []).filter(
+    (c) => c._zod.def.check === "custom",
+  );
+  if (checks.length !== tags.length)
+    throw new Error(
+      "Live refinement registration no longer matches the protocol",
+    );
+  checks.forEach((check, index) => explicitChecks.set(check, tags[index]));
+}
+registerChecks(protocol.clientControlCapabilitiesSchema, [
+  "live-control-capabilities-unique",
+]);
+registerChecks(
+  protocol.appLiveClientMessageSchema.options.find(
+    (s) => s.shape.type.value === "subscribe",
+  ).shape.scopes,
+  ["live-scopes-unique"],
+);
+registerChecks(protocol.clientControlRequestSchema, ["live-control-window"]);
+registerChecks(protocol.endpointContentOpaqueSchema, [
+  "endpoint-protected-bytes",
+]);
+registerChecks(protocol.clientNotificationOpaqueSchema, [
+  "endpoint-protected-bytes",
+  "live-notification-domain",
+]);
+registerChecks(protocol.appLiveEventPayloadSchema, ["live-payload-bytes"]);
+const transforms = new Map([
+  [protocol.appLiveEventPayloadSchema._zod.def.out, "live-json-object"],
+]);
 const allowedTypes = new Set([
   "object",
   "array",
@@ -81,6 +119,8 @@ const allowedTypes = new Set([
   "unknown",
   "never",
   "null",
+  "pipe",
+  "transform",
 ]);
 const allowedChecks = new Set([
   "min_length",
@@ -128,6 +168,8 @@ export function buildContractManifest() {
       "keyType",
       "valueType",
       "catchall",
+      "in",
+      "out",
     ])
       if (def[key]) node[key] = visit(def[key], `${where}/${key}`);
     if (def.options)
@@ -136,6 +178,11 @@ export function buildContractManifest() {
     if (def.values) node.values = def.values;
     if (def.entries) node.values = Object.values(def.entries);
     if (def.type === "default") node.defaultValue = def.defaultValue;
+    if (def.type === "transform") {
+      node.transformTag = transforms.get(schema);
+      if (!node.transformTag)
+        throw new Error(`Unimplemented native value transform: ${where}`);
+    }
     const checks = [...(def.check ? [schema] : []), ...(def.checks ?? [])];
     node.checks = checks.map((check) => {
       const c = check._zod.def;
@@ -148,7 +195,7 @@ export function buildContractManifest() {
         const tag =
           c.fn?.name === "hasCanonicalTrailingBits"
             ? "canonical-base64url"
-            : refinements.get(schema);
+            : (explicitChecks.get(check) ?? refinements.get(schema));
         if (!tag) throw new Error(`Unimplemented native refinement: ${where}`);
         const message = c.error?.({});
         return {
@@ -183,7 +230,10 @@ export function buildContractManifest() {
     if (
       node.checks.filter(
         (c) => c.check === "refinement" && c.tag !== "canonical-base64url",
-      ).length > 1
+      ).length > 1 &&
+      checks.some(
+        (c) => c._zod.def.check === "custom" && !explicitChecks.has(c),
+      )
     )
       throw new Error(
         `Multiple native custom checks require explicit implementations: ${where}`,

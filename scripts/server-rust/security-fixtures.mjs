@@ -160,6 +160,141 @@ const credentialSummary = {
 const credential = `ctwk_${"A".repeat(43)}`;
 const code = `ctwl_${"A".repeat(32)}`;
 export const securityFixtures = {
+  appLiveEventPayloadSchema: [
+    {},
+    { nested: { values: [null, true, 42, "🦀\udfff"] } },
+  ],
+  clientControlRequestSchema: [
+    {
+      correlationId: clientId,
+      issuedAt: timestamp,
+      expiresAt: "2026-10-25T00:00:10.000Z",
+      command: { kind: "focus-project", projectId: "project" },
+    },
+    {
+      correlationId: clientId,
+      issuedAt: timestamp,
+      expiresAt: "2026-10-25T00:00:00.001Z",
+      command: {
+        kind: "notify",
+        projectId: "project",
+        workerId: "worker",
+        operationId: owner,
+        protectedContent: {
+          formatVersion: 1,
+          domain: "client-control-content",
+          keyRevision: 1,
+          envelope: passwordWrapper.envelope,
+        },
+      },
+    },
+  ],
+  appLiveClientMessageSchema: [
+    {
+      type: "initialize",
+      protocolVersion: 1,
+      client: {
+        id: "client",
+        name: "Browser",
+        version: "1",
+        controlCapabilities: [
+          "notify",
+          "focus-project",
+          "focus-surface",
+          "show-interaction",
+        ],
+      },
+    },
+    {
+      type: "initialize",
+      protocolVersion: 1,
+      client: { id: "client", name: "Browser", version: "1" },
+      resume: { serverEpoch: "epoch", cursor: 0 },
+    },
+    {
+      type: "subscribe",
+      requestId: "subscribe",
+      scopes: [
+        { kind: "current-user" },
+        { kind: "project", projectId: "project" },
+        { kind: "chat", chatId: "chat" },
+      ],
+    },
+    {
+      type: "unsubscribe",
+      requestId: "unsubscribe",
+      scopes: [{ kind: "current-user" }],
+    },
+    { type: "ping", nonce: "nonce" },
+    {
+      type: "resync-ack",
+      requestId: "resync",
+      cursor: 1,
+      scopes: [{ kind: "current-user" }],
+    },
+    { type: "client-control-ack", correlationId: clientId, status: "applied" },
+  ],
+  appLiveServerMessageSchema: [
+    {
+      type: "ready",
+      protocolVersion: 1,
+      serverEpoch: "epoch",
+      connectionId: "connection",
+      currentCursor: 0,
+      heartbeatIntervalMs: 30000,
+      resume: "not-requested",
+    },
+    {
+      type: "subscribed",
+      requestId: "subscribe",
+      scopes: [{ kind: "current-user" }],
+      cursor: 0,
+    },
+    {
+      type: "unsubscribed",
+      requestId: "unsubscribe",
+      scopes: [{ kind: "project", projectId: "project" }],
+      cursor: 1,
+    },
+    {
+      type: "event",
+      cursor: 1,
+      scope: { kind: "current-user" },
+      resource: "worker",
+      action: "invalidated",
+      entityId: null,
+      revision: null,
+      payload: { nested: [null, false, 1, "text"] },
+      occurredAt: timestamp,
+    },
+    { type: "caught-up", cursor: 1, replayedCount: 1 },
+    { type: "pong", cursor: 1, nonce: "nonce" },
+    {
+      type: "resync-required",
+      cursor: 1,
+      reason: "server-epoch-changed",
+      scopes: [],
+    },
+    {
+      type: "client-control-request",
+      correlationId: clientId,
+      issuedAt: timestamp,
+      expiresAt: "2026-10-25T00:00:00.001Z",
+      command: {
+        kind: "show-interaction",
+        projectId: "project",
+        chatId: "chat",
+        interactionId: "interaction",
+      },
+    },
+    {
+      type: "error",
+      requestId: null,
+      code: "invalid-message",
+      message: "Invalid message",
+      retryable: false,
+    },
+  ],
   workerListSchema: [[worker]],
   workerConnectionEnvelopeSchema: [
     {

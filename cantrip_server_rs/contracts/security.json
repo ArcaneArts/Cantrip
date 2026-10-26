@@ -39,7 +39,11 @@
     "accountLicenseWhitelistEntrySchema": 449,
     "accountAdminSummarySchema": 454,
     "auditEventQuerySchema": 461,
-    "auditEventListSchema": 466
+    "auditEventListSchema": 466,
+    "appLiveClientMessageSchema": 489,
+    "appLiveServerMessageSchema": 540,
+    "appLiveEventPayloadSchema": 560,
+    "clientControlRequestSchema": 610
   },
   "nodes": [
     {
@@ -2940,6 +2944,697 @@
         { "check": "number_format", "format": "safeint", "abort": false },
         { "check": "greater_than", "value": 0, "inclusive": false }
       ]
+    },
+    {
+      "type": "union",
+      "name": "appLiveClientMessageSchema",
+      "options": [490, 507, 522, 525, 529, 532],
+      "discriminator": "type",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "type": 491,
+        "protocolVersion": 492,
+        "client": 493,
+        "resume": 501
+      },
+      "catchall": 506,
+      "checks": []
+    },
+    { "type": "literal", "values": ["initialize"], "checks": [] },
+    {
+      "type": "literal",
+      "name": "appLiveProtocolVersionSchema",
+      "values": [1],
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "id": 494,
+        "name": 495,
+        "version": 496,
+        "controlCapabilities": 497
+      },
+      "catchall": 500,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100, "when": "length" }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 498,
+      "defaultValue": [],
+      "checks": []
+    },
+    {
+      "type": "array",
+      "name": "clientControlCapabilitiesSchema",
+      "element": 499,
+      "checks": [
+        { "check": "max_length", "maximum": 4, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "live-control-capabilities-unique",
+          "message": "Client-control capabilities must be unique."
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "clientControlCapabilitySchema",
+      "values": [
+        "notify",
+        "focus-project",
+        "focus-surface",
+        "show-interaction"
+      ],
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 502,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 503, "checks": [] },
+    {
+      "type": "object",
+      "shape": { "serverEpoch": 494, "cursor": 504 },
+      "catchall": 505,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "number_format", "format": "safeint", "abort": false }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 508, "requestId": 509, "scopes": 510 },
+      "catchall": 521,
+      "checks": []
+    },
+    { "type": "literal", "values": ["subscribe"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 511,
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 128, "when": "length" },
+        { "check": "refinement", "tag": "live-scopes-unique" }
+      ]
+    },
+    {
+      "type": "union",
+      "name": "appLiveScopeSchema",
+      "options": [512, 515, 518],
+      "discriminator": "kind",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "kind": 513 },
+      "catchall": 514,
+      "checks": []
+    },
+    { "type": "literal", "values": ["current-user"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "kind": 516, "projectId": 494 },
+      "catchall": 517,
+      "checks": []
+    },
+    { "type": "literal", "values": ["project"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "kind": 519, "chatId": 494 },
+      "catchall": 520,
+      "checks": []
+    },
+    { "type": "literal", "values": ["chat"], "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 523, "requestId": 509, "scopes": 510 },
+      "catchall": 524,
+      "checks": []
+    },
+    { "type": "literal", "values": ["unsubscribe"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 526, "nonce": 527 },
+      "catchall": 528,
+      "checks": []
+    },
+    { "type": "literal", "values": ["ping"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 530, "requestId": 509, "cursor": 504, "scopes": 510 },
+      "catchall": 531,
+      "checks": []
+    },
+    { "type": "literal", "values": ["resync-ack"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "correlationId": 533,
+        "status": 534,
+        "detail": 535,
+        "type": 538
+      },
+      "catchall": 539,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "clientControlAcknowledgementStatusSchema",
+      "values": ["applied", "declined", "unsupported", "expired"],
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 536,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 537, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 500, "when": "length" }
+      ]
+    },
+    { "type": "literal", "values": ["client-control-ack"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "union",
+      "name": "appLiveServerMessageSchema",
+      "options": [541, 546, 549, 552, 565, 569, 573, 578, 603],
+      "discriminator": "type",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "type": 542,
+        "protocolVersion": 492,
+        "serverEpoch": 494,
+        "connectionId": 494,
+        "currentCursor": 504,
+        "heartbeatIntervalMs": 543,
+        "resume": 544
+      },
+      "catchall": 545,
+      "checks": []
+    },
+    { "type": "literal", "values": ["ready"], "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 5000, "inclusive": true },
+        { "check": "less_than", "value": 120000, "inclusive": true }
+      ]
+    },
+    {
+      "type": "enum",
+      "values": ["not-requested", "replaying", "resync-required"],
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 547, "requestId": 509, "scopes": 510, "cursor": 504 },
+      "catchall": 548,
+      "checks": []
+    },
+    { "type": "literal", "values": ["subscribed"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 550, "requestId": 509, "scopes": 510, "cursor": 504 },
+      "catchall": 551,
+      "checks": []
+    },
+    { "type": "literal", "values": ["unsubscribed"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "type": 553,
+        "cursor": 504,
+        "scope": 511,
+        "resource": 554,
+        "action": 555,
+        "entityId": 556,
+        "revision": 557,
+        "payload": 559,
+        "occurredAt": 563
+      },
+      "catchall": 564,
+      "checks": []
+    },
+    { "type": "literal", "values": ["event"], "checks": [] },
+    {
+      "type": "enum",
+      "name": "appLiveResourceSchema",
+      "values": [
+        "server",
+        "account-session",
+        "account-resource-usage",
+        "settings",
+        "provider-auth",
+        "policy",
+        "worker",
+        "worker-availability",
+        "project",
+        "project-automation",
+        "project-token-usage",
+        "project-folder-setup-job",
+        "workspace-repository-discovery-job",
+        "project-github-conversion-job",
+        "project-replica-job",
+        "project-tab-layout",
+        "worktree",
+        "worktree-status",
+        "codegraph-status",
+        "git-operation",
+        "git-conflict",
+        "chat",
+        "chat-import-job",
+        "chat-relocation-job",
+        "chat-message",
+        "chat-files",
+        "chat-queue",
+        "chat-goal",
+        "chat-plan",
+        "chat-preparation",
+        "inference-progress",
+        "task",
+        "agent-interaction",
+        "terminal",
+        "run",
+        "run-configuration",
+        "explorer",
+        "explorer-filesystem",
+        "file-document",
+        "browser",
+        "code-tab",
+        "project-view",
+        "remote-desktop",
+        "tunnel",
+        "customization"
+      ],
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "appLiveEventActionSchema",
+      "values": [
+        "created",
+        "updated",
+        "deleted",
+        "reordered",
+        "status",
+        "invalidated"
+      ],
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 494, "checks": [] },
+    { "type": "nullable", "innerType": 558, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "number_format", "format": "safeint", "abort": false }
+      ]
+    },
+    { "type": "nullable", "innerType": 560, "checks": [] },
+    {
+      "type": "pipe",
+      "name": "appLiveEventPayloadSchema",
+      "in": 561,
+      "out": 562,
+      "checks": [{ "check": "refinement", "tag": "live-payload-bytes" }]
+    },
+    { "type": "unknown", "checks": [] },
+    {
+      "type": "transform",
+      "optionalIn": true,
+      "transformTag": "live-json-object",
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 566, "cursor": 504, "replayedCount": 567 },
+      "catchall": 568,
+      "checks": []
+    },
+    { "type": "literal", "values": ["caught-up"], "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 10000, "inclusive": true }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 570, "nonce": 571, "cursor": 504 },
+      "catchall": 572,
+      "checks": []
+    },
+    { "type": "literal", "values": ["pong"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 574, "cursor": 504, "reason": 575, "scopes": 576 },
+      "catchall": 577,
+      "checks": []
+    },
+    { "type": "literal", "values": ["resync-required"], "checks": [] },
+    {
+      "type": "enum",
+      "name": "appLiveResyncReasonSchema",
+      "values": [
+        "server-epoch-changed",
+        "cursor-expired",
+        "queue-overflow",
+        "scope-changed",
+        "client-requested"
+      ],
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 511,
+      "checks": [{ "check": "max_length", "maximum": 128, "when": "length" }]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "correlationId": 579,
+        "issuedAt": 580,
+        "expiresAt": 581,
+        "command": 582,
+        "type": 601
+      },
+      "catchall": 602,
+      "checks": [{ "check": "refinement", "tag": "live-control-window" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "union",
+      "name": "clientControlCommandSchema",
+      "options": [583, 591, 594, 598],
+      "discriminator": "kind",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "kind": 584,
+        "projectId": 494,
+        "workerId": 494,
+        "operationId": 585,
+        "protectedContent": 586
+      },
+      "catchall": 590,
+      "checks": []
+    },
+    { "type": "literal", "values": ["notify"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "clientNotificationOpaqueSchema",
+      "shape": {
+        "formatVersion": 587,
+        "domain": 588,
+        "keyRevision": 23,
+        "envelope": 38
+      },
+      "catchall": 589,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "endpoint-protected-bytes",
+          "message": "Protected endpoint content exceeds its byte limit."
+        },
+        {
+          "check": "refinement",
+          "tag": "live-notification-domain",
+          "message": "Client notifications require client-control-content ciphertext."
+        }
+      ]
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "enum",
+      "name": "endpointContentDomainSchema",
+      "values": [
+        "run-content",
+        "customization-content",
+        "tunnel-content",
+        "client-control-content"
+      ],
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "kind": 592, "projectId": 494 },
+      "catchall": 593,
+      "checks": []
+    },
+    { "type": "literal", "values": ["focus-project"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "kind": 595,
+        "projectId": 494,
+        "surfaceKind": 596,
+        "surfaceId": 494
+      },
+      "catchall": 597,
+      "checks": []
+    },
+    { "type": "literal", "values": ["focus-surface"], "checks": [] },
+    {
+      "type": "enum",
+      "values": ["chat", "terminal", "explorer", "code", "browser"],
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "kind": 599,
+        "projectId": 494,
+        "chatId": 494,
+        "interactionId": 494
+      },
+      "catchall": 600,
+      "checks": []
+    },
+    { "type": "literal", "values": ["show-interaction"], "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "literal", "values": ["client-control-request"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "type": 604,
+        "requestId": 605,
+        "code": 606,
+        "message": 607,
+        "retryable": 608
+      },
+      "catchall": 609,
+      "checks": []
+    },
+    { "type": "literal", "values": ["error"], "checks": [] },
+    { "type": "nullable", "innerType": 509, "checks": [] },
+    {
+      "type": "enum",
+      "name": "appLiveErrorCodeSchema",
+      "values": [
+        "invalid-message",
+        "not-initialized",
+        "already-initialized",
+        "unsupported-version",
+        "unauthorized-scope",
+        "subscription-limit",
+        "payload-too-large",
+        "rate-limited",
+        "internal-error"
+      ],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 2048, "when": "length" }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "clientControlRequestSchema",
+      "shape": {
+        "correlationId": 579,
+        "issuedAt": 580,
+        "expiresAt": 581,
+        "command": 582
+      },
+      "catchall": 602,
+      "checks": [{ "check": "refinement", "tag": "live-control-window" }]
     }
   ]
 }

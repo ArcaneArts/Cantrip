@@ -583,7 +583,7 @@
     "wireContracts": {
       "status": "partial",
       "evidence": ["cantrip_server_rs/tests/wire_contracts.rs"],
-      "validatedSubset": "39 actual protocol exports; 30,053 validation comparisons and 69,647 JavaScript JSON round trips. Required unknown fields follow actual Zod object-presence behavior; development export formats generated assets and rejects unknown checks.",
+      "validatedSubset": "43 actual protocol exports; 33,185 validation comparisons and 69,647 JavaScript JSON round trips. Adds App Live client/server messages, bounded event payloads and client-control request refinements. Development export rejects unregistered checks/transforms.",
       "remaining": [
         "Remaining protocol schemas, globally malformed/deep JSON handling, and authenticated/hash serialization across all domains."
       ]
@@ -599,10 +599,28 @@
       ],
       "scope": "Native HTTP/1 upgrade (versions 8/13, ready v1/v2 and legacy), credential authentication, bounded pre-authentication buffering/capacity, close-frame transport cleanup, response correlation, local reconnect/deadline/event callback sequencing and credential delivery/revocation. Actual browser APIs and unchanged worker components exercise enrollment/rotation/persistence/reconnect/revocation.",
       "remaining": [
-        "App Live durable journal/subscriptions and revocation consumers; broadcast invalidations alone are not App Live.",
+        "App Live HTTP upgrades, session/account socket registries, scoped database authorization, revocation consumers, post-commit resource publishers and shared coordination. The reference hub retains bounded in-memory replay; process-local worker invalidations alone are not App Live.",
         "Full command/event/notification schema validation, domain event persistence and binary relays.",
         "Shared coordination, resource reconciliation and execution recovery hooks.",
         "Whole app UI and full worker index/runtime acceptance, beyond the controlled credential command handler."
+      ]
+    },
+    "appLiveTransport": {
+      "status": "partial",
+      "implementation": "cantrip_server_rs/src/live/",
+      "evidence": [
+        "scripts/server-rust/live-hub-oracle.mjs",
+        "scripts/server-rust/live-hub-scenarios.mjs",
+        "cantrip_server_rs/examples/live-hub-oracle.rs"
+      ],
+      "scope": "Actual Node and Rust hubs compared in 44 scenarios / 688 steps using controlled sockets, active-session callbacks and clocks. Covers initialization, request deduplication/eviction, scope authorization and capacity, owner isolation, replay/resync, queue overflow/send failure, revocation, heartbeat boundaries, client-control targeting/acks/expiry/capacity/shutdown, external publication and usage callbacks. JSON boundary cases include 512 nested unknown containers, duplicate members and number overflow. This is core behavior evidence, not network/product acceptance.",
+      "remaining": [
+        "Register the actual HTTP WebSocket route with configured origin, authenticated principal, owner/session context and account connection limits.",
+        "Implement session activity registry, revocation/validation consumers and connected-session indicators.",
+        "Authorize project/chat scopes through complete repository ownership/execution semantics.",
+        "Wire ordered post-commit publishers, worker availability, external coordination and usage accounting.",
+        "Exercise actual app Live client, full worker/runtime and domain resource flows over real sockets on every storage/platform mode.",
+        "Complete globally malformed/deep JSON and remaining schema boundaries across the server; the listed cases do not prove unbounded parser parity."
       ]
     }
   },

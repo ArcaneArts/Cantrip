@@ -84,3 +84,29 @@ recovery. Process-local invalidation broadcasts are not durable App Live.
 `.github/workflows/rust-server.yml` executes native and compatibility suites on
 Linux, macOS and Windows. A configured workflow is not passing evidence; record
 observed results for the actual milestone head before claiming acceptance.
+
+## Application Live core in progress
+
+The native hub currently implements scoped subscriptions, bounded in-memory
+replay, owner cursors, resynchronization, heartbeat/session checks, queue limits
+and client-control targeting/acknowledgments. Its actual Node/Rust differential
+adapter compares complete emitted messages, closure state, statistics,
+publications, control results and effective usage callbacks:
+
+```sh
+node --import tsx scripts/server-rust/live-hub-oracle.mjs --report .qa/rust-server/live-hub-oracle.json
+```
+
+The current 44 scenarios contain 688 steps, including replay eviction, 128
+subscriptions and pending controls, request-history eviction, wrong-peer and late
+acknowledgments, revocation, send failures, heartbeat boundaries and JSON edge
+cases. Only generated UUID identities are aliased, with their format and
+relationships checked. Both adapters cross the same JSON output boundary; the
+native runtime starts with a paused, millisecond-aligned clock so timer rounding
+does not manufacture protocol differences.
+
+This core is not yet registered as the `/api/live` HTTP route. Actual session and
+account socket registries, repository scope authorization, revocation consumers,
+resource publishers, coordination and app Live client acceptance remain required.
+The adapter is not whole-product or real-network evidence. The HTTP integration
+and CI command must be completed before this milestone is delivered.

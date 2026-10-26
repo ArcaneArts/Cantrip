@@ -7,6 +7,9 @@ pub(super) fn apply(
     path: &[Value],
     message: Option<&str>,
 ) -> Result<(), ValidationError> {
+    if super::live::refine(tag, result, path, message)? {
+        return Ok(());
+    }
     let value = result
         .value
         .as_ref()
