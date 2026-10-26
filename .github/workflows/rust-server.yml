@@ -5,6 +5,8 @@ on:
     paths:
       - cantrip_server_rs/**
       - cantrip_server/drizzle/**
+      - cantrip_server/src/config.ts
+      - packages/protocol/**
       - scripts/server-rust/**
       - package.json
       - .github/workflows/rust-server.yml
@@ -71,7 +73,7 @@ jobs:
       - run: pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol -r build
       - run: cargo fmt --manifest-path cantrip_server_rs/Cargo.toml -- --check
       - run: node scripts/server-rust/cargo.mjs clippy --all-targets -- -D warnings
-      - name: Existing schema, all storage modes, transactions and real restart
+      - name: Configuration parity, existing schema, all storage modes and restart
         run: node scripts/server-rust/cargo.mjs test -- --nocapture
       - name: Node and Rust over real HTTP connections
         run: node scripts/server-rust/compatibility.mjs --report .qa/rust-server/foundation-http.json

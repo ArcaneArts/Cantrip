@@ -9,7 +9,7 @@
   "scripts": {
     "server:rust:build": "node scripts/server-rust/build.mjs",
     "server:rust:check": "cargo fmt --manifest-path cantrip_server_rs/Cargo.toml -- --check && node scripts/server-rust/cargo.mjs clippy --all-targets -- -D warnings",
-    "server:rust:test": "node scripts/server-rust/cargo.mjs test",
+    "server:rust:test": "pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol -r build && node scripts/server-rust/cargo.mjs test",
     "server:rust:compatibility": "pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol -r build && node scripts/server-rust/compatibility.mjs",
     "codex:sync": "node scripts/cantrip-codex/sync-upstream.mjs",
     "codex:verify": "node scripts/cantrip-codex/verify-upstream.mjs",

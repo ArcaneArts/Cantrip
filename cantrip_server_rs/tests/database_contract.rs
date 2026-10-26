@@ -208,6 +208,7 @@ async fn postgres_runs_the_same_schema_and_contract() -> Result<()> {
 #[cfg(windows)]
 #[tokio::test]
 async fn postgres_windows_owner_exit_kills_descendants_and_retains_data() -> Result<()> {
+    use anyhow::Context;
     use std::{
         io::Write,
         os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle},
@@ -220,13 +221,16 @@ async fn postgres_windows_owner_exit_kills_descendants_and_retains_data() -> Res
 
     let binary_directory = PathBuf::from(std::env::var("CANTRIP_TEST_POSTGRES_BIN_DIR")?);
     if let Ok(path) = std::env::var("CANTRIP_POSTGRES_OWNER_EXIT_ROOT") {
+        eprintln!("owner-exit fixture: child initializing its private cluster");
         let root = PathBuf::from(path);
         let runtime = ManagedPostgres::start(&root, &binary_directory).await?;
+        eprintln!("owner-exit fixture: child reached database readiness");
         let database = Database::postgres(runtime.configuration()).await?;
         database
             .execute("CREATE TABLE owner_exit_probe (value text NOT NULL); INSERT INTO owner_exit_probe VALUES ('retained after owner exit')")
             .await?;
         database.close().await?;
+        eprintln!("owner-exit fixture: committed data; reporting postmaster identity");
         let pid = std::fs::read_to_string(root.join("data/postmaster.pid"))?
             .lines()
             .next()
@@ -251,6 +255,7 @@ async fn postgres_windows_owner_exit_kills_descendants_and_retains_data() -> Res
         .stdout(std::process::Stdio::piped())
         .kill_on_drop(true)
         .spawn()?;
+    eprintln!("owner-exit fixture: parent waiting for child readiness");
     let mut output = BufReader::new(owner.stdout.take().unwrap()).lines();
     let pid = tokio::time::timeout(Duration::from_secs(60), async {
         while let Some(line) = output.next_line().await? {
@@ -260,7 +265,8 @@ async fn postgres_windows_owner_exit_kills_descendants_and_retains_data() -> Res
         }
         bail!("database owner exited without reporting actual readiness");
     })
-    .await??;
+    .await
+    .context("wait for PostgreSQL owner fixture readiness")??;
     // Observe the exact live postmaster before killing its owner. Holding only
     // a process handle cannot keep the owner's non-inherited job handle alive.
     let raw = unsafe { OpenProcess(PROCESS_SYNCHRONIZE, 0, pid) };
@@ -268,7 +274,9 @@ async fn postgres_windows_owner_exit_kills_descendants_and_retains_data() -> Res
         return Err(std::io::Error::last_os_error().into());
     }
     let postmaster = unsafe { OwnedHandle::from_raw_handle(raw) };
+    eprintln!("owner-exit fixture: killing ready owner");
     owner.kill().await?;
+    eprintln!("owner-exit fixture: owner exited; observing actual postmaster exit");
     tokio::time::timeout(Duration::from_secs(30), async {
         loop {
             match unsafe { WaitForSingleObject(postmaster.as_raw_handle(), 0) } {
@@ -278,7 +286,9 @@ async fn postgres_windows_owner_exit_kills_descendants_and_retains_data() -> Res
             }
         }
     })
-    .await??;
+    .await
+    .context("wait for postmaster exit after its owner died")??;
+    eprintln!("owner-exit fixture: postmaster exited; verifying crash recovery");
     let runtime = ManagedPostgres::start(root.path(), &binary_directory).await?;
     let database = Database::postgres(runtime.configuration()).await?;
     assert_eq!(

@@ -1,33 +1,30 @@
-use std::{net::IpAddr, path::PathBuf, sync::Arc};
+use std::{path::PathBuf, sync::Arc};
 
 use anyhow::{Context, Result};
 use cantrip_server::{
-    database::Database, http, managed_postgres::ManagedPostgres, migrations::migrate,
+    config::{DatabaseMode, Environment, ServerConfig},
+    database::Database,
+    http,
+    managed_postgres::ManagedPostgres,
+    migrations::migrate,
 };
 use clap::{Parser, ValueEnum};
 use serde_json::json;
 
-#[derive(Clone, Copy, ValueEnum)]
-enum DatabaseMode {
-    Pglite,
-    BundledPostgres,
-    Postgres,
-}
-
 #[derive(Parser)]
 #[command(about = "Cantrip Rust server (replacement implementation in progress)")]
 struct Arguments {
-    #[arg(long, env = "CANTRIP_SERVER_HOST", default_value = "127.0.0.1")]
-    host: IpAddr,
-    #[arg(long, env = "CANTRIP_SERVER_PORT", default_value_t = 4310)]
-    port: u16,
-    #[arg(long, env = "CANTRIP_DATA_DIR")]
-    data_dir: PathBuf,
-    #[arg(long, env = "CANTRIP_DATABASE_MODE")]
+    #[arg(long)]
+    host: Option<String>,
+    #[arg(long)]
+    port: Option<u16>,
+    #[arg(long)]
+    data_dir: Option<PathBuf>,
+    #[arg(long)]
     database: Option<DatabaseMode>,
-    #[arg(long, env = "DATABASE_URL", hide_env_values = true)]
+    #[arg(long)]
     database_url: Option<String>,
-    #[arg(long, env = "CANTRIP_POSTGRES_BIN_DIR")]
+    #[arg(long)]
     postgres_bin_dir: Option<PathBuf>,
     #[arg(long)]
     migrate_only: bool,
@@ -56,6 +53,47 @@ async fn shutdown() {
 #[tokio::main]
 async fn main() -> Result<()> {
     let arguments = Arguments::parse();
+    let mut environment: Environment = std::env::vars().collect();
+    if let Some(host) = arguments.host {
+        environment.insert("CANTRIP_SERVER_HOST".into(), host);
+    }
+    if let Some(port) = arguments.port {
+        // The explicit CLI port 0 is used by process tests for OS allocation.
+        // Environment ports retain the existing server's 1..65535 contract.
+        environment.insert(
+            "CANTRIP_SERVER_PORT".into(),
+            if port == 0 {
+                "4310".into()
+            } else {
+                port.to_string()
+            },
+        );
+    }
+    for (name, value) in [
+        ("CANTRIP_DATA_DIR", arguments.data_dir),
+        ("CANTRIP_POSTGRES_BIN_DIR", arguments.postgres_bin_dir),
+    ] {
+        if let Some(value) = value {
+            environment.insert(
+                name.into(),
+                value
+                    .to_str()
+                    .context("server paths must be valid UTF-8")?
+                    .into(),
+            );
+        }
+    }
+    if let Some(mode) = arguments.database {
+        environment.insert(
+            "CANTRIP_DATABASE_MODE".into(),
+            mode.to_possible_value().unwrap().get_name().into(),
+        );
+    }
+    if let Some(url) = arguments.database_url {
+        environment.insert("DATABASE_URL".into(), url);
+    }
+    // Resolve every path before native PostgreSQL can change the process cwd.
+    let config = ServerConfig::read(&environment, &std::env::current_dir()?)?;
     // Native PostgreSQL changes its process stdio during single-user startup.
     // Keep independent handles to the launcher's pipes before initializing it.
     let mut parent_output = os_pipe::dup_stdout()?;
@@ -64,22 +102,15 @@ async fn main() -> Result<()> {
     } else {
         None
     };
-    let mode = arguments
-        .database
-        .unwrap_or(if arguments.database_url.is_some() {
-            DatabaseMode::Postgres
-        } else {
-            DatabaseMode::Pglite
-        });
     let mut managed = None;
-    let database = match mode {
+    let database = match config.database_mode {
         DatabaseMode::Pglite => {
             // Use the existing root name. The native engine must report actual
             // format errors; it must never select a fresh database as fallback.
-            Database::pglite(&arguments.data_dir.join("server-db")).await?
+            Database::pglite(&config.data_directory.join("server-db")).await?
         }
         DatabaseMode::Postgres => {
-            let configuration = arguments
+            let configuration = config
                 .database_url
                 .as_deref()
                 .context("postgres mode requires DATABASE_URL or --database-url")?
@@ -87,9 +118,9 @@ async fn main() -> Result<()> {
             Database::postgres(&configuration).await?
         }
         DatabaseMode::BundledPostgres => {
-            let bin = arguments.postgres_bin_dir.context("bundled-postgres mode requires --postgres-bin-dir until runtime packaging is integrated")?;
+            let bin = config.postgres_bin_directory.context("bundled-postgres mode requires --postgres-bin-dir until runtime packaging is integrated")?;
             let runtime =
-                ManagedPostgres::start(&arguments.data_dir.join("postgres"), &bin).await?;
+                ManagedPostgres::start(&config.data_directory.join("postgres"), &bin).await?;
             let database = Database::postgres(runtime.configuration()).await?;
             managed = Some(runtime);
             database
@@ -98,7 +129,8 @@ async fn main() -> Result<()> {
     let database = Arc::new(database);
     migrate(&database).await?;
     if !arguments.migrate_only {
-        let listener = tokio::net::TcpListener::bind((arguments.host, arguments.port)).await?;
+        let port = arguments.port.unwrap_or(config.port as u16);
+        let listener = tokio::net::TcpListener::bind((config.host.as_str(), port)).await?;
         use std::io::Write;
         writeln!(
             parent_output,
