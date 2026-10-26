@@ -1,7 +1,7 @@
 use super::{json_response, middleware::value};
 use crate::wire::{JsString, Value as JsValue};
 use axum::{body::to_bytes, extract::Request, http::StatusCode, response::Response};
-use serde_json::{Value, json};
+use serde_json::json;
 
 fn parser_error(code: u16, key: &str, message: &str) -> Response {
     json_response(
@@ -17,17 +17,24 @@ fn invalid_json() -> Response {
     )
 }
 fn poisoned(value: &JsValue) -> bool {
-    match value {
-        JsValue::Object(object) => {
-            object.contains_key("__proto__")
-                || object
-                    .get("constructor")
-                    .is_some_and(|v| v.as_object().is_some_and(|o| o.contains_key("prototype")))
-                || object.values().any(poisoned)
+    let mut pending = vec![value];
+    while let Some(value) = pending.pop() {
+        match value {
+            JsValue::Object(object) => {
+                if object.contains_key("__proto__")
+                    || object
+                        .get("constructor")
+                        .is_some_and(|v| v.as_object().is_some_and(|o| o.contains_key("prototype")))
+                {
+                    return true;
+                }
+                pending.extend(object.values());
+            }
+            JsValue::Array(array) => pending.extend(array),
+            _ => {}
         }
-        JsValue::Array(array) => array.iter().any(poisoned),
-        _ => false,
     }
+    false
 }
 
 pub(super) async fn parse_js(request: Request, limit: u64) -> Result<Option<JsValue>, Response> {
@@ -77,37 +84,4 @@ pub(super) async fn parse_js(request: Request, limit: u64) -> Result<Option<JsVa
             "Unsupported Media Type",
         ))
     }
-}
-
-// Retain the existing auth handler's text-boundary conversion while those
-// handlers transition to the shared native contracts. New APIs use parse_js.
-fn legacy_auth_value(value: JsValue) -> Value {
-    match value {
-        JsValue::Null => Value::Null,
-        JsValue::Bool(value) => json!(value),
-        JsValue::Number(value) => {
-            let mut buffer = ryu_js::Buffer::new();
-            serde_json::from_str(if value.is_infinite() {
-                if value.is_sign_negative() {
-                    "-1e999"
-                } else {
-                    "1e999"
-                }
-            } else {
-                buffer.format_finite(value)
-            })
-            .expect("JSON numeric literal")
-        }
-        JsValue::String(value) => json!(value.lossy()),
-        JsValue::Array(values) => Value::Array(values.into_iter().map(legacy_auth_value).collect()),
-        JsValue::Object(values) => Value::Object(
-            values
-                .into_iter()
-                .map(|(key, value)| (key.lossy().into_owned(), legacy_auth_value(value)))
-                .collect(),
-        ),
-    }
-}
-pub(super) async fn parse(request: Request, limit: u64) -> Result<Option<Value>, Response> {
-    Ok(parse_js(request, limit).await?.map(legacy_auth_value))
 }

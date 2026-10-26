@@ -608,7 +608,7 @@
       "verifiedLocally": "The session milestone PR 2277 passed all three storage suites on Linux/macOS/Windows in observed run 40254773601. Changes in later milestones require fresh regression results."
     },
     "workerEnrollment": {
-      "status": "implemented-pending-platform-acceptance",
+      "status": "partial",
       "evidence": [
         "cantrip_server_rs/tests/worker_repository.rs",
         "cantrip_server_rs/tests/worker_boundaries.rs",
@@ -616,7 +616,8 @@
         "scripts/server-rust/worker-client-compatibility.mjs"
       ],
       "remaining": [
-        "Full worker index/runtime and actual app UI acceptance remain required; the browser integration runs unchanged API modules and worker components with a controlled command handler."
+        "Full worker index/runtime and actual app UI acceptance remain required; the browser integration runs unchanged API modules and worker components with a controlled command handler.",
+        "Enrollment mutations do not yet publish all Node App Live invalidations. A retained JSON-suite observation saw Node currentCursor 16 versus Rust 0 after enrollment creation; isolated parser Live cases run before those separate domain mutations."
       ]
     },
     "endpointEncryptionRegistry": {
@@ -652,10 +653,14 @@
     },
     "wireContracts": {
       "status": "partial",
-      "evidence": ["cantrip_server_rs/tests/wire_contracts.rs"],
-      "validatedSubset": "46 actual protocol exports; 37,396 validation comparisons and 69,647 JavaScript JSON round trips. Includes App Live client/server messages, bounded event payloads, client-control refinements, project wire summaries/lists and model configuration. Development export rejects unregistered checks/transforms; default URL behavior is covered, not arbitrary URL options.",
+      "evidence": [
+        "cantrip_server_rs/tests/wire_contracts.rs",
+        "cantrip_server_rs/tests/json_depth.rs",
+        "scripts/server-rust/json-compatibility.mjs"
+      ],
+      "validatedSubset": "46 actual protocol exports; 37,396 validation comparisons and 69,647 JavaScript JSON round trips. Includes App Live client/server messages, bounded event payloads, client-control refinements, project wire summaries/lists and model configuration. Development export rejects unregistered checks/transforms; default URL behavior is covered, not arbitrary URL options. Native JSON tree construction, clone, equality, serialization and drop now use explicit stacks. Small-stack tests exercise 32,768 nested arrays and 12,000 alternating object/array pairs. Actual anonymous/password HTTP and App Live comparisons cover accepted, stripped, rejected, malformed, poisoned, numeric-overflow and raw UTF-16 inputs.",
       "remaining": [
-        "Remaining protocol schemas, globally malformed/deep JSON handling, and authenticated/hash serialization across all domains."
+        "Remaining protocol schemas, coercion/refinement boundaries and authenticated/hash serialization across all domains. Selected HTTP/WS paths and nesting examples do not establish all-server parser or schema parity."
       ]
     },
     "workerControlTransport": {
@@ -694,8 +699,20 @@
         "Complete remaining domain publishers, task routing, usage/storage accounting, external coordination and shared Redis operation.",
         "Complete full worker command/event/notification validation, binary/domain relays, execution and recovery integration.",
         "Exercise whole app UI and full worker index/runtime across the supported packaging/deployment/platform matrix.",
-        "Obtain and record supported-platform CI execution for this milestone; configured workflow steps alone are not passing evidence.",
-        "Complete globally malformed/deep JSON and remaining schema boundaries across the server; selected wire cases do not prove unbounded parser parity."
+        "Complete remaining schema, coercion/refinement and authenticated/hash boundaries across the server; the new parser socket cases do not prove all-domain parity."
+      ]
+    },
+    "jsonTransportBoundary": {
+      "status": "partial",
+      "evidence": [
+        "cantrip_server_rs/tests/json_depth.rs",
+        "scripts/server-rust/json-compatibility.mjs"
+      ],
+      "scope": "A baseline 4 KiB, 2,048-array request aborted native HTTP and App Live processes with a stack overflow while Node remained healthy. Native JSON syntax is validated once and its tree constructed iteratively; clone, comparison, serialization, drop and HTTP poison scanning are iterative. Authentication validates shared wire values before explicit UTF-8 storage/hashing boundaries, retaining UTF-16 issue keys and messages. Existing transport byte limits and schema decisions remain in force.",
+      "verifiedLocally": "macOS arm64: 52 HTTP and 27 WebSocket cases against actual Node/Rust processes on each of PGlite, private PostgreSQL and external PostgreSQL; HTTP status/body/security headers/cookies and Live responses match, with subsequent health/initialization/ping/close checks. The 37,396 existing schema cases, 69,647 JSON round trips and 412 auth request-schema cases also pass.",
+      "remaining": [
+        "Observe this changed implementation on supported CI platforms.",
+        "Complete remaining domain schemas, coercions, hashes and real product/deployment acceptance; no complete-server claim."
       ]
     }
   },
@@ -730,6 +747,15 @@
       "platforms": ["ubuntu-24.04", "macos-15", "windows-2025"],
       "conclusion": "success",
       "scope": "Observed prior worker/control portability milestone passed all three platforms and database modes, including browser API and existing worker components. This evidence covers that revision; new App Live integration and packaged-platform acceptance require their own results."
+    },
+    {
+      "pullRequest": "https://github.com/ArcaneArts/Cantrip/pull/2281",
+      "commit": "5a4d2445d0a76cd975a84e16d5b2509efeae2823",
+      "observedHead": "9585f386ad5a5435ef8283d95d1ab0ad083b8204",
+      "observedRun": "https://github.com/ArcaneArts/Cantrip/actions/runs/40383778952",
+      "platforms": ["ubuntu-24.04", "macos-15", "windows-2025"],
+      "conclusion": "success",
+      "scope": "Observed native tests plus core Live oracle, full project/scope repositories and actual HTTP/WS and Chromium client/worker-component comparisons on all three stores. All three jobs and their uploaded reports passed before merge. This evidence validates the App Live milestone head, not later JSON changes, full product UI/runtime, migration/rollback or packaged artifacts."
     }
   ]
 }

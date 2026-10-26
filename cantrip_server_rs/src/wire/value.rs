@@ -3,7 +3,7 @@
 //! JSON serialization preserves the original code units and ECMAScript order.
 use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
-    de::{self, MapAccess, Visitor},
+    de::{self, Visitor},
 };
 use std::{
     fmt,
@@ -11,6 +11,9 @@ use std::{
     ops::{Index, IndexMut},
     sync::Arc,
 };
+
+mod operations;
+mod parser;
 
 pub type Object = indexmap::IndexMap<JsString, Value>;
 
@@ -211,7 +214,7 @@ impl<'de> Deserialize<'de> for JsString {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Default)]
+#[derive(Default)]
 pub enum Value {
     #[default]
     Null,
@@ -298,62 +301,12 @@ impl Value {
     pub fn get(&self, key: &str) -> Option<&Value> {
         self.as_object().and_then(|o| o.get(key))
     }
-    pub fn stringify(&self) -> String {
-        let mut output = String::new();
-        self.write_json(&mut output);
-        output
-    }
-    fn write_json(&self, output: &mut String) {
-        match self {
-            Self::Null => output.push_str("null"),
-            Self::Bool(v) => output.push_str(if *v { "true" } else { "false" }),
-            Self::Number(v) => {
-                if v.is_finite() {
-                    output.push_str(ryu_js::Buffer::new().format_finite(*v))
-                } else {
-                    output.push_str("null")
-                }
-            }
-            Self::String(v) => v.write_json(output),
-            Self::Array(values) => {
-                output.push('[');
-                for (i, v) in values.iter().enumerate() {
-                    if i > 0 {
-                        output.push(',');
-                    }
-                    v.write_json(output);
-                }
-                output.push(']');
-            }
-            Self::Object(object) => {
-                let mut keys: Vec<_> = object.keys().collect();
-                keys.sort_by_key(|key| {
-                    key.as_str()
-                        .and_then(|s| {
-                            s.parse::<u32>()
-                                .ok()
-                                .filter(|n| *n < u32::MAX && n.to_string() == s)
-                        })
-                        .map_or((1, 0), |n| (0, n))
-                });
-                output.push('{');
-                for (i, key) in keys.into_iter().enumerate() {
-                    if i > 0 {
-                        output.push(',');
-                    }
-                    key.write_json(output);
-                    output.push(':');
-                    object[key].write_json(output);
-                }
-                output.push('}');
-            }
-        }
-    }
 }
 impl Index<&str> for Value {
     type Output = Value;
     fn index(&self, key: &str) -> &Value {
-        self.get(key).unwrap_or(&Value::Null)
+        static NULL: Value = Value::Null;
+        self.get(key).unwrap_or(&NULL)
     }
 }
 impl IndexMut<&str> for Value {
@@ -407,47 +360,7 @@ impl Serialize for Value {
 impl<'de> Deserialize<'de> for Value {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let raw = Box::<serde_json::value::RawValue>::deserialize(deserializer)?;
-        let raw = raw.get();
-        match raw.as_bytes().first() {
-            Some(b'"') => serde_json::from_str(raw)
-                .map(Self::String)
-                .map_err(de::Error::custom),
-            Some(b'[') => serde_json::from_str(raw)
-                .map(Self::Array)
-                .map_err(de::Error::custom),
-            Some(b'{') => {
-                struct ObjectVisitor;
-                impl<'de> Visitor<'de> for ObjectVisitor {
-                    type Value = Object;
-                    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                        f.write_str("a JSON object")
-                    }
-                    fn visit_map<A: MapAccess<'de>>(
-                        self,
-                        mut access: A,
-                    ) -> Result<Object, A::Error> {
-                        let mut object = Object::new();
-                        while let Some((key, value)) = access.next_entry::<JsString, Value>()? {
-                            object.insert(key, value);
-                        }
-                        Ok(object)
-                    }
-                }
-                use serde::de::Deserializer as _;
-                let mut deserializer = serde_json::Deserializer::from_str(raw);
-                deserializer
-                    .deserialize_map(ObjectVisitor)
-                    .map(Self::Object)
-                    .map_err(de::Error::custom)
-            }
-            Some(b'n') => Ok(Self::Null),
-            Some(b't') => Ok(Self::Bool(true)),
-            Some(b'f') => Ok(Self::Bool(false)),
-            _ => raw
-                .parse::<f64>()
-                .map(Self::Number)
-                .map_err(de::Error::custom),
-        }
+        parser::parse(raw.get()).map_err(de::Error::custom)
     }
 }
 
