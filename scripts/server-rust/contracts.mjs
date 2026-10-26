@@ -4,6 +4,7 @@ import * as protocol from "../../packages/protocol/dist/index.js";
 import { mkdir, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { format, resolveConfig } from "prettier";
 
 export const contractRoots = [
   "accountRegistrationSchema",
@@ -36,6 +37,9 @@ export const contractRoots = [
   "workerCredentialListSchema",
   "workerHeartbeatSchema",
   "workerSummarySchema",
+  "workerListSchema",
+  "workerConnectionEnvelopeSchema",
+  "workerResponseEnvelopeSchema",
   "accountSessionListSchema",
   "accountLicenseWhitelistCreateSchema",
   "accountLicenseWhitelistEntrySchema",
@@ -103,6 +107,8 @@ export function buildContractManifest() {
     const id = nodes.length;
     ids.set(schema, id);
     const node = { type: schema._zod.def.type };
+    if (schema._zod.optin === "optional") node.optionalIn = true;
+    if (schema._zod.optout === "optional") node.optionalOut = true;
     nodes.push(node);
     const def = schema._zod.def;
     if (!allowedTypes.has(def.type))
@@ -203,7 +209,14 @@ if (
   );
   await mkdir(fileURLToPath(new URL(".", destination)), { recursive: true });
   const manifest = buildContractManifest();
-  await writeFile(destination, `${JSON.stringify(manifest, null, 2)}\n`);
+  const filename = fileURLToPath(destination);
+  await writeFile(
+    destination,
+    await format(JSON.stringify(manifest), {
+      ...(await resolveConfig(filename)),
+      filepath: filename,
+    }),
+  );
   console.log(
     JSON.stringify({
       roots: Object.keys(manifest.roots).length,

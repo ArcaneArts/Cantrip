@@ -1,6 +1,6 @@
 //! Native execution of generated protocol contracts. JavaScript is used only
 //! by the development exporter/oracle; requests execute these Rust operations.
-mod coercion;
+pub(crate) mod coercion;
 mod refinements;
 pub mod value;
 pub use value::{JsString, Value};
@@ -63,6 +63,10 @@ struct Check {
 struct Node {
     #[serde(rename = "type")]
     kind: String,
+    #[serde(default)]
+    optional_in: bool,
+    #[serde(default)]
+    optional_out: bool,
     #[serde(default)]
     shape: Map<String, serde_json::Value>,
     #[serde(default)]
@@ -273,11 +277,30 @@ impl Contracts {
                 if let Some(object) = input.and_then(Value::as_object) {
                     let mut output = Object::new();
                     for (key, id) in &node.shape {
-                        let child = self.run(
-                            id.as_u64().unwrap() as usize,
+                        let schema_id = id.as_u64().unwrap() as usize;
+                        let present = object.contains_key(key.as_str());
+                        let mut child = self.run(
+                            schema_id,
                             object.get(key.as_str()),
                             &path_with(path, json!(key)),
                         )?;
+                        let schema = &self.nodes[schema_id];
+                        if !present && schema.optional_in && schema.optional_out {
+                            child.issues.clear();
+                            child.aborted = false;
+                        }
+                        if !present && !schema.optional_in {
+                            if child.issues.is_empty() {
+                                child.issue(
+                                    json!({"code":"invalid_type","expected":"nonoptional"}),
+                                    &path_with(path, json!(key)),
+                                    "Invalid input: expected nonoptional, received undefined"
+                                        .into(),
+                                    true,
+                                );
+                            }
+                            child.value = None;
+                        }
                         if let Some(value) = &child.value {
                             output.insert(key.clone().into(), value.clone());
                         }

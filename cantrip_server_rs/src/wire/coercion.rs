@@ -1,7 +1,7 @@
 use super::{JsString, Value, value::Object};
 use std::sync::OnceLock;
 
-pub(super) fn number(value: Option<&Value>) -> Result<f64, ()> {
+pub(crate) fn number(value: Option<&Value>) -> Result<f64, ()> {
     Ok(match value {
         None => f64::NAN,
         Some(Value::Null) => 0.0,

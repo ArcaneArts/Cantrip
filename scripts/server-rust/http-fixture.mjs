@@ -39,6 +39,7 @@ export class HttpFixture {
       CANTRIP_AUTH_RATE_LIMIT: "1000",
       CANTRIP_LICENSE_WHITELIST_ENABLED: "false",
       CANTRIP_SESSION_TTL_SECONDS: "300",
+      CANTRIP_PAIRING_RATE_LIMIT_PER_MINUTE: "1000",
       ...environment,
     };
     if (this.environment.CANTRIP_AUTH_MODE !== "none")
@@ -48,6 +49,10 @@ export class HttpFixture {
     this.tokens = new Map();
     this.requests = new Map();
     this.records = new Map();
+    this.workerCredentials = new Map();
+    this.workerCodes = new Map();
+    this.enrollmentExpirations = new Set();
+    this.enrollments = new Map();
   }
   client(name = "main") {
     if (!this.clients.has(name)) this.clients.set(name, { cookies: new Map() });
@@ -86,6 +91,11 @@ export class HttpFixture {
         Object.entries(value).map(([k, v]) => [k, this.normalize(v, k)]),
       );
     if (typeof value !== "string") return value;
+    if (this.workerCredentials.has(value))
+      return this.workerCredentials.get(value);
+    if (this.workerCodes.has(value)) return this.workerCodes.get(value);
+    if (key === "expiresAt" && this.enrollmentExpirations.has(value))
+      return "<enrollment-code-expiry>";
     if (this.requests.has(value))
       return `<request:${this.requests.get(value)}>`;
     if (uuid.test(value)) {
@@ -115,8 +125,12 @@ export class HttpFixture {
     const input =
       typeof options.json === "function" ? options.json(this) : options.json;
     const target = typeof url === "function" ? url(this) : url;
+    const extraHeaders =
+      typeof options.headers === "function"
+        ? options.headers(this)
+        : options.headers;
     const headers = {
-      origin,
+      ...(options.noOrigin || options.client === "worker" ? {} : { origin }),
       ...(input === undefined ? {} : { "content-type": "application/json" }),
       ...(client.cookies.size
         ? {
@@ -124,8 +138,9 @@ export class HttpFixture {
           }
         : {}),
       ...(options.csrf ? { "x-cantrip-csrf": client.csrf } : {}),
-      ...options.headers,
+      ...extraHeaders,
     };
+    const startedAt = Date.now();
     const response = await fetch(this.server.origin + target, {
       method,
       headers,
@@ -144,6 +159,45 @@ export class HttpFixture {
     const requestId = response.headers.get("x-request-id");
     assert.match(requestId, uuid);
     this.requests.set(requestId, label);
+    if (body?.code?.startsWith("ctwl_")) {
+      assert.match(body.code, /^ctwl_[A-Za-z0-9_-]{32}$/);
+      assert.equal(Buffer.from(body.code.slice(5), "base64url").length, 24);
+      assert.equal(
+        this.workerCodes.has(body.code),
+        false,
+        "Enrollment codes must be unique across generated responses",
+      );
+      this.workerCodes.set(body.code, `<worker-code:${this.workerCodes.size}>`);
+      const ttl = (input?.expiresInSeconds ?? 600) * 1000;
+      assert.ok(
+        Date.parse(body.expiresAt) > startedAt &&
+          Date.parse(body.expiresAt) <= Date.now() + ttl + 1000,
+        "Worker enrollment TTL",
+      );
+      this.enrollmentExpirations.add(body.expiresAt);
+      this.enrollments.set(body.id, body.expiresAt);
+    }
+    if (body?.status && this.enrollments.has(body.id))
+      assert.equal(
+        body.expiresAt,
+        this.enrollments.get(body.id),
+        "Retained enrollment expiry",
+      );
+    if (body?.credential) {
+      assert.match(body.credential, /^ctwk_[A-Za-z0-9_-]{43}$/);
+      const bytes = Buffer.from(body.credential.slice(5), "base64url");
+      assert.equal(bytes.length, 32);
+      assert.equal(bytes.toString("base64url"), body.credential.slice(5));
+      assert.equal(
+        this.workerCredentials.has(body.credential),
+        false,
+        "Rotated and enrolled secrets must be unique",
+      );
+      this.workerCredentials.set(
+        body.credential,
+        `<worker-credential:${this.workerCredentials.size}>`,
+      );
+    }
     if (body?.requestId) assert.equal(body.requestId, requestId);
     const setCookie = response.headers.getSetCookie().map((cookie) => {
       const [pair, ...attributes] = cookie.split("; "),

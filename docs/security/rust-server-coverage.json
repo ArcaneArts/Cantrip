@@ -264,20 +264,258 @@
         "status": "implemented-pending-platform-acceptance",
         "evidence": ["scripts/server-rust/security-compatibility.mjs"],
         "remaining": []
+      },
+      {
+        "method": "GET",
+        "path": "/api/workers",
+        "implementation": "cantrip_server_rs/src/http/workers.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/worker-compatibility.mjs",
+          "scripts/server-rust/worker-client-compatibility.mjs"
+        ],
+        "remaining": []
+      },
+      {
+        "method": "POST",
+        "path": "/api/workers/enrollment-codes",
+        "implementation": "cantrip_server_rs/src/http/workers.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/worker-compatibility.mjs",
+          "scripts/server-rust/worker-client-compatibility.mjs"
+        ],
+        "remaining": []
+      },
+      {
+        "method": "GET",
+        "path": "/api/workers/enrollment-codes/:enrollmentCodeId",
+        "implementation": "cantrip_server_rs/src/http/workers.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/worker-compatibility.mjs",
+          "scripts/server-rust/worker-client-compatibility.mjs"
+        ],
+        "remaining": []
+      },
+      {
+        "method": "POST",
+        "path": "/api/internal/workers/enroll",
+        "implementation": "cantrip_server_rs/src/http/workers.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/worker-compatibility.mjs",
+          "scripts/server-rust/worker-client-compatibility.mjs"
+        ],
+        "remaining": []
+      },
+      {
+        "method": "GET",
+        "path": "/api/workers/:workerId/credentials",
+        "implementation": "cantrip_server_rs/src/http/workers.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/worker-compatibility.mjs",
+          "scripts/server-rust/worker-client-compatibility.mjs"
+        ],
+        "remaining": []
+      },
+      {
+        "method": "POST",
+        "path": "/api/workers/:workerId/credentials/rotate",
+        "implementation": "cantrip_server_rs/src/http/workers.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/worker-compatibility.mjs",
+          "scripts/server-rust/worker-client-compatibility.mjs"
+        ],
+        "remaining": []
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/workers/:workerId/credentials/:credentialId",
+        "implementation": "cantrip_server_rs/src/http/workers.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/worker-compatibility.mjs",
+          "scripts/server-rust/worker-client-compatibility.mjs"
+        ],
+        "remaining": []
+      },
+      {
+        "method": "POST",
+        "path": "/api/internal/workers/encryption/bootstrap",
+        "implementation": "cantrip_server_rs/src/http/workers.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/worker-compatibility.mjs",
+          "scripts/server-rust/worker-client-compatibility.mjs"
+        ],
+        "remaining": []
+      },
+      {
+        "method": "POST",
+        "path": "/api/internal/workers/heartbeat",
+        "implementation": "cantrip_server_rs/src/http/workers.rs",
+        "status": "partial",
+        "evidence": [
+          "scripts/server-rust/worker-compatibility.mjs",
+          "scripts/server-rust/worker-client-compatibility.mjs"
+        ],
+        "remaining": [
+          "Pending worktree-transition recovery hook belongs to the unported worktree/execution domain."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/internal/workers/connect",
+        "implementation": "cantrip_server_rs/src/http/worker_socket.rs",
+        "status": "partial",
+        "evidence": [
+          "scripts/server-rust/worker-compatibility.mjs",
+          "scripts/server-rust/worker-client-compatibility.mjs"
+        ],
+        "remaining": [
+          "Domain event/notification validation and persistence, binary relays, shared presence/coordination, reconnect-triggered domain recovery and resource reconciliation remain unported."
+        ]
       }
     ]
   },
   "workerCommands": {
-    "defaultStatus": "unported"
+    "defaultStatus": "unported",
+    "overrides": [
+      {
+        "command": "worker.credential.rotate",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/http/workers.rs",
+        "evidence": [
+          "scripts/server-rust/worker-compatibility.mjs",
+          "scripts/server-rust/worker-client-compatibility.mjs"
+        ],
+        "remaining": [
+          "Generic command/event/notification schema coverage and full worker runtime acceptance remain required."
+        ]
+      }
+    ]
   },
   "durableTables": {
     "defaultStatus": "schema-migrated-only",
     "evidence": ["cantrip_server_rs/tests/database_contract.rs"],
-    "implementedSubset": "Account/session, mobile sign-in, local provisioning, configured-administrator, license-whitelist, audit-query/write and encryption-registry operations in the native auth and encryption repositories. Complete domain operations remain unported."
+    "implementedSubset": "Account/session, mobile sign-in, local provisioning, configured-administrator, license-whitelist, audit-query/write and encryption-registry operations in the native auth and encryption repositories. Complete domain operations remain unported. Worker, enrollment-code and credential persistence, atomic replacement/rotation/revocation and heartbeat storage are implemented in workers/repository.rs; this is not the full worker-management or execution domain."
   },
   "repositoryMethods": {
     "defaultStatus": "unported",
-    "implementedSubset": "Native auth/security and encryption repositories retain their existing SQL and transaction semantics. Complete method-level correspondence remains required."
+    "implementedSubset": "Native auth/security and encryption repositories retain their existing SQL and transaction semantics. Complete method-level correspondence remains required.",
+    "overrides": [
+      {
+        "method": "createWorkerEnrollmentCode",
+        "implementation": "cantrip_server_rs/src/workers/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/worker_repository.rs",
+          "scripts/server-rust/worker-compatibility.mjs"
+        ]
+      },
+      {
+        "method": "findReusableWorkerId",
+        "implementation": "cantrip_server_rs/src/workers/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/worker_repository.rs",
+          "scripts/server-rust/worker-compatibility.mjs"
+        ]
+      },
+      {
+        "method": "getWorkerEnrollmentCodeStatus",
+        "implementation": "cantrip_server_rs/src/workers/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/worker_repository.rs",
+          "scripts/server-rust/worker-compatibility.mjs"
+        ]
+      },
+      {
+        "method": "exchangeWorkerEnrollmentCode",
+        "implementation": "cantrip_server_rs/src/workers/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/worker_repository.rs",
+          "scripts/server-rust/worker-compatibility.mjs"
+        ]
+      },
+      {
+        "method": "authenticateWorkerCredential",
+        "implementation": "cantrip_server_rs/src/workers/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/worker_repository.rs",
+          "scripts/server-rust/worker-compatibility.mjs"
+        ]
+      },
+      {
+        "method": "listWorkerCredentials",
+        "implementation": "cantrip_server_rs/src/workers/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/worker_repository.rs",
+          "scripts/server-rust/worker-compatibility.mjs"
+        ]
+      },
+      {
+        "method": "rotateWorkerCredential",
+        "implementation": "cantrip_server_rs/src/workers/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/worker_repository.rs",
+          "scripts/server-rust/worker-compatibility.mjs"
+        ]
+      },
+      {
+        "method": "revokeWorkerCredential",
+        "implementation": "cantrip_server_rs/src/workers/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/worker_repository.rs",
+          "scripts/server-rust/worker-compatibility.mjs"
+        ]
+      },
+      {
+        "method": "recordWorker",
+        "implementation": "cantrip_server_rs/src/workers/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/worker_repository.rs",
+          "scripts/server-rust/worker-compatibility.mjs"
+        ]
+      },
+      {
+        "method": "listWorkers",
+        "implementation": "cantrip_server_rs/src/workers/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/worker_repository.rs",
+          "scripts/server-rust/worker-compatibility.mjs"
+        ]
+      },
+      {
+        "method": "getWorker",
+        "implementation": "cantrip_server_rs/src/workers/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/worker_repository.rs",
+          "scripts/server-rust/worker-compatibility.mjs"
+        ]
+      },
+      {
+        "method": "getWorkerOwnerId",
+        "implementation": "cantrip_server_rs/src/workers/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/worker_repository.rs",
+          "scripts/server-rust/worker-compatibility.mjs"
+        ]
+      }
+    ]
   },
   "liveResources": {
     "defaultStatus": "unported"
@@ -300,7 +538,16 @@
       "verifiedLocally": "The session milestone PR 2277 passed all three storage suites on Linux/macOS/Windows in observed run 40254773601. Changes in later milestones require fresh regression results."
     },
     "workerEnrollment": {
-      "status": "unported"
+      "status": "implemented-pending-platform-acceptance",
+      "evidence": [
+        "cantrip_server_rs/tests/worker_repository.rs",
+        "cantrip_server_rs/tests/worker_boundaries.rs",
+        "scripts/server-rust/worker-compatibility.mjs",
+        "scripts/server-rust/worker-client-compatibility.mjs"
+      ],
+      "remaining": [
+        "Full worker index/runtime and actual app UI acceptance remain required; the browser integration runs unchanged API modules and worker components with a controlled command handler."
+      ]
     },
     "endpointEncryptionRegistry": {
       "status": "implemented-pending-platform-acceptance",
@@ -310,8 +557,8 @@
         "scripts/server-rust/security-crypto-flow.mjs"
       ],
       "remaining": [
-        "Worker enrollment and encryption-bootstrap integration are unported.",
-        "Mutation audit completion currently runs before response delivery; streaming onResponse timing remains required."
+        "Mutation audit completion currently runs before response delivery; streaming onResponse timing remains required.",
+        "End-to-end worker encryption refresh, encrypted resource-domain flows, and full worker runtime acceptance remain unported."
       ]
     },
     "productionLoggingAndMetrics": {
@@ -336,9 +583,26 @@
     "wireContracts": {
       "status": "partial",
       "evidence": ["cantrip_server_rs/tests/wire_contracts.rs"],
-      "validatedSubset": "36 actual protocol exports; 27,252 validation comparisons and 69,647 JavaScript JSON round trips. Unknown protocol export/check operations fail development generation.",
+      "validatedSubset": "39 actual protocol exports; 30,053 validation comparisons and 69,647 JavaScript JSON round trips. Required unknown fields follow actual Zod object-presence behavior; development export formats generated assets and rejects unknown checks.",
       "remaining": [
         "Remaining protocol schemas, globally malformed/deep JSON handling, and authenticated/hash serialization across all domains."
+      ]
+    },
+    "workerControlTransport": {
+      "status": "partial",
+      "evidence": [
+        "cantrip_server_rs/tests/worker_bridge.rs",
+        "scripts/server-rust/worker-handshakes.mjs",
+        "scripts/server-rust/worker-sockets.mjs",
+        "scripts/server-rust/worker-authentication-faults.mjs",
+        "scripts/server-rust/worker-client-compatibility.mjs"
+      ],
+      "scope": "Native HTTP/1 upgrade (versions 8/13, ready v1/v2 and legacy), credential authentication, bounded pre-authentication buffering/capacity, close-frame transport cleanup, response correlation, local reconnect/deadline/event callback sequencing and credential delivery/revocation. Actual browser APIs and unchanged worker components exercise enrollment/rotation/persistence/reconnect/revocation.",
+      "remaining": [
+        "App Live durable journal/subscriptions and revocation consumers; broadcast invalidations alone are not App Live.",
+        "Full command/event/notification schema validation, domain event persistence and binary relays.",
+        "Shared coordination, resource reconciliation and execution recovery hooks.",
+        "Whole app UI and full worker index/runtime acceptance, beyond the controlled credential command handler."
       ]
     }
   },
@@ -356,6 +620,14 @@
       "platforms": ["ubuntu-24.04", "macos-15", "windows-2025"],
       "conclusion": "success",
       "scope": "Foundation, configuration and session milestone including all three storage socket suites. This is not complete server or packaged-platform acceptance."
+    },
+    {
+      "pullRequest": "https://github.com/ArcaneArts/Cantrip/pull/2278",
+      "commit": "a026b4083fcf849a8f376740cc2957bfff262c7d",
+      "observedRun": "https://github.com/ArcaneArts/Cantrip/actions/runs/40261425392",
+      "platforms": ["ubuntu-24.04", "macos-15", "windows-2025"],
+      "conclusion": "success",
+      "scope": "Observed account/encryption milestone CI including three storage suites, real endpoint crypto and external PostgreSQL Node/Rust/Node retained writes. This does not establish complete server or packaged-platform acceptance, or validate later worker milestone changes."
     }
   ]
 }
