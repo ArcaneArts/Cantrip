@@ -3,8 +3,8 @@
   "completeReplacement": false,
   "inventory": {
     "path": "docs/security/server-route-inventory.json",
-    "sha256": "c2462d2056c4a3294222cca4f28f6d06b95e2d491c9fb494498ba9cd9c81d878",
-    "baselineCommit": "2bb15440ac6810e82e6ce415cd13d62addb450bf",
+    "sha256": "d3d736303df411dfff7a1cb4cf8ebd72b682b8ae79a595c54d947a8eb94d1ae1",
+    "baselineCommit": "899defa8bce147a196a7fad83cab130af7b55415",
     "counts": {
       "routes": 520,
       "workerCommands": 278,
@@ -38,9 +38,12 @@
         "path": "/api/auth/logout",
         "implementation": "cantrip_server_rs/src/http/sessions.rs",
         "status": "partial",
-        "evidence": ["scripts/server-rust/auth-compatibility.mjs"],
+        "evidence": [
+          "scripts/server-rust/auth-compatibility.mjs",
+          "scripts/server-rust/live-compatibility.mjs"
+        ],
         "remaining": [
-          "Revocation events exist; live, WorkerLink, attachment and session-socket consumers remain unported."
+          "WorkerLink and attachment revocation consumers remain unported; local App Live/session socket revocation now completes before the HTTP response."
         ]
       },
       {
@@ -48,9 +51,12 @@
         "path": "/api/auth/logout-all",
         "implementation": "cantrip_server_rs/src/http/sessions.rs",
         "status": "partial",
-        "evidence": ["scripts/server-rust/auth-compatibility.mjs"],
+        "evidence": [
+          "scripts/server-rust/auth-compatibility.mjs",
+          "scripts/server-rust/live-compatibility.mjs"
+        ],
         "remaining": [
-          "Revocation events exist; live, WorkerLink, attachment and session-socket consumers remain unported."
+          "WorkerLink and attachment revocation consumers remain unported; local App Live/session socket revocation now completes before the HTTP response."
         ]
       },
       {
@@ -219,11 +225,12 @@
         "method": "GET",
         "path": "/api/account/sessions",
         "implementation": "cantrip_server_rs/src/http/account.rs",
-        "status": "partial",
-        "evidence": ["scripts/server-rust/security-compatibility.mjs"],
-        "remaining": [
-          "Additional connected-session indicators require the remaining live/session-socket transport."
-        ]
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/security-compatibility.mjs",
+          "scripts/server-rust/live-compatibility.mjs"
+        ],
+        "remaining": []
       },
       {
         "method": "GET",
@@ -378,6 +385,21 @@
         "remaining": [
           "Domain event/notification validation and persistence, binary relays, shared presence/coordination, reconnect-triggered domain recovery and resource reconciliation remain unported."
         ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/live",
+        "implementation": "cantrip_server_rs/src/http/live_socket.rs",
+        "status": "partial",
+        "evidence": [
+          "scripts/server-rust/live-hub-oracle.mjs",
+          "scripts/server-rust/live-repository-compatibility.mjs",
+          "scripts/server-rust/live-compatibility.mjs",
+          "scripts/server-rust/worker-client-compatibility.mjs"
+        ],
+        "remaining": [
+          "Most domain publishers, account usage accounting, Redis/shared coordination and full product flows remain unported. Supported-platform execution evidence for this milestone is pending."
+        ]
       }
     ]
   },
@@ -514,11 +536,59 @@
           "cantrip_server_rs/tests/worker_repository.rs",
           "scripts/server-rust/worker-compatibility.mjs"
         ]
+      },
+      {
+        "method": "listProjects",
+        "implementation": "cantrip_server_rs/src/projects/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": ["scripts/server-rust/project-repository-compatibility.mjs"]
+      },
+      {
+        "method": "getChatExecutionContext",
+        "implementation": "cantrip_server_rs/src/live/repository.rs",
+        "status": "partial",
+        "evidence": ["scripts/server-rust/live-repository-compatibility.mjs"],
+        "remaining": [
+          "Complete context DTO and its resource/execution consumers remain unported; the exact repository read/validation path needed by Live scope authorization is implemented."
+        ]
+      },
+      {
+        "method": "isUserSessionActive",
+        "implementation": "cantrip_server_rs/src/live/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": ["scripts/server-rust/live-repository-compatibility.mjs"]
       }
     ]
   },
   "liveResources": {
-    "defaultStatus": "unported"
+    "defaultStatus": "unported",
+    "overrides": [
+      {
+        "resource": "worker",
+        "status": "partial",
+        "implementation": "cantrip_server_rs/src/workers/service.rs",
+        "evidence": [
+          "scripts/server-rust/live-compatibility.mjs",
+          "scripts/server-rust/worker-client-compatibility.mjs"
+        ],
+        "remaining": ["Shared coordination and remaining domain publishers."]
+      },
+      {
+        "resource": "worker-availability",
+        "status": "partial",
+        "implementation": "cantrip_server_rs/src/workers/service.rs",
+        "evidence": ["scripts/server-rust/worker-client-compatibility.mjs"],
+        "remaining": [
+          "Full reconciliation, fleet/domain and shared coordination acceptance."
+        ]
+      },
+      {
+        "resource": "account-session",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/live/service.rs",
+        "evidence": ["scripts/server-rust/live-compatibility.mjs"]
+      }
+    ]
   },
   "crossCutting": {
     "configuration": {
@@ -583,7 +653,7 @@
     "wireContracts": {
       "status": "partial",
       "evidence": ["cantrip_server_rs/tests/wire_contracts.rs"],
-      "validatedSubset": "39 actual protocol exports; 30,053 validation comparisons and 69,647 JavaScript JSON round trips. Required unknown fields follow actual Zod object-presence behavior; development export formats generated assets and rejects unknown checks.",
+      "validatedSubset": "46 actual protocol exports; 37,396 validation comparisons and 69,647 JavaScript JSON round trips. Includes App Live client/server messages, bounded event payloads, client-control refinements, project wire summaries/lists and model configuration. Development export rejects unregistered checks/transforms; default URL behavior is covered, not arbitrary URL options.",
       "remaining": [
         "Remaining protocol schemas, globally malformed/deep JSON handling, and authenticated/hash serialization across all domains."
       ]
@@ -599,10 +669,33 @@
       ],
       "scope": "Native HTTP/1 upgrade (versions 8/13, ready v1/v2 and legacy), credential authentication, bounded pre-authentication buffering/capacity, close-frame transport cleanup, response correlation, local reconnect/deadline/event callback sequencing and credential delivery/revocation. Actual browser APIs and unchanged worker components exercise enrollment/rotation/persistence/reconnect/revocation.",
       "remaining": [
-        "App Live durable journal/subscriptions and revocation consumers; broadcast invalidations alone are not App Live.",
+        "App Live transport and ordered worker/session invalidations are integrated locally. Other resource publishers, usage accounting, WorkerLink and shared coordination remain unported.",
         "Full command/event/notification schema validation, domain event persistence and binary relays.",
         "Shared coordination, resource reconciliation and execution recovery hooks.",
         "Whole app UI and full worker index/runtime acceptance, beyond the controlled credential command handler."
+      ]
+    },
+    "appLiveTransport": {
+      "status": "partial",
+      "implementation": "cantrip_server_rs/src/live/",
+      "evidence": [
+        "scripts/server-rust/live-hub-oracle.mjs",
+        "scripts/server-rust/live-hub-scenarios.mjs",
+        "cantrip_server_rs/examples/live-hub-oracle.rs",
+        "cantrip_server_rs/tests/live_sessions.rs",
+        "scripts/server-rust/project-repository-compatibility.mjs",
+        "scripts/server-rust/live-repository-compatibility.mjs",
+        "scripts/server-rust/live-compatibility.mjs",
+        "scripts/server-rust/live-socket-faults.mjs",
+        "scripts/server-rust/worker-client-compatibility.mjs"
+      ],
+      "scope": "Native /api/live HTTP upgrade, configured origin/principal, first-offered non-worker subprotocol, per-account capacity through actual transport completion, first/last session presence, periodic validation, synchronous post-commit revocation, full project DTO and chat-context authorization reads, worker invalidations, FIFO final errors/close, bounded IO cleanup and actual process shutdown draining. Core oracle compares 44 scenarios/688 steps; repository suites compare project mapping and scope/session activity on all three stores. Real HTTP/WS covers anonymous/password/accounts/capacity, reconnect replay, invalid frames, committed worker state, stalled close acknowledgment and shutdown; external PostgreSQL also verifies an actually locked authorization query cannot stall transport ping/close. Chromium exercises the actual AppLiveClient with the existing worker components; its browser adapter maps internal close reasons to browser-permitted private-use codes. This does not establish full UI/domain/runtime or packaged-platform acceptance.",
+      "remaining": [
+        "Complete remaining domain publishers, task routing, usage/storage accounting, external coordination and shared Redis operation.",
+        "Complete full worker command/event/notification validation, binary/domain relays, execution and recovery integration.",
+        "Exercise whole app UI and full worker index/runtime across the supported packaging/deployment/platform matrix.",
+        "Obtain and record supported-platform CI execution for this milestone; configured workflow steps alone are not passing evidence.",
+        "Complete globally malformed/deep JSON and remaining schema boundaries across the server; selected wire cases do not prove unbounded parser parity."
       ]
     }
   },
@@ -628,6 +721,15 @@
       "platforms": ["ubuntu-24.04", "macos-15", "windows-2025"],
       "conclusion": "success",
       "scope": "Observed account/encryption milestone CI including three storage suites, real endpoint crypto and external PostgreSQL Node/Rust/Node retained writes. This does not establish complete server or packaged-platform acceptance, or validate later worker milestone changes."
+    },
+    {
+      "pullRequest": "https://github.com/ArcaneArts/Cantrip/pull/2280",
+      "commit": "899defa8bce147a196a7fad83cab130af7b55415",
+      "testedHead": "7e892fdb9f2f4c1b981a10059ab28548f3fdcac5",
+      "observedRun": "https://github.com/ArcaneArts/Cantrip/actions/runs/40280336354",
+      "platforms": ["ubuntu-24.04", "macos-15", "windows-2025"],
+      "conclusion": "success",
+      "scope": "Observed prior worker/control portability milestone passed all three platforms and database modes, including browser API and existing worker components. This evidence covers that revision; new App Live integration and packaged-platform acceptance require their own results."
     }
   ]
 }

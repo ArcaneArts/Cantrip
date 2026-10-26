@@ -1,6 +1,8 @@
 //! Native execution of generated protocol contracts. JavaScript is used only
 //! by the development exporter/oracle; requests execute these Rust operations.
 pub(crate) mod coercion;
+pub(crate) mod live;
+mod projects;
 mod refinements;
 pub mod value;
 pub use value::{JsString, Value};
@@ -91,6 +93,12 @@ struct Node {
     coerce: bool,
     #[serde(default)]
     checks: Vec<Check>,
+    #[serde(default, rename = "in")]
+    input: Option<usize>,
+    #[serde(default, rename = "out")]
+    output: Option<usize>,
+    #[serde(default)]
+    transform_tag: String,
 }
 #[derive(Deserialize)]
 struct Contracts {
@@ -214,6 +222,19 @@ impl Contracts {
             "optional" | "nullable" | "default" => {
                 result = self.run(node.inner_type.expect("inner contract"), input, path)?
             }
+            "pipe" => {
+                result = self.run(node.input.expect("input contract"), input, path)?;
+                if !result.issues.is_empty() {
+                    result.aborted = true;
+                } else {
+                    result = self.run(
+                        node.output.expect("output contract"),
+                        result.value.as_ref(),
+                        path,
+                    )?;
+                }
+            }
+            "transform" => live::transform(&node.transform_tag, &mut result, path)?,
             "string" => {
                 if node.coerce {
                     result.value = Some(json!(match input {
@@ -642,6 +663,25 @@ impl Contracts {
                     .as_ref()
                     .and_then(Value::as_js_string)
                     .expect("validated string");
+                if check.format == "url" {
+                    let trimmed = value.trim();
+                    // Zod trims its output, while the URL constructor accepts
+                    // a USVString. Preserve the original UTF-16 in the output.
+                    if url::Url::parse(&trimmed.lossy()).is_ok() {
+                        result.value = Some(Value::String(trimmed));
+                    } else {
+                        result.issue(
+                            json!({"code":"invalid_format","format":"url"}),
+                            path,
+                            check
+                                .message
+                                .clone()
+                                .unwrap_or_else(|| "Invalid URL".into()),
+                            check.abort,
+                        );
+                    }
+                    return Ok(());
+                }
                 if check
                     .compiled
                     .as_ref()

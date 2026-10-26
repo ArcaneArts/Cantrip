@@ -1,3 +1,5 @@
+mod support;
+
 use anyhow::{Context, Result};
 use cantrip_server::{
     auth::{crypto, repository::AuthRepository},
@@ -11,21 +13,13 @@ use std::{path::PathBuf, sync::Arc};
 use uuid::Uuid;
 
 fn fixtures() -> Result<Value> {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .to_owned();
-    let output = std::process::Command::new("node")
-        .args(["scripts/server-rust/security-oracle.mjs", "--fixtures"])
-        .current_dir(root)
-        .output()?;
-    anyhow::ensure!(
-        output.status.success(),
-        "Encryption fixtures failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    Ok(serde_json::from_slice(&output.stdout)?)
+    support::security_fixtures(&[
+        "accountEncryptionProfileInitializeSchema",
+        "accountPasswordEncryptionChangeSchema",
+        "encryptionKeyGrantCreateSchema",
+    ])
 }
+
 fn client_input(initial: &Value, id: &str) -> Value {
     json!({"id":id,"kind":"client","label":null,"publicKey":initial["initialClient"]["publicKey"]})
 }

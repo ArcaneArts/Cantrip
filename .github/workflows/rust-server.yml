@@ -14,6 +14,12 @@ on:
       - cantrip_server/src/app/routes/worker-*.ts
       - cantrip_server/src/workers/**
       - cantrip_server/src/db/repository/workers.ts
+      - cantrip_server/src/db/repository/projects.ts
+      - cantrip_server/src/db/repository/chat-runtime-context.ts
+      - cantrip_server/src/app/routes/live.ts
+      - cantrip_server/src/app/runtime/session-socket-runtime.ts
+      - cantrip_server/src/app/runtime/live-infrastructure-runtime.ts
+      - cantrip_server/src/live/**
       - cantrip_worker/src/transport.ts
       - cantrip_worker/src/enrollment.ts
       - cantrip_worker/src/heartbeat.ts
@@ -21,6 +27,7 @@ on:
       - cantrip_app/src/lib/api/workers.ts
       - cantrip_app/src/lib/api/account.ts
       - cantrip_app/src/lib/api-client.ts
+      - cantrip_app/src/lib/app-live-client.ts
       - cantrip_server/src/app/http/**
       - cantrip_server/src/db/repository/accounts.ts
       - cantrip_server/src/db/encryption-registry.ts
@@ -104,6 +111,26 @@ jobs:
         run: node scripts/server-rust/cargo.mjs test -- --nocapture
       - name: Node and Rust over real HTTP connections
         run: node scripts/server-rust/compatibility.mjs --report .qa/rust-server/foundation-http.json
+      - name: Actual Node and Rust Live hub protocol, replay and control oracle
+        run: node --import tsx scripts/server-rust/live-hub-oracle.mjs --report .qa/rust-server/live-hub-oracle.json
+      - name: Full project mapping with native PGlite
+        run: node --import tsx scripts/server-rust/project-repository-compatibility.mjs --report .qa/rust-server/live-projects-pglite.json
+      - name: Full project mapping with private PostgreSQL
+        run: node --import tsx scripts/server-rust/project-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/live-projects-bundled.json
+      - name: Full project mapping with external PostgreSQL
+        run: node --import tsx scripts/server-rust/project-repository-compatibility.mjs --database postgres --report .qa/rust-server/live-projects-external.json
+      - name: Live scope and session authorization with native PGlite
+        run: node --import tsx scripts/server-rust/live-repository-compatibility.mjs --report .qa/rust-server/live-scopes-pglite.json
+      - name: Live scope and session authorization with private PostgreSQL
+        run: node --import tsx scripts/server-rust/live-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/live-scopes-bundled.json
+      - name: Live scope and session authorization with external PostgreSQL
+        run: node --import tsx scripts/server-rust/live-repository-compatibility.mjs --database postgres --report .qa/rust-server/live-scopes-external.json
+      - name: Actual Live HTTP and WebSocket transport with native PGlite
+        run: node --import tsx scripts/server-rust/live-compatibility.mjs --report .qa/rust-server/live-pglite-http.json
+      - name: Actual Live HTTP and WebSocket transport with private PostgreSQL
+        run: node --import tsx scripts/server-rust/live-compatibility.mjs --database bundled-postgres --report .qa/rust-server/live-bundled-http.json
+      - name: Actual Live HTTP and WebSocket transport with external PostgreSQL
+        run: node --import tsx scripts/server-rust/live-compatibility.mjs --database postgres --report .qa/rust-server/live-external-http.json
       - name: Authentication over real HTTP with native PGlite
         run: node --import tsx scripts/server-rust/auth-compatibility.mjs --report .qa/rust-server/auth-pglite-http.json
       - name: Authentication over real HTTP with private PostgreSQL
@@ -124,11 +151,11 @@ jobs:
         run: node --import tsx scripts/server-rust/worker-compatibility.mjs --database bundled-postgres --report .qa/rust-server/worker-bundled-http.json
       - name: Worker control with external PostgreSQL and real authentication lock faults
         run: node --import tsx scripts/server-rust/worker-compatibility.mjs --database postgres --report .qa/rust-server/worker-external-http.json
-      - name: Actual Chromium client APIs and unchanged worker components with PGlite
+      - name: Actual Chromium APIs, Live client and unchanged worker components with PGlite
         run: node --import tsx scripts/server-rust/worker-client-compatibility.mjs --report .qa/rust-server/worker-client-pglite.json
-      - name: Actual Chromium client APIs and unchanged worker components with private PostgreSQL
+      - name: Actual Chromium APIs, Live client and unchanged worker components with private PostgreSQL
         run: node --import tsx scripts/server-rust/worker-client-compatibility.mjs --database bundled-postgres --report .qa/rust-server/worker-client-bundled.json
-      - name: Actual Chromium client APIs and unchanged worker components with external PostgreSQL
+      - name: Actual Chromium APIs, Live client and unchanged worker components with external PostgreSQL
         run: node --import tsx scripts/server-rust/worker-client-compatibility.mjs --database postgres --report .qa/rust-server/worker-client-external.json
       - uses: actions/upload-artifact@v4
         if: always()

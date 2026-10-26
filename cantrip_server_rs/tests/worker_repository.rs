@@ -1,3 +1,5 @@
+mod support;
+
 use anyhow::{Context, Result};
 use cantrip_server::{
     auth::{crypto, repository::AuthRepository},
@@ -14,20 +16,8 @@ use std::{path::PathBuf, sync::Arc};
 use uuid::Uuid;
 
 fn heartbeat(id: &str) -> Result<Value> {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .to_owned();
-    let output = std::process::Command::new("node")
-        .args(["scripts/server-rust/security-oracle.mjs", "--fixtures"])
-        .current_dir(root)
-        .output()?;
-    anyhow::ensure!(
-        output.status.success(),
-        "Worker fixture oracle failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let fixture: Value = serde_json::from_slice(&output.stdout)?;
+    let fixture =
+        support::security_fixtures(&["workerCredentialListSchema", "workerHeartbeatSchema"])?;
     assert_eq!(
         json!(DEFAULT_CREDENTIAL_SCOPES),
         fixture["workerCredentialListSchema"][0][0]["scopes"]

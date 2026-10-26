@@ -250,8 +250,21 @@ async fn run(
             &state.control_generation,
         )
     });
-    if !state.bridge.attach(&worker, peer.clone(), ready) {
-        close(&mut socket, 1012, "Worker connection was not accepted").await;
+    // Owner lookup awaited database IO after the first revocation check. Fence
+    // the final cache check and synchronous attach together: a revoker either
+    // rejects this attach or disconnects the already attached peer afterward.
+    let accepted = {
+        let revoked = state.revoked.read().unwrap();
+        if !authenticated.development && revoked.contains(&peer.identity.credential) {
+            Err((1008, "Worker credential was revoked"))
+        } else if state.bridge.attach(&worker, peer.clone(), ready) {
+            Ok(())
+        } else {
+            Err((1012, "Worker connection was not accepted"))
+        }
+    };
+    if let Err((code, reason)) = accepted {
+        close(&mut socket, code, reason).await;
         return;
     }
     state.invalidate(&owner, "worker-availability", &worker);

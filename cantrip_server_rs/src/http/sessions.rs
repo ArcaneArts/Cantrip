@@ -484,7 +484,7 @@ async fn execute(
             } else if let Some(id) = &ctx.principal.session_id {
                 service.revoke(id, false, "signed-out").await?
             } else {
-                let _ = service.revocations.send(Revocation::Session(None));
+                service.revoke_connections(Revocation::Session(None));
                 0
             };
             audit(

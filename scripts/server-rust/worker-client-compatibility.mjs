@@ -1,4 +1,4 @@
-// Real Chromium runs the unchanged app API modules against each server. The
+// Real Chromium runs the app API modules and actual AppLiveClient against each server. The
 // unchanged worker enrollment, heartbeat, transport and credential store run
 // with a controlled command handler; this is not whole-worker runtime coverage.
 import assert from "node:assert/strict";
@@ -45,7 +45,7 @@ const report = {
   databaseMode,
   completeReplacement: false,
   scope:
-    "Unchanged browser API modules, worker enrollment/heartbeat/WorkerConnection/credential store; controlled credential-rotation command handler. Full app UI and full worker index/runtime are not covered.",
+    "Actual browser API modules and AppLiveClient (including the browser close-code fix), worker enrollment/heartbeat/WorkerConnection/credential store; controlled credential-rotation command handler. Full app UI and full worker index/runtime are not covered.",
   runtimes: [],
 };
 let vite, browser, postgresOwner, failure;
@@ -107,12 +107,47 @@ async function flow(fixture) {
         window.workerFixtureRequest = (
           await import("/src/lib/api-client.ts")
         ).request;
+        const { AppLiveClient, appLiveWebSocketUrl } =
+          await import("/src/lib/app-live-client.ts");
+        window.workerFixtureLiveEvents = [];
+        window.workerFixtureLiveAuth = [];
+        window.workerFixtureLiveResync = [];
+        window.workerFixtureLive = new AppLiveClient({
+          client: {
+            id: "actual-browser-live",
+            name: "Actual browser Live fixture",
+            version: "1",
+          },
+          storage: localStorage,
+          storageKey: "worker-live-fixture-resume",
+          url: appLiveWebSocketUrl(serverUrl, location.origin),
+          onEvent: (event) => window.workerFixtureLiveEvents.push(event),
+          onAuthenticationRequired: (reason) =>
+            window.workerFixtureLiveAuth.push(reason),
+          onResync: async (scopes, reason) => {
+            const workers = await window.workerFixtureRequest("/api/workers");
+            window.workerFixtureLiveResync.push({
+              scopes,
+              reason,
+              workers: workers.length,
+            });
+          },
+        });
+        window.workerFixtureLive.retainScope({ kind: "current-user" });
+        window.workerFixtureLive.start();
         return workers.createWorkerEnrollmentCode({
           label: "Actual browser enrollment",
           expiresInSeconds: 300,
         });
       },
       { serverUrl: fixture.server.origin, password },
+    );
+    const initialLive = await eventually(
+      () => page.evaluate(() => window.workerFixtureLive.snapshot()),
+      (snapshot) => {
+        assert.equal(snapshot.status, "live");
+        assert.equal(snapshot.activeScopeCount, 1);
+      },
     );
     const config = {
       dataDirectory: path.join(
@@ -133,6 +168,30 @@ async function flow(fixture) {
       new Date().toISOString(),
     );
     await enrollWorker(config, workerHeartbeat);
+    const enrollmentEvent = await eventually(
+      () =>
+        page.evaluate(
+          (workerId) =>
+            window.workerFixtureLiveEvents.find(
+              (event) =>
+                event.resource === "worker" && event.entityId === workerId,
+            ),
+          config.workerId,
+        ),
+      (event) => assert.ok(event),
+    );
+    assert.equal(enrollmentEvent.action, "invalidated");
+    assert.deepEqual(enrollmentEvent.scope, { kind: "current-user" });
+    assert.equal(enrollmentEvent.payload, null);
+    await page.evaluate(() => window.workerFixtureLive.reconnectNow());
+    await eventually(
+      () => page.evaluate(() => window.workerFixtureLive.snapshot()),
+      (snapshot) => {
+        assert.equal(snapshot.status, "live");
+        assert.equal(snapshot.serverEpoch, initialLive.serverEpoch);
+        assert.ok(snapshot.lastCursor >= enrollmentEvent.cursor);
+      },
+    );
     assert.equal(config.enrollmentCode, null);
     assert.equal(config.tokenSource, "persisted");
     const initialToken = config.token;
@@ -253,6 +312,15 @@ async function flow(fixture) {
     );
     assert.equal(credentials.length, 2);
     assert.ok(credentials.every((credential) => !credential.active));
+    await page.evaluate(async () => {
+      const account = await import("/src/lib/api/account.ts");
+      await account.logout();
+    });
+    await eventually(
+      () => page.evaluate(() => window.workerFixtureLiveAuth),
+      (reasons) => assert.deepEqual(reasons, ["Session was revoked"]),
+    );
+    await page.evaluate(() => window.workerFixtureLive.stop());
     assert.deepEqual(errors, []);
     return {
       passed: true,
@@ -260,7 +328,10 @@ async function flow(fixture) {
       steps: [
         "real browser server profile and account registration",
         "cookie and CSRF session",
+        "actual AppLiveClient initializes and subscribes in Chromium",
         "browser pairing code to unchanged worker enrollment",
+        "committed worker enrollment reaches the actual browser Live client",
+        "AppLiveClient reconnects with its retained epoch and cursor",
         "persisted worker credential and real heartbeat",
         "authenticated ready via unchanged WorkerConnection",
         "browser rotation command delivered and acknowledged",
@@ -268,6 +339,7 @@ async function flow(fixture) {
         "old credential rejected",
         "new WorkerConnection resumes from stored credential",
         "browser revocation disconnects worker and rejects subsequent heartbeat",
+        "browser logout revokes Live transport and invokes authentication callback",
       ],
       transportConnections: connections.length,
       backgroundResourceCommands: [...background].sort(),

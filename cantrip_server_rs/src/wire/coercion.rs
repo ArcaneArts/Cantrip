@@ -68,7 +68,7 @@ pub(super) fn string(value: &Value) -> Result<JsString, ()> {
         }
     })
 }
-pub(super) fn truthy(value: Option<&Value>) -> bool {
+pub(crate) fn truthy(value: Option<&Value>) -> bool {
     match value {
         None | Some(Value::Null) => false,
         Some(Value::Bool(v)) => *v,
