@@ -12,8 +12,9 @@ required before completion. Production deployment is a separate action.
 
 `cantrip_server_rs` currently contains native database execution, the existing
 SQL migration chain and Drizzle journal, private PostgreSQL provisioning, and
-three HTTP routes: `GET /api`, `GET /healthz`, and `GET /readyz`. Other domains
-remain unported. The existing Node service remains the production entry point.
+the foundation HTTP routes, version/bootstrap responses, and account/session
+authentication. Other domains remain unported. The existing Node service
+remains the production entry point.
 
 The compatibility harness launches the actual Node service and Rust executable
 on ephemeral ports with isolated database roots. It compares JSON bodies,
@@ -49,8 +50,8 @@ release review and packaging integration.
 The Rust command reads the existing server environment configuration, including
 auth/deployment/bootstrap modes, hosted startup protections, origins, proxies,
 cookies, key rings, limits, WorkerLink policy, TURN and WebRTC settings. The
-configuration itself is implemented; authentication handlers and transport
-domains remain unported. CLI host, port, data directory and database options
+configuration itself is implemented; the session handlers are now implemented
+and the remaining transport domains are unported. CLI host, port, data directory and database options
 override their environment settings. Explicit CLI port zero supports ephemeral
 process tests; environment ports retain the existing 1–65535 range.
 
@@ -132,6 +133,11 @@ as each domain is ported; passing foundation cases does not close other rows.
 Also retain the encryption inventories, operational contracts and migration
 history as requirements while the implementation changes language.
 
+The machine-readable ledger is `security/rust-server-coverage.json`. Every
+inventory row inherits its category's explicit default until overridden.
+Applying a table's schema does not establish its domain behavior; local tests
+and configured CI do not establish platform acceptance.
+
 ## Completion evidence
 
 Completion requires merged milestones and an integrated commit, a complete
@@ -145,3 +151,67 @@ worker, frontend builds, compatibility tests and bounded legacy conversion.
 No complete replacement, production cutover, existing-data migration,
 cross-platform acceptance, packaged release or Winterhold deployment is claimed
 by the foundation work.
+
+## Account and session milestone
+
+The current implementation adds the existing `/version`, `/api/bootstrap`, and
+eight authentication endpoints: registration, login, session lookup,
+reauthentication, mobile grant creation/exchange, logout and logout-all.
+Authentication modes, origin/CORS/security headers, body parsing and limits,
+account pins, session-cookie conflicts, CSRF, rate limits, configured
+administrators, owner/member provisioning and security audit writes are ported.
+
+Password hashing uses the existing Argon2id parameters and accepts retained Node
+hashes; Node also verifies Rust-produced hashes. Session token and CSRF hashes,
+secure/partitioned cookies, mobile code formats and single-use transactions
+retain their existing contracts. Session revocations publish internal events;
+the live, WorkerLink and attachment transports still need implementations that
+consume those events before transport-wide revocation can be considered done.
+
+The Rust build embeds metadata from the authoritative existing version resolver
+at build time. Node is a build dependency, never a server runtime dependency.
+Wire responses retain the protocol schema's existing validation and field
+stripping, including its rejection of suffixed synthetic versions.
+
+Native database error statements are suppressed at the engine boundary. Tests
+execute an invalid SQL statement containing a private sentinel and inspect the
+native process output and private PostgreSQL log for disclosure. Query errors
+remain available to callers; this does not complete the remaining operational
+logging APIs or their broader privacy acceptance.
+
+The socket harness runs the actual Node and Rust servers against independent
+fixtures. Profiles cover anonymous, password and account modes, secure dual
+cookies, licensing, trusted proxies and rate limits. It compares full response
+bodies and security/cookie/CORS headers, validates entropy and CSRF derivation,
+and checks identities, sessions and expiration consistency across restarts.
+The same scenarios can run with PGlite, private PostgreSQL or external
+PostgreSQL. No scenario connects to an ordinary developer database.
+
+An external-PostgreSQL transition scenario uses one disposable populated
+database sequentially: Node creates an owner/session, Rust retains them and
+creates accounts/mobile sessions, Node reads those writes and verifies Rust
+password hashes, then Node observes Rust session revocation. This establishes
+account/session compatibility after Rust writes, not full-server rollback.
+
+Run the socket matrix with a PostgreSQL binary directory supplied for the two
+PostgreSQL modes:
+
+```sh
+pnpm server:rust:auth:compatibility --report .qa/rust-server/auth-pglite-http.json
+pnpm server:rust:auth:compatibility --database bundled-postgres --report .qa/rust-server/auth-bundled-http.json
+pnpm server:rust:auth:compatibility --database postgres --report .qa/rust-server/auth-external-http.json
+```
+
+The test-only `database-fixture` example owns isolated PostgreSQL clusters for
+the Node reference and external mode. It is not distributed with the server.
+The native repository tests additionally cover concurrent mobile consumption,
+legacy CSRF rotation, settings/workspace provisioning, configured-administrator
+updates and PGlite/PostgreSQL retained state. Request-schema tests execute the
+actual TypeScript protocol schemas rather than reproducing their expectations.
+
+Account-security administration, encryption registries, worker enrollment,
+worker control, live transports, all other resource/execution domains, usable
+legacy conversion/rollback, desktop packaging and Winterhold delivery remain
+required work. Local session results do not establish Windows/Linux or full
+product readiness; observed platform CI and final product acceptance remain
+necessary.

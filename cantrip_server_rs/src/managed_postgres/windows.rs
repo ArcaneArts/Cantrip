@@ -127,7 +127,7 @@ impl PostgresProcess {
             .args(["start", "-w", "-t", "30"])
             .arg("-o")
             .arg(format!(
-                "-h 127.0.0.1 -p {port} -c unix_socket_directories="
+                "-h 127.0.0.1 -p {port} -c unix_socket_directories= -c log_min_messages=fatal -c log_min_error_statement=panic -c log_error_verbosity=terse"
             ));
 
         let mut application: Vec<u16> = command.get_program().encode_wide().collect();

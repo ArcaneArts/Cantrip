@@ -10,13 +10,16 @@ use axum::{
 use chrono::{SecondsFormat, Utc};
 use serde_json::{Value, json};
 
-use crate::database::Database;
+use crate::auth::service::AuthService;
+mod body;
+mod middleware;
+mod sessions;
 
 fn timestamp() -> String {
     Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
 }
 
-fn json_response(status: StatusCode, value: Value) -> Response {
+pub(super) fn json_response(status: StatusCode, value: Value) -> Response {
     (
         status,
         [(CONTENT_TYPE, "application/json; charset=utf-8")],
@@ -39,7 +42,8 @@ async fn health() -> Response {
     )
 }
 
-async fn ready(State(database): State<Arc<Database>>) -> Response {
+async fn ready(State(service): State<Arc<AuthService>>) -> Response {
+    let database = &service.repository.database;
     let started = Instant::now();
     let success = database.query("SELECT 1", &[]).await.is_ok();
     json_response(
@@ -67,13 +71,18 @@ async fn not_found(method: Method, uri: Uri) -> Response {
     )
 }
 
-/// Foundation routes only. Other domains remain explicitly unported in the ledger.
-pub fn router(database: Arc<Database>) -> Router {
+/// Foundation and session routes. Remaining domains are tracked in the ledger.
+pub fn router(service: Arc<AuthService>) -> Router {
     Router::new()
         .route("/api", get(api))
         .route("/healthz", get(health))
         .route("/readyz", get(ready))
+        .merge(sessions::routes())
         .fallback(not_found)
         .method_not_allowed_fallback(not_found)
-        .with_state(database)
+        .layer(axum::middleware::from_fn_with_state(
+            service.clone(),
+            middleware::guard,
+        ))
+        .with_state(service)
 }

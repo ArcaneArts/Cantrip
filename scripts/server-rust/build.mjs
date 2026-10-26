@@ -6,7 +6,7 @@ import { rustEnvironment } from "./cargo.mjs";
 
 export const repositoryRoot = fileURLToPath(new URL("../../", import.meta.url));
 
-export async function buildRustServer({ release = false } = {}) {
+async function buildRustExecutable({ release = false, example } = {}) {
   const child = spawn(
     "cargo",
     [
@@ -16,6 +16,7 @@ export async function buildRustServer({ release = false } = {}) {
       "cantrip_server_rs/Cargo.toml",
       "--message-format=json-render-diagnostics",
       ...(release ? ["--release"] : []),
+      ...(example ? ["--example", example] : []),
     ],
     {
       cwd: repositoryRoot,
@@ -30,7 +31,7 @@ export async function buildRustServer({ release = false } = {}) {
       const message = JSON.parse(line);
       if (
         message.reason === "compiler-artifact" &&
-        message.target.name === "cantrip-server" &&
+        message.target.name === (example ?? "cantrip-server") &&
         message.executable
       ) {
         executable = message.executable;
@@ -48,6 +49,14 @@ export async function buildRustServer({ release = false } = {}) {
   });
   if (!executable) throw new Error("Cargo did not emit a server executable.");
   return executable;
+}
+
+export function buildRustServer(options) {
+  return buildRustExecutable(options);
+}
+
+export function buildRustExample(example) {
+  return buildRustExecutable({ example });
 }
 
 if (

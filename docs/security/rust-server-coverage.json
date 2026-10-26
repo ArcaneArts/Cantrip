@@ -1,0 +1,196 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "inventory": {
+    "path": "docs/security/server-route-inventory.json",
+    "sha256": "c2462d2056c4a3294222cca4f28f6d06b95e2d491c9fb494498ba9cd9c81d878",
+    "baselineCommit": "2bb15440ac6810e82e6ce415cd13d62addb450bf",
+    "counts": {
+      "routes": 520,
+      "workerCommands": 278,
+      "durableTables": 110,
+      "repositoryMethods": 363,
+      "liveResources": 45
+    }
+  },
+  "interpretation": "Every row in the referenced inventory inherits its category default unless explicitly overridden. Schema creation is not domain behavior. Test commands and configured CI are not passing evidence.",
+  "routes": {
+    "defaultStatus": "unported",
+    "overrides": [
+      {
+        "method": "GET",
+        "path": "/api",
+        "implementation": "cantrip_server_rs/src/http.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": ["scripts/server-rust/compatibility.mjs"],
+        "remaining": []
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/login",
+        "implementation": "cantrip_server_rs/src/http/sessions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": ["scripts/server-rust/auth-compatibility.mjs"],
+        "remaining": []
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/logout",
+        "implementation": "cantrip_server_rs/src/http/sessions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": ["scripts/server-rust/auth-compatibility.mjs"],
+        "remaining": [
+          "Revocation events exist; live, WorkerLink, attachment and session-socket consumers remain unported."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/logout-all",
+        "implementation": "cantrip_server_rs/src/http/sessions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": ["scripts/server-rust/auth-compatibility.mjs"],
+        "remaining": [
+          "Revocation events exist; live, WorkerLink, attachment and session-socket consumers remain unported."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/mobile-sign-in/exchange",
+        "implementation": "cantrip_server_rs/src/http/sessions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": ["scripts/server-rust/auth-compatibility.mjs"],
+        "remaining": []
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/mobile-sign-in/grants",
+        "implementation": "cantrip_server_rs/src/http/sessions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": ["scripts/server-rust/auth-compatibility.mjs"],
+        "remaining": []
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/reauthenticate",
+        "implementation": "cantrip_server_rs/src/http/sessions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": ["scripts/server-rust/auth-compatibility.mjs"],
+        "remaining": []
+      },
+      {
+        "method": "POST",
+        "path": "/api/auth/register",
+        "implementation": "cantrip_server_rs/src/http/sessions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": ["scripts/server-rust/auth-compatibility.mjs"],
+        "remaining": []
+      },
+      {
+        "method": "GET",
+        "path": "/api/auth/session",
+        "implementation": "cantrip_server_rs/src/http/sessions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": ["scripts/server-rust/auth-compatibility.mjs"],
+        "remaining": []
+      },
+      {
+        "method": "GET",
+        "path": "/api/bootstrap",
+        "implementation": "cantrip_server_rs/src/http/sessions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": ["scripts/server-rust/auth-compatibility.mjs"],
+        "remaining": []
+      },
+      {
+        "method": "GET",
+        "path": "/healthz",
+        "implementation": "cantrip_server_rs/src/http.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": ["scripts/server-rust/compatibility.mjs"],
+        "remaining": []
+      },
+      {
+        "method": "GET",
+        "path": "/readyz",
+        "implementation": "cantrip_server_rs/src/http.rs",
+        "status": "partial",
+        "evidence": ["scripts/server-rust/compatibility.mjs"],
+        "remaining": [
+          "Shared coordination health/readiness and operational metrics are unported."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/version",
+        "implementation": "cantrip_server_rs/src/http/sessions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": ["scripts/server-rust/auth-compatibility.mjs"],
+        "remaining": []
+      }
+    ]
+  },
+  "workerCommands": {
+    "defaultStatus": "unported"
+  },
+  "durableTables": {
+    "defaultStatus": "schema-migrated-only",
+    "evidence": ["cantrip_server_rs/tests/database_contract.rs"],
+    "implementedSubset": "Account/session, mobile sign-in, local provisioning, configured-administrator and audit-write operations in cantrip_server_rs/src/auth/repository.rs. Complete domain operations remain unported."
+  },
+  "repositoryMethods": {
+    "defaultStatus": "unported",
+    "implementedSubset": "See the native auth repository; a complete method-level correspondence remains required."
+  },
+  "liveResources": {
+    "defaultStatus": "unported"
+  },
+  "crossCutting": {
+    "configuration": {
+      "status": "implemented",
+      "evidence": "977 scenarios executed against the actual Node parser; configuration milestone PR 2276 passed Linux/macOS/Windows CI."
+    },
+    "authPrimitives": {
+      "status": "implemented-pending-platform-acceptance",
+      "evidence": [
+        "cantrip_server_rs/tests/auth_primitives.rs",
+        "cantrip_server_rs/tests/auth_repository.rs"
+      ]
+    },
+    "httpAuth": {
+      "status": "implemented-pending-platform-acceptance",
+      "evidence": ["scripts/server-rust/auth-compatibility.mjs"],
+      "verifiedLocally": "macOS arm64; PGlite, private and external PostgreSQL. Full matrix reruns and platform CI are required after further changes."
+    },
+    "workerEnrollment": {
+      "status": "unported"
+    },
+    "endpointEncryptionRegistry": {
+      "status": "unported"
+    },
+    "productionLoggingAndMetrics": {
+      "status": "partial"
+    },
+    "legacyPGliteConversion": {
+      "status": "unimplemented"
+    },
+    "fullPostWriteRollback": {
+      "status": "unimplemented",
+      "limitedEvidence": "The external PostgreSQL auth test passes sequential Node/Rust/Node retained-account/session transitions. This is not full-server rollback."
+    },
+    "desktopPackaging": {
+      "status": "unported"
+    },
+    "winterholdDelivery": {
+      "status": "unported"
+    },
+    "productionNodeRemoval": {
+      "status": "unimplemented"
+    }
+  },
+  "remainingAcceptance": [
+    "Complete all inventory categories, background services and behavioral contracts.",
+    "Complete malformed/Unicode/deep-JSON parsing and serialization parity across the entire server, including authenticated metadata and hashes.",
+    "Exercise the full supported product, deployment, database and platform matrix.",
+    "Produce and exercise native/container/desktop artifacts and existing-data conversion with post-write rollback."
+  ]
+}

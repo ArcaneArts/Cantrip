@@ -1,4 +1,4 @@
-use std::{env, fs, path::PathBuf};
+use std::{env, fs, path::PathBuf, process::Command};
 
 use sha2::{Digest, Sha256};
 
@@ -11,6 +11,62 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         _ => {}
     }
     let root = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?).join("..");
+    println!(
+        "cargo:rerun-if-changed={}",
+        root.join("version.json").display()
+    );
+    for name in [
+        "CANTRIP_VERSION_PATCH",
+        "CANTRIP_SYNTHETIC_BUILD",
+        "CANTRIP_SYNTHETIC_COMMIT_SHA",
+        "CANTRIP_SYNTHETIC_BUILT_AT",
+        "CANTRIP_SYNTHETIC_BUILD_ID",
+        "CANTRIP_SYNTHETIC_OVERLAY_DIGEST",
+    ] {
+        println!("cargo:rerun-if-env-changed={name}");
+    }
+    for name in [
+        "scripts/version.mjs",
+        "scripts/server-rust/build-version.mjs",
+    ] {
+        println!("cargo:rerun-if-changed={}", root.join(name).display());
+    }
+    let git = |args: &[&str]| -> Result<String, Box<dyn std::error::Error>> {
+        let output = Command::new("git").args(args).current_dir(&root).output()?;
+        if !output.status.success() {
+            return Err(format!(
+                "git {}: {}",
+                args.join(" "),
+                String::from_utf8_lossy(&output.stderr)
+            )
+            .into());
+        }
+        Ok(String::from_utf8(output.stdout)?.trim().into())
+    };
+    let version = Command::new("node")
+        .arg("scripts/server-rust/build-version.mjs")
+        .current_dir(&root)
+        .output()?;
+    if !version.status.success() {
+        return Err(format!(
+            "resolve build version: {}",
+            String::from_utf8_lossy(&version.stderr)
+        )
+        .into());
+    }
+    let _: serde_json::Value = serde_json::from_slice(&version.stdout)?;
+    fs::write(
+        PathBuf::from(env::var("OUT_DIR")?).join("version.json"),
+        version.stdout,
+    )?;
+    if let Ok(head) = git(&["rev-parse", "--git-path", "HEAD"]) {
+        println!("cargo:rerun-if-changed={}", root.join(head).display());
+    }
+    if let Ok(reference) = git(&["symbolic-ref", "-q", "HEAD"])
+        && let Ok(path) = git(&["rev-parse", "--git-path", &reference])
+    {
+        println!("cargo:rerun-if-changed={}", root.join(path).display());
+    }
     let directory = root.join("cantrip_server/drizzle");
     let journal_path = directory.join("meta/_journal.json");
     println!("cargo:rerun-if-changed={}", journal_path.display());

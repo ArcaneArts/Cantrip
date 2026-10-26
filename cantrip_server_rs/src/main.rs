@@ -2,6 +2,7 @@ use std::{path::PathBuf, sync::Arc};
 
 use anyhow::{Context, Result};
 use cantrip_server::{
+    auth::{repository::AuthRepository, service::AuthService},
     config::{DatabaseMode, Environment, ServerConfig},
     database::Database,
     http,
@@ -93,7 +94,7 @@ async fn main() -> Result<()> {
         environment.insert("DATABASE_URL".into(), url);
     }
     // Resolve every path before native PostgreSQL can change the process cwd.
-    let config = ServerConfig::read(&environment, &std::env::current_dir()?)?;
+    let config = Arc::new(ServerConfig::read(&environment, &std::env::current_dir()?)?);
     // Native PostgreSQL changes its process stdio during single-user startup.
     // Keep independent handles to the launcher's pipes before initializing it.
     let mut parent_output = os_pipe::dup_stdout()?;
@@ -118,9 +119,9 @@ async fn main() -> Result<()> {
             Database::postgres(&configuration).await?
         }
         DatabaseMode::BundledPostgres => {
-            let bin = config.postgres_bin_directory.context("bundled-postgres mode requires --postgres-bin-dir until runtime packaging is integrated")?;
+            let bin = config.postgres_bin_directory.as_ref().context("bundled-postgres mode requires --postgres-bin-dir until runtime packaging is integrated")?;
             let runtime =
-                ManagedPostgres::start(&config.data_directory.join("postgres"), &bin).await?;
+                ManagedPostgres::start(&config.data_directory.join("postgres"), bin).await?;
             let database = Database::postgres(runtime.configuration()).await?;
             managed = Some(runtime);
             database
@@ -128,7 +129,11 @@ async fn main() -> Result<()> {
     };
     let database = Arc::new(database);
     migrate(&database).await?;
+    if arguments.migrate_only {
+        AuthRepository::new(database.clone()).local_user().await?;
+    }
     if !arguments.migrate_only {
+        let service = AuthService::initialize(database.clone(), config.clone()).await?;
         let port = arguments.port.unwrap_or(config.port as u16);
         let listener = tokio::net::TcpListener::bind((config.host.as_str(), port)).await?;
         use std::io::Write;
@@ -149,11 +154,14 @@ async fn main() -> Result<()> {
                 let _ = closed.send(());
             });
         }
-        axum::serve(listener, http::router(database.clone()))
-            .with_graceful_shutdown(async move {
-                tokio::select! { _=shutdown()=>{}, _=receiver, if watch_parent=>{} }
-            })
-            .await?;
+        axum::serve(
+            listener,
+            http::router(service).into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .with_graceful_shutdown(async move {
+            tokio::select! { _=shutdown()=>{}, _=receiver, if watch_parent=>{} }
+        })
+        .await?;
     }
     database.close().await?;
     if let Some(runtime) = managed {
