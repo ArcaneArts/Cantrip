@@ -78,7 +78,11 @@ const workerBridge: WorkerCommandBus = {
 let app: Awaited<ReturnType<typeof buildApp>>;
 let database: DatabaseConnection;
 
+// This initializes cold WASM, the full migration chain and the application.
+// Match the real-server fixture's startup budget; behavioral polls below keep
+// their existing deadlines and still exercise actual connection ordering.
 beforeAll(async () => {
+  const startedAt = performance.now();
   database = await connectDatabase(config);
   await database.repository.recordWorker(LOCAL_USER_ID, {
     workerId: "notification-order-worker",
@@ -96,7 +100,10 @@ beforeAll(async () => {
   });
   app = await buildApp({ config, database, logger: false, workerBridge });
   await app.ready();
-});
+  console.info(
+    `Worker notification fixture ready in ${Math.round(performance.now() - startedAt)}ms`,
+  );
+}, 60_000);
 
 afterAll(async () => {
   await app?.close();

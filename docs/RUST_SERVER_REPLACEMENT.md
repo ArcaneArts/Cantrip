@@ -346,3 +346,8 @@ worker mutation publication. It runs with the same supported-platform workflow:
 ```sh
 node --import tsx scripts/server-rust/live-cursor-contract.mjs --report .qa/rust-server/json-cursor-contract.json
 ```
+
+The reference notification-order and authentication-shutdown fixtures give cold
+WASM, full migrations and application initialization the same 60-second startup
+budget as the real-server harness, and report their actual setup durations. The
+connection/shutdown test bodies and behavioral polling deadlines stay unchanged.
