@@ -21,7 +21,7 @@
         "method": "GET",
         "path": "/api",
         "implementation": "cantrip_server_rs/src/http.rs",
-        "status": "implemented-pending-platform-acceptance",
+        "status": "implemented",
         "evidence": ["scripts/server-rust/compatibility.mjs"],
         "remaining": []
       },
@@ -29,7 +29,7 @@
         "method": "POST",
         "path": "/api/auth/login",
         "implementation": "cantrip_server_rs/src/http/sessions.rs",
-        "status": "implemented-pending-platform-acceptance",
+        "status": "implemented",
         "evidence": ["scripts/server-rust/auth-compatibility.mjs"],
         "remaining": []
       },
@@ -37,7 +37,7 @@
         "method": "POST",
         "path": "/api/auth/logout",
         "implementation": "cantrip_server_rs/src/http/sessions.rs",
-        "status": "implemented-pending-platform-acceptance",
+        "status": "partial",
         "evidence": ["scripts/server-rust/auth-compatibility.mjs"],
         "remaining": [
           "Revocation events exist; live, WorkerLink, attachment and session-socket consumers remain unported."
@@ -47,7 +47,7 @@
         "method": "POST",
         "path": "/api/auth/logout-all",
         "implementation": "cantrip_server_rs/src/http/sessions.rs",
-        "status": "implemented-pending-platform-acceptance",
+        "status": "partial",
         "evidence": ["scripts/server-rust/auth-compatibility.mjs"],
         "remaining": [
           "Revocation events exist; live, WorkerLink, attachment and session-socket consumers remain unported."
@@ -57,7 +57,7 @@
         "method": "POST",
         "path": "/api/auth/mobile-sign-in/exchange",
         "implementation": "cantrip_server_rs/src/http/sessions.rs",
-        "status": "implemented-pending-platform-acceptance",
+        "status": "implemented",
         "evidence": ["scripts/server-rust/auth-compatibility.mjs"],
         "remaining": []
       },
@@ -65,7 +65,7 @@
         "method": "POST",
         "path": "/api/auth/mobile-sign-in/grants",
         "implementation": "cantrip_server_rs/src/http/sessions.rs",
-        "status": "implemented-pending-platform-acceptance",
+        "status": "implemented",
         "evidence": ["scripts/server-rust/auth-compatibility.mjs"],
         "remaining": []
       },
@@ -73,7 +73,7 @@
         "method": "POST",
         "path": "/api/auth/reauthenticate",
         "implementation": "cantrip_server_rs/src/http/sessions.rs",
-        "status": "implemented-pending-platform-acceptance",
+        "status": "implemented",
         "evidence": ["scripts/server-rust/auth-compatibility.mjs"],
         "remaining": []
       },
@@ -81,7 +81,7 @@
         "method": "POST",
         "path": "/api/auth/register",
         "implementation": "cantrip_server_rs/src/http/sessions.rs",
-        "status": "implemented-pending-platform-acceptance",
+        "status": "implemented",
         "evidence": ["scripts/server-rust/auth-compatibility.mjs"],
         "remaining": []
       },
@@ -89,7 +89,7 @@
         "method": "GET",
         "path": "/api/auth/session",
         "implementation": "cantrip_server_rs/src/http/sessions.rs",
-        "status": "implemented-pending-platform-acceptance",
+        "status": "implemented",
         "evidence": ["scripts/server-rust/auth-compatibility.mjs"],
         "remaining": []
       },
@@ -97,7 +97,7 @@
         "method": "GET",
         "path": "/api/bootstrap",
         "implementation": "cantrip_server_rs/src/http/sessions.rs",
-        "status": "implemented-pending-platform-acceptance",
+        "status": "implemented",
         "evidence": ["scripts/server-rust/auth-compatibility.mjs"],
         "remaining": []
       },
@@ -105,7 +105,7 @@
         "method": "GET",
         "path": "/healthz",
         "implementation": "cantrip_server_rs/src/http.rs",
-        "status": "implemented-pending-platform-acceptance",
+        "status": "implemented",
         "evidence": ["scripts/server-rust/compatibility.mjs"],
         "remaining": []
       },
@@ -123,8 +123,146 @@
         "method": "GET",
         "path": "/version",
         "implementation": "cantrip_server_rs/src/http/sessions.rs",
-        "status": "implemented-pending-platform-acceptance",
+        "status": "implemented",
         "evidence": ["scripts/server-rust/auth-compatibility.mjs"],
+        "remaining": []
+      },
+      {
+        "method": "GET",
+        "path": "/api/encryption/profile",
+        "implementation": "cantrip_server_rs/src/http/encryption.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": ["scripts/server-rust/security-compatibility.mjs"],
+        "remaining": []
+      },
+      {
+        "method": "POST",
+        "path": "/api/encryption/profile/initialize",
+        "implementation": "cantrip_server_rs/src/http/encryption.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": ["scripts/server-rust/security-compatibility.mjs"],
+        "remaining": []
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/encryption/profile/migration",
+        "implementation": "cantrip_server_rs/src/http/encryption.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": ["scripts/server-rust/security-compatibility.mjs"],
+        "remaining": []
+      },
+      {
+        "method": "POST",
+        "path": "/api/account/password",
+        "implementation": "cantrip_server_rs/src/http/encryption.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": ["scripts/server-rust/security-compatibility.mjs"],
+        "remaining": []
+      },
+      {
+        "method": "GET",
+        "path": "/api/encryption/principals",
+        "implementation": "cantrip_server_rs/src/http/encryption.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": ["scripts/server-rust/security-compatibility.mjs"],
+        "remaining": []
+      },
+      {
+        "method": "POST",
+        "path": "/api/encryption/principals",
+        "implementation": "cantrip_server_rs/src/http/encryption.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": ["scripts/server-rust/security-compatibility.mjs"],
+        "remaining": []
+      },
+      {
+        "method": "POST",
+        "path": "/api/encryption/principals/:principalId/approve",
+        "implementation": "cantrip_server_rs/src/http/encryption.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": ["scripts/server-rust/security-compatibility.mjs"],
+        "remaining": []
+      },
+      {
+        "method": "POST",
+        "path": "/api/encryption/principals/:principalId/revoke",
+        "implementation": "cantrip_server_rs/src/http/encryption.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": ["scripts/server-rust/security-compatibility.mjs"],
+        "remaining": []
+      },
+      {
+        "method": "GET",
+        "path": "/api/encryption/principals/:principalId/grants",
+        "implementation": "cantrip_server_rs/src/http/encryption.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": ["scripts/server-rust/security-compatibility.mjs"],
+        "remaining": []
+      },
+      {
+        "method": "POST",
+        "path": "/api/encryption/principals/:principalId/grants",
+        "implementation": "cantrip_server_rs/src/http/encryption.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": ["scripts/server-rust/security-compatibility.mjs"],
+        "remaining": []
+      },
+      {
+        "method": "POST",
+        "path": "/api/encryption/grants/:grantId/revoke",
+        "implementation": "cantrip_server_rs/src/http/encryption.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": ["scripts/server-rust/security-compatibility.mjs"],
+        "remaining": []
+      },
+      {
+        "method": "GET",
+        "path": "/api/account/sessions",
+        "implementation": "cantrip_server_rs/src/http/account.rs",
+        "status": "partial",
+        "evidence": ["scripts/server-rust/security-compatibility.mjs"],
+        "remaining": [
+          "Additional connected-session indicators require the remaining live/session-socket transport."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/account/audit-events",
+        "implementation": "cantrip_server_rs/src/http/account.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": ["scripts/server-rust/security-compatibility.mjs"],
+        "remaining": []
+      },
+      {
+        "method": "GET",
+        "path": "/api/admin/audit-events",
+        "implementation": "cantrip_server_rs/src/http/account.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": ["scripts/server-rust/security-compatibility.mjs"],
+        "remaining": []
+      },
+      {
+        "method": "GET",
+        "path": "/api/admin/accounts",
+        "implementation": "cantrip_server_rs/src/http/account.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": ["scripts/server-rust/security-compatibility.mjs"],
+        "remaining": []
+      },
+      {
+        "method": "POST",
+        "path": "/api/admin/license-whitelist",
+        "implementation": "cantrip_server_rs/src/http/account.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": ["scripts/server-rust/security-compatibility.mjs"],
+        "remaining": []
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/admin/license-whitelist/:entryId",
+        "implementation": "cantrip_server_rs/src/http/account.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": ["scripts/server-rust/security-compatibility.mjs"],
         "remaining": []
       }
     ]
@@ -135,11 +273,11 @@
   "durableTables": {
     "defaultStatus": "schema-migrated-only",
     "evidence": ["cantrip_server_rs/tests/database_contract.rs"],
-    "implementedSubset": "Account/session, mobile sign-in, local provisioning, configured-administrator and audit-write operations in cantrip_server_rs/src/auth/repository.rs. Complete domain operations remain unported."
+    "implementedSubset": "Account/session, mobile sign-in, local provisioning, configured-administrator, license-whitelist, audit-query/write and encryption-registry operations in the native auth and encryption repositories. Complete domain operations remain unported."
   },
   "repositoryMethods": {
     "defaultStatus": "unported",
-    "implementedSubset": "See the native auth repository; a complete method-level correspondence remains required."
+    "implementedSubset": "Native auth/security and encryption repositories retain their existing SQL and transaction semantics. Complete method-level correspondence remains required."
   },
   "liveResources": {
     "defaultStatus": "unported"
@@ -150,22 +288,31 @@
       "evidence": "977 scenarios executed against the actual Node parser; configuration milestone PR 2276 passed Linux/macOS/Windows CI."
     },
     "authPrimitives": {
-      "status": "implemented-pending-platform-acceptance",
+      "status": "implemented",
       "evidence": [
         "cantrip_server_rs/tests/auth_primitives.rs",
         "cantrip_server_rs/tests/auth_repository.rs"
       ]
     },
     "httpAuth": {
-      "status": "implemented-pending-platform-acceptance",
+      "status": "implemented",
       "evidence": ["scripts/server-rust/auth-compatibility.mjs"],
-      "verifiedLocally": "macOS arm64; PGlite, private and external PostgreSQL. Full matrix reruns and platform CI are required after further changes."
+      "verifiedLocally": "The session milestone PR 2277 passed all three storage suites on Linux/macOS/Windows in observed run 40254773601. Changes in later milestones require fresh regression results."
     },
     "workerEnrollment": {
       "status": "unported"
     },
     "endpointEncryptionRegistry": {
-      "status": "unported"
+      "status": "implemented-pending-platform-acceptance",
+      "evidence": [
+        "cantrip_server_rs/tests/encryption_repository.rs",
+        "scripts/server-rust/security-compatibility.mjs",
+        "scripts/server-rust/security-crypto-flow.mjs"
+      ],
+      "remaining": [
+        "Worker enrollment and encryption-bootstrap integration are unported.",
+        "Mutation audit completion currently runs before response delivery; streaming onResponse timing remains required."
+      ]
     },
     "productionLoggingAndMetrics": {
       "status": "partial"
@@ -175,7 +322,7 @@
     },
     "fullPostWriteRollback": {
       "status": "unimplemented",
-      "limitedEvidence": "The external PostgreSQL auth test passes sequential Node/Rust/Node retained-account/session transitions. This is not full-server rollback."
+      "limitedEvidence": "Auth and encryption suites exercise sequential Node/Rust/Node retained state on disposable external PostgreSQL. Encryption uses actual client HPKE/password wrappers. Full-server rollback and legacy PGlite conversion remain unimplemented."
     },
     "desktopPackaging": {
       "status": "unported"
@@ -185,6 +332,14 @@
     },
     "productionNodeRemoval": {
       "status": "unimplemented"
+    },
+    "wireContracts": {
+      "status": "partial",
+      "evidence": ["cantrip_server_rs/tests/wire_contracts.rs"],
+      "validatedSubset": "36 actual protocol exports; 27,252 validation comparisons and 69,647 JavaScript JSON round trips. Unknown protocol export/check operations fail development generation.",
+      "remaining": [
+        "Remaining protocol schemas, globally malformed/deep JSON handling, and authenticated/hash serialization across all domains."
+      ]
     }
   },
   "remainingAcceptance": [
@@ -192,5 +347,15 @@
     "Complete malformed/Unicode/deep-JSON parsing and serialization parity across the entire server, including authenticated metadata and hashes.",
     "Exercise the full supported product, deployment, database and platform matrix.",
     "Produce and exercise native/container/desktop artifacts and existing-data conversion with post-write rollback."
+  ],
+  "milestonePlatformAcceptance": [
+    {
+      "pullRequest": "https://github.com/ArcaneArts/Cantrip/pull/2277",
+      "commit": "d759084a30cba3e8641878bd51b69a7c936c4155",
+      "observedRun": "https://github.com/ArcaneArts/Cantrip/actions/runs/40254773601",
+      "platforms": ["ubuntu-24.04", "macos-15", "windows-2025"],
+      "conclusion": "success",
+      "scope": "Foundation, configuration and session milestone including all three storage socket suites. This is not complete server or packaged-platform acceptance."
+    }
   ]
 }

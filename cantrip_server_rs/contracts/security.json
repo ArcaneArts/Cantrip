@@ -1,0 +1,4507 @@
+{
+  "schemaVersion": 1,
+  "roots": {
+    "accountRegistrationSchema": 0,
+    "authLoginSchema": 4,
+    "authReauthenticationSchema": 8,
+    "mobileSignInGrantExchangeSchema": 11,
+    "accountEncryptionProfileStateSchema": 13,
+    "accountEncryptionProfileSchema": 20,
+    "accountEncryptionProfileInitializeSchema": 49,
+    "accountEncryptionProfileInitializeResultSchema": 81,
+    "encryptionProfileMigrationUpdateSchema": 116,
+    "accountPasswordEncryptionChangeSchema": 118,
+    "encryptionPrincipalCreateSchema": 122,
+    "encryptionPrincipalApprovalSchema": 136,
+    "encryptionRevocationSchema": 138,
+    "encryptionPrincipalSchema": 84,
+    "encryptionPrincipalListSchema": 141,
+    "encryptionKeyGrantCreateSchema": 142,
+    "encryptionKeyGrantSchema": 97,
+    "encryptionKeyGrantListSchema": 145,
+    "workerEncryptionBootstrapRequestSchema": 146,
+    "workerEncryptionBootstrapResultSchema": 148,
+    "workerEnrollmentCodeCreateSchema": 152,
+    "workerEnrollmentCodeResultSchema": 161,
+    "workerEnrollmentCodeStatusSchema": 170,
+    "workerEnrollmentExchangeSchema": 176,
+    "workerEnrollmentResultSchema": 377,
+    "workerCredentialRotateSchema": 398,
+    "workerCredentialRotateResultSchema": 402,
+    "workerCredentialListSchema": 405,
+    "workerHeartbeatSchema": 177,
+    "workerSummarySchema": 395,
+    "accountSessionListSchema": 406,
+    "accountLicenseWhitelistCreateSchema": 418,
+    "accountLicenseWhitelistEntrySchema": 420,
+    "accountAdminSummarySchema": 425,
+    "auditEventQuerySchema": 432,
+    "auditEventListSchema": 437
+  },
+  "nodes": [
+    {
+      "type": "object",
+      "name": "accountRegistrationSchema",
+      "shape": {
+        "displayName": 1,
+        "email": 2,
+        "password": 3
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "trim"
+        },
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 120,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "email",
+          "abort": false,
+          "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
+          "flags": "",
+          "displayPattern": "/^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$/"
+        },
+        {
+          "check": "max_length",
+          "maximum": 320,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 12,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 1024,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "authLoginSchema",
+      "shape": {
+        "email": 5,
+        "password": 7
+      },
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "innerType": 6,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "email",
+          "abort": false,
+          "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
+          "flags": "",
+          "displayPattern": "/^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$/"
+        },
+        {
+          "check": "max_length",
+          "maximum": 320,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 1024,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "authReauthenticationSchema",
+      "shape": {
+        "password": 9
+      },
+      "catchall": 10,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 1024,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "mobileSignInGrantExchangeSchema",
+      "shape": {
+        "code": 12
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^ctms_[A-Za-z0-9_-]{32}$",
+          "flags": "u",
+          "displayPattern": "/^ctms_[A-Za-z0-9_-]{32}$/u"
+        }
+      ]
+    },
+    {
+      "type": "union",
+      "name": "accountEncryptionProfileStateSchema",
+      "options": [
+        14,
+        18
+      ],
+      "discriminator": "status",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "status": 15,
+        "profile": 16
+      },
+      "catchall": 17,
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": [
+        "uninitialized"
+      ],
+      "checks": []
+    },
+    {
+      "type": "null",
+      "checks": []
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "status": 19,
+        "profile": 20
+      },
+      "catchall": 48,
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": [
+        "initialized"
+      ],
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "accountEncryptionProfileSchema",
+      "shape": {
+        "ownerId": 21,
+        "formatVersion": 22,
+        "activeMasterKeyRevision": 23,
+        "passwordKdf": 24,
+        "passwordWrappedMasterKey": 35,
+        "initializationStatus": 44,
+        "payloadMigrationStatus": 45,
+        "revision": 23,
+        "createdAt": 46,
+        "updatedAt": 46
+      },
+      "catchall": 47,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "password-wrapper-pair"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 255,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "literal",
+      "name": "encryptionEnvelopeVersionSchema",
+      "values": [
+        1
+      ],
+      "checks": []
+    },
+    {
+      "type": "number",
+      "name": "encryptionKeyRevisionSchema",
+      "checks": [
+        {
+          "check": "number_format",
+          "format": "safeint",
+          "abort": false
+        },
+        {
+          "check": "greater_than",
+          "value": 0,
+          "inclusive": false
+        },
+        {
+          "check": "less_than",
+          "value": 2147483647,
+          "inclusive": true
+        }
+      ]
+    },
+    {
+      "type": "nullable",
+      "innerType": 25,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "passwordKdfParametersSchema",
+      "shape": {
+        "algorithm": 26,
+        "version": 27,
+        "context": 28,
+        "memoryKiB": 29,
+        "iterations": 30,
+        "parallelism": 31,
+        "outputBytes": 32,
+        "salt": 33
+      },
+      "catchall": 34,
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": [
+        "Argon2id"
+      ],
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": [
+        19
+      ],
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": [
+        "cantrip:e2ee:password-kek:v1"
+      ],
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        {
+          "check": "number_format",
+          "format": "safeint",
+          "abort": false
+        },
+        {
+          "check": "greater_than",
+          "value": 8192,
+          "inclusive": true
+        },
+        {
+          "check": "less_than",
+          "value": 262144,
+          "inclusive": true
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        {
+          "check": "number_format",
+          "format": "safeint",
+          "abort": false
+        },
+        {
+          "check": "greater_than",
+          "value": 1,
+          "inclusive": true
+        },
+        {
+          "check": "less_than",
+          "value": 10,
+          "inclusive": true
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        {
+          "check": "number_format",
+          "format": "safeint",
+          "abort": false
+        },
+        {
+          "check": "greater_than",
+          "value": 1,
+          "inclusive": true
+        },
+        {
+          "check": "less_than",
+          "value": 4,
+          "inclusive": true
+        }
+      ]
+    },
+    {
+      "type": "literal",
+      "values": [
+        32
+      ],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "name": "encryptionKeyBytesSchema",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[A-Za-z0-9_-]*$",
+          "flags": "u",
+          "displayPattern": "/^[A-Za-z0-9_-]*$/u"
+        },
+        {
+          "check": "refinement",
+          "tag": "canonical-base64url",
+          "message": "Value is not canonical unpadded base64url."
+        },
+        {
+          "check": "length_equals",
+          "length": 43,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "nullable",
+      "innerType": 36,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "passwordWrappedMasterKeySchema",
+      "shape": {
+        "version": 22,
+        "purpose": 37,
+        "masterKeyRevision": 23,
+        "kdf": 25,
+        "envelope": 38
+      },
+      "catchall": 43,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "password-wrapper"
+        }
+      ]
+    },
+    {
+      "type": "literal",
+      "values": [
+        "password-wrapped-account-master-key"
+      ],
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "encryptedPayloadEnvelopeSchema",
+      "shape": {
+        "version": 22,
+        "algorithm": 39,
+        "keyRevision": 23,
+        "nonce": 40,
+        "ciphertext": 41
+      },
+      "catchall": 42,
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": [
+        "AES-256-GCM"
+      ],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "name": "encryptionNonceSchema",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[A-Za-z0-9_-]*$",
+          "flags": "u",
+          "displayPattern": "/^[A-Za-z0-9_-]*$/u"
+        },
+        {
+          "check": "refinement",
+          "tag": "canonical-base64url",
+          "message": "Value is not canonical unpadded base64url."
+        },
+        {
+          "check": "length_equals",
+          "length": 16,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[A-Za-z0-9_-]*$",
+          "flags": "u",
+          "displayPattern": "/^[A-Za-z0-9_-]*$/u"
+        },
+        {
+          "check": "refinement",
+          "tag": "canonical-base64url",
+          "message": "Value is not canonical unpadded base64url."
+        },
+        {
+          "check": "max_length",
+          "maximum": 22369643,
+          "when": "length"
+        },
+        {
+          "check": "min_length",
+          "minimum": 22,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": [
+        "initialized"
+      ],
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "encryptionPayloadMigrationStatusSchema",
+      "values": [
+        "pending",
+        "in-progress",
+        "complete"
+      ],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$/"
+        }
+      ]
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "accountEncryptionProfileInitializeSchema",
+      "shape": {
+        "profile": 50,
+        "initialClient": 55
+      },
+      "catchall": 80,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "initial-client-wrapper"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "formatVersion": 22,
+        "activeMasterKeyRevision": 23,
+        "passwordKdf": 51,
+        "passwordWrappedMasterKey": 52,
+        "payloadMigrationStatus": 53
+      },
+      "catchall": 54,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "password-wrapper-pair"
+        }
+      ]
+    },
+    {
+      "type": "nullable",
+      "innerType": 25,
+      "checks": []
+    },
+    {
+      "type": "nullable",
+      "innerType": 36,
+      "checks": []
+    },
+    {
+      "type": "default",
+      "innerType": 45,
+      "defaultValue": "pending",
+      "checks": []
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "id": 56,
+        "label": 57,
+        "publicKey": 60,
+        "wrappedMasterKey": 65
+      },
+      "catchall": 79,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "innerType": 58,
+      "defaultValue": null,
+      "checks": []
+    },
+    {
+      "type": "nullable",
+      "innerType": 59,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "trim"
+        },
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 120,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "encryptionPublicKeySchema",
+      "shape": {
+        "version": 22,
+        "algorithm": 61,
+        "format": 62,
+        "value": 63
+      },
+      "catchall": 64,
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": [
+        "P-256"
+      ],
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": [
+        "raw"
+      ],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "name": "encryptionP256PublicKeyBytesSchema",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[A-Za-z0-9_-]*$",
+          "flags": "u",
+          "displayPattern": "/^[A-Za-z0-9_-]*$/u"
+        },
+        {
+          "check": "refinement",
+          "tag": "canonical-base64url",
+          "message": "Value is not canonical unpadded base64url."
+        },
+        {
+          "check": "length_equals",
+          "length": 87,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "clientMasterKeyWrapperSchema",
+      "shape": {
+        "version": 22,
+        "purpose": 66,
+        "clientId": 67,
+        "masterKeyRevision": 23,
+        "envelope": 68
+      },
+      "catchall": 78,
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": [
+        "client-account-master-key"
+      ],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 255,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "hpkeWrappedKeyEnvelopeSchema",
+      "shape": {
+        "version": 22,
+        "algorithm": 69,
+        "suite": 70,
+        "encapsulatedKey": 63,
+        "ciphertext": 76
+      },
+      "catchall": 77,
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": [
+        "HPKE-RFC9180"
+      ],
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "hpkeCipherSuiteSchema",
+      "shape": {
+        "mode": 71,
+        "kem": 72,
+        "kdf": 73,
+        "aead": 74
+      },
+      "catchall": 75,
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": [
+        "base"
+      ],
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": [
+        "DHKEM(P-256,HKDF-SHA256)"
+      ],
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": [
+        "HKDF-SHA256"
+      ],
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": [
+        "AES-256-GCM"
+      ],
+      "checks": []
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "string",
+      "name": "encryptionWrappedKeyCiphertextSchema",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[A-Za-z0-9_-]*$",
+          "flags": "u",
+          "displayPattern": "/^[A-Za-z0-9_-]*$/u"
+        },
+        {
+          "check": "refinement",
+          "tag": "canonical-base64url",
+          "message": "Value is not canonical unpadded base64url."
+        },
+        {
+          "check": "length_equals",
+          "length": 64,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "union",
+      "name": "accountEncryptionProfileInitializeResultSchema",
+      "options": [
+        82,
+        113
+      ],
+      "discriminator": "created",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "created": 83,
+        "profile": 20,
+        "principal": 84,
+        "grant": 97
+      },
+      "catchall": 112,
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": [
+        true
+      ],
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "encryptionPrincipalSchema",
+      "shape": {
+        "id": 56,
+        "ownerId": 85,
+        "kind": 86,
+        "workerId": 87,
+        "label": 89,
+        "publicKey": 60,
+        "state": 91,
+        "revision": 23,
+        "approvedAt": 92,
+        "revokedAt": 93,
+        "revokedReason": 94,
+        "createdAt": 46,
+        "updatedAt": 46
+      },
+      "catchall": 96,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "principal-state"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 255,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "encryptionPrincipalKindSchema",
+      "values": [
+        "client",
+        "worker"
+      ],
+      "checks": []
+    },
+    {
+      "type": "nullable",
+      "innerType": 88,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 255,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "nullable",
+      "innerType": 90,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "trim"
+        },
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 120,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "encryptionPrincipalStateSchema",
+      "values": [
+        "pending",
+        "approved",
+        "revoked"
+      ],
+      "checks": []
+    },
+    {
+      "type": "nullable",
+      "innerType": 46,
+      "checks": []
+    },
+    {
+      "type": "nullable",
+      "innerType": 46,
+      "checks": []
+    },
+    {
+      "type": "nullable",
+      "innerType": 95,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 500,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "encryptionKeyGrantSchema",
+      "shape": {
+        "id": 98,
+        "ownerId": 99,
+        "principalId": 56,
+        "component": 100,
+        "keyRevision": 23,
+        "wrappedKey": 101,
+        "state": 107,
+        "revision": 23,
+        "revokedAt": 108,
+        "revokedReason": 109,
+        "createdAt": 46,
+        "updatedAt": 46
+      },
+      "catchall": 111,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "grant-metadata"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 255,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "encryptionComponentScopeSchema",
+      "values": [
+        "account-master-key",
+        "workspace-display-name",
+        "chat-content",
+        "task-content",
+        "attachment-content",
+        "interaction-content",
+        "private-surface-metadata",
+        "surface-private-state",
+        "policy-content",
+        "provider-credential",
+        "mcp-secret",
+        "repository-content",
+        "workflow-content",
+        "run-content",
+        "customization-content",
+        "tunnel-content",
+        "client-control-content",
+        "private-analytics"
+      ],
+      "checks": []
+    },
+    {
+      "type": "union",
+      "options": [
+        65,
+        102
+      ],
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "workerComponentKeyGrantSchema",
+      "shape": {
+        "version": 22,
+        "purpose": 103,
+        "workerId": 104,
+        "component": 105,
+        "keyRevision": 23,
+        "envelope": 68
+      },
+      "catchall": 106,
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": [
+        "worker-component-key"
+      ],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 255,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "workerEncryptionComponentScopeSchema",
+      "values": [
+        "chat-content",
+        "task-content",
+        "attachment-content",
+        "interaction-content",
+        "private-surface-metadata",
+        "surface-private-state",
+        "policy-content",
+        "provider-credential",
+        "mcp-secret",
+        "repository-content",
+        "workflow-content",
+        "run-content",
+        "customization-content",
+        "tunnel-content",
+        "client-control-content",
+        "private-analytics"
+      ],
+      "checks": []
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "encryptionGrantStateSchema",
+      "values": [
+        "active",
+        "revoked"
+      ],
+      "checks": []
+    },
+    {
+      "type": "nullable",
+      "innerType": 46,
+      "checks": []
+    },
+    {
+      "type": "nullable",
+      "innerType": 110,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 500,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "created": 114,
+        "profile": 20
+      },
+      "catchall": 115,
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": [
+        false
+      ],
+      "checks": []
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "encryptionProfileMigrationUpdateSchema",
+      "shape": {
+        "expectedRevision": 23,
+        "payloadMigrationStatus": 45
+      },
+      "catchall": 117,
+      "checks": []
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "accountPasswordEncryptionChangeSchema",
+      "shape": {
+        "currentPassword": 119,
+        "newPassword": 120,
+        "expectedProfileRevision": 23,
+        "passwordKdf": 25,
+        "passwordWrappedMasterKey": 36
+      },
+      "catchall": 121,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "password-change-kdf"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 1024,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 12,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 1024,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "union",
+      "name": "encryptionPrincipalCreateSchema",
+      "options": [
+        123,
+        129
+      ],
+      "discriminator": "kind",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "id": 56,
+        "kind": 124,
+        "label": 125,
+        "publicKey": 60
+      },
+      "catchall": 128,
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": [
+        "client"
+      ],
+      "checks": []
+    },
+    {
+      "type": "default",
+      "innerType": 126,
+      "defaultValue": null,
+      "checks": []
+    },
+    {
+      "type": "nullable",
+      "innerType": 127,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "trim"
+        },
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 120,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "id": 56,
+        "kind": 130,
+        "workerId": 131,
+        "label": 132,
+        "publicKey": 60
+      },
+      "catchall": 135,
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": [
+        "worker"
+      ],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 255,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "innerType": 133,
+      "defaultValue": null,
+      "checks": []
+    },
+    {
+      "type": "nullable",
+      "innerType": 134,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "trim"
+        },
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 120,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "encryptionPrincipalApprovalSchema",
+      "shape": {
+        "expectedRevision": 23
+      },
+      "catchall": 137,
+      "checks": []
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "encryptionRevocationSchema",
+      "shape": {
+        "expectedRevision": 23,
+        "reason": 139
+      },
+      "catchall": 140,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "trim"
+        },
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 500,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "array",
+      "name": "encryptionPrincipalListSchema",
+      "element": 84,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "encryptionKeyGrantCreateSchema",
+      "shape": {
+        "component": 100,
+        "keyRevision": 23,
+        "wrappedKey": 143
+      },
+      "catchall": 144,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "grant-create-metadata"
+        }
+      ]
+    },
+    {
+      "type": "union",
+      "options": [
+        65,
+        102
+      ],
+      "checks": []
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "array",
+      "name": "encryptionKeyGrantListSchema",
+      "element": 97,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "workerEncryptionBootstrapRequestSchema",
+      "shape": {
+        "principalId": 56,
+        "publicKey": 60
+      },
+      "catchall": 147,
+      "checks": []
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "workerEncryptionBootstrapResultSchema",
+      "shape": {
+        "serverId": 149,
+        "ownerId": 150,
+        "principal": 84,
+        "grants": 145
+      },
+      "catchall": 151,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-bootstrap"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 255,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "workerEnrollmentCodeCreateSchema",
+      "shape": {
+        "label": 153,
+        "expiresInSeconds": 156,
+        "candidateWorkerIds": 158
+      },
+      "checks": []
+    },
+    {
+      "type": "default",
+      "innerType": 154,
+      "defaultValue": null,
+      "checks": []
+    },
+    {
+      "type": "nullable",
+      "innerType": 155,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "trim"
+        },
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 120,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "innerType": 157,
+      "defaultValue": 600,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        {
+          "check": "number_format",
+          "format": "safeint",
+          "abort": false
+        },
+        {
+          "check": "greater_than",
+          "value": 60,
+          "inclusive": true
+        },
+        {
+          "check": "less_than",
+          "value": 1800,
+          "inclusive": true
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "innerType": 159,
+      "defaultValue": [],
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 160,
+      "checks": [
+        {
+          "check": "max_length",
+          "maximum": 64,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 255,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "workerEnrollmentCodeResultSchema",
+      "shape": {
+        "id": 162,
+        "code": 163,
+        "label": 164,
+        "expiresAt": 166,
+        "workerId": 167
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^ctwl_[A-Za-z0-9_-]{32}$",
+          "flags": "u",
+          "displayPattern": "/^ctwl_[A-Za-z0-9_-]{32}$/u"
+        }
+      ]
+    },
+    {
+      "type": "nullable",
+      "innerType": 165,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 120,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$/"
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "innerType": 168,
+      "defaultValue": null,
+      "checks": []
+    },
+    {
+      "type": "nullable",
+      "innerType": 169,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 255,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "workerEnrollmentCodeStatusSchema",
+      "shape": {
+        "id": 171,
+        "label": 172,
+        "expiresAt": 174,
+        "status": 175
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "nullable",
+      "innerType": 173,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 120,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$/"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "values": [
+        "pending",
+        "paired",
+        "expired"
+      ],
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "workerEnrollmentExchangeSchema",
+      "shape": {
+        "code": 163,
+        "heartbeat": 177,
+        "replacement": 372
+      },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "workerHeartbeatSchema",
+      "shape": {
+        "workerId": 178,
+        "name": 179,
+        "platform": 180,
+        "architecture": 181,
+        "codexVersion": 182,
+        "codexRuntime": 184,
+        "remoteSurfaces": 218,
+        "directBroker": 230,
+        "projectReplicas": 244,
+        "managedFolders": 260,
+        "standaloneChat": 276,
+        "chatRelocation": 299,
+        "externalCodexHistory": 301,
+        "codegraph": 303,
+        "webRuntimes": 327,
+        "encryption": 359,
+        "startedAt": 371
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "nullable",
+      "innerType": 183,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": []
+    },
+    {
+      "type": "default",
+      "innerType": 185,
+      "defaultValue": {
+        "adapter": "app-server",
+        "compatibility": "missing",
+        "version": null,
+        "testedRange": ">=0.163.0 <0.164.0",
+        "initialize": null,
+        "methods": {},
+        "features": [],
+        "nativeSubagents": {
+          "available": false,
+          "protocolVersion": null,
+          "reason": "This worker has not reported native subagent support."
+        },
+        "degradedReasons": [
+          "This worker has not reported runtime compatibility."
+        ]
+      },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "codexRuntimeReportSchema",
+      "shape": {
+        "adapter": 186,
+        "compatibility": 187,
+        "version": 188,
+        "testedRange": 192,
+        "initialize": 193,
+        "methods": 199,
+        "features": 202,
+        "nativeSubagents": 208,
+        "degradedReasons": 216
+      },
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": [
+        "app-server"
+      ],
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": [
+        "compatible",
+        "partial",
+        "incompatible",
+        "missing"
+      ],
+      "checks": []
+    },
+    {
+      "type": "nullable",
+      "innerType": 189,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "raw": 190,
+        "semantic": 191
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$",
+          "flags": "u",
+          "displayPattern": "/^\\d+\\.\\d+\\.\\d+$/u"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "nullable",
+      "innerType": 194,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "userAgent": 195,
+        "platformFamily": 196,
+        "platformOs": 197,
+        "experimentalApi": 198
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "record",
+      "keyType": 200,
+      "valueType": 201,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "codexRuntimeMethodStateSchema",
+      "values": [
+        "available",
+        "unavailable",
+        "unknown"
+      ],
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 203,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "codexRuntimeFeatureSchema",
+      "shape": {
+        "name": 204,
+        "stage": 205,
+        "enabled": 206,
+        "defaultEnabled": 207
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "codexRuntimeFeatureStageSchema",
+      "values": [
+        "beta",
+        "underDevelopment",
+        "stable",
+        "deprecated",
+        "removed"
+      ],
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "default",
+      "innerType": 209,
+      "defaultValue": {
+        "available": false,
+        "protocolVersion": null,
+        "reason": "This worker has not reported native subagent support."
+      },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "nativeSubagentRuntimeCapabilitySchema",
+      "shape": {
+        "available": 210,
+        "protocolVersion": 211,
+        "reason": 213
+      },
+      "catchall": 215,
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "nullable",
+      "innerType": 212,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        {
+          "check": "number_format",
+          "format": "safeint",
+          "abort": false
+        },
+        {
+          "check": "greater_than",
+          "value": 0,
+          "inclusive": false
+        }
+      ]
+    },
+    {
+      "type": "nullable",
+      "innerType": 214,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 217,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "innerType": 219,
+      "defaultValue": {
+        "browser": false,
+        "desktop": false,
+        "transports": [
+          "websocket"
+        ],
+        "iceTransportPolicies": [
+          "relay"
+        ],
+        "maxSessions": 4
+      },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "remoteSurfaceCapabilitiesSchema",
+      "shape": {
+        "browser": 220,
+        "desktop": 222,
+        "transports": 224,
+        "iceTransportPolicies": 226,
+        "maxSessions": 229
+      },
+      "checks": []
+    },
+    {
+      "type": "default",
+      "innerType": 221,
+      "defaultValue": false,
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "default",
+      "innerType": 223,
+      "defaultValue": false,
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 225,
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "remoteSurfaceTransportSchema",
+      "values": [
+        "websocket",
+        "webrtc"
+      ],
+      "checks": []
+    },
+    {
+      "type": "default",
+      "innerType": 227,
+      "defaultValue": [
+        "relay"
+      ],
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 228,
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "remoteSurfaceIceTransportPolicySchema",
+      "values": [
+        "all",
+        "relay"
+      ],
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        {
+          "check": "number_format",
+          "format": "safeint",
+          "abort": false
+        },
+        {
+          "check": "greater_than",
+          "value": 0,
+          "inclusive": false
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "innerType": 231,
+      "defaultValue": {
+        "available": false
+      },
+      "checks": []
+    },
+    {
+      "type": "union",
+      "name": "directBrokerAdvertisementSchema",
+      "options": [
+        232,
+        234
+      ],
+      "discriminator": "available",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "available": 233
+      },
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": [
+        false
+      ],
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "availableDirectBrokerSchema",
+      "shape": {
+        "available": 235,
+        "leaseRenewal": 236,
+        "protocol": 238,
+        "loopbackHost": 239,
+        "loopbackPort": 240,
+        "instanceId": 241,
+        "publicKey": 242,
+        "fingerprint": 243
+      },
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": [
+        true
+      ],
+      "checks": []
+    },
+    {
+      "type": "default",
+      "innerType": 237,
+      "defaultValue": false,
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": [
+        "ws-v1"
+      ],
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": [
+        "127.0.0.1"
+      ],
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        {
+          "check": "number_format",
+          "format": "safeint",
+          "abort": false
+        },
+        {
+          "check": "greater_than",
+          "value": 1,
+          "inclusive": true
+        },
+        {
+          "check": "less_than",
+          "value": 65535,
+          "inclusive": true
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 43,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 64,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[0-9a-f]{64}$",
+          "flags": "u",
+          "displayPattern": "/^[0-9a-f]{64}$/u"
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "innerType": 245,
+      "defaultValue": {
+        "provision": false,
+        "synchronize": false,
+        "remove": false,
+        "exactRevision": false,
+        "directPlacement": false,
+        "managedLinkPlacement": false,
+        "attachExisting": false,
+        "recursiveParentCreation": false,
+        "workspaceScopedRoots": false
+      },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "projectReplicaCapabilitiesSchema",
+      "shape": {
+        "provision": 246,
+        "synchronize": 247,
+        "remove": 248,
+        "exactRevision": 249,
+        "directPlacement": 250,
+        "managedLinkPlacement": 252,
+        "attachExisting": 254,
+        "recursiveParentCreation": 256,
+        "workspaceScopedRoots": 258
+      },
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "default",
+      "innerType": 251,
+      "defaultValue": false,
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "default",
+      "innerType": 253,
+      "defaultValue": false,
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "default",
+      "innerType": 255,
+      "defaultValue": false,
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "default",
+      "innerType": 257,
+      "defaultValue": false,
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "default",
+      "innerType": 259,
+      "defaultValue": false,
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "default",
+      "innerType": 261,
+      "defaultValue": {
+        "create": false,
+        "attachExisting": false,
+        "attachWorkspaceRoot": false,
+        "discoverWorkspaceRepositories": false,
+        "convertToGithub": false,
+        "convertExternalGitToGithub": false,
+        "remove": false,
+        "workspaceScopedRoots": false
+      },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "managedFolderCapabilitiesSchema",
+      "shape": {
+        "create": 262,
+        "attachExisting": 263,
+        "attachWorkspaceRoot": 265,
+        "discoverWorkspaceRepositories": 267,
+        "convertToGithub": 269,
+        "convertExternalGitToGithub": 271,
+        "remove": 273,
+        "workspaceScopedRoots": 274
+      },
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "default",
+      "innerType": 264,
+      "defaultValue": false,
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "default",
+      "innerType": 266,
+      "defaultValue": false,
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "default",
+      "innerType": 268,
+      "defaultValue": false,
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "default",
+      "innerType": 270,
+      "defaultValue": false,
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "default",
+      "innerType": 272,
+      "defaultValue": false,
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "default",
+      "innerType": 275,
+      "defaultValue": false,
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "default",
+      "innerType": 277,
+      "defaultValue": {
+        "protocolVersion": 1,
+        "scratch": {
+          "provision": false,
+          "resolve": false,
+          "archive": false,
+          "restore": false,
+          "remove": false,
+          "reconcile": false,
+          "routingHandles": false
+        },
+        "files": {
+          "list": false,
+          "read": false,
+          "write": false,
+          "remove": false,
+          "download": false,
+          "archive": false,
+          "networkShare": false
+        }
+      },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "standaloneChatCapabilitiesSchema",
+      "shape": {
+        "protocolVersion": 278,
+        "scratch": 279,
+        "files": 288
+      },
+      "catchall": 298,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        {
+          "check": "number_format",
+          "format": "safeint",
+          "abort": false
+        },
+        {
+          "check": "greater_than",
+          "value": 0,
+          "inclusive": false
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "standaloneChatScratchCapabilitiesSchema",
+      "shape": {
+        "provision": 280,
+        "resolve": 281,
+        "archive": 282,
+        "restore": 283,
+        "remove": 284,
+        "reconcile": 285,
+        "routingHandles": 286
+      },
+      "catchall": 287,
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "standaloneChatFileCapabilitiesSchema",
+      "shape": {
+        "list": 289,
+        "read": 290,
+        "write": 291,
+        "remove": 292,
+        "download": 293,
+        "archive": 294,
+        "networkShare": 295
+      },
+      "catchall": 297,
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "default",
+      "innerType": 296,
+      "defaultValue": false,
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "default",
+      "innerType": 300,
+      "defaultValue": false,
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "default",
+      "innerType": 302,
+      "defaultValue": false,
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "default",
+      "innerType": 304,
+      "defaultValue": {
+        "supported": false,
+        "available": false,
+        "runtimeState": "unavailable",
+        "installedVersion": null,
+        "latestVersion": null,
+        "previousVersion": null,
+        "lastCheckedAt": null,
+        "telemetryDisabled": false,
+        "healthy": false,
+        "statusMessage": "This worker has not reported CodeGraph capabilities.",
+        "projectCounts": {
+          "ready": 0,
+          "indexing": 0,
+          "queued": 0,
+          "degraded": 0
+        },
+        "cliAvailable": false,
+        "mcpInjectionAvailable": false
+      },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "codeGraphWorkerStatusSchema",
+      "shape": {
+        "supported": 305,
+        "available": 306,
+        "runtimeState": 307,
+        "installedVersion": 308,
+        "latestVersion": 310,
+        "previousVersion": 312,
+        "lastCheckedAt": 314,
+        "telemetryDisabled": 316,
+        "healthy": 317,
+        "statusMessage": 318,
+        "projectCounts": 320,
+        "cliAvailable": 325,
+        "mcpInjectionAvailable": 326
+      },
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "codeGraphRuntimeStateSchema",
+      "values": [
+        "checking",
+        "degraded",
+        "installing",
+        "ready",
+        "unavailable"
+      ],
+      "checks": []
+    },
+    {
+      "type": "nullable",
+      "innerType": 309,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "trim"
+        },
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 100,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "nullable",
+      "innerType": 311,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "trim"
+        },
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 100,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "nullable",
+      "innerType": 313,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "trim"
+        },
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 100,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "nullable",
+      "innerType": 315,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "nullable",
+      "innerType": 319,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "max_length",
+          "maximum": 1000,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "codeGraphProjectCountsSchema",
+      "shape": {
+        "ready": 321,
+        "indexing": 322,
+        "queued": 323,
+        "degraded": 324
+      },
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        {
+          "check": "number_format",
+          "format": "safeint",
+          "abort": false
+        },
+        {
+          "check": "greater_than",
+          "value": 0,
+          "inclusive": true
+        },
+        {
+          "check": "less_than",
+          "value": 128,
+          "inclusive": true
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        {
+          "check": "number_format",
+          "format": "safeint",
+          "abort": false
+        },
+        {
+          "check": "greater_than",
+          "value": 0,
+          "inclusive": true
+        },
+        {
+          "check": "less_than",
+          "value": 128,
+          "inclusive": true
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        {
+          "check": "number_format",
+          "format": "safeint",
+          "abort": false
+        },
+        {
+          "check": "greater_than",
+          "value": 0,
+          "inclusive": true
+        },
+        {
+          "check": "less_than",
+          "value": 128,
+          "inclusive": true
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        {
+          "check": "number_format",
+          "format": "safeint",
+          "abort": false
+        },
+        {
+          "check": "greater_than",
+          "value": 0,
+          "inclusive": true
+        },
+        {
+          "check": "less_than",
+          "value": 128,
+          "inclusive": true
+        }
+      ]
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "default",
+      "innerType": 328,
+      "defaultValue": {
+        "schemaVersion": 1,
+        "search": {
+          "component": "searxng",
+          "supported": false,
+          "state": "unsupported",
+          "installedVersion": null,
+          "previousVersion": null,
+          "latestVersion": null,
+          "lastCheckedAt": null,
+          "progress": null,
+          "failure": null
+        },
+        "browser": {
+          "component": "playwright",
+          "supported": false,
+          "state": "unsupported",
+          "installedVersion": null,
+          "previousVersion": null,
+          "latestVersion": null,
+          "lastCheckedAt": null,
+          "progress": null,
+          "failure": null
+        },
+        "staticReading": false
+      },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "managedWebRuntimeCapabilitiesSchema",
+      "shape": {
+        "schemaVersion": 329,
+        "search": 330,
+        "browser": 330,
+        "staticReading": 357
+      },
+      "catchall": 358,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "managed-runtime-components"
+        }
+      ]
+    },
+    {
+      "type": "literal",
+      "values": [
+        1
+      ],
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "managedWebRuntimeStatusSchema",
+      "shape": {
+        "component": 331,
+        "supported": 332,
+        "state": 333,
+        "installedVersion": 334,
+        "previousVersion": 336,
+        "latestVersion": 338,
+        "lastCheckedAt": 340,
+        "progress": 342,
+        "failure": 349
+      },
+      "catchall": 356,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "managedWebRuntimeComponentSchema",
+      "values": [
+        "searxng",
+        "playwright"
+      ],
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "managedWebRuntimeStateSchema",
+      "values": [
+        "checking",
+        "installing",
+        "updating",
+        "ready",
+        "degraded",
+        "failed",
+        "unsupported"
+      ],
+      "checks": []
+    },
+    {
+      "type": "nullable",
+      "innerType": 335,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "trim"
+        },
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 100,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "nullable",
+      "innerType": 337,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "trim"
+        },
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 100,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "nullable",
+      "innerType": 339,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "trim"
+        },
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 100,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "nullable",
+      "innerType": 341,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "nullable",
+      "innerType": 343,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "managedWebRuntimeProgressSchema",
+      "shape": {
+        "phase": 344,
+        "completedBytes": 345,
+        "totalBytes": 346,
+        "updatedAt": 347
+      },
+      "catchall": 348,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "managed-runtime-progress",
+          "message": "Managed web runtime progress cannot exceed its total."
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "managedWebRuntimeProgressPhaseSchema",
+      "values": [
+        "manifest",
+        "download",
+        "verify",
+        "extract",
+        "inventory",
+        "probe",
+        "promote",
+        "cleanup"
+      ],
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        {
+          "check": "number_format",
+          "format": "safeint",
+          "abort": false
+        },
+        {
+          "check": "greater_than",
+          "value": 0,
+          "inclusive": true
+        },
+        {
+          "check": "less_than",
+          "value": 12000000000,
+          "inclusive": true
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        {
+          "check": "number_format",
+          "format": "safeint",
+          "abort": false
+        },
+        {
+          "check": "greater_than",
+          "value": 0,
+          "inclusive": true
+        },
+        {
+          "check": "less_than",
+          "value": 12000000000,
+          "inclusive": true
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "nullable",
+      "innerType": 350,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "managedWebRuntimeFailureSchema",
+      "shape": {
+        "category": 351,
+        "message": 352,
+        "retryable": 353,
+        "failedAt": 354
+      },
+      "catchall": 355,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "managedWebRuntimeFailureCategorySchema",
+      "values": [
+        "download",
+        "integrity",
+        "signature",
+        "archive",
+        "inventory",
+        "health-check",
+        "compatibility",
+        "disk",
+        "process",
+        "unknown"
+      ],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "trim"
+        },
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 1000,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "default",
+      "innerType": 360,
+      "defaultValue": {
+        "supported": false,
+        "state": "unavailable",
+        "principalId": null,
+        "grants": [],
+        "lastSyncedAt": null,
+        "error": null
+      },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "workerEncryptionStatusSchema",
+      "shape": {
+        "supported": 361,
+        "state": 362,
+        "principalId": 363,
+        "grants": 364,
+        "lastSyncedAt": 367,
+        "error": 368
+      },
+      "catchall": 370,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-encryption-status"
+        }
+      ]
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": [
+        "unavailable",
+        "pending-approval",
+        "ready",
+        "error"
+      ],
+      "checks": []
+    },
+    {
+      "type": "nullable",
+      "innerType": 56,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 365,
+      "checks": [
+        {
+          "check": "max_length",
+          "maximum": 16,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "component": 105,
+        "keyRevision": 23
+      },
+      "catchall": 366,
+      "checks": []
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "nullable",
+      "innerType": 46,
+      "checks": []
+    },
+    {
+      "type": "nullable",
+      "innerType": 369,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 500,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "innerType": 373,
+      "defaultValue": null,
+      "checks": []
+    },
+    {
+      "type": "nullable",
+      "innerType": 374,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "workerId": 375,
+        "credential": 376
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 255,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^ctwk_[A-Za-z0-9_-]{43}$",
+          "flags": "u",
+          "displayPattern": "/^ctwk_[A-Za-z0-9_-]{43}$/u"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "workerEnrollmentResultSchema",
+      "shape": {
+        "credential": 376,
+        "credentialSummary": 378,
+        "worker": 395
+      },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "workerCredentialSummarySchema",
+      "shape": {
+        "id": 379,
+        "workerId": 380,
+        "label": 381,
+        "scopes": 383,
+        "createdAt": 385,
+        "expiresAt": 386,
+        "lastUsedAt": 388,
+        "revokedAt": 390,
+        "revokedReason": 392,
+        "active": 394
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 255,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "nullable",
+      "innerType": 382,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 120,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 384,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "workerCredentialScopeSchema",
+      "values": [
+        "worker:connect",
+        "worker:heartbeat",
+        "worker:automations",
+        "worker:agent-tools"
+      ],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$/"
+        }
+      ]
+    },
+    {
+      "type": "nullable",
+      "innerType": 387,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$/"
+        }
+      ]
+    },
+    {
+      "type": "nullable",
+      "innerType": 389,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$/"
+        }
+      ]
+    },
+    {
+      "type": "nullable",
+      "innerType": 391,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$/"
+        }
+      ]
+    },
+    {
+      "type": "nullable",
+      "innerType": 393,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 500,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "workerSummarySchema",
+      "shape": {
+        "workerId": 178,
+        "name": 179,
+        "platform": 180,
+        "architecture": 181,
+        "codexVersion": 182,
+        "codexRuntime": 184,
+        "remoteSurfaces": 218,
+        "directBroker": 230,
+        "projectReplicas": 244,
+        "managedFolders": 260,
+        "standaloneChat": 276,
+        "chatRelocation": 299,
+        "externalCodexHistory": 301,
+        "codegraph": 303,
+        "webRuntimes": 327,
+        "encryption": 359,
+        "startedAt": 371,
+        "online": 396,
+        "lastSeenAt": 397
+      },
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "workerCredentialRotateSchema",
+      "shape": {
+        "label": 399
+      },
+      "checks": []
+    },
+    {
+      "type": "default",
+      "innerType": 400,
+      "defaultValue": null,
+      "checks": []
+    },
+    {
+      "type": "nullable",
+      "innerType": 401,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "trim"
+        },
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 120,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "workerCredentialRotateResultSchema",
+      "shape": {
+        "credential": 376,
+        "credentialSummary": 378,
+        "delivered": 403
+      },
+      "checks": []
+    },
+    {
+      "type": "default",
+      "innerType": 404,
+      "defaultValue": false,
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "array",
+      "name": "workerCredentialListSchema",
+      "element": 378,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "name": "accountSessionListSchema",
+      "element": 407,
+      "checks": [
+        {
+          "check": "max_length",
+          "maximum": 1000,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "accountSessionSummarySchema",
+      "shape": {
+        "id": 408,
+        "authMethod": 409,
+        "label": 410,
+        "current": 412,
+        "connected": 413,
+        "createdAt": 415,
+        "lastSeenAt": 416,
+        "expiresAt": 417
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "values": [
+        "password",
+        "account-password",
+        "mobile-qr"
+      ],
+      "checks": []
+    },
+    {
+      "type": "nullable",
+      "innerType": 411,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "max_length",
+          "maximum": 200,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "default",
+      "innerType": 414,
+      "defaultValue": false,
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "accountLicenseWhitelistCreateSchema",
+      "shape": {
+        "email": 419
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "email",
+          "abort": false,
+          "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
+          "flags": "",
+          "displayPattern": "/^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$/"
+        },
+        {
+          "check": "max_length",
+          "maximum": 320,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "accountLicenseWhitelistEntrySchema",
+      "shape": {
+        "id": 421,
+        "email": 422,
+        "registered": 423,
+        "createdAt": 424
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "email",
+          "abort": false,
+          "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
+          "flags": "",
+          "displayPattern": "/^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$/"
+        },
+        {
+          "check": "max_length",
+          "maximum": 320,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "accountAdminSummarySchema",
+      "shape": {
+        "userCount": 426,
+        "licenseWhitelist": 427
+      },
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        {
+          "check": "number_format",
+          "format": "safeint",
+          "abort": false
+        },
+        {
+          "check": "greater_than",
+          "value": 0,
+          "inclusive": true
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "enabled": 428,
+        "adminEmail": 429,
+        "entries": 431
+      },
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "nullable",
+      "innerType": 430,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "email",
+          "abort": false,
+          "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
+          "flags": "",
+          "displayPattern": "/^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$/"
+        },
+        {
+          "check": "max_length",
+          "maximum": 320,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 420,
+      "checks": [
+        {
+          "check": "max_length",
+          "maximum": 10000,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "auditEventQuerySchema",
+      "shape": {
+        "before": 433,
+        "limit": 435
+      },
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "innerType": 434,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "coerce": true,
+      "checks": [
+        {
+          "check": "number_format",
+          "format": "safeint",
+          "abort": false
+        },
+        {
+          "check": "greater_than",
+          "value": 0,
+          "inclusive": false
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "innerType": 436,
+      "defaultValue": 50,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "coerce": true,
+      "checks": [
+        {
+          "check": "number_format",
+          "format": "safeint",
+          "abort": false
+        },
+        {
+          "check": "greater_than",
+          "value": 1,
+          "inclusive": true
+        },
+        {
+          "check": "less_than",
+          "value": 200,
+          "inclusive": true
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "auditEventListSchema",
+      "shape": {
+        "items": 438,
+        "nextCursor": 458
+      },
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 439,
+      "checks": [
+        {
+          "check": "max_length",
+          "maximum": 200,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "auditEventSchema",
+      "shape": {
+        "id": 440,
+        "ownerId": 441,
+        "actor": 443,
+        "action": 448,
+        "result": 449,
+        "resource": 450,
+        "requestId": 454,
+        "occurredAt": 456
+      },
+      "catchall": 457,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        {
+          "check": "number_format",
+          "format": "safeint",
+          "abort": false
+        },
+        {
+          "check": "greater_than",
+          "value": 0,
+          "inclusive": false
+        }
+      ]
+    },
+    {
+      "type": "nullable",
+      "innerType": 442,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "userId": 444,
+        "sessionId": 446
+      },
+      "checks": []
+    },
+    {
+      "type": "nullable",
+      "innerType": 445,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "nullable",
+      "innerType": 447,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 3,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 160,
+          "when": "length"
+        },
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[a-z0-9]+(?:[.-][a-z0-9]+)*$",
+          "flags": "u",
+          "displayPattern": "/^[a-z0-9]+(?:[.-][a-z0-9]+)*$/u"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "values": [
+        "succeeded",
+        "failed",
+        "denied"
+      ],
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "type": 451,
+        "id": 452
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 80,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "nullable",
+      "innerType": 453,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 500,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "nullable",
+      "innerType": 455,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 200,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "nullable",
+      "innerType": 459,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        {
+          "check": "number_format",
+          "format": "safeint",
+          "abort": false
+        },
+        {
+          "check": "greater_than",
+          "value": 0,
+          "inclusive": false
+        }
+      ]
+    }
+  ]
+}

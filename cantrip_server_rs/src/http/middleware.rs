@@ -451,6 +451,13 @@ pub(super) async fn guard(
     } else {
         None
     };
+    let audit_principal = principal.clone();
+    let audit_path = request.uri().path().to_owned();
+    let audit_method = request.method().as_str().to_owned();
+    let audit_pattern = request
+        .extensions()
+        .get::<axum::extract::MatchedPath>()
+        .map_or_else(|| audit_path.clone(), |v| v.as_str().to_owned());
     let response = if let Some(response) = rejection {
         response
     } else {
@@ -461,6 +468,16 @@ pub(super) async fn guard(
         }));
         next.run(request).await
     };
+    super::audit::mutation(
+        &service,
+        &audit_principal,
+        &id,
+        &audit_method,
+        &audit_pattern,
+        &audit_path,
+        response.status().as_u16(),
+    )
+    .await;
     finish(
         &service,
         &id,
