@@ -706,13 +706,44 @@
       "status": "partial",
       "evidence": [
         "cantrip_server_rs/tests/json_depth.rs",
-        "scripts/server-rust/json-compatibility.mjs"
+        "scripts/server-rust/json-compatibility.mjs",
+        "scripts/server-rust/live-cursor-observer.mjs",
+        "scripts/server-rust/live-cursor-contract.mjs"
       ],
-      "scope": "A baseline 4 KiB, 2,048-array request aborted native HTTP and App Live processes with a stack overflow while Node remained healthy. Native JSON syntax is validated once and its tree constructed iteratively; clone, comparison, serialization, drop and HTTP poison scanning are iterative. Authentication validates shared wire values before explicit UTF-8 storage/hashing boundaries, retaining UTF-16 issue keys and messages. Existing transport byte limits and schema decisions remain in force.",
+      "scope": "A baseline 4 KiB, 2,048-array request aborted native HTTP and App Live processes with a stack overflow while Node remained healthy. Native JSON syntax is validated once and its tree constructed iteratively; clone, comparison, serialization, drop and HTTP poison scanning are iterative. Authentication validates shared wire values before explicit UTF-8 storage/hashing boundaries, retaining UTF-16 issue keys and messages. Existing transport byte limits and schema decisions remain in force. The JSON socket suite verifies ready/pong cursors against a real retained publication stream per process, including the minimum cursor observed before sending each request. It retains raw cursors, counts and publication bodies, permits only separately scheduled account-resource-usage invalidations, and deliberately awaits an actual reference usage publication before later ready messages. This is parser/metadata evidence, not usage-domain parity.",
       "verifiedLocally": "macOS arm64: 52 HTTP and 27 WebSocket cases against actual Node/Rust processes on each of PGlite, private PostgreSQL and external PostgreSQL; HTTP status/body/security headers/cookies and Live responses match, with subsequent health/initialization/ping/close checks. The 37,396 existing schema cases, 69,647 JSON round trips and 412 auth request-schema cases also pass.",
       "remaining": [
         "Observe this changed implementation on supported CI platforms.",
         "Complete remaining domain schemas, coercions, hashes and real product/deployment acceptance; no complete-server claim."
+      ],
+      "platformHistory": [
+        {
+          "pullRequest": "https://github.com/ArcaneArts/Cantrip/pull/2282",
+          "commit": "c44ce53adde0bfd7b9485c6eb758345317a5dc8f",
+          "observedHead": "f1f0c0d310531c3fa390e208bc087c13677e2951",
+          "observedRun": "https://github.com/ArcaneArts/Cantrip/actions/runs/40396215390",
+          "overallConclusion": "failure",
+          "jobs": {
+            "ubuntu-24.04": "success",
+            "macos-15": "success",
+            "windows-2025": "failure"
+          },
+          "scope": "All three platforms passed the full native suite including the small-stack JSON tests. Linux/macOS completed all workflow steps. Windows failed the new PGlite JSON socket absolute-cursor comparison (Node 1, Rust 0); later Windows suites were skipped. A real subscribed Node client reproduced an asynchronous account-resource-usage publication; the follow-up cursor observer requires its own platform results."
+        }
+      ]
+    },
+    "accountUsageAccounting": {
+      "status": "unported",
+      "reference": [
+        "cantrip_server/src/account-usage/bandwidth-meter.ts",
+        "cantrip_server/src/db/account-resource-usage.ts",
+        "cantrip_server/src/app/http/bandwidth-hooks.ts",
+        "cantrip_server/src/app/runtime/live-infrastructure-runtime.ts"
+      ],
+      "observedGap": "JSON suite raw reports retain a real reference account-resource-usage invalidation at cursor 1 while native usage publications are absent. Independently timed usage publications are isolated only from parser cursor comparisons through an observed contiguous publication chain. This does not establish native accounting or publication parity.",
+      "remaining": [
+        "Complete actual bandwidth recording/batching/idempotent persistence and coalesced live publication.",
+        "Port storage reconciliation, usage maintenance/retention, usage endpoints, metrics and corresponding product/domain acceptance."
       ]
     }
   },

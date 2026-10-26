@@ -314,3 +314,35 @@ parser cases run before enrollment mutations: the latter still lack some
 resource-domain publications, which a retained comparison exposed as divergent
 Live cursors. Remaining schemas, coercion/refinement boundaries, authenticated
 serialization, domain publishers and complete product acceptance remain required.
+
+## JSON socket cursor observations
+
+The JSON milestone PR 2282 passed the full native suite on Linux, macOS and
+Windows, including small-stack tree lifetime tests. Its full Linux/macOS jobs
+passed. Windows failed the new PGlite socket suite when a ready response had
+Node cursor 1 and Rust cursor 0; later Windows suites did not run. The failure
+is retained in run 40396215390 and requires a fresh follow-up platform result.
+
+A real subscribed Node client reproduced a separate `account-resource-usage`
+publication advancing its cursor. Usage accounting and those native publications
+remain unported. Publication timers differ between independently launched
+processes, so comparing their absolute counters inside parser cases also makes
+those cases depend on an unrelated domain and the speed of the host.
+
+The JSON suite now installs a real observer with retained replay, preserves raw
+ready/pong counters, and proves each counter against a contiguous publication
+chain for that process. A counter cannot precede events observed before its
+request. Only the exact usage invalidation shape is accounted separately;
+unexpected resources, changed server epochs, missing ordinals and stale
+counters fail. Raw counter/publication differences remain in the output and
+coverage ledger. This is not acceptance of the unfinished usage domain.
+
+The suite lowers the real usage flush threshold and waits for a real reference
+publication before later ready messages, deliberately exercising the original
+failure on every platform. A separate real-Node control suite verifies valid
+accounting and rejects stale/future counters, a changed epoch and an actual
+worker mutation publication. It runs with the same supported-platform workflow:
+
+```sh
+node --import tsx scripts/server-rust/live-cursor-contract.mjs --report .qa/rust-server/json-cursor-contract.json
+```

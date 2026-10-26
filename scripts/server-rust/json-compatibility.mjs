@@ -7,7 +7,9 @@ import path from "node:path";
 import { hashPassword } from "../../cantrip_server/src/auth/service.ts";
 import { buildRustServer } from "./build.mjs";
 import { HttpFixture } from "./http-fixture.mjs";
-import { LiveProbe, initialize } from "./live-sockets.mjs";
+import { LiveProbe } from "./live-sockets.mjs";
+import { array, object, http, websocket } from "./json-cases.mjs";
+import { LiveCursorObserver } from "./live-cursor-observer.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
 
 const option = (name) => {
@@ -22,121 +24,10 @@ const report = {
   suite: "json-http-websocket",
   databaseMode,
   completeReplacement: false,
+  cursorScope:
+    "Ready and pong cursors are verified against actual retained usage publications per process. Raw cursors and events remain in the report. Usage accounting itself remains an unfinished server domain.",
   profiles: [],
 };
-const array = (depth) => "[".repeat(depth) + "0" + "]".repeat(depth);
-const object = (depth) => '{"x":'.repeat(depth) + "null" + "}".repeat(depth);
-const http = [];
-const add = (name, raw, status = 400, options = {}) =>
-  http.push({ name, raw, status, ...options });
-for (const depth of [128, 2048, 20000]) {
-  add(`unknown array ${depth}`, '{"extra":' + array(depth) + "}", 201);
-  add(`unknown object ${depth}`, '{"extra":' + object(depth) + "}", 201);
-  add(`root array ${depth}`, array(depth));
-  add(`known wrong type ${depth}`, '{"label":' + array(depth) + "}");
-  add(`truncated array ${depth}`, '{"extra":' + array(depth).slice(0, -1));
-  add(
-    `duplicate drops deep ${depth}`,
-    '{"extra":' + array(depth) + ',"extra":true}',
-    201,
-  );
-  add(
-    `nested poison ${depth}`,
-    '{"extra":' +
-      "[".repeat(depth) +
-      '{"__proto__":{}}' +
-      "]".repeat(depth) +
-      "}",
-  );
-}
-for (const [name, raw] of [
-  ["empty", ""],
-  ["whitespace", " \t\r\n"],
-  ["truncated object", '{"extra":'],
-  ["trailing comma", '{"extra":1,}'],
-  ["trailing token", "{} false"],
-  ["leading zero", '{"extra":01}'],
-  ["bad fraction", '{"extra":1.}'],
-  ["bad exponent", '{"extra":1e+}'],
-  ["nonfinite literal", '{"extra":NaN}'],
-  ["raw control", '{"extra":"\u0000"}'],
-  ["bad escape", '{"extra":"\\x00"}'],
-  ["bad unicode escape", '{"extra":"\\uD80"}'],
-  ["prototype key", '{"__proto__":{}}'],
-  ["constructor prototype", '{"extra":{"constructor":{"prototype":{}}}}'],
-])
-  add(name, raw);
-for (const [name, raw] of [
-  ["null defaults", "null"],
-  ["BOM", "\ufeff{}"],
-  [
-    "strings and escapes",
-    '{"extra":"\\ud800\\udfff\\ud800é😀\\\\\\\"/\\b\\f\\n\\r\\t"}',
-  ],
-  [
-    "numeric overflow",
-    '{"extra":[1e999,-1e999,-0,1.7976931348623157e308,5e-324]}',
-  ],
-  ["duplicate and index keys", '{"9":0,"2":0,"extra":0,"2":1,"4294967295":2}'],
-  [
-    "constructor without prototype",
-    '{"constructor":{},"extra":{"prototype":{}}}',
-  ],
-])
-  add(name, raw, 201);
-add(
-  "invalid UTF8 replacement",
-  Buffer.from([123, 34, 120, 34, 58, 34, 240, 128, 128, 34, 125]),
-  201,
-);
-add("plain text", "{}", 400, { contentType: "text/plain" });
-add("unsupported type", "{}", 415, { contentType: "application/xml" });
-
-const websocket = [];
-const init = JSON.stringify(initialize());
-const ws = (name, raw, code = "invalid-message", extra = {}) =>
-  websocket.push({ name, raw, code, ...extra });
-for (const depth of [128, 2048, 20000]) {
-  ws(
-    `unknown array ${depth}`,
-    init.slice(0, -1) + ',"extra":' + array(depth) + "}",
-  );
-  // Keep valid deeply nested objects below the existing 64 KiB Live limit.
-  ws(
-    `unknown object ${depth}`,
-    init.slice(0, -1) + ',"extra":' + object(Math.min(depth, 9000)) + "}",
-  );
-  ws(`root array ${depth}`, array(depth));
-  ws(`truncated array ${depth}`, array(depth).slice(0, -1));
-  ws(
-    `nested known field ${depth}`,
-    init.replace('"name":"Cantrip Live fixture"', '"name":' + array(depth)),
-  );
-}
-for (const [name, raw] of [
-  ["empty", ""],
-  ["whitespace", " \n"],
-  ["trailing token", "{}false"],
-  ["trailing comma", '{"type":"initialize",}'],
-  ["BOM is not JSON", "\ufeff" + init],
-  ["invalid escape", '{"type":"\\uZZZZ"}'],
-  ["null", "null"],
-  ["string", '"hello"'],
-  ["number overflow", "1e999"],
-])
-  ws(name, raw);
-ws("valid initialization", init, null);
-ws("lone UTF16 echo", '{"type":"ping","nonce":"\\ud800\\udfff\\ud800"}', null, {
-  initialized: true,
-});
-ws(
-  "duplicate properties",
-  init.replace(
-    '"protocolVersion":1',
-    '"protocolVersion":99,"protocolVersion":1',
-  ),
-  null,
-);
 
 let postgresOwner, failure;
 try {
@@ -155,6 +46,9 @@ try {
           databaseMode,
           environment: {
             CANTRIP_AUTH_MODE: name === "anonymous" ? "none" : "password",
+            ...(name === "anonymous"
+              ? { CANTRIP_BANDWIDTH_USAGE_FLUSH_THRESHOLD_BYTES: "1024" }
+              : {}),
             ...(name === "password"
               ? { CANTRIP_PASSWORD_HASH: passwordHash }
               : {}),
@@ -169,22 +63,35 @@ try {
         pair[1].environment.CANTRIP_POSTGRES_BIN_DIR =
           process.env.CANTRIP_TEST_POSTGRES_BIN_DIR;
     }
-    const profile = { name, http: [], websocket: [] };
+    const profile = { name, http: [], websocket: [], cursorObservers: {} };
     report.profiles.push(profile);
     let profileFailure;
+    const observers = new Map();
     try {
       for (const fixture of pair) await fixture.start();
+      if (name === "anonymous")
+        for (const fixture of pair) {
+          const observer = new LiveCursorObserver(fixture);
+          observers.set(fixture.kind, observer);
+          await observer.open();
+        }
       // Run Live before enrollment mutations: their resource publishers are
       // a separate unfinished domain, and must not contaminate parser cursors.
       if (name === "anonymous")
         for (const test of websocket) {
           const results = [];
+          const cursorEvidence = {};
           for (const fixture of pair) {
+            const observer = observers.get(fixture.kind);
+            const evidence = (cursorEvidence[fixture.kind] = []);
             const probe = await new LiveProbe(fixture).open();
             try {
-              if (test.initialized) await probe.initialized();
+              if (test.initialized)
+                evidence.push(await observer.initialized(probe));
+              const minimum = observer.beforeSend();
               probe.socket.send(test.raw);
               const frame = await probe.message();
+              let comparable = frame;
               assert.equal(
                 frame.type,
                 test.code ? "error" : test.initialized ? "pong" : "ready",
@@ -192,10 +99,25 @@ try {
               );
               if (test.code) {
                 assert.equal(frame.code, test.code, test.name);
-                await probe.initialized();
+                evidence.push(await observer.initialized(probe));
               }
-              await probe.ping("after-json");
-              results.push(fixture.normalize(frame));
+              if (frame.type === "ready" || frame.type === "pong") {
+                const accounting = await observer.verifyFrame(frame, minimum);
+                evidence.push(accounting);
+                comparable = {
+                  ...frame,
+                  [frame.type === "ready" ? "currentCursor" : "cursor"]:
+                    accounting.parserPublications,
+                };
+              }
+              const beforePing = observer.beforeSend();
+              evidence.push(
+                await observer.verifyFrame(
+                  await probe.ping("after-json"),
+                  beforePing,
+                ),
+              );
+              results.push(fixture.normalize(comparable));
             } finally {
               await probe.close();
             }
@@ -206,8 +128,18 @@ try {
             name: test.name,
             bytes: Buffer.byteLength(test.raw),
             response: results[0],
+            cursorEvidence,
           });
+          if (test.name === "unknown array 2048") {
+            // Exercise the original failure deterministically using a real
+            // flush and coalesced publication. No clock/publisher is mocked.
+            profile.referenceUsagePublication = await observers
+              .get("node")
+              .waitForPublication();
+          }
         }
+      for (const [kind, observer] of observers)
+        profile.cursorObservers[kind] = await observer.close();
       const cases =
         name === "anonymous"
           ? http
@@ -297,10 +229,15 @@ try {
       profileFailure = error;
       throw error;
     } finally {
+      const observerResults = await Promise.allSettled(
+        [...observers].map(async ([kind, observer]) => {
+          profile.cursorObservers[kind] = await observer.close();
+        }),
+      );
       const results = await Promise.allSettled(
         pair.map((fixture) => fixture.close()),
       );
-      const errors = results
+      const errors = [...observerResults, ...results]
         .filter((r) => r.status === "rejected")
         .map((r) => r.reason);
       if (errors.length) {

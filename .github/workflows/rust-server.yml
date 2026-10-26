@@ -111,6 +111,8 @@ jobs:
         run: node scripts/server-rust/cargo.mjs test -- --nocapture
       - name: Node and Rust over real HTTP connections
         run: node scripts/server-rust/compatibility.mjs --report .qa/rust-server/foundation-http.json
+      - name: Actual publication cursor accounting and rejection controls
+        run: node --import tsx scripts/server-rust/live-cursor-contract.mjs --report .qa/rust-server/json-cursor-contract.json
       - name: Deep and malformed JSON with native PGlite
         run: node --import tsx scripts/server-rust/json-compatibility.mjs --report .qa/rust-server/json-pglite-http.json
       - name: Deep and malformed JSON with private PostgreSQL
