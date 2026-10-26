@@ -84,9 +84,15 @@ async function createFixture() {
 }
 
 let fixture: Awaited<ReturnType<typeof createFixture>>;
+// Cold WASM, full migrations and application startup use the same budget as
+// the real-server fixture. The shutdown test bodies retain their deadlines.
 beforeEach(async () => {
+  const startedAt = performance.now();
   fixture = await createFixture();
-});
+  console.info(
+    `Worker authentication fixture ready in ${Math.round(performance.now() - startedAt)}ms`,
+  );
+}, 60_000);
 afterEach(async () => {
   fixture.finishAuthentication.resolve();
   fixture.finishOwnerLookup.resolve();
