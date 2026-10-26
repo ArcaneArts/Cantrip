@@ -32,13 +32,16 @@ async function eventually(read, assertion) {
     await delay(10);
   }
 }
-export async function workerAuthenticationFaults(fixture) {
+export async function workerAuthenticationFaults(
+  fixture,
+  report = { cases: [] },
+) {
   assert.equal(fixture.databaseMode, "postgres");
   const credential = fixture.records.get("re-enrolled").credential;
   const hash = createHash("sha256").update(credential).digest("hex");
   const lockSql = postgres(fixture.environment.DATABASE_URL, { max: 1 });
   const observer = postgres(fixture.environment.DATABASE_URL, { max: 1 });
-  const cases = [];
+  const cases = report.cases;
   async function lastUsed() {
     const rows =
       await observer`SELECT last_used_at FROM worker_credentials WHERE secret_hash=${hash}`;
@@ -50,8 +53,13 @@ export async function workerAuthenticationFaults(fixture) {
     // A lastUsedAt write is not proof that all 32 queued authentications and
     // owner lookups have finished and released their handshake permits.
     if (cases.length) {
-      await fixture.close();
-      await fixture.start();
+      try {
+        await fixture.close();
+        await fixture.start();
+      } catch (error) {
+        error.message = `${fixture.kind}/restarting before ${label}: ${error.message}`;
+        throw error;
+      }
     }
     const held = deferred(),
       release = deferred(),
@@ -223,7 +231,8 @@ export async function workerAuthenticationFaults(fixture) {
         return { closed };
       },
     );
-    return { passed: true, cases };
+    report.passed = true;
+    return report;
   } finally {
     await Promise.all([
       lockSql.end({ timeout: 5 }),

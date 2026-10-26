@@ -1290,7 +1290,7 @@ export async function buildApp({
     serverId,
   });
 
-  installInternalWorkerWebsocketRoute(app, {
+  const drainWorkerAuthentications = installInternalWorkerWebsocketRoute(app, {
     bridge,
     catalogWorkers,
     chatImportJobExecutor,
@@ -1337,6 +1337,10 @@ export async function buildApp({
   installPolicyRoutes(app, { applicationOwnerId, repository });
 
   app.addHook("onClose", async () => {
+    // Upgraded sockets can close while their credential/owner queries remain
+    // queued. Finish those handlers before ending the database pool; postgres-js
+    // can otherwise reopen connections for its queued transactions after end().
+    await drainWorkerAuthentications();
     nativeLogicalCompletionDelivery.stop();
     stopComputerUseAuthoritySubscription();
     liveInfrastructureRuntime.stopPublishing();
