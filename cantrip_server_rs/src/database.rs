@@ -1,26 +1,25 @@
+mod postgres;
+mod postgres_url;
+
 use std::{future::Future, path::Path, pin::Pin};
 
 use anyhow::{Context, Result};
 use postgres_native_tls::MakeTlsConnector;
 use postgres_types::{FromSql, ToSql};
-use tokio::{
-    sync::{Mutex, broadcast},
-    task::JoinHandle,
-};
+use tokio::sync::{Mutex, broadcast};
 
 pub type Parameters<'a> = &'a [&'a (dyn ToSql + Sync)];
 pub type TransactionFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 
 enum Backend {
-    Pglite(pglite::PGlite),
-    Postgres(tokio_postgres::Client),
+    Pglite(Mutex<Option<pglite::PGlite>>),
+    Postgres(Box<postgres::Postgres>),
 }
 
-/// One serialized session initially matches PGlite's existing execution model.
-/// PostgreSQL pooling can be introduced without changing repository contracts.
+/// PGlite retains its single-session execution model. PostgreSQL leases request
+/// connections independently and dedicates a separate connection to LISTEN.
 pub struct Database {
-    backend: Mutex<Option<Backend>>,
-    connection: Mutex<Option<JoinHandle<Result<()>>>>,
+    backend: Backend,
     engine: &'static str,
     notifications: broadcast::Sender<(String, String)>,
 }
@@ -105,8 +104,7 @@ impl Database {
         .await
         .context("open native PGlite")?;
         Ok(Self {
-            backend: Mutex::new(Some(Backend::Pglite(database))),
-            connection: Mutex::new(None),
+            backend: Backend::Pglite(Mutex::new(Some(database))),
             engine: "pglite",
             notifications: broadcast::channel(256).0,
         })
@@ -114,30 +112,23 @@ impl Database {
 
     pub async fn postgres(configuration: &tokio_postgres::Config) -> Result<Self> {
         let connector = MakeTlsConnector::new(native_tls::TlsConnector::builder().build()?);
-        let (client, mut connection) = configuration
-            .connect(connector)
-            .await
-            .context("connect to PostgreSQL")?;
+        Self::postgres_with_tls(configuration.clone(), connector).await
+    }
+
+    pub async fn postgres_url(url: &str) -> Result<Self> {
+        let (configuration, connector) = postgres_url::parse(url)?;
+        Self::postgres_with_tls(configuration, connector).await
+    }
+
+    async fn postgres_with_tls(
+        configuration: tokio_postgres::Config,
+        connector: MakeTlsConnector,
+    ) -> Result<Self> {
         let notifications = broadcast::channel(256).0;
-        let emitter = notifications.clone();
-        let connection = tokio::spawn(async move {
-            while let Some(message) =
-                futures::future::poll_fn(|context| connection.poll_message(context)).await
-            {
-                if let tokio_postgres::AsyncMessage::Notification(notification) =
-                    message.context("PostgreSQL connection stopped")?
-                {
-                    let _ = emitter.send((
-                        notification.channel().to_owned(),
-                        notification.payload().to_owned(),
-                    ));
-                }
-            }
-            Ok(())
-        });
+        let database =
+            postgres::Postgres::open(configuration, connector, notifications.clone()).await?;
         Ok(Self {
-            backend: Mutex::new(Some(Backend::Postgres(client))),
-            connection: Mutex::new(Some(connection)),
+            backend: Backend::Postgres(Box::new(database)),
             engine: "postgres",
             notifications,
         })
@@ -148,67 +139,54 @@ impl Database {
     }
 
     pub async fn execute(&self, sql: &str) -> Result<()> {
-        match self
-            .backend
-            .lock()
-            .await
-            .as_ref()
-            .context("database is closed")?
-        {
-            Backend::Pglite(database) => database.exec(sql).await?,
-            Backend::Postgres(client) => client.batch_execute(sql).await?,
+        match &self.backend {
+            Backend::Pglite(database) => {
+                database
+                    .lock()
+                    .await
+                    .as_ref()
+                    .context("database is closed")?
+                    .exec(sql)
+                    .await?
+            }
+            Backend::Postgres(database) => database.execute(sql).await?,
         }
         Ok(())
     }
 
     pub async fn query(&self, sql: &str, parameters: Parameters<'_>) -> Result<Vec<Row>> {
-        Ok(
-            match self
-                .backend
+        Ok(match &self.backend {
+            Backend::Pglite(database) => database
                 .lock()
                 .await
                 .as_ref()
                 .context("database is closed")?
-            {
-                Backend::Pglite(database) => database
-                    .query(sql, parameters)
-                    .await?
-                    .into_iter()
-                    .map(Row::Pglite)
-                    .collect(),
-                Backend::Postgres(client) => client
-                    .query(sql, parameters)
-                    .await?
-                    .into_iter()
-                    .map(Row::Postgres)
-                    .collect(),
-            },
-        )
+                .query(sql, parameters)
+                .await?
+                .into_iter()
+                .map(Row::Pglite)
+                .collect(),
+            Backend::Postgres(database) => database.query(sql, parameters).await?,
+        })
     }
 
     pub async fn listen(&self, channel: &str) -> Result<broadcast::Receiver<(String, String)>> {
         let receiver = self.notifications.subscribe();
-        match self
-            .backend
-            .lock()
-            .await
-            .as_ref()
-            .context("database is closed")?
-        {
+        match &self.backend {
             Backend::Pglite(database) => {
                 let emitter = self.notifications.clone();
                 let channel_name = channel.to_owned();
                 database
+                    .lock()
+                    .await
+                    .as_ref()
+                    .context("database is closed")?
                     .listen(channel, move |payload| {
                         let _ = emitter.send((channel_name.clone(), payload.to_owned()));
                     })
                     .await?;
             }
-            Backend::Postgres(client) => {
-                client
-                    .batch_execute(&format!("LISTEN \"{}\"", channel.replace('"', "\"\"")))
-                    .await?;
-            }
+            Backend::Postgres(database) => database.listen(channel).await?,
         }
         Ok(receiver)
     }
@@ -217,11 +195,18 @@ impl Database {
         &self,
         operation: impl for<'a, 'b> FnOnce(&'a Transaction<'b>) -> TransactionFuture<'a, T>,
     ) -> Result<T> {
-        let mut backend = self.backend.lock().await;
-        let transaction = match backend.as_mut().context("database is closed")? {
-            Backend::Pglite(database) => Transaction::Pglite(database.transaction().await?),
-            Backend::Postgres(client) => Transaction::Postgres(client.transaction().await?),
+        let database = match &self.backend {
+            Backend::Pglite(database) => database,
+            Backend::Postgres(database) => return database.transaction(operation).await,
         };
+        let mut database = database.lock().await;
+        let transaction = Transaction::Pglite(
+            database
+                .as_mut()
+                .context("database is closed")?
+                .transaction()
+                .await?,
+        );
         match operation(&transaction).await {
             Ok(result) => {
                 transaction.commit().await?;
@@ -238,13 +223,14 @@ impl Database {
     }
 
     pub async fn close(&self) -> Result<()> {
-        match self.backend.lock().await.take() {
-            Some(Backend::Pglite(database)) => database.close().await?,
-            Some(Backend::Postgres(client)) => drop(client),
-            None => return Ok(()),
-        }
-        if let Some(connection) = self.connection.lock().await.take() {
-            connection.await??;
+        match &self.backend {
+            Backend::Pglite(database) => {
+                let mut database = database.lock().await;
+                if let Some(database) = database.take() {
+                    database.close().await?;
+                }
+            }
+            Backend::Postgres(database) => database.close().await?,
         }
         Ok(())
     }
