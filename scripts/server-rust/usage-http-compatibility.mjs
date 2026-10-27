@@ -70,7 +70,14 @@ try {
     };
     report.runtimes.push(result);
     let repository;
-    await fixture.start();
+    const repositoryOptions = {
+      kind,
+      executable: repositoryExecutable,
+      root: path.join(root, "usage"),
+      databaseMode,
+      databaseUrl,
+      nodeScript: "scripts/server-rust/usage-node-fixture.mjs",
+    };
     async function request(
       label,
       method,
@@ -137,6 +144,23 @@ try {
       );
     }
     try {
+      // Startup reconciliation runs asynchronously in both production servers.
+      // Own its real database lease so the first phase always observes the
+      // absent projection, independent of OS speed and request scheduling.
+      repository = await repositoryFixture(repositoryOptions);
+      const lease = await repository.request({
+        op: "acquire",
+        key: "full-storage-reconciliation",
+        holder: "usage-http-fixture",
+        now: new Date().toISOString(),
+        leaseMs: 86_400_000,
+      });
+      assert.equal(lease.rejected, false, lease.diagnostic);
+      assert.equal(lease.value, true, "fixture owns the reconciliation lease");
+      result.reconciliationLease = lease.value;
+      await repository.close();
+      repository = undefined;
+      await fixture.start();
       const first = await request(
         "initial traffic",
         "GET",
@@ -195,6 +219,10 @@ try {
         "/api/account/resource-usage",
       );
       accountResourceUsageSchema.parse(current);
+      assert.equal(current.measurement.status, "unavailable");
+      assert.equal(current.measurement.measuredAt, null);
+      assert.equal(current.measurement.reconciledAt, null);
+      assert.deepEqual(current.storage.server.categories, []);
       assert.equal(current.bandwidth.ingressBytes, "0");
       assert.equal(current.bandwidth.egressBytes, "0");
       assert.equal(current.enforcement, "disabled");
@@ -244,14 +272,7 @@ try {
         headers: { "access-control-request-method": "GET" },
       });
       await fixture.close();
-      repository = await repositoryFixture({
-        kind,
-        executable: repositoryExecutable,
-        root: path.join(root, "usage"),
-        databaseMode,
-        databaseUrl,
-        nodeScript: "scripts/server-rust/usage-node-fixture.mjs",
-      });
+      repository = await repositoryFixture(repositoryOptions);
       const retained = await repository.request({
         op: "query-json",
         sql: "SELECT coalesce(jsonb_agg(jsonb_build_object('channel',channel,'direction',direction,'bytes',bytes::text,'operationCount',operation_count::text) ORDER BY channel,direction),'[]'::jsonb) AS result FROM account_bandwidth_usage_buckets",
@@ -288,6 +309,46 @@ try {
       assert.equal(receipts.rejected, false);
       assert.deepEqual(receipts.value, { count: 1, sequence: "1" });
       result.receipt = receipts.value;
+
+      // Also compare the materialized projection through the real HTTP route.
+      // Fixed rows make every category, byte total and null comparable while
+      // the held lease prevents startup from replacing this fixture state.
+      await repository.seed(
+        "INSERT INTO account_storage_usage_current(owner_id,storage_class,category,logical_bytes,row_count,basis_version,measured_at,reconciled_at) VALUES ('00000000-0000-0000-0000-000000000001','server','projects',37,3,'postgres-logical-row-bytes-v1',now(),now()),('00000000-0000-0000-0000-000000000001','worker-managed','attachments',11,2,'postgres-logical-row-bytes-v1',now(),now());",
+      );
+      await repository.close();
+      repository = undefined;
+      await fixture.start();
+      const materialized = await fetch(
+        fixture.server.origin + "/api/account/resource-usage",
+        { signal: AbortSignal.timeout(15000) },
+      );
+      assert.equal(materialized.status, 200);
+      const body = accountResourceUsageSchema.parse(await materialized.json());
+      assert.equal(body.measurement.status, "current");
+      assert.equal(body.storage.server.accuracy, "logical-reconciled");
+      assert.equal(body.storage.server.logicalBytes, "37");
+      assert.equal(body.storage.server.rowCount, "3");
+      assert.deepEqual(body.storage.server.categories, [
+        { category: "projects", logicalBytes: "37", rowCount: "3" },
+      ]);
+      assert.equal(body.storage.workerManaged.logicalBytes, "11");
+      assert.deepEqual(body.storage.workerManaged.attachmentSources, {
+        logicalBytes: "11",
+        objectCount: "2",
+      });
+      assert.equal(body.bandwidth.ingressBytes, String(result.expected.upload));
+      assert.equal(
+        body.bandwidth.egressBytes,
+        String(result.expected.download),
+      );
+      result.materialized = {
+        status: materialized.status,
+        cacheControl: materialized.headers.get("cache-control"),
+        contentType: materialized.headers.get("content-type"),
+        body,
+      };
+      await fixture.close();
       result.passed = true;
     } finally {
       await repository?.close();
@@ -295,6 +356,20 @@ try {
     }
   }
   const [node, rust] = report.runtimes;
+  function normalizedCurrent(value) {
+    value = structuredClone(value);
+    for (const measurement of [value.body.measurement, value.body.bandwidth])
+      for (const key of ["measuredAt", "reconciledAt"])
+        if (measurement[key] !== undefined && measurement[key] !== null) {
+          assert.match(
+            measurement[key],
+            /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/,
+          );
+          assert.ok(Date.parse(measurement[key]) <= Date.now());
+          measurement[key] = "<timestamp>";
+        }
+    return value;
+  }
   function comparable(result) {
     return result.cases
       .filter(
@@ -303,21 +378,14 @@ try {
       .map((value) => {
         if (value.label !== "current storage and unflushed bandwidth")
           return value;
-        value = structuredClone(value);
-        // Only background completion timestamps vary; all categories, bytes,
-        // status, periods and nulls remain part of the actual comparison.
-        for (const key of ["measuredAt", "reconciledAt"])
-          if (value.body.measurement[key] !== null) {
-            assert.match(
-              value.body.measurement[key],
-              /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/,
-            );
-            assert.ok(Date.parse(value.body.measurement[key]) <= Date.now());
-            value.body.measurement[key] = "<timestamp>";
-          }
-        return value;
+        return normalizedCurrent(value);
       });
   }
+  assert.deepEqual(
+    normalizedCurrent(rust.materialized),
+    normalizedCurrent(node.materialized),
+    "actual Node/Rust materialized storage and retained bandwidth",
+  );
   assert.deepEqual(
     comparable(rust),
     comparable(node),
