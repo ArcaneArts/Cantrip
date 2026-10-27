@@ -32,8 +32,15 @@ export class HttpFixture {
     name,
     databaseMode,
     environment = {},
+    workerIngress = false,
   }) {
-    Object.assign(this, { kind, executable, name, databaseMode });
+    Object.assign(this, {
+      kind,
+      executable,
+      name,
+      databaseMode,
+      workerIngress,
+    });
     this.environment = {
       ...fixtureEnvironment(path.join(root, name, kind)),
       CANTRIP_AUTH_RATE_LIMIT: "1000",
@@ -64,7 +71,12 @@ export class HttpFixture {
       this.kind === "node"
         ? await startServer(
             process.execPath,
-            ["--import", "tsx", "scripts/server-rust/node-server.mjs"],
+            [
+              "--import",
+              "tsx",
+              "scripts/server-rust/node-server.mjs",
+              ...(this.workerIngress ? ["--worker-ingress-fixture"] : []),
+            ],
             { cwd: repositoryRoot, env: this.environment },
           )
         : await startServer(

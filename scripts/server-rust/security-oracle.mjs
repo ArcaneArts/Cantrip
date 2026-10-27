@@ -3,8 +3,10 @@
 import * as protocol from "../../packages/protocol/dist/index.js";
 import { buildContractManifest } from "./contracts.mjs";
 import { securityFixtures } from "./security-fixtures.mjs";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
 
-function outcome(schema, input) {
+export function outcome(schema, input) {
   try {
     const parsed = schema.safeParse(input);
     return parsed.success
@@ -34,7 +36,7 @@ function mutate(input, path, value, remove = false) {
   } else parent[key] = value;
   return result;
 }
-function vectors(name) {
+export function vectors(name) {
   const schema = protocol[name],
     samples = securityFixtures[name];
   if (!schema || !samples) throw new Error(`Missing oracle fixture ${name}`);
@@ -147,22 +149,27 @@ function jsonVectors() {
   }
   return raw.map((raw) => ({ raw, expected: JSON.stringify(JSON.parse(raw)) }));
 }
-if (process.argv.includes("--json-vectors"))
-  process.stdout.write(JSON.stringify(jsonVectors()));
-else if (process.argv.includes("--fixtures"))
-  process.stdout.write(JSON.stringify(securityFixtures));
-else if (process.argv.includes("--manifest"))
-  process.stdout.write(JSON.stringify(buildContractManifest()));
-else if (process.argv.includes("--vectors"))
-  process.stdout.write(JSON.stringify(vectors(process.argv.at(-1))));
-else {
-  let input = "";
-  for await (const chunk of process.stdin) input += chunk;
-  process.stdout.write(
-    JSON.stringify(
-      JSON.parse(input).map(({ schema, input }) =>
-        outcome(protocol[schema], input),
+if (
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+  if (process.argv.includes("--json-vectors"))
+    process.stdout.write(JSON.stringify(jsonVectors()));
+  else if (process.argv.includes("--fixtures"))
+    process.stdout.write(JSON.stringify(securityFixtures));
+  else if (process.argv.includes("--manifest"))
+    process.stdout.write(JSON.stringify(buildContractManifest()));
+  else if (process.argv.includes("--vectors"))
+    process.stdout.write(JSON.stringify(vectors(process.argv.at(-1))));
+  else {
+    let input = "";
+    for await (const chunk of process.stdin) input += chunk;
+    process.stdout.write(
+      JSON.stringify(
+        JSON.parse(input).map(({ schema, input }) =>
+          outcome(protocol[schema], input),
+        ),
       ),
-    ),
-  );
+    );
+  }
 }

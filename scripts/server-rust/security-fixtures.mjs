@@ -1,10 +1,19 @@
 import * as p from "../../packages/protocol/dist/index.js";
+import { workerIngressFixtures } from "./worker-wire-fixtures.mjs";
 
 export const owner = "11111111-1111-4111-8111-111111111111";
 export const clientId = "22222222-2222-4222-8222-222222222222";
 export const workerPrincipalId = "33333333-3333-4333-8333-333333333333";
 export const grantId = "44444444-4444-4444-8444-444444444444";
 export const timestamp = "2026-10-25T00:00:00.000Z";
+const provenance = {
+  chatId: null,
+  threadId: "fixture-thread",
+  turnId: null,
+  itemId: null,
+  executionLaneId: null,
+  workerId: "fixture-worker",
+};
 export const password = "isolated fixture password only";
 const bytes = (n) => Buffer.alloc(n, 0).toString("base64url");
 export const publicKey = {
@@ -592,4 +601,15 @@ export const securityFixtures = {
       nextCursor: null,
     },
   ],
+  agentInteractionProvenanceSchema: [
+    provenance,
+    { ...provenance, owner: "codex" },
+    {
+      ...provenance,
+      owner: "computer-use",
+      chatId: "fixture-chat",
+      threadId: null,
+    },
+  ],
+  workerServerEnvelopeSchema: workerIngressFixtures,
 };

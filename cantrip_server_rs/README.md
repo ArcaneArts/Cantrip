@@ -47,9 +47,10 @@ pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/proto
 node node_modules/playwright-core/cli.js install --with-deps chromium
 node --import tsx scripts/server-rust/worker-compatibility.mjs --report .qa/rust-server/worker-pglite-http.json
 node --import tsx scripts/server-rust/worker-client-compatibility.mjs --report .qa/rust-server/worker-client-pglite.json
+node --import tsx scripts/server-rust/worker-ingress-compatibility.mjs --report .qa/rust-server/worker-ingress-pglite.json
 ```
 
-Repeat both harnesses with `--database bundled-postgres` and `--database postgres`.
+Repeat these harnesses with `--database bundled-postgres` and `--database postgres`.
 Set `CANTRIP_TEST_POSTGRES_BIN_DIR` to the PostgreSQL binaries used by these
 disposable tests. Every external database is created privately by the fixture;
 the harness does not use a production `DATABASE_URL` inherited from the shell.
@@ -85,9 +86,26 @@ Native bridge tests use paused time for event callback ordering, cleared
 deadlines, reconnect continuity, stale sockets, identity changes, grace expiry,
 shutdown and one-time completion. They supplement the real transport suite.
 
-The worker transport still needs full event/notification schema validation and
-persistence, binary relays, App Live, shared coordination and resource/execution
-recovery. Process-local invalidation broadcasts are not durable App Live.
+Incoming worker text frames now pass through the full generated envelope
+contract. Native refinements preserve recursive JSON, encrypted metadata,
+UTF-16/UTF-8 limits, timestamp and validation-error behavior. The dedicated
+oracle compares 22,697 complete envelopes against the current TypeScript
+protocol, including every reachable union alternative. Runtime parsing does
+not call JavaScript. The date parser adapts V8 code under the license in
+`third-party/V8-LICENSE`; distribution artifacts must retain that notice.
+
+The ingress harness uses each actual router and bridge, unchanged worker
+enrollment/heartbeat/transport, and loopback-only test observers. It checks
+ordered asynchronous events, response deadline clearing, callback failures,
+missing versus null results, opaque JSON/UTF-16 results, notification listener
+ordering/removal/reconnect, and continued service after malformed or deeply
+nested frames. The shared TypeScript decoder now contains validator exceptions
+within the rejected message. These are control-transport tests with a controlled
+handler; domain persistence and a full worker runtime remain required.
+
+Outgoing command schemas, domain event persistence, binary relays, shared
+coordination and resource/execution recovery remain unported. App Live is
+integrated below, with incomplete domain publishers and multi-instance support.
 
 `.github/workflows/rust-server.yml` executes native and compatibility suites on
 Linux, macOS and Windows. A configured workflow is not passing evidence; record
@@ -113,8 +131,8 @@ relationships checked. Both adapters cross the same JSON output boundary; the
 native runtime starts with a paused, millisecond-aligned clock so timer rounding
 does not manufacture protocol differences.
 
-This core is not yet registered as the `/api/live` HTTP route. Actual session and
-account socket registries, repository scope authorization, revocation consumers,
-resource publishers, coordination and app Live client acceptance remain required.
-The adapter is not whole-product or real-network evidence. The HTTP integration
-and CI command must be completed before this milestone is delivered.
+This core is registered as `/api/live`, with session/account registries,
+repository scope authorization and real-network/client tests described below.
+The core adapter alone does not establish whole-product behavior. Remaining
+resource publishers, coordination and full app/worker acceptance are still
+required.

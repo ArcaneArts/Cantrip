@@ -1,10 +1,13 @@
 //! Native execution of generated protocol contracts. JavaScript is used only
 //! by the development exporter/oracle; requests execute these Rust operations.
 pub(crate) mod coercion;
+mod js_date;
+mod json_contract;
 pub(crate) mod live;
 mod projects;
 mod refinements;
 pub mod value;
+mod worker_contract;
 pub use value::{JsString, Value};
 use value::{Object, json};
 
@@ -278,6 +281,7 @@ impl Contracts {
             }
             "never" => result.invalid("never", path),
             "unknown" => {}
+            "json" => result = json_contract::parse(input, path),
             "literal" | "enum" => {
                 if !input.is_some_and(|value| node.values.contains(value)) {
                     let values = node.values.iter().map(display).collect::<Vec<_>>();
@@ -329,6 +333,7 @@ impl Contracts {
                     }
                     let extra: Vec<_> = coercion::keys(object)
                         .into_iter()
+                        .filter(|key| key.as_str() != Some("__proto__"))
                         .filter(|key| !key.as_str().is_some_and(|key| node.shape.contains_key(key)))
                         .collect();
                     if let Some(catchall) = node.catchall {
@@ -399,9 +404,30 @@ impl Contracts {
             } else if result.aborted {
                 continue;
             }
+            let previous_issues = result.issues.len();
             self.check(check, &mut result, path)?;
+            if check.kind != "refinement"
+                && let Some(message) = &check.message
+            {
+                for issue in &mut result.issues[previous_issues..] {
+                    issue["message"] = json!(message);
+                }
+            }
         }
         Ok(result)
+    }
+    fn discriminator_values(&self, id: usize) -> Result<Vec<Option<Value>>, ValidationError> {
+        let node = &self.nodes[id];
+        match node.kind.as_str() {
+            "literal" | "enum" => Ok(node.values.iter().cloned().map(Some).collect()),
+            "optional" => {
+                let mut values =
+                    self.discriminator_values(node.inner_type.expect("optional discriminator"))?;
+                values.push(None);
+                Ok(values)
+            }
+            _ => Err(ValidationError::Operation),
+        }
     }
     fn union(
         &self,
@@ -418,20 +444,25 @@ impl Contracts {
             let mut values = Vec::new();
             for id in &node.options {
                 let option = &self.nodes[*id];
-                let discriminator = &self.nodes[option.shape[key].as_u64().unwrap() as usize];
-                if object
-                    .get(key)
-                    .is_some_and(|value| discriminator.values.contains(value))
+                let candidates =
+                    self.discriminator_values(option.shape[key].as_u64().unwrap() as usize)?;
+                if candidates
+                    .iter()
+                    .any(|candidate| candidate.as_ref() == object.get(key))
                 {
                     return self.run(*id, input, path);
                 }
-                values.extend(discriminator.values.clone());
+                values.extend(candidates);
             }
             let message = format!(
                 "Invalid discriminator value. Expected {}",
                 values
                     .iter()
-                    .map(|v| format!("'{}'", coercion::string(v).expect("discriminator literal")))
+                    .map(|v| match v {
+                        Some(v) =>
+                            format!("'{}'", coercion::string(v).expect("discriminator literal")),
+                        None => "'undefined'".into(),
+                    })
                     .collect::<Vec<_>>()
                     .join(" | ")
             );
@@ -476,6 +507,7 @@ impl Contracts {
         let keys = if finite.is_empty() {
             coercion::keys(object)
                 .into_iter()
+                .filter(|key| key.as_str() != Some("__proto__"))
                 .cloned()
                 .collect::<Vec<_>>()
         } else {

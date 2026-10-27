@@ -41,6 +41,7 @@ hyper-util = { version = "0.1", default-features = false, features = ["tokio"] }
 icu_collator = "2.4"
 icu_locale_core = "2.4"
 sys-locale = "0.3.2"
+jiff = { version = "0.2.37", features = ["tzdb-bundle-always"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading"] }

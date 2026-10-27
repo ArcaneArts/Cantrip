@@ -1,6 +1,7 @@
 pub mod bridge;
 pub mod credentials;
 pub mod limits;
+mod notifications;
 pub mod repository;
 pub mod request;
 mod rows;

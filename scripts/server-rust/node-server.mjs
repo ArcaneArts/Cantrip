@@ -2,6 +2,8 @@
 import { buildApp } from "../../cantrip_server/src/app.ts";
 import { readServerConfig } from "../../cantrip_server/src/config.ts";
 import { connectDatabase } from "../../cantrip_server/src/db/index.ts";
+import { WorkerBridge } from "../../cantrip_server/src/workers/bridge.ts";
+import { installWorkerIngressFixture } from "./worker-ingress-node-fixture.mjs";
 
 const config = readServerConfig();
 const database = await connectDatabase(config);
@@ -13,7 +15,18 @@ database.close = async () => {
   await closeDatabase();
   diagnose("fixture.database.closed");
 };
-const app = await buildApp({ config, database, logger: false });
+const ingressBridge = process.argv.includes("--worker-ingress-fixture")
+  ? new WorkerBridge()
+  : undefined;
+const app = await buildApp({
+  config,
+  database,
+  logger: false,
+  ...(ingressBridge ? { workerBridge: ingressBridge } : {}),
+});
+const closeIngress = ingressBridge
+  ? installWorkerIngressFixture(app, ingressBridge)
+  : undefined;
 const sockets = new Set();
 app.server.on("connection", (socket) => {
   sockets.add(socket);
@@ -46,6 +59,7 @@ async function stop() {
   const timer = setInterval(() => snapshot("fixture.shutdown.pending"), 5000);
   timer.unref();
   try {
+    closeIngress?.();
     await app.close();
     snapshot("fixture.shutdown.completed");
   } finally {

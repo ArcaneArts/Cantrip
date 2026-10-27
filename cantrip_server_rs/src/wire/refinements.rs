@@ -7,6 +7,9 @@ pub(super) fn apply(
     path: &[Value],
     message: Option<&str>,
 ) -> Result<(), ValidationError> {
+    if super::worker_contract::refine(tag, result, path, message)? {
+        return Ok(());
+    }
     if super::projects::refine(tag, result, path)? {
         return Ok(());
     }
