@@ -68,6 +68,7 @@ pub struct AuthService {
     pub revocations: broadcast::Sender<Revocation>,
     pub workers: Arc<crate::workers::service::WorkerService>,
     pub live: Arc<crate::live::LiveService>,
+    pub usage: Arc<crate::usage::service::UsageService>,
     rate_limit: Mutex<AuthRateLimiter>,
 }
 
@@ -97,9 +98,33 @@ impl AuthService {
             .map(|e| crypto::normalize_email(e));
         let cookies = CookiePolicy::new(&config)?;
         let rate_limit = Mutex::new(AuthRateLimiter::new(config.auth_rate_limit as usize));
-        let workers =
-            crate::workers::service::WorkerService::new(repository.database.clone(), &config);
-        let live = crate::live::LiveService::new(database, &config)?;
+        let usage = crate::usage::service::UsageService::new(database.clone(), &config)?;
+        let recorder = Arc::downgrade(&usage);
+        let workers = crate::workers::service::WorkerService::with_usage(
+            repository.database.clone(),
+            &config,
+            Some(Arc::new(move |owner, ingress, bytes, notify| {
+                if let Some(usage) = recorder.upgrade() {
+                    usage.record(owner, "worker-control-websocket", ingress, bytes, 1, notify);
+                }
+            })),
+        );
+        let recorder = Arc::downgrade(&usage);
+        let live = crate::live::LiveService::with_usage(
+            database,
+            &config,
+            Some(Arc::new(move |owner, ingress, bytes, notify| {
+                if let Some(usage) = recorder.upgrade() {
+                    usage.record(owner, "client-live-websocket", ingress, bytes, 1, notify);
+                }
+            })),
+        )?;
+        let publisher = Arc::downgrade(&live);
+        usage.invalidations.on_publish(Arc::new(move |owner| {
+            if let Some(live) = publisher.upgrade() {
+                live.invalidate_resource(owner, "account-resource-usage");
+            }
+        }));
         let publisher = Arc::downgrade(&live);
         workers.on_invalidation(Arc::new(move |event| {
             if let Some(live) = publisher.upgrade() {
@@ -117,6 +142,7 @@ impl AuthService {
             rate_limit,
             workers,
             live,
+            usage,
             registration: Mutex::new(()),
             revocations: broadcast::channel(256).0,
         }))

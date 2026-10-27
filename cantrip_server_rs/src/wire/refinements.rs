@@ -31,6 +31,39 @@ pub(super) fn apply(
     };
     let wrapper = &value["passwordWrappedMasterKey"];
     match tag {
+        "usage-history-window" => {
+            if let (Some(from), Some(to)) = (
+                super::live::datetime_millis(&value["from"]),
+                super::live::datetime_millis(&value["to"]),
+            ) {
+                if to <= from {
+                    custom(&["to"], "History end must be after its start.");
+                } else {
+                    let hourly = value["resolution"] == "hour";
+                    let maximum = if hourly { 31 } else { 2 * 366 } * 86_400_000_i64;
+                    if to - from > maximum {
+                        custom(
+                            &["from"],
+                            if hourly {
+                                "Hourly history is limited to 31 days."
+                            } else {
+                                "Daily history is limited to two years."
+                            },
+                        );
+                    }
+                }
+            }
+        }
+        "usage-live-traffic-query" => {
+            let after = super::coercion::truthy(value.get("after"));
+            let epoch = super::coercion::truthy(value.get("epoch"));
+            if after != epoch {
+                custom(
+                    &[if after { "epoch" } else { "after" }],
+                    "Live traffic epoch and cursor must be provided together.",
+                );
+            }
+        }
         "model-configuration" => {
             if value["customSubagentModel"] == Value::Bool(true)
                 && !super::coercion::truthy(value.get("subagentModelId"))

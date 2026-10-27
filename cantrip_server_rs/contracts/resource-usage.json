@@ -1,0 +1,684 @@
+{
+  "basisVersion": "postgres-logical-row-bytes-v1",
+  "tables": [
+    {
+      "table": "system_state",
+      "category": null,
+      "classification": "platform-excluded",
+      "excludeReason": "global server state",
+      "ownerResolution": null
+    },
+    {
+      "table": "users",
+      "category": "account",
+      "classification": "account-owned",
+      "ownerResolution": "self"
+    },
+    {
+      "table": "account_license_whitelist",
+      "category": null,
+      "classification": "platform-excluded",
+      "excludeReason": "server-wide registration policy",
+      "ownerResolution": null
+    },
+    {
+      "table": "user_sessions",
+      "category": "account",
+      "classification": "account-owned",
+      "ownerResolution": "user"
+    },
+    {
+      "table": "mobile_sign_in_grants",
+      "category": "account",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "audit_events",
+      "category": "analytics",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "worker_enrollment_codes",
+      "category": "account",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "model_providers",
+      "category": "configuration",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "model_provider_accounts",
+      "category": "configuration",
+      "classification": "account-owned",
+      "ownerResolution": "provider"
+    },
+    {
+      "table": "model_provider_account_workers",
+      "category": "configuration",
+      "classification": "account-owned",
+      "ownerResolution": "provider-account"
+    },
+    {
+      "table": "provider_quota_observations",
+      "category": "analytics",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "provider_models",
+      "category": "configuration",
+      "classification": "account-owned",
+      "ownerResolution": "provider"
+    },
+    {
+      "table": "provider_model_catalog_snapshots",
+      "category": "analytics",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "provider_model_availability",
+      "category": "configuration",
+      "classification": "account-owned",
+      "ownerResolution": "provider-model"
+    },
+    {
+      "table": "provider_catalog_sync_states",
+      "category": "configuration",
+      "classification": "account-owned",
+      "ownerResolution": "provider"
+    },
+    {
+      "table": "provider_model_suppressions",
+      "category": "configuration",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "model_profiles",
+      "category": "configuration",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "model_routes",
+      "category": "configuration",
+      "classification": "account-owned",
+      "ownerResolution": "model-profile"
+    },
+    {
+      "table": "user_settings",
+      "category": "configuration",
+      "classification": "account-owned",
+      "ownerResolution": "user"
+    },
+    {
+      "table": "task_workers",
+      "category": "configuration",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "policy_owner_states",
+      "category": "configuration",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "policies",
+      "category": "configuration",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "workers",
+      "category": "account",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "skill_audiences",
+      "category": "configuration",
+      "classification": "account-owned",
+      "ownerResolution": "provider"
+    },
+    {
+      "table": "worker_credentials",
+      "category": "account",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "account_encryption_profiles",
+      "category": "account",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "encryption_principals",
+      "category": "account",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "encryption_key_grants",
+      "category": "account",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "projects",
+      "category": "projects",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "workspace_layouts",
+      "category": "projects",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "workspace_command_receipts",
+      "category": "projects",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "tunnels",
+      "category": "projects",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "tunnel_attachments",
+      "category": "projects",
+      "classification": "account-owned",
+      "ownerResolution": "tunnel"
+    },
+    {
+      "table": "tunnel_attachment_direct_leases",
+      "category": "projects",
+      "classification": "account-owned",
+      "ownerResolution": "tunnel-attachment"
+    },
+    {
+      "table": "mcp_servers",
+      "category": "configuration",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "project_workspaces",
+      "category": "projects",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "project_workspace_storage_profiles",
+      "category": "projects",
+      "classification": "account-owned",
+      "ownerResolution": "workspace"
+    },
+    {
+      "table": "workspace_repository_discovery_jobs",
+      "category": "projects",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "workspace_repository_candidates",
+      "category": "projects",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "project_workspace_memberships",
+      "category": "projects",
+      "classification": "project-owned",
+      "ownerResolution": "project"
+    },
+    {
+      "table": "project_policy_assignments",
+      "category": "projects",
+      "classification": "project-owned",
+      "ownerResolution": "project"
+    },
+    {
+      "table": "workspace_policy_assignments",
+      "category": "projects",
+      "classification": "project-owned",
+      "ownerResolution": "workspace"
+    },
+    {
+      "table": "tab_groups",
+      "category": "projects",
+      "classification": "project-owned",
+      "ownerResolution": "project"
+    },
+    {
+      "table": "tab_group_members",
+      "category": "projects",
+      "classification": "project-owned",
+      "ownerResolution": "project"
+    },
+    {
+      "table": "project_sources",
+      "category": "projects",
+      "classification": "project-owned",
+      "ownerResolution": "project"
+    },
+    {
+      "table": "project_worktrees",
+      "category": "projects",
+      "classification": "project-owned",
+      "ownerResolution": "project-source"
+    },
+    {
+      "table": "project_folder_setup_jobs",
+      "category": "projects",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "project_github_conversion_jobs",
+      "category": "projects",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "project_replica_jobs",
+      "category": "projects",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "git_operations",
+      "category": "projects",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "run_configuration_runtimes",
+      "category": "projects",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "run_configuration_runtime_operations",
+      "category": "projects",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "run_configuration_secrets",
+      "category": "projects",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "run_configuration_secret_operations",
+      "category": "projects",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "chats",
+      "category": "conversations",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "standalone_chat_roots",
+      "category": "conversations",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "standalone_chat_root_jobs",
+      "category": "conversations",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "tasks",
+      "category": "conversations",
+      "classification": "chat-owned",
+      "ownerResolution": "chat"
+    },
+    {
+      "table": "task_dispatch_cycles",
+      "category": "conversations",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "task_planning_rounds",
+      "category": "conversations",
+      "classification": "chat-owned",
+      "ownerResolution": "chat"
+    },
+    {
+      "table": "terminals",
+      "category": "projects",
+      "classification": "project-owned",
+      "ownerResolution": "project"
+    },
+    {
+      "table": "explorers",
+      "category": "projects",
+      "classification": "project-owned",
+      "ownerResolution": "project"
+    },
+    {
+      "table": "file_documents",
+      "category": "projects",
+      "classification": "project-owned",
+      "ownerResolution": "project"
+    },
+    {
+      "table": "code_tabs",
+      "category": "projects",
+      "classification": "project-owned",
+      "ownerResolution": "project"
+    },
+    {
+      "table": "browsers",
+      "category": "projects",
+      "classification": "project-owned",
+      "ownerResolution": "project"
+    },
+    {
+      "table": "remote_surfaces",
+      "category": "projects",
+      "classification": "project-owned",
+      "ownerResolution": "project"
+    },
+    {
+      "table": "project_views",
+      "category": "projects",
+      "classification": "project-owned",
+      "ownerResolution": "project"
+    },
+    {
+      "table": "project_builtin_surface_states",
+      "category": "projects",
+      "classification": "project-owned",
+      "ownerResolution": "project"
+    },
+    {
+      "table": "project_dock_presentation_preferences",
+      "category": "projects",
+      "classification": "project-owned",
+      "ownerResolution": "project"
+    },
+    {
+      "table": "project_surface_launcher_preferences",
+      "category": "projects",
+      "classification": "project-owned",
+      "ownerResolution": "project"
+    },
+    {
+      "table": "managed_chat_preparations",
+      "category": "conversations",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "native_commands",
+      "category": "conversations",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "native_command_activations",
+      "category": "conversations",
+      "classification": "chat-owned",
+      "ownerResolution": "chat"
+    },
+    {
+      "table": "native_command_turns",
+      "category": "conversations",
+      "classification": "chat-owned",
+      "ownerResolution": "chat"
+    },
+    {
+      "table": "native_pending_requests",
+      "category": "conversations",
+      "classification": "chat-owned",
+      "ownerResolution": "chat"
+    },
+    {
+      "table": "native_logical_completions",
+      "category": "conversations",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "native_runtime_handoffs",
+      "category": "conversations",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "native_settings_states",
+      "category": "conversations",
+      "classification": "chat-owned",
+      "ownerResolution": "chat"
+    },
+    {
+      "table": "native_settings_evidence",
+      "category": "conversations",
+      "classification": "account-owned",
+      "ownerResolution": "native-command"
+    },
+    {
+      "table": "managed_queue_states",
+      "category": "conversations",
+      "classification": "chat-owned",
+      "ownerResolution": "chat"
+    },
+    {
+      "table": "managed_queue_claims",
+      "category": "conversations",
+      "classification": "chat-owned",
+      "ownerResolution": "chat"
+    },
+    {
+      "table": "managed_queue_imports",
+      "category": "conversations",
+      "classification": "chat-owned",
+      "ownerResolution": "chat"
+    },
+    {
+      "table": "managed_queue_input_snapshots",
+      "category": "conversations",
+      "classification": "account-owned",
+      "ownerResolution": "queue-claim"
+    },
+    {
+      "table": "native_history_bindings",
+      "category": "conversations",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "native_history_streams",
+      "category": "conversations",
+      "classification": "account-owned",
+      "ownerResolution": "native-history-binding"
+    },
+    {
+      "table": "native_history_rejections",
+      "category": "conversations",
+      "classification": "account-owned",
+      "ownerResolution": "native-history-binding"
+    },
+    {
+      "table": "native_history_publications",
+      "category": "conversations",
+      "classification": "account-owned",
+      "ownerResolution": "native-history-binding"
+    },
+    {
+      "table": "native_history_turns",
+      "category": "conversations",
+      "classification": "account-owned",
+      "ownerResolution": "native-history-binding"
+    },
+    {
+      "table": "native_history_receipts",
+      "category": "conversations",
+      "classification": "account-owned",
+      "ownerResolution": "native-history-stream"
+    },
+    {
+      "table": "native_history_items",
+      "category": "conversations",
+      "classification": "chat-owned",
+      "ownerResolution": "chat"
+    },
+    {
+      "table": "chat_runtime_sessions",
+      "category": "conversations",
+      "classification": "chat-owned",
+      "ownerResolution": "chat"
+    },
+    {
+      "table": "chat_execution_lanes",
+      "category": "conversations",
+      "classification": "chat-owned",
+      "ownerResolution": "chat"
+    },
+    {
+      "table": "agent_interaction_requests",
+      "category": "conversations",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "chat_messages",
+      "category": "conversations",
+      "classification": "chat-owned",
+      "ownerResolution": "chat"
+    },
+    {
+      "table": "token_usage_records",
+      "category": "analytics",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "model_behavior_observations",
+      "category": "analytics",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "chat_attachments",
+      "category": "conversations",
+      "classification": "chat-owned",
+      "ownerResolution": "chat",
+      "workerManaged": "attachment-source"
+    },
+    {
+      "table": "chat_attachment_replicas",
+      "category": "conversations",
+      "classification": "chat-owned",
+      "ownerResolution": "attachment",
+      "workerManaged": "attachment-replica"
+    },
+    {
+      "table": "chat_relocation_jobs",
+      "category": "conversations",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "chat_import_jobs",
+      "category": "conversations",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "chat_relocation_snapshots",
+      "category": "conversations",
+      "classification": "chat-owned",
+      "ownerResolution": "chat"
+    },
+    {
+      "table": "queued_prompts",
+      "category": "conversations",
+      "classification": "chat-owned",
+      "ownerResolution": "chat"
+    },
+    {
+      "table": "project_automations",
+      "category": "projects",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "project_automation_runs",
+      "category": "projects",
+      "classification": "account-owned",
+      "ownerResolution": "owner-column"
+    },
+    {
+      "table": "project_branch_leases",
+      "category": "projects",
+      "classification": "project-owned",
+      "ownerResolution": "project"
+    },
+    {
+      "table": "account_storage_usage_current",
+      "category": null,
+      "classification": "accounting-excluded",
+      "excludeReason": "current accounting projection",
+      "ownerResolution": null
+    },
+    {
+      "table": "account_storage_usage_snapshots",
+      "category": null,
+      "classification": "accounting-excluded",
+      "excludeReason": "storage history accounting data",
+      "ownerResolution": null
+    },
+    {
+      "table": "account_storage_reconciliation_leases",
+      "category": null,
+      "classification": "accounting-excluded",
+      "excludeReason": "reconciliation coordination",
+      "ownerResolution": null
+    },
+    {
+      "table": "account_bandwidth_usage_buckets",
+      "category": null,
+      "classification": "accounting-excluded",
+      "excludeReason": "bandwidth accounting data",
+      "ownerResolution": null
+    },
+    {
+      "table": "account_bandwidth_flushes",
+      "category": null,
+      "classification": "accounting-excluded",
+      "excludeReason": "bandwidth flush idempotence ledger",
+      "ownerResolution": null
+    }
+  ],
+  "measurementSql": "select owner_id, storage_class, category, sum(logical_bytes)::text as logical_bytes, sum(row_count)::text as row_count from (select t.\"id\" as owner_id, 'server'::text as storage_class, 'account'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"users\" t  where t.\"id\" is not null group by t.\"id\" union all select t.\"user_id\" as owner_id, 'server'::text as storage_class, 'account'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"user_sessions\" t  where t.\"user_id\" is not null group by t.\"user_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'account'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"mobile_sign_in_grants\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'analytics'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"audit_events\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'account'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"worker_enrollment_codes\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'configuration'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"model_providers\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select provider.\"owner_id\" as owner_id, 'server'::text as storage_class, 'configuration'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"model_provider_accounts\" t inner join \"model_providers\" provider on provider.\"id\" = t.\"provider_id\" where provider.\"owner_id\" is not null group by provider.\"owner_id\" union all select provider.\"owner_id\" as owner_id, 'server'::text as storage_class, 'configuration'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"model_provider_account_workers\" t inner join \"model_provider_accounts\" account on account.\"id\" = t.\"account_id\" inner join \"model_providers\" provider on provider.\"id\" = account.\"provider_id\" where provider.\"owner_id\" is not null group by provider.\"owner_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'analytics'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"provider_quota_observations\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select provider.\"owner_id\" as owner_id, 'server'::text as storage_class, 'configuration'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"provider_models\" t inner join \"model_providers\" provider on provider.\"id\" = t.\"provider_id\" where provider.\"owner_id\" is not null group by provider.\"owner_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'analytics'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"provider_model_catalog_snapshots\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select provider.\"owner_id\" as owner_id, 'server'::text as storage_class, 'configuration'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"provider_model_availability\" t inner join \"provider_models\" provider_model on provider_model.\"id\" = t.\"provider_model_id\" inner join \"model_providers\" provider on provider.\"id\" = provider_model.\"provider_id\" where provider.\"owner_id\" is not null group by provider.\"owner_id\" union all select provider.\"owner_id\" as owner_id, 'server'::text as storage_class, 'configuration'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"provider_catalog_sync_states\" t inner join \"model_providers\" provider on provider.\"id\" = t.\"provider_id\" where provider.\"owner_id\" is not null group by provider.\"owner_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'configuration'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"provider_model_suppressions\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'configuration'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"model_profiles\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select model.\"owner_id\" as owner_id, 'server'::text as storage_class, 'configuration'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"model_routes\" t inner join \"model_profiles\" model on model.\"id\" = t.\"model_id\" where model.\"owner_id\" is not null group by model.\"owner_id\" union all select t.\"user_id\" as owner_id, 'server'::text as storage_class, 'configuration'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"user_settings\" t  where t.\"user_id\" is not null group by t.\"user_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'configuration'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"task_workers\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'configuration'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"policy_owner_states\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'configuration'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"policies\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'account'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"workers\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select provider.\"owner_id\" as owner_id, 'server'::text as storage_class, 'configuration'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"skill_audiences\" t inner join \"model_providers\" provider on provider.\"id\" = t.\"provider_id\" where provider.\"owner_id\" is not null group by provider.\"owner_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'account'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"worker_credentials\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'account'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"account_encryption_profiles\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'account'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"encryption_principals\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'account'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"encryption_key_grants\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'projects'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"projects\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'projects'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"workspace_layouts\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'projects'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"workspace_command_receipts\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'projects'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"tunnels\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select tunnel.\"owner_id\" as owner_id, 'server'::text as storage_class, 'projects'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"tunnel_attachments\" t inner join \"tunnels\" tunnel on tunnel.\"id\" = t.\"tunnel_id\" where tunnel.\"owner_id\" is not null group by tunnel.\"owner_id\" union all select tunnel.\"owner_id\" as owner_id, 'server'::text as storage_class, 'projects'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"tunnel_attachment_direct_leases\" t inner join \"tunnel_attachments\" attachment on attachment.\"id\" = t.\"attachment_id\" inner join \"tunnels\" tunnel on tunnel.\"id\" = attachment.\"tunnel_id\" where tunnel.\"owner_id\" is not null group by tunnel.\"owner_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'configuration'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"mcp_servers\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'projects'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"project_workspaces\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select workspace.\"owner_id\" as owner_id, 'server'::text as storage_class, 'projects'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"project_workspace_storage_profiles\" t inner join \"project_workspaces\" workspace on workspace.\"id\" = t.\"workspace_id\" where workspace.\"owner_id\" is not null group by workspace.\"owner_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'projects'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"workspace_repository_discovery_jobs\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'projects'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"workspace_repository_candidates\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select project.\"owner_id\" as owner_id, 'server'::text as storage_class, 'projects'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"project_workspace_memberships\" t inner join \"projects\" project on project.\"id\" = t.\"project_id\" where project.\"owner_id\" is not null group by project.\"owner_id\" union all select project.\"owner_id\" as owner_id, 'server'::text as storage_class, 'projects'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"project_policy_assignments\" t inner join \"projects\" project on project.\"id\" = t.\"project_id\" where project.\"owner_id\" is not null group by project.\"owner_id\" union all select workspace.\"owner_id\" as owner_id, 'server'::text as storage_class, 'projects'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"workspace_policy_assignments\" t inner join \"project_workspaces\" workspace on workspace.\"id\" = t.\"workspace_id\" where workspace.\"owner_id\" is not null group by workspace.\"owner_id\" union all select project.\"owner_id\" as owner_id, 'server'::text as storage_class, 'projects'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"tab_groups\" t inner join \"projects\" project on project.\"id\" = t.\"project_id\" where project.\"owner_id\" is not null group by project.\"owner_id\" union all select project.\"owner_id\" as owner_id, 'server'::text as storage_class, 'projects'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"tab_group_members\" t inner join \"projects\" project on project.\"id\" = t.\"project_id\" where project.\"owner_id\" is not null group by project.\"owner_id\" union all select project.\"owner_id\" as owner_id, 'server'::text as storage_class, 'projects'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"project_sources\" t inner join \"projects\" project on project.\"id\" = t.\"project_id\" where project.\"owner_id\" is not null group by project.\"owner_id\" union all select project.\"owner_id\" as owner_id, 'server'::text as storage_class, 'projects'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"project_worktrees\" t inner join \"project_sources\" source on source.\"id\" = t.\"project_source_id\" inner join \"projects\" project on project.\"id\" = source.\"project_id\" where project.\"owner_id\" is not null group by project.\"owner_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'projects'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"project_folder_setup_jobs\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'projects'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"project_github_conversion_jobs\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'projects'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"project_replica_jobs\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'projects'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"git_operations\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'projects'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"run_configuration_runtimes\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'projects'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"run_configuration_runtime_operations\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'projects'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"run_configuration_secrets\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'projects'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"run_configuration_secret_operations\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'conversations'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"chats\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'conversations'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"standalone_chat_roots\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'conversations'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"standalone_chat_root_jobs\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select project.\"owner_id\" as owner_id, 'server'::text as storage_class, 'conversations'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"tasks\" t inner join \"chats\" chat on chat.\"id\" = t.\"chat_id\" inner join \"projects\" project on project.\"id\" = chat.\"project_id\" where project.\"owner_id\" is not null group by project.\"owner_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'conversations'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"task_dispatch_cycles\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select project.\"owner_id\" as owner_id, 'server'::text as storage_class, 'conversations'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"task_planning_rounds\" t inner join \"chats\" chat on chat.\"id\" = t.\"chat_id\" inner join \"projects\" project on project.\"id\" = chat.\"project_id\" where project.\"owner_id\" is not null group by project.\"owner_id\" union all select project.\"owner_id\" as owner_id, 'server'::text as storage_class, 'projects'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"terminals\" t inner join \"projects\" project on project.\"id\" = t.\"project_id\" where project.\"owner_id\" is not null group by project.\"owner_id\" union all select project.\"owner_id\" as owner_id, 'server'::text as storage_class, 'projects'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"explorers\" t inner join \"projects\" project on project.\"id\" = t.\"project_id\" where project.\"owner_id\" is not null group by project.\"owner_id\" union all select project.\"owner_id\" as owner_id, 'server'::text as storage_class, 'projects'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"file_documents\" t inner join \"projects\" project on project.\"id\" = t.\"project_id\" where project.\"owner_id\" is not null group by project.\"owner_id\" union all select project.\"owner_id\" as owner_id, 'server'::text as storage_class, 'projects'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"code_tabs\" t inner join \"projects\" project on project.\"id\" = t.\"project_id\" where project.\"owner_id\" is not null group by project.\"owner_id\" union all select project.\"owner_id\" as owner_id, 'server'::text as storage_class, 'projects'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"browsers\" t inner join \"projects\" project on project.\"id\" = t.\"project_id\" where project.\"owner_id\" is not null group by project.\"owner_id\" union all select project.\"owner_id\" as owner_id, 'server'::text as storage_class, 'projects'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"remote_surfaces\" t inner join \"projects\" project on project.\"id\" = t.\"project_id\" where project.\"owner_id\" is not null group by project.\"owner_id\" union all select project.\"owner_id\" as owner_id, 'server'::text as storage_class, 'projects'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"project_views\" t inner join \"projects\" project on project.\"id\" = t.\"project_id\" where project.\"owner_id\" is not null group by project.\"owner_id\" union all select project.\"owner_id\" as owner_id, 'server'::text as storage_class, 'projects'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"project_builtin_surface_states\" t inner join \"projects\" project on project.\"id\" = t.\"project_id\" where project.\"owner_id\" is not null group by project.\"owner_id\" union all select project.\"owner_id\" as owner_id, 'server'::text as storage_class, 'projects'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"project_dock_presentation_preferences\" t inner join \"projects\" project on project.\"id\" = t.\"project_id\" where project.\"owner_id\" is not null group by project.\"owner_id\" union all select project.\"owner_id\" as owner_id, 'server'::text as storage_class, 'projects'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"project_surface_launcher_preferences\" t inner join \"projects\" project on project.\"id\" = t.\"project_id\" where project.\"owner_id\" is not null group by project.\"owner_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'conversations'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"managed_chat_preparations\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'conversations'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"native_commands\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select project.\"owner_id\" as owner_id, 'server'::text as storage_class, 'conversations'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"native_command_activations\" t inner join \"chats\" chat on chat.\"id\" = t.\"chat_id\" inner join \"projects\" project on project.\"id\" = chat.\"project_id\" where project.\"owner_id\" is not null group by project.\"owner_id\" union all select project.\"owner_id\" as owner_id, 'server'::text as storage_class, 'conversations'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"native_command_turns\" t inner join \"chats\" chat on chat.\"id\" = t.\"chat_id\" inner join \"projects\" project on project.\"id\" = chat.\"project_id\" where project.\"owner_id\" is not null group by project.\"owner_id\" union all select project.\"owner_id\" as owner_id, 'server'::text as storage_class, 'conversations'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"native_pending_requests\" t inner join \"chats\" chat on chat.\"id\" = t.\"chat_id\" inner join \"projects\" project on project.\"id\" = chat.\"project_id\" where project.\"owner_id\" is not null group by project.\"owner_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'conversations'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"native_logical_completions\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'conversations'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"native_runtime_handoffs\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select project.\"owner_id\" as owner_id, 'server'::text as storage_class, 'conversations'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"native_settings_states\" t inner join \"chats\" chat on chat.\"id\" = t.\"chat_id\" inner join \"projects\" project on project.\"id\" = chat.\"project_id\" where project.\"owner_id\" is not null group by project.\"owner_id\" union all select command.\"owner_id\" as owner_id, 'server'::text as storage_class, 'conversations'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"native_settings_evidence\" t inner join \"native_commands\" command on command.\"operation_id\" = t.\"operation_id\" where command.\"owner_id\" is not null group by command.\"owner_id\" union all select project.\"owner_id\" as owner_id, 'server'::text as storage_class, 'conversations'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"managed_queue_states\" t inner join \"chats\" chat on chat.\"id\" = t.\"chat_id\" inner join \"projects\" project on project.\"id\" = chat.\"project_id\" where project.\"owner_id\" is not null group by project.\"owner_id\" union all select project.\"owner_id\" as owner_id, 'server'::text as storage_class, 'conversations'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"managed_queue_claims\" t inner join \"chats\" chat on chat.\"id\" = t.\"chat_id\" inner join \"projects\" project on project.\"id\" = chat.\"project_id\" where project.\"owner_id\" is not null group by project.\"owner_id\" union all select project.\"owner_id\" as owner_id, 'server'::text as storage_class, 'conversations'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"managed_queue_imports\" t inner join \"chats\" chat on chat.\"id\" = t.\"chat_id\" inner join \"projects\" project on project.\"id\" = chat.\"project_id\" where project.\"owner_id\" is not null group by project.\"owner_id\" union all select chat.\"owner_id\" as owner_id, 'server'::text as storage_class, 'conversations'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"managed_queue_input_snapshots\" t inner join \"managed_queue_claims\" claim on claim.\"id\" = t.\"claim_id\" inner join \"chats\" chat on chat.\"id\" = claim.\"chat_id\" where chat.\"owner_id\" is not null group by chat.\"owner_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'conversations'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"native_history_bindings\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select binding.\"owner_id\" as owner_id, 'server'::text as storage_class, 'conversations'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"native_history_streams\" t inner join \"native_history_bindings\" binding on binding.\"id\" = t.\"binding_id\" where binding.\"owner_id\" is not null group by binding.\"owner_id\" union all select binding.\"owner_id\" as owner_id, 'server'::text as storage_class, 'conversations'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"native_history_rejections\" t inner join \"native_history_bindings\" binding on binding.\"id\" = t.\"binding_id\" where binding.\"owner_id\" is not null group by binding.\"owner_id\" union all select binding.\"owner_id\" as owner_id, 'server'::text as storage_class, 'conversations'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"native_history_publications\" t inner join \"native_history_bindings\" binding on binding.\"id\" = t.\"binding_id\" where binding.\"owner_id\" is not null group by binding.\"owner_id\" union all select binding.\"owner_id\" as owner_id, 'server'::text as storage_class, 'conversations'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"native_history_turns\" t inner join \"native_history_bindings\" binding on binding.\"id\" = t.\"binding_id\" where binding.\"owner_id\" is not null group by binding.\"owner_id\" union all select binding.\"owner_id\" as owner_id, 'server'::text as storage_class, 'conversations'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"native_history_receipts\" t inner join \"native_history_streams\" stream on stream.\"id\" = t.\"stream_id\" inner join \"native_history_bindings\" binding on binding.\"id\" = stream.\"binding_id\" where binding.\"owner_id\" is not null group by binding.\"owner_id\" union all select project.\"owner_id\" as owner_id, 'server'::text as storage_class, 'conversations'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"native_history_items\" t inner join \"chats\" chat on chat.\"id\" = t.\"chat_id\" inner join \"projects\" project on project.\"id\" = chat.\"project_id\" where project.\"owner_id\" is not null group by project.\"owner_id\" union all select project.\"owner_id\" as owner_id, 'server'::text as storage_class, 'conversations'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"chat_runtime_sessions\" t inner join \"chats\" chat on chat.\"id\" = t.\"chat_id\" inner join \"projects\" project on project.\"id\" = chat.\"project_id\" where project.\"owner_id\" is not null group by project.\"owner_id\" union all select project.\"owner_id\" as owner_id, 'server'::text as storage_class, 'conversations'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"chat_execution_lanes\" t inner join \"chats\" chat on chat.\"id\" = t.\"chat_id\" inner join \"projects\" project on project.\"id\" = chat.\"project_id\" where project.\"owner_id\" is not null group by project.\"owner_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'conversations'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"agent_interaction_requests\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select project.\"owner_id\" as owner_id, 'server'::text as storage_class, 'conversations'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"chat_messages\" t inner join \"chats\" chat on chat.\"id\" = t.\"chat_id\" inner join \"projects\" project on project.\"id\" = chat.\"project_id\" where project.\"owner_id\" is not null group by project.\"owner_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'analytics'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"token_usage_records\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'analytics'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"model_behavior_observations\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select project.\"owner_id\" as owner_id, 'server'::text as storage_class, 'conversations'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"chat_attachments\" t inner join \"chats\" chat on chat.\"id\" = t.\"chat_id\" inner join \"projects\" project on project.\"id\" = chat.\"project_id\" where project.\"owner_id\" is not null group by project.\"owner_id\" union all select project.\"owner_id\" as owner_id, 'server'::text as storage_class, 'conversations'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"chat_attachment_replicas\" t inner join \"chat_attachments\" attachment on attachment.\"id\" = t.\"attachment_id\" inner join \"chats\" chat on chat.\"id\" = attachment.\"chat_id\" inner join \"projects\" project on project.\"id\" = chat.\"project_id\" where project.\"owner_id\" is not null group by project.\"owner_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'conversations'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"chat_relocation_jobs\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'conversations'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"chat_import_jobs\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select project.\"owner_id\" as owner_id, 'server'::text as storage_class, 'conversations'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"chat_relocation_snapshots\" t inner join \"chats\" chat on chat.\"id\" = t.\"chat_id\" inner join \"projects\" project on project.\"id\" = chat.\"project_id\" where project.\"owner_id\" is not null group by project.\"owner_id\" union all select project.\"owner_id\" as owner_id, 'server'::text as storage_class, 'conversations'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"queued_prompts\" t inner join \"chats\" chat on chat.\"id\" = t.\"chat_id\" inner join \"projects\" project on project.\"id\" = chat.\"project_id\" where project.\"owner_id\" is not null group by project.\"owner_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'projects'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"project_automations\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select t.\"owner_id\" as owner_id, 'server'::text as storage_class, 'projects'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"project_automation_runs\" t  where t.\"owner_id\" is not null group by t.\"owner_id\" union all select project.\"owner_id\" as owner_id, 'server'::text as storage_class, 'projects'::text as category, sum(pg_column_size(t.*))::bigint as logical_bytes, count(*)::bigint as row_count from \"project_branch_leases\" t inner join \"projects\" project on project.\"id\" = t.\"project_id\" where project.\"owner_id\" is not null group by project.\"owner_id\" union all select project.\"owner_id\" as owner_id, 'worker-managed'::text as storage_class, 'attachments'::text as category, coalesce(sum(attachment.\"size_bytes\"), 0)::bigint as logical_bytes, count(*)::bigint as row_count from \"chat_attachments\" attachment inner join \"chats\" chat on chat.\"id\" = attachment.\"chat_id\" inner join \"projects\" project on project.\"id\" = chat.\"project_id\" where attachment.\"status\" = 'ready' group by project.\"owner_id\" union all select project.\"owner_id\" as owner_id, 'worker-managed'::text as storage_class, 'attachment-replicas'::text as category, coalesce(sum(attachment.\"size_bytes\"), 0)::bigint as logical_bytes, count(*)::bigint as row_count from \"chat_attachment_replicas\" replica inner join \"chat_attachments\" attachment on attachment.\"id\" = replica.\"attachment_id\" inner join \"chats\" chat on chat.\"id\" = attachment.\"chat_id\" inner join \"projects\" project on project.\"id\" = chat.\"project_id\" where replica.\"status\" = 'ready' group by project.\"owner_id\") measurements group by owner_id, storage_class, category order by owner_id, storage_class, category",
+  "liveTraffic": {
+    "maxSamples": 2400,
+    "sampleIntervalSeconds": 0.25,
+    "windowSeconds": 600
+  },
+  "invalidation": {
+    "delayMs": 5000,
+    "limit": 4096
+  }
+}

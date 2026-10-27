@@ -8,5 +8,6 @@ pub mod managed_postgres;
 pub mod migrations;
 pub mod projects;
 mod text;
+pub mod usage;
 pub mod wire;
 pub mod workers;

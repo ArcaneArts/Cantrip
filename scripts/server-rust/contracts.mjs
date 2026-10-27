@@ -58,6 +58,11 @@ export const contractRoots = [
   "agentInteractionProvenanceSchema",
   "workerServerEnvelopeSchema",
   "workerRequestEnvelopeSchema",
+  "accountResourceUsageSchema",
+  "accountResourceUsageHistoryQuerySchema",
+  "accountResourceUsageHistorySchema",
+  "accountLiveTrafficQuerySchema",
+  "accountLiveTrafficSchema",
 ];
 
 const refinements = new Map([
@@ -124,6 +129,12 @@ registerChecks(protocol.encryptedPrivateDisplayLabelSchema, [
   "private-label-envelope",
 ]);
 registerChecks(protocol.modelConfigurationSchema, ["model-configuration"]);
+registerChecks(protocol.accountResourceUsageHistoryQuerySchema, [
+  "usage-history-window",
+]);
+registerChecks(protocol.accountLiveTrafficQuerySchema, [
+  "usage-live-traffic-query",
+]);
 const recursiveJson = registerWorkerContracts(registerChecks);
 const commandContracts = registerWorkerCommandContracts(registerCustom);
 const transforms = new Map([

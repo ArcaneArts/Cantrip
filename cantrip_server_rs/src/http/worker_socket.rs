@@ -279,7 +279,7 @@ async fn run(
     state.invalidate(&owner, "worker-availability", &worker);
     drop(permit);
     for message in std::mem::take(&mut buffer.messages) {
-        receive(&state.bridge, &worker, &peer, message);
+        receive(&state.bridge, &service.usage, &worker, &peer, message);
     }
     drop(buffer);
     let (mut sink, mut stream) = socket.split();
@@ -316,7 +316,7 @@ async fn run(
             Some(Ok(Message::Close(frame)))=>{input_closed=true;let (code,reason)=frame.map_or((1000,String::new()),|frame|(frame.code.into(),frame.reason.to_string()));peer.close(code,&reason);},
             Some(Err(error))=>{if let Some(code)=protocol_close(&error){input_closed=true;peer.close(code,"");}else{break}},
             None=>break,
-            Some(Ok(message))=>receive(&state.bridge,&worker,&peer,message)
+            Some(Ok(message))=>receive(&state.bridge,&service.usage,&worker,&peer,message)
         }}}
     }
     peer.open.store(false, Ordering::Release);
@@ -332,11 +332,20 @@ fn protocol_close(error: &tungstenite::Error) -> Option<u16> {
 }
 fn receive(
     bridge: &crate::workers::bridge::WorkerBridge,
+    usage: &crate::usage::service::UsageService,
     worker: &str,
     peer: &Peer,
     message: Message,
 ) {
     if let Message::Text(text) = message {
+        usage.record(
+            &peer.identity.owner,
+            "worker-control-websocket",
+            true,
+            text.len(),
+            1,
+            true,
+        );
         bridge.receive(worker, peer, &text);
     }
     // Binary relays and durable domain consumers remain in their resource,

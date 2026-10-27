@@ -25,7 +25,7 @@ const report = {
   databaseMode,
   completeReplacement: false,
   cursorScope:
-    "Ready and pong cursors are verified against actual retained usage publications per process. Raw cursors and events remain in the report. Usage accounting itself remains an unfinished server domain.",
+    "Ready and pong cursors are verified against actual retained usage publications per process. Raw cursors and events remain in the report. Dedicated usage suites separately verify accounting and observer feedback; this suite verifies parser and cursor behavior.",
   profiles: [],
 };
 
@@ -135,6 +135,9 @@ try {
             // flush and coalesced publication. No clock/publisher is mocked.
             profile.referenceUsagePublication = await observers
               .get("node")
+              .waitForPublication();
+            profile.nativeUsagePublication = await observers
+              .get("rust")
               .waitForPublication();
           }
         }

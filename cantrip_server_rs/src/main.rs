@@ -138,6 +138,7 @@ async fn main() -> Result<()> {
         let service = AuthService::initialize(database.clone(), config.clone()).await?;
         let port = arguments.port.unwrap_or(config.port as u16);
         let listener = tokio::net::TcpListener::bind((config.host.as_str(), port)).await?;
+        service.usage.start();
         use std::io::Write;
         writeln!(
             parent_output,
@@ -171,6 +172,7 @@ async fn main() -> Result<()> {
         .await?;
         service.live.transports.drained().await;
         service.workers.drained().await?;
+        service.usage.close().await;
     }
     database.close().await?;
     if let Some(runtime) = managed {

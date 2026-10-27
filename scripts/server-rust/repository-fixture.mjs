@@ -10,6 +10,7 @@ export async function repositoryFixture({
   root,
   databaseMode,
   databaseUrl,
+  nodeScript = "scripts/server-rust/project-node-fixture.mjs",
 }) {
   const environment = {
     ...fixtureEnvironment(path.join(root, kind)),
@@ -23,7 +24,7 @@ export async function repositoryFixture({
     server = await startServer(
       kind === "node" ? process.execPath : executable,
       kind === "node"
-        ? ["--import", "tsx", "scripts/server-rust/project-node-fixture.mjs"]
+        ? ["--import", "tsx", nodeScript]
         : ["--database", databaseMode],
       { cwd: repositoryRoot, env: environment },
     );

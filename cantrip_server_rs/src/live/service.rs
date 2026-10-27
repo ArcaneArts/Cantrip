@@ -21,7 +21,13 @@ pub struct LiveService {
     publishing: Arc<AtomicBool>,
     validation: AbortHandle,
 }
-fn invalidation(hub: &Hub, enabled: &AtomicBool, owner: &str, resource: &str, entity: &str) {
+fn invalidation(
+    hub: &Hub,
+    enabled: &AtomicBool,
+    owner: &str,
+    resource: &str,
+    entity: Option<&str>,
+) {
     if !enabled.load(Ordering::Acquire) {
         return;
     }
@@ -41,8 +47,18 @@ fn invalidation(hub: &Hub, enabled: &AtomicBool, owner: &str, resource: &str, en
 }
 impl LiveService {
     pub fn new(database: Arc<Database>, config: &ServerConfig) -> Result<Arc<Self>> {
+        Self::with_usage(database, config, None)
+    }
+    pub fn with_usage(
+        database: Arc<Database>,
+        config: &ServerConfig,
+        usage: Option<super::UsageRecorder>,
+    ) -> Result<Arc<Self>> {
         let repository = Arc::new(LiveRepository::new(database)?);
-        let hub = Hub::new(Options::default())?;
+        let hub = Hub::new(Options {
+            record_usage: usage,
+            ..Options::default()
+        })?;
         let publishing = Arc::new(AtomicBool::new(true));
         let weak = Arc::downgrade(&hub);
         let enabled = publishing.clone();
@@ -50,7 +66,7 @@ impl LiveService {
             config.account_websocket_limit as usize,
             Arc::new(move |owner, session| {
                 if let Some(hub) = weak.upgrade() {
-                    invalidation(&hub, &enabled, owner, "account-session", session);
+                    invalidation(&hub, &enabled, owner, "account-session", Some(session));
                 }
             }),
         );
@@ -121,7 +137,10 @@ impl LiveService {
         }
     }
     pub fn invalidate(&self, owner: &str, resource: &str, entity: &str) {
-        invalidation(&self.hub, &self.publishing, owner, resource, entity);
+        invalidation(&self.hub, &self.publishing, owner, resource, Some(entity));
+    }
+    pub fn invalidate_resource(&self, owner: &str, resource: &str) {
+        invalidation(&self.hub, &self.publishing, owner, resource, None);
     }
     pub fn revoke(&self, revocation: &Revocation) {
         match revocation {

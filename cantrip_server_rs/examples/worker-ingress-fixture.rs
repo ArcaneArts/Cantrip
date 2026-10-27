@@ -305,6 +305,7 @@ async fn main() -> Result<()> {
         .route("/__worker_ingress/request", post(request))
         .with_state(f.clone());
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", args.port)).await?;
+    service.usage.start();
     writeln!(
         parent_output,
         "\n{}",
@@ -337,6 +338,7 @@ async fn main() -> Result<()> {
     .await?;
     service.live.transports.drained().await;
     service.workers.drained().await?;
+    service.usage.close().await;
     database.close().await?;
     if let Some(runtime) = managed {
         runtime.close().await?;
