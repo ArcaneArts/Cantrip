@@ -18,6 +18,8 @@ mod encryption;
 mod live_socket;
 mod middleware;
 mod sessions;
+mod usage;
+mod usage_hooks;
 mod websocket;
 mod worker_socket;
 mod workers;
@@ -27,12 +29,19 @@ fn timestamp() -> String {
 }
 
 pub(super) fn json_response<T: serde::Serialize>(status: StatusCode, value: T) -> Response {
-    (
+    let mut response = (
         status,
         [(CONTENT_TYPE, "application/json; charset=utf-8")],
         Json(value),
     )
-        .into_response()
+        .into_response();
+    use axum::body::HttpBody;
+    if let Some(bytes) = response.body().size_hint().exact() {
+        response
+            .extensions_mut()
+            .insert(usage_hooks::EncodedPayload(bytes as usize));
+    }
+    response
 }
 
 async fn api() -> Response {
@@ -87,6 +96,7 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(sessions::routes())
         .merge(encryption::routes())
         .merge(account::routes())
+        .merge(usage::routes())
         .merge(workers::routes())
         .merge(worker_socket::routes())
         .merge(live_socket::routes())

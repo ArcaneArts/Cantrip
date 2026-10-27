@@ -467,18 +467,20 @@ pub(super) async fn guard(
         .extensions()
         .get::<axum::extract::MatchedPath>()
         .map_or_else(|| audit_path.clone(), |v| v.as_str().to_owned());
-    if rejection.is_none() {
-        let route = audit_pattern
-            .split('/')
-            .map(|segment| {
-                segment
-                    .strip_prefix('{')
-                    .and_then(|s| s.strip_suffix('}'))
-                    .map_or_else(|| segment.to_owned(), |s| format!(":{s}"))
-            })
-            .collect::<Vec<_>>()
-            .join("/");
-        if let Some((category, retry)) = service.workers.limit(
+    let route = audit_pattern
+        .split('/')
+        .map(|segment| {
+            segment
+                .strip_prefix('{')
+                .and_then(|s| s.strip_suffix('}'))
+                .map_or_else(|| segment.to_owned(), |s| format!(":{s}"))
+        })
+        .collect::<Vec<_>>()
+        .join("/");
+    let upgrade =
+        value(request.headers(), "upgrade").is_some_and(|s| s.eq_ignore_ascii_case("websocket"));
+    if rejection.is_none()
+        && let Some((category, retry)) = service.workers.limit(
             &service.config,
             principal.user.as_ref().map(|u| u.id.as_str()),
             &ip,
@@ -486,28 +488,31 @@ pub(super) async fn guard(
             &route,
             value(request.headers(), "upgrade")
                 .is_some_and(|s| s.eq_ignore_ascii_case("websocket")),
-        ) {
-            let unit = if retry == 1 { "second" } else { "seconds" };
-            let message = if category == "api" {
-                format!(
-                    "Cantrip server request limit reached for this operation. Retry after {retry} {unit}."
-                )
-            } else {
-                format!("Request rate limit reached. Retry after {retry} {unit}.")
-            };
-            let mut response = json_response(
-                StatusCode::TOO_MANY_REQUESTS,
-                json!({"code":format!("{category}-rate-limited"),"error":message,"retryAfterSeconds":retry}),
-            );
-            response
-                .headers_mut()
-                .insert(header::RETRY_AFTER, retry.to_string().parse().unwrap());
-            rejection = Some(response);
-        }
+        )
+    {
+        let unit = if retry == 1 { "second" } else { "seconds" };
+        let message = if category == "api" {
+            format!(
+                "Cantrip server request limit reached for this operation. Retry after {retry} {unit}."
+            )
+        } else {
+            format!("Request rate limit reached. Retry after {retry} {unit}.")
+        };
+        let mut response = json_response(
+            StatusCode::TOO_MANY_REQUESTS,
+            json!({"code":format!("{category}-rate-limited"),"error":message,"retryAfterSeconds":retry}),
+        );
+        response
+            .headers_mut()
+            .insert(header::RETRY_AFTER, retry.to_string().parse().unwrap());
+        rejection = Some(response);
     }
     let response = if let Some(response) = rejection {
         response
     } else {
+        if let Some(user) = &principal.user {
+            super::usage_hooks::request(&mut request, &service.usage, &user.id, &route, upgrade);
+        }
         request.extensions_mut().insert(Arc::new(Context {
             id: id.clone(),
             principal,
@@ -515,6 +520,14 @@ pub(super) async fn guard(
         }));
         next.run(request).await
     };
+    let response = super::usage_hooks::response(
+        response,
+        &service.usage,
+        audit_principal.user.as_ref().map(|u| u.id.as_str()),
+        &route,
+        &audit_method,
+        upgrade,
+    );
     super::audit::mutation(
         &service,
         &audit_principal,

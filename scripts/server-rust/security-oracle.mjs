@@ -3,6 +3,7 @@
 import * as protocol from "../../packages/protocol/dist/index.js";
 import { buildContractManifest } from "./contracts.mjs";
 import { securityFixtures } from "./security-fixtures.mjs";
+import { usageQueryCases } from "./usage-wire-fixtures.mjs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -47,6 +48,7 @@ export function* vectorCases(name, samples = securityFixtures[name]) {
     };
   }
   yield prepare(undefined, false);
+  for (const input of usageQueryCases(name)) yield prepare(input);
   for (const input of [null, [], {}, false, 42, ""]) yield prepare(input);
   for (const sample of samples) {
     const baseline = schema.parse(sample);

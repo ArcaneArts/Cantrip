@@ -46,9 +46,16 @@ pub struct WorkerService {
 }
 impl WorkerService {
     pub fn new(database: Arc<Database>, config: &ServerConfig) -> Arc<Self> {
+        Self::with_usage(database, config, None)
+    }
+    pub fn with_usage(
+        database: Arc<Database>,
+        config: &ServerConfig,
+        usage: Option<crate::live::UsageRecorder>,
+    ) -> Arc<Self> {
         Arc::new(Self {
             repository: WorkerRepository::new(database),
-            bridge: WorkerBridge::new(Duration::from_secs(15)),
+            bridge: WorkerBridge::with_usage(Duration::from_secs(15), usage),
             invalidations: broadcast::channel(4096).0,
             publication: OnceLock::new(),
             revoked: RwLock::new(HashSet::new()),

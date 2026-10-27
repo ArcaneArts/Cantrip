@@ -130,6 +130,7 @@ pub struct WorkerBridge {
     succeeded: AtomicU64,
     failed: AtomicU64,
     notifications: Arc<Notifications>,
+    record_usage: Option<crate::live::UsageRecorder>,
 }
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -152,6 +153,12 @@ impl WorkerBridge {
         }
     }
     pub fn new(grace: Duration) -> Arc<Self> {
+        Self::with_usage(grace, None)
+    }
+    pub fn with_usage(
+        grace: Duration,
+        record_usage: Option<crate::live::UsageRecorder>,
+    ) -> Arc<Self> {
         Arc::new(Self {
             closed: AtomicBool::new(false),
             state: Mutex::new(State::default()),
@@ -161,6 +168,7 @@ impl WorkerBridge {
             succeeded: AtomicU64::new(0),
             failed: AtomicU64::new(0),
             notifications: Arc::new(Notifications::default()),
+            record_usage,
         })
     }
     fn finish(&self, pending: &Pending, result: Outcome) {
@@ -486,6 +494,7 @@ impl WorkerBridge {
             }
             self.routed.fetch_add(1, Ordering::Relaxed);
             state.pending.insert(id.clone(), pending.clone());
+            let bytes = encoded.len();
             if peer.output.send(Outgoing::Text(encoded)).is_err() {
                 state.pending.remove(&id);
                 self.finish(
@@ -495,6 +504,8 @@ impl WorkerBridge {
                         "worker-command-dispatch-failed",
                     )),
                 );
+            } else if let Some(record) = &self.record_usage {
+                record(&peer.identity.owner, false, bytes, true);
             }
         }
         let bridge = Arc::downgrade(self);

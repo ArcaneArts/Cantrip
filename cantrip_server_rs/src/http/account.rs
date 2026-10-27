@@ -44,10 +44,38 @@ fn input(schema: &str, value: Option<&Value>) -> Result<Result<Value, Response>>
 // find-my-way's query parser accumulates duplicate names in arrays. Axum's
 // ordinary Query extractor rejects those before the protocol can coerce them.
 pub(super) fn query(uri: &axum::http::Uri) -> Value {
+    query_string(uri.query().unwrap_or(""))
+}
+fn query_component(raw: &str) -> String {
+    let value = raw.replace('+', " ");
+    let bytes = value.as_bytes();
+    let mut position = 0;
+    while position < bytes.len() {
+        if bytes[position] == b'%' {
+            if position + 2 >= bytes.len()
+                || !bytes[position + 1].is_ascii_hexdigit()
+                || !bytes[position + 2].is_ascii_hexdigit()
+            {
+                return value;
+            }
+            position += 3;
+        } else {
+            position += 1;
+        }
+    }
+    // fast-querystring falls back to the entire plus-normalized component
+    // when any escaped sequence is malformed; lossy UTF-8 changes issue keys.
+    let decoded = percent_encoding::percent_decode_str(&value)
+        .decode_utf8()
+        .map(|v| v.into_owned());
+    decoded.unwrap_or(value)
+}
+fn query_string(raw: &str) -> Value {
     let mut pairs = crate::wire::value::Object::new();
-    for (key, value) in url::form_urlencoded::parse(uri.query().unwrap_or("").as_bytes()) {
-        let key = key.into_owned();
-        let value = Value::String(value.into_owned().into());
+    for part in raw.split('&').filter(|part| !part.is_empty()) {
+        let (key, value) = part.split_once('=').unwrap_or((part, ""));
+        let key = query_component(key);
+        let value = Value::String(query_component(value).into());
         if let Some(previous) = pairs.get_mut(key.as_str()) {
             if let Value::Array(values) = previous {
                 values.push(value)
@@ -60,6 +88,7 @@ pub(super) fn query(uri: &axum::http::Uri) -> Value {
     }
     Value::Object(pairs)
 }
+
 async fn execute(
     service: &AuthService,
     ctx: &Context,
@@ -184,4 +213,71 @@ pub(super) fn routes() -> Router<Arc<AuthService>> {
             "/api/admin/license-whitelist/{entryId}",
             axum::routing::delete(handle),
         )
+}
+
+#[cfg(test)]
+mod query_tests {
+    use super::*;
+    use std::{
+        io::{BufRead, BufReader},
+        path::PathBuf,
+        process::{Child, Command, Stdio},
+    };
+    struct Oracle(Option<Child>);
+    impl Drop for Oracle {
+        fn drop(&mut self) {
+            if let Some(child) = self.0.as_mut() {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+        }
+    }
+    #[test]
+    fn query_parser_matches_actual_fastify_duplicates_percent_escapes_and_utf8() -> Result<()> {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .to_owned();
+        let mut oracle = Oracle(Some(
+            Command::new("node")
+                .arg("scripts/server-rust/querystring-oracle.mjs")
+                .current_dir(root)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::inherit())
+                .spawn()?,
+        ));
+        let stdout = oracle
+            .0
+            .as_mut()
+            .unwrap()
+            .stdout
+            .take()
+            .context("query oracle stdout")?;
+        let mut count = 0;
+        let mut receipt = None;
+        for line in BufReader::new(stdout).lines() {
+            let case: serde_json::Value = serde_json::from_str(&line?)?;
+            if let Some(done) = case.get("done") {
+                anyhow::ensure!(receipt.is_none(), "duplicate query receipt");
+                receipt = Some(done.as_u64().context("query count")?);
+                continue;
+            }
+            anyhow::ensure!(receipt.is_none(), "query case after completion");
+            let input = case["input"].as_str().context("query input")?;
+            assert_eq!(
+                query_string(input).stringify(),
+                case["output"].as_str().unwrap(),
+                "query {input:?}"
+            );
+            count += 1;
+        }
+        let status = oracle.0.as_mut().unwrap().wait()?;
+        oracle.0 = None;
+        anyhow::ensure!(
+            status.success() && count > 0 && receipt == Some(count),
+            "incomplete query oracle: {status}, count {count}, receipt {receipt:?}"
+        );
+        println!("{count} actual Fastify query strings matched");
+        Ok(())
+    }
 }

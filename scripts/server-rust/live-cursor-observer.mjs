@@ -35,8 +35,8 @@ export class LiveCursorObserver {
       if (event.type !== "event") continue;
       const { cursor, occurredAt, ...body } = event;
       // JSON inputs do not mutate resources. Only separately scheduled usage
-      // publications are permitted here; their missing native domain remains
-      // explicit in the coverage ledger and raw report, never a parity claim.
+      // publications are permitted here. Dedicated usage suites separately
+      // verify accounting and observer feedback; this is cursor evidence.
       assert.deepEqual(body, {
         type: "event",
         scope: currentUser,

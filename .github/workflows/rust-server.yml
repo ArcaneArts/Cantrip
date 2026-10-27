@@ -10,6 +10,10 @@ on:
       - cantrip_server/src/app/routes/auth-sessions.ts
       - cantrip_server/src/app/routes/system-status.ts
       - cantrip_server/src/app/routes/account-security.ts
+      - cantrip_server/src/app/routes/account-live-traffic.ts
+      - cantrip_server/src/account-usage/**
+      - cantrip_server/src/db/account-resource-usage.ts
+      - cantrip_server/src/app/shared/constants.ts
       - cantrip_server/src/app/routes/internal-worker*.ts
       - cantrip_server/src/app/routes/worker-*.ts
       - cantrip_server/src/workers/**
@@ -59,7 +63,9 @@ jobs:
       matrix:
         os: [ubuntu-24.04, macos-15, windows-2025]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    # The Windows GNU build plus actual Node/Rust storage and transport suites
+    # exceeded 60 minutes in run 40473447456 without a failing test.
+    timeout-minutes: 120
     steps:
       - run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
@@ -131,6 +137,30 @@ jobs:
         run: node --import tsx scripts/server-rust/json-compatibility.mjs --database postgres --report .qa/rust-server/json-external-http.json
       - name: Actual Node and Rust Live hub protocol, replay and control oracle
         run: node --import tsx scripts/server-rust/live-hub-oracle.mjs --report .qa/rust-server/live-hub-oracle.json
+      - name: Account usage repositories with native PGlite
+        run: node --import tsx scripts/server-rust/usage-repository-compatibility.mjs --report .qa/rust-server/usage-repository-pglite.json
+      - name: Account usage repositories with private PostgreSQL
+        run: node --import tsx scripts/server-rust/usage-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/usage-repository-bundled.json
+      - name: Account usage repositories with external PostgreSQL
+        run: node --import tsx scripts/server-rust/usage-repository-compatibility.mjs --database postgres --report .qa/rust-server/usage-repository-external.json
+      - name: Usage HTTP payloads and shutdown persistence with native PGlite
+        run: node --import tsx scripts/server-rust/usage-http-compatibility.mjs --report .qa/rust-server/usage-http-pglite.json
+      - name: Usage HTTP payloads and shutdown persistence with private PostgreSQL
+        run: node --import tsx scripts/server-rust/usage-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/usage-http-bundled.json
+      - name: Usage HTTP payloads and shutdown persistence with external PostgreSQL
+        run: node --import tsx scripts/server-rust/usage-http-compatibility.mjs --database postgres --report .qa/rust-server/usage-http-external.json
+      - name: Usage socket accounting and observer feedback with native PGlite
+        run: node --import tsx scripts/server-rust/usage-socket-compatibility.mjs --report .qa/rust-server/usage-sockets-pglite.json
+      - name: Usage socket accounting and observer feedback with private PostgreSQL
+        run: node --import tsx scripts/server-rust/usage-socket-compatibility.mjs --database bundled-postgres --report .qa/rust-server/usage-sockets-bundled.json
+      - name: Usage socket accounting and observer feedback with external PostgreSQL
+        run: node --import tsx scripts/server-rust/usage-socket-compatibility.mjs --database postgres --report .qa/rust-server/usage-sockets-external.json
+      - name: Retained account usage and tenant isolation with native PGlite
+        run: node --import tsx scripts/server-rust/usage-account-compatibility.mjs --report .qa/rust-server/usage-accounts-pglite.json
+      - name: Retained account usage and tenant isolation with private PostgreSQL
+        run: node --import tsx scripts/server-rust/usage-account-compatibility.mjs --database bundled-postgres --report .qa/rust-server/usage-accounts-bundled.json
+      - name: Retained account usage and tenant isolation with external PostgreSQL
+        run: node --import tsx scripts/server-rust/usage-account-compatibility.mjs --database postgres --report .qa/rust-server/usage-accounts-external.json
       - name: Full project mapping with native PGlite
         run: node --import tsx scripts/server-rust/project-repository-compatibility.mjs --report .qa/rust-server/live-projects-pglite.json
       - name: Full project mapping with private PostgreSQL

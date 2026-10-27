@@ -7,8 +7,12 @@ bridge admission. Its development oracle exercises the actual TypeScript
 protocol for every command type and reachable union alternative; large boundary
 cases and real HTTP/WS admission comparisons supplement malformed mutations.
 Local admission comparisons pass on all three storage modes with unchanged
-worker transport components and controlled handlers. The current outgoing
-milestone still requires observed supported-platform results.
+worker transport components and controlled handlers. PR 2287 merged, and its
+Linux/macOS jobs and 70 uploaded JSON reports passed inspection. Windows reached
+the configured 60-minute job limit during worker PGlite HTTP tests, with earlier
+steps passing. That attempt does not establish full Windows acceptance. The
+current usage milestone raises the allowance to 120 minutes and needs a fresh
+complete supported-platform run.
 This is wire-contract coverage; resource-domain and execution behavior remain
 in scope below.
 
@@ -17,6 +21,45 @@ standalone operation, with PGlite, bundled private PostgreSQL, and external
 PostgreSQL. The existing app, worker, CLI, browser and mobile contracts remain
 the compatibility baseline. Winterhold readiness and desktop packaging are
 required before completion. Production deployment is a separate action.
+
+## Account resource usage (current milestone)
+
+The current worktree implements native storage measurement from the actual
+110-table ownership manifest, exact decimal bandwidth counters, idempotent
+transactional flush receipts, fenced reconciliation, hourly/daily history,
+rollup/retention and operational totals. It also adds bounded asynchronous
+metering, live quarter-second traffic samples, response projections and the
+three authenticated account usage HTTP routes. All operations execute in Rust;
+JavaScript is used only by development exporters and comparison oracles.
+
+HTTP request/response bodies, App Live frames and worker control text frames
+feed the native meter. Stream completion, error and destruction count one
+operation while retaining consumed bytes. Usage-observer traffic avoids another
+refresh, and the live-traffic route excludes its own payloads and request count.
+Storage reconciliation and history maintenance start after binding the listener;
+shutdown waits for their in-flight work and drains bandwidth before closing the
+database. Coalesced owner invalidations follow committed storage/bandwidth work.
+
+Local evidence includes 42 actual Node/Rust repository comparisons on each of
+the three stores, with precise counters, duplicate/overflow rollback, injected
+rollup/lease faults and retained process reopen. Native state comparisons cover
+209 meter scenarios, 127 live-traffic scenarios and 58 response projections.
+Timer/close, background drain, coalescing capacity and stream cancellation/error
+tests supplement those comparisons. Production-entrypoint HTTP suites pass 33
+cases per runtime on every store, including exact post-shutdown persistence.
+Production socket suites on all stores compare their observed frames with
+durable counters and observe a real usage publication without a refresh loop.
+
+The socket accounting proof is per runtime: Node still emits additional worker
+commands and resource notifications whose domains remain unported. The suite
+does not claim those absolute frame totals or full worker-domain behavior match.
+Account-isolation/restart checks pass 14 cases per runtime on each store,
+including distinct retained large counters and rejected owner injection. The
+shared query parser also matches 72,298 actual Fastify cases and preserves
+malformed escapes in validation errors. Integrated regression acceptance is
+being completed. Whole-server metrics integration, future binary/domain transport
+hooks and supported-platform acceptance remain open. This milestone is not a
+complete server replacement or packaged/deployment acceptance.
 
 ## Foundation
 
