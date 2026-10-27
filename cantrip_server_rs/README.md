@@ -30,6 +30,14 @@ development milestone. Existing physical JavaScript PGlite directories are
 **not** interchangeable with this crate's native PGlite format; legacy conversion
 is still unfinished. Use disposable data for development.
 
+Private PostgreSQL on Unix runs under a native owner mode of this executable.
+The owner's parent pipe closes after normal shutdown or abrupt server death;
+the owner stops and reaps its PostgreSQL child. New Unix clusters are initialized
+in staging before promotion. Windows keeps its kill-on-close process job.
+`scripts/server-rust/postgres-lifecycle.mjs` exercises actual process death,
+retained account/worker state and external database isolation. Current local
+macOS results require fresh platform and packaging acceptance.
+
 ## Worker compatibility evidence
 
 Build the existing shared packages before executing the development harnesses:

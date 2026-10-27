@@ -30,7 +30,12 @@ async fn revoked_credential_cannot_attach_after_awaited_owner_lookup() -> Result
     let bin = PathBuf::from(
         std::env::var("CANTRIP_TEST_POSTGRES_BIN_DIR").context("worker PostgreSQL binaries")?,
     );
-    let runtime = ManagedPostgres::start(root.path(), &bin).await?;
+    let runtime = ManagedPostgres::start_with_owner(
+        root.path(),
+        &bin,
+        std::path::Path::new(env!("CARGO_BIN_EXE_cantrip-server")),
+    )
+    .await?;
     let mut configuration = runtime.configuration().clone();
     configuration.application_name("cantrip-revoked-worker-owner-lookup");
     let database = Arc::new(Database::postgres(&configuration).await?);

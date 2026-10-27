@@ -92,6 +92,37 @@ actual postmaster exit, and reopens the cluster to verify committed data after
 crash recovery. This test passed in the observed Windows run linked below;
 future changes still require their own execution results.
 
+On Unix a native owner mode of the same Rust executable holds PostgreSQL. The
+main server keeps a private pipe open; main-process death closes that pipe and
+the owner requests fast PostgreSQL shutdown and reaps its actual child. Normal
+shutdown closes database sessions before releasing the pipe. External database
+connections do not enter this ownership path.
+
+The owner has its own Unix process group. A terminal's foreground-group Ctrl-C
+therefore reaches the main server, which drains work before releasing the pipe,
+instead of killing its owner and bypassing that shutdown order.
+
+Unix initialization also runs under that owner. A new cluster is initialized
+and synced in a private staging directory, then promoted to `data` after initdb
+success. Parent death during initialization kills its owned initializer process
+group and removes its staging files. An existing cluster is never reset or
+deleted to recover from an opening or promotion failure.
+
+The lifecycle harness uses the actual executable, HTTP account/worker writes,
+process death, PostgreSQL status and retained login/credential checks. Its Unix
+cases additionally interrupt real initdb and stop PostgreSQL with the parent's
+pipe still open, checking that the owner exits independently of that reader:
+
+```sh
+node scripts/server-rust/postgres-lifecycle.mjs --report .qa/rust-server/postgres-lifecycle.json
+```
+
+Local macOS results passed. The revised lifecycle still requires observed Linux,
+macOS and Windows CI, packaged assets and client/service supervision acceptance.
+The earlier pool/TLS milestone passed all three platforms at `50339edbd` in
+[run 40427101801](https://github.com/ArcaneArts/Cantrip/actions/runs/40427101801);
+its 93 reports do not establish this later ownership change.
+
 PGlite candidate: `pglite-rs` 0.2.7 statically embeds Electric's
 `postgres-pglite` fork. It reports PostgreSQL 17.5. The current JavaScript
 PGlite 0.5.4 reports PostgreSQL 18.3. **Physical directories are not compatible

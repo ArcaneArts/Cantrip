@@ -117,6 +117,8 @@ jobs:
         run: node scripts/server-rust/compatibility.mjs --report .qa/rust-server/foundation-http.json
       - name: PostgreSQL TLS policy and unrelated HTTP requests under a real relation lock
         run: node scripts/server-rust/postgres-connections.mjs --report .qa/rust-server/postgres-connections.json
+      - name: Private PostgreSQL ownership, abrupt server death and retained restart
+        run: node scripts/server-rust/postgres-lifecycle.mjs --report .qa/rust-server/postgres-lifecycle.json
       - name: Actual publication cursor accounting and rejection controls
         run: node --import tsx scripts/server-rust/live-cursor-contract.mjs --report .qa/rust-server/json-cursor-contract.json
       - name: Deep and malformed JSON with native PGlite

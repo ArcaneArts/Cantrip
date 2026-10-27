@@ -272,7 +272,12 @@ async fn postgres_authentication_state_and_administrator_updates() -> Result<()>
         std::env::var("CANTRIP_TEST_POSTGRES_BIN_DIR")
             .context("PostgreSQL auth contract binary directory")?,
     );
-    let runtime = ManagedPostgres::start(root.path(), &bin).await?;
+    let runtime = ManagedPostgres::start_with_owner(
+        root.path(),
+        &bin,
+        std::path::Path::new(env!("CARGO_BIN_EXE_cantrip-server")),
+    )
+    .await?;
     let database = Arc::new(Database::postgres(runtime.configuration()).await?);
     let expected = exercise(database.clone()).await?;
     database.close().await?;
@@ -281,7 +286,12 @@ async fn postgres_authentication_state_and_administrator_updates() -> Result<()>
         !std::fs::read_to_string(root.path().join("postgres.log"))?
             .contains("private-sql-sentinel")
     );
-    let runtime = ManagedPostgres::start(root.path(), &bin).await?;
+    let runtime = ManagedPostgres::start_with_owner(
+        root.path(),
+        &bin,
+        std::path::Path::new(env!("CARGO_BIN_EXE_cantrip-server")),
+    )
+    .await?;
     retained(
         Arc::new(Database::postgres(runtime.configuration()).await?),
         &expected,
