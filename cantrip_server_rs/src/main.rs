@@ -111,12 +111,11 @@ async fn main() -> Result<()> {
             Database::pglite(&config.data_directory.join("server-db")).await?
         }
         DatabaseMode::Postgres => {
-            let configuration = config
+            let url = config
                 .database_url
                 .as_deref()
-                .context("postgres mode requires DATABASE_URL or --database-url")?
-                .parse()?;
-            Database::postgres(&configuration).await?
+                .context("postgres mode requires DATABASE_URL or --database-url")?;
+            Database::postgres_url(url).await?
         }
         DatabaseMode::BundledPostgres => {
             let bin = config.postgres_bin_directory.as_ref().context("bundled-postgres mode requires --postgres-bin-dir until runtime packaging is integrated")?;
@@ -168,6 +167,7 @@ async fn main() -> Result<()> {
         })
         .await?;
         service.live.transports.drained().await;
+        service.workers.drained().await?;
     }
     database.close().await?;
     if let Some(runtime) = managed {

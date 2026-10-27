@@ -23,6 +23,7 @@ pub struct Invalidation {
     pub entity: String,
 }
 type InvalidationSink = Arc<dyn Fn(&Invalidation) + Send + Sync>;
+const HANDSHAKE_CAPACITY: u32 = 32;
 pub struct RequestLimiters {
     api: SlidingWindow,
     pairing: SlidingWindow,
@@ -51,7 +52,7 @@ impl WorkerService {
             invalidations: broadcast::channel(4096).0,
             publication: OnceLock::new(),
             revoked: RwLock::new(HashSet::new()),
-            handshakes: Arc::new(Semaphore::new(32)),
+            handshakes: Arc::new(Semaphore::new(HANDSHAKE_CAPACITY as usize)),
             buffered_authentication_bytes: {
                 static BYTES: AtomicUsize = AtomicUsize::new(0);
                 &BYTES
@@ -179,6 +180,17 @@ impl WorkerService {
             timer.abort();
         }
         self.bridge.close();
+    }
+    pub async fn drained(&self) -> Result<()> {
+        // Shutdown is published before HTTP admission stops. A late upgraded
+        // handler sees that state before beginning authentication; handlers
+        // already using the database retain their permits until completion.
+        let _permits = self
+            .handshakes
+            .clone()
+            .acquire_many_owned(HANDSHAKE_CAPACITY)
+            .await?;
+        Ok(())
     }
 }
 pub fn presence_fingerprint(worker: &serde_json::Value) -> String {

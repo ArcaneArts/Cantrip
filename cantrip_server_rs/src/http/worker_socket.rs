@@ -230,7 +230,16 @@ async fn run(
                 Some(Err(error))=>{abandoned=true;buffer.clear();if let Some(code)=protocol_close(&error){close(socket.as_mut().unwrap(),code,"").await;}socket=None;},
                 Some(Ok(message))=>{if !abandoned&& let Err((code,reason))=buffer.push(message){abandoned=true;buffer.clear();close(socket.as_mut().unwrap(),code,reason).await;}}
             }},
-            _=shutdown.changed()=>{if let Some(socket)=socket.as_mut(){close(socket,1001,"Server shutting down").await;}return},
+            _=shutdown.changed()=>{
+                buffer.clear();
+                if let Some(socket)=socket.as_mut(){close(socket,1001,"Server shutting down").await;}
+                drop(socket.take());
+                // As with a peer close, shutdown must finish credential usage
+                // and the owner lookup. Main drains these handshake permits
+                // before closing the database pool.
+                let _ = authentication.await;
+                return;
+            },
             _=&mut timeout,if !abandoned=>{abandoned=true;buffer.clear();close(socket.as_mut().unwrap(),1013,"Worker authentication timed out").await;},
             result=&mut authentication=>{if abandoned{return}match result{Ok(Ok(authenticated))=>break authenticated,Ok(Err(reason))=>{close(socket.as_mut().unwrap(),1008,reason).await;return},Err(_)=>return}}
         }

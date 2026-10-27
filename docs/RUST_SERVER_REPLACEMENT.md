@@ -30,6 +30,60 @@ NOTIFY, and verify retained data after reopening in a new process. PostgreSQL
 tests start a real private cluster and also invoke the executable in external
 connection mode. They never connect to a developer's ordinary database.
 
+PostgreSQL request operations now lease up to five connections, matching the
+reference pool, while PGlite retains its single serialized session. A separate
+LISTEN connection restores established channels after an actual connection
+failure. A cancelled or incomplete pooled operation keeps its pool slot during
+a bounded CancelRequest attempt, then discards that session. Statements are
+not automatically replayed. Shutdown closes admission, wakes queued borrowers,
+stops the listener and drains operations, cancellation cleanup and drivers.
+
+Worker authentication has a separate shutdown drain before pool closure. A
+closed worker socket still completes credential usage and its owner lookup,
+including work queued behind the five PostgreSQL connections. The external
+worker fault suite holds the real credential row, closes 32 pending sockets,
+requests server shutdown, and verifies that shutdown waits for lock release.
+A trigger in the disposable database then proves all 32 usage writes committed.
+The native server previously exited while that lock remained held and lost
+those writes; the actual Node service waited and retained them.
+
+`tests/postgres_pool.rs` exercises real relation locks, unrelated concurrent
+reads, all five busy connections plus a listener, cancelled transactions,
+backend termination, listener restoration and shutdown. The real HTTP/TLS
+harness compares eleven SSL-on/off configurations against postgres-js and the
+Node/Rust services, checks actual `pg_stat_ssl`, and keeps `/api/workers`
+blocked while `/api/account/sessions` completes over a TLS server connection:
+
+```sh
+node scripts/server-rust/postgres-connections.mjs --report .qa/rust-server/postgres-connections.json
+```
+
+The Live lock fault checks the actual blocking backend and verifies that its
+granted table lock survives transport ping and close, with no subscription
+reply. It retains the authorizer backend's post-close state separately: Node
+may keep it waiting, while Rust may already have cancelled and disposed it.
+Requiring the abandoned query to remain blocked made the older assertion race
+with successful cancellation; the actual lock and transport deadlines remain.
+
+Supply `CANTRIP_TEST_POSTGRES_BIN_DIR` and an OpenSSL CLI for this disposable
+fixture. The Windows workflow installs that test dependency explicitly. Local
+macOS arm64 results passed; this milestone still requires observed platform CI.
+The external URL adapter preserves omitted/disabled SSL, prefer fallback,
+required encryption and strict certificate rejection for the tested settings.
+An explicitly empty `sslmode=` retains Node's omitted-option behavior; the
+adapter resolves and removes that key before invoking the typed driver parser.
+Complete connection-option/environment parity, startup retry behavior,
+interrupted-network recovery and deployment artifacts remain required. A
+successful CancelRequest is not an acknowledgment of remote statement rollback
+during a network partition; retained execution recovery still needs its domain
+tests. This does not establish complete database or server replacement.
+
+The TLS fixture's PostgreSQL launcher inherits a real append log and null
+stdin, matching the native Windows owner instead of leaving a daemon attached
+to captured launcher pipes. Cleanup attempts actual `pg_ctl stop` after every
+start attempt, including a launcher observation failure. Logs indicating a
+listening server do not substitute for the actual connection checks.
+
 Windows private-cluster startup uses PostgreSQL's own `pg_ctl` restricted-token
 launch path. A kill-on-close Windows Job Object owns the launcher and its
 descendants, assigned during process creation so startup cannot outrun process
@@ -321,7 +375,12 @@ The JSON milestone PR 2282 passed the full native suite on Linux, macOS and
 Windows, including small-stack tree lifetime tests. Its full Linux/macOS jobs
 passed. Windows failed the new PGlite socket suite when a ready response had
 Node cursor 1 and Rust cursor 0; later Windows suites did not run. The failure
-is retained in run 40396215390 and requires a fresh follow-up platform result.
+is retained in run 40396215390. Follow-up PR 2283 subsequently passed all three
+complete platform jobs in run 40405725752 on tested head
+`2bbd667b17409c9b5a11ed2efdf8f1538722f4eb`, including the cursor controls and
+all three JSON storage suites. All 90 uploaded reports were retained before
+merge `0799dc6814e441e46ce00437c2b276896848c93c`. Those results cover the JSON
+follow-up, not this newer PostgreSQL implementation or complete replacement.
 
 A real subscribed Node client reproduced a separate `account-resource-usage`
 publication advancing its cursor. Usage accounting and those native publications

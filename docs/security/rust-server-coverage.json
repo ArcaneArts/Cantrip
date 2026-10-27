@@ -591,6 +591,21 @@
     ]
   },
   "crossCutting": {
+    "postgresConcurrencyAndTls": {
+      "status": "partial",
+      "implementation": "cantrip_server_rs/src/database/",
+      "evidence": [
+        "cantrip_server_rs/tests/postgres_pool.rs",
+        "scripts/server-rust/postgres-connections.mjs",
+        "scripts/server-rust/worker-authentication-shutdown.mjs"
+      ],
+      "validatedSubset": "Local macOS real PostgreSQL: five request connections plus a separate listener; concurrent reads under held relation locks; cancellation and transaction disposal; listener re-registration; actual backend termination without statement replay; shutdown and closed API behavior. Eleven actual TLS-on/off profiles match Node, including explicit empty sslmode, with pg_stat_ssl checks and unrelated HTTP requests completing while workers remains locked over TLS. A real closed-worker authentication shutdown comparison holds the credential row, proves both services wait for release, and counts all 32 committed usage writes with a disposable database trigger. The complete external worker suite and focused native pool/bridge tests passed locally after the drain fix. PGlite stays serialized. The revised head still needs platform acceptance; prior macOS success and Linux shutdown failure do not validate this change.",
+      "remaining": [
+        "Observe this milestone's Linux/macOS/Windows CI and packaged runtime results.",
+        "Complete external URL/environment connection-option parity and startup retry behavior.",
+        "Complete interrupted-network and durable-domain recovery; cancellation packet delivery is not a remote rollback acknowledgment."
+      ]
+    },
     "configuration": {
       "status": "implemented",
       "evidence": "977 scenarios executed against the actual Node parser; configuration milestone PR 2276 passed Linux/macOS/Windows CI."
@@ -787,6 +802,15 @@
       "platforms": ["ubuntu-24.04", "macos-15", "windows-2025"],
       "conclusion": "success",
       "scope": "Observed native tests plus core Live oracle, full project/scope repositories and actual HTTP/WS and Chromium client/worker-component comparisons on all three stores. All three jobs and their uploaded reports passed before merge. This evidence validates the App Live milestone head, not later JSON changes, full product UI/runtime, migration/rollback or packaged artifacts."
+    },
+    {
+      "pullRequest": "https://github.com/ArcaneArts/Cantrip/pull/2283",
+      "commit": "0799dc6814e441e46ce00437c2b276896848c93c",
+      "observedHead": "2bbd667b17409c9b5a11ed2efdf8f1538722f4eb",
+      "observedRun": "https://github.com/ArcaneArts/Cantrip/actions/runs/40405725752",
+      "platforms": ["ubuntu-24.04", "macos-15", "windows-2025"],
+      "conclusion": "success",
+      "scope": "Observed full JSON follow-up workflow, actual publication controls and all three JSON storage suites on each platform. All 90 uploaded reports were retained and selected cursor/corpus evidence inspected before merge. Native account usage remains unported; this does not validate the newer PostgreSQL backend, full product, migration/rollback or packaged artifacts."
     }
   ]
 }

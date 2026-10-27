@@ -78,7 +78,7 @@ jobs:
         uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
-          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-zlib
+          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-zlib mingw-w64-x86_64-openssl
       - name: Windows Rust target and PostgreSQL
         if: runner.os == 'Windows'
         shell: pwsh
@@ -115,6 +115,8 @@ jobs:
         run: node scripts/server-rust/cargo.mjs test -- --nocapture
       - name: Node and Rust over real HTTP connections
         run: node scripts/server-rust/compatibility.mjs --report .qa/rust-server/foundation-http.json
+      - name: PostgreSQL TLS policy and unrelated HTTP requests under a real relation lock
+        run: node scripts/server-rust/postgres-connections.mjs --report .qa/rust-server/postgres-connections.json
       - name: Actual publication cursor accounting and rejection controls
         run: node --import tsx scripts/server-rust/live-cursor-contract.mjs --report .qa/rust-server/json-cursor-contract.json
       - name: Deep and malformed JSON with native PGlite

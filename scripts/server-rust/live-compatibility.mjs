@@ -240,7 +240,10 @@ try {
               passed: true,
             });
             if (databaseMode === "postgres") {
-              observations.cases.push(await liveAuthorizationFault(fixture));
+              const { diagnostics, ...contract } =
+                await liveAuthorizationFault(fixture);
+              observations.authorizationFault = diagnostics;
+              observations.cases.push(contract);
             }
           }
           // Trigger a real committed worker enrollment, then verify Live observes it

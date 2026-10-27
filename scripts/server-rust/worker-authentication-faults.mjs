@@ -6,6 +6,7 @@ import { createRequire } from "node:module";
 import { performance } from "node:perf_hooks";
 import { setTimeout as delay } from "node:timers/promises";
 import { SocketProbe } from "./worker-sockets.mjs";
+import { workerAuthenticationShutdown } from "./worker-authentication-shutdown.mjs";
 
 const require = createRequire(
   new URL("../../cantrip_server/package.json", import.meta.url),
@@ -53,12 +54,40 @@ export async function workerAuthenticationFaults(
     // A lastUsedAt write is not proof that all 32 queued authentications and
     // owner lookups have finished and released their handshake permits.
     if (cases.length) {
+      const server = fixture.server;
+      let diagnostic;
+      let activity;
+      const diagnosticTimer = setTimeout(() => {
+        diagnostic = observer`
+          SELECT pid,state,wait_event_type,wait_event,query,pg_blocking_pids(pid) AS blockers
+          FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid()
+        `.then(
+          (rows) => (activity = rows),
+          (error) => (activity = { error: error.message }),
+        );
+      }, 1000);
+      let phase = "closing";
       try {
         await fixture.close();
+        clearTimeout(diagnosticTimer);
+        await diagnostic;
+        phase = "starting";
         await fixture.start();
       } catch (error) {
+        clearTimeout(diagnosticTimer);
+        await diagnostic;
+        report.shutdownFailure = {
+          nextCase: label,
+          phase,
+          activity,
+          exitCode: server.child.exitCode,
+          signalCode: server.child.signalCode,
+        };
         error.message = `${fixture.kind}/restarting before ${label}: ${error.message}`;
         throw error;
+      } finally {
+        clearTimeout(diagnosticTimer);
+        await diagnostic;
       }
     }
     const held = deferred(),
@@ -123,6 +152,15 @@ export async function workerAuthenticationFaults(
     }
   }
   try {
+    report.shutdown = {};
+    await workerAuthenticationShutdown(
+      fixture,
+      lockSql,
+      observer,
+      credential,
+      hash,
+      report.shutdown,
+    );
     await locked(
       "32 authentication slots remain occupied after a pending socket closes",
       async ({ active, pending }) => {

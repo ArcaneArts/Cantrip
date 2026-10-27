@@ -12,6 +12,7 @@ axum = { version = "0.8", features = ["ws"] }
 base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4", features = ["derive", "env"] }
+deadpool = { version = "=0.12.3", default-features = false, features = ["managed"] }
 futures = "0.3"
 getrandom = { version = "0.3", features = ["std"] }
 native-tls = "0.2"
