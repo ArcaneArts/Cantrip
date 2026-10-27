@@ -20,23 +20,7 @@ pub(crate) fn scope_key(scope: &Value) -> JsString {
     JsString::new(units)
 }
 pub(crate) fn datetime_millis(value: &Value) -> Option<i64> {
-    // Protocol datetime accepts optional seconds and arbitrary fractions. Date
-    // supplies seconds and truncates fractions to milliseconds before comparing.
-    let (day, time) = value.as_str()?.split_once('T')?;
-    let time = time.strip_suffix('Z')?;
-    let (clock, fraction) = time.split_once('.').unwrap_or((time, ""));
-    let clock = if clock.len() == 5 {
-        format!("{clock}:00")
-    } else {
-        clock.to_owned()
-    };
-    let mut millis = fraction.chars().take(3).collect::<String>();
-    while millis.len() < 3 {
-        millis.push('0');
-    }
-    chrono::DateTime::parse_from_rfc3339(&format!("{day}T{clock}.{millis}Z"))
-        .ok()
-        .map(|v| v.timestamp_millis())
+    super::js_date::parse(value.as_js_string()?)
 }
 fn bounded_object(root: Option<&Value>) -> Option<String> {
     let root = root.filter(|v| v.is_object())?;

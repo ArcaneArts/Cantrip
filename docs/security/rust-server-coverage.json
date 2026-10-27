@@ -415,7 +415,7 @@
           "scripts/server-rust/worker-client-compatibility.mjs"
         ],
         "remaining": [
-          "Generic command/event/notification schema coverage and full worker runtime acceptance remain required."
+          "Outgoing command schemas, resource execution/persistence and full worker runtime acceptance remain required; full incoming envelope validation is covered separately."
         ]
       }
     ]
@@ -671,9 +671,12 @@
       "evidence": [
         "cantrip_server_rs/tests/wire_contracts.rs",
         "cantrip_server_rs/tests/json_depth.rs",
-        "scripts/server-rust/json-compatibility.mjs"
+        "scripts/server-rust/json-compatibility.mjs",
+        "cantrip_server_rs/tests/worker_wire_contracts.rs",
+        "scripts/server-rust/worker-wire-oracle.mjs",
+        "packages/protocol/src/json-message.test.ts"
       ],
-      "validatedSubset": "46 actual protocol exports; 37,396 validation comparisons and 69,647 JavaScript JSON round trips. Includes App Live client/server messages, bounded event payloads, client-control refinements, project wire summaries/lists and model configuration. Development export rejects unregistered checks/transforms; default URL behavior is covered, not arbitrary URL options. Native JSON tree construction, clone, equality, serialization and drop now use explicit stacks. Small-stack tests exercise 32,768 nested arrays and 12,000 alternating object/array pairs. Actual anonymous/password HTTP and App Live comparisons cover accepted, stripped, rejected, malformed, poisoned, numeric-overflow and raw UTF-16 inputs.",
+      "validatedSubset": "46 actual protocol exports; 37,396 validation comparisons and 69,647 JavaScript JSON round trips. Includes App Live client/server messages, bounded event payloads, client-control refinements, project wire summaries/lists and model configuration. Development export rejects unregistered checks/transforms; default URL behavior is covered, not arbitrary URL options. Native JSON tree construction, clone, equality, serialization and drop now use explicit stacks. Small-stack tests exercise 32,768 nested arrays and 12,000 alternating object/array pairs. Actual anonymous/password HTTP and App Live comparisons cover accepted, stripped, rejected, malformed, poisoned, numeric-overflow and raw UTF-16 inputs. Current ingress branch: 48 actual schema exports with 59,830 base validation comparisons, plus 22,697 complete incoming worker-envelope comparisons including all 142 reachable union alternatives across 23 union identities, 31 explicitly registered custom check identities and eight recursive JSON schema sites. Recursive JSON tests compare 8,228 bare/nested value/error cases and bounded-stack deep inputs. Date.parse comparisons use 4,456 actual Node values in each of 15 timezone configurations, including the actual system default, DST folds/gaps, invalid/case-sensitive zone IDs and extreme years. The shared TypeScript decoder rejects validator exceptions without taking down its socket service. These are local results; later edits and supported platforms require fresh results.",
       "remaining": [
         "Remaining protocol schemas, coercion/refinement boundaries and authenticated/hash serialization across all domains. Selected HTTP/WS paths and nesting examples do not establish all-server parser or schema parity."
       ]
@@ -685,12 +688,15 @@
         "scripts/server-rust/worker-handshakes.mjs",
         "scripts/server-rust/worker-sockets.mjs",
         "scripts/server-rust/worker-authentication-faults.mjs",
-        "scripts/server-rust/worker-client-compatibility.mjs"
+        "scripts/server-rust/worker-client-compatibility.mjs",
+        "cantrip_server_rs/tests/worker_ingress.rs",
+        "cantrip_server_rs/tests/worker_wire_contracts.rs",
+        "scripts/server-rust/worker-ingress-compatibility.mjs"
       ],
-      "scope": "Native HTTP/1 upgrade (versions 8/13, ready v1/v2 and legacy), credential authentication, bounded pre-authentication buffering/capacity, close-frame transport cleanup, response correlation, local reconnect/deadline/event callback sequencing and credential delivery/revocation. Actual browser APIs and unchanged worker components exercise enrollment/rotation/persistence/reconnect/revocation.",
+      "scope": "Native HTTP/1 upgrade (versions 8/13, ready v1/v2 and legacy), credential authentication, bounded pre-authentication buffering/capacity, close-frame transport cleanup, response correlation, local reconnect/deadline/event callback sequencing and credential delivery/revocation. Actual browser APIs and unchanged worker components exercise enrollment/rotation/persistence/reconnect/revocation. Full incoming text-envelope validation, ordered events and worker-scoped notification listeners now use the production bridge. Native notification prefixes execute in registration order; asynchronous completions are independent, and subscriptions survive reconnect. A loopback-only observer fixture compares actual HTTP/WS routing through unchanged worker transport components on all three stores locally. This does not implement the command resource domains.",
       "remaining": [
         "App Live transport and ordered worker/session invalidations are integrated locally. Other resource publishers, usage accounting, WorkerLink and shared coordination remain unported.",
-        "Full command/event/notification schema validation, domain event persistence and binary relays.",
+        "Outgoing command schema validation, domain event/notification persistence and consumers, binary relays, plus observed platform acceptance for the new ingress milestone.",
         "Shared coordination, resource reconciliation and execution recovery hooks.",
         "Whole app UI and full worker index/runtime acceptance, beyond the controlled credential command handler."
       ]
@@ -712,7 +718,7 @@
       "scope": "Native /api/live HTTP upgrade, configured origin/principal, first-offered non-worker subprotocol, per-account capacity through actual transport completion, first/last session presence, periodic validation, synchronous post-commit revocation, full project DTO and chat-context authorization reads, worker invalidations, FIFO final errors/close, bounded IO cleanup and actual process shutdown draining. Core oracle compares 44 scenarios/688 steps; repository suites compare project mapping and scope/session activity on all three stores. Real HTTP/WS covers anonymous/password/accounts/capacity, reconnect replay, invalid frames, committed worker state, stalled close acknowledgment and shutdown; external PostgreSQL also verifies an actually locked authorization query cannot stall transport ping/close. Chromium exercises the actual AppLiveClient with the existing worker components; its browser adapter maps internal close reasons to browser-permitted private-use codes. This does not establish full UI/domain/runtime or packaged-platform acceptance.",
       "remaining": [
         "Complete remaining domain publishers, task routing, usage/storage accounting, external coordination and shared Redis operation.",
-        "Complete full worker command/event/notification validation, binary/domain relays, execution and recovery integration.",
+        "Complete outgoing worker command validation, domain persistence and consumers, binary/domain relays, execution and recovery integration. Incoming envelopes now have local differential evidence; current platform acceptance is still required.",
         "Exercise whole app UI and full worker index/runtime across the supported packaging/deployment/platform matrix.",
         "Complete remaining schema, coercion/refinement and authenticated/hash boundaries across the server; the new parser socket cases do not prove all-domain parity."
       ]
@@ -839,6 +845,15 @@
       "conclusion": "success; all 93 actual JSON reports parsed and inspected",
       "scope": "PostgreSQL pooling/TLS and closed-worker authentication shutdown; all eleven TLS cases and both actual Node/Rust 32 committed usage writes on each platform. Does not establish later process ownership changes or full replacement.",
       "observedHead": "50339edbd35e9aeaeccd2cbe257470ad6fdd9095"
+    },
+    {
+      "pullRequest": "https://github.com/ArcaneArts/Cantrip/pull/2285",
+      "commit": "140e94b3547da7cf1ab5784962fcd2f0ad86a4d4",
+      "observedHead": "9facff14258140024c067fe91c8051e058a746de",
+      "observedRun": "https://github.com/ArcaneArts/Cantrip/actions/runs/40441864990",
+      "platforms": ["ubuntu-24.04", "macos-15", "windows-2025"],
+      "conclusion": "success; all 96 actual JSON reports parsed and inspected",
+      "scope": "Private PostgreSQL ownership and retained restart after normal shutdown and abrupt parent death. Eight lifecycle cases on Unix and three Windows Job Object cases; all prior storage/HTTP/WS/browser-component suites passed. Does not establish new worker-ingress changes, packaged artifacts or complete replacement."
     }
   ]
 }

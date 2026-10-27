@@ -5,6 +5,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { format, resolveConfig } from "prettier";
+import { registerWorkerContracts } from "./worker-contracts.mjs";
 
 export const contractRoots = [
   "accountRegistrationSchema",
@@ -53,6 +54,8 @@ export const contractRoots = [
   "projectWireSummarySchema",
   "projectWireListSchema",
   "modelConfigurationSchema",
+  "agentInteractionProvenanceSchema",
+  "workerServerEnvelopeSchema",
 ];
 
 const refinements = new Map([
@@ -81,9 +84,16 @@ function registerChecks(schema, tags) {
   );
   if (checks.length !== tags.length)
     throw new Error(
-      "Live refinement registration no longer matches the protocol",
+      "Native refinement registration no longer matches the protocol",
     );
-  checks.forEach((check, index) => explicitChecks.set(check, tags[index]));
+  checks.forEach((check, index) => {
+    const previous = explicitChecks.get(check);
+    if (previous && previous !== tags[index])
+      throw new Error(
+        "Conflicting native refinement registration: " + previous,
+      );
+    explicitChecks.set(check, tags[index]);
+  });
 }
 registerChecks(protocol.clientControlCapabilitiesSchema, [
   "live-control-capabilities-unique",
@@ -108,6 +118,7 @@ registerChecks(protocol.encryptedPrivateDisplayLabelSchema, [
   "private-label-envelope",
 ]);
 registerChecks(protocol.modelConfigurationSchema, ["model-configuration"]);
+const recursiveJson = registerWorkerContracts(registerChecks);
 const transforms = new Map([
   [protocol.appLiveEventPayloadSchema._zod.def.out, "live-json-object"],
 ]);
@@ -140,6 +151,22 @@ const allowedChecks = new Set([
   "string_format",
 ]);
 
+function constantMessage(error, where) {
+  if (error === undefined) return undefined;
+  // Zod normalizeParams wraps configured string messages in these two
+  // closures. Arbitrary error maps require an explicit native implementation.
+  if (typeof error === "string") return error;
+  if (
+    typeof error !== "function" ||
+    !["() => params", "() => params.error"].includes(error.toString())
+  )
+    throw new Error("Unimplemented native error map: " + where);
+  const message = error({});
+  if (typeof message !== "string")
+    throw new Error("Expected a constant protocol error message: " + where);
+  return message;
+}
+
 export function buildContractManifest() {
   const nodes = [];
   const ids = new Map();
@@ -158,6 +185,11 @@ export function buildContractManifest() {
     if (schema._zod.optin === "optional") node.optionalIn = true;
     if (schema._zod.optout === "optional") node.optionalOut = true;
     nodes.push(node);
+    if (recursiveJson.has(schema)) {
+      node.type = "json";
+      node.checks = [];
+      return id;
+    }
     const def = schema._zod.def;
     if (!allowedTypes.has(def.type))
       throw new Error(`Unimplemented native schema type ${def.type}: ${where}`);
@@ -205,7 +237,7 @@ export function buildContractManifest() {
             ? "canonical-base64url"
             : (explicitChecks.get(check) ?? refinements.get(schema));
         if (!tag) throw new Error(`Unimplemented native refinement: ${where}`);
-        const message = c.error?.({});
+        const message = constantMessage(c.error, where);
         return {
           check: "refinement",
           tag,
@@ -218,6 +250,8 @@ export function buildContractManifest() {
       if (c.format === "url" && (c.normalize || c.hostname || c.protocol))
         throw new Error(`Unimplemented native URL options: ${where}`);
       const result = {};
+      const message = constantMessage(c.error, where);
+      if (message !== undefined) result.message = message;
       for (const key of [
         "check",
         "format",

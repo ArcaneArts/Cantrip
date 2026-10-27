@@ -1,5 +1,7 @@
 //! Local command correlation and reconnect continuity. Domain event consumers
 //! attach async handlers; responses complete only after preceding events.
+use super::notifications::Notifications;
+pub use super::notifications::{NotificationHandler, NotificationSubscription};
 use crate::wire::{self, JsString, Value};
 use std::{
     collections::HashMap,
@@ -122,6 +124,7 @@ pub struct WorkerBridge {
     routed: AtomicU64,
     succeeded: AtomicU64,
     failed: AtomicU64,
+    notifications: Arc<Notifications>,
 }
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -152,6 +155,7 @@ impl WorkerBridge {
             routed: AtomicU64::new(0),
             succeeded: AtomicU64::new(0),
             failed: AtomicU64::new(0),
+            notifications: Arc::new(Notifications::default()),
         })
     }
     fn finish(&self, pending: &Pending, result: Outcome) {
@@ -309,6 +313,9 @@ impl WorkerBridge {
         let Ok(response) = wire::parse("workerResponseEnvelopeSchema", Some(input)) else {
             return;
         };
+        self.complete_response(worker, peer, &response);
+    }
+    fn complete_response(&self, worker: &str, peer: &Peer, response: &Value) {
         let Some(id) = response["requestId"].as_str() else {
             return;
         };
@@ -335,6 +342,58 @@ impl WorkerBridge {
             })
         };
         let _ = pending.delivery.send(Delivery::Response(result));
+    }
+    /// Admission from the actual worker transport. Every accepted envelope is
+    /// normalized by the authoritative generated contract before dispatch.
+    pub fn receive(&self, worker: &str, peer: &Peer, text: &str) {
+        if self
+            .state
+            .lock()
+            .unwrap()
+            .peers
+            .get(worker)
+            .is_none_or(|current| current.id != peer.id)
+        {
+            return;
+        }
+        let Ok(input) = serde_json::from_str::<Value>(text) else {
+            return;
+        };
+        let Ok(envelope) = wire::parse("workerServerEnvelopeSchema", Some(&input)) else {
+            return;
+        };
+        match envelope["kind"].as_str() {
+            Some("response") => self.complete_response(worker, peer, &envelope),
+            Some("event") => {
+                if let Some(id) = envelope["requestId"].as_str() {
+                    self.event(worker, peer, id, envelope["event"].clone());
+                }
+            }
+            Some("notification") => {
+                let group = {
+                    let state = self.state.lock().unwrap();
+                    if state
+                        .peers
+                        .get(worker)
+                        .is_none_or(|current| current.id != peer.id)
+                    {
+                        return;
+                    }
+                    self.notifications.group(worker)
+                };
+                if let Some(group) = group {
+                    Notifications::deliver(group, envelope["notification"].clone());
+                }
+            }
+            _ => {}
+        }
+    }
+    pub fn subscribe_notifications(
+        &self,
+        worker: &str,
+        handler: NotificationHandler,
+    ) -> NotificationSubscription {
+        self.notifications.subscribe(worker, handler)
     }
     // The caller validates each domain event before dispatching it here.
     pub fn event(&self, worker: &str, peer: &Peer, id: &str, event: Value) {
@@ -472,5 +531,6 @@ impl WorkerBridge {
                 Some((1001, "Server shutting down")),
             );
         }
+        self.notifications.clear();
     }
 }

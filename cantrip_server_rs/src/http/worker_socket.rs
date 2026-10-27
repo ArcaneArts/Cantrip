@@ -336,14 +336,11 @@ fn receive(
     peer: &Peer,
     message: Message,
 ) {
-    if let Message::Text(text) = message
-        && let Ok(value) = serde_json::from_str::<Value>(&text)
-        && value["kind"] == "response"
-    {
-        bridge.response(worker, peer, &value);
+    if let Message::Text(text) = message {
+        bridge.receive(worker, peer, &text);
     }
-    // Domain event/notification validation, persistence and binary relays are
-    // completed with their resource/execution/streaming domains in the ledger.
+    // Binary relays and durable domain consumers remain in their resource,
+    // execution and streaming milestones.
 }
 pub(super) fn routes() -> Router<Arc<AuthService>> {
     Router::new().route("/api/internal/workers/connect", get(connect))

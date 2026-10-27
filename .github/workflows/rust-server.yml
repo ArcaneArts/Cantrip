@@ -109,6 +109,8 @@ jobs:
         # Each integration file initializes PGlite's WASM runtime and full SQL
         # schema. Avoid competing cold initializations on the hosted runners.
         run: pnpm --filter @cantrip/server exec vitest run test/worker-authentication-shutdown.test.ts test/worker-notification-connect-order.test.ts test/buffered-worker-socket.test.ts test/websocket-subprotocol.test.ts --maxWorkers=1
+      - name: Shared message decoding isolates validator exceptions
+        run: pnpm --filter @cantrip/protocol exec vitest run src/json-message.test.ts
       - run: cargo fmt --manifest-path cantrip_server_rs/Cargo.toml -- --check
       - run: node scripts/server-rust/cargo.mjs clippy --all-targets -- -D warnings
       - name: Configuration parity, existing schema, all storage modes and restart
@@ -167,6 +169,12 @@ jobs:
         run: node --import tsx scripts/server-rust/worker-compatibility.mjs --database bundled-postgres --report .qa/rust-server/worker-bundled-http.json
       - name: Worker control with external PostgreSQL and real authentication lock faults
         run: node --import tsx scripts/server-rust/worker-compatibility.mjs --database postgres --report .qa/rust-server/worker-external-http.json
+      - name: Actual worker event and notification ingress with PGlite
+        run: node --import tsx scripts/server-rust/worker-ingress-compatibility.mjs --report .qa/rust-server/worker-ingress-pglite.json
+      - name: Actual worker event and notification ingress with private PostgreSQL
+        run: node --import tsx scripts/server-rust/worker-ingress-compatibility.mjs --database bundled-postgres --report .qa/rust-server/worker-ingress-bundled.json
+      - name: Actual worker event and notification ingress with external PostgreSQL
+        run: node --import tsx scripts/server-rust/worker-ingress-compatibility.mjs --database postgres --report .qa/rust-server/worker-ingress-external.json
       - name: Actual Chromium APIs, Live client and unchanged worker components with PGlite
         run: node --import tsx scripts/server-rust/worker-client-compatibility.mjs --report .qa/rust-server/worker-client-pglite.json
       - name: Actual Chromium APIs, Live client and unchanged worker components with private PostgreSQL
