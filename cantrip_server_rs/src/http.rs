@@ -17,6 +17,8 @@ mod body;
 mod encryption;
 mod live_socket;
 mod middleware;
+mod on_response;
+mod policies;
 mod sessions;
 mod usage;
 mod usage_hooks;
@@ -97,6 +99,7 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(encryption::routes())
         .merge(account::routes())
         .merge(usage::routes())
+        .merge(policies::routes())
         .merge(workers::routes())
         .merge(worker_socket::routes())
         .merge(live_socket::routes())

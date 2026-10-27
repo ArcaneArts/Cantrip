@@ -31,6 +31,34 @@ pub(super) fn apply(
     };
     let wrapper = &value["passwordWrappedMasterKey"];
     match tag {
+        "policy-update-fields" => {
+            if ["content", "enabled", "mandatory", "audience"]
+                .iter()
+                .all(|name| value.get(name).is_none())
+            {
+                custom(&[], "At least one encrypted policy field is required.");
+            }
+        }
+        "policy-assignment-references" => {
+            let policies = value["policies"]
+                .as_array()
+                .ok_or(ValidationError::Operation)?;
+            let direct = value["directPolicyIds"]
+                .as_array()
+                .ok_or(ValidationError::Operation)?;
+            for (index, id) in direct.iter().enumerate() {
+                if !policies.iter().any(|policy| policy["id"] == *id) {
+                    let mut at = path.to_vec();
+                    at.extend([json!("directPolicyIds"), json!(index)]);
+                    result.issue(
+                        json!({"code":"custom"}),
+                        &at,
+                        "Direct assignments must reference a listed policy.".into(),
+                        false,
+                    );
+                }
+            }
+        }
         "usage-history-window" => {
             if let (Some(from), Some(to)) = (
                 super::live::datetime_millis(&value["from"]),

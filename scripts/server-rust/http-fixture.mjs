@@ -129,7 +129,12 @@ export class HttpFixture {
         `Invalid timestamp: ${value}`,
       );
       assert.ok(
-        Date.parse(value) <= Date.now() + (key === "expiresAt" ? 301000 : 1000),
+        Date.parse(value) <=
+          Date.now() +
+            (key === "expiresAt"
+              ? Number(this.environment.CANTRIP_SESSION_TTL_SECONDS) * 1000 +
+                1000
+              : 1000),
         `Future timestamp: ${value}`,
       );
       // Static client-provided metadata is never a generated timestamp.

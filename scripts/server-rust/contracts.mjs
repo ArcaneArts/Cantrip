@@ -63,6 +63,19 @@ export const contractRoots = [
   "accountResourceUsageHistorySchema",
   "accountLiveTrafficQuerySchema",
   "accountLiveTrafficSchema",
+  "policyTemplateListSchema",
+  "policyTemplateDetailSchema",
+  "encryptedPolicyCreateSchema",
+  "encryptedPolicyUpdateSchema",
+  "encryptedPolicyBootstrapSchema",
+  "policyWireDetailSchema",
+  "policyWireListSchema",
+  "policyOrderUpdateSchema",
+  "policyAssignmentUpdateSchema",
+  "policyAssignmentWireListSchema",
+  "policyDeleteSchema",
+  "effectivePolicyWireListSchema",
+  "standalonePolicyWireListSchema",
 ];
 
 const refinements = new Map([
@@ -134,6 +147,24 @@ registerChecks(protocol.accountResourceUsageHistoryQuerySchema, [
 ]);
 registerChecks(protocol.accountLiveTrafficQuerySchema, [
   "usage-live-traffic-query",
+]);
+registerChecks(protocol.encryptedPolicySummaryContentSchema, [
+  "worker-command-protected-bytes:8192",
+]);
+registerChecks(protocol.encryptedPolicyBodyContentSchema, [
+  "worker-command-protected-bytes:131072",
+]);
+registerChecks(protocol.encryptedPolicyUpdateSchema, ["policy-update-fields"]);
+for (const schema of [
+  protocol.policyOrderUpdateSchema,
+  protocol.policyAssignmentUpdateSchema,
+])
+  registerChecks(schema.shape.policyIds, ["worker-command-unique"]);
+registerChecks(protocol.policyAssignmentWireListSchema.shape.directPolicyIds, [
+  "worker-command-unique",
+]);
+registerChecks(protocol.policyAssignmentWireListSchema, [
+  "policy-assignment-references",
 ]);
 const recursiveJson = registerWorkerContracts(registerChecks);
 const commandContracts = registerWorkerCommandContracts(registerCustom);

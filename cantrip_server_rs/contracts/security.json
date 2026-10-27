@@ -54,7 +54,20 @@
     "accountResourceUsageHistoryQuerySchema": 5266,
     "accountResourceUsageHistorySchema": 5272,
     "accountLiveTrafficQuerySchema": 5303,
-    "accountLiveTrafficSchema": 5309
+    "accountLiveTrafficSchema": 5309,
+    "policyTemplateListSchema": 5335,
+    "policyTemplateDetailSchema": 5344,
+    "encryptedPolicyCreateSchema": 5346,
+    "encryptedPolicyUpdateSchema": 5357,
+    "encryptedPolicyBootstrapSchema": 5366,
+    "policyWireDetailSchema": 5370,
+    "policyWireListSchema": 5383,
+    "policyOrderUpdateSchema": 5392,
+    "policyAssignmentUpdateSchema": 5396,
+    "policyAssignmentWireListSchema": 5400,
+    "policyDeleteSchema": 5406,
+    "effectivePolicyWireListSchema": 4732,
+    "standalonePolicyWireListSchema": 4753
   },
   "nodes": [
     {
@@ -30457,6 +30470,502 @@
     { "type": "literal", "values": [false], "checks": [] },
     { "type": "literal", "values": [false], "checks": [] },
     { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "array",
+      "name": "policyTemplateListSchema",
+      "element": 5336,
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "policyTemplateSummarySchema",
+      "shape": {
+        "templateKey": 5337,
+        "name": 5338,
+        "suggestedPolicyKey": 5337,
+        "summary": 5339,
+        "version": 5340,
+        "suggestedDefault": 5341,
+        "suggestedEnabled": 5342,
+        "suggestedMandatory": 5343
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "name": "policyKeySchema",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 80, "when": "length" },
+        {
+          "message": "Policy keys use lowercase letters, numbers, and single interior dashes.",
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "flags": "u",
+          "displayPattern": "/^[a-z0-9]+(?:-[a-z0-9]+)*$/u"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "name": "policyNameSchema",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 120, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "name": "policySummaryTextSchema",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 1000, "when": "length" }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "object",
+      "name": "policyTemplateDetailSchema",
+      "shape": {
+        "templateKey": 5337,
+        "name": 5338,
+        "suggestedPolicyKey": 5337,
+        "summary": 5339,
+        "version": 5340,
+        "suggestedDefault": 5341,
+        "suggestedEnabled": 5342,
+        "suggestedMandatory": 5343,
+        "bodyMarkdown": 5345
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "name": "policyBodyMarkdownSchema",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100000, "when": "length" }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "encryptedPolicyCreateSchema",
+      "shape": {
+        "enabled": 5347,
+        "mandatory": 5348,
+        "id": 5349,
+        "audience": 5350,
+        "content": 5352,
+        "templateKey": 5354
+      },
+      "catchall": 5356,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5351,
+      "defaultValue": "ide",
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "resourceAudienceSchema",
+      "values": ["ide", "chat", "both"],
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "policyOpaqueDetailContentSchema",
+      "shape": {
+        "keyBlindIndex": 33,
+        "protectedSummary": 4736,
+        "protectedBody": 4757
+      },
+      "catchall": 5353,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5355,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 5337, "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "encryptedPolicyUpdateSchema",
+      "shape": {
+        "enabled": 5358,
+        "mandatory": 5359,
+        "audience": 5360,
+        "rowVersion": 5361,
+        "content": 5362
+      },
+      "catchall": 5365,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "policy-update-fields",
+          "message": "At least one encrypted policy field is required."
+        }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5347,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5348,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5351,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5363,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "protectedSummary": 4736, "protectedBody": 4757 },
+      "catchall": 5364,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "encryptedPolicyBootstrapSchema",
+      "shape": { "expectedBootstrapVersion": 5367, "policies": 5368 },
+      "catchall": 5369,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 5346,
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "policyWireDetailSchema",
+      "shape": {
+        "id": 5371,
+        "content": 5352,
+        "audience": 5372,
+        "enabled": 5373,
+        "mandatory": 5374,
+        "position": 5375,
+        "templateKey": 5376,
+        "rowVersion": 5377,
+        "workspaceAssignmentCount": 5378,
+        "projectAssignmentCount": 5379,
+        "createdAt": 5380,
+        "updatedAt": 5381
+      },
+      "catchall": 5382,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5351,
+      "defaultValue": "ide",
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "nullable", "innerType": 5337, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "policyWireListSchema",
+      "shape": {
+        "bootstrapVersion": 5384,
+        "collectionVersion": 5385,
+        "policies": 5386
+      },
+      "catchall": 5391,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 5387,
+      "checks": [{ "check": "max_length", "maximum": 500, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "policyWireSummarySchema",
+      "shape": {
+        "id": 5371,
+        "content": 5388,
+        "audience": 5372,
+        "enabled": 5373,
+        "mandatory": 5374,
+        "position": 5375,
+        "templateKey": 5376,
+        "rowVersion": 5377,
+        "workspaceAssignmentCount": 5378,
+        "projectAssignmentCount": 5379,
+        "createdAt": 5380,
+        "updatedAt": 5381
+      },
+      "catchall": 5390,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "policyOpaqueSummaryContentSchema",
+      "shape": { "keyBlindIndex": 33, "protectedSummary": 4736 },
+      "catchall": 5389,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "policyOrderUpdateSchema",
+      "shape": { "collectionVersion": 5393, "policyIds": 5394 },
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 5395,
+      "checks": [
+        { "check": "max_length", "maximum": 500, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "worker-command-unique",
+          "message": "Policy order cannot contain duplicate IDs."
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "policyAssignmentUpdateSchema",
+      "shape": { "collectionVersion": 5397, "policyIds": 5398 },
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 5399,
+      "checks": [
+        { "check": "max_length", "maximum": 500, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "worker-command-unique",
+          "message": "Policy assignments cannot contain duplicate IDs."
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "policyAssignmentWireListSchema",
+      "shape": {
+        "collectionVersion": 5401,
+        "policies": 5402,
+        "directPolicyIds": 5403
+      },
+      "catchall": 5405,
+      "checks": [
+        { "check": "refinement", "tag": "policy-assignment-references" }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 5387,
+      "checks": [{ "check": "max_length", "maximum": 500, "when": "length" }]
+    },
+    {
+      "type": "array",
+      "element": 5404,
+      "checks": [
+        { "check": "max_length", "maximum": 500, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "worker-command-unique",
+          "message": "Direct policy assignments cannot contain duplicate IDs."
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "policyDeleteSchema",
+      "shape": { "rowVersion": 5407 },
+      "catchall": 5408,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
     { "type": "never", "checks": [] }
   ]
 }
