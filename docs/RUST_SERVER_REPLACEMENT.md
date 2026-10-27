@@ -2,6 +2,16 @@
 
 Status: **implementation in progress; not a deployable replacement**.
 
+The outgoing worker envelope now has native validation and normalization before
+bridge admission. Its development oracle exercises the actual TypeScript
+protocol for every command type and reachable union alternative; large boundary
+cases and real HTTP/WS admission comparisons supplement malformed mutations.
+Local admission comparisons pass on all three storage modes with unchanged
+worker transport components and controlled handlers. The current outgoing
+milestone still requires observed supported-platform results.
+This is wire-contract coverage; resource-domain and execution behavior remain
+in scope below.
+
 The full objective is a Node-free Rust server supporting desktop-packaged and
 standalone operation, with PGlite, bundled private PostgreSQL, and external
 PostgreSQL. The existing app, worker, CLI, browser and mobile contracts remain

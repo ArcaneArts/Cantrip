@@ -674,7 +674,9 @@
         "scripts/server-rust/json-compatibility.mjs",
         "cantrip_server_rs/tests/worker_wire_contracts.rs",
         "scripts/server-rust/worker-wire-oracle.mjs",
-        "packages/protocol/src/json-message.test.ts"
+        "packages/protocol/src/json-message.test.ts",
+        "cantrip_server_rs/tests/worker_command_contracts.rs",
+        "cantrip_server_rs/tests/worker_request_admission.rs"
       ],
       "validatedSubset": "46 actual protocol exports; 37,396 validation comparisons and 69,647 JavaScript JSON round trips. Includes App Live client/server messages, bounded event payloads, client-control refinements, project wire summaries/lists and model configuration. Development export rejects unregistered checks/transforms; default URL behavior is covered, not arbitrary URL options. Native JSON tree construction, clone, equality, serialization and drop now use explicit stacks. Small-stack tests exercise 32,768 nested arrays and 12,000 alternating object/array pairs. Actual anonymous/password HTTP and App Live comparisons cover accepted, stripped, rejected, malformed, poisoned, numeric-overflow and raw UTF-16 inputs. Current ingress branch: 48 actual schema exports with 59,830 base validation comparisons, plus 22,697 complete incoming worker-envelope comparisons including all 142 reachable union alternatives across 23 union identities, 31 explicitly registered custom check identities and eight recursive JSON schema sites. Recursive JSON tests compare 8,228 bare/nested value/error cases and bounded-stack deep inputs. Date.parse comparisons use 4,456 actual Node values in each of 15 timezone configurations, including the actual system default, DST folds/gaps, invalid/case-sensitive zone IDs and extreme years. The shared TypeScript decoder rejects validator exceptions without taking down its socket service. These are local results; later edits and supported platforms require fresh results.",
       "remaining": [
@@ -691,12 +693,14 @@
         "scripts/server-rust/worker-client-compatibility.mjs",
         "cantrip_server_rs/tests/worker_ingress.rs",
         "cantrip_server_rs/tests/worker_wire_contracts.rs",
-        "scripts/server-rust/worker-ingress-compatibility.mjs"
+        "scripts/server-rust/worker-ingress-compatibility.mjs",
+        "cantrip_server_rs/tests/worker_command_contracts.rs",
+        "cantrip_server_rs/tests/worker_request_admission.rs"
       ],
       "scope": "Native HTTP/1 upgrade (versions 8/13, ready v1/v2 and legacy), credential authentication, bounded pre-authentication buffering/capacity, close-frame transport cleanup, response correlation, local reconnect/deadline/event callback sequencing and credential delivery/revocation. Actual browser APIs and unchanged worker components exercise enrollment/rotation/persistence/reconnect/revocation. Full incoming text-envelope validation, ordered events and worker-scoped notification listeners now use the production bridge. Native notification prefixes execute in registration order; asynchronous completions are independent, and subscriptions survive reconnect. A loopback-only observer fixture compares actual HTTP/WS routing through unchanged worker transport components on all three stores locally. This does not implement the command resource domains.",
       "remaining": [
         "App Live transport and ordered worker/session invalidations are integrated locally. Other resource publishers, usage accounting, WorkerLink and shared coordination remain unported.",
-        "Outgoing command schema validation, domain event/notification persistence and consumers, binary relays, plus observed platform acceptance for the new ingress milestone.",
+        "Domain event/notification persistence and consumers, binary relays and supported-platform acceptance for the new outgoing command changes. Incoming ingress PR 2286 passed all three platforms.",
         "Shared coordination, resource reconciliation and execution recovery hooks.",
         "Whole app UI and full worker index/runtime acceptance, beyond the controlled credential command handler."
       ]
@@ -718,7 +722,7 @@
       "scope": "Native /api/live HTTP upgrade, configured origin/principal, first-offered non-worker subprotocol, per-account capacity through actual transport completion, first/last session presence, periodic validation, synchronous post-commit revocation, full project DTO and chat-context authorization reads, worker invalidations, FIFO final errors/close, bounded IO cleanup and actual process shutdown draining. Core oracle compares 44 scenarios/688 steps; repository suites compare project mapping and scope/session activity on all three stores. Real HTTP/WS covers anonymous/password/accounts/capacity, reconnect replay, invalid frames, committed worker state, stalled close acknowledgment and shutdown; external PostgreSQL also verifies an actually locked authorization query cannot stall transport ping/close. Chromium exercises the actual AppLiveClient with the existing worker components; its browser adapter maps internal close reasons to browser-permitted private-use codes. This does not establish full UI/domain/runtime or packaged-platform acceptance.",
       "remaining": [
         "Complete remaining domain publishers, task routing, usage/storage accounting, external coordination and shared Redis operation.",
-        "Complete outgoing worker command validation, domain persistence and consumers, binary/domain relays, execution and recovery integration. Incoming envelopes now have local differential evidence; current platform acceptance is still required.",
+        "Complete domain persistence and consumers, binary/domain relays, execution and recovery integration. Incoming ingress PR 2286 passed all three platforms; outgoing command changes need fresh acceptance.",
         "Exercise whole app UI and full worker index/runtime across the supported packaging/deployment/platform matrix.",
         "Complete remaining schema, coercion/refinement and authenticated/hash boundaries across the server; the new parser socket cases do not prove all-domain parity."
       ]
@@ -785,6 +789,48 @@
         "Exercise packaged assets and desktop/service/container supervision with the supported deployment matrix.",
         "Complete larger-data startup/failure recovery and Windows pre-readiness initialization-interruption coverage."
       ]
+    },
+    "outgoingWorkerContracts": {
+      "status": "implemented-pending-platform-acceptance",
+      "implementation": [
+        "cantrip_server_rs/src/wire/worker_command.rs",
+        "cantrip_server_rs/src/workers/bridge.rs"
+      ],
+      "evidence": [
+        "cantrip_server_rs/tests/worker_command_contracts.rs",
+        "cantrip_server_rs/tests/worker_request_admission.rs",
+        "cantrip_server_rs/tests/js_lowercase.rs",
+        "scripts/server-rust/worker-command-oracle.mjs",
+        "scripts/server-rust/worker-command-coverage.mjs",
+        "scripts/server-rust/worker-command-boundaries.mjs",
+        "scripts/server-rust/worker-ingress-compatibility.mjs"
+      ],
+      "validatedSubset": "Local Node/Rust HTTP/WS comparisons pass on PGlite, private PostgreSQL and external PostgreSQL: offline-before-validation, three invalid commands with zero admission metrics and no controlled-handler delivery, normalized Git fields and GitHub prefault filters. Native admission tests pass, as do 83 large ciphertext/run-document/bounded-JSON comparisons. Fixtures cover all 278 command types, 99 additional custom-check identities, 486 options across 51 union schemas, and all 619 enum alternatives in complete enclosing requests. Enclosing refinements reject some enum fixtures; the actual protocol supplies the verdict. The expanded 203,929-case mutation/alternative comparison passed after correcting the native manual-conflict predicate from mode to strategy; its receipt confirms all 99 authoritative custom checks executed. The complete native suite passed, including the existing wire, storage, authentication and bridge regressions after removing a duplicated configured permission-error path. Repository follow-ups passed all 3,899 app tests; the worker suite retained its documented baseline filesystem-notification failure. Supported-platform acceptance remains pending. Command schema coverage is not resource/execution implementation.",
+      "remaining": [
+        "Observe the actual Linux/macOS/Windows compatibility workflow for this milestone.",
+        "Complete resource-domain admission, persistence, command consumers, execution/recovery and actual full worker/runtime flows."
+      ],
+      "localRegression": {
+        "nativeSuite": "passed",
+        "baseProtocolComparisons": 59866,
+        "incomingEnvelopeComparisons": 22700,
+        "outgoingCommandComparisons": 203929,
+        "topLevelCommandFixtures": 278,
+        "largeBoundaryComparisons": 83,
+        "customChecksExecuted": 99,
+        "customChecksRegistered": 99,
+        "unionSchemas": 51,
+        "unionAlternatives": 486,
+        "enumSchemas": 160,
+        "enumAlternatives": 619,
+        "casing": "Every Unicode code point and unpaired UTF-16 unit plus nine contextual cases matched actual Node."
+      },
+      "repositoryValidation": {
+        "rootCheck": "Ran; stopped on ten app import failures caused by missing built @cantrip/glitch. Built the existing package; full app follow-up passed 3899 tests. Server1612 and protocol955 passed in the original run.",
+        "workerFollowup": "2523 passed, one unchanged filesystem-notification failure,133 skipped. Retained clean baseline140e94b35 has the same focused/full failure and identical worker source; SHA256-verified archived evidence compared.",
+        "formatting": "Changed-file Prettier, Rustfmt and diff checks pass. Whole-repository formatting reports11 unchanged source files plus generated native build output; actual HEAD formatting was compared separately.",
+        "fullRootCheckGreen": false
+      }
     }
   },
   "remainingAcceptance": [
@@ -854,6 +900,15 @@
       "platforms": ["ubuntu-24.04", "macos-15", "windows-2025"],
       "conclusion": "success; all 96 actual JSON reports parsed and inspected",
       "scope": "Private PostgreSQL ownership and retained restart after normal shutdown and abrupt parent death. Eight lifecycle cases on Unix and three Windows Job Object cases; all prior storage/HTTP/WS/browser-component suites passed. Does not establish new worker-ingress changes, packaged artifacts or complete replacement."
+    },
+    {
+      "pullRequest": "https://github.com/ArcaneArts/Cantrip/pull/2286",
+      "commit": "9dc406842bd732d4b2758a852a01c59b37dca7a7",
+      "observedHead": "ef4e6b1602e27abda5c2dd215e44b75dfca9045f",
+      "observedRun": "https://github.com/ArcaneArts/Cantrip/actions/runs/40458461599",
+      "platforms": ["ubuntu-24.04", "macos-15", "windows-2025"],
+      "conclusion": "success; all 105 actual JSON reports parsed and inspected",
+      "scope": "Incoming worker envelope validation and ordered event/notification routing through actual production bridges and unchanged transport components on all three storage modes. All three OS jobs completed successfully; each platform supplied 35 reports. Does not validate the newer outgoing command changes or establish complete resource/execution, packaging or replacement acceptance."
     }
   ]
 }

@@ -7,6 +7,7 @@ pub(crate) mod live;
 mod projects;
 mod refinements;
 pub mod value;
+mod worker_command;
 mod worker_contract;
 pub use value::{JsString, Value};
 use value::{Object, json};
@@ -60,6 +61,8 @@ struct Check {
     tag: String,
     #[serde(default)]
     message: Option<String>,
+    #[serde(default)]
+    path: Vec<Value>,
     #[serde(skip)]
     compiled: Option<regress::Regex>,
 }
@@ -86,6 +89,10 @@ struct Node {
     catchall: Option<usize>,
     #[serde(default)]
     options: Vec<usize>,
+    #[serde(default)]
+    items: Vec<usize>,
+    #[serde(default)]
+    rest: Option<usize>,
     #[serde(default)]
     discriminator: Option<String>,
     #[serde(default)]
@@ -222,7 +229,14 @@ impl Contracts {
             "optional" if input.is_none() => {}
             "nullable" if input.is_some_and(Value::is_null) => {}
             "default" if input.is_none() => result.value = Some(node.default_value.clone()),
-            "optional" | "nullable" | "default" => {
+            "prefault" if input.is_none() => {
+                result = self.run(
+                    node.inner_type.expect("prefault contract"),
+                    Some(&node.default_value),
+                    path,
+                )?;
+            }
+            "optional" | "nullable" | "default" | "prefault" | "readonly" | "forward" => {
                 result = self.run(node.inner_type.expect("inner contract"), input, path)?
             }
             "pipe" => {
@@ -390,6 +404,7 @@ impl Contracts {
                 }
             }
             "record" => result = self.record(node, input, path)?,
+            "tuple" => result = self.tuple(node, input, path)?,
             "union" => result = self.union(node, input, path)?,
             _ => return Err(ValidationError::Operation),
         }
@@ -413,6 +428,58 @@ impl Contracts {
                     issue["message"] = json!(message);
                 }
             }
+        }
+        Ok(result)
+    }
+    fn tuple(
+        &self,
+        node: &Node,
+        input: Option<&Value>,
+        path: &[Value],
+    ) -> Result<Parsed, ValidationError> {
+        let mut result = Parsed::new(input.cloned());
+        let Some(array) = input.and_then(Value::as_array) else {
+            result.invalid("tuple", path);
+            return Ok(result);
+        };
+        let minimum = node
+            .items
+            .iter()
+            .rposition(|id| !self.nodes[*id].optional_in)
+            .map_or(0, |index| index + 1);
+        if array.len() < minimum {
+            result.issue(
+                json!({"code":"too_small","minimum":minimum,"inclusive":true,"origin":"array"}),
+                path,
+                format!("Too small: expected array to have >={minimum} items"),
+                true,
+            );
+        } else if node.rest.is_none() && array.len() > node.items.len() {
+            let maximum = node.items.len();
+            result.issue(
+                json!({"code":"too_big","maximum":maximum,"inclusive":true,"origin":"array"}),
+                path,
+                format!("Too big: expected array to have <={maximum} items"),
+                true,
+            );
+        } else {
+            let mut output = Vec::new();
+            for (index, id) in node.items.iter().enumerate() {
+                let child = self.run(*id, array.get(index), &path_with(path, json!(index)))?;
+                if index < array.len() || child.value.is_some() {
+                    output.resize(index + 1, Value::Null);
+                    output[index] = child.value.clone().unwrap_or(Value::Null);
+                }
+                result.merge(child);
+            }
+            if let Some(rest) = node.rest {
+                for (index, value) in array.iter().enumerate().skip(node.items.len()) {
+                    let child = self.run(rest, Some(value), &path_with(path, json!(index)))?;
+                    output.push(child.value.clone().unwrap_or(Value::Null));
+                    result.merge(child);
+                }
+            }
+            result.value = Some(Value::Array(output));
         }
         Ok(result)
     }
@@ -566,6 +633,11 @@ impl Contracts {
             "trim" => {
                 if let Some(value) = result.value.as_ref().and_then(Value::as_js_string) {
                     result.value = Some(Value::String(value.trim()));
+                }
+            }
+            "lowercase" => {
+                if let Some(value) = result.value.as_ref().and_then(Value::as_js_string) {
+                    result.value = Some(Value::String(value.lowercase()));
                 }
             }
             "min_length" | "max_length" | "length_equals" => {
@@ -742,7 +814,15 @@ impl Contracts {
                     result.issue(json!({"origin":"string","code":"invalid_format","format":format,"pattern":check.display_pattern}),path,message,check.abort);
                 }
             }
-            "refinement" => refinements::apply(&check.tag, result, path, check.message.as_deref())?,
+            "refinement" => {
+                if check.path.is_empty() {
+                    refinements::apply(&check.tag, result, path, check.message.as_deref())?;
+                } else {
+                    let mut configured = path.to_vec();
+                    configured.extend_from_slice(&check.path);
+                    refinements::apply(&check.tag, result, &configured, check.message.as_deref())?;
+                }
+            }
             _ => return Err(ValidationError::Operation),
         }
         Ok(())

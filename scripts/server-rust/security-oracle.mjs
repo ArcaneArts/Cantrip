@@ -36,24 +36,22 @@ function mutate(input, path, value, remove = false) {
   } else parent[key] = value;
   return result;
 }
-export function vectors(name) {
-  const schema = protocol[name],
-    samples = securityFixtures[name];
+export function* vectorCases(name, samples = securityFixtures[name]) {
+  const schema = protocol[name];
   if (!schema || !samples) throw new Error(`Missing oracle fixture ${name}`);
-  const cases = [];
-  function append(input, present = true) {
+  function prepare(input, present = true) {
     const canonical = present ? JSON.parse(JSON.stringify(input)) : undefined;
-    cases.push({
+    return {
       ...(present ? { input: canonical } : {}),
       outcome: outcome(schema, canonical),
-    });
+    };
   }
-  append(undefined, false);
-  for (const input of [null, [], {}, false, 42, ""]) append(input);
+  yield prepare(undefined, false);
+  for (const input of [null, [], {}, false, 42, ""]) yield prepare(input);
   for (const sample of samples) {
     const baseline = schema.parse(sample);
-    append(sample);
-    append(baseline);
+    yield prepare(sample);
+    yield prepare(baseline);
     const variants = [
       null,
       false,
@@ -74,9 +72,12 @@ export function vectors(name) {
       { length: { toString: null } },
     ];
     for (const path of paths(baseline)) {
-      append(mutate(baseline, path, null, true));
-      for (const value of variants) append(mutate(baseline, path, value));
+      yield prepare(mutate(baseline, path, null, true));
+      for (const value of variants)
+        yield prepare(mutate(baseline, path, value));
       const original = path.reduce((value, key) => value[key], baseline);
+      if (Array.isArray(original) && original.length > 0)
+        yield prepare(mutate(baseline, path, [...original, ...original]));
       if (typeof original === "string") {
         for (const value of [
           "🦀",
@@ -86,15 +87,17 @@ export function vectors(name) {
           original + "=",
           original.slice(0, -1) + "B",
         ])
-          append(mutate(baseline, path, value));
+          yield prepare(mutate(baseline, path, value));
       }
       if (
         original &&
         typeof original === "object" &&
         !Array.isArray(original)
       ) {
-        append(mutate(baseline, path, { ...original, unknownFixture: true }));
-        append(
+        yield prepare(
+          mutate(baseline, path, { ...original, unknownFixture: true }),
+        );
+        yield prepare(
           mutate(baseline, path, {
             ...original,
             ["unknown\ud800Fixture"]: true,
@@ -104,16 +107,19 @@ export function vectors(name) {
       }
     }
     if (baseline && typeof baseline === "object" && !Array.isArray(baseline)) {
-      append({ ...baseline, unknownFixture: true });
-      append({
+      yield prepare({ ...baseline, unknownFixture: true });
+      yield prepare({
         ...baseline,
         ["unknown\ud800Fixture"]: true,
         ["\udfff"]: false,
       });
     }
   }
-  return { schema: name, cases };
 }
+export function vectors(name) {
+  return { schema: name, cases: [...vectorCases(name)] };
+}
+
 function jsonVectors() {
   const raw = [
     "null",

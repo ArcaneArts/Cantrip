@@ -60,6 +60,11 @@ fn native_validation_matches_real_security_and_worker_schemas() -> Result<()> {
     let mut total = 0;
     for name in manifest["roots"].as_object().unwrap().keys() {
         let name = name.as_str().context("protocol export name")?;
+        // The full outgoing command corpus uses a streaming oracle in
+        // worker_command_contracts so its inputs/errors stay bounded in memory.
+        if name == "workerRequestEnvelopeSchema" {
+            continue;
+        }
         let vectors = oracle(&["--vectors", name]).with_context(|| name.to_owned())?;
         for (index, case) in vectors["cases"].as_array().unwrap().iter().enumerate() {
             let actual = match wire::parse(name, case.get("input")) {

@@ -47,6 +47,7 @@ export function installWorkerIngressFixture(app, bridge) {
   app.post("/__worker_ingress/request", async ({ body }) => {
     settled[body.key] = false;
     let count = 0;
+    const before = bridge.stats();
     try {
       const result = await bridge.request(body.workerId, body.command, {
         timeoutMs: body.timeoutMs ?? 2000,
@@ -63,6 +64,21 @@ export function installWorkerIngressFixture(app, bridge) {
         ...(result !== undefined ? { result } : {}),
       };
     } catch (error) {
+      if (body.validationDetails && error.name === "ZodError") {
+        const after = bridge.stats();
+        return {
+          ok: false,
+          validation: { type: "invalid", issues: error.issues },
+          statsDelta: Object.fromEntries(
+            [
+              "activeRequests",
+              "routedRequests",
+              "failedRequests",
+              "succeededRequests",
+            ].map((key) => [key, after[key] - before[key]]),
+          ),
+        };
+      }
       return { ok: false, message: error.message, code: error.code ?? null };
     } finally {
       settled[body.key] = true;
