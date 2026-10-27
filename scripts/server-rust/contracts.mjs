@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { format, resolveConfig } from "prettier";
 import { registerWorkerContracts } from "./worker-contracts.mjs";
+import { registerWorkerCommandContracts } from "./worker-command-contracts.mjs";
 
 export const contractRoots = [
   "accountRegistrationSchema",
@@ -56,6 +57,7 @@ export const contractRoots = [
   "modelConfigurationSchema",
   "agentInteractionProvenanceSchema",
   "workerServerEnvelopeSchema",
+  "workerRequestEnvelopeSchema",
 ];
 
 const refinements = new Map([
@@ -78,6 +80,17 @@ const refinements = new Map([
 // Register individual checks where safeExtend/refine reuses them, including
 // schemas with multiple custom checks. Never infer an unknown callback's meaning.
 const explicitChecks = new Map();
+function registerCustom(schema, index, tag) {
+  const check = (schema._zod.def.checks ?? []).filter(
+    (c) => c._zod.def.check === "custom",
+  )[index];
+  if (!check)
+    throw new Error("Missing explicitly registered native check: " + tag);
+  const previous = explicitChecks.get(check);
+  if (previous && previous !== tag)
+    throw new Error("Conflicting native refinement registration: " + previous);
+  explicitChecks.set(check, tag);
+}
 function registerChecks(schema, tags) {
   const checks = (schema._zod.def.checks ?? []).filter(
     (c) => c._zod.def.check === "custom",
@@ -86,14 +99,7 @@ function registerChecks(schema, tags) {
     throw new Error(
       "Native refinement registration no longer matches the protocol",
     );
-  checks.forEach((check, index) => {
-    const previous = explicitChecks.get(check);
-    if (previous && previous !== tags[index])
-      throw new Error(
-        "Conflicting native refinement registration: " + previous,
-      );
-    explicitChecks.set(check, tags[index]);
-  });
+  tags.forEach((tag, index) => registerCustom(schema, index, tag));
 }
 registerChecks(protocol.clientControlCapabilitiesSchema, [
   "live-control-capabilities-unique",
@@ -119,8 +125,10 @@ registerChecks(protocol.encryptedPrivateDisplayLabelSchema, [
 ]);
 registerChecks(protocol.modelConfigurationSchema, ["model-configuration"]);
 const recursiveJson = registerWorkerContracts(registerChecks);
+const commandContracts = registerWorkerCommandContracts(registerCustom);
 const transforms = new Map([
   [protocol.appLiveEventPayloadSchema._zod.def.out, "live-json-object"],
+  ...commandContracts.transforms,
 ]);
 const allowedTypes = new Set([
   "object",
@@ -135,6 +143,9 @@ const allowedTypes = new Set([
   "nullable",
   "optional",
   "default",
+  "prefault",
+  "readonly",
+  "tuple",
   "unknown",
   "never",
   "null",
@@ -190,6 +201,15 @@ export function buildContractManifest() {
       node.checks = [];
       return id;
     }
+    if (commandContracts.forwards.has(schema)) {
+      node.type = "forward";
+      node.innerType = visit(
+        commandContracts.forwards.get(schema),
+        where + "/forward",
+      );
+      node.checks = [];
+      return id;
+    }
     const def = schema._zod.def;
     if (!allowedTypes.has(def.type))
       throw new Error(`Unimplemented native schema type ${def.type}: ${where}`);
@@ -210,14 +230,18 @@ export function buildContractManifest() {
       "catchall",
       "in",
       "out",
+      "rest",
     ])
       if (def[key]) node[key] = visit(def[key], `${where}/${key}`);
     if (def.options)
       node.options = def.options.map((s, i) => visit(s, `${where}/${i}`));
+    if (def.items)
+      node.items = def.items.map((s, i) => visit(s, `${where}/items/${i}`));
     if (def.discriminator) node.discriminator = def.discriminator;
     if (def.values) node.values = def.values;
     if (def.entries) node.values = Object.values(def.entries);
-    if (def.type === "default") node.defaultValue = def.defaultValue;
+    if (["default", "prefault"].includes(def.type))
+      node.defaultValue = def.defaultValue;
     if (def.type === "transform") {
       node.transformTag = transforms.get(schema);
       if (!node.transformTag)
@@ -227,9 +251,12 @@ export function buildContractManifest() {
     node.checks = checks.map((check) => {
       const c = check._zod.def;
       if (c.check === "overwrite") {
-        if (c.tx.toString() !== "(input) => input.trim()")
-          throw new Error(`Unimplemented native transform: ${where}`);
-        return { check: "trim" };
+        const tag = new Map([
+          ["(input) => input.trim()", "trim"],
+          ["(input) => input.toLowerCase()", "lowercase"],
+        ]).get(c.tx.toString());
+        if (!tag) throw new Error(`Unimplemented native transform: ${where}`);
+        return { check: tag };
       }
       if (c.check === "custom") {
         const tag =
@@ -242,6 +269,7 @@ export function buildContractManifest() {
           check: "refinement",
           tag,
           ...(message ? { message } : {}),
+          ...(c.path ? { path: c.path } : {}),
           ...(c.abort ? { abort: true } : {}),
         };
       }

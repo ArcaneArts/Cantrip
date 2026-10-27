@@ -63,6 +63,24 @@ impl JsString {
             .map_or(start, |end| end + 1);
         Self::new(self.units[start..end].to_vec())
     }
+    pub fn lowercase(&self) -> Self {
+        // Unicode casing operates on scalar runs. Unpaired UTF-16 units are
+        // unchanged in JavaScript and form boundaries for contextual casing.
+        let mut output = Vec::new();
+        let mut scalars = String::new();
+        for decoded in char::decode_utf16(self.units.iter().copied()) {
+            match decoded {
+                Ok(ch) => scalars.push(ch),
+                Err(error) => {
+                    output.extend(scalars.to_lowercase().encode_utf16());
+                    scalars.clear();
+                    output.push(error.unpaired_surrogate());
+                }
+            }
+        }
+        output.extend(scalars.to_lowercase().encode_utf16());
+        Self::new(output)
+    }
     pub fn join_quoted(prefix: &str, keys: &[&JsString]) -> Self {
         let mut units: Vec<_> = prefix.encode_utf16().collect();
         for (i, key) in keys.iter().enumerate() {

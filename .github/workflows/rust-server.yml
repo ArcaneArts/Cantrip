@@ -169,11 +169,11 @@ jobs:
         run: node --import tsx scripts/server-rust/worker-compatibility.mjs --database bundled-postgres --report .qa/rust-server/worker-bundled-http.json
       - name: Worker control with external PostgreSQL and real authentication lock faults
         run: node --import tsx scripts/server-rust/worker-compatibility.mjs --database postgres --report .qa/rust-server/worker-external-http.json
-      - name: Actual worker event and notification ingress with PGlite
+      - name: Actual worker command admission and incoming envelopes with PGlite
         run: node --import tsx scripts/server-rust/worker-ingress-compatibility.mjs --report .qa/rust-server/worker-ingress-pglite.json
-      - name: Actual worker event and notification ingress with private PostgreSQL
+      - name: Actual worker command admission and incoming envelopes with private PostgreSQL
         run: node --import tsx scripts/server-rust/worker-ingress-compatibility.mjs --database bundled-postgres --report .qa/rust-server/worker-ingress-bundled.json
-      - name: Actual worker event and notification ingress with external PostgreSQL
+      - name: Actual worker command admission and incoming envelopes with external PostgreSQL
         run: node --import tsx scripts/server-rust/worker-ingress-compatibility.mjs --database postgres --report .qa/rust-server/worker-ingress-external.json
       - name: Actual Chromium APIs, Live client and unchanged worker components with PGlite
         run: node --import tsx scripts/server-rust/worker-client-compatibility.mjs --report .qa/rust-server/worker-client-pglite.json

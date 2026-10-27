@@ -189,6 +189,7 @@ async fn callback_failure_and_missing_result_preserve_javascript_semantics() {
                 message: JsString::new(vec![0xd800]),
                 code: None,
                 unavailable: false,
+                encoding_error: None,
             })
         })
     });

@@ -13,7 +13,7 @@ use cantrip_server::{
     http,
     managed_postgres::ManagedPostgres,
     migrations::migrate,
-    wire::Value,
+    wire::{ValidationError, Value},
     workers::bridge::{CommandError, EventHandler, NotificationHandler, NotificationSubscription},
 };
 use clap::{Parser, ValueEnum};
@@ -158,6 +158,7 @@ async fn request(State(f): State<Arc<Fixture>>, Json(body): Json<Value>) -> Json
     let hold = boolean(&body, "hold");
     let fail = boolean(&body, "fail");
     f.settled.lock().unwrap().insert(key.clone(), false);
+    let before = f.service.workers.bridge.stats();
     let count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let callback_key = key.clone();
     let weak = Arc::downgrade(&f);
@@ -178,6 +179,7 @@ async fn request(State(f): State<Arc<Fixture>>, Json(body): Json<Value>) -> Json
                     message: "Controlled event failure".into(),
                     code: None,
                     unavailable: false,
+                    encoding_error: None,
                 });
             }
             f.record(true, "event", &key, value);
@@ -208,6 +210,31 @@ async fn request(State(f): State<Arc<Fixture>>, Json(body): Json<Value>) -> Json
                 value["result"] = result;
             }
             value
+        }
+        Err(error) if boolean(&body, "validationDetails") && error.encoding_error.is_some() => {
+            let validation = match error.encoding_error.as_deref().unwrap() {
+                ValidationError::Invalid(issues) => Value::object([
+                    ("type", Value::String("invalid".into())),
+                    ("issues", Value::Array(issues.clone())),
+                ]),
+                ValidationError::Operation => {
+                    Value::object([("type", Value::String("operation".into()))])
+                }
+            };
+            let after = f.service.workers.bridge.stats();
+            Value::object([
+                ("ok", Value::Bool(false)),
+                ("validation", validation),
+                (
+                    "statsDelta",
+                    Value::from_serialize(&serde_json::json!({
+                        "activeRequests": after.active_requests as i64 - before.active_requests as i64,
+                        "routedRequests": after.routed_requests as i64 - before.routed_requests as i64,
+                        "failedRequests": after.failed_requests as i64 - before.failed_requests as i64,
+                        "succeededRequests": after.succeeded_requests as i64 - before.succeeded_requests as i64,
+                    })),
+                ),
+            ])
         }
         Err(error) => Value::object([
             ("ok", Value::Bool(false)),

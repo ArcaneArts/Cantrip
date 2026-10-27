@@ -22,7 +22,11 @@ pub(crate) fn scope_key(scope: &Value) -> JsString {
 pub(crate) fn datetime_millis(value: &Value) -> Option<i64> {
     super::js_date::parse(value.as_js_string()?)
 }
-fn bounded_object(root: Option<&Value>) -> Option<String> {
+fn bounded_object(
+    root: Option<&Value>,
+    max_bytes: usize,
+    max_string_length: usize,
+) -> Option<String> {
     let root = root.filter(|v| v.is_object())?;
     let mut stack = vec![(0, root)];
     let mut nodes = 0;
@@ -38,8 +42,10 @@ fn bounded_object(root: Option<&Value>) -> Option<String> {
             Value::Number(number) if !number.is_finite() => {
                 return Some("JSON numbers must be finite.".into());
             }
-            Value::String(text) if text.len() > 300000 => {
-                return Some("JSON strings may contain at most 300000 characters.".into());
+            Value::String(text) if text.len() > max_string_length => {
+                return Some(format!(
+                    "JSON strings may contain at most {max_string_length} characters."
+                ));
             }
             Value::Array(values) => {
                 if values.len() > 1000 {
@@ -61,8 +67,10 @@ fn bounded_object(root: Option<&Value>) -> Option<String> {
             _ => {}
         }
     }
-    if root.stringify().len() > 768 * 1024 {
-        Some("JSON payloads may contain at most 786432 encoded bytes.".into())
+    if root.stringify().len() > max_bytes {
+        Some(format!(
+            "JSON payloads may contain at most {max_bytes} encoded bytes."
+        ))
     } else {
         None
     }
@@ -72,13 +80,15 @@ pub(super) fn transform(
     result: &mut Parsed,
     path: &[Value],
 ) -> Result<(), ValidationError> {
-    if tag != "live-json-object" {
-        return Err(ValidationError::Operation);
-    }
+    let (max_bytes, max_string_length) = match tag {
+        "live-json-object" => (768 * 1024, 300000),
+        "bounded-json-object" => (1000000, 100000),
+        _ => return Err(ValidationError::Operation),
+    };
     let error = if !result.value.as_ref().is_some_and(Value::is_object) {
         Some("Expected a JSON object.".into())
     } else {
-        bounded_object(result.value.as_ref())
+        bounded_object(result.value.as_ref(), max_bytes, max_string_length)
     };
     if let Some(error) = error {
         result.issue(json!({"code":"custom"}), path, error, true);

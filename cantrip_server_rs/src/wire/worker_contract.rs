@@ -231,7 +231,8 @@ pub(super) fn refine(
         }
         "worker-wire-permission-cwd" => {
             if value["cwd"].is_null() && value["source"] != "native-computer-use" {
-                custom(&["cwd"], message.unwrap_or("Invalid input"));
+                // The refinement's configured path is applied by Contracts.
+                custom(&[], message.unwrap_or("Invalid input"));
             }
         }
         "worker-wire-inference-progress" => {

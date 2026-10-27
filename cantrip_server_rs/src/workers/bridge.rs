@@ -29,6 +29,9 @@ pub struct CommandError {
     pub message: JsString,
     pub code: Option<String>,
     pub unavailable: bool,
+    /// Preserve schema failures separately from worker/callback failures for
+    /// the HTTP/domain layer. Application HTTP errors redact internal details.
+    pub encoding_error: Option<Arc<wire::ValidationError>>,
 }
 impl CommandError {
     fn unavailable(message: String) -> Self {
@@ -36,6 +39,7 @@ impl CommandError {
             message: message.into(),
             code: None,
             unavailable: true,
+            encoding_error: None,
         }
     }
     fn command(message: String, code: &str) -> Self {
@@ -43,6 +47,7 @@ impl CommandError {
             message: message.into(),
             code: Some(code.into()),
             unavailable: false,
+            encoding_error: None,
         }
     }
 }
@@ -339,6 +344,7 @@ impl WorkerBridge {
                     .and_then(Value::as_str)
                     .map(String::from),
                 unavailable: false,
+                encoding_error: None,
             })
         };
         let _ = pending.delivery.send(Delivery::Response(result));
@@ -412,14 +418,30 @@ impl WorkerBridge {
         timeout: Option<Duration>,
         on_event: Option<EventHandler>,
     ) -> Outcome {
+        // The Node bridge rejects an offline worker before encoding, and
+        // encoding failures do not admit a request, timer or routing metric.
+        if !self.is_connected(worker) {
+            return Err(CommandError::unavailable(format!(
+                "Worker {worker} is offline."
+            )));
+        }
         let id = Uuid::new_v4().to_string();
         let kind = command["type"].as_str().unwrap_or("").to_owned();
-        let encoded = Value::object([
+        let envelope = Value::object([
             ("kind", Value::String("request".into())),
             ("requestId", Value::String(id.clone().into())),
             ("command", command),
-        ])
-        .stringify();
+        ]);
+        let envelope =
+            wire::parse("workerRequestEnvelopeSchema", Some(&envelope)).map_err(|error| {
+                CommandError {
+                    message: "Worker request encoding failed.".into(),
+                    code: None,
+                    unavailable: false,
+                    encoding_error: Some(Arc::new(error)),
+                }
+            })?;
+        let encoded = envelope.stringify();
         let (tx, rx) = oneshot::channel();
         let (events, mut delivery) = mpsc::unbounded_channel();
         let pending = Arc::new(Pending {

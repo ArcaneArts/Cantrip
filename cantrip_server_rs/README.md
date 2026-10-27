@@ -89,7 +89,7 @@ shutdown and one-time completion. They supplement the real transport suite.
 Incoming worker text frames now pass through the full generated envelope
 contract. Native refinements preserve recursive JSON, encrypted metadata,
 UTF-16/UTF-8 limits, timestamp and validation-error behavior. The dedicated
-oracle compares 22,697 complete envelopes against the current TypeScript
+oracle compares 22,700 complete envelopes against the current TypeScript
 protocol, including every reachable union alternative. Runtime parsing does
 not call JavaScript. The date parser adapts V8 code under the license in
 `third-party/V8-LICENSE`; distribution artifacts must retain that notice.
@@ -103,9 +103,27 @@ nested frames. The shared TypeScript decoder now contains validator exceptions
 within the rejected message. These are control-transport tests with a controlled
 handler; domain persistence and a full worker runtime remain required.
 
-Outgoing command schemas, domain event persistence, binary relays, shared
-coordination and resource/execution recovery remain unported. App Live is
-integrated below, with incomplete domain publishers and multi-instance support.
+Outgoing requests now pass through the complete generated command envelope
+before admission. Native code applies the 99 additional custom checks, bounded
+JSON transformation, Git lazy references, tuples, prefaults and lowercase
+normalization. Invalid connected requests retain structured schema issues and
+create no outgoing frame, pending request, deadline or request counter. An
+offline worker is rejected before command validation, matching the Node bridge.
+
+`tests/worker_command_contracts.rs` streams comparisons against the actual
+protocol for all 278 command types, every reachable union option and enum value,
+custom-check enclosing fixtures, malformed mutations and large byte/JSON
+boundaries. The separate casing oracle exercises every Unicode code point and
+unpaired UTF-16 unit. Coverage receipts report actual comparisons and executed
+custom callbacks; command schema coverage does not implement command domains.
+The HTTP/WS observer also compares rejected admission and normalized Git/GitHub
+commands through the unchanged worker connection on all three storage modes.
+These controlled handlers echo commands; they do not perform filesystem or
+GitHub operations. Current outgoing changes require fresh platform acceptance.
+
+Domain event persistence, binary relays, shared coordination and
+resource/execution recovery remain unported. App Live is integrated below,
+with incomplete domain publishers and multi-instance support.
 
 `.github/workflows/rust-server.yml` executes native and compatibility suites on
 Linux, macOS and Windows. A configured workflow is not passing evidence; record

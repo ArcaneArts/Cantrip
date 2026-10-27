@@ -9,6 +9,8 @@ import { buildRustExample } from "./build.mjs";
 import { HttpFixture } from "./http-fixture.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
 import { SocketProbe } from "./worker-sockets.mjs";
+import * as protocol from "../../packages/protocol/dist/index.js";
+import commandFixtures from "./worker-command-fixtures.json" with { type: "json" };
 import { heartbeat } from "./security-fixtures.mjs";
 import { WorkerConnection } from "../../cantrip_worker/src/transport.ts";
 import { enrollWorker } from "../../cantrip_worker/src/enrollment.ts";
@@ -100,6 +102,8 @@ async function flow(fixture) {
   let connection, probe, flowFailure;
   let controlled = 0,
     connections = 0;
+  const admittedCommands = [],
+    commandAdmission = { rejected: [], normalized: [] };
   const background = new Set(),
     pending = [];
   const request = (key, extra = {}) => {
@@ -115,16 +119,36 @@ async function flow(fixture) {
     return promise;
   };
   try {
+    const offline = await request("invalid-offline", {
+      workerId: "offline-fixture-worker",
+      command: {},
+      validationDetails: true,
+    });
+    assert.deepEqual(offline, {
+      ok: false,
+      message: "Worker offline-fixture-worker is offline.",
+      code: null,
+    });
+    commandAdmission.offline = offline;
     const connect = () =>
       new WorkerConnection(
         config,
         async (command, emit) => {
+          if (
+            ["git.recovery.preview", "github.issues.list"].includes(
+              command.type,
+            )
+          ) {
+            admittedCommands.push(command);
+            return { observedCommand: command };
+          }
           if (command.type !== "worker.credential.rotate") {
             background.add(command.type);
             throw new Error(
               "Controlled ingress worker does not implement resource domains.",
             );
           }
+          admittedCommands.push(command);
           controlled++;
           if (controlled <= 2) {
             emit({ type: "agent.plan.question-resolved", questionId: "one" });
@@ -153,6 +177,84 @@ async function flow(fixture) {
       (n) => assert.equal(n, 1),
       "unchanged worker readiness",
     );
+    await eventually(
+      state,
+      (s) => assert.equal(s.stats.activeRequests, 0),
+      "initial background requests settled",
+    );
+    const beforeInvalid = admittedCommands.length;
+    for (const command of [
+      { type: "worker.credential.rotate", credential: 1 },
+      {
+        type: "git.recovery.preview",
+        cwd: "fixture",
+        action: { type: "createBranch", branch: "  ", target: "main" },
+      },
+      { type: "github.issues.list", repository: "fixture/path", limit: -1 },
+    ]) {
+      const expected = protocol.workerRequestEnvelopeSchema.safeParse({
+        kind: "request",
+        requestId: "fixture",
+        command,
+      });
+      assert.equal(expected.success, false, "invalid fixture " + command.type);
+      const rejected = await request("invalid-" + command.type, {
+        command,
+        validationDetails: true,
+      });
+      assert.deepEqual(rejected, {
+        ok: false,
+        validation: { type: "invalid", issues: expected.error.issues },
+        statsDelta: {
+          activeRequests: 0,
+          routedRequests: 0,
+          failedRequests: 0,
+          succeededRequests: 0,
+        },
+      });
+      commandAdmission.rejected.push({ command, ...rejected });
+    }
+    assert.equal(
+      admittedCommands.length,
+      beforeInvalid,
+      "invalid commands never reached the controlled handler",
+    );
+    for (const command of [
+      {
+        type: "git.recovery.preview",
+        cwd: "fixture",
+        action: {
+          type: "createBranch",
+          branch: "  fixture  ",
+          target: "  main  ",
+          unknownFixture: true,
+        },
+        unknownFixture: true,
+      },
+      (() => {
+        const command = structuredClone(
+          commandFixtures.commands.find((c) => c.type === "github.issues.list")
+            .input.command,
+        );
+        delete command.filters;
+        command.unknownFixture = true;
+        return command;
+      })(),
+    ]) {
+      const expected = protocol.workerRequestEnvelopeSchema.parse({
+        kind: "request",
+        requestId: "fixture",
+        command,
+      }).command;
+      const actual = await request("normalized-" + command.type, { command });
+      assert.deepEqual(actual, {
+        ok: true,
+        resultPresent: true,
+        result: { observedCommand: expected },
+      });
+      commandAdmission.normalized.push(actual.result.observedCommand);
+    }
+    assert.equal(admittedCommands.length, beforeInvalid + 2);
     const ordered = request("ordered", { hold: true });
     await eventually(
       state,
@@ -371,6 +473,7 @@ async function flow(fixture) {
     const final = await state();
     return {
       passed: true,
+      commandAdmission,
       orderedResult,
       orderedEvents,
       eventFailure: rejectedEvent,

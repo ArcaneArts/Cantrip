@@ -1,0 +1,4019 @@
+{
+  "checks": [
+    {
+      "id": 0,
+      "tag": "worker-command-protected-bytes:2097152",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/277/provider/protectedApiKey/innerType/innerType",
+      "fixture": 0
+    },
+    {
+      "id": 1,
+      "tag": "worker-wire-task-envelope",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/277/input/options/1/task/protectedContent",
+      "fixture": 1
+    },
+    {
+      "id": 2,
+      "tag": "worker-command-unique",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/277/input/options/1/task/draftAttachmentIds",
+      "fixture": 2
+    },
+    {
+      "id": 3,
+      "tag": "worker-command-task-model",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/277/input/options/1/task/dispatch/innerType/innerType/modelConfiguration/innerType",
+      "fixture": 3
+    },
+    {
+      "id": 4,
+      "tag": "worker-command-retry",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/277/input/options/1/task/automaticRetry/innerType/innerType",
+      "fixture": 4
+    },
+    {
+      "id": 5,
+      "tag": "worker-command-steer",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/275",
+      "fixture": 5
+    },
+    {
+      "id": 6,
+      "tag": "worker-command-attachment-envelope",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/275/attachments/innerType/element/protectedMetadata",
+      "fixture": 6
+    },
+    {
+      "id": 7,
+      "tag": "worker-command-task-goal",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/262/objective/options/1",
+      "fixture": 7
+    },
+    {
+      "id": 8,
+      "tag": "worker-wire-task-envelope",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/262/objective/options/1/protectedObjective",
+      "fixture": 7
+    },
+    {
+      "id": 9,
+      "tag": "worker-command-queued-prompt",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/258/prompt",
+      "fixture": 8
+    },
+    {
+      "id": 10,
+      "tag": "worker-wire-communication-envelope",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/258/prompt/protectedContent",
+      "fixture": 8
+    },
+    {
+      "id": 11,
+      "tag": "worker-command-interaction-response",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/252/control/options/3",
+      "fixture": 9
+    },
+    {
+      "id": 12,
+      "tag": "worker-command-chat-turn",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/249",
+      "fixture": 10
+    },
+    {
+      "id": 13,
+      "tag": "worker-command-task-relay",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/249/resultMode/innerType/options/2/operation",
+      "fixture": 11
+    },
+    {
+      "id": 14,
+      "tag": "worker-wire-task-envelope",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/249/resultMode/innerType/options/2/operation/protectedInput",
+      "fixture": 11
+    },
+    {
+      "id": 15,
+      "tag": "worker-command-chat-root",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/249/protectedHistory/innerType/element",
+      "fixture": 12
+    },
+    {
+      "id": 16,
+      "tag": "worker-command-protected-bytes:131072",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/249/standalonePolicies/innerType/policies/element/protectedBody",
+      "fixture": 13
+    },
+    {
+      "id": 17,
+      "tag": "worker-command-protected-bytes:8192",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/249/standalonePolicies/innerType/policies/element/protectedSummary",
+      "fixture": 13
+    },
+    {
+      "id": 18,
+      "tag": "worker-command-surface-command",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/231",
+      "fixture": 14
+    },
+    {
+      "id": 19,
+      "tag": "worker-command-surface-kind:remote-desktop-state",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/231/stateProtection/innerType/options/1",
+      "fixture": 15
+    },
+    {
+      "id": 20,
+      "tag": "worker-command-surface-envelope",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/231/stateProtection/innerType/options/1/protectedState",
+      "fixture": 15
+    },
+    {
+      "id": 21,
+      "tag": "worker-command-surface-kind:browser-state",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/231/stateProtection/innerType/options/0",
+      "fixture": 14
+    },
+    {
+      "id": 22,
+      "tag": "worker-command-surface-command",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/229",
+      "fixture": 16
+    },
+    {
+      "id": 23,
+      "tag": "worker-command-surface-kind:terminal-state",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/227/services/element/stateProtection",
+      "fixture": 17
+    },
+    {
+      "id": 24,
+      "tag": "worker-command-observation-targets:codegraph",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/192/codegraphTargets/innerType",
+      "fixture": 18
+    },
+    {
+      "id": 25,
+      "tag": "worker-command-observation-targets:worktree",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/192/targets",
+      "fixture": 19
+    },
+    {
+      "id": 26,
+      "tag": "worker-command-surface-kind:file-document-state",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/183/stateProtection",
+      "fixture": 20
+    },
+    {
+      "id": 27,
+      "tag": "worker-command-conflict",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/178/request",
+      "fixture": 21
+    },
+    {
+      "id": 28,
+      "tag": "worker-command-rebase-todo",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/171/action/options/0/options/2/todo/innerType/element",
+      "fixture": 22
+    },
+    {
+      "id": 29,
+      "tag": "worker-command-tag-action",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/165/action",
+      "fixture": 23
+    },
+    {
+      "id": 30,
+      "tag": "worker-command-stash",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/146/request",
+      "fixture": 24
+    },
+    {
+      "id": 31,
+      "tag": "worker-command-commit-search",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/132/query",
+      "fixture": 25
+    },
+    {
+      "id": 32,
+      "tag": "worker-command-safe-revision",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/128/revision/innerType",
+      "fixture": 26
+    },
+    {
+      "id": 33,
+      "tag": "worker-command-history-filter",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/126/options/innerType/filters/innerType",
+      "fixture": 27
+    },
+    {
+      "id": 34,
+      "tag": "worker-command-tunnel-domain",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/123/protectedRecord",
+      "fixture": 28
+    },
+    {
+      "id": 35,
+      "tag": "worker-command-chat-title",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/114",
+      "fixture": 29
+    },
+    {
+      "id": 36,
+      "tag": "worker-command-secret-references",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/106/protectedSecrets",
+      "fixture": 30
+    },
+    {
+      "id": 37,
+      "tag": "worker-command-protected-bytes:65664",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/106/protectedSecrets/element/protectedValue",
+      "fixture": 30
+    },
+    {
+      "id": 38,
+      "tag": "worker-command-secret-path",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/106/protectedSecrets/element/reference",
+      "fixture": 30
+    },
+    {
+      "id": 39,
+      "tag": "worker-command-run-document",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/103/request/document/options/5",
+      "fixture": 31
+    },
+    {
+      "id": 40,
+      "tag": "worker-command-cargo-features",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/103/request/document/options/5/options/innerType",
+      "fixture": 32
+    },
+    {
+      "id": 41,
+      "tag": "worker-command-nul-free",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/103/request/document/options/5/options/innerType/profile/innerType",
+      "fixture": 33
+    },
+    {
+      "id": 42,
+      "tag": "worker-command-nul-free",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/103/request/document/options/5/options/innerType/targetTriple/innerType/innerType",
+      "fixture": 34
+    },
+    {
+      "id": 43,
+      "tag": "worker-command-nul-free",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/103/request/document/options/5/options/innerType/features/innerType/element",
+      "fixture": 32
+    },
+    {
+      "id": 44,
+      "tag": "worker-command-nul-free",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/103/request/document/options/5/options/innerType/toolchain/innerType",
+      "fixture": 35
+    },
+    {
+      "id": 45,
+      "tag": "worker-command-cargo-features",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/103/request/document/options/5/platformOverrides/innerType/linux/innerType/options/innerType",
+      "fixture": 36
+    },
+    {
+      "id": 46,
+      "tag": "worker-command-environment-names",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/103/request/document/options/5/platformOverrides/innerType/linux/innerType/environment/innerType",
+      "fixture": 37
+    },
+    {
+      "id": 47,
+      "tag": "worker-command-nul-free",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/103/request/document/options/5/platformOverrides/innerType/linux/innerType/environment/innerType/variables/innerType/element/value",
+      "fixture": 38
+    },
+    {
+      "id": 48,
+      "tag": "worker-command-portable-path",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/103/request/document/options/5/platformOverrides/innerType/linux/innerType/environment/innerType/files/innerType/element",
+      "fixture": 39
+    },
+    {
+      "id": 49,
+      "tag": "worker-command-nul-free",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/103/request/document/options/5/platformOverrides/innerType/linux/innerType/arguments/innerType/element",
+      "fixture": 40
+    },
+    {
+      "id": 50,
+      "tag": "worker-command-nul-free",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/103/request/document/options/5/platformOverrides/innerType/linux/innerType/commandOverride/innerType/innerType",
+      "fixture": 41
+    },
+    {
+      "id": 51,
+      "tag": "worker-command-not-blank",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/103/request/document/options/5/platformOverrides/innerType/linux/innerType/commandOverride/innerType/innerType",
+      "fixture": 41
+    },
+    {
+      "id": 52,
+      "tag": "worker-command-portable-directory",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/103/request/document/options/5/platformOverrides/innerType/linux/innerType/workingDirectory/innerType",
+      "fixture": 42
+    },
+    {
+      "id": 53,
+      "tag": "worker-command-environment-names",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/103/request/document/options/5/environment/innerType",
+      "fixture": 43
+    },
+    {
+      "id": 54,
+      "tag": "worker-command-run-document",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/103/request/document/options/4",
+      "fixture": 44
+    },
+    {
+      "id": 55,
+      "tag": "worker-command-dart-defines",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/103/request/document/options/4/options/innerType",
+      "fixture": 45
+    },
+    {
+      "id": 56,
+      "tag": "worker-command-nul-free",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/103/request/document/options/4/options/innerType/dartDefines/innerType/element/value",
+      "fixture": 45
+    },
+    {
+      "id": 57,
+      "tag": "worker-command-nul-free",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/103/request/document/options/4/options/innerType/dartDefines/innerType/element/name",
+      "fixture": 45
+    },
+    {
+      "id": 58,
+      "tag": "worker-command-no-equals",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/103/request/document/options/4/options/innerType/dartDefines/innerType/element/name",
+      "fixture": 45
+    },
+    {
+      "id": 59,
+      "tag": "worker-command-nul-free",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/103/request/document/options/4/options/innerType/flavor/innerType/innerType",
+      "fixture": 46
+    },
+    {
+      "id": 60,
+      "tag": "worker-command-nul-free",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/103/request/document/options/4/options/innerType/deviceId/innerType/innerType",
+      "fixture": 47
+    },
+    {
+      "id": 61,
+      "tag": "worker-command-nul-free",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/103/request/document/options/4/options/innerType/sdkHome/innerType/innerType",
+      "fixture": 48
+    },
+    {
+      "id": 62,
+      "tag": "worker-command-dart-defines",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/103/request/document/options/4/platformOverrides/innerType/linux/innerType/options/innerType",
+      "fixture": 49
+    },
+    {
+      "id": 63,
+      "tag": "worker-command-dart-path",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/103/request/document/options/4/target/path",
+      "fixture": 44
+    },
+    {
+      "id": 64,
+      "tag": "worker-command-run-document",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/103/request/document/options/3",
+      "fixture": 50
+    },
+    {
+      "id": 65,
+      "tag": "worker-command-nul-free",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/103/request/document/options/3/options/innerType/sdkHome/innerType/innerType",
+      "fixture": 51
+    },
+    {
+      "id": 66,
+      "tag": "worker-command-dart-path",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/103/request/document/options/3/target/path",
+      "fixture": 50
+    },
+    {
+      "id": 67,
+      "tag": "worker-command-run-document",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/103/request/document/options/2",
+      "fixture": 52
+    },
+    {
+      "id": 68,
+      "tag": "worker-command-nul-free",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/103/request/document/options/2/options/innerType/jdkHome/innerType/innerType",
+      "fixture": 53
+    },
+    {
+      "id": 69,
+      "tag": "worker-command-run-document",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/103/request/document/options/1",
+      "fixture": 54
+    },
+    {
+      "id": 70,
+      "tag": "worker-command-run-document",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/103/request/document/options/0",
+      "fixture": 55
+    },
+    {
+      "id": 71,
+      "tag": "worker-command-nul-free",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/103/request/document/options/0/target/options/1/interpreter/innerType/innerType",
+      "fixture": 56
+    },
+    {
+      "id": 72,
+      "tag": "worker-command-not-blank",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/103/request/document/options/0/target/options/1/interpreter/innerType/innerType",
+      "fixture": 56
+    },
+    {
+      "id": 73,
+      "tag": "worker-command-nul-free",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/100/query",
+      "fixture": 57
+    },
+    {
+      "id": 74,
+      "tag": "worker-command-source-path-pair",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/88",
+      "fixture": 58
+    },
+    {
+      "id": 75,
+      "tag": "worker-command-source-path-pair",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/87",
+      "fixture": 59
+    },
+    {
+      "id": 76,
+      "tag": "worker-command-workflow-inputs",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/78/request",
+      "fixture": 60
+    },
+    {
+      "id": 77,
+      "tag": "worker-command-review-path",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/71/action/options/6/path",
+      "fixture": 61
+    },
+    {
+      "id": 78,
+      "tag": "worker-command-inline-comment",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/71/action/options/2/comment",
+      "fixture": 62
+    },
+    {
+      "id": 79,
+      "tag": "worker-command-review-reason",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/71/action/options/1/review",
+      "fixture": 63
+    },
+    {
+      "id": 80,
+      "tag": "worker-command-pull-branches",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/63/request",
+      "fixture": 64
+    },
+    {
+      "id": 81,
+      "tag": "worker-command-no-controls",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/63/request/head",
+      "fixture": 64
+    },
+    {
+      "id": 82,
+      "tag": "worker-command-no-controls",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/63/request/base",
+      "fixture": 64
+    },
+    {
+      "id": 83,
+      "tag": "worker-command-protected-bytes:4194304",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/56/content/protectedCondition",
+      "fixture": 65
+    },
+    {
+      "id": 84,
+      "tag": "worker-command-not-dot",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/55/request/name",
+      "fixture": 66
+    },
+    {
+      "id": 85,
+      "tag": "worker-command-runtime-profiles",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/33",
+      "fixture": 67
+    },
+    {
+      "id": 86,
+      "tag": "worker-command-scratch-reconcile",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/26/roots/element",
+      "fixture": 68
+    },
+    {
+      "id": 87,
+      "tag": "worker-command-scratch-archive",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/23",
+      "fixture": 69
+    },
+    {
+      "id": 88,
+      "tag": "worker-command-link-lease",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/18/lease",
+      "fixture": 70
+    },
+    {
+      "id": 89,
+      "tag": "worker-command-link-configuration",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/17/configuration",
+      "fixture": 71
+    },
+    {
+      "id": 90,
+      "tag": "worker-command-unique",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/17/configuration/stunUrls",
+      "fixture": 72
+    },
+    {
+      "id": 91,
+      "tag": "worker-command-stun-url",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/17/configuration/stunUrls/element",
+      "fixture": 72
+    },
+    {
+      "id": 92,
+      "tag": "worker-command-link-grant",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/13/grant",
+      "fixture": 73
+    },
+    {
+      "id": 93,
+      "tag": "worker-command-unique",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/13/grant/observation/innerType/topics",
+      "fixture": 74
+    },
+    {
+      "id": 94,
+      "tag": "worker-command-unique",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/13/grant/binding/operations",
+      "fixture": 73
+    },
+    {
+      "id": 95,
+      "tag": "worker-command-unique",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/13/grant/binding/lanes",
+      "fixture": 73
+    },
+    {
+      "id": 96,
+      "tag": "worker-command-link-session",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/9/session",
+      "fixture": 75
+    },
+    {
+      "id": 97,
+      "tag": "worker-command-unique",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/9/session/routePolicy/enabled",
+      "fixture": 75
+    },
+    {
+      "id": 98,
+      "tag": "worker-command-control-content:16777216",
+      "schemaPath": "workerRequestEnvelopeSchema/command/options/1/request/protectedContent",
+      "fixture": 76
+    }
+  ],
+  "cases": [
+    {
+      "name": "custom-0",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "label.generate",
+          "chatId": "00000000-0000-4000-8000-000000000001",
+          "labelKind": "task",
+          "input": {
+            "kind": "message",
+            "message": {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "classification": {
+                "role": "user",
+                "mode": "default",
+                "attachmentIds": []
+              },
+              "protectedContent": {
+                "formatVersion": 1,
+                "keyRevision": 1,
+                "envelope": {
+                  "version": 1,
+                  "algorithm": "AES-256-GCM",
+                  "keyRevision": 1,
+                  "nonce": "AAAAAAAAAAAAAAAA",
+                  "ciphertext": "00000000-0000-4000-8000-000000000001"
+                }
+              },
+              "reasoningEffort": null,
+              "idempotencyKey": "fixture"
+            }
+          },
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": {
+              "formatVersion": 1,
+              "keyRevision": 1,
+              "envelope": {
+                "version": 1,
+                "algorithm": "AES-256-GCM",
+                "keyRevision": 1,
+                "nonce": "AAAAAAAAAAAAAAAA",
+                "ciphertext": "00000000-0000-4000-8000-000000000001"
+              }
+            },
+            "accountId": null,
+            "credentialHomeKey": null
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-1",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "label.generate",
+          "chatId": "00000000-0000-4000-8000-000000000001",
+          "labelKind": "task",
+          "input": {
+            "kind": "task",
+            "task": {
+              "state": "draft",
+              "stableStateBeforeFailure": null,
+              "activeOperationKind": null,
+              "planAuthorship": "agent",
+              "planningRound": 0,
+              "hasPlan": false,
+              "hasQuestions": false,
+              "hasFinalPlan": false,
+              "hasGoalPrompt": false,
+              "lastError": null,
+              "chatId": "fixture",
+              "planGoalEnabled": false,
+              "priority": 0,
+              "requestedTaskWorkerId": null,
+              "continuityFamily": null,
+              "lastTaskWorkerId": null,
+              "dispatch": null,
+              "activeOperationId": null,
+              "draftAttachmentIds": [],
+              "protectedContent": {
+                "formatVersion": 1,
+                "keyRevision": 1,
+                "envelope": {
+                  "version": 1,
+                  "algorithm": "AES-256-GCM",
+                  "keyRevision": 1,
+                  "nonce": "AAAAAAAAAAAAAAAA",
+                  "ciphertext": "00000000-0000-4000-8000-000000000001"
+                }
+              },
+              "implementationStartedAt": null,
+              "completedAt": null,
+              "schedulerRevision": 1,
+              "rowVersion": 1,
+              "createdAt": "2026-10-26T00:00:00.000Z",
+              "updatedAt": "2026-10-26T00:00:00.000Z"
+            }
+          },
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-2",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "label.generate",
+          "chatId": "00000000-0000-4000-8000-000000000001",
+          "labelKind": "task",
+          "input": {
+            "kind": "task",
+            "task": {
+              "state": "draft",
+              "stableStateBeforeFailure": null,
+              "activeOperationKind": null,
+              "planAuthorship": "agent",
+              "planningRound": 0,
+              "hasPlan": false,
+              "hasQuestions": false,
+              "hasFinalPlan": false,
+              "hasGoalPrompt": false,
+              "lastError": null,
+              "chatId": "fixture",
+              "planGoalEnabled": false,
+              "priority": 0,
+              "requestedTaskWorkerId": null,
+              "continuityFamily": null,
+              "lastTaskWorkerId": null,
+              "dispatch": null,
+              "activeOperationId": null,
+              "draftAttachmentIds": ["fixture"],
+              "protectedContent": {
+                "formatVersion": 1,
+                "keyRevision": 1,
+                "envelope": {
+                  "version": 1,
+                  "algorithm": "AES-256-GCM",
+                  "keyRevision": 1,
+                  "nonce": "AAAAAAAAAAAAAAAA",
+                  "ciphertext": "00000000-0000-4000-8000-000000000001"
+                }
+              },
+              "implementationStartedAt": null,
+              "completedAt": null,
+              "schedulerRevision": 1,
+              "rowVersion": 1,
+              "createdAt": "2026-10-26T00:00:00.000Z",
+              "updatedAt": "2026-10-26T00:00:00.000Z"
+            }
+          },
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-3",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "label.generate",
+          "chatId": "00000000-0000-4000-8000-000000000001",
+          "labelKind": "task",
+          "input": {
+            "kind": "task",
+            "task": {
+              "state": "draft",
+              "stableStateBeforeFailure": null,
+              "activeOperationKind": null,
+              "planAuthorship": "agent",
+              "planningRound": 0,
+              "hasPlan": false,
+              "hasQuestions": false,
+              "hasFinalPlan": false,
+              "hasGoalPrompt": false,
+              "lastError": null,
+              "chatId": "fixture",
+              "planGoalEnabled": false,
+              "priority": 0,
+              "requestedTaskWorkerId": null,
+              "continuityFamily": null,
+              "lastTaskWorkerId": null,
+              "dispatch": {
+                "id": "00000000-0000-4000-8000-000000000001",
+                "chatId": "fixture",
+                "operationId": "fixture",
+                "operationKind": "direct",
+                "state": "queued",
+                "fifoCreatedAt": "2026-10-26T00:00:00.000Z",
+                "requestedTaskWorkerId": null,
+                "selectedTaskWorkerId": null,
+                "taskWorkerRevision": null,
+                "continuityFamily": null,
+                "modelConfiguration": {
+                  "modelId": "fixture-model",
+                  "reasoningEffort": null,
+                  "customSubagentModel": false,
+                  "subagentModelId": null,
+                  "subagentReasoningEffort": null
+                },
+                "modelRouteId": null,
+                "providerAccountId": null,
+                "physicalWorkerId": null,
+                "worktreeId": null,
+                "codexThreadId": null,
+                "turnId": null,
+                "leaseOwner": null,
+                "leaseExpiresAt": null,
+                "lastHeartbeatAt": null,
+                "fencingToken": 0,
+                "attemptCount": 0,
+                "eligibilityCode": null,
+                "queuedAt": "2026-10-26T00:00:00.000Z",
+                "claimedAt": null,
+                "startedAt": null,
+                "pausedAt": null,
+                "completedAt": null,
+                "createdAt": "2026-10-26T00:00:00.000Z",
+                "updatedAt": "2026-10-26T00:00:00.000Z"
+              },
+              "activeOperationId": null,
+              "draftAttachmentIds": [],
+              "protectedContent": {
+                "formatVersion": 1,
+                "keyRevision": 1,
+                "envelope": {
+                  "version": 1,
+                  "algorithm": "AES-256-GCM",
+                  "keyRevision": 1,
+                  "nonce": "AAAAAAAAAAAAAAAA",
+                  "ciphertext": "00000000-0000-4000-8000-000000000001"
+                }
+              },
+              "implementationStartedAt": null,
+              "completedAt": null,
+              "schedulerRevision": 1,
+              "rowVersion": 1,
+              "createdAt": "2026-10-26T00:00:00.000Z",
+              "updatedAt": "2026-10-26T00:00:00.000Z"
+            }
+          },
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-4",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "label.generate",
+          "chatId": "00000000-0000-4000-8000-000000000001",
+          "labelKind": "task",
+          "input": {
+            "kind": "task",
+            "task": {
+              "state": "draft",
+              "stableStateBeforeFailure": null,
+              "activeOperationKind": null,
+              "planAuthorship": "agent",
+              "planningRound": 0,
+              "hasPlan": false,
+              "hasQuestions": false,
+              "hasFinalPlan": false,
+              "hasGoalPrompt": false,
+              "lastError": null,
+              "chatId": "fixture",
+              "planGoalEnabled": false,
+              "priority": 0,
+              "requestedTaskWorkerId": null,
+              "continuityFamily": null,
+              "lastTaskWorkerId": null,
+              "dispatch": null,
+              "activeOperationId": null,
+              "draftAttachmentIds": [],
+              "protectedContent": {
+                "formatVersion": 1,
+                "keyRevision": 1,
+                "envelope": {
+                  "version": 1,
+                  "algorithm": "AES-256-GCM",
+                  "keyRevision": 1,
+                  "nonce": "AAAAAAAAAAAAAAAA",
+                  "ciphertext": "00000000-0000-4000-8000-000000000001"
+                }
+              },
+              "implementationStartedAt": null,
+              "completedAt": null,
+              "schedulerRevision": 1,
+              "rowVersion": 1,
+              "createdAt": "2026-10-26T00:00:00.000Z",
+              "updatedAt": "2026-10-26T00:00:00.000Z",
+              "automaticRetry": {
+                "status": "scheduled",
+                "failureKind": "timeout",
+                "nextAttemptAt": "2026-10-26T00:00:00.000Z",
+                "recentAttempts": 0
+              }
+            }
+          },
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-5",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.steer",
+          "executionProfile": "ide",
+          "chatId": "fixture",
+          "threadId": null,
+          "attachments": [],
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          },
+          "prompt": "fixture"
+        }
+      }
+    },
+    {
+      "name": "custom-6",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.steer",
+          "executionProfile": "ide",
+          "chatId": "fixture",
+          "threadId": null,
+          "attachments": [
+            {
+              "id": "fixture",
+              "chatId": "fixture",
+              "sizeBytes": 0,
+              "status": "ready",
+              "protectedMetadata": {
+                "formatVersion": 1,
+                "keyRevision": 1,
+                "envelope": {
+                  "version": 1,
+                  "algorithm": "AES-256-GCM",
+                  "keyRevision": 1,
+                  "nonce": "AAAAAAAAAAAAAAAA",
+                  "ciphertext": "00000000-0000-4000-8000-000000000001"
+                }
+              },
+              "createdAt": "2026-10-26T00:00:00.000Z"
+            }
+          ],
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          },
+          "prompt": "fixture"
+        }
+      }
+    },
+    {
+      "name": "custom-7",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.goal.create",
+          "chatId": "fixture",
+          "cwd": "fixture",
+          "threadId": null,
+          "objective": {
+            "classification": {
+              "chatId": "fixture",
+              "threadId": "fixture",
+              "status": "active"
+            },
+            "protectedObjective": {
+              "formatVersion": 1,
+              "keyRevision": 1,
+              "envelope": {
+                "version": 1,
+                "algorithm": "AES-256-GCM",
+                "keyRevision": 1,
+                "nonce": "AAAAAAAAAAAAAAAA",
+                "ciphertext": "00000000-0000-4000-8000-000000000001"
+              }
+            },
+            "startMessage": {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "classification": {
+                "role": "user",
+                "mode": "goal",
+                "attachmentIds": []
+              },
+              "protectedContent": {
+                "formatVersion": 1,
+                "keyRevision": 1,
+                "envelope": {
+                  "version": 1,
+                  "algorithm": "AES-256-GCM",
+                  "keyRevision": 1,
+                  "nonce": "AAAAAAAAAAAAAAAA",
+                  "ciphertext": "00000000-0000-4000-8000-000000000001"
+                }
+              },
+              "reasoningEffort": null,
+              "idempotencyKey": "fixture"
+            }
+          },
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          },
+          "permissionProfileId": "fixture"
+        }
+      }
+    },
+    {
+      "name": "custom-9",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.queue.prepare",
+          "chatId": "fixture",
+          "prompt": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "classification": {
+              "mode": "default",
+              "attachmentIds": []
+            },
+            "protectedContent": {
+              "formatVersion": 1,
+              "keyRevision": 1,
+              "envelope": {
+                "version": 1,
+                "algorithm": "AES-256-GCM",
+                "keyRevision": 1,
+                "nonce": "AAAAAAAAAAAAAAAA",
+                "ciphertext": "00000000-0000-4000-8000-000000000001"
+              }
+            },
+            "modelId": "fixture",
+            "reasoningEffort": null,
+            "customSubagentModel": false,
+            "subagentModelId": null,
+            "subagentReasoningEffort": null,
+            "worktreeId": null,
+            "frozen": false,
+            "idempotencyKey": "fixture",
+            "pendingMessage": {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "classification": {
+                "role": "user",
+                "mode": "default",
+                "attachmentIds": []
+              },
+              "protectedContent": {
+                "formatVersion": 1,
+                "keyRevision": 1,
+                "envelope": {
+                  "version": 1,
+                  "algorithm": "AES-256-GCM",
+                  "keyRevision": 1,
+                  "nonce": "AAAAAAAAAAAAAAAA",
+                  "ciphertext": "00000000-0000-4000-8000-000000000001"
+                }
+              },
+              "reasoningEffort": null,
+              "idempotencyKey": "fixture"
+            }
+          },
+          "attachments": []
+        }
+      }
+    },
+    {
+      "name": "custom-11",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.native-control",
+          "chatId": "fixture",
+          "threadId": null,
+          "nativeActivationGeneration": null,
+          "nativeRuntimeGeneration": null,
+          "modelRouteId": null,
+          "providerAccountId": null,
+          "control": {
+            "kind": "reply",
+            "requestKey": "fixture",
+            "response": {
+              "kind": "commandExecution",
+              "decision": "accept",
+              "execpolicyAmendment": null,
+              "networkPolicyAmendment": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-12",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.turn",
+          "executionProfile": "ide",
+          "contextKind": "project",
+          "chatId": "fixture",
+          "clientMessageId": "fixture",
+          "executionLaneId": "fixture",
+          "worktreeId": "fixture-worktree",
+          "scratchRootId": null,
+          "rootKind": "git-worktree",
+          "cwd": "fixture",
+          "isPrimary": false,
+          "worktreeMode": "agent-managed",
+          "worktreePolicy": "direct",
+          "policyProjectId": "fixture",
+          "policies": {
+            "policies": []
+          },
+          "standalonePolicies": {
+            "policies": []
+          },
+          "threadId": null,
+          "protectedHistory": [],
+          "protectedPlan": null,
+          "attachments": [],
+          "skillNames": [],
+          "chatSkillAudienceKeys": [],
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          },
+          "permissionProfileId": "fixture",
+          "planMode": "default",
+          "mcpServers": [],
+          "automationPaused": false,
+          "resultMode": {
+            "kind": "visible"
+          },
+          "prompt": "fixture"
+        }
+      }
+    },
+    {
+      "name": "custom-13",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.turn",
+          "executionProfile": "ide",
+          "contextKind": "project",
+          "chatId": "fixture",
+          "clientMessageId": "fixture",
+          "executionLaneId": "fixture",
+          "worktreeId": "fixture-worktree",
+          "scratchRootId": null,
+          "rootKind": "git-worktree",
+          "cwd": "fixture",
+          "isPrimary": false,
+          "worktreeMode": "agent-managed",
+          "worktreePolicy": "direct",
+          "policyProjectId": "fixture",
+          "policies": {
+            "policies": []
+          },
+          "standalonePolicies": {
+            "policies": []
+          },
+          "threadId": null,
+          "protectedHistory": [],
+          "protectedPlan": null,
+          "attachments": [],
+          "skillNames": [],
+          "chatSkillAudienceKeys": [],
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          },
+          "permissionProfileId": "fixture",
+          "planMode": "default",
+          "mcpServers": [],
+          "automationPaused": false,
+          "resultMode": {
+            "kind": "task-encrypted",
+            "operation": {
+              "chatId": "fixture",
+              "operationId": "00000000-0000-4000-8000-000000000001",
+              "fingerprint": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+              "classification": {
+                "ordinal": 0,
+                "kind": "direct",
+                "status": "running",
+                "hasOutputPlan": false,
+                "hasOutputQuestions": false,
+                "hasOutputGoalPrompt": false,
+                "error": null
+              },
+              "protectedInput": {
+                "formatVersion": 1,
+                "keyRevision": 1,
+                "envelope": {
+                  "version": 1,
+                  "algorithm": "AES-256-GCM",
+                  "keyRevision": 1,
+                  "nonce": "AAAAAAAAAAAAAAAA",
+                  "ciphertext": "00000000-0000-4000-8000-000000000001"
+                }
+              },
+              "task": {
+                "classification": {
+                  "state": "draft",
+                  "stableStateBeforeFailure": null,
+                  "activeOperationKind": null,
+                  "planAuthorship": "agent",
+                  "planningRound": 0,
+                  "hasPlan": false,
+                  "hasQuestions": false,
+                  "hasFinalPlan": false,
+                  "hasGoalPrompt": false,
+                  "lastError": null
+                },
+                "protectedContent": {
+                  "formatVersion": 1,
+                  "keyRevision": 1,
+                  "envelope": {
+                    "version": 1,
+                    "algorithm": "AES-256-GCM",
+                    "keyRevision": 1,
+                    "nonce": "AAAAAAAAAAAAAAAA",
+                    "ciphertext": "00000000-0000-4000-8000-000000000001"
+                  }
+                }
+              },
+              "userMessage": {
+                "id": "00000000-0000-4000-8000-000000000001",
+                "classification": {
+                  "role": "user",
+                  "mode": "default",
+                  "attachmentIds": []
+                },
+                "protectedContent": {
+                  "formatVersion": 1,
+                  "keyRevision": 1,
+                  "envelope": {
+                    "version": 1,
+                    "algorithm": "AES-256-GCM",
+                    "keyRevision": 1,
+                    "nonce": "AAAAAAAAAAAAAAAA",
+                    "ciphertext": "00000000-0000-4000-8000-000000000001"
+                  }
+                },
+                "reasoningEffort": null,
+                "idempotencyKey": "fixture"
+              }
+            }
+          },
+          "prompt": "fixture"
+        }
+      }
+    },
+    {
+      "name": "custom-15",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.turn",
+          "executionProfile": "ide",
+          "contextKind": "project",
+          "chatId": "fixture",
+          "clientMessageId": "fixture",
+          "executionLaneId": "fixture",
+          "worktreeId": "fixture-worktree",
+          "scratchRootId": null,
+          "rootKind": "git-worktree",
+          "cwd": "fixture",
+          "isPrimary": false,
+          "worktreeMode": "agent-managed",
+          "worktreePolicy": "direct",
+          "policyProjectId": "fixture",
+          "policies": {
+            "policies": []
+          },
+          "standalonePolicies": {
+            "policies": []
+          },
+          "threadId": null,
+          "protectedHistory": [
+            {
+              "role": "user",
+              "mode": "default",
+              "attachmentIds": [],
+              "id": "fixture",
+              "chatId": "fixture",
+              "contextKind": "project",
+              "worktreeId": "fixture-worktree",
+              "scratchRootId": null,
+              "executionLaneId": null,
+              "sequence": 1,
+              "protectedContent": {
+                "formatVersion": 1,
+                "keyRevision": 1,
+                "envelope": {
+                  "version": 1,
+                  "algorithm": "AES-256-GCM",
+                  "keyRevision": 1,
+                  "nonce": "AAAAAAAAAAAAAAAA",
+                  "ciphertext": "00000000-0000-4000-8000-000000000001"
+                }
+              },
+              "modelId": null,
+              "modelRouteId": null,
+              "providerId": null,
+              "providerName": null,
+              "providerModelName": null,
+              "reasoningEffort": null,
+              "appliedReasoningEffort": null,
+              "reasoningAdjusted": false,
+              "idempotencyKey": null,
+              "createdAt": "2026-10-26T00:00:00.000Z"
+            }
+          ],
+          "protectedPlan": null,
+          "attachments": [],
+          "skillNames": [],
+          "chatSkillAudienceKeys": [],
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          },
+          "permissionProfileId": "fixture",
+          "planMode": "default",
+          "mcpServers": [],
+          "automationPaused": false,
+          "resultMode": {
+            "kind": "visible"
+          },
+          "prompt": "fixture"
+        }
+      }
+    },
+    {
+      "name": "custom-16",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.turn",
+          "executionProfile": "standalone-chat",
+          "contextKind": "standalone",
+          "chatId": "fixture",
+          "clientMessageId": "fixture",
+          "executionLaneId": "fixture",
+          "worktreeId": null,
+          "scratchRootId": "fixture-scratch",
+          "rootKind": null,
+          "cwd": "fixture",
+          "isPrimary": true,
+          "worktreeMode": null,
+          "worktreePolicy": null,
+          "policyProjectId": null,
+          "policies": {
+            "policies": []
+          },
+          "standalonePolicies": {
+            "policies": [
+              {
+                "id": "fixture",
+                "protectedSummary": {
+                  "formatVersion": 1,
+                  "keyRevision": 1,
+                  "envelope": {
+                    "version": 1,
+                    "algorithm": "AES-256-GCM",
+                    "keyRevision": 1,
+                    "nonce": "AAAAAAAAAAAAAAAA",
+                    "ciphertext": "00000000-0000-4000-8000-000000000001"
+                  }
+                },
+                "protectedBody": {
+                  "formatVersion": 1,
+                  "keyRevision": 1,
+                  "envelope": {
+                    "version": 1,
+                    "algorithm": "AES-256-GCM",
+                    "keyRevision": 1,
+                    "nonce": "AAAAAAAAAAAAAAAA",
+                    "ciphertext": "00000000-0000-4000-8000-000000000001"
+                  }
+                }
+              }
+            ]
+          },
+          "threadId": null,
+          "protectedHistory": [],
+          "protectedPlan": null,
+          "attachments": [],
+          "skillNames": [],
+          "chatSkillAudienceKeys": [],
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          },
+          "permissionProfileId": "fixture",
+          "planMode": "default",
+          "mcpServers": [],
+          "automationPaused": false,
+          "resultMode": {
+            "kind": "visible"
+          },
+          "prompt": "fixture",
+          "subagentDefaults": null
+        }
+      }
+    },
+    {
+      "name": "custom-18",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "surface.configure",
+          "surfaceId": "fixture",
+          "serverId": "fixture",
+          "configuration": {
+            "kind": "browser",
+            "profileId": null
+          },
+          "stateResource": "browser-row",
+          "stateRevision": 1,
+          "stateProtection": {
+            "classification": {
+              "recordKind": "browser-state"
+            },
+            "protectedState": {
+              "formatVersion": 1,
+              "keyRevision": 1,
+              "envelope": {
+                "version": 1,
+                "algorithm": "AES-256-GCM",
+                "keyRevision": 1,
+                "nonce": "AAAAAAAAAAAAAAAA",
+                "ciphertext": "00000000-0000-4000-8000-000000000001"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-19",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "surface.configure",
+          "surfaceId": "fixture",
+          "serverId": "fixture",
+          "configuration": {
+            "kind": "desktop"
+          },
+          "stateResource": "remote-desktop-row",
+          "stateRevision": 1,
+          "stateProtection": {
+            "classification": {
+              "recordKind": "remote-desktop-state"
+            },
+            "protectedState": {
+              "formatVersion": 1,
+              "keyRevision": 1,
+              "envelope": {
+                "version": 1,
+                "algorithm": "AES-256-GCM",
+                "keyRevision": 1,
+                "nonce": "AAAAAAAAAAAAAAAA",
+                "ciphertext": "00000000-0000-4000-8000-000000000001"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-22",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "surface.attach",
+          "surfaceId": "fixture",
+          "attachmentId": "fixture",
+          "projectId": "fixture",
+          "serverId": "fixture",
+          "configuration": {
+            "kind": "browser",
+            "profileId": null
+          },
+          "stateResource": "browser-row",
+          "stateRevision": 1,
+          "stateProtection": {
+            "classification": {
+              "recordKind": "browser-state"
+            },
+            "protectedState": {
+              "formatVersion": 1,
+              "keyRevision": 1,
+              "envelope": {
+                "version": 1,
+                "algorithm": "AES-256-GCM",
+                "keyRevision": 1,
+                "nonce": "AAAAAAAAAAAAAAAA",
+                "ciphertext": "00000000-0000-4000-8000-000000000001"
+              }
+            }
+          },
+          "preferredTransport": "websocket",
+          "webrtc": null,
+          "viewport": {
+            "width": 1,
+            "height": 1,
+            "devicePixelRatio": 0.25
+          },
+          "desktopStream": null
+        }
+      }
+    },
+    {
+      "name": "custom-23",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "terminal.services.reconcile",
+          "services": [
+            {
+              "terminalId": "fixture",
+              "serverId": "fixture",
+              "worktreePath": "fixture",
+              "stateProtection": {
+                "classification": {
+                  "recordKind": "terminal-state"
+                },
+                "protectedState": {
+                  "formatVersion": 1,
+                  "keyRevision": 1,
+                  "envelope": {
+                    "version": 1,
+                    "algorithm": "AES-256-GCM",
+                    "keyRevision": 1,
+                    "nonce": "AAAAAAAAAAAAAAAA",
+                    "ciphertext": "00000000-0000-4000-8000-000000000001"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "custom-24",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "worktree.observation.configure",
+          "targets": [],
+          "codegraphTargets": [
+            {
+              "projectId": "00000000-0000-4000-8000-000000000001",
+              "worktreeId": "fixture",
+              "rootKind": "git-worktree",
+              "sourcePath": "fixture",
+              "worktreePath": "fixture"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "custom-25",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "worktree.observation.configure",
+          "targets": [
+            {
+              "sourcePath": "fixture",
+              "worktreePath": "fixture"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "custom-26",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "file-document.operation",
+          "documentId": "00000000-0000-4000-8000-000000000001",
+          "serverId": "fixture",
+          "projectId": "fixture",
+          "worktreeId": "fixture",
+          "workerId": "fixture",
+          "root": "fixture",
+          "stateProtection": {
+            "classification": {
+              "recordKind": "file-document-state"
+            },
+            "protectedState": {
+              "formatVersion": 1,
+              "keyRevision": 1,
+              "envelope": {
+                "version": 1,
+                "algorithm": "AES-256-GCM",
+                "keyRevision": 1,
+                "nonce": "AAAAAAAAAAAAAAAA",
+                "ciphertext": "00000000-0000-4000-8000-000000000001"
+              }
+            }
+          },
+          "operationId": "fixture",
+          "sequence": 0,
+          "protectedRequest": {
+            "formatVersion": 1,
+            "keyRevision": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "00000000-0000-4000-8000-000000000001"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-27",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.conflicts.apply",
+          "cwd": "fixture",
+          "request": {
+            "path": "fixture",
+            "strategy": "ours",
+            "content": null
+          },
+          "token": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    },
+    {
+      "name": "custom-28",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.operation.start",
+          "cwd": "fixture",
+          "action": {
+            "type": "interactiveRebase",
+            "upstreamRef": "fixture",
+            "todo": [
+              {
+                "action": "pick",
+                "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "message": null
+              }
+            ]
+          },
+          "token": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    },
+    {
+      "name": "custom-29",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.tag.action.apply",
+          "cwd": "fixture",
+          "action": {
+            "type": "create",
+            "name": "fixture",
+            "target": null,
+            "annotated": false,
+            "message": null
+          },
+          "token": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    },
+    {
+      "name": "custom-30",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.stash.create",
+          "cwd": "fixture",
+          "request": {
+            "message": "fixture",
+            "includeStaged": true,
+            "includeUnstaged": true,
+            "includeUntracked": false
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-31",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.commit.search",
+          "cwd": "fixture",
+          "query": {
+            "message": null,
+            "author": null,
+            "hash": null,
+            "dateFrom": null,
+            "dateTo": null,
+            "path": null,
+            "branch": "fixture",
+            "tag": null
+          },
+          "cursor": 0,
+          "limit": 100
+        }
+      }
+    },
+    {
+      "name": "custom-32",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.graph.metrics",
+          "cwd": "fixture",
+          "revision": "fixture",
+          "rootPath": null,
+          "maxNodes": 100000,
+          "includeBlame": false
+        }
+      }
+    },
+    {
+      "name": "custom-33",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.history",
+          "cwd": "fixture",
+          "cursor": 0,
+          "limit": 100,
+          "revisions": [],
+          "options": {
+            "filters": {
+              "message": null,
+              "author": null,
+              "hash": null,
+              "dateFrom": null,
+              "dateTo": null,
+              "path": null,
+              "branch": null,
+              "tag": null
+            },
+            "firstParent": false,
+            "hideMerges": false
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-34",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.share.open",
+          "shareId": "fixture",
+          "protectedRecord": {
+            "operationId": "00000000-0000-4000-8000-000000000001",
+            "revision": 1,
+            "protectedContent": {
+              "formatVersion": 1,
+              "domain": "tunnel-content",
+              "keyRevision": 1,
+              "envelope": {
+                "version": 1,
+                "algorithm": "AES-256-GCM",
+                "keyRevision": 1,
+                "nonce": "AAAAAAAAAAAAAAAA",
+                "ciphertext": "00000000-0000-4000-8000-000000000001"
+              }
+            }
+          },
+          "standaloneRoot": null
+        }
+      }
+    },
+    {
+      "name": "custom-35",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.export.chat.begin",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "target": {
+            "kind": "codex-local"
+          },
+          "chatId": "fixture",
+          "cwd": "fixture",
+          "titleProtection": {
+            "classification": {
+              "recordKind": "chat"
+            },
+            "protectedLabel": {
+              "formatVersion": 1,
+              "keyRevision": 1,
+              "envelope": {
+                "version": 1,
+                "algorithm": "AES-256-GCM",
+                "keyRevision": 1,
+                "nonce": "AAAAAAAAAAAAAAAA",
+                "ciphertext": "00000000-0000-4000-8000-000000000001"
+              }
+            }
+          },
+          "transcriptSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "sizeBytes": 0
+        }
+      }
+    },
+    {
+      "name": "custom-36",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.run-configuration-runtime.restart",
+          "identity": {
+            "runtimeId": "00000000-0000-4000-8000-000000000001",
+            "projectId": "00000000-0000-4000-8000-000000000001",
+            "configurationId": "00000000-0000-4000-8000-000000000001",
+            "worktreeId": "00000000-0000-4000-8000-000000000001",
+            "workerId": "fixture",
+            "definitionRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "codexEnvironmentRevision": null,
+            "generation": 1,
+            "operationId": "00000000-0000-4000-8000-000000000001",
+            "terminalId": "00000000-0000-4000-8000-000000000001"
+          },
+          "rootKind": "git-root",
+          "sourcePath": "fixture",
+          "targetPath": "fixture",
+          "protectedSecrets": [
+            {
+              "reference": "fixture",
+              "revision": 1,
+              "protectedValue": {
+                "formatVersion": 1,
+                "keyRevision": 1,
+                "envelope": {
+                  "version": 1,
+                  "algorithm": "AES-256-GCM",
+                  "keyRevision": 1,
+                  "nonce": "AAAAAAAAAAAAAAAA",
+                  "ciphertext": "00000000-0000-4000-8000-000000000001"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "custom-39",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.run-configuration-definitions.write",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "sourcePath": "fixture",
+          "request": {
+            "expectedRevision": null,
+            "document": {
+              "schema": "cantrip.run-configuration",
+              "version": 1,
+              "id": "00000000-0000-4000-8000-000000000001",
+              "name": "fixture",
+              "provider": "rust",
+              "workingDirectory": ".",
+              "target": {
+                "kind": "binary",
+                "package": "fixture",
+                "name": "fixture"
+              },
+              "commandOverride": null,
+              "arguments": [],
+              "environment": {
+                "includeCodexEnvironment": true,
+                "files": [],
+                "variables": [],
+                "secrets": []
+              },
+              "beforeLaunch": [],
+              "platformOverrides": {},
+              "options": {
+                "toolchain": "default",
+                "features": [],
+                "allFeatures": false,
+                "useDefaultFeatures": true,
+                "targetTriple": null,
+                "profile": "dev",
+                "locked": false,
+                "offline": false
+              },
+              "stop": {
+                "gracePeriodMs": 3000
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-40",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.run-configuration-definitions.write",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "sourcePath": "fixture",
+          "request": {
+            "expectedRevision": null,
+            "document": {
+              "schema": "cantrip.run-configuration",
+              "version": 1,
+              "id": "00000000-0000-4000-8000-000000000001",
+              "name": "fixture",
+              "provider": "rust",
+              "workingDirectory": ".",
+              "target": {
+                "kind": "binary",
+                "package": "fixture",
+                "name": "fixture"
+              },
+              "commandOverride": null,
+              "arguments": [],
+              "environment": {
+                "includeCodexEnvironment": true,
+                "files": [],
+                "variables": [],
+                "secrets": []
+              },
+              "beforeLaunch": [],
+              "platformOverrides": {},
+              "options": {
+                "toolchain": "default",
+                "features": ["fixture"],
+                "allFeatures": false,
+                "useDefaultFeatures": true,
+                "targetTriple": null,
+                "profile": "dev",
+                "locked": false,
+                "offline": false
+              },
+              "stop": {
+                "gracePeriodMs": 3000
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-41",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.run-configuration-definitions.write",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "sourcePath": "fixture",
+          "request": {
+            "expectedRevision": null,
+            "document": {
+              "schema": "cantrip.run-configuration",
+              "version": 1,
+              "id": "00000000-0000-4000-8000-000000000001",
+              "name": "fixture",
+              "provider": "rust",
+              "workingDirectory": ".",
+              "target": {
+                "kind": "binary",
+                "package": "fixture",
+                "name": "fixture"
+              },
+              "commandOverride": null,
+              "arguments": [],
+              "environment": {
+                "includeCodexEnvironment": true,
+                "files": [],
+                "variables": [],
+                "secrets": []
+              },
+              "beforeLaunch": [],
+              "platformOverrides": {},
+              "options": {
+                "toolchain": "default",
+                "features": [],
+                "allFeatures": false,
+                "useDefaultFeatures": true,
+                "targetTriple": null,
+                "profile": "fixture",
+                "locked": false,
+                "offline": false
+              },
+              "stop": {
+                "gracePeriodMs": 3000
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-42",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.run-configuration-definitions.write",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "sourcePath": "fixture",
+          "request": {
+            "expectedRevision": null,
+            "document": {
+              "schema": "cantrip.run-configuration",
+              "version": 1,
+              "id": "00000000-0000-4000-8000-000000000001",
+              "name": "fixture",
+              "provider": "rust",
+              "workingDirectory": ".",
+              "target": {
+                "kind": "binary",
+                "package": "fixture",
+                "name": "fixture"
+              },
+              "commandOverride": null,
+              "arguments": [],
+              "environment": {
+                "includeCodexEnvironment": true,
+                "files": [],
+                "variables": [],
+                "secrets": []
+              },
+              "beforeLaunch": [],
+              "platformOverrides": {},
+              "options": {
+                "toolchain": "default",
+                "features": [],
+                "allFeatures": false,
+                "useDefaultFeatures": true,
+                "targetTriple": "fixture",
+                "profile": "dev",
+                "locked": false,
+                "offline": false
+              },
+              "stop": {
+                "gracePeriodMs": 3000
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-44",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.run-configuration-definitions.write",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "sourcePath": "fixture",
+          "request": {
+            "expectedRevision": null,
+            "document": {
+              "schema": "cantrip.run-configuration",
+              "version": 1,
+              "id": "00000000-0000-4000-8000-000000000001",
+              "name": "fixture",
+              "provider": "rust",
+              "workingDirectory": ".",
+              "target": {
+                "kind": "binary",
+                "package": "fixture",
+                "name": "fixture"
+              },
+              "commandOverride": null,
+              "arguments": [],
+              "environment": {
+                "includeCodexEnvironment": true,
+                "files": [],
+                "variables": [],
+                "secrets": []
+              },
+              "beforeLaunch": [],
+              "platformOverrides": {},
+              "options": {
+                "toolchain": "fixture",
+                "features": [],
+                "allFeatures": false,
+                "useDefaultFeatures": true,
+                "targetTriple": null,
+                "profile": "dev",
+                "locked": false,
+                "offline": false
+              },
+              "stop": {
+                "gracePeriodMs": 3000
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-45",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.run-configuration-definitions.write",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "sourcePath": "fixture",
+          "request": {
+            "expectedRevision": null,
+            "document": {
+              "schema": "cantrip.run-configuration",
+              "version": 1,
+              "id": "00000000-0000-4000-8000-000000000001",
+              "name": "fixture",
+              "provider": "rust",
+              "workingDirectory": ".",
+              "target": {
+                "kind": "binary",
+                "package": "fixture",
+                "name": "fixture"
+              },
+              "commandOverride": null,
+              "arguments": [],
+              "environment": {
+                "includeCodexEnvironment": true,
+                "files": [],
+                "variables": [],
+                "secrets": []
+              },
+              "beforeLaunch": [],
+              "platformOverrides": {
+                "linux": {
+                  "options": {
+                    "features": ["fixture"]
+                  }
+                }
+              },
+              "options": {
+                "toolchain": "default",
+                "features": [],
+                "allFeatures": false,
+                "useDefaultFeatures": true,
+                "targetTriple": null,
+                "profile": "dev",
+                "locked": false,
+                "offline": false
+              },
+              "stop": {
+                "gracePeriodMs": 3000
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-46",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.run-configuration-definitions.write",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "sourcePath": "fixture",
+          "request": {
+            "expectedRevision": null,
+            "document": {
+              "schema": "cantrip.run-configuration",
+              "version": 1,
+              "id": "00000000-0000-4000-8000-000000000001",
+              "name": "fixture",
+              "provider": "rust",
+              "workingDirectory": ".",
+              "target": {
+                "kind": "binary",
+                "package": "fixture",
+                "name": "fixture"
+              },
+              "commandOverride": null,
+              "arguments": [],
+              "environment": {
+                "includeCodexEnvironment": true,
+                "files": [],
+                "variables": [],
+                "secrets": []
+              },
+              "beforeLaunch": [],
+              "platformOverrides": {
+                "linux": {
+                  "environment": {
+                    "variables": [
+                      {
+                        "name": "fixture",
+                        "value": "fixture",
+                        "enabled": true
+                      }
+                    ],
+                    "secrets": []
+                  }
+                }
+              },
+              "options": {
+                "toolchain": "default",
+                "features": [],
+                "allFeatures": false,
+                "useDefaultFeatures": true,
+                "targetTriple": null,
+                "profile": "dev",
+                "locked": false,
+                "offline": false
+              },
+              "stop": {
+                "gracePeriodMs": 3000
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-47",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.run-configuration-definitions.write",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "sourcePath": "fixture",
+          "request": {
+            "expectedRevision": null,
+            "document": {
+              "schema": "cantrip.run-configuration",
+              "version": 1,
+              "id": "00000000-0000-4000-8000-000000000001",
+              "name": "fixture",
+              "provider": "rust",
+              "workingDirectory": ".",
+              "target": {
+                "kind": "binary",
+                "package": "fixture",
+                "name": "fixture"
+              },
+              "commandOverride": null,
+              "arguments": [],
+              "environment": {
+                "includeCodexEnvironment": true,
+                "files": [],
+                "variables": [],
+                "secrets": []
+              },
+              "beforeLaunch": [],
+              "platformOverrides": {
+                "linux": {
+                  "environment": {
+                    "variables": [
+                      {
+                        "name": "fixture",
+                        "value": "fixture",
+                        "enabled": true
+                      }
+                    ]
+                  }
+                }
+              },
+              "options": {
+                "toolchain": "default",
+                "features": [],
+                "allFeatures": false,
+                "useDefaultFeatures": true,
+                "targetTriple": null,
+                "profile": "dev",
+                "locked": false,
+                "offline": false
+              },
+              "stop": {
+                "gracePeriodMs": 3000
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-48",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.run-configuration-definitions.write",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "sourcePath": "fixture",
+          "request": {
+            "expectedRevision": null,
+            "document": {
+              "schema": "cantrip.run-configuration",
+              "version": 1,
+              "id": "00000000-0000-4000-8000-000000000001",
+              "name": "fixture",
+              "provider": "rust",
+              "workingDirectory": ".",
+              "target": {
+                "kind": "binary",
+                "package": "fixture",
+                "name": "fixture"
+              },
+              "commandOverride": null,
+              "arguments": [],
+              "environment": {
+                "includeCodexEnvironment": true,
+                "files": [],
+                "variables": [],
+                "secrets": []
+              },
+              "beforeLaunch": [],
+              "platformOverrides": {
+                "linux": {
+                  "environment": {
+                    "files": ["fixture"]
+                  }
+                }
+              },
+              "options": {
+                "toolchain": "default",
+                "features": [],
+                "allFeatures": false,
+                "useDefaultFeatures": true,
+                "targetTriple": null,
+                "profile": "dev",
+                "locked": false,
+                "offline": false
+              },
+              "stop": {
+                "gracePeriodMs": 3000
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-49",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.run-configuration-definitions.write",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "sourcePath": "fixture",
+          "request": {
+            "expectedRevision": null,
+            "document": {
+              "schema": "cantrip.run-configuration",
+              "version": 1,
+              "id": "00000000-0000-4000-8000-000000000001",
+              "name": "fixture",
+              "provider": "rust",
+              "workingDirectory": ".",
+              "target": {
+                "kind": "binary",
+                "package": "fixture",
+                "name": "fixture"
+              },
+              "commandOverride": null,
+              "arguments": [],
+              "environment": {
+                "includeCodexEnvironment": true,
+                "files": [],
+                "variables": [],
+                "secrets": []
+              },
+              "beforeLaunch": [],
+              "platformOverrides": {
+                "linux": {
+                  "arguments": ["fixture"]
+                }
+              },
+              "options": {
+                "toolchain": "default",
+                "features": [],
+                "allFeatures": false,
+                "useDefaultFeatures": true,
+                "targetTriple": null,
+                "profile": "dev",
+                "locked": false,
+                "offline": false
+              },
+              "stop": {
+                "gracePeriodMs": 3000
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-50",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.run-configuration-definitions.write",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "sourcePath": "fixture",
+          "request": {
+            "expectedRevision": null,
+            "document": {
+              "schema": "cantrip.run-configuration",
+              "version": 1,
+              "id": "00000000-0000-4000-8000-000000000001",
+              "name": "fixture",
+              "provider": "rust",
+              "workingDirectory": ".",
+              "target": {
+                "kind": "binary",
+                "package": "fixture",
+                "name": "fixture"
+              },
+              "commandOverride": null,
+              "arguments": [],
+              "environment": {
+                "includeCodexEnvironment": true,
+                "files": [],
+                "variables": [],
+                "secrets": []
+              },
+              "beforeLaunch": [],
+              "platformOverrides": {
+                "linux": {
+                  "commandOverride": "fixture"
+                }
+              },
+              "options": {
+                "toolchain": "default",
+                "features": [],
+                "allFeatures": false,
+                "useDefaultFeatures": true,
+                "targetTriple": null,
+                "profile": "dev",
+                "locked": false,
+                "offline": false
+              },
+              "stop": {
+                "gracePeriodMs": 3000
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-52",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.run-configuration-definitions.write",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "sourcePath": "fixture",
+          "request": {
+            "expectedRevision": null,
+            "document": {
+              "schema": "cantrip.run-configuration",
+              "version": 1,
+              "id": "00000000-0000-4000-8000-000000000001",
+              "name": "fixture",
+              "provider": "rust",
+              "workingDirectory": ".",
+              "target": {
+                "kind": "binary",
+                "package": "fixture",
+                "name": "fixture"
+              },
+              "commandOverride": null,
+              "arguments": [],
+              "environment": {
+                "includeCodexEnvironment": true,
+                "files": [],
+                "variables": [],
+                "secrets": []
+              },
+              "beforeLaunch": [],
+              "platformOverrides": {
+                "linux": {
+                  "workingDirectory": "fixture"
+                }
+              },
+              "options": {
+                "toolchain": "default",
+                "features": [],
+                "allFeatures": false,
+                "useDefaultFeatures": true,
+                "targetTriple": null,
+                "profile": "dev",
+                "locked": false,
+                "offline": false
+              },
+              "stop": {
+                "gracePeriodMs": 3000
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-53",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.run-configuration-definitions.write",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "sourcePath": "fixture",
+          "request": {
+            "expectedRevision": null,
+            "document": {
+              "schema": "cantrip.run-configuration",
+              "version": 1,
+              "id": "00000000-0000-4000-8000-000000000001",
+              "name": "fixture",
+              "provider": "rust",
+              "workingDirectory": ".",
+              "target": {
+                "kind": "binary",
+                "package": "fixture",
+                "name": "fixture"
+              },
+              "commandOverride": null,
+              "arguments": [],
+              "environment": {
+                "includeCodexEnvironment": true,
+                "files": [],
+                "variables": [
+                  {
+                    "name": "fixture",
+                    "value": "fixture",
+                    "enabled": true
+                  }
+                ],
+                "secrets": []
+              },
+              "beforeLaunch": [],
+              "platformOverrides": {},
+              "options": {
+                "toolchain": "default",
+                "features": [],
+                "allFeatures": false,
+                "useDefaultFeatures": true,
+                "targetTriple": null,
+                "profile": "dev",
+                "locked": false,
+                "offline": false
+              },
+              "stop": {
+                "gracePeriodMs": 3000
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-54",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.run-configuration-definitions.write",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "sourcePath": "fixture",
+          "request": {
+            "expectedRevision": null,
+            "document": {
+              "schema": "cantrip.run-configuration",
+              "version": 1,
+              "id": "00000000-0000-4000-8000-000000000001",
+              "name": "fixture",
+              "provider": "flutter",
+              "workingDirectory": ".",
+              "target": {
+                "kind": "entrypoint",
+                "path": "main.dart"
+              },
+              "commandOverride": null,
+              "arguments": [],
+              "environment": {
+                "includeCodexEnvironment": true,
+                "files": [],
+                "variables": [],
+                "secrets": []
+              },
+              "beforeLaunch": [],
+              "platformOverrides": {},
+              "options": {
+                "sdkHome": null,
+                "deviceId": null,
+                "flavor": null,
+                "mode": "debug",
+                "dartDefines": [],
+                "dartDefineFiles": [],
+                "usePub": true
+              },
+              "stop": {
+                "gracePeriodMs": 3000
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-55",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.run-configuration-definitions.write",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "sourcePath": "fixture",
+          "request": {
+            "expectedRevision": null,
+            "document": {
+              "schema": "cantrip.run-configuration",
+              "version": 1,
+              "id": "00000000-0000-4000-8000-000000000001",
+              "name": "fixture",
+              "provider": "flutter",
+              "workingDirectory": ".",
+              "target": {
+                "kind": "entrypoint",
+                "path": "main.dart"
+              },
+              "commandOverride": null,
+              "arguments": [],
+              "environment": {
+                "includeCodexEnvironment": true,
+                "files": [],
+                "variables": [],
+                "secrets": []
+              },
+              "beforeLaunch": [],
+              "platformOverrides": {},
+              "options": {
+                "sdkHome": null,
+                "deviceId": null,
+                "flavor": null,
+                "mode": "debug",
+                "dartDefines": [
+                  {
+                    "name": "fixture",
+                    "value": "fixture"
+                  }
+                ],
+                "dartDefineFiles": [],
+                "usePub": true
+              },
+              "stop": {
+                "gracePeriodMs": 3000
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-59",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.run-configuration-definitions.write",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "sourcePath": "fixture",
+          "request": {
+            "expectedRevision": null,
+            "document": {
+              "schema": "cantrip.run-configuration",
+              "version": 1,
+              "id": "00000000-0000-4000-8000-000000000001",
+              "name": "fixture",
+              "provider": "flutter",
+              "workingDirectory": ".",
+              "target": {
+                "kind": "entrypoint",
+                "path": "main.dart"
+              },
+              "commandOverride": null,
+              "arguments": [],
+              "environment": {
+                "includeCodexEnvironment": true,
+                "files": [],
+                "variables": [],
+                "secrets": []
+              },
+              "beforeLaunch": [],
+              "platformOverrides": {},
+              "options": {
+                "sdkHome": null,
+                "deviceId": null,
+                "flavor": "fixture",
+                "mode": "debug",
+                "dartDefines": [],
+                "dartDefineFiles": [],
+                "usePub": true
+              },
+              "stop": {
+                "gracePeriodMs": 3000
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-60",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.run-configuration-definitions.write",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "sourcePath": "fixture",
+          "request": {
+            "expectedRevision": null,
+            "document": {
+              "schema": "cantrip.run-configuration",
+              "version": 1,
+              "id": "00000000-0000-4000-8000-000000000001",
+              "name": "fixture",
+              "provider": "flutter",
+              "workingDirectory": ".",
+              "target": {
+                "kind": "entrypoint",
+                "path": "main.dart"
+              },
+              "commandOverride": null,
+              "arguments": [],
+              "environment": {
+                "includeCodexEnvironment": true,
+                "files": [],
+                "variables": [],
+                "secrets": []
+              },
+              "beforeLaunch": [],
+              "platformOverrides": {},
+              "options": {
+                "sdkHome": null,
+                "deviceId": "fixture",
+                "flavor": null,
+                "mode": "debug",
+                "dartDefines": [],
+                "dartDefineFiles": [],
+                "usePub": true
+              },
+              "stop": {
+                "gracePeriodMs": 3000
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-61",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.run-configuration-definitions.write",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "sourcePath": "fixture",
+          "request": {
+            "expectedRevision": null,
+            "document": {
+              "schema": "cantrip.run-configuration",
+              "version": 1,
+              "id": "00000000-0000-4000-8000-000000000001",
+              "name": "fixture",
+              "provider": "flutter",
+              "workingDirectory": ".",
+              "target": {
+                "kind": "entrypoint",
+                "path": "main.dart"
+              },
+              "commandOverride": null,
+              "arguments": [],
+              "environment": {
+                "includeCodexEnvironment": true,
+                "files": [],
+                "variables": [],
+                "secrets": []
+              },
+              "beforeLaunch": [],
+              "platformOverrides": {},
+              "options": {
+                "sdkHome": "fixture",
+                "deviceId": null,
+                "flavor": null,
+                "mode": "debug",
+                "dartDefines": [],
+                "dartDefineFiles": [],
+                "usePub": true
+              },
+              "stop": {
+                "gracePeriodMs": 3000
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-62",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.run-configuration-definitions.write",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "sourcePath": "fixture",
+          "request": {
+            "expectedRevision": null,
+            "document": {
+              "schema": "cantrip.run-configuration",
+              "version": 1,
+              "id": "00000000-0000-4000-8000-000000000001",
+              "name": "fixture",
+              "provider": "flutter",
+              "workingDirectory": ".",
+              "target": {
+                "kind": "entrypoint",
+                "path": "main.dart"
+              },
+              "commandOverride": null,
+              "arguments": [],
+              "environment": {
+                "includeCodexEnvironment": true,
+                "files": [],
+                "variables": [],
+                "secrets": []
+              },
+              "beforeLaunch": [],
+              "platformOverrides": {
+                "linux": {
+                  "options": {
+                    "dartDefines": [
+                      {
+                        "name": "fixture",
+                        "value": "fixture"
+                      }
+                    ]
+                  }
+                }
+              },
+              "options": {
+                "sdkHome": null,
+                "deviceId": null,
+                "flavor": null,
+                "mode": "debug",
+                "dartDefines": [],
+                "dartDefineFiles": [],
+                "usePub": true
+              },
+              "stop": {
+                "gracePeriodMs": 3000
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-64",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.run-configuration-definitions.write",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "sourcePath": "fixture",
+          "request": {
+            "expectedRevision": null,
+            "document": {
+              "schema": "cantrip.run-configuration",
+              "version": 1,
+              "id": "00000000-0000-4000-8000-000000000001",
+              "name": "fixture",
+              "provider": "dart",
+              "workingDirectory": ".",
+              "target": {
+                "kind": "entrypoint",
+                "path": "main.dart"
+              },
+              "commandOverride": null,
+              "arguments": [],
+              "environment": {
+                "includeCodexEnvironment": true,
+                "files": [],
+                "variables": [],
+                "secrets": []
+              },
+              "beforeLaunch": [],
+              "platformOverrides": {},
+              "options": {
+                "sdkHome": null,
+                "vmArguments": []
+              },
+              "stop": {
+                "gracePeriodMs": 3000
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-65",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.run-configuration-definitions.write",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "sourcePath": "fixture",
+          "request": {
+            "expectedRevision": null,
+            "document": {
+              "schema": "cantrip.run-configuration",
+              "version": 1,
+              "id": "00000000-0000-4000-8000-000000000001",
+              "name": "fixture",
+              "provider": "dart",
+              "workingDirectory": ".",
+              "target": {
+                "kind": "entrypoint",
+                "path": "main.dart"
+              },
+              "commandOverride": null,
+              "arguments": [],
+              "environment": {
+                "includeCodexEnvironment": true,
+                "files": [],
+                "variables": [],
+                "secrets": []
+              },
+              "beforeLaunch": [],
+              "platformOverrides": {},
+              "options": {
+                "sdkHome": "fixture",
+                "vmArguments": []
+              },
+              "stop": {
+                "gracePeriodMs": 3000
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-67",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.run-configuration-definitions.write",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "sourcePath": "fixture",
+          "request": {
+            "expectedRevision": null,
+            "document": {
+              "schema": "cantrip.run-configuration",
+              "version": 1,
+              "id": "00000000-0000-4000-8000-000000000001",
+              "name": "fixture",
+              "provider": "java",
+              "workingDirectory": ".",
+              "target": {
+                "kind": "gradleTask",
+                "projectPath": ":",
+                "task": "run"
+              },
+              "commandOverride": null,
+              "arguments": [],
+              "environment": {
+                "includeCodexEnvironment": true,
+                "files": [],
+                "variables": [],
+                "secrets": []
+              },
+              "beforeLaunch": [],
+              "platformOverrides": {},
+              "options": {
+                "jdkHome": null,
+                "useWrapper": true,
+                "buildToolArguments": [],
+                "vmArguments": []
+              },
+              "stop": {
+                "gracePeriodMs": 3000
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-68",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.run-configuration-definitions.write",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "sourcePath": "fixture",
+          "request": {
+            "expectedRevision": null,
+            "document": {
+              "schema": "cantrip.run-configuration",
+              "version": 1,
+              "id": "00000000-0000-4000-8000-000000000001",
+              "name": "fixture",
+              "provider": "java",
+              "workingDirectory": ".",
+              "target": {
+                "kind": "gradleTask",
+                "projectPath": ":",
+                "task": "run"
+              },
+              "commandOverride": null,
+              "arguments": [],
+              "environment": {
+                "includeCodexEnvironment": true,
+                "files": [],
+                "variables": [],
+                "secrets": []
+              },
+              "beforeLaunch": [],
+              "platformOverrides": {},
+              "options": {
+                "jdkHome": "fixture",
+                "useWrapper": true,
+                "buildToolArguments": [],
+                "vmArguments": []
+              },
+              "stop": {
+                "gracePeriodMs": 3000
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-69",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.run-configuration-definitions.write",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "sourcePath": "fixture",
+          "request": {
+            "expectedRevision": null,
+            "document": {
+              "schema": "cantrip.run-configuration",
+              "version": 1,
+              "id": "00000000-0000-4000-8000-000000000001",
+              "name": "fixture",
+              "provider": "node",
+              "workingDirectory": ".",
+              "target": {
+                "kind": "packageScript",
+                "script": "fixture"
+              },
+              "commandOverride": null,
+              "arguments": [],
+              "environment": {
+                "includeCodexEnvironment": true,
+                "files": [],
+                "variables": [],
+                "secrets": []
+              },
+              "beforeLaunch": [],
+              "platformOverrides": {},
+              "options": {
+                "packageManager": "npm",
+                "runtime": "node",
+                "runtimeArguments": []
+              },
+              "stop": {
+                "gracePeriodMs": 3000
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-70",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.run-configuration-definitions.write",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "sourcePath": "fixture",
+          "request": {
+            "expectedRevision": null,
+            "document": {
+              "schema": "cantrip.run-configuration",
+              "version": 1,
+              "id": "00000000-0000-4000-8000-000000000001",
+              "name": "fixture",
+              "provider": "shell",
+              "workingDirectory": ".",
+              "target": {
+                "kind": "command",
+                "command": "fixture"
+              },
+              "commandOverride": null,
+              "arguments": [],
+              "environment": {
+                "includeCodexEnvironment": true,
+                "files": [],
+                "variables": [],
+                "secrets": []
+              },
+              "beforeLaunch": [],
+              "platformOverrides": {},
+              "options": {
+                "shell": "automatic",
+                "login": true
+              },
+              "stop": {
+                "gracePeriodMs": 3000
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-71",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.run-configuration-definitions.write",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "sourcePath": "fixture",
+          "request": {
+            "expectedRevision": null,
+            "document": {
+              "schema": "cantrip.run-configuration",
+              "version": 1,
+              "id": "00000000-0000-4000-8000-000000000001",
+              "name": "fixture",
+              "provider": "shell",
+              "workingDirectory": ".",
+              "target": {
+                "kind": "script",
+                "path": "fixture",
+                "interpreter": "fixture"
+              },
+              "commandOverride": null,
+              "arguments": [],
+              "environment": {
+                "includeCodexEnvironment": true,
+                "files": [],
+                "variables": [],
+                "secrets": []
+              },
+              "beforeLaunch": [],
+              "platformOverrides": {},
+              "options": {
+                "shell": "automatic",
+                "login": true
+              },
+              "stop": {
+                "gracePeriodMs": 3000
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-73",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.run-configuration-definitions.paths",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "sourcePath": "fixture",
+          "purpose": "directory",
+          "query": "fixture"
+        }
+      }
+    },
+    {
+      "name": "custom-74",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.folder-conversion.execute",
+          "jobId": "00000000-0000-4000-8000-000000000001",
+          "attempt": 1,
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "repository": {
+            "repositoryId": "fixture",
+            "nameWithOwner": "fixture/path",
+            "url": "stun:example.test"
+          },
+          "workspaceStorage": {
+            "kind": "system"
+          },
+          "confirmationToken": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "initialCommit": null
+        }
+      }
+    },
+    {
+      "name": "custom-75",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.folder-conversion.preflight",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "repository": {
+            "repositoryId": "fixture",
+            "nameWithOwner": "fixture/path",
+            "url": "stun:example.test"
+          },
+          "workspaceStorage": {
+            "kind": "system"
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-76",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "github.actions.workflow.dispatch",
+          "cwd": "fixture",
+          "repository": "fixture/path",
+          "request": {
+            "workflowId": 1,
+            "ref": "fixture",
+            "inputs": {}
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-77",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "github.pull-request.review.mutate",
+          "cwd": "fixture",
+          "repository": "fixture/path",
+          "number": 1,
+          "action": {
+            "type": "set-file-viewed",
+            "path": "fixture",
+            "viewed": false
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-78",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "github.pull-request.review.mutate",
+          "cwd": "fixture",
+          "repository": "fixture/path",
+          "number": 1,
+          "action": {
+            "type": "inline-comment",
+            "comment": {
+              "body": "fixture",
+              "path": "fixture",
+              "line": 1,
+              "side": "LEFT",
+              "startLine": null,
+              "startSide": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-79",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "github.pull-request.review.mutate",
+          "cwd": "fixture",
+          "repository": "fixture/path",
+          "number": 1,
+          "action": {
+            "type": "submit-review",
+            "review": {
+              "event": "comment",
+              "body": ""
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-80",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "github.pull-request.create",
+          "cwd": "fixture",
+          "repository": "fixture/path",
+          "request": {
+            "base": "fixture",
+            "head": "fixture-next",
+            "title": "fixture",
+            "body": "",
+            "draft": false,
+            "labels": [],
+            "reviewers": [],
+            "linkedIssueNumbers": []
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-83",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "automation.dispatch.protect",
+          "automationId": "00000000-0000-4000-8000-000000000001",
+          "content": {
+            "protectedName": {
+              "formatVersion": 1,
+              "keyRevision": 1,
+              "envelope": {
+                "version": 1,
+                "algorithm": "AES-256-GCM",
+                "keyRevision": 1,
+                "nonce": "AAAAAAAAAAAAAAAA",
+                "ciphertext": "00000000-0000-4000-8000-000000000001"
+              }
+            },
+            "protectedPrompt": {
+              "formatVersion": 1,
+              "keyRevision": 1,
+              "envelope": {
+                "version": 1,
+                "algorithm": "AES-256-GCM",
+                "keyRevision": 1,
+                "nonce": "AAAAAAAAAAAAAAAA",
+                "ciphertext": "00000000-0000-4000-8000-000000000001"
+              }
+            },
+            "protectedCondition": {
+              "formatVersion": 1,
+              "keyRevision": 1,
+              "envelope": {
+                "version": 1,
+                "algorithm": "AES-256-GCM",
+                "keyRevision": 1,
+                "nonce": "AAAAAAAAAAAAAAAA",
+                "ciphertext": "00000000-0000-4000-8000-000000000001"
+              }
+            }
+          },
+          "cwd": "fixture",
+          "repository": null,
+          "promptId": "00000000-0000-4000-8000-000000000001",
+          "messageId": "00000000-0000-4000-8000-000000000001",
+          "mode": "default",
+          "modelId": "fixture",
+          "reasoningEffort": null,
+          "idempotencyKey": "fixture"
+        }
+      }
+    },
+    {
+      "name": "custom-84",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "github.repositories.create",
+          "request": {
+            "owner": "fixture",
+            "name": "fixture",
+            "description": "fixture",
+            "visibility": "public",
+            "initialize": "readme"
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-85",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "component": "searxng",
+          "action": "check-update",
+          "type": "web-runtime.action"
+        }
+      }
+    },
+    {
+      "name": "custom-86",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.scratch.reconcile",
+          "roots": [
+            {
+              "rootId": "00000000-0000-4000-8000-000000000001",
+              "chatId": "00000000-0000-4000-8000-000000000001",
+              "archivedAt": null,
+              "archiveExpiresAt": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "custom-87",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.scratch.archive",
+          "rootId": "00000000-0000-4000-8000-000000000001",
+          "chatId": "00000000-0000-4000-8000-000000000001",
+          "archivedAt": "2026-10-26T00:00:00.000Z",
+          "archiveExpiresAt": "2026-10-26T01:00:00.000Z"
+        }
+      }
+    },
+    {
+      "name": "custom-88",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "worker-link.peer.renew",
+          "peerSessionId": "00000000-0000-4000-8000-000000000001",
+          "sessionId": "00000000-0000-4000-8000-000000000001",
+          "lease": {
+            "issuedAt": "2026-10-26T00:00:00.000Z",
+            "expiresAt": "2026-10-26T01:00:00.000Z",
+            "absoluteExpiresAt": "2026-10-26T02:00:00.000Z"
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-89",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "worker-link.peer.install",
+          "peerSession": {
+            "peerSessionId": "00000000-0000-4000-8000-000000000001",
+            "sessionId": "00000000-0000-4000-8000-000000000001",
+            "identity": {
+              "serverId": "fixture",
+              "serverGeneration": "fixture",
+              "ownerId": "fixture",
+              "accountSessionId": "fixture",
+              "clientInstanceId": "fixture",
+              "workerId": "fixture",
+              "workerProcessGeneration": "fixture"
+            },
+            "routeGeneration": 1,
+            "route": "lan",
+            "lease": {
+              "issuedAt": "2026-10-26T00:00:00.000Z",
+              "expiresAt": "2026-10-26T01:00:00.000Z",
+              "absoluteExpiresAt": "2026-10-26T02:00:00.000Z"
+            }
+          },
+          "configuration": {
+            "directRoutes": {
+              "local": false,
+              "lan": false,
+              "wan": false
+            },
+            "relayOnly": false,
+            "stunUrls": [],
+            "interfacePolicy": {
+              "mode": "default",
+              "interfaces": []
+            },
+            "vpnPolicy": {
+              "defaultRoute": "wan",
+              "lanAllowlist": []
+            },
+            "negotiationTimeoutMs": 1000,
+            "upgradeProbeTimeoutMs": 1000,
+            "maxPeerSessionsPerClient": 1,
+            "maxPeerSessionsPerWorker": 1,
+            "invalidHandshakeRatePerMinute": 1,
+            "laneLimits": {
+              "events": {
+                "maxChannels": 1,
+                "maxQueuedFrames": 1,
+                "maxQueuedBytes": 65536,
+                "maxBytesPerSecond": 65536
+              },
+              "interactive": {
+                "maxChannels": 1,
+                "maxQueuedFrames": 1,
+                "maxQueuedBytes": 65536,
+                "maxBytesPerSecond": 65536
+              },
+              "stream": {
+                "maxChannels": 1,
+                "maxQueuedFrames": 1,
+                "maxQueuedBytes": 65536,
+                "maxBytesPerSecond": 65536
+              },
+              "realtime": {
+                "maxChannels": 1,
+                "maxQueuedFrames": 1,
+                "maxQueuedBytes": 65536,
+                "maxBytesPerSecond": 65536
+              },
+              "bulk": {
+                "maxChannels": 1,
+                "maxQueuedFrames": 1,
+                "maxQueuedBytes": 65536,
+                "maxBytesPerSecond": 65536
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-90",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "worker-link.peer.install",
+          "peerSession": {
+            "peerSessionId": "00000000-0000-4000-8000-000000000001",
+            "sessionId": "00000000-0000-4000-8000-000000000001",
+            "identity": {
+              "serverId": "fixture",
+              "serverGeneration": "fixture",
+              "ownerId": "fixture",
+              "accountSessionId": "fixture",
+              "clientInstanceId": "fixture",
+              "workerId": "fixture",
+              "workerProcessGeneration": "fixture"
+            },
+            "routeGeneration": 1,
+            "route": "lan",
+            "lease": {
+              "issuedAt": "2026-10-26T00:00:00.000Z",
+              "expiresAt": "2026-10-26T01:00:00.000Z",
+              "absoluteExpiresAt": "2026-10-26T02:00:00.000Z"
+            }
+          },
+          "configuration": {
+            "directRoutes": {
+              "local": false,
+              "lan": false,
+              "wan": true
+            },
+            "relayOnly": false,
+            "stunUrls": ["stun:example.test"],
+            "interfacePolicy": {
+              "mode": "default",
+              "interfaces": []
+            },
+            "vpnPolicy": {
+              "defaultRoute": "wan",
+              "lanAllowlist": []
+            },
+            "negotiationTimeoutMs": 1000,
+            "upgradeProbeTimeoutMs": 1000,
+            "maxPeerSessionsPerClient": 1,
+            "maxPeerSessionsPerWorker": 1,
+            "invalidHandshakeRatePerMinute": 1,
+            "laneLimits": {
+              "events": {
+                "maxChannels": 1,
+                "maxQueuedFrames": 1,
+                "maxQueuedBytes": 65536,
+                "maxBytesPerSecond": 65536
+              },
+              "interactive": {
+                "maxChannels": 1,
+                "maxQueuedFrames": 1,
+                "maxQueuedBytes": 65536,
+                "maxBytesPerSecond": 65536
+              },
+              "stream": {
+                "maxChannels": 1,
+                "maxQueuedFrames": 1,
+                "maxQueuedBytes": 65536,
+                "maxBytesPerSecond": 65536
+              },
+              "realtime": {
+                "maxChannels": 1,
+                "maxQueuedFrames": 1,
+                "maxQueuedBytes": 65536,
+                "maxBytesPerSecond": 65536
+              },
+              "bulk": {
+                "maxChannels": 1,
+                "maxQueuedFrames": 1,
+                "maxQueuedBytes": 65536,
+                "maxBytesPerSecond": 65536
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-92",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "worker-link.grant.install",
+          "sessionId": "00000000-0000-4000-8000-000000000001",
+          "grant": {
+            "binding": {
+              "grantId": "00000000-0000-4000-8000-000000000001",
+              "grantGeneration": 1,
+              "sessionId": "00000000-0000-4000-8000-000000000001",
+              "identity": {
+                "serverId": "fixture",
+                "serverGeneration": "fixture",
+                "ownerId": "fixture",
+                "accountSessionId": "fixture",
+                "clientInstanceId": "fixture",
+                "workerId": "fixture",
+                "workerProcessGeneration": "fixture"
+              },
+              "resource": {
+                "kind": "terminal",
+                "resourceId": "fixture",
+                "attachmentId": null
+              },
+              "lanes": ["events"],
+              "operations": ["stream:open"],
+              "maxChannels": 1,
+              "lease": {
+                "issuedAt": "2026-10-26T00:00:00.000Z",
+                "expiresAt": "2026-10-26T01:00:00.000Z",
+                "absoluteExpiresAt": "2026-10-26T02:00:00.000Z"
+              }
+            },
+            "tokenHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-93",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "worker-link.grant.install",
+          "sessionId": "00000000-0000-4000-8000-000000000001",
+          "grant": {
+            "binding": {
+              "grantId": "00000000-0000-4000-8000-000000000001",
+              "grantGeneration": 1,
+              "sessionId": "00000000-0000-4000-8000-000000000001",
+              "identity": {
+                "serverId": "fixture",
+                "serverGeneration": "fixture",
+                "ownerId": "fixture",
+                "accountSessionId": "fixture",
+                "clientInstanceId": "fixture",
+                "workerId": "fixture",
+                "workerProcessGeneration": "fixture"
+              },
+              "resource": {
+                "kind": "observations",
+                "resourceId": "fixture",
+                "attachmentId": "00000000-0000-4000-8000-000000000001"
+              },
+              "lanes": ["events"],
+              "operations": ["stream:open"],
+              "maxChannels": 1,
+              "lease": {
+                "issuedAt": "2026-10-26T00:00:00.000Z",
+                "expiresAt": "2026-10-26T01:00:00.000Z",
+                "absoluteExpiresAt": "2026-10-26T02:00:00.000Z"
+              }
+            },
+            "tokenHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "observation": {
+              "subscriptionId": "00000000-0000-4000-8000-000000000001",
+              "topics": ["chat-progress"]
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-96",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "worker-link.session.install",
+          "session": {
+            "sessionId": "00000000-0000-4000-8000-000000000001",
+            "identity": {
+              "serverId": "fixture",
+              "serverGeneration": "fixture",
+              "ownerId": "fixture",
+              "accountSessionId": "fixture",
+              "clientInstanceId": "fixture",
+              "workerId": "fixture",
+              "workerProcessGeneration": "fixture"
+            },
+            "lease": {
+              "issuedAt": "2026-10-26T00:00:00.000Z",
+              "expiresAt": "2026-10-26T01:00:00.000Z",
+              "absoluteExpiresAt": "2026-10-26T02:00:00.000Z"
+            },
+            "routePolicy": {
+              "priority": ["local", "lan", "wan", "relay"],
+              "enabled": ["local"]
+            },
+            "routeGeneration": 1,
+            "preferredRoute": "local"
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-98",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "computer-use.operation",
+          "serverId": "fixture",
+          "chatId": "fixture",
+          "executionLaneId": null,
+          "request": {
+            "operationId": "00000000-0000-4000-8000-000000000001",
+            "operation": "capabilities.get",
+            "protectedContent": {
+              "formatVersion": 1,
+              "domain": "client-control-content",
+              "keyRevision": 1,
+              "envelope": {
+                "version": 1,
+                "algorithm": "AES-256-GCM",
+                "keyRevision": 1,
+                "nonce": "AAAAAAAAAAAAAAAA",
+                "ciphertext": "00000000-0000-4000-8000-000000000001"
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}
