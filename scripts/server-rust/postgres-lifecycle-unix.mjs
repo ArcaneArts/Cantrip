@@ -1,5 +1,6 @@
 // Unix's pipe owner has two additional failure boundaries. Windows uses its job.
 import assert from "node:assert/strict";
+import { once } from "node:events";
 import { spawn, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdir, readFile, readdir, symlink, writeFile } from "node:fs/promises";
@@ -7,7 +8,7 @@ import { createServer } from "node:net";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { fixtureEnvironment } from "./process.mjs";
+import { fixtureEnvironment, startServer } from "./process.mjs";
 import { HttpFixture } from "./http-fixture.mjs";
 
 const execute = promisify(execFile);
@@ -330,6 +331,101 @@ export async function unixLifecycle({
       await fixture.close();
       await stop(bin, database);
     }
+  }
+  // A real terminal sends SIGINT to its entire foreground group. Isolate this
+  // fixture's session so the test never signals the test runner or its control DB.
+  const signalFixture = new HttpFixture({
+    kind: "rust",
+    executable,
+    root,
+    name: "terminal interrupt",
+    databaseMode: "bundled-postgres",
+    environment: {
+      CANTRIP_AUTH_MODE: "accounts",
+      CANTRIP_POSTGRES_BIN_DIR: bin,
+    },
+  });
+  signalFixture.start = async () => {
+    assert.equal(signalFixture.server, undefined);
+    signalFixture.server = await startServer(
+      executable,
+      [
+        "--port",
+        "0",
+        "--database",
+        "bundled-postgres",
+        "--shutdown-on-stdin-close",
+      ],
+      { env: signalFixture.environment, detached: true },
+    );
+  };
+  const signalDatabase = path.join(
+    signalFixture.environment.CANTRIP_DATA_DIR,
+    "postgres",
+  );
+  try {
+    await signalFixture.start();
+    await signalFixture.observe("signal readiness", "GET", "/readyz");
+    await signalFixture.observe(
+      "signal account",
+      "POST",
+      "/api/auth/register",
+      {
+        json: {
+          email: "terminal-signal@example.invalid",
+          displayName: "Signal fixture",
+          password: "fixture terminal signal password",
+        },
+        status: 201,
+      },
+    );
+    const child = signalFixture.server.child;
+    const completion = once(child, "close", {
+      signal: AbortSignal.timeout(15000),
+    });
+    process.kill(-child.pid, "SIGINT");
+    const [code, signal] = await completion;
+    let closeError, restartError;
+    try {
+      await signalFixture.close();
+    } catch (error) {
+      closeError = error.message;
+    }
+    // Exercise restart even if terminal shutdown itself reported an error.
+    try {
+      await signalFixture.start();
+    } catch (error) {
+      restartError = error.message;
+    }
+    const entry = {
+      name: "Unix terminal foreground-group SIGINT",
+      code,
+      signal,
+      closeError,
+      restartError,
+    };
+    cases.push(entry);
+    assert.equal(code, 0, closeError);
+    assert.equal(
+      restartError,
+      undefined,
+      "Terminal interruption must leave a restartable private database",
+    );
+    await signalFixture.observe(
+      "signal retained login",
+      "POST",
+      "/api/auth/login",
+      {
+        json: {
+          email: "terminal-signal@example.invalid",
+          password: "fixture terminal signal password",
+        },
+      },
+    );
+    entry.passed = true;
+  } finally {
+    await signalFixture.close();
+    await stop(bin, signalDatabase);
   }
   return cases;
 }

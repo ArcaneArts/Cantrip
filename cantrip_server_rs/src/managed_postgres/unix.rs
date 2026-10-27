@@ -32,7 +32,8 @@ impl PostgresProcess {
         port: u16,
         log: File,
     ) -> Result<Self> {
-        let child = Command::new(program)
+        let mut command = Command::new(program);
+        command
             .arg(FLAG)
             .arg("--data-dir")
             .arg(root)
@@ -45,9 +46,11 @@ impl PostgresProcess {
             .stderr(log)
             // Killing the owner on Drop would defeat its parent-death cleanup.
             // Dropping Child's stdin instead closes the server's private pipe.
-            .kill_on_drop(false)
-            .spawn()
-            .context("launch native PostgreSQL owner")?;
+            .kill_on_drop(false);
+        // Terminal Ctrl-C belongs to the server. It must drain its database
+        // work before closing this pipe; the owner must survive that signal.
+        command.as_std_mut().process_group(0);
+        let child = command.spawn().context("launch native PostgreSQL owner")?;
         Ok(Self { child })
     }
     pub(super) fn release(&mut self) {

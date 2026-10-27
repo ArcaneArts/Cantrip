@@ -773,7 +773,7 @@
         "scripts/server-rust/postgres-lifecycle-unix.mjs",
         "cantrip_server_rs/tests/database_contract.rs"
       ],
-      "validatedSubset": "Local macOS actual merged-code regression proved a surviving private PostgreSQL process and rejected restart after main-server SIGKILL. Native pipe-owner implementation then passed normal shutdown, abrupt server death, retained account/server identity/worker credential restart, external PostgreSQL isolation, actual initdb interruption and owner exit while its parent pipe remains open. New Unix initialization uses synced staging and does not reset existing data. Windows retains its kernel-owned Job Object; new cross-platform results remain required.",
+      "validatedSubset": "Local macOS actual merged-code regression proved a surviving private PostgreSQL process and rejected restart after main-server SIGKILL. Native pipe-owner implementation then passed normal shutdown, abrupt server death, retained account/server identity/worker credential restart, external PostgreSQL isolation, actual initdb interruption, owner exit while its parent pipe remains open, and terminal foreground-group SIGINT with orderly retained-account restart. An actual initial signal test killed the owner and rejected restart; isolating its process group fixes that path. New Unix initialization uses synced staging and does not reset existing data. Windows retains its kernel-owned Job Object; new cross-platform results remain required.",
       "remaining": [
         "Observe this ownership milestone actual Linux/macOS/Windows platform runs.",
         "Exercise packaged assets and desktop/service/container supervision with the supported deployment matrix.",

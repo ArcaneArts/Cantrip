@@ -98,6 +98,10 @@ the owner requests fast PostgreSQL shutdown and reaps its actual child. Normal
 shutdown closes database sessions before releasing the pipe. External database
 connections do not enter this ownership path.
 
+The owner has its own Unix process group. A terminal's foreground-group Ctrl-C
+therefore reaches the main server, which drains work before releasing the pipe,
+instead of killing its owner and bypassing that shutdown order.
+
 Unix initialization also runs under that owner. A new cluster is initialized
 and synced in a private staging directory, then promoted to `data` after initdb
 success. Parent death during initialization kills its owned initializer process
