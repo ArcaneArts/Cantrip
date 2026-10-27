@@ -6,6 +6,7 @@ pub mod http;
 pub mod live;
 pub mod managed_postgres;
 pub mod migrations;
+pub mod policies;
 pub mod projects;
 mod text;
 pub mod usage;

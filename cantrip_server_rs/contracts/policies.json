@@ -1,0 +1,21 @@
+{
+  "policyLimit": 500,
+  "effectivePolicyLimit": 64,
+  "bootstrapVersion": 2,
+  "templates": [
+    {
+      "templateKey": "manual-change-protocol",
+      "name": "Manual Change Protocol",
+      "suggestedPolicyKey": "manual-change-protocol",
+      "summary": "Use an isolated worktree and independently merged pull request for every manual repository change. Read the full policy before changing files or Git state with `cantrip policy read manual-change-protocol`.",
+      "version": 1,
+      "suggestedDefault": false,
+      "suggestedEnabled": true,
+      "suggestedMandatory": true,
+      "bodyMarkdown": "Use this policy whenever a user asks you to change a repository without an\nexisting tracked workflow that defines another delivery process.\n\n## Delivery requirements\n\n1. Before editing, inspect repository status, applicable `AGENTS.md` and policy\n   instructions, upstream state, active branches and worktrees, and overlapping\n   pull requests or change lanes.\n2. Preserve unrelated and user-owned work. Never clean, move, reset, adopt, or\n   combine changes that do not belong to the request.\n3. Create a dedicated branch in an isolated worktree from the appropriate\n   current upstream branch. Do not implement directly in the primary checkout.\n4. Keep the change independently reviewable and mergeable. Split large goals\n   into sequential milestones rather than accumulating them on one long-lived\n   branch.\n5. Follow the repository's contribution instructions and architecture. Run the\n   formatting, tests, builds, and other checks proportional to the change, and\n   report only validation that actually ran.\n6. Push the isolated branch and open a ready pull request with an accurate\n   summary and validation report.\n7. Enable squash auto-merge when the repository supports it, then observe the\n   pull request until it merges. Resolve failures or conflicts only in the\n   isolated branch and never bypass repository protections.\n8. After merge, safely synchronize the primary checkout when it is clean and\n   remove only the worktree and branch created for this change.\n\nFor every additional dependent milestone, begin again from the latest upstream\nstate and repeat the complete worktree, pull request, merge-observation, and\ncleanup cycle."
+    }
+  ],
+  "sources": {
+    "manual-change-protocol.md": "4add6f3ec016acc3b16d1f76a188f8f7faad09a880f31cefecdbf1464d277f3c"
+  }
+}

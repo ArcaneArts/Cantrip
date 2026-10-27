@@ -445,6 +445,188 @@
         "remaining": [
           "Observe the current milestone on Linux/macOS/Windows and finish integrated regression acceptance."
         ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/policies",
+        "implementation": "cantrip_server_rs/src/http/policies.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/policy-http-compatibility.mjs",
+          "scripts/server-rust/policy-repository-compatibility.mjs"
+        ],
+        "remaining": [
+          "Observe this milestone supported-platform results; full product and packaged acceptance remains required."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/policies",
+        "implementation": "cantrip_server_rs/src/http/policies.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/policy-http-compatibility.mjs",
+          "scripts/server-rust/policy-repository-compatibility.mjs"
+        ],
+        "remaining": [
+          "Observe this milestone supported-platform results; full product and packaged acceptance remains required."
+        ]
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/policies/:policyId",
+        "implementation": "cantrip_server_rs/src/http/policies.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/policy-http-compatibility.mjs",
+          "scripts/server-rust/policy-repository-compatibility.mjs"
+        ],
+        "remaining": [
+          "Observe this milestone supported-platform results; full product and packaged acceptance remains required."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/policies/:policyId",
+        "implementation": "cantrip_server_rs/src/http/policies.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/policy-http-compatibility.mjs",
+          "scripts/server-rust/policy-repository-compatibility.mjs"
+        ],
+        "remaining": [
+          "Observe this milestone supported-platform results; full product and packaged acceptance remains required."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/policies/:policyId",
+        "implementation": "cantrip_server_rs/src/http/policies.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/policy-http-compatibility.mjs",
+          "scripts/server-rust/policy-repository-compatibility.mjs"
+        ],
+        "remaining": [
+          "Observe this milestone supported-platform results; full product and packaged acceptance remains required."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/policies/bootstrap",
+        "implementation": "cantrip_server_rs/src/http/policies.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/policy-http-compatibility.mjs",
+          "scripts/server-rust/policy-repository-compatibility.mjs"
+        ],
+        "remaining": [
+          "Observe this milestone supported-platform results; full product and packaged acceptance remains required."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/policies/order",
+        "implementation": "cantrip_server_rs/src/http/policies.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/policy-http-compatibility.mjs",
+          "scripts/server-rust/policy-repository-compatibility.mjs"
+        ],
+        "remaining": [
+          "Observe this milestone supported-platform results; full product and packaged acceptance remains required."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/policy-templates",
+        "implementation": "cantrip_server_rs/src/http/policies.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/policy-http-compatibility.mjs",
+          "scripts/server-rust/policy-repository-compatibility.mjs"
+        ],
+        "remaining": [
+          "Observe this milestone supported-platform results; full product and packaged acceptance remains required."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/policy-templates/:templateKey",
+        "implementation": "cantrip_server_rs/src/http/policies.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/policy-http-compatibility.mjs",
+          "scripts/server-rust/policy-repository-compatibility.mjs"
+        ],
+        "remaining": [
+          "Observe this milestone supported-platform results; full product and packaged acceptance remains required."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/effective-policies",
+        "implementation": "cantrip_server_rs/src/http/policies.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/policy-http-compatibility.mjs",
+          "scripts/server-rust/policy-repository-compatibility.mjs"
+        ],
+        "remaining": [
+          "Observe this milestone supported-platform results; full product and packaged acceptance remains required."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/policies",
+        "implementation": "cantrip_server_rs/src/http/policies.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/policy-http-compatibility.mjs",
+          "scripts/server-rust/policy-repository-compatibility.mjs"
+        ],
+        "remaining": [
+          "Observe this milestone supported-platform results; full product and packaged acceptance remains required."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/projects/:projectId/policies",
+        "implementation": "cantrip_server_rs/src/http/policies.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/policy-http-compatibility.mjs",
+          "scripts/server-rust/policy-repository-compatibility.mjs"
+        ],
+        "remaining": [
+          "Observe this milestone supported-platform results; full product and packaged acceptance remains required."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/workspaces/:workspaceId/policies",
+        "implementation": "cantrip_server_rs/src/http/policies.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/policy-http-compatibility.mjs",
+          "scripts/server-rust/policy-repository-compatibility.mjs"
+        ],
+        "remaining": [
+          "Observe this milestone supported-platform results; full product and packaged acceptance remains required."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/workspaces/:workspaceId/policies",
+        "implementation": "cantrip_server_rs/src/http/policies.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/policy-http-compatibility.mjs",
+          "scripts/server-rust/policy-repository-compatibility.mjs"
+        ],
+        "remaining": [
+          "Observe this milestone supported-platform results; full product and packaged acceptance remains required."
+        ]
       }
     ]
   },
@@ -468,7 +650,7 @@
   "durableTables": {
     "defaultStatus": "schema-migrated-only",
     "evidence": ["cantrip_server_rs/tests/database_contract.rs"],
-    "implementedSubset": "Account/session, mobile sign-in, local provisioning, configured-administrator, license-whitelist, audit-query/write and encryption-registry operations in the native auth and encryption repositories. Complete domain operations remain unported. Worker, enrollment-code and credential persistence, atomic replacement/rotation/revocation and heartbeat storage are implemented in workers/repository.rs; this is not the full worker-management or execution domain."
+    "implementedSubset": "Account/session, mobile sign-in, local provisioning, configured-administrator, license-whitelist, audit-query/write and encryption-registry operations in the native auth and encryption repositories. Complete domain operations remain unported. Worker, enrollment-code and credential persistence, atomic replacement/rotation/revocation and heartbeat storage are implemented in workers/repository.rs; this is not the full worker-management or execution domain. Policy owner/bootstrap/collection state, opaque policy CRUD/order, project/workspace assignment transactions, cascade handling and IDE/standalone effective-policy resolution execute natively in policies/repository.rs; project/workspace creation and chat execution remain unported."
   },
   "repositoryMethods": {
     "defaultStatus": "unported",
@@ -641,6 +823,15 @@
         "remaining": [
           "Supported-platform regression acceptance; accounting hooks for future unported transports belong to their domain milestones."
         ]
+      },
+      {
+        "resource": "policy",
+        "status": "partial",
+        "implementation": "cantrip_server_rs/src/http/policies.rs",
+        "evidence": ["scripts/server-rust/policy-http-compatibility.mjs"],
+        "remaining": [
+          "Supported-platform acceptance, shared coordination and publishers in unported workspace/project/chat domains."
+        ]
       }
     ]
   },
@@ -709,7 +900,7 @@
     },
     "fullPostWriteRollback": {
       "status": "unimplemented",
-      "limitedEvidence": "Auth and encryption suites exercise sequential Node/Rust/Node retained state on disposable external PostgreSQL. Encryption uses actual client HPKE/password wrappers. Full-server rollback and legacy PGlite conversion remain unimplemented."
+      "limitedEvidence": "Auth and encryption suites exercise sequential Node/Rust/Node retained state on disposable external PostgreSQL. Encryption uses actual client HPKE/password wrappers. Full-server rollback and legacy PGlite conversion remain unimplemented. The policy milestone additionally exercises Node/Rust/Node writes on one external database, retaining encrypted policy updates, assignment sources and version counters. Existing PGlite conversion and full-server rollback remain unfinished."
     },
     "desktopPackaging": {
       "status": "unported"
@@ -821,8 +1012,6 @@
       ],
       "observedGap": "The earlier missing native usage publication is now implemented. Local production-entrypoint socket suites on all three stores observe a real coalesced account-resource-usage invalidation, exact per-runtime payload accounting and no observer refresh feedback for a further complete coalescing window. Node still emits additional commands/resource notifications belonging to unported worker domains; the accounting suite does not equate those absolute frame totals.",
       "remaining": [
-        "Observe supported-platform CI for this milestone and retain/review all actual reports.",
-        "Complete integrated regressions, lease/concurrency and fault acceptance as required before merging.",
         "Integrate the exposed meter/reconciliation/history stats into the unported whole-server operational metrics endpoint.",
         "Binary relays, attachment streams and other unported product domains must supply their accounting hooks when implemented; whole-product/packaged acceptance remains required."
       ],
@@ -842,7 +1031,15 @@
         "cantrip_server_rs/tests/usage_response.rs",
         "cantrip_server_rs/tests/usage_background.rs"
       ],
-      "validatedSubset": "Native 110-table ownership/measurement SQL, exact decimal counters, idempotent transactional bandwidth receipts, fenced reconciliation leases, hourly/daily history and retention. Actual Node comparisons pass 42 repository scenarios per store, 209 manual meter state scenarios, 127 live-traffic scenarios and 58 wire projection scenarios locally. Native timer, shared-flush, bounded-close, background draining, coalescing capacity and stream EOF/error/drop tests pass. Real HTTP suites on all three stores compare 33 cases per runtime and retained shutdown bytes/operations; tenant-isolation/restart suites pass 14 cases per runtime on every store. Shared query parsing matches 72,298 actual Fastify cases, including malformed escapes retained verbatim in validation errors."
+      "validatedSubset": "Native 110-table ownership/measurement SQL, exact decimal counters, idempotent transactional bandwidth receipts, fenced reconciliation leases, hourly/daily history and retention. Actual Node comparisons pass 42 repository scenarios per store, 209 manual meter state scenarios, 127 live-traffic scenarios and 58 wire projection scenarios locally. Native timer, shared-flush, bounded-close, background draining, coalescing capacity and stream EOF/error/drop tests pass. Real HTTP suites on all three stores compare 33 cases per runtime and retained shutdown bytes/operations; tenant-isolation/restart suites pass 14 cases per runtime on every store. Shared query parsing matches 72,298 actual Fastify cases, including malformed escapes retained verbatim in validation errors.",
+      "observedPlatformAcceptance": {
+        "run": "https://github.com/ArcaneArts/Cantrip/actions/runs/40492875845",
+        "head": "4cb651084e11ec567b67c43bca346300f2d6960b",
+        "platforms": ["ubuntu-24.04", "macos-15", "windows-2025"],
+        "reports": 141,
+        "conclusion": "success; all reports parsed and inspected, artifact SHA256 digests verified and native job coverage receipts retained",
+        "scope": "Accepted outgoing-command, usage, JSON, pool/TLS/ownership and prior transport regressions at this head. Policy changes and complete server/packaged replacement are not covered by this run."
+      }
     },
     "privatePostgresOwnership": {
       "status": "partial",
@@ -858,13 +1055,20 @@
       ],
       "validatedSubset": "Local macOS actual merged-code regression proved a surviving private PostgreSQL process and rejected restart after main-server SIGKILL. Native pipe-owner implementation then passed normal shutdown, abrupt server death, retained account/server identity/worker credential restart, external PostgreSQL isolation, actual initdb interruption, owner exit while its parent pipe remains open, and terminal foreground-group SIGINT with orderly retained-account restart. An actual initial signal test killed the owner and rejected restart; isolating its process group fixes that path. New Unix initialization uses synced staging and does not reset existing data. Windows retains its kernel-owned Job Object; new cross-platform results remain required.",
       "remaining": [
-        "Observe this ownership milestone actual Linux/macOS/Windows platform runs.",
         "Exercise packaged assets and desktop/service/container supervision with the supported deployment matrix.",
         "Complete larger-data startup/failure recovery and Windows pre-readiness initialization-interruption coverage."
-      ]
+      ],
+      "observedPlatformAcceptance": {
+        "run": "https://github.com/ArcaneArts/Cantrip/actions/runs/40492875845",
+        "head": "4cb651084e11ec567b67c43bca346300f2d6960b",
+        "platforms": ["ubuntu-24.04", "macos-15", "windows-2025"],
+        "reports": 141,
+        "conclusion": "success; all reports parsed and inspected, artifact SHA256 digests verified and native job coverage receipts retained",
+        "scope": "Accepted outgoing-command, usage, JSON, pool/TLS/ownership and prior transport regressions at this head. Policy changes and complete server/packaged replacement are not covered by this run."
+      }
     },
     "outgoingWorkerContracts": {
-      "status": "implemented-pending-platform-acceptance",
+      "status": "implemented",
       "implementation": [
         "cantrip_server_rs/src/wire/worker_command.rs",
         "cantrip_server_rs/src/workers/bridge.rs"
@@ -880,7 +1084,6 @@
       ],
       "validatedSubset": "Local Node/Rust HTTP/WS comparisons pass on PGlite, private PostgreSQL and external PostgreSQL: offline-before-validation, three invalid commands with zero admission metrics and no controlled-handler delivery, normalized Git fields and GitHub prefault filters. Native admission tests pass, as do 83 large ciphertext/run-document/bounded-JSON comparisons. Fixtures cover all 278 command types, 99 additional custom-check identities, 486 options across 51 union schemas, and all 619 enum alternatives in complete enclosing requests. Enclosing refinements reject some enum fixtures; the actual protocol supplies the verdict. The expanded 203,929-case mutation/alternative comparison passed after correcting the native manual-conflict predicate from mode to strategy; its receipt confirms all 99 authoritative custom checks executed. The complete native suite passed, including the existing wire, storage, authentication and bridge regressions after removing a duplicated configured permission-error path. Repository follow-ups passed all 3,899 app tests; the worker suite retained its documented baseline filesystem-notification failure. Supported-platform acceptance remains pending. Command schema coverage is not resource/execution implementation.",
       "remaining": [
-        "Observe the actual Linux/macOS/Windows compatibility workflow for this milestone.",
         "Complete resource-domain admission, persistence, command consumers, execution/recovery and actual full worker/runtime flows."
       ],
       "localRegression": {
@@ -912,7 +1115,37 @@
         "macos": "success; all 35 JSON reports inspected",
         "windows": "cancelled at the configured 60-minute limit during worker PGlite HTTP tests, after all earlier steps passed; no full platform acceptance",
         "followup": "This usage milestone increases the workflow allowance to 120 minutes and requires a complete fresh run; the cancelled attempt is retained as incomplete evidence."
+      },
+      "observedPlatformAcceptance": {
+        "run": "https://github.com/ArcaneArts/Cantrip/actions/runs/40492875845",
+        "head": "4cb651084e11ec567b67c43bca346300f2d6960b",
+        "platforms": ["ubuntu-24.04", "macos-15", "windows-2025"],
+        "reports": 141,
+        "conclusion": "success; all reports parsed and inspected, artifact SHA256 digests verified and native job coverage receipts retained",
+        "scope": "Accepted outgoing-command, usage, JSON, pool/TLS/ownership and prior transport regressions at this head. Policy changes and complete server/packaged replacement are not covered by this run."
       }
+    },
+    "policies": {
+      "status": "partial",
+      "implementation": [
+        "cantrip_server_rs/src/policies/",
+        "cantrip_server_rs/src/http/policies.rs",
+        "cantrip_server_rs/src/http/on_response.rs"
+      ],
+      "evidence": [
+        "scripts/server-rust/policy-repository-compatibility.mjs",
+        "scripts/server-rust/policy-http-compatibility.mjs",
+        "cantrip_server_rs/tests/policy_assets.rs",
+        "cantrip_server_rs/tests/wire_contracts.rs",
+        "scripts/server-rust/policy-routing-compatibility.mjs",
+        "scripts/server-rust/policy-retained-compatibility.mjs"
+      ],
+      "validatedSubset": "Local macOS: 62 actual repository comparisons on each of PGlite, private PostgreSQL and external PostgreSQL, including 19 exact rollback snapshots per store, tenant isolation, limits, source precedence, cascades and retained process reopen. Production HTTP/Live comparisons pass 80 observations per runtime/store, exact success-event counts and foreign-subscriber isolation, concurrent row fencing, CSRF, malformed bodies, database integer/position failures and assignment insert faults. Existing client crypto encrypts/decrypts real summary/body content, rejects wrong owner/row and verifies retained ciphertext after restart. Raw UTF-16 IDs retain JavaScript equality until the database boundary. Public templates/limits are embedded with source drift tests. The expanded 67-root schema comparison passes 67389 actual protocol cases. The HTTP fault matrix compares exact error contexts for count/max/order/assignment/initialization failures, proves rollback when the post-delete collection increment fails, and retains writes committed before response projections fail. Sixty-three actual method/path comparisons pass per runtime/store, including method-specific literal/parameter fallback. Sequential Node/Rust/Node repository operations on one external database retain Rust ciphertext, versions and assignments; the unchanged Node repository continues writing and the existing client decrypts retained content. Query error strings retain original UTF-16 IDs even when SQL binding converts them to UTF-8.",
+      "remaining": [
+        "Observe the policy milestone Linux/macOS/Windows CI and inspect its actual uploaded reports.",
+        "Complete product UI and the unported chat/native runtime consumers, project/workspace CRUD and shared multi-instance coordination.",
+        "Existing-installation conversion, packaged artifacts and full deployment acceptance remain in the overall goal."
+      ]
     }
   },
   "remainingAcceptance": [
@@ -991,6 +1224,15 @@
       "platforms": ["ubuntu-24.04", "macos-15", "windows-2025"],
       "conclusion": "success; all 105 actual JSON reports parsed and inspected",
       "scope": "Incoming worker envelope validation and ordered event/notification routing through actual production bridges and unchanged transport components on all three storage modes. All three OS jobs completed successfully; each platform supplied 35 reports. Does not validate the newer outgoing command changes or establish complete resource/execution, packaging or replacement acceptance."
+    },
+    {
+      "pullRequest": "https://github.com/ArcaneArts/Cantrip/pull/2288",
+      "commit": "b4455a51a15f5d894d140c408d107b33b543c62a",
+      "observedHead": "4cb651084e11ec567b67c43bca346300f2d6960b",
+      "observedRun": "https://github.com/ArcaneArts/Cantrip/actions/runs/40492875845",
+      "platforms": ["ubuntu-24.04", "macos-15", "windows-2025"],
+      "conclusion": "success; all 141 actual JSON reports parsed and inspected; artifact SHA256 digests and native coverage receipts verified",
+      "scope": "Usage metering/repositories/HTTP/socket/tenant restart, outgoing worker command admission and all prior foundation/security/transport regressions on all three stores. Each OS supplied 47 reports. Includes complete descendant Windows command acceptance; the earlier PR 2287 Windows attempt remains historically cancelled. Does not establish policy, complete resource/execution, migration, packaging or server replacement acceptance."
     }
   ]
 }

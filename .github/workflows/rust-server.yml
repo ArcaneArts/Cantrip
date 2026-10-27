@@ -13,6 +13,10 @@ on:
       - cantrip_server/src/app/routes/account-live-traffic.ts
       - cantrip_server/src/account-usage/**
       - cantrip_server/src/db/account-resource-usage.ts
+      - cantrip_server/src/db/policies.ts
+      - cantrip_server/src/policies/**
+      - cantrip_server/src/app/routes/policies.ts
+      - policy_templates/**
       - cantrip_server/src/app/shared/constants.ts
       - cantrip_server/src/app/routes/internal-worker*.ts
       - cantrip_server/src/app/routes/worker-*.ts
@@ -161,6 +165,28 @@ jobs:
         run: node --import tsx scripts/server-rust/usage-account-compatibility.mjs --database bundled-postgres --report .qa/rust-server/usage-accounts-bundled.json
       - name: Retained account usage and tenant isolation with external PostgreSQL
         run: node --import tsx scripts/server-rust/usage-account-compatibility.mjs --database postgres --report .qa/rust-server/usage-accounts-external.json
+      # Policy scope rows are seeded fixtures; these suites do not claim
+      # project/workspace CRUD or the unported chat execution runtime.
+      - name: Policy persistence and rollback with native PGlite
+        run: node scripts/server-rust/policy-repository-compatibility.mjs --report .qa/rust-server/policy-repository-pglite.json
+      - name: Policy persistence and rollback with private PostgreSQL
+        run: node scripts/server-rust/policy-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/policy-repository-bundled.json
+      - name: Policy persistence and rollback with external PostgreSQL
+        run: node scripts/server-rust/policy-repository-compatibility.mjs --database postgres --report .qa/rust-server/policy-repository-external.json
+      - name: Encrypted policy HTTP and Live events with native PGlite
+        run: node scripts/server-rust/policy-http-compatibility.mjs --report .qa/rust-server/policy-http-pglite.json
+      - name: Encrypted policy HTTP and Live events with private PostgreSQL
+        run: node scripts/server-rust/policy-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/policy-http-bundled.json
+      - name: Encrypted policy HTTP and Live events with external PostgreSQL
+        run: node scripts/server-rust/policy-http-compatibility.mjs --database postgres --report .qa/rust-server/policy-http-external.json
+      - name: Policy HTTP method routing with native PGlite
+        run: node scripts/server-rust/policy-routing-compatibility.mjs --report .qa/rust-server/policy-routing-pglite.json
+      - name: Policy HTTP method routing with private PostgreSQL
+        run: node scripts/server-rust/policy-routing-compatibility.mjs --database bundled-postgres --report .qa/rust-server/policy-routing-bundled.json
+      - name: Policy HTTP method routing with external PostgreSQL
+        run: node scripts/server-rust/policy-routing-compatibility.mjs --database postgres --report .qa/rust-server/policy-routing-external.json
+      - name: Retained policy writes through Node Rust Node reversal
+        run: node scripts/server-rust/policy-retained-compatibility.mjs --report .qa/rust-server/policy-retained.json
       - name: Full project mapping with native PGlite
         run: node --import tsx scripts/server-rust/project-repository-compatibility.mjs --report .qa/rust-server/live-projects-pglite.json
       - name: Full project mapping with private PostgreSQL

@@ -3,6 +3,7 @@ import { workerIngressFixtures } from "./worker-wire-fixtures.mjs";
 import workerCommands from "./worker-command-fixtures.json" with { type: "json" };
 import commandRefinements from "./worker-command-refinement-fixtures.json" with { type: "json" };
 import { usageWireFixtures } from "./usage-wire-fixtures.mjs";
+import { policyWireFixtures } from "./policy-wire-fixtures.mjs";
 
 export const owner = "11111111-1111-4111-8111-111111111111";
 export const clientId = "22222222-2222-4222-8222-222222222222";
@@ -616,6 +617,7 @@ export const securityFixtures = {
   ],
   workerServerEnvelopeSchema: workerIngressFixtures,
   ...usageWireFixtures,
+  ...policyWireFixtures,
   workerRequestEnvelopeSchema: [
     ...workerCommands.commands.map((item) => item.input),
     ...commandRefinements.cases.map((item) => item.input),

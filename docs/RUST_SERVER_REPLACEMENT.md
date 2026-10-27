@@ -10,9 +10,13 @@ Local admission comparisons pass on all three storage modes with unchanged
 worker transport components and controlled handlers. PR 2287 merged, and its
 Linux/macOS jobs and 70 uploaded JSON reports passed inspection. Windows reached
 the configured 60-minute job limit during worker PGlite HTTP tests, with earlier
-steps passing. That attempt does not establish full Windows acceptance. The
-current usage milestone raises the allowance to 120 minutes and needs a fresh
-complete supported-platform run.
+steps passing. That attempt does not establish full Windows acceptance. PR 2288
+raised the allowance to 120 minutes and its complete descendant
+[run 40492875845](https://github.com/ArcaneArts/Cantrip/actions/runs/40492875845)
+passed Linux, macOS and Windows. All 141 uploaded JSON reports were inspected,
+artifact SHA256 digests verified, and native coverage receipts retained. That
+run accepts the command and usage scopes at its head; the earlier cancelled
+Windows attempt remains part of the historical record.
 This is wire-contract coverage; resource-domain and execution behavior remain
 in scope below.
 
@@ -22,9 +26,70 @@ PostgreSQL. The existing app, worker, CLI, browser and mobile contracts remain
 the compatibility baseline. Winterhold readiness and desktop packaging are
 required before completion. Production deployment is a separate action.
 
-## Account resource usage (current milestone)
+## Policies
 
-The current worktree implements native storage measurement from the actual
+The policy domain now executes in Rust: public packaged templates, encrypted
+bootstrap, opaque CRUD, collection ordering, workspace/project assignments,
+assignment counts, and IDE/standalone effective-policy resolution. Owner,
+collection and row-version conflicts preserve their transaction boundaries.
+Ordering compares original JavaScript UTF-16 identifiers; SQL binding converts
+only at PostgreSQL's UTF-8 boundary. Policy content remains opaque, including
+blind indexes and authenticated encryption metadata.
+
+Successful HTTP mutations publish one owner-scoped policy invalidation after
+the response body completes. Empty responses complete without a body frame;
+partial or failed body streams do not publish a success event. Mutations that
+return an error do not publish. Shared multi-instance coordination and resource
+publishers in unported project/workspace/chat domains remain required.
+
+Local macOS evidence includes 62 actual Node/Rust repository comparisons per
+store on native PGlite, private PostgreSQL and external PostgreSQL. Nineteen
+cases per store retain exact before/after snapshots proving transactional
+rollback, including an injected assignment-insert fault. Cases also cover
+owner isolation, limits, cascade deletion, source ordering and process reopen.
+The real HTTP/Live suite passes 80 observations per runtime on each store,
+including concurrent optimistic updates, CSRF, error bodies, original UTF-16
+equality, invalidation counts and foreign-subscriber isolation. Existing client
+crypto encrypts and decrypts both fields, rejects a wrong owner or row, and
+verifies exact ciphertext after restart; component keys never reach the server.
+
+Oversized versions exposed a real mismatch between early Rust integer
+conversion and Node's PostgreSQL errors. Native operations now let the database
+perform integer conversion, including next-version and position overflow.
+The failure matrix preserves the existing query-error contexts for policy
+count, position, order, assignment, initialization and post-delete increment
+errors. It proves that a failed transaction restores deletion and that updates
+and bootstrap claims committed before a response-projection failure stay
+committed. Sixty-three method/path comparisons per runtime/store also preserve
+Fastify's method-specific literal/parameter route selection. Sequential
+Node/Rust/Node operations on one external database retain encrypted Rust writes,
+assignments and version counters, and the unchanged Node repository continues
+writing afterward. Full-server rollback and existing PGlite conversion remain
+required. These checks do not establish supported-platform or packaged
+acceptance.
+
+Templates, their source hashes and limits are embedded from the actual public
+Markdown collection, with a source-drift test. Thirteen additional schema roots
+bring the current protocol manifest to 67 roots/5,409 nodes; the actual protocol
+oracle passes 67,389 validation cases. Four body-completion tests and the final
+full native regression suite pass locally, as do all-target Clippy and Rustfmt.
+The complete repository check passes server, app, protocol and crypto tests but
+exits on two unchanged worker failures: filesystem notification debouncing and
+the image adapter's exact 2.5 MiB timeout. A focused rerun passes 37 tests,
+including the image boundary, and reproduces only the filesystem case. Its
+unchanged source hashes and earlier baseline failure evidence are retained;
+assertions and timeouts were not relaxed. Supported-platform acceptance remains
+required for this milestone.
+
+Project/workspace rows in the policy harness are seeded fixtures. This does not
+port their CRUD, the app settings UI, or chat/native execution consumers. Legacy
+PGlite conversion, full post-write rollback, desktop packaging and Winterhold
+delivery remain part of the original replacement goal. Node is still the
+production entry point.
+
+## Account resource usage (merged; accepted on three platforms)
+
+The usage milestone implements native storage measurement from the actual
 110-table ownership manifest, exact decimal bandwidth counters, idempotent
 transactional flush receipts, fenced reconciliation, hourly/daily history,
 rollup/retention and operational totals. It also adds bounded asynchronous
@@ -56,10 +121,12 @@ does not claim those absolute frame totals or full worker-domain behavior match.
 Account-isolation/restart checks pass 14 cases per runtime on each store,
 including distinct retained large counters and rejected owner injection. The
 shared query parser also matches 72,298 actual Fastify cases and preserves
-malformed escapes in validation errors. Integrated regression acceptance is
-being completed. Whole-server metrics integration, future binary/domain transport
-hooks and supported-platform acceptance remain open. This milestone is not a
-complete server replacement or packaged/deployment acceptance.
+malformed escapes in validation errors. PR 2288 passed observed
+Linux/macOS/Windows CI; all 141 reports and native
+coverage receipts were inspected and archived. Whole-server metrics integration,
+future binary/domain transport hooks and complete product acceptance remain
+open. This milestone is not a complete server replacement or packaged/deployment
+acceptance.
 
 ## Foundation
 
