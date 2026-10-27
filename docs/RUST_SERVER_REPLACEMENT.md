@@ -38,6 +38,15 @@ a bounded CancelRequest attempt, then discards that session. Statements are
 not automatically replayed. Shutdown closes admission, wakes queued borrowers,
 stops the listener and drains operations, cancellation cleanup and drivers.
 
+Worker authentication has a separate shutdown drain before pool closure. A
+closed worker socket still completes credential usage and its owner lookup,
+including work queued behind the five PostgreSQL connections. The external
+worker fault suite holds the real credential row, closes 32 pending sockets,
+requests server shutdown, and verifies that shutdown waits for lock release.
+A trigger in the disposable database then proves all 32 usage writes committed.
+The native server previously exited while that lock remained held and lost
+those writes; the actual Node service waited and retained them.
+
 `tests/postgres_pool.rs` exercises real relation locks, unrelated concurrent
 reads, all five busy connections plus a listener, cancelled transactions,
 backend termination, listener restoration and shutdown. The real HTTP/TLS

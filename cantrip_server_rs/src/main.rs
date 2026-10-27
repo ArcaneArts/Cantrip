@@ -167,6 +167,7 @@ async fn main() -> Result<()> {
         })
         .await?;
         service.live.transports.drained().await;
+        service.workers.drained().await?;
     }
     database.close().await?;
     if let Some(runtime) = managed {

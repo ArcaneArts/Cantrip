@@ -74,14 +74,19 @@ export async function startServer(command, arguments_, options) {
     origin,
     startupMs: performance.now() - startedAt,
     async close() {
+      const shutdownStartedAt = performance.now();
+      let forcedShutdown = false;
       if (child.exitCode === null && child.signalCode === null)
         child.stdin.end();
-      const killTimer = setTimeout(() => child.kill("SIGKILL"), 15_000);
+      const killTimer = setTimeout(() => {
+        forcedShutdown = true;
+        child.kill("SIGKILL");
+      }, 15_000);
       try {
         const result = await completion;
         if (result.code !== 0)
           throw new Error(
-            `Server did not shut down cleanly (${result.code ?? result.signal}).\n${diagnostics}`,
+            `Server did not shut down cleanly (${result.code ?? result.signal}, ${Math.round(performance.now() - shutdownStartedAt)}ms, shutdown deadline ${forcedShutdown ? "expired" : "not reached"}).\n${diagnostics}`,
           );
       } finally {
         clearTimeout(killTimer);
