@@ -329,10 +329,17 @@ try {
   failure = error;
   report.error = { name: error.name, message: error.message };
 } finally {
-  const cleanup = await Promise.allSettled([
-    ...pair.map((f) => f.close()),
-    postgresOwner?.close(),
-  ]);
+  // The repositories still need PostgreSQL while closing their LISTEN and
+  // request connections. Stop their owner only after both clients have exited.
+  const cleanup = await Promise.allSettled(pair.map((f) => f.close()));
+  if (postgresOwner) {
+    cleanup.push(
+      await Promise.resolve(postgresOwner.close()).then(
+        () => ({ status: "fulfilled" }),
+        (reason) => ({ status: "rejected", reason }),
+      ),
+    );
+  }
   const errors = cleanup
     .filter((r) => r.status === "rejected")
     .map((r) => r.reason.message);
