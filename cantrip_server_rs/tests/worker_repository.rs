@@ -511,14 +511,24 @@ async fn postgres_worker_enrollment_rotation_concurrency_and_reopen() -> Result<
     let bin = PathBuf::from(
         std::env::var("CANTRIP_TEST_POSTGRES_BIN_DIR").context("worker PostgreSQL binaries")?,
     );
-    let runtime = ManagedPostgres::start(root.path(), &bin).await?;
+    let runtime = ManagedPostgres::start_with_owner(
+        root.path(),
+        &bin,
+        std::path::Path::new(env!("CARGO_BIN_EXE_cantrip-server")),
+    )
+    .await?;
     let database = Arc::new(Database::postgres(runtime.configuration()).await?);
     let competing = Arc::new(Database::postgres(runtime.configuration()).await?);
     let snapshot = exercise(database.clone(), Some(competing.clone())).await?;
     competing.close().await?;
     database.close().await?;
     runtime.close().await?;
-    let runtime = ManagedPostgres::start(root.path(), &bin).await?;
+    let runtime = ManagedPostgres::start_with_owner(
+        root.path(),
+        &bin,
+        std::path::Path::new(env!("CARGO_BIN_EXE_cantrip-server")),
+    )
+    .await?;
     retained(
         Arc::new(Database::postgres(runtime.configuration()).await?),
         &snapshot,

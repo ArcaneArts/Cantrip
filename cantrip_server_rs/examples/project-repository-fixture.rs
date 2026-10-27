@@ -18,6 +18,9 @@ struct Arguments {
 }
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
+    if cantrip_server::managed_postgres::run_owner_if_requested().await? {
+        return Ok(());
+    }
     let arguments = Arguments::parse();
     let root = PathBuf::from(std::env::var("CANTRIP_DATA_DIR")?);
     // Match the production launcher: native PostgreSQL redirects process stdio

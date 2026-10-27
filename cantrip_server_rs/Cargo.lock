@@ -247,6 +247,7 @@ dependencies = [
  "icu_collator",
  "icu_locale_core",
  "indexmap",
+ "libc",
  "native-tls",
  "os_pipe",
  "percent-encoding",

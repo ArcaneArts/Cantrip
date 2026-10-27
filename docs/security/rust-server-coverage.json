@@ -599,9 +599,9 @@
         "scripts/server-rust/postgres-connections.mjs",
         "scripts/server-rust/worker-authentication-shutdown.mjs"
       ],
-      "validatedSubset": "Local macOS real PostgreSQL: five request connections plus a separate listener; concurrent reads under held relation locks; cancellation and transaction disposal; listener re-registration; actual backend termination without statement replay; shutdown and closed API behavior. Eleven actual TLS-on/off profiles match Node, including explicit empty sslmode, with pg_stat_ssl checks and unrelated HTTP requests completing while workers remains locked over TLS. A real closed-worker authentication shutdown comparison holds the credential row, proves both services wait for release, and counts all 32 committed usage writes with a disposable database trigger. The complete external worker suite and focused native pool/bridge tests passed locally after the drain fix. PGlite stays serialized. The revised head still needs platform acceptance; prior macOS success and Linux shutdown failure do not validate this change.",
+      "validatedSubset": "Local macOS real PostgreSQL: five request connections plus a separate listener; concurrent reads under held relation locks; cancellation and transaction disposal; listener re-registration; actual backend termination without statement replay; shutdown and closed API behavior. Eleven actual TLS-on/off profiles match Node, including explicit empty sslmode, with pg_stat_ssl checks and unrelated HTTP requests completing while workers remains locked over TLS. A real closed-worker authentication shutdown comparison holds the credential row, proves both services wait for release, and counts all 32 committed usage writes with a disposable database trigger. The complete external worker suite and focused native pool/bridge tests passed locally after the drain fix. PGlite stays serialized. PR 2284 exact head 50339edbd35e9aeaeccd2cbe257470ad6fdd9095 passed Linux/macOS/Windows run 40427101801; all 93 actual JSON reports were inspected, including all eleven TLS profiles and both Node/Rust 32-write shutdown proofs on every platform. Later changes need fresh regression evidence.",
       "remaining": [
-        "Observe this milestone's Linux/macOS/Windows CI and packaged runtime results.",
+        "Exercise packaged database/runtime artifacts; later changes still need observed platform acceptance.",
         "Complete external URL/environment connection-option parity and startup retry behavior.",
         "Complete interrupted-network and durable-domain recovery; cancellation packet delivery is not a remote rollback acknowledgment."
       ]
@@ -760,6 +760,25 @@
         "Complete actual bandwidth recording/batching/idempotent persistence and coalesced live publication.",
         "Port storage reconciliation, usage maintenance/retention, usage endpoints, metrics and corresponding product/domain acceptance."
       ]
+    },
+    "privatePostgresOwnership": {
+      "status": "partial",
+      "implementation": [
+        "cantrip_server_rs/src/managed_postgres.rs",
+        "cantrip_server_rs/src/managed_postgres/unix.rs",
+        "cantrip_server_rs/src/managed_postgres/windows.rs"
+      ],
+      "evidence": [
+        "scripts/server-rust/postgres-lifecycle.mjs",
+        "scripts/server-rust/postgres-lifecycle-unix.mjs",
+        "cantrip_server_rs/tests/database_contract.rs"
+      ],
+      "validatedSubset": "Local macOS actual merged-code regression proved a surviving private PostgreSQL process and rejected restart after main-server SIGKILL. Native pipe-owner implementation then passed normal shutdown, abrupt server death, retained account/server identity/worker credential restart, external PostgreSQL isolation, actual initdb interruption and owner exit while its parent pipe remains open. New Unix initialization uses synced staging and does not reset existing data. Windows retains its kernel-owned Job Object; new cross-platform results remain required.",
+      "remaining": [
+        "Observe this ownership milestone actual Linux/macOS/Windows platform runs.",
+        "Exercise packaged assets and desktop/service/container supervision with the supported deployment matrix.",
+        "Complete larger-data startup/failure recovery and Windows pre-readiness initialization-interruption coverage."
+      ]
     }
   },
   "remainingAcceptance": [
@@ -811,6 +830,15 @@
       "platforms": ["ubuntu-24.04", "macos-15", "windows-2025"],
       "conclusion": "success",
       "scope": "Observed full JSON follow-up workflow, actual publication controls and all three JSON storage suites on each platform. All 90 uploaded reports were retained and selected cursor/corpus evidence inspected before merge. Native account usage remains unported; this does not validate the newer PostgreSQL backend, full product, migration/rollback or packaged artifacts."
+    },
+    {
+      "pullRequest": "https://github.com/ArcaneArts/Cantrip/pull/2284",
+      "commit": "8d01125310e5af7f43850b69618474d2c6ed898f",
+      "observedRun": "https://github.com/ArcaneArts/Cantrip/actions/runs/40427101801",
+      "platforms": ["ubuntu-24.04", "macos-15", "windows-2025"],
+      "conclusion": "success; all 93 actual JSON reports parsed and inspected",
+      "scope": "PostgreSQL pooling/TLS and closed-worker authentication shutdown; all eleven TLS cases and both actual Node/Rust 32 committed usage writes on each platform. Does not establish later process ownership changes or full replacement.",
+      "observedHead": "50339edbd35e9aeaeccd2cbe257470ad6fdd9095"
     }
   ]
 }

@@ -65,7 +65,12 @@ async fn listener_pid(inspector: &Client) -> Result<i32> {
 async fn postgres_concurrency_cancellation_listener_and_recovery() -> Result<()> {
     let directory = tempfile::Builder::new().prefix("cantrip pool ").tempdir()?;
     let binaries = PathBuf::from(std::env::var("CANTRIP_TEST_POSTGRES_BIN_DIR")?);
-    let runtime = ManagedPostgres::start(directory.path(), &binaries).await?;
+    let runtime = ManagedPostgres::start_with_owner(
+        directory.path(),
+        &binaries,
+        std::path::Path::new(env!("CARGO_BIN_EXE_cantrip-server")),
+    )
+    .await?;
     let mut configuration = runtime.configuration().clone();
     configuration.application_name(APPLICATION);
     let database = Arc::new(Database::postgres(&configuration).await?);

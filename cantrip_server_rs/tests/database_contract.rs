@@ -154,7 +154,12 @@ async fn postgres_runs_the_same_schema_and_contract() -> Result<()> {
     let root = tempfile::Builder::new()
         .prefix("cantrip postgres ")
         .tempdir()?;
-    let runtime = ManagedPostgres::start(root.path(), &binary_directory).await?;
+    let runtime = ManagedPostgres::start_with_owner(
+        root.path(),
+        &binary_directory,
+        std::path::Path::new(env!("CARGO_BIN_EXE_cantrip-server")),
+    )
+    .await?;
     let database = Arc::new(Database::postgres(runtime.configuration()).await?);
     exercise(&database).await?;
     // Exercise external selection through the real executable as well as the
@@ -190,7 +195,12 @@ async fn postgres_runs_the_same_schema_and_contract() -> Result<()> {
     database.close().await?;
     assert!(database.query("SELECT 1", &[]).await.is_err());
     runtime.close().await?;
-    let runtime = ManagedPostgres::start(root.path(), &binary_directory).await?;
+    let runtime = ManagedPostgres::start_with_owner(
+        root.path(),
+        &binary_directory,
+        std::path::Path::new(env!("CARGO_BIN_EXE_cantrip-server")),
+    )
+    .await?;
     let database = Database::postgres(runtime.configuration()).await?;
     assert_eq!(migrate(&database).await?, 0);
     assert_eq!(
@@ -223,7 +233,12 @@ async fn postgres_windows_owner_exit_kills_descendants_and_retains_data() -> Res
     if let Ok(path) = std::env::var("CANTRIP_POSTGRES_OWNER_EXIT_ROOT") {
         eprintln!("owner-exit fixture: child initializing its private cluster");
         let root = PathBuf::from(path);
-        let runtime = ManagedPostgres::start(&root, &binary_directory).await?;
+        let runtime = ManagedPostgres::start_with_owner(
+            &root,
+            &binary_directory,
+            std::path::Path::new(env!("CARGO_BIN_EXE_cantrip-server")),
+        )
+        .await?;
         eprintln!("owner-exit fixture: child reached database readiness");
         let database = Database::postgres(runtime.configuration()).await?;
         database
@@ -289,7 +304,12 @@ async fn postgres_windows_owner_exit_kills_descendants_and_retains_data() -> Res
     .await
     .context("wait for postmaster exit after its owner died")??;
     eprintln!("owner-exit fixture: postmaster exited; verifying crash recovery");
-    let runtime = ManagedPostgres::start(root.path(), &binary_directory).await?;
+    let runtime = ManagedPostgres::start_with_owner(
+        root.path(),
+        &binary_directory,
+        std::path::Path::new(env!("CARGO_BIN_EXE_cantrip-server")),
+    )
+    .await?;
     let database = Database::postgres(runtime.configuration()).await?;
     assert_eq!(
         database

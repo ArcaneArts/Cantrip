@@ -17,6 +17,9 @@ struct Arguments {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    if cantrip_server::managed_postgres::run_owner_if_requested().await? {
+        return Ok(());
+    }
     let arguments = Arguments::parse();
     let runtime = ManagedPostgres::start(&arguments.data_dir, &arguments.postgres_bin_dir).await?;
     let config = runtime.configuration();

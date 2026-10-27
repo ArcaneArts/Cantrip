@@ -53,6 +53,9 @@ async fn shutdown() {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    if cantrip_server::managed_postgres::run_owner_if_requested().await? {
+        return Ok(());
+    }
     let arguments = Arguments::parse();
     let mut environment: Environment = std::env::vars().collect();
     if let Some(host) = arguments.host {
