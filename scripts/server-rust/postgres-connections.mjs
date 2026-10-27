@@ -234,15 +234,15 @@ try {
         }
       }
       for (const [index, mode] of (sslEnabled
-        ? [undefined, "disable", "prefer", "require", "verify-full"]
-        : [undefined, "disable", "prefer", "require"]
+        ? [undefined, "", "disable", "prefer", "require", "verify-full"]
+        : [undefined, "", "disable", "prefer", "require"]
       ).entries()) {
         const name = `cantrip_tls_${sslEnabled ? "on" : "off"}_${index}`;
         await admin`CREATE DATABASE ${admin(name)}`;
         const url = new URL(base);
         url.pathname = `/${name}`;
         url.searchParams.set("application_name", name);
-        if (mode) url.searchParams.set("sslmode", mode);
+        if (mode !== undefined) url.searchParams.set("sslmode", mode);
         const entry = {
           sslEnabled,
           mode: mode ?? "omitted",

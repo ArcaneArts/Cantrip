@@ -50,7 +50,7 @@ those writes; the actual Node service waited and retained them.
 `tests/postgres_pool.rs` exercises real relation locks, unrelated concurrent
 reads, all five busy connections plus a listener, cancelled transactions,
 backend termination, listener restoration and shutdown. The real HTTP/TLS
-harness compares nine SSL-on/off configurations against postgres-js and the
+harness compares eleven SSL-on/off configurations against postgres-js and the
 Node/Rust services, checks actual `pg_stat_ssl`, and keeps `/api/workers`
 blocked while `/api/account/sessions` completes over a TLS server connection:
 
@@ -70,6 +70,8 @@ fixture. The Windows workflow installs that test dependency explicitly. Local
 macOS arm64 results passed; this milestone still requires observed platform CI.
 The external URL adapter preserves omitted/disabled SSL, prefer fallback,
 required encryption and strict certificate rejection for the tested settings.
+An explicitly empty `sslmode=` retains Node's omitted-option behavior; the
+adapter resolves and removes that key before invoking the typed driver parser.
 Complete connection-option/environment parity, startup retry behavior,
 interrupted-network recovery and deployment artifacts remain required. A
 successful CancelRequest is not an acknowledgment of remote statement rollback

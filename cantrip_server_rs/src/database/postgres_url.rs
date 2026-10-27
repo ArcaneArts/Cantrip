@@ -30,9 +30,11 @@ pub(super) fn parse(value: &str) -> Result<(Config, MakeTlsConnector)> {
         // behavior rather than treating encryption as certificate validation.
         Some(_) => (SslMode::Require, true),
     };
+    // The policy above also resolves an empty sslmode. Do not pass that empty
+    // value to tokio-postgres, which rejects a Node-accepted connection.
     let retained: Vec<_> = url
         .query_pairs()
-        .filter(|(key, value)| key != "ssl" && (key != "sslmode" || value.is_empty()))
+        .filter(|(key, _)| key != "ssl" && key != "sslmode")
         .map(|(key, value)| (key.into_owned(), value.into_owned()))
         .collect();
     url.set_query(None);
