@@ -1308,14 +1308,15 @@
         "cantrip_server_rs/tests/worker_wire_contracts.rs",
         "scripts/server-rust/worker-ingress-compatibility.mjs",
         "cantrip_server_rs/tests/worker_command_contracts.rs",
-        "cantrip_server_rs/tests/worker_request_admission.rs"
+        "cantrip_server_rs/tests/worker_request_admission.rs",
+        "scripts/server-rust/actual-worker-client.mjs"
       ],
       "scope": "Native HTTP/1 upgrade (versions 8/13, ready v1/v2 and legacy), credential authentication, bounded pre-authentication buffering/capacity, close-frame transport cleanup, response correlation, local reconnect/deadline/event callback sequencing and credential delivery/revocation. Actual browser APIs and unchanged worker components exercise enrollment/rotation/persistence/reconnect/revocation. Full incoming text-envelope validation, ordered events and worker-scoped notification listeners now use the production bridge. Native notification prefixes execute in registration order; asynchronous completions are independent, and subscriptions survive reconnect. A loopback-only observer fixture compares actual HTTP/WS routing through unchanged worker transport components on all three stores locally. This does not implement the command resource domains.",
       "remaining": [
         "App Live transport and ordered worker/session invalidations are integrated locally. Other resource publishers, WorkerLink and shared coordination remain unported.",
         "Domain event/notification persistence and consumers, binary relays and supported-platform acceptance for the new outgoing command changes. Incoming ingress PR 2286 passed all three platforms.",
         "Shared coordination, resource reconciliation and execution recovery hooks.",
-        "Whole app UI and full worker index/runtime acceptance, beyond the controlled credential command handler."
+        "Whole app UI and remaining full worker resource/execution flows across supported artifacts/platforms. The actual full worker Ollama catalog flow is locally verified on all three stores, including retained enrollment and process restart."
       ]
     },
     "appLiveTransport": {
@@ -1330,7 +1331,8 @@
         "scripts/server-rust/live-repository-compatibility.mjs",
         "scripts/server-rust/live-compatibility.mjs",
         "scripts/server-rust/live-socket-faults.mjs",
-        "scripts/server-rust/worker-client-compatibility.mjs"
+        "scripts/server-rust/worker-client-compatibility.mjs",
+        "scripts/server-rust/actual-worker-client.mjs"
       ],
       "scope": "Native /api/live HTTP upgrade, configured origin/principal, first-offered non-worker subprotocol, per-account capacity through actual transport completion, first/last session presence, periodic validation, synchronous post-commit revocation, full project DTO and chat-context authorization reads, worker invalidations, FIFO final errors/close, bounded IO cleanup and actual process shutdown draining. Core oracle compares 44 scenarios/688 steps; repository suites compare project mapping and scope/session activity on all three stores. Real HTTP/WS covers anonymous/password/accounts/capacity, reconnect replay, invalid frames, committed worker state, stalled close acknowledgment and shutdown; external PostgreSQL also verifies an actually locked authorization query cannot stall transport ping/close. Chromium exercises the actual AppLiveClient with the existing worker components; its browser adapter maps internal close reasons to browser-permitted private-use codes. This does not establish full UI/domain/runtime or packaged-platform acceptance.",
       "remaining": [
@@ -1722,6 +1724,19 @@
       "remaining": [
         "Current-head supported-platform and packaged product acceptance.",
         "Provider connection testing, worker reconnect/periodic catalog hooks and remaining settings domains are separate unported consumers."
+      ]
+    },
+    "actualProductionWorkerFlow": {
+      "status": "implemented-pending-platform-acceptance",
+      "evidence": [
+        "scripts/server-rust/actual-worker-client.mjs",
+        ".github/workflows/rust-server.yml"
+      ],
+      "validatedLocally": "macOS: eight product steps per runtime on native PGlite, private PostgreSQL and external PostgreSQL. Real Chromium imports the existing account/provider APIs and AppLiveClient; each actual server routes Ollama discovery through the unchanged built worker index. Native CLI startup dependency is actually built. Checks cover account/session setup, enrollment and command readiness, committed worker Live event, catalog capabilities/availability, retained model identity while stopped, persisted-credential restart, actual HTTP 503 producing stable stale-catalog state, and recovery. All 12 worker processes exit cleanly. Codex is actually probed and advertised incompatible locally; inference and execution are outside this test.",
+      "remaining": [
+        "Observe current Linux/macOS/Windows CI and retain actual artifacts; configured jobs are not acceptance.",
+        "Whole UI, encrypted execution/resource flows, multi-instance recovery and packaging/deployment matrix.",
+        "Windows graceful process supervision; TerminateProcess does not deliver Node Unix signal handlers."
       ]
     }
   },
