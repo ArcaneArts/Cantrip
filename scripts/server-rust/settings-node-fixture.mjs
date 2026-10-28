@@ -315,6 +315,23 @@ try {
           });
           value = null;
           break;
+        case "telemetry-export":
+          value = await repo.exportProviderTelemetry(r.owner, r.provider);
+          break;
+        case "telemetry-analytics":
+        case "telemetry-quota": {
+          const query = { ...r.query };
+          for (const key of ["from", "to"])
+            if (query[key] !== undefined && query[key] !== null)
+              query[key] = new Date(query[key]);
+          value = await (r.op === "telemetry-analytics"
+            ? repo.getProviderTelemetryAnalytics(r.owner, query)
+            : repo.getQuotaTokenAnalytics(r.owner, query));
+          break;
+        }
+        case "telemetry-delete":
+          value = await repo.deleteProviderTelemetry(r.owner, r.provider);
+          break;
         case "query-json": {
           const result = await repo.settings.database.execute(sql.raw(r.sql));
           value =

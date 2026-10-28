@@ -58,7 +58,7 @@ focused hyper patch preserves non-UTF8 HTTP reason bytes; its provenance and
 license live under `third-party/hyper/`.
 
 The seven current settings HTTP routes have actual Node/Rust socket comparisons. Main settings
-reads and the remaining provider/telemetry HTTP operations still require their domain
+reads and the remaining provider HTTP operations still require their domain
 consumers; they are not registered as placeholders.
 Grok lazily shares one optional public
 vision lookup across each account batch. Its diagnostic interface carries the
@@ -107,7 +107,7 @@ shutdown drains. Credential expiry writes use the source driver's clipped ISO
 text input, including real PostgreSQL rejection and rollback at year zero.
 The server now owns these services for provider-account CRUD and global sign-out,
 and drains admitted operations before closing the worker command bus and database.
-The remaining telemetry routes, runtime hooks and production diagnostics
+The remaining runtime hooks and production diagnostics
 still require integration. Legacy OAuth capture does not implement PGlite data conversion.
 
 Native account authentication resolves owned account targets, retains default
@@ -126,7 +126,7 @@ Sign-out invalidates settings before publishing safe provider-auth status, scope
 to the requesting owner. Unvalidated legacy body selectors retain JavaScript
 truthiness separately from database text conversion and the actual PostgreSQL
 driver's boolean parameter inference. Truthy empty arrays cannot select the default
-account. Telemetry routes and worker reconnect consumers remain unfinished.
+account. Worker reconnect consumers remain unfinished.
 
 The native auth-status GET/HEAD route projects stored account state, selects the
 first enabled or explicitly requested account, and can capture an opaque legacy
@@ -372,5 +372,34 @@ node scripts/server-rust/provider-quota-http-compatibility.mjs --database pglite
 ```
 
 Repeat with private and external PostgreSQL as for the other socket suites.
-Provider telemetry, remaining settings/provider operations, production diagnostic
+Remaining settings/provider operations, production diagnostic
 formatting and runtime consumers remain in the full replacement goal.
+
+## Provider telemetry
+
+Native routes now serve `GET /api/analytics/provider-telemetry`, provider export
+and history deletion. Analytics preserve the original quota intervals,
+stationary accumulation, reset windows, nullable token totals, confidence,
+period comparisons, locale/calendar ordering, sampling and eight change metrics.
+Raw query filters and the clamped `parseInt` days behavior retain the existing
+HTTP contract. Response validation uses the authoritative protocol export.
+Valid unknown structured telemetry remains in the stack-safe wire value through
+JSONB parsing, projection and export. Actual comparisons cover depths 100, 150
+and 300 without imposing Serde's intermediate recursion limit.
+
+Exports include opaque dimensions and structured metrics. Four history tables
+are deleted atomically, without changing current account projections or
+publishing a settings invalidation. Owned operations survive caller disconnect
+and drain before database closure. The external PostgreSQL HTTP suite holds an
+actual admitted DELETE behind a lock, disconnects its caller, requests shutdown,
+then verifies all four committed deletes and a retained process reopen.
+
+```sh
+node scripts/server-rust/telemetry-repository-compatibility.mjs --database pglite --report .qa/rust-server/telemetry-repository.json
+node scripts/server-rust/telemetry-http-compatibility.mjs --database postgres --report .qa/rust-server/telemetry-http.json
+```
+
+Both suites support `pglite`, `bundled-postgres` and `postgres`; PostgreSQL
+fixtures use `CANTRIP_TEST_POSTGRES_BIN_DIR`. These are disposable comparisons.
+Current platform acceptance, execution-domain writers, migration/rollback,
+packaged artifacts, product flows and default cutover remain required.

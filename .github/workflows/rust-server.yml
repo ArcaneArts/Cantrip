@@ -190,6 +190,18 @@ jobs:
         run: node scripts/server-rust/settings-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/settings-repository-bundled.json
       - name: Settings and provider repositories with external PostgreSQL
         run: node scripts/server-rust/settings-repository-compatibility.mjs --database postgres --report .qa/rust-server/settings-repository-external.json
+      - name: Telemetry analytics, exports and rollback with native PGlite
+        run: node scripts/server-rust/telemetry-repository-compatibility.mjs --report .qa/rust-server/telemetry-repository-pglite.json
+      - name: Telemetry analytics, exports and rollback with private PostgreSQL
+        run: node scripts/server-rust/telemetry-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/telemetry-repository-bundled.json
+      - name: Telemetry analytics, exports and rollback with external PostgreSQL
+        run: node scripts/server-rust/telemetry-repository-compatibility.mjs --database postgres --report .qa/rust-server/telemetry-repository-external.json
+      - name: Telemetry HTTP, privacy and restart with native PGlite
+        run: node scripts/server-rust/telemetry-http-compatibility.mjs --report .qa/rust-server/telemetry-http-pglite.json
+      - name: Telemetry HTTP, privacy and restart with private PostgreSQL
+        run: node scripts/server-rust/telemetry-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/telemetry-http-bundled.json
+      - name: Telemetry HTTP, privacy and admitted deletion shutdown with external PostgreSQL
+        run: node scripts/server-rust/telemetry-http-compatibility.mjs --database postgres --report .qa/rust-server/telemetry-http-external.json
       - name: Public OpenRouter HTTP cache, errors and actual deadlines
         run: node --import tsx scripts/server-rust/openrouter-http-compatibility.mjs --timeouts --report .qa/rust-server/openrouter-public-http.json
       - name: Settings HTTP and worker effects with native PGlite

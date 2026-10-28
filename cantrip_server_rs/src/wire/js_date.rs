@@ -440,7 +440,7 @@ fn days(year: i64, month: i64, day: i64) -> i128 {
         - 719468
 }
 
-pub(super) fn iso_milliseconds(value: i64) -> Option<String> {
+pub(super) fn utc_fields(value: i64) -> Option<(i64, i64, i64)> {
     if value.unsigned_abs() > 8_640_000_000_000_000 {
         return None;
     }
@@ -457,6 +457,24 @@ pub(super) fn iso_milliseconds(value: i64) -> Option<String> {
     let day = day_of_year - (153 * march_month + 2) / 5 + 1;
     let month = march_month + if march_month < 10 { 3 } else { -9 };
     year += i64::from(month <= 2);
+    Some((year, month, day))
+}
+
+pub(super) fn utc_milliseconds(year: i64, month: i64, day: i64) -> Option<i64> {
+    // Date.UTC uses a zero-based month and maps years 0..99 into 1900..1999
+    // before normalizing the month and day.
+    let year = if (0..=99).contains(&year) {
+        year + 1900
+    } else {
+        year
+    };
+    let year = year + month.div_euclid(12);
+    let value = days(year, month.rem_euclid(12) + 1, day) * 86_400_000;
+    (value.abs() <= 8_640_000_000_000_000).then_some(value as i64)
+}
+
+pub(super) fn iso_milliseconds(value: i64) -> Option<String> {
+    let (year, month, day) = utc_fields(value)?;
     let year = if (0..=9999).contains(&year) {
         format!("{year:04}")
     } else if year < 0 {

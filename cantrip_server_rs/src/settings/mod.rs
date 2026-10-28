@@ -23,6 +23,7 @@ mod quota_query_error;
 mod raw_identifiers;
 pub mod reasoning;
 pub mod repository;
+pub mod telemetry;
 pub mod zai;
 
 pub use providers::normalize_responses_base_url;

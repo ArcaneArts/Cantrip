@@ -106,6 +106,9 @@ export const contractRoots = [
   "orderedIdsSchema",
   "providerAuthLiveStatusSchema",
   "providerModelCatalogResultSchema",
+  "providerTelemetryWireAnalyticsSchema",
+  "providerTelemetryExportSchema",
+  "providerTelemetryDeleteResultSchema",
 ];
 
 const refinements = new Map([

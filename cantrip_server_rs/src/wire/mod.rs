@@ -234,6 +234,14 @@ pub(crate) fn date_iso_milliseconds(value: i64) -> Option<String> {
     js_date::iso_milliseconds(value)
 }
 
+pub(crate) fn date_utc_fields(value: i64) -> Option<(i64, i64, i64)> {
+    js_date::utc_fields(value)
+}
+
+pub(crate) fn date_utc_milliseconds(year: i64, month: i64, day: i64) -> Option<i64> {
+    js_date::utc_milliseconds(year, month, day)
+}
+
 impl Contracts {
     fn run(
         &self,

@@ -2,6 +2,47 @@
 
 Status: **implementation in progress; not a deployable replacement**.
 
+The provider telemetry milestone implements the analytics, export and deletion
+routes natively. Quota attribution, pending consumption, confidence, calendar
+and locale breakdowns, period comparisons and all eight change metrics retain
+the existing calculations. Reads preserve owner and query scopes, historical
+accounts, prior-reading selection and per-account sampling. Exports contain
+opaque dimensions and structured evidence; deleting four history tables is one
+transaction and preserves current account projections.
+
+Local comparisons pass 56 repository observations and 102 HTTP observations on
+each of native PGlite, private PostgreSQL and external PostgreSQL. A further
+external PostgreSQL scenario holds a real lock on an admitted DELETE, closes
+the caller and shuts down the server. Both implementations wait for release,
+commit all four deletes and reopen with the deletion retained (104 external
+PostgreSQL HTTP observations in total). Valid structured telemetry at depths
+100, 150 and 300 passes through JSONB reads, analytics and exports without
+Serde's intermediate recursion limit. The fixtures give ordered rows distinct
+timestamps because the source SQL defines no order within timestamp ties;
+response comparisons remain exact. The native
+statistics, quota and change helpers are compared directly with the current
+TypeScript helpers; protocol responses use three additional generated roots.
+The current local all-target Rust suite passes 92 tests across 44 targets, with
+strict all-target Clippy and native formatting passing. Supported-platform
+acceptance is still required.
+Execution-domain telemetry writers, packaged operation and complete replacement
+remain in scope.
+
+PR 2293's Windows run passed the earlier rounding regression, then terminated
+the settings repository fixture with a stack overflow. Local bounded-stack
+replays reproduced nested future allocation failures. The adapter and shared
+settings/provider refresh seams now keep those futures on the heap. All 768
+existing settings comparisons pass with the native process limited to a 1 MiB
+main stack, and a native regression performs real settings reads and rejected/
+committed updates on a 1 MiB thread. No runtime stack allowance was increased.
+Fresh Windows CI remains necessary before platform acceptance is claimed.
+
+The repository-wide checks are not green: native CUA execution-budget failures,
+worker filesystem observations and 12 formatting failures reproduce on the clean
+baseline. A worker history-outbox timeout from the package sweep did not
+reproduce in its focused rerun. The Node server and app suites pass; original
+failures and baseline results are retained without changing assertions or limits.
+
 The outgoing worker envelope now has native validation and normalization before
 bridge admission. Its development oracle exercises the actual TypeScript
 protocol for every command type and reachable union alternative; large boundary
