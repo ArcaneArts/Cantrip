@@ -1,3 +1,4 @@
+pub mod audit;
 pub mod cookie;
 pub mod crypto;
 pub mod rate_limit;

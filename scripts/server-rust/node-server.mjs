@@ -10,9 +10,10 @@ const database = await connectDatabase(config);
 const drainAuthNotifications = process.argv.includes(
   "--drain-auth-notifications",
 );
+const observeAudits = process.argv.includes("--observe-audits");
 const notifications = new Set();
 const repositoryOperations = new Set();
-if (drainAuthNotifications) {
+if (drainAuthNotifications || observeAudits) {
   const wrappers = new WeakMap();
   database.repository = new Proxy(database.repository, {
     get(target, key) {
@@ -21,15 +22,35 @@ if (drainAuthNotifications) {
       if (!wrappers.has(method))
         wrappers.set(method, (...args) => {
           const result = Reflect.apply(method, target, args);
-          if (result && typeof result.then === "function") {
+          if (
+            result &&
+            typeof result.then === "function" &&
+            (drainAuthNotifications || key === "appendAuditEvent")
+          ) {
             // Assimilate a lazy thenable once; tracking and returning the
             // original builder could otherwise execute its query twice.
             const pending = Promise.resolve(result);
-            repositoryOperations.add(pending);
-            pending.then(
-              () => repositoryOperations.delete(pending),
-              () => repositoryOperations.delete(pending),
-            );
+            if (drainAuthNotifications) {
+              repositoryOperations.add(pending);
+              pending.then(
+                () => repositoryOperations.delete(pending),
+                () => repositoryOperations.delete(pending),
+              );
+            }
+            if (observeAudits && key === "appendAuditEvent") {
+              const input = args[0];
+              const receipt = (ok) =>
+                diagnose("fixture.audit.completed", {
+                  requestId: input.requestId,
+                  action: input.action,
+                  ownerId: input.ownerId ?? null,
+                  ok,
+                });
+              pending.then(
+                () => receipt(true),
+                () => receipt(false),
+              );
+            }
             return pending;
           }
           return result;
@@ -83,6 +104,19 @@ const app = await buildApp({
   logger: false,
   ...(ingressBridge ? { workerBridge: ingressBridge } : {}),
 });
+if (observeAudits) {
+  // Observe the actual source hooks after their writes; no replacement handler,
+  // altered response or synthetic completion delay is installed.
+  app.addHook("onResponse", async (request) => {
+    diagnose("fixture.response.completed", {
+      requestId: request.id,
+      ownerId:
+        request.principal.state === "authenticated"
+          ? request.principal.user.id
+          : null,
+    });
+  });
+}
 const closeIngress = ingressFixture
   ? installWorkerIngressFixture(app, ingressBridge)
   : undefined;

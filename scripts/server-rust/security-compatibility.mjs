@@ -71,8 +71,10 @@ try {
           name: profile.name,
           databaseMode,
           environment,
+          auditObservations: true,
         }),
     );
+    pair[1].auditReference = pair[0];
     if (postgresOwner) {
       pair[0].environment.DATABASE_URL = await postgresOwner.database();
       if (databaseMode === "postgres")

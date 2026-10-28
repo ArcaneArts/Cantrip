@@ -145,6 +145,14 @@ jobs:
         run: node --import tsx scripts/server-rust/actual-worker-client.mjs --database bundled-postgres --report .qa/rust-server/actual-worker-client-bundled.json
       - name: Actual browser, server and full worker catalog flow with external PostgreSQL
         run: node --import tsx scripts/server-rust/actual-worker-client.mjs --database postgres --report .qa/rust-server/actual-worker-client-external.json
+      - name: Encryption and account security with native PGlite
+        run: node --import tsx scripts/server-rust/security-compatibility.mjs --report .qa/rust-server/security-pglite-http.json
+      - name: Encryption and account security with private PostgreSQL
+        run: node --import tsx scripts/server-rust/security-compatibility.mjs --database bundled-postgres --report .qa/rust-server/security-bundled-http.json
+      - name: Encryption and account security with external PostgreSQL and post-write reversal
+        run: node --import tsx scripts/server-rust/security-compatibility.mjs --database postgres --report .qa/rust-server/security-external-http.json
+      - name: Mutation audit response completion, real locks and shutdown ownership
+        run: node --import tsx scripts/server-rust/audit-lifecycle-compatibility.mjs --report .qa/rust-server/audit-lifecycle.json
       - name: Reference worker authentication shutdown and socket ordering
         # Each integration file initializes PGlite's WASM runtime and full SQL
         # schema. Avoid competing cold initializations on the hosted runners.
@@ -313,12 +321,6 @@ jobs:
         run: node --import tsx scripts/server-rust/auth-compatibility.mjs --database bundled-postgres --report .qa/rust-server/auth-bundled-http.json
       - name: Authentication over external PostgreSQL and Node/Rust retained state
         run: node --import tsx scripts/server-rust/auth-compatibility.mjs --database postgres --report .qa/rust-server/auth-external-http.json
-      - name: Encryption and account security with native PGlite
-        run: node --import tsx scripts/server-rust/security-compatibility.mjs --report .qa/rust-server/security-pglite-http.json
-      - name: Encryption and account security with private PostgreSQL
-        run: node --import tsx scripts/server-rust/security-compatibility.mjs --database bundled-postgres --report .qa/rust-server/security-bundled-http.json
-      - name: Encryption and account security with external PostgreSQL and post-write reversal
-        run: node --import tsx scripts/server-rust/security-compatibility.mjs --database postgres --report .qa/rust-server/security-external-http.json
       - name: Synthetic build metadata and existing wire-version rejection
         run: node scripts/server-rust/version-compatibility.mjs
       - name: Worker enrollment, credentials and sockets with native PGlite

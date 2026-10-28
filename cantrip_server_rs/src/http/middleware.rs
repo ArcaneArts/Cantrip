@@ -528,16 +528,15 @@ pub(super) async fn guard(
         &audit_method,
         upgrade,
     );
-    super::audit::mutation(
+    let response = super::audit::response(
         &service,
         &audit_principal,
         &id,
         &audit_method,
         &audit_pattern,
         &audit_path,
-        response.status().as_u16(),
-    )
-    .await;
+        response,
+    );
     finish(
         &service,
         &id,

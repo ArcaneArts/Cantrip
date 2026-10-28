@@ -1,8 +1,9 @@
 use crate::auth::{
-    repository::AuditRecord,
+    audit::MutationAudit,
     service::{AuthService, Principal},
 };
-use serde_json::json;
+use axum::response::Response;
+use std::sync::Arc;
 
 fn descriptor(method: &str, route: &str) -> Option<(&'static str, &'static str)> {
     if route.starts_with("/api/encryption") && method != "GET" {
@@ -42,17 +43,17 @@ fn descriptor(method: &str, route: &str) -> Option<(&'static str, &'static str)>
     }
     None
 }
-pub(super) async fn mutation(
-    service: &AuthService,
+pub(super) fn response(
+    service: &Arc<AuthService>,
     principal: &Principal,
     request_id: &str,
     method: &str,
     pattern: &str,
     path: &str,
-    status: u16,
-) {
+    response: Response,
+) -> Response {
     if method == "OPTIONS" || !principal.authenticated() {
-        return;
+        return response;
     }
     let route = pattern
         .split('/')
@@ -64,7 +65,7 @@ pub(super) async fn mutation(
         .collect::<Vec<_>>()
         .join("/");
     let Some((action, resource_type)) = descriptor(method, &route) else {
-        return;
+        return response;
     };
     let parameters = pattern
         .split('/')
@@ -96,7 +97,8 @@ pub(super) async fn mutation(
                 .map(|v| v.into_owned())
         })
     });
-    let owner = principal.user.as_ref().map(|u| u.id.as_str());
+    let owner = principal.user.as_ref().map(|u| u.id.clone());
+    let status = response.status().as_u16();
     let result = if status < 400 {
         "succeeded"
     } else if [401, 403].contains(&status) {
@@ -104,24 +106,19 @@ pub(super) async fn mutation(
     } else {
         "failed"
     };
-    if service
-        .repository
-        .audit(AuditRecord {
-            action,
-            result,
-            owner,
-            actor: owner,
-            session: principal.session_id.as_deref(),
-            resource_type,
-            resource: resource.as_deref(),
-            request_id,
-        })
-        .await
-        .is_err()
-    {
-        eprintln!(
-            "{}",
-            json!({"event":"security.audit-write-failed","requestId":request_id})
-        );
+    let pending = service.mutation_audits.admit(MutationAudit {
+        action,
+        result,
+        owner,
+        session: principal.session_id.clone(),
+        resource_type,
+        resource,
+        request_id: request_id.to_owned(),
+    });
+    let complete = move || pending.complete();
+    if method == "HEAD" {
+        super::on_response::finished_head(response, complete)
+    } else {
+        super::on_response::finished(response, complete)
     }
 }

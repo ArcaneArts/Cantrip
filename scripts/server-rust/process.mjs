@@ -30,6 +30,17 @@ export async function startServer(command, arguments_, options) {
     stdio: ["pipe", "pipe", "pipe"],
   });
   let diagnostics = "";
+  const events = [];
+  const collect = (line) => {
+    try {
+      const message = JSON.parse(line);
+      if (typeof message?.event === "string") events.push(message);
+      return message;
+    } catch {
+      return null;
+    }
+  };
+  createInterface({ input: child.stderr }).on("line", collect);
   child.stderr.on("data", (chunk) => {
     diagnostics = `${diagnostics}${chunk}`.slice(-32_768);
   });
@@ -55,8 +66,8 @@ export async function startServer(command, arguments_, options) {
       const lines = createInterface({ input: child.stdout });
       lines.on("line", (line) => {
         try {
-          const message = JSON.parse(line);
-          if (message.event === "server.listening") resolve(message.origin);
+          const message = collect(line);
+          if (message?.event === "server.listening") resolve(message.origin);
         } catch {
           /* Native backend startup messages are not readiness evidence. */
         }
@@ -71,6 +82,7 @@ export async function startServer(command, arguments_, options) {
   }
   return {
     child,
+    events,
     origin,
     startupMs: performance.now() - startedAt,
     async close({ shutdownTimeoutMs = 15_000 } = {}) {
