@@ -250,6 +250,8 @@ jobs:
         run: node scripts/server-rust/telemetry-repository-compatibility.mjs --database postgres --report .qa/rust-server/telemetry-repository-external.json
       - name: Strict telemetry producer clock boundary regressions
         run: node --test scripts/server-rust/operation-clock.test.mjs
+      - name: Actual HTTP producer clocks and ordinary entrypoint controls
+        run: node scripts/server-rust/http-clock-compatibility.mjs --report .qa/rust-server/http-clock-controls.json
       - name: Telemetry HTTP, privacy and restart with native PGlite
         run: node scripts/server-rust/telemetry-http-compatibility.mjs --report .qa/rust-server/telemetry-http-pglite.json
       - name: Telemetry HTTP, privacy and restart with private PostgreSQL

@@ -4,6 +4,7 @@ import { readServerConfig } from "../../cantrip_server/src/config.ts";
 import { connectDatabase } from "../../cantrip_server/src/db/index.ts";
 import { WorkerBridge } from "../../cantrip_server/src/workers/bridge.ts";
 import { installWorkerIngressFixture } from "./worker-ingress-node-fixture.mjs";
+import { startOperationClock } from "./operation-clock.mjs";
 
 const config = readServerConfig();
 const database = await connectDatabase(config);
@@ -104,6 +105,20 @@ const app = await buildApp({
   logger: false,
   ...(ingressBridge ? { workerBridge: ingressBridge } : {}),
 });
+if (process.argv.includes("--observe-http-clocks")) {
+  const clocks = new WeakMap();
+  app.addHook("onRequest", (request, _reply, done) => {
+    clocks.set(request, startOperationClock());
+    done();
+  });
+  app.addHook("onResponse", (request, _reply, done) => {
+    diagnose("fixture.http.clock", {
+      requestId: request.id,
+      operationClock: clocks.get(request)?.(),
+    });
+    done();
+  });
+}
 if (observeAudits) {
   // Observe the actual source hooks after their writes; no replacement handler,
   // altered response or synthetic completion delay is installed.
