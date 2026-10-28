@@ -152,6 +152,9 @@ export async function createDesktopAutomationClient(): Promise<DesktopAutomation
       createComputerUseServer({
         elicitApproval: async () => true,
         profile: "full",
+        // The worker owns asynchronous shutdown. Keep the backend's session
+        // lock and exit cleanup without its process.exit signal handlers.
+        manageProcessSignals: false,
       }),
     )) as ComputerUseClient;
   } finally {

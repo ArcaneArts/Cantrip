@@ -69,6 +69,8 @@ on:
       - package.json
       - .github/workflows/rust-server.yml
       - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - patches/@zavora-ai__computer-use-mcp@7.0.0.patch
   workflow_dispatch:
 
 permissions:
@@ -133,6 +135,8 @@ jobs:
       - run: pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol --filter @cantrip/crypto --filter @cantrip/glitch -r build
       - name: Build the production worker used by browser integration
         run: pnpm --filter @cantrip/worker build
+      - name: Embedded desktop backend retains worker signal ownership
+        run: pnpm --filter @cantrip/worker exec vitest run test/desktop-automation-lifecycle.test.ts --maxWorkers=1
       - name: Browser for unchanged client and worker control integration
         run: node node_modules/playwright-core/cli.js install --with-deps chromium
       - name: Actual browser, server and full worker catalog flow with PGlite

@@ -6,6 +6,7 @@ settings:
   injectWorkspacePackages: true
 
 patchedDependencies:
+  "@zavora-ai/computer-use-mcp@7.0.0": afa23d13147ea84ad1c3aa7992aacfca6ea1af8e41823e5a6b316ac945d9020d
   webdav-server@2.6.3: 6d9ab239e94069970537406374780261e3dc976865163fad26cafb6643d2da2f
   werift@0.24.3: f5f05bb51067f16d98c5fc0e23abb71f7b291e04ed8459cac5a010806a51ad60
 
@@ -350,7 +351,7 @@ importers:
         version: 6.0.0
       "@zavora-ai/computer-use-mcp":
         specifier: 7.0.0
-        version: 7.0.0(supports-color@10.2.2)
+        version: 7.0.0(patch_hash=afa23d13147ea84ad1c3aa7992aacfca6ea1af8e41823e5a6b316ac945d9020d)(supports-color@10.2.2)
       dotenv:
         specifier: ^17.4.2
         version: 17.4.2
@@ -12007,7 +12008,7 @@ snapshots:
 
   "@xterm/xterm@6.0.0": {}
 
-  "@zavora-ai/computer-use-mcp@7.0.0(supports-color@10.2.2)":
+  "@zavora-ai/computer-use-mcp@7.0.0(patch_hash=afa23d13147ea84ad1c3aa7992aacfca6ea1af8e41823e5a6b316ac945d9020d)(supports-color@10.2.2)":
     dependencies:
       "@modelcontextprotocol/sdk": 1.29.0(supports-color@10.2.2)(zod@4.4.3)
       zod: 4.4.3

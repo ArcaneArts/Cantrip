@@ -1738,6 +1738,22 @@
         "Whole UI, encrypted execution/resource flows, multi-instance recovery and packaging/deployment matrix.",
         "Windows graceful process supervision; TerminateProcess does not deliver Node Unix signal handlers."
       ]
+    },
+    "workerProcessSignals": {
+      "status": "implemented-pending-platform-acceptance",
+      "implementation": [
+        "cantrip_worker/src/desktop/automation-client.ts",
+        "patches/@zavora-ai__computer-use-mcp@7.0.0.patch"
+      ],
+      "evidence": [
+        "cantrip_worker/test/desktop-automation-lifecycle.test.ts",
+        "scripts/server-rust/actual-worker-client.mjs"
+      ],
+      "scope": "Actual Linux full-worker discovery reached four product steps, then failed because the embedded compatibility backend called process.exit(143). A real-client subprocess reproduction also fails before the patch on macOS. Cantrip now owns SIGINT/SIGTERM while the upstream session lock and exit cleanup remain enabled. Four local subprocess cases verify managed asynchronous close and unchanged standalone signal exit codes. Windows exercises the actual Node signal listeners via IPC; it does not claim Windows graceful process supervision.",
+      "remaining": [
+        "Observe the patched full-worker flow and signal regression on Linux, macOS and Windows.",
+        "Packaged process supervision and the complete deployment/platform product matrix."
+      ]
     }
   },
   "remainingAcceptance": [
