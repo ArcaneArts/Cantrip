@@ -118,6 +118,13 @@ export const contractRoots = [
   "encryptedModelProviderCreateSchema",
   "encryptedModelProviderUpdateSchema",
   "modelProviderWireSummarySchema",
+  "encryptedManagedFolderProjectCreateSchema",
+  "projectFolderSetupJobSummarySchema",
+  "projectFolderSetupRetrySchema",
+  "managedFolderMaterializeReadySchema",
+  "projectWorkspaceStorageContextSchema",
+  "repositoryWorkerOperationWireRequestSchema",
+  "repositoryOperationWireResponseSchema",
 ];
 
 const refinements = new Map([
@@ -161,6 +168,9 @@ function registerChecks(schema, tags) {
     );
   tags.forEach((tag, index) => registerCustom(schema, index, tag));
 }
+registerChecks(protocol.repositoryWorkerOperationWireRequestSchema, [
+  "repository-agent-model",
+]);
 registerChecks(protocol.clientControlCapabilitiesSchema, [
   "live-control-capabilities-unique",
 ]);

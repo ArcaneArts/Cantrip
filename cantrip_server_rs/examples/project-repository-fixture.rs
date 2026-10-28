@@ -5,6 +5,7 @@ use cantrip_server::{
     migrations::migrate, projects::repository::ProjectRepository, wire::Value,
 };
 use clap::Parser;
+use futures::FutureExt;
 use std::{
     io::{self, BufRead, Write},
     path::PathBuf,
@@ -50,6 +51,7 @@ async fn main() -> Result<()> {
     AuthRepository::new(database.clone()).local_user().await?;
     eprintln!("project-fixture identity ready");
     let repository = ProjectRepository::new(database.clone())?;
+    let folders = cantrip_server::projects::folders::FolderRepository::new(database.clone());
     let placement =
         cantrip_server::projects::placement::PlacementRepository::new(database.clone())?;
     let live = cantrip_server::live::repository::LiveRepository::new(database.clone())?;
@@ -68,6 +70,26 @@ async fn main() -> Result<()> {
                     .execute(request["sql"].as_str().context("Fixture SQL")?)
                     .await?;
                 Ok(Value::Null)
+            } else if request["op"] == "query-json" {
+                let query = request["sql"]
+                    .as_str()
+                    .context("Fixture query")?
+                    .trim_end_matches(';');
+                let rows = database
+                    .query(
+                        &format!("SELECT result::text FROM ({query}) observation"),
+                        &[],
+                    )
+                    .await?;
+                rows.first()
+                    .map(|row| Ok(serde_json::from_str::<Value>(&row.get::<String>(0)?)?))
+                    .transpose()
+                    .map(|value| value.unwrap_or(Value::Null))
+            } else if request["op"]
+                .as_str()
+                .is_some_and(|s| s.starts_with("folder-"))
+            {
+                folder_operation(&folders, &request).boxed().await
             } else if request["op"] == "transaction" {
                 let statements = request["statements"]
                     .as_array()
@@ -189,6 +211,19 @@ async fn main() -> Result<()> {
             Err(error) => {
                 reply["diagnostic"] = Value::String(error.to_string().into());
                 if let Some(error) =
+                    error.downcast_ref::<cantrip_server::projects::folders::FolderError>()
+                {
+                    use cantrip_server::projects::folders::FolderError;
+                    reply["folderError"] = Value::String(
+                        match error {
+                            FolderError::Workspace(_) => "ProjectWorkspaceInvariantError",
+                            FolderError::Stale(_) => "ProjectFolderSetupJobStaleAttemptError",
+                            FolderError::Conflict(_) => "ProjectFolderSetupJobConflictError",
+                        }
+                        .into(),
+                    );
+                }
+                if let Some(error) =
                     error.downcast_ref::<cantrip_server::projects::placement::Unavailable>()
                 {
                     reply["code"] = Value::String(error.code.into());
@@ -203,4 +238,72 @@ async fn main() -> Result<()> {
         runtime.close().await?;
     }
     Ok(())
+}
+
+async fn folder_operation(
+    repo: &cantrip_server::projects::folders::FolderRepository,
+    input: &Value,
+) -> Result<Value> {
+    let key = |name: &str| {
+        input[name]
+            .as_js_string()
+            .map(|s| s.lossy().into_owned())
+            .with_context(|| format!("Fixture {name}"))
+    };
+    let value = match input["op"].as_str().context("Fixture operation")? {
+        "folder-default" => Value::object([(
+            "id",
+            repo.ensure_default_workspace(&key("owner")?).await?["id"].clone(),
+        )]),
+        "folder-storage" => repo
+            .workspace_storage(&key("owner")?, &key("project")?)
+            .await?
+            .unwrap_or(Value::Null),
+        "folder-create" => repo.create(&key("owner")?, &input["input"]).await?,
+        "folder-get" => repo
+            .get(&key("owner")?, &key("project")?)
+            .await?
+            .unwrap_or(Value::Null),
+        "folder-claim" => repo.claim_next().await?.unwrap_or(Value::Null),
+        "folder-renew" => Value::Bool(
+            repo.renew(
+                &key("job")?,
+                &key("command")?,
+                input["attempt"].as_f64().context("Fixture attempt")?,
+            )
+            .await?,
+        ),
+        "folder-settle" => {
+            repo.settle(
+                &key("job")?,
+                &key("command")?,
+                &key("state")?,
+                &input["error"],
+            )
+            .await?
+        }
+        "folder-complete" => {
+            repo.complete(&key("job")?, &key("command")?, &input["input"])
+                .await?
+        }
+        "folder-retry" => repo
+            .retry(&key("owner")?, &key("project")?, &input["revision"])
+            .await?
+            .unwrap_or(Value::Null),
+        "folder-requeue" => Value::Number(repo.requeue_worker(&key("worker")?).await? as f64),
+        "folder-recover" => {
+            let at = if let Some(at) = input["at"].as_str() {
+                chrono::DateTime::parse_from_rfc3339(at)?.to_utc()
+            } else {
+                chrono::DateTime::from_timestamp_millis(chrono::Utc::now().timestamp_millis())
+                    .unwrap()
+            };
+            Value::Number(
+                repo.recover(input["force"].as_bool().unwrap_or(true), at)
+                    .await? as f64,
+            )
+        }
+        _ => anyhow::bail!("Unknown folder fixture operation"),
+    };
+    Ok(value)
 }

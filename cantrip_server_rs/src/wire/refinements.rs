@@ -31,6 +31,14 @@ pub(super) fn apply(
     };
     let wrapper = &value["passwordWrappedMasterKey"];
     match tag {
+        "repository-agent-model" => {
+            if value["agent"] != true && value.get("modelId").is_some() {
+                custom(
+                    &[],
+                    "Repository model selection is only valid for agent operations.",
+                );
+            }
+        }
         "provider-initial-account" => {
             let requires_account = value["kind"] == "chatgpt" || value["kind"] == "grok";
             if requires_account == value["initialAccount"].is_null() {

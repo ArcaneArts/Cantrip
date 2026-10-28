@@ -176,6 +176,24 @@ jobs:
         run: node --import tsx scripts/server-rust/project-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/project-http-bundled.json
       - name: Project HTTP contracts and actual worker presence with external PostgreSQL
         run: node --import tsx scripts/server-rust/project-http-compatibility.mjs --database postgres --report .qa/rust-server/project-http-external.json
+      - name: Managed-folder durable repository compatibility with native PGlite
+        run: node --import tsx scripts/server-rust/folder-repository-compatibility.mjs --report .qa/rust-server/folder-repository-pglite.json
+      - name: Managed-folder durable repository compatibility with private PostgreSQL
+        run: node --import tsx scripts/server-rust/folder-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/folder-repository-bundled.json
+      - name: Managed-folder durable repository compatibility with external PostgreSQL
+        run: node --import tsx scripts/server-rust/folder-repository-compatibility.mjs --database postgres --report .qa/rust-server/folder-repository-external.json
+      - name: Managed-folder HTTP, Live, encrypted routing and shutdown with native PGlite
+        run: node --import tsx scripts/server-rust/folder-http-compatibility.mjs --report .qa/rust-server/folder-http-pglite.json
+      - name: Managed-folder HTTP, Live, encrypted routing and shutdown with private PostgreSQL
+        run: node --import tsx scripts/server-rust/folder-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/folder-http-bundled.json
+      - name: Managed-folder HTTP, Live, encrypted routing and shutdown with external PostgreSQL
+        run: node --import tsx scripts/server-rust/folder-http-compatibility.mjs --database postgres --report .qa/rust-server/folder-http-external.json
+      - name: Actual browser and full worker folder creation and recovery with native PGlite
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --report .qa/rust-server/actual-folder-client-pglite.json
+      - name: Actual browser and full worker folder creation and recovery with private PostgreSQL
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --database bundled-postgres --report .qa/rust-server/actual-folder-client-bundled.json
+      - name: Actual browser and full worker folder creation and recovery with external PostgreSQL
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --database postgres --report .qa/rust-server/actual-folder-client-external.json
       - name: Encryption and account security with native PGlite
         run: node --import tsx scripts/server-rust/security-compatibility.mjs --report .qa/rust-server/security-pglite-http.json
       - name: Encryption and account security with private PostgreSQL

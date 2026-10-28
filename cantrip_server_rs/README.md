@@ -12,6 +12,15 @@ worker pairing, credentials, heartbeat storage and foundational control sockets.
 Storage supports native PGlite, private managed PostgreSQL and external
 PostgreSQL. The worker remains Node.
 
+Managed-folder provisioning now owns durable setup jobs, worker dispatch,
+retry/recovery and shutdown drains. The worker-scoped encrypted repository route
+supports private path registration and resolution through the existing client
+and worker. The folder suites use both controlled transport outcomes and actual
+Chromium APIs with the full built Node worker. See
+[`docs/RUST_SERVER_REPLACEMENT.md`](../docs/RUST_SERVER_REPLACEMENT.md) for their
+scope and commands. Project/worktree execution, worker encryption refresh,
+shared coordination, platform packaging and complete replacement remain in scope.
+
 From the repository root:
 
 ```sh

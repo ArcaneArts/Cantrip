@@ -277,6 +277,7 @@ async fn run(
         return;
     }
     state.invalidate(&owner, "worker-availability", &worker);
+    service.folder_setup.worker_connected(worker.clone());
     drop(permit);
     for message in std::mem::take(&mut buffer.messages) {
         receive(&state.bridge, &service.usage, &worker, &peer, message);

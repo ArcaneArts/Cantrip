@@ -2,7 +2,6 @@
 // Only Ollama's public HTTP API is controlled. No worker transport, command
 // handler, repository or client API is mocked.
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
 import { createServer as createHttpServer } from "node:http";
 import { createRequire } from "node:module";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -15,7 +14,7 @@ import { loadStoredWorkerCredential } from "../../cantrip_worker/src/credential-
 import { buildRustServer, buildWorkerCli, repositoryRoot } from "./build.mjs";
 import { HttpFixture } from "./http-fixture.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
-import { fixtureEnvironment } from "./process.mjs";
+import { launchActualWorker } from "./full-worker.mjs";
 import { password } from "./security-fixtures.mjs";
 
 const option = (name) => {
@@ -113,99 +112,6 @@ async function eventually(read, check, timeout = 30000) {
     }
     await delay(50);
   }
-}
-
-function launchWorker(fixture, dataDirectory, enrollmentCode) {
-  const environment = {
-    ...fixtureEnvironment(dataDirectory),
-    CANTRIP_SERVER_URL: fixture.server.origin,
-    CANTRIP_WORKER_DATA_DIR: dataDirectory,
-    CANTRIP_WORKER_ID: "actual-catalog-worker",
-    CANTRIP_WORKER_NAME: "Disposable full worker",
-    CANTRIP_CLI_BIN: cliBinary,
-    ...(enrollmentCode
-      ? { CANTRIP_WORKER_ENROLLMENT_CODE: enrollmentCode }
-      : {}),
-    ...(process.env.CANTRIP_CODEX_BIN
-      ? { CANTRIP_CODEX_BIN: process.env.CANTRIP_CODEX_BIN }
-      : {}),
-  };
-  delete environment.CANTRIP_WORKER_TOKEN;
-  const child = spawn(
-    process.execPath,
-    [path.join(repositoryRoot, "cantrip_worker/dist/index.js")],
-    {
-      cwd: path.join(repositoryRoot, "cantrip_worker"),
-      env: environment,
-      stdio: ["ignore", "pipe", "pipe"],
-    },
-  );
-  let output = "";
-  child.stdout.on("data", (chunk) => {
-    output = `${output}${chunk}`.slice(-131072);
-  });
-  child.stderr.on("data", (chunk) => {
-    output = `${output}${chunk}`.slice(-131072);
-  });
-  let spawnError;
-  let ready = false;
-  child.once("error", (error) => {
-    spawnError = error;
-  });
-  const completion = new Promise((resolve) =>
-    child.once("close", (code, signal) => resolve({ code, signal })),
-  );
-  return {
-    child,
-    diagnostics: () => output,
-    async ready() {
-      await eventually(
-        () => {
-          if (spawnError) throw spawnError;
-          if (output.includes("FATAL Cantrip Worker failed to start"))
-            throw new Error(`Production worker startup failed.\n${output}`);
-          if (child.exitCode !== null || child.signalCode !== null)
-            throw new Error(
-              `Production worker exited during startup.\n${output}`,
-            );
-          return output;
-        },
-        (value) =>
-          assert.ok(
-            value.includes("Worker command channel connected"),
-            value.slice(-8000),
-          ),
-        90000,
-      );
-      ready = true;
-    },
-    async close() {
-      let forced = false;
-      if (child.exitCode === null && child.signalCode === null)
-        child.kill("SIGTERM");
-      const timer = setTimeout(() => {
-        forced = true;
-        child.kill("SIGKILL");
-      }, 30000);
-      try {
-        const result = await completion;
-        assert.equal(forced, false, `Worker shutdown timed out.\n${output}`);
-        // Windows TerminateProcess does not deliver Node signal handlers.
-        // This exercises persisted-credential restart, not Windows graceful shutdown.
-        if (!ready) return result;
-        if (process.platform !== "win32") {
-          assert.equal(result.code, 0, `Worker failed to stop.\n${output}`);
-          assert.ok(
-            output.includes("Cantrip Worker stopped"),
-            output.slice(-8000),
-          );
-        } else assert.equal(result.signal, "SIGTERM");
-        return result;
-      } finally {
-        clearTimeout(timer);
-      }
-    },
-  };
 }
 
 async function flow(fixture, result) {
@@ -331,7 +237,10 @@ async function flow(fixture, result) {
       () => page.evaluate(() => window.catalogLive.snapshot().status),
       (status) => assert.equal(status, "live"),
     );
-    worker = launchWorker(fixture, dataDirectory, enrollment.code);
+    worker = launchActualWorker(fixture, dataDirectory, {
+      cliBinary,
+      enrollmentCode: enrollment.code,
+    });
     await worker.ready();
     steps.push(
       "full production worker starts, enrolls and negotiates its command socket",
@@ -395,7 +304,7 @@ async function flow(fixture, result) {
     const retained = checkCatalog(await catalog(), modelName);
     assert.equal(retained.id, first.id);
     steps.push("catalog persists while the enrolled worker is stopped");
-    worker = launchWorker(fixture, dataDirectory);
+    worker = launchActualWorker(fixture, dataDirectory, { cliBinary });
     await worker.ready();
     assert.deepEqual(
       loadStoredWorkerCredential(dataDirectory, fixture.server.origin),
@@ -470,7 +379,7 @@ try {
   vite = await createServer({
     root: appRoot,
     configFile: path.join(appRoot, "vite.config.ts"),
-    server: { host: "127.0.0.1", port: 0 },
+    server: { host: "127.0.0.1", port: 0, strictPort: false },
     plugins: [
       {
         name: "actual-worker-client-fixture",

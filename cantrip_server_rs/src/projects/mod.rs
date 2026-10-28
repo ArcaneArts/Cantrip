@@ -24,3 +24,4 @@ pub(crate) fn capabilities(origin: &str, git: bool, github: bool) -> Capabilitie
         relocation: remote || local_git,
     }
 }
+pub mod folders;
