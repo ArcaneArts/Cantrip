@@ -132,7 +132,7 @@ fn replica(source: &Source, worktrees: &[Worktree]) -> Result<Value> {
         ("updatedAt", text(iso(source.updated))),
     ]))
 }
-fn project(
+pub(super) fn project(
     raw: &Value,
     replicas: Vec<Value>,
     created: DateTime<Utc>,

@@ -1007,6 +1007,66 @@
         "remaining": [
           "Observe supported-platform results for this milestone; complete Redis/shared worker presence and packaged/full-product acceptance."
         ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/from-folder",
+        "implementation": "cantrip_server_rs/src/http/folders.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/folder-repository-compatibility.mjs",
+          "scripts/server-rust/folder-http-compatibility.mjs",
+          "scripts/server-rust/actual-folder-client.mjs"
+        ],
+        "remaining": [
+          "Supported-platform acceptance and packaged operation.",
+          "Shared Redis/multi-instance execution and full project/resource coverage remain outside this milestone."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/folder-setup",
+        "implementation": "cantrip_server_rs/src/http/folders.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/folder-repository-compatibility.mjs",
+          "scripts/server-rust/folder-http-compatibility.mjs",
+          "scripts/server-rust/actual-folder-client.mjs"
+        ],
+        "remaining": [
+          "Supported-platform acceptance and packaged operation.",
+          "Shared Redis/multi-instance execution and full project/resource coverage remain outside this milestone."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/folder-setup/retry",
+        "implementation": "cantrip_server_rs/src/http/folders.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/folder-repository-compatibility.mjs",
+          "scripts/server-rust/folder-http-compatibility.mjs",
+          "scripts/server-rust/actual-folder-client.mjs"
+        ],
+        "remaining": [
+          "Supported-platform acceptance and packaged operation.",
+          "Shared Redis/multi-instance execution and full project/resource coverage remain outside this milestone."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/workers/:workerId/repository-operation",
+        "implementation": "cantrip_server_rs/src/http/repository_operations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/folder-repository-compatibility.mjs",
+          "scripts/server-rust/folder-http-compatibility.mjs",
+          "scripts/server-rust/actual-folder-client.mjs"
+        ],
+        "remaining": [
+          "Supported-platform acceptance and packaged operation.",
+          "Shared Redis/multi-instance execution and full project/resource coverage remain outside this milestone."
+        ]
       }
     ]
   },
@@ -1023,6 +1083,36 @@
         ],
         "remaining": [
           "Outgoing command schemas, resource execution/persistence and full worker runtime acceptance remain required; full incoming envelope validation is covered separately."
+        ]
+      },
+      {
+        "command": "project.folder.materialize",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/projects/folders/service.rs",
+          "cantrip_server_rs/src/http/repository_operations.rs"
+        ],
+        "evidence": [
+          "scripts/server-rust/folder-repository-compatibility.mjs",
+          "scripts/server-rust/folder-http-compatibility.mjs",
+          "scripts/server-rust/actual-folder-client.mjs"
+        ],
+        "remaining": ["Supported-platform and packaged acceptance."]
+      },
+      {
+        "command": "repository.operation",
+        "status": "partial",
+        "implementation": [
+          "cantrip_server_rs/src/projects/folders/service.rs",
+          "cantrip_server_rs/src/http/repository_operations.rs"
+        ],
+        "evidence": [
+          "scripts/server-rust/folder-repository-compatibility.mjs",
+          "scripts/server-rust/folder-http-compatibility.mjs",
+          "scripts/server-rust/actual-folder-client.mjs"
+        ],
+        "remaining": [
+          "Worker-scoped encrypted metadata is routed natively. Project/worktree agent execution and other domain consumers remain unported."
         ]
       }
     ]
@@ -1281,6 +1371,26 @@
         ],
         "remaining": [
           "Observe supported-platform results for this milestone; complete Redis/shared worker presence and packaged/full-product acceptance."
+        ]
+      },
+      {
+        "method": "createManagedFolderProject",
+        "implementation": "cantrip_server_rs/src/projects/folders/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/folder-repository-compatibility.mjs",
+          "scripts/server-rust/folder-http-compatibility.mjs",
+          "scripts/server-rust/actual-folder-client.mjs"
+        ]
+      },
+      {
+        "method": "getProjectWorkspaceStorageContext",
+        "implementation": "cantrip_server_rs/src/projects/folders/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/folder-repository-compatibility.mjs",
+          "scripts/server-rust/folder-http-compatibility.mjs",
+          "scripts/server-rust/actual-folder-client.mjs"
         ]
       }
     ]
@@ -1960,6 +2070,24 @@
         "Supported-platform acceptance of this group.",
         "Shared/Redis worker presence and multi-instance coordination.",
         "Project/source/worktree/resource mutations, execution consumers, whole product/UI, packaging and deployment acceptance."
+      ]
+    },
+    "managedFolderProvisioning": {
+      "status": "partial",
+      "implementation": [
+        "cantrip_server_rs/src/projects/folders/",
+        "cantrip_server_rs/src/http/folders.rs",
+        "cantrip_server_rs/src/http/repository_operations.rs"
+      ],
+      "evidence": [
+        "scripts/server-rust/folder-repository-compatibility.mjs",
+        "scripts/server-rust/folder-http-compatibility.mjs",
+        "scripts/server-rust/actual-folder-client.mjs"
+      ],
+      "validatedSubset": "Local macOS actual Source/Rust comparisons pass 56 repository cases and 33 full SQL snapshots on each of native PGlite, private PostgreSQL and external PostgreSQL. These include managed/attached/legacy storage contexts, membership persistence, missing-profile bootstrap, attached-default repair and retained state after reopen. Actual HTTP comparisons pass 104 observations per runtime on PGlite/private PostgreSQL and 106 on external PostgreSQL across anonymous and account profiles, including SQL failure/rollback, capability rejection, HEAD, owner isolation, four-job admission windows, committed command identities, active-command shutdown/reconnect, 29 ordered project events and eight creation invalidations per profile. External PostgreSQL observes actual membership INSERT locks through caller disconnect/shutdown, commits after release and retains the project/membership/job after restart. A real held worker command renews its two-minute lease after 30 seconds in both servers, retaining command/attempt/revision. Existing Chromium account, durable encryption, project and protected repository APIs and the full unchanged worker pass nine product steps on all three stores. The native PGlite production server also completes the HTTP suite with an actual 1 MiB main-stack limit. All 96 native tests pass across 45 targets, including 156132 protocol cases, 69648 JSON round trips and 203929 outgoing command mutations; strict all-target Clippy passes. These results do not establish Windows/Linux or packaged readiness.",
+      "remaining": [
+        "Current Linux/macOS/Windows CI, packaged operation, multi-instance coordination and the remaining project/worktree/resource domains.",
+        "Worker encryption refresh and project/worktree repository-operation consumers remain separate unported server behavior."
       ]
     }
   },

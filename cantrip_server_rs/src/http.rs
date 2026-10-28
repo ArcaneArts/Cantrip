@@ -15,6 +15,7 @@ mod account;
 mod audit;
 mod body;
 mod encryption;
+mod folders;
 mod live_socket;
 mod middleware;
 mod on_response;
@@ -26,6 +27,7 @@ mod provider_credentials;
 mod provider_management;
 mod provider_quota;
 mod provider_telemetry;
+mod repository_operations;
 mod sessions;
 mod settings;
 mod usage;
@@ -109,6 +111,8 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(usage::routes())
         .merge(policies::routes())
         .merge(projects::routes())
+        .merge(folders::routes())
+        .merge(repository_operations::routes())
         .merge(settings::routes())
         .merge(provider_accounts::routes())
         .merge(provider_catalogs::routes())

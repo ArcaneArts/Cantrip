@@ -72,6 +72,7 @@ pub struct AuthService {
     pub provider_accounts: Arc<crate::settings::account_service::AccountService>,
     pub provider_catalogs: Arc<crate::settings::catalog_runtime::CatalogRuntime>,
     pub mutation_audits: Arc<super::audit::AuditService>,
+    pub folder_setup: Arc<crate::projects::folders::service::FolderService>,
     rate_limit: Mutex<AuthRateLimiter>,
 }
 
@@ -146,6 +147,13 @@ impl AuthService {
             workers.bridge.clone(),
         );
         let mutation_audits = super::audit::AuditService::new(repository.clone());
+        let folder_setup = crate::projects::folders::service::FolderService::new(
+            repository.database.clone(),
+            workers.commands.clone(),
+            workers.bridge.clone(),
+            live.clone(),
+        );
+        folder_setup.start().await?;
         Ok(Arc::new(Self {
             config,
             repository,
@@ -161,6 +169,7 @@ impl AuthService {
             provider_accounts,
             provider_catalogs,
             mutation_audits,
+            folder_setup,
             registration: Mutex::new(()),
             revocations: broadcast::channel(256).0,
         }))

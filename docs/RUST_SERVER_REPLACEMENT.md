@@ -2,6 +2,67 @@
 
 Status: **implementation in progress; not a deployable replacement**.
 
+## Managed-folder provisioning
+
+Native folder creation now includes default workspace/storage bootstrap,
+membership, queued setup jobs, transactional claims, revision and command fences,
+lease renewal, recovery, retry and source/Primary-root completion. The server
+dispatches up to four jobs through the existing worker protocol. Reconnecting a
+worker resumes retryable blocked jobs. Shutdown stops new admissions and drains
+owned callbacks and active jobs before closing storage. Post-response project
+invalidations retain the existing creation and retry notifications.
+
+The worker-scoped encrypted repository-operation route also runs natively.
+Private path registration and resolution use the existing browser encryption and
+full worker implementation; the server routes ciphertext and opaque handles.
+Project/worktree agent operations and worker encryption-refresh routing still
+require their separate native consumers.
+
+Repository comparisons inspect seven complete SQL tables and rejected-write
+snapshots: 56 cases and 33 snapshots pass on all three stores, including missing
+storage profiles, managed defaults and attached-default repair. Real
+HTTP/worker-transport tests require nonempty ordered project Live
+events and verify tenant isolation, the four-job admission windows and retained
+restart. Independent jobs can reach the worker in different orders while their
+asynchronous lookups run; raw arrival order is retained, with exact per-project
+attempts and admission windows checked separately.
+
+The local HTTP matrix passes 104 observations per runtime on PGlite/private
+PostgreSQL and 106 on external PostgreSQL. A real membership INSERT stays locked
+after its caller disconnects and shutdown begins; releasing the lock commits the
+project, membership and queued job, which remain after restart. A held worker
+command also observes the actual 30-second lease renewal without changing its
+command, attempt or revision. Shutdown during dispatch retains a retryable job;
+worker reconnect completes a new attempt. The native PGlite HTTP matrix also
+passes with the production process limited to a 1 MiB main stack locally.
+
+The actual-client harness runs the existing browser account, durable encryption,
+project and repository APIs against each server and the full built Node worker.
+It creates real worker directories, attaches an existing folder without changing
+its file, repairs an actual missing path and retries, resumes an offline job on
+reconnect, and reopens encrypted labels and completed jobs after server restart.
+Names and paths are checked for absence from server request bodies. The worker
+loads an approved repository grant at startup; this does not establish support
+for the still-unported browser encryption-refresh route. These are focused product
+flows, with full UI, project/worktree routes, shared coordination, supported
+platforms and packaging still required.
+
+All nine product steps pass locally against both servers on all three stores.
+The full native suite passes 96 tests across 45 targets, including 156,132 actual
+protocol cases and 203,929 outgoing-command mutations. The original full-worker
+catalog flow passes again on all stores after sharing worker supervision.
+
+```sh
+node --import tsx scripts/server-rust/folder-repository-compatibility.mjs --report .qa/rust-server/folder-repository-pglite.json
+node --import tsx scripts/server-rust/folder-http-compatibility.mjs --report .qa/rust-server/folder-http-pglite.json
+node --import tsx scripts/server-rust/actual-folder-client.mjs --report .qa/rust-server/actual-folder-client-pglite.json
+```
+
+Repeat with `--database bundled-postgres` and `--database postgres`. The actual
+client suite uses the same built worker, CLI and Chromium setup as the catalog
+flow below. Configured CI is not passing platform evidence; the coverage ledger
+records the accepted scope.
+
 ## Project catalog and execution placement
 
 The Rust server implements the four project catalog/placement routes: project

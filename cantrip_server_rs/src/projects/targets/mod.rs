@@ -16,6 +16,9 @@ pub struct TargetRepository {
     database: Arc<Database>,
 }
 impl TargetRepository {
+    pub async fn worker(&self, owner: &str, id: &Value) -> Result<Option<Value>> {
+        Reads::new(self.database.clone()).worker(owner, id).await
+    }
     pub fn new(database: Arc<Database>) -> Self {
         Self { database }
     }
