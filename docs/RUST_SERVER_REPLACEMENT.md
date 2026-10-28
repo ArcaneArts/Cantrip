@@ -4,6 +4,15 @@ Status: **implementation in progress; not a deployable replacement**.
 
 ## Terminal management and encrypted PTY services
 
+The first Windows terminal product run failed in the reference Node flow before
+Rust was exercised: the inline, quoted probe repeatedly exited without writing
+its proof. The probe now runs a generated CJS program with its secret passed as
+an argument, preserving proof that the worker decrypted the actual command.
+Real PTY, PID replacement, previous-process termination, reconnect and disable
+assertions remain intact. Windows acceptance requires the new workflow result;
+the failed job is retained in
+[run 40779444391](https://github.com/ArcaneArts/Cantrip/actions/runs/40779444391).
+
 The Rust server implements terminal listing, creation, encrypted title updates,
 service configuration and service restart. Creation preserves execution placement,
 cross-resource tab positions, pane selection and membership, center topology and
