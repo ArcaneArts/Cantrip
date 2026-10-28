@@ -1712,7 +1712,20 @@
       "remaining": [
         "Current-head supported-platform acceptance. Local all-target Rust passes 92 tests across 44 targets; strict all-target Clippy, rustfmt and changed-file Prettier pass. Root checks retain reproduced baseline CUA, worker filesystem and formatting failures; a broad worker history timeout was not reproduced by focused tests.",
         "Telemetry write consumers in the unported chat/native execution domains; full product, migration/rollback, packaging and cutover acceptance."
-      ]
+      ],
+      "clockObservation": {
+        "implementation": [
+          "scripts/server-rust/operation-clock.mjs",
+          "scripts/server-rust/settings-node-fixture.mjs",
+          "cantrip_server_rs/examples/settings-repository-fixture.rs"
+        ],
+        "evidence": [
+          "scripts/server-rust/operation-clock.test.mjs",
+          "scripts/server-rust/telemetry-repository-compatibility.mjs"
+        ],
+        "scope": "Optional fixture-only independent wall and monotonic reads bracket the actual operation in each producer process. The generated timestamp must satisfy the unchanged strict inclusive predicate in that process. Original parent readings and their inclusive predicate remain diagnostic data. Bounds are not derived from the response and production timestamps are unchanged. Exact-endpoint controls pass; one-millisecond excursions, missing/invalid/reversed observations and invalid dates fail.",
+        "validatedLocally": "All56 repository observations and27 timestamp comparisons per runtime on each of native PGlite/private PostgreSQL/external PostgreSQL pass; current Windows execution remains required."
+      }
     },
     "providerManagementHttp": {
       "status": "implemented-pending-platform-acceptance",

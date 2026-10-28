@@ -128,9 +128,20 @@ actual timestamp, parsed milliseconds, request wall-clock bounds and monotonic
 elapsed time before checking the same inclusive bounds. Both implementations and
 their full state comparison now run before timing validation, so a reference
 clock observation cannot prevent the actual Rust comparison from executing.
-Fresh Windows evidence and full platform acceptance remain required.
+Later Windows receipts retain matching repository results from both runtimes,
+while generated timestamps can exceed the parent process's after-reading by
+one or two milliseconds. The repository fixtures now take independent wall-clock
+and monotonic readings immediately around the actual operation inside each
+producer process. The same strict inclusive predicate validates generatedAt
+against those producer readings. Original parent readings and their predicate
+remain in every timing report; production timestamp generation is unchanged.
+Boundary controls accept exact endpoints and reject even one millisecond outside
+the producer interval, including when parent bounds would accept that value.
+Local comparisons pass all 56 repository observations and 27 generated-timestamp
+checks per runtime on each of the three stores. Fresh Windows execution of this
+measurement change and full platform acceptance remain required.
 
-The latest repository-wide check passes the Node server's 1,616 tests, the app's
+The audit milestone's repository-wide check passes the Node server's 1,616 tests, the app's
 3,899 tests and all type checks, but fails four worker cases: Grok login,
 history-outbox replay, filesystem status observation and the PNG size boundary.
 Focused runs of those four files on this revision and the retained clean baseline

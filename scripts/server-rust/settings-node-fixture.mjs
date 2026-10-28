@@ -1,6 +1,7 @@
 // Disposable IPC driver of the real production repository and collaborators.
 import { createInterface } from "node:readline";
 import { createRequire } from "node:module";
+import { startOperationClock } from "./operation-clock.mjs";
 import { readServerConfig } from "../../cantrip_server/src/config.ts";
 import { connectDatabase } from "../../cantrip_server/src/db/index.ts";
 import { catalogMetadataSnapshot } from "../../cantrip_server/src/db/repository/provider-catalog.ts";
@@ -93,6 +94,16 @@ console.log(
 try {
   for await (const line of createInterface({ input: process.stdin })) {
     const r = JSON.parse(line);
+    const finishClock =
+      r.observeOperationClock === true ? startOperationClock() : undefined;
+    const reply = (response) =>
+      console.log(
+        JSON.stringify({
+          id: r.id,
+          ...response,
+          ...(finishClock ? { operationClock: finishClock() } : {}),
+        }),
+      );
     try {
       let value;
       switch (r.op) {
@@ -613,21 +624,18 @@ try {
         default:
           throw new Error("Unknown settings fixture operation: " + r.op);
       }
-      console.log(JSON.stringify({ id: r.id, rejected: false, value }));
+      reply({ rejected: false, value });
     } catch (error) {
-      console.log(
-        JSON.stringify({
-          id: r.id,
-          rejected: true,
-          diagnostic: error.cause?.message ?? error.message,
-          kind:
-            error.name === "ProviderCredentialIdentityConflictError"
-              ? "credential-identity"
-              : error.name === "ProviderCredentialRevisionConflictError"
-                ? "credential-revision"
-                : undefined,
-        }),
-      );
+      reply({
+        rejected: true,
+        diagnostic: error.cause?.message ?? error.message,
+        kind:
+          error.name === "ProviderCredentialIdentityConflictError"
+            ? "credential-identity"
+            : error.name === "ProviderCredentialRevisionConflictError"
+              ? "credential-revision"
+              : undefined,
+      });
     }
   }
 } finally {

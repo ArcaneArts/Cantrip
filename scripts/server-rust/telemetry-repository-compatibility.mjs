@@ -7,6 +7,7 @@ import { buildRustExample } from "./build.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
 import { repositoryFixture } from "./repository-fixture.mjs";
 import { policyEnvelope } from "./policy-wire-fixtures.mjs";
+import { assertGeneratedAtInOperation } from "./operation-clock.mjs";
 const option = (key) => {
   const index = process.argv.indexOf(key);
   return index < 0 ? undefined : process.argv[index + 1];
@@ -62,7 +63,10 @@ try {
     const request = async (label, input) => {
       const monotonicBefore = process.hrtime.bigint();
       const before = Date.now(),
-        response = await repository.request(input);
+        response = await repository.request({
+          ...input,
+          observeOperationClock: true,
+        });
       if (
         response.value?.generatedAt &&
         !(input.op === "telemetry-quota" && input.query?.to != null)
@@ -80,6 +84,7 @@ try {
           elapsedNanoseconds: (
             process.hrtime.bigint() - monotonicBefore
           ).toString(),
+          operationClock: response.operationClock,
         };
         result.exports.push(timing);
         response.value.generatedAt = "<actual-generated-timestamp>";
@@ -417,15 +422,16 @@ try {
   );
   report.repositoryParityPassed = true;
   // A timing observation must not prevent the actual Rust operations and
-  // source comparison from running. Keep the same inclusive bounds and fail
-  // the suite after both implementations have exercised the complete sequence.
+  // source comparison from running. Keep the same strict inclusive predicate
+  // within the process that generated the timestamp. Parent readings and their
+  // original predicate remain in the report for cross-process diagnosis.
   for (const runtime of report.runtimes)
-    for (const timing of runtime.exports)
-      assert.ok(
+    for (const timing of runtime.exports) {
+      timing.parentClockBoundsPassed =
         timing.generatedMilliseconds >= timing.before &&
-          timing.generatedMilliseconds <= timing.after,
-        JSON.stringify(timing),
-      );
+        timing.generatedMilliseconds <= timing.after;
+      assertGeneratedAtInOperation(timing);
+    }
   report.timestampBoundsPassed = true;
 } catch (error) {
   failure = error;
