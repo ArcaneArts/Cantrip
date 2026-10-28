@@ -1,47 +1,8 @@
 //! Mutations expose the reference repository's query context on failure.
 //! These wrappers run the real operation before attaching that context.
-use crate::wire::{JsString, Value, coercion};
-use anyhow::Result;
+use crate::wire::Value;
 
-#[derive(Debug)]
-pub(crate) struct SettingsQueryError {
-    pub message: JsString,
-    source: anyhow::Error,
-}
-impl std::fmt::Display for SettingsQueryError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.message.lossy())
-    }
-}
-impl std::error::Error for SettingsQueryError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        Some(self.source.as_ref())
-    }
-}
-pub(super) fn context<T>(result: Result<T>, query: &str, params: &[Value]) -> Result<T> {
-    result.map_err(|source| {
-        let mut units = format!("Failed query: {query}\nparams: ")
-            .encode_utf16()
-            .collect::<Vec<_>>();
-        for (index, value) in params.iter().enumerate() {
-            if index > 0 {
-                units.push(u16::from(b','));
-            }
-            if !value.is_null() {
-                units.extend_from_slice(
-                    coercion::string(value)
-                        .expect("scalar query parameter")
-                        .units(),
-                );
-            }
-        }
-        SettingsQueryError {
-            message: JsString::new(units),
-            source,
-        }
-        .into()
-    })
-}
+pub(crate) use crate::database::query_error::{QueryError as SettingsQueryError, context};
 type QueryContext = (String, Vec<Value>);
 const PROVIDER_COLUMNS: &str = "\"id\", \"owner_id\", \"name\", \"kind\", \"base_url\", \"protected_api_key\", \"weekly_usage_reserve_percent\", \"created_at\", \"updated_at\"";
 pub(super) fn provider_insert(

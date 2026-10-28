@@ -106,7 +106,7 @@ async fn connect(
 async fn run(
     mut socket: WebSocket,
     service: Arc<AuthService>,
-    _ctx: Arc<Context>,
+    ctx: Arc<Context>,
     query: Value,
     authorization: Option<String>,
     protocol: Option<String>,
@@ -278,6 +278,10 @@ async fn run(
     }
     state.invalidate(&owner, "worker-availability", &worker);
     service.folder_setup.worker_connected(worker.clone());
+    service.worker_maintenance.worker_connected(
+        ctx.principal.user.as_ref().map(|user| user.id.clone()),
+        worker.clone(),
+    );
     drop(permit);
     for message in std::mem::take(&mut buffer.messages) {
         receive(&state.bridge, &service.usage, &worker, &peer, message);

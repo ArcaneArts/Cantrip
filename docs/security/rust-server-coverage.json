@@ -1067,6 +1067,25 @@
           "Supported-platform acceptance and packaged operation.",
           "Shared Redis/multi-instance execution and full project/resource coverage remain outside this milestone."
         ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/workers/:workerId/encryption/refresh",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/worker_maintenance.rs",
+          "cantrip_server_rs/src/workers/maintenance/"
+        ],
+        "evidence": [
+          "cantrip_server_rs/tests/worker_maintenance.rs",
+          "scripts/server-rust/maintenance-repository-compatibility.mjs",
+          "scripts/server-rust/maintenance-http-compatibility.mjs",
+          "scripts/server-rust/actual-folder-client.mjs"
+        ],
+        "remaining": [
+          "Supported-platform acceptance and packaged operation.",
+          "Full terminal CRUD, actual encrypted PTY service flows and shared coordination remain part of the terminal-resource milestone."
+        ]
       }
     ]
   },
@@ -1113,6 +1132,33 @@
         ],
         "remaining": [
           "Worker-scoped encrypted metadata is routed natively. Project/worktree agent execution and other domain consumers remain unported."
+        ]
+      },
+      {
+        "command": "worker.encryption.refresh",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/workers/maintenance/service.rs",
+        "evidence": [
+          "cantrip_server_rs/tests/worker_maintenance.rs",
+          "scripts/server-rust/maintenance-repository-compatibility.mjs",
+          "scripts/server-rust/maintenance-http-compatibility.mjs",
+          "scripts/server-rust/actual-folder-client.mjs"
+        ],
+        "remaining": [
+          "Supported-platform and packaged acceptance; full resource flows for all encryption components."
+        ]
+      },
+      {
+        "command": "terminal.services.reconcile",
+        "status": "partial",
+        "implementation": "cantrip_server_rs/src/workers/maintenance/",
+        "evidence": [
+          "cantrip_server_rs/tests/worker_maintenance.rs",
+          "scripts/server-rust/maintenance-repository-compatibility.mjs",
+          "scripts/server-rust/maintenance-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Native refresh and reconnect hooks, persisted services, actual dispatch, parallel running-state writes and Live publication are implemented. Full terminal CRUD and actual encrypted PTY service acceptance remain required."
         ]
       }
     ]
@@ -1392,6 +1438,26 @@
           "scripts/server-rust/folder-http-compatibility.mjs",
           "scripts/server-rust/actual-folder-client.mjs"
         ]
+      },
+      {
+        "method": "listTerminalServicesForWorker",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/workers/maintenance/repository.rs",
+        "evidence": [
+          "cantrip_server_rs/tests/worker_maintenance.rs",
+          "scripts/server-rust/maintenance-repository-compatibility.mjs",
+          "scripts/server-rust/maintenance-http-compatibility.mjs"
+        ]
+      },
+      {
+        "method": "setTerminalStatus",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/workers/maintenance/repository.rs",
+        "evidence": [
+          "cantrip_server_rs/tests/worker_maintenance.rs",
+          "scripts/server-rust/maintenance-repository-compatibility.mjs",
+          "scripts/server-rust/maintenance-http-compatibility.mjs"
+        ]
       }
     ]
   },
@@ -1439,6 +1505,19 @@
         "evidence": ["scripts/server-rust/policy-http-compatibility.mjs"],
         "remaining": [
           "Supported-platform acceptance, shared coordination and publishers in unported workspace/project/chat domains."
+        ]
+      },
+      {
+        "resource": "terminal",
+        "status": "partial",
+        "implementation": "cantrip_server_rs/src/workers/maintenance/service.rs",
+        "evidence": [
+          "cantrip_server_rs/tests/worker_maintenance.rs",
+          "scripts/server-rust/maintenance-repository-compatibility.mjs",
+          "scripts/server-rust/maintenance-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Only service-reconciliation status invalidations are implemented. Complete terminal lifecycle, subscribers, shared coordination and supported-platform acceptance remain required."
         ]
       }
     ]
@@ -1496,8 +1575,7 @@
         "scripts/server-rust/security-crypto-flow.mjs"
       ],
       "remaining": [
-        "Mutation audit completion currently runs before response delivery; streaming onResponse timing remains required.",
-        "End-to-end worker encryption refresh, encrypted resource-domain flows, and full worker runtime acceptance remain unported."
+        "Encrypted resource-domain flows, supported-platform and full worker-runtime acceptance remain required. Worker encryption refresh and post-response audit timing are implemented in later milestones."
       ]
     },
     "productionLoggingAndMetrics": {
@@ -2087,7 +2165,25 @@
       "validatedSubset": "Local macOS actual Source/Rust comparisons pass 56 repository cases and 33 full SQL snapshots on each of native PGlite, private PostgreSQL and external PostgreSQL. These include managed/attached/legacy storage contexts, membership persistence, missing-profile bootstrap, attached-default repair and retained state after reopen. Actual HTTP comparisons pass 104 observations per runtime on PGlite/private PostgreSQL and 106 on external PostgreSQL across anonymous and account profiles, including SQL failure/rollback, capability rejection, HEAD, owner isolation, four-job admission windows, committed command identities, active-command shutdown/reconnect, 29 ordered project events and eight creation invalidations per profile. External PostgreSQL observes actual membership INSERT locks through caller disconnect/shutdown, commits after release and retains the project/membership/job after restart. A real held worker command renews its two-minute lease after 30 seconds in both servers, retaining command/attempt/revision. Existing Chromium account, durable encryption, project and protected repository APIs and the full unchanged worker pass nine product steps on all three stores. The native PGlite production server also completes the HTTP suite with an actual 1 MiB main-stack limit. All 96 native tests pass across 45 targets, including 156132 protocol cases, 69648 JSON round trips and 203929 outgoing command mutations; strict all-target Clippy passes. These results do not establish Windows/Linux or packaged readiness.",
       "remaining": [
         "Current Linux/macOS/Windows CI, packaged operation, multi-instance coordination and the remaining project/worktree/resource domains.",
-        "Worker encryption refresh and project/worktree repository-operation consumers remain separate unported server behavior."
+        "Project/worktree repository-operation consumers remain separate unported server behavior; native worker encryption refresh now supports normal browser repository auto-authorization."
+      ]
+    },
+    "workerEncryptionRefresh": {
+      "status": "implemented-pending-platform-acceptance",
+      "implementation": [
+        "cantrip_server_rs/src/http/worker_maintenance.rs",
+        "cantrip_server_rs/src/workers/maintenance/"
+      ],
+      "evidence": [
+        "cantrip_server_rs/tests/worker_maintenance.rs",
+        "scripts/server-rust/maintenance-repository-compatibility.mjs",
+        "scripts/server-rust/maintenance-http-compatibility.mjs",
+        "scripts/server-rust/actual-folder-client.mjs"
+      ],
+      "validatedLocally": "macOS: 25,600 actual TypeScript fingerprint/refresh-decision comparisons; 22 repository cases and 3 state snapshots per store; 45 paired HTTP observations per runtime/store across accounts and local profiles, including nonempty terminal Live updates, owner isolation, actual refresh/reconcile failures and malformed worker responses. Real external PostgreSQL locks prove admitted status writes survive caller disconnect, and fail-fast HTTP failure leaves a held sibling owned through shutdown and durable completion. Credential-only account reconnects preserve the reference absence of an application-owner publication context while their status writes continue. Actual browser/full unchanged worker folder flows pass nine steps per runtime on all three stores without manual grant preloading or a worker restart to acquire the key.",
+      "remaining": [
+        "Current Linux/macOS/Windows acceptance and packaged operation.",
+        "Complete terminal resource lifecycle and actual encrypted PTY service flows remain unported."
       ]
     }
   },

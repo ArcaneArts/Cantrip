@@ -57,7 +57,8 @@ async function flow(fixture, result, cliBinary) {
     const pathname = new URL(request.url()).pathname;
     if (
       pathname.startsWith("/api/projects") ||
-      pathname.endsWith("/repository-operation")
+      pathname.endsWith("/repository-operation") ||
+      pathname.endsWith("/encryption/refresh")
     )
       requests.push({
         method: request.method(),
@@ -238,38 +239,11 @@ async function flow(fixture, result, cliBinary) {
     result.steps.push(
       "full worker enrolls, advertises folder capabilities and registers encryption principal",
     );
-    await page.evaluate(async (workerId) => {
-      const { authorizeWorkerEncryption } =
-        await import("/src/lib/worker-encryption-grants.ts");
-      await authorizeWorkerEncryption({
-        workerId,
-        components: ["repository-content"],
-        identity: window.folderIdentity,
-      });
-    }, workerId);
     const credential = loadStoredWorkerCredential(
       dataDirectory,
       fixture.server.origin,
     );
     assert.ok(credential);
-    await stopWorker();
-    await startWorker();
-    assert.deepEqual(
-      loadStoredWorkerCredential(dataDirectory, fixture.server.origin),
-      credential,
-    );
-    await eventually(workers, (workers) => {
-      assert.equal(workers[0].encryption.state, "ready");
-      assert.ok(
-        workers[0].encryption.grants.some(
-          (grant) =>
-            grant.component === "repository-content" && grant.keyRevision === 1,
-        ),
-      );
-    });
-    result.steps.push(
-      "approved repository grant and persisted credential survive full worker restart",
-    );
     const names = [
       "Private fresh 🍄 folder",
       "Private attached 🌲 folder",
@@ -286,6 +260,26 @@ async function flow(fixture, result, cliBinary) {
       await filesystem(created.id),
     );
     assert.equal(first.source.ownershipKind, "cantrip");
+    assert.equal(
+      result.workerStops.length,
+      0,
+      "the first repository operation needs no worker restart",
+    );
+    assert.ok(
+      requests.some(
+        (request) =>
+          request.pathname.endsWith("/encryption/refresh") &&
+          JSON.parse(request.body).component === "repository-content",
+      ),
+      "existing browser repository API authorizes and refreshes its key",
+    );
+    assert.deepEqual(
+      loadStoredWorkerCredential(dataDirectory, fixture.server.origin),
+      credential,
+    );
+    result.steps.push(
+      "existing browser repository flow authorizes and refreshes its grant without restarting the worker",
+    );
     result.steps.push(
       "existing project client encrypts label and full worker creates a real managed directory",
     );

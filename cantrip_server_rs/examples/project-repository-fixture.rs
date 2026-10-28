@@ -85,6 +85,27 @@ async fn main() -> Result<()> {
                     .map(|row| Ok(serde_json::from_str::<Value>(&row.get::<String>(0)?)?))
                     .transpose()
                     .map(|value| value.unwrap_or(Value::Null))
+            } else if request["op"] == "terminal-services" {
+                let maintenance =
+                    cantrip_server::workers::maintenance::Repository::new(database.clone());
+                Ok(Value::Array(
+                    maintenance
+                        .list(
+                            request["worker"].as_str().context("Service worker")?,
+                            request["server"].as_str().context("Service server")?,
+                        )
+                        .await?,
+                ))
+            } else if request["op"] == "terminal-status" {
+                let maintenance =
+                    cantrip_server::workers::maintenance::Repository::new(database.clone());
+                maintenance
+                    .set_status(
+                        request["terminal"].as_str().context("Terminal identity")?,
+                        request["status"].as_str().context("Terminal status")?,
+                    )
+                    .await?;
+                Ok(Value::Null)
             } else if request["op"]
                 .as_str()
                 .is_some_and(|s| s.starts_with("folder-"))

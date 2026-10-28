@@ -528,6 +528,31 @@ export const securityFixtures = {
       grants: [workerGrant],
     },
   ],
+  workerEncryptionRefreshRequestSchema:
+    p.workerEncryptionComponentScopeSchema.options.map((component) => ({
+      component,
+      keyRevision: 1,
+    })),
+  workerEncryptionRefreshResultSchema:
+    p.workerEncryptionComponentScopeSchema.options.flatMap((component) => [
+      {
+        component,
+        keyRevision: 1,
+        status: p.unavailableWorkerEncryptionStatus,
+      },
+      {
+        component,
+        keyRevision: 2,
+        status: {
+          supported: true,
+          state: "ready",
+          principalId: workerPrincipalId,
+          grants: [{ component, keyRevision: 2 }],
+          lastSyncedAt: timestamp,
+          error: null,
+        },
+      },
+    ]),
   workerEnrollmentCodeCreateSchema: [
     {},
     {

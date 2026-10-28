@@ -125,6 +125,8 @@ export const contractRoots = [
   "projectWorkspaceStorageContextSchema",
   "repositoryWorkerOperationWireRequestSchema",
   "repositoryOperationWireResponseSchema",
+  "workerEncryptionRefreshRequestSchema",
+  "workerEncryptionRefreshResultSchema",
 ];
 
 const refinements = new Map([

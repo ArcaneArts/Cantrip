@@ -55,6 +55,8 @@ on:
       - cantrip_server/src/app/routes/live.ts
       - cantrip_server/src/app/runtime/session-socket-runtime.ts
       - cantrip_server/src/app/runtime/live-infrastructure-runtime.ts
+      - cantrip_server/src/app/runtime/interactive-surface-runtime.ts
+      - cantrip_server/src/worker-encryption-refresh.ts
       - cantrip_server/src/live/**
       - cantrip_server/test/worker-authentication-shutdown.test.ts
       - cantrip_server/test/worker-notification-connect-order.test.ts
@@ -194,6 +196,18 @@ jobs:
         run: node --import tsx scripts/server-rust/actual-folder-client.mjs --database bundled-postgres --report .qa/rust-server/actual-folder-client-bundled.json
       - name: Actual browser and full worker folder creation and recovery with external PostgreSQL
         run: node --import tsx scripts/server-rust/actual-folder-client.mjs --database postgres --report .qa/rust-server/actual-folder-client-external.json
+      - name: Terminal-service repository compatibility with native PGlite
+        run: node --import tsx scripts/server-rust/maintenance-repository-compatibility.mjs --report .qa/rust-server/maintenance-repository-pglite.json
+      - name: Terminal-service repository compatibility with private PostgreSQL
+        run: node --import tsx scripts/server-rust/maintenance-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/maintenance-repository-bundled.json
+      - name: Terminal-service repository compatibility with external PostgreSQL
+        run: node --import tsx scripts/server-rust/maintenance-repository-compatibility.mjs --database postgres --report .qa/rust-server/maintenance-repository-external.json
+      - name: Worker encryption refresh and terminal Live with native PGlite
+        run: node --import tsx scripts/server-rust/maintenance-http-compatibility.mjs --report .qa/rust-server/maintenance-http-pglite.json
+      - name: Worker encryption refresh and terminal Live with private PostgreSQL
+        run: node --import tsx scripts/server-rust/maintenance-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/maintenance-http-bundled.json
+      - name: Worker encryption refresh, fail-fast siblings and shutdown with external PostgreSQL
+        run: node --import tsx scripts/server-rust/maintenance-http-compatibility.mjs --database postgres --report .qa/rust-server/maintenance-http-external.json
       - name: Encryption and account security with native PGlite
         run: node --import tsx scripts/server-rust/security-compatibility.mjs --report .qa/rust-server/security-pglite-http.json
       - name: Encryption and account security with private PostgreSQL

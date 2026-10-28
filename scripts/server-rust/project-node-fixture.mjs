@@ -44,6 +44,17 @@ try {
         );
         value =
           (Array.isArray(result) ? result : result.rows)[0]?.result ?? null;
+      } else if (request.op === "terminal-services") {
+        value = await database.repository.listTerminalServicesForWorker(
+          request.worker,
+          request.server,
+        );
+      } else if (request.op === "terminal-status") {
+        await database.repository.setTerminalStatus(
+          request.terminal,
+          request.status,
+        );
+        value = null;
       } else if (request.op.startsWith("folder-")) {
         const repo = database.repository;
         const jobs = repo.projectFolderSetupJobs;
@@ -179,7 +190,9 @@ try {
         JSON.stringify({
           id: request.id,
           rejected: true,
-          diagnostic: error.cause?.message ?? error.message,
+          diagnostic: request.op.startsWith("terminal-")
+            ? error.message
+            : (error.cause?.message ?? error.message),
           ...(request.op.startsWith("folder-")
             ? { folderError: error.constructor.name }
             : {}),
