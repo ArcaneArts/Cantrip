@@ -59,8 +59,12 @@ PR 2294's Windows run completed all 768 settings comparisons on each of the
 three stores at `fc5b06aac`, accepting that fixture's stack fix. It later failed
 the telemetry private-PostgreSQL suite's generated-timestamp assertion in the
 unmodified Node reference before starting Rust. The failed timestamp and request
-bounds were not retained; a diagnostic follow-up and full platform acceptance
-remain required.
+bounds were not retained. The repository comparison now records the runtime,
+actual timestamp, parsed milliseconds, request wall-clock bounds and monotonic
+elapsed time before checking the same inclusive bounds. Both implementations and
+their full state comparison now run before timing validation, so a reference
+clock observation cannot prevent the actual Rust comparison from executing.
+Fresh Windows evidence and full platform acceptance remain required.
 
 The repository-wide checks are not green: native CUA execution-budget failures,
 worker filesystem observations and 12 formatting failures reproduce on the clean
