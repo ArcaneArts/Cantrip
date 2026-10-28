@@ -42,7 +42,7 @@ pub(crate) fn number(value: Option<&Value>) -> Result<f64, ()> {
         }
     })
 }
-pub(super) fn string(value: &Value) -> Result<JsString, ()> {
+pub(crate) fn string(value: &Value) -> Result<JsString, ()> {
     Ok(match value {
         Value::Null => "null".into(),
         Value::Bool(value) => value.to_string().into(),
@@ -80,7 +80,7 @@ pub(crate) fn truthy(value: Option<&Value>) -> bool {
 pub(super) fn json_number(value: f64) -> Value {
     Value::Number(value)
 }
-pub(super) fn keys(object: &Object) -> Vec<&JsString> {
+pub(crate) fn keys(object: &Object) -> Vec<&JsString> {
     let mut keys: Vec<_> = object.keys().collect();
     keys.sort_by_key(|key| {
         key.as_str()

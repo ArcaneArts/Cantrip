@@ -11,6 +11,7 @@ import {
   SlidingWindowRateLimiter,
 } from "../security/abuse-limits.js";
 import { serverLogger } from "../logger.js";
+import { serializedJsonBytes } from "../security/json-bytes.js";
 import type {
   WorkerCommandBus,
   WorkerNotificationListener,
@@ -28,14 +29,6 @@ interface LimitedWorkerCommandBusOptions {
   resolveOwnerId(workerId: string): Promise<string | null>;
   workerConcurrency: number;
   workerRatePerMinute: number;
-}
-
-function serializedBytes(value: unknown): number {
-  try {
-    return Buffer.byteLength(JSON.stringify(value));
-  } catch {
-    return 0;
-  }
 }
 
 export class LimitedWorkerCommandBus implements WorkerCommandBus {
@@ -180,7 +173,7 @@ export class LimitedWorkerCommandBus implements WorkerCommandBus {
       !this.options.consumeRelayBytes(
         ownerId,
         workerId,
-        serializedBytes(command),
+        serializedJsonBytes(command),
       )
     ) {
       this.#failedRequests += 1;
@@ -229,7 +222,7 @@ export class LimitedWorkerCommandBus implements WorkerCommandBus {
                   !this.options.consumeRelayBytes!(
                     ownerId,
                     workerId,
-                    serializedBytes(event),
+                    serializedJsonBytes(event),
                   )
                 ) {
                   throw new RelayLimitError(
@@ -250,7 +243,7 @@ export class LimitedWorkerCommandBus implements WorkerCommandBus {
         !this.options.consumeRelayBytes(
           ownerId,
           workerId,
-          serializedBytes(result),
+          serializedJsonBytes(result),
         )
       ) {
         throw new RelayLimitError(

@@ -12,7 +12,23 @@ use uuid::Uuid;
 
 pub type NotificationFuture = Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>>;
 pub type NotificationHandler = Arc<dyn Fn(Arc<Value>) -> NotificationFuture + Send + Sync>;
-pub(super) type Group = Arc<Mutex<IndexMap<Uuid, NotificationHandler>>>;
+pub type OwnedNotificationHandler =
+    Arc<dyn Fn(String, Arc<Value>) -> NotificationFuture + Send + Sync>;
+#[derive(Clone)]
+pub(super) enum Listener {
+    Plain(NotificationHandler),
+    Owned(OwnedNotificationHandler),
+}
+impl Listener {
+    fn same(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Plain(a), Self::Plain(b)) => Arc::ptr_eq(a, b),
+            (Self::Owned(a), Self::Owned(b)) => Arc::ptr_eq(a, b),
+            _ => false,
+        }
+    }
+}
+pub(super) type Group = Arc<Mutex<IndexMap<Uuid, Listener>>>;
 
 #[derive(Default)]
 pub(super) struct Notifications {
@@ -21,7 +37,7 @@ pub(super) struct Notifications {
 
 pub struct NotificationSubscription {
     registry: Weak<Notifications>,
-    group: Weak<Mutex<IndexMap<Uuid, NotificationHandler>>>,
+    group: Weak<Mutex<IndexMap<Uuid, Listener>>>,
     worker: String,
     id: Uuid,
 }
@@ -53,14 +69,25 @@ impl Notifications {
         worker: &str,
         handler: NotificationHandler,
     ) -> NotificationSubscription {
+        self.subscribe_listener(worker, Listener::Plain(handler))
+    }
+    pub(super) fn subscribe_owned(
+        self: &Arc<Self>,
+        worker: &str,
+        handler: OwnedNotificationHandler,
+    ) -> NotificationSubscription {
+        self.subscribe_listener(worker, Listener::Owned(handler))
+    }
+    fn subscribe_listener(
+        self: &Arc<Self>,
+        worker: &str,
+        handler: Listener,
+    ) -> NotificationSubscription {
         let mut groups = self.groups.lock().unwrap();
         let group = groups.entry(worker.into()).or_default();
         let id = {
             let mut listeners = group.lock().unwrap();
-            if let Some((id, _)) = listeners
-                .iter()
-                .find(|(_, current)| Arc::ptr_eq(current, &handler))
-            {
+            if let Some((id, _)) = listeners.iter().find(|(_, current)| current.same(&handler)) {
                 *id
             } else {
                 let id = Uuid::new_v4();
@@ -80,7 +107,7 @@ impl Notifications {
         self.groups.lock().unwrap().get(worker).cloned()
     }
 
-    pub(super) fn deliver(group: Group, notification: Value) {
+    pub(super) fn deliver(group: Group, owner: &str, notification: Value) {
         let notification = Arc::new(notification);
         let mut visited = HashSet::new();
         let mut pending = Vec::new();
@@ -96,7 +123,10 @@ impl Notifications {
                 .map(|(id, handler)| (*id, handler.clone()));
             let Some((id, handler)) = next else { break };
             visited.insert(id);
-            let mut future = handler(notification.clone());
+            let mut future = match handler {
+                Listener::Plain(handler) => handler(notification.clone()),
+                Listener::Owned(handler) => handler(owner.to_owned(), notification.clone()),
+            };
             // A JS async listener runs through its first await immediately.
             // Poll that prefix in delivery order, then let pending listeners
             // continue independently. Rejections do not fail other listeners.

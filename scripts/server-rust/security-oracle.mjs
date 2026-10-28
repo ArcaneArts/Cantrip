@@ -4,6 +4,7 @@ import * as protocol from "../../packages/protocol/dist/index.js";
 import { buildContractManifest } from "./contracts.mjs";
 import { securityFixtures } from "./security-fixtures.mjs";
 import { usageQueryCases } from "./usage-wire-fixtures.mjs";
+import { settingsWireCases } from "./settings-wire-fixtures.mjs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -42,13 +43,18 @@ export function* vectorCases(name, samples = securityFixtures[name]) {
   if (!schema || !samples) throw new Error(`Missing oracle fixture ${name}`);
   function prepare(input, present = true) {
     const canonical = present ? JSON.parse(JSON.stringify(input)) : undefined;
+    const result = outcome(schema, canonical);
     return {
       ...(present ? { input: canonical } : {}),
-      outcome: outcome(schema, canonical),
+      outcome: result,
+      ...(result.issues
+        ? { errorMessage: schema.safeParse(canonical).error.message }
+        : {}),
     };
   }
   yield prepare(undefined, false);
   for (const input of usageQueryCases(name)) yield prepare(input);
+  for (const input of settingsWireCases(name)) yield prepare(input);
   for (const input of [null, [], {}, false, 42, ""]) yield prepare(input);
   for (const sample of samples) {
     const baseline = schema.parse(sample);
@@ -141,6 +147,7 @@ function jsonVectors() {
     '{"z":0,"10":10,"2":2,"a":1,"0":0,"01":1,"4294967294":4,"4294967295":5,"z":2}',
     '{"\\ud800":"\\udfff","\\ud800":"second","😀":"pair","1":"index"}',
     '["\\ud800","\\udfff","\\ud800\\udfff","\\udfff\\ud800","\\u0000","\\u2028","\\u2029","\\ud800x\\udfff"]',
+    '{"empty":{},"array":[],"nested":[{},[],{"quote":"\\\"\\\\,[]:{}","value":true}],"after":null}',
   ];
   for (let unit = 0; unit <= 65535; unit++)
     raw.push(`"\\u${unit.toString(16).padStart(4, "0")}"`);
@@ -155,7 +162,11 @@ function jsonVectors() {
     const number = view.getFloat64(0);
     if (Number.isFinite(number)) raw.push(number.toExponential(17));
   }
-  return raw.map((raw) => ({ raw, expected: JSON.stringify(JSON.parse(raw)) }));
+  return raw.map((raw) => ({
+    raw,
+    expected: JSON.stringify(JSON.parse(raw)),
+    expectedPretty: JSON.stringify(JSON.parse(raw), null, 2),
+  }));
 }
 if (
   process.argv[1] &&

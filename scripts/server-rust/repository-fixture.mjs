@@ -11,6 +11,7 @@ export async function repositoryFixture({
   databaseMode,
   databaseUrl,
   nodeScript = "scripts/server-rust/project-node-fixture.mjs",
+  requestTimeoutMs = 15000,
 }) {
   const environment = {
     ...fixtureEnvironment(path.join(root, kind)),
@@ -66,7 +67,7 @@ export async function repositoryFixture({
               `${kind} repository operation timed out: ${operation.op}`,
             ),
           );
-        }, 15000);
+        }, requestTimeoutMs);
         waiting.set(id, { resolve, reject, timer });
         server.child.stdin.write(
           JSON.stringify({ id, ...operation }) + "\n",

@@ -46,6 +46,11 @@ fn json_round_trips_match_ecmascript_numbers_order_and_every_utf16_unit() -> Res
             "JSON case {index}: {raw}"
         );
         assert_eq!(serde_json::to_string(&value)?, value.stringify());
+        assert_eq!(
+            value.stringify_pretty(),
+            case["expectedPretty"].as_str().unwrap(),
+            "Pretty JSON case {index}: {raw}"
+        );
     }
     println!(
         "{} ECMAScript JSON round trips matched",
@@ -58,6 +63,7 @@ fn json_round_trips_match_ecmascript_numbers_order_and_every_utf16_unit() -> Res
 fn native_validation_matches_real_security_and_worker_schemas() -> Result<()> {
     let manifest: Value = serde_json::from_str(include_str!("../contracts/security.json"))?;
     let mut total = 0;
+    let mut message_failures = 0;
     for name in manifest["roots"].as_object().unwrap().keys() {
         let name = name.as_str().context("protocol export name")?;
         // The full outgoing command corpus uses a streaming oracle in
@@ -66,6 +72,7 @@ fn native_validation_matches_real_security_and_worker_schemas() -> Result<()> {
             continue;
         }
         let vectors = oracle(&["--vectors", name]).with_context(|| name.to_owned())?;
+        let mut reported_message = false;
         for (index, case) in vectors["cases"].as_array().unwrap().iter().enumerate() {
             let actual = match wire::parse(name, case.get("input")) {
                 Ok(value) => Value::object([("ok", value)]),
@@ -84,6 +91,24 @@ fn native_validation_matches_real_security_and_worker_schemas() -> Result<()> {
                     .unwrap_or(&Value::String("<missing>".into()))
             );
             total += 1;
+            if let Some(expected) = case.get("errorMessage") {
+                let message = Value::String(actual["issues"].stringify_pretty().into());
+                if message != *expected {
+                    message_failures += 1;
+                    if !reported_message {
+                        println!(
+                            "MESSAGE_MISMATCH {}",
+                            Value::object([
+                                ("schema", Value::String(name.into())),
+                                ("case", Value::from_serialize(&index)),
+                                ("actual", message),
+                                ("expected", expected.clone())
+                            ])
+                        );
+                        reported_message = true;
+                    }
+                }
+            }
         }
         println!(
             "{} Node/Rust cases matched for {name}",
@@ -91,5 +116,9 @@ fn native_validation_matches_real_security_and_worker_schemas() -> Result<()> {
         );
     }
     println!("{total} actual protocol cases matched");
+    assert_eq!(
+        message_failures, 0,
+        "Exact protocol validation error messages must match Node."
+    );
     Ok(())
 }

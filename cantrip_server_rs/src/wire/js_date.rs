@@ -4,11 +4,7 @@
 //! ISO input that still reaches a continuable custom check.
 //! Reference: nodejs/node v24.14.0, deps/v8/src/date/dateparser{,-inl}.{cc,h}.
 use super::JsString;
-use jiff::{
-    Timestamp,
-    tz::{TimeZone, TimeZoneDatabase},
-};
-use std::sync::OnceLock;
+use jiff::{Timestamp, tz::TimeZone};
 
 #[derive(Clone, Copy, PartialEq)]
 enum Keyword {
@@ -443,17 +439,42 @@ fn days(year: i64, month: i64, day: i64) -> i128 {
         - 1
         - 719468
 }
-fn local(value: i128, year: i64, month: i64, day: i64, clock: [i64; 4]) -> Option<i64> {
-    static ZONES: OnceLock<TimeZoneDatabase> = OnceLock::new();
-    let zone = match std::env::var("TZ") {
-        Ok(name) => ZONES
-            .get_or_init(TimeZoneDatabase::bundled)
-            .get(&name)
-            .ok()
-            .filter(|zone| zone.iana_name() == Some(name.as_str()))
-            .unwrap_or_else(unknown_zone),
-        Err(_) => TimeZone::system(),
+
+pub(super) fn iso_milliseconds(value: i64) -> Option<String> {
+    if value.unsigned_abs() > 8_640_000_000_000_000 {
+        return None;
+    }
+    // Invert `days` over the complete ECMAScript TimeClip range. Chrono and
+    // Jiff have narrower civil-year ranges than Date.prototype.toISOString.
+    let shifted = value.div_euclid(86_400_000) + 719_468;
+    let era = shifted.div_euclid(146_097);
+    let day_of_era = shifted - era * 146_097;
+    let year_of_era =
+        (day_of_era - day_of_era / 1460 + day_of_era / 36524 - day_of_era / 146096) / 365;
+    let mut year = year_of_era + era * 400;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let march_month = (5 * day_of_year + 2) / 153;
+    let day = day_of_year - (153 * march_month + 2) / 5 + 1;
+    let month = march_month + if march_month < 10 { 3 } else { -9 };
+    year += i64::from(month <= 2);
+    let year = if (0..=9999).contains(&year) {
+        format!("{year:04}")
+    } else if year < 0 {
+        format!("-{:06}", -year)
+    } else {
+        format!("+{year:06}")
     };
+    let clock = value.rem_euclid(86_400_000);
+    Some(format!(
+        "{year}-{month:02}-{day:02}T{:02}:{:02}:{:02}.{:03}Z",
+        clock / 3_600_000,
+        clock / 60_000 % 60,
+        clock / 1000 % 60,
+        clock % 1000
+    ))
+}
+fn local(value: i128, year: i64, month: i64, day: i64, clock: [i64; 4]) -> Option<i64> {
+    let zone = crate::environment::timezone();
     // Jiff's civil range is smaller than ECMAScript TimeClip. Outside it,
     // retain the Gregorian 400-year calendar: future years use the continuing
     // TZif rules, ancient years use the zone's pre-transition offset.
@@ -474,38 +495,6 @@ fn local(value: i128, year: i64, month: i64, day: i64, clock: [i64; 4]) -> Optio
     let utc = zone.to_ambiguous_timestamp(wall).compatible().ok()?;
     let offset = lookup_millis - utc.as_millisecond();
     i64::try_from(value).ok()?.checked_sub(offset)
-}
-
-#[cfg(unix)]
-fn unknown_zone() -> TimeZone {
-    // ICU's detectHostTimeZone uses a fixed host standard offset when TZ is
-    // not an exact ICU zone ID. For example, a differently cased zone can be
-    // found by macOS's filesystem but loses historical/DST rules in Node.
-    // Query libc's actual TZ interpretation instead of guessing that offset.
-    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    unsafe extern "C" {
-        fn tzset();
-        #[link_name = "timezone"]
-        static HOST_SECONDS_WEST: std::ffi::c_long;
-    }
-    let _guard = LOCK.lock().unwrap();
-    // SAFETY: tzset has no arguments; timezone is libc's initialized standard
-    // seconds-west value. Calls from this module are serialized by LOCK.
-    let seconds = unsafe {
-        tzset();
-        -HOST_SECONDS_WEST
-    };
-    i32::try_from(seconds)
-        .ok()
-        .and_then(|seconds| jiff::tz::Offset::from_seconds(seconds).ok())
-        .map_or(TimeZone::UTC, TimeZone::fixed)
-}
-
-#[cfg(windows)]
-fn unknown_zone() -> TimeZone {
-    // Node sets the ICU default directly from TZ on Windows. Unknown zone
-    // identifiers resolve to ICU's zero-offset fallback.
-    TimeZone::UTC
 }
 
 pub(super) fn parse(input: &JsString) -> Option<i64> {
@@ -612,6 +601,35 @@ mod tests {
     use crate::wire::Value;
     use anyhow::{Context, Result};
     use std::{path::PathBuf, process::Command};
+
+    #[test]
+    fn iso_format_matches_actual_node_over_full_time_clip() -> Result<()> {
+        let output = Command::new("node").args(["-e", r#"
+let seed=36142;
+const random=()=>seed=(Math.imul(seed,1664525)+1013904223)>>>0;
+const values=[-8640000000000001,-8640000000000000,-1,0,1,8640000000000000,8640000000000001,253402300800000,-62167219200000];
+for(let i=0;i<10000;i++)values.push((random()*2097152+(random()%2097152))*(random()%2?1:-1));
+console.log(JSON.stringify(values.map(value=>{let iso=null;try{iso=new Date(value).toISOString()}catch{}return[value,iso]})));
+"#]).output()?;
+        anyhow::ensure!(
+            output.status.success(),
+            "Node ISO oracle failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let cases: Vec<(i64, Option<String>)> = serde_json::from_slice(&output.stdout)?;
+        for (value, expected) in &cases {
+            assert_eq!(
+                &iso_milliseconds(*value),
+                expected,
+                "Date.toISOString({value})"
+            );
+        }
+        println!(
+            "{} actual Node ISO timestamps matched across TimeClip",
+            cases.len()
+        );
+        Ok(())
+    }
 
     #[test]
     fn date_parse_matches_the_actual_node_runtime() -> Result<()> {

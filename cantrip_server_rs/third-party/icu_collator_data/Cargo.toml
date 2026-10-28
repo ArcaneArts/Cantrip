@@ -1,0 +1,9 @@
+[package]
+name = "cantrip-icu-collator-data"
+version = "0.0.0"
+edition = "2021"
+publish = false
+license = "Unicode-3.0"
+
+[lib]
+path = "lib.rs"

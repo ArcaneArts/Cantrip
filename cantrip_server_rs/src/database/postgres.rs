@@ -211,6 +211,16 @@ impl Postgres {
         lease.reusable = true;
         Ok(rows.into_iter().map(Row::Postgres).collect())
     }
+    pub(super) async fn query_typed(
+        &self,
+        sql: &str,
+        parameters: &[(&(dyn postgres_types::ToSql + Sync), postgres_types::Type)],
+    ) -> Result<Vec<Row>> {
+        let mut lease = self.lease().await?;
+        let rows = lease.client().query_typed(sql, parameters).await?;
+        lease.reusable = true;
+        Ok(rows.into_iter().map(Row::Postgres).collect())
+    }
 
     pub(super) async fn transaction<T>(
         &self,

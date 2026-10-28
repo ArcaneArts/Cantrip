@@ -398,7 +398,7 @@ async fn execute(
     }
     let delivered = if state.bridge.is_connected(worker) {
         state
-            .bridge
+            .commands
             .request(
                 worker,
                 Value::from_serialize(

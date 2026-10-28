@@ -1,6 +1,7 @@
 // Development-time export of the real protocol definitions. The native server
 // embeds this data and implements every registered operation in Rust.
 import * as protocol from "../../packages/protocol/dist/index.js";
+import { cuaCursorPreferenceRecordSchema } from "../../packages/protocol/dist/computer-use-preferences.js";
 import { mkdir, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -76,6 +77,33 @@ export const contractRoots = [
   "policyDeleteSchema",
   "effectivePolicyWireListSchema",
   "standalonePolicyWireListSchema",
+  "modelProfileCreateSchema",
+  "modelProfileUpdateSchema",
+  "modelProfileSummarySchema",
+  "chatReasoningStateSchema",
+  "modelConfigurationFailureSchema",
+  "userSettingsUpdateSchema",
+  "settingsBundleWireSchema",
+  "appDestinationUpdateSchema",
+  "appDestinationSchema",
+  "cuaEffectWorkerStatusSchema",
+  "ollamaModelInventorySchema",
+  "providerQuotaSnapshotSchema",
+  "chatGptModelInventorySchema",
+  "grokModelInventorySchema",
+  "providerLegacyCredentialCaptureResultSchema",
+  "providerLegacyCredentialPurgeResultSchema",
+  "providerCredentialUploadSchema",
+  "providerCredentialWireRecordSchema",
+  "codexAuthStatusSchema",
+  "codexDeviceLoginSchema",
+  "encryptedModelProviderAccountCreateSchema",
+  "encryptedModelProviderAccountUpdateSchema",
+  "modelProviderAccountWireSummarySchema",
+  "modelProviderAccountWireListSchema",
+  "orderedIdsSchema",
+  "providerAuthLiveStatusSchema",
+  "providerModelCatalogResultSchema",
 ];
 
 const refinements = new Map([
@@ -165,6 +193,26 @@ registerChecks(protocol.policyAssignmentWireListSchema.shape.directPolicyIds, [
 ]);
 registerChecks(protocol.policyAssignmentWireListSchema, [
   "policy-assignment-references",
+]);
+registerChecks(protocol.modelProfileCreateSchema.shape.routes, [
+  "model-routes-enabled",
+]);
+registerChecks(protocol.appDestinationUpdateSchema, [
+  "settings-destination-fields",
+]);
+registerChecks(protocol.mobileProjectTabConfigurationsSchema, [
+  "settings-mobile-project-limit",
+]);
+registerChecks(cuaCursorPreferenceRecordSchema.shape.protectedContent, [
+  "endpoint-protected-bytes",
+  "settings-cursor-content",
+]);
+registerChecks(protocol.eliteRevealConfigSchema, ["settings-elite-range"]);
+registerChecks(protocol.encryptedModelProviderAccountUpdateSchema, [
+  "provider-account-update-fields",
+]);
+registerChecks(protocol.providerAuthLiveStatusSchema, [
+  "provider-auth-live-kind",
 ]);
 const recursiveJson = registerWorkerContracts(registerChecks);
 const commandContracts = registerWorkerCommandContracts(registerCustom);
@@ -310,6 +358,9 @@ export function buildContractManifest() {
         return {
           check: "refinement",
           tag,
+          // This WorkerLink callback explicitly supplies path before message.
+          messageAfterPath:
+            c.type === "custom" || tag === "worker-wire-link-candidates",
           ...(message ? { message } : {}),
           ...(c.path ? { path: c.path } : {}),
           ...(c.abort ? { abort: true } : {}),

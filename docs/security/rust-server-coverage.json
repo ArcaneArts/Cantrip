@@ -627,6 +627,207 @@
         "remaining": [
           "Observe this milestone supported-platform results; full product and packaged acceptance remains required."
         ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/settings",
+        "implementation": "cantrip_server_rs/src/http/settings.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": ["scripts/server-rust/settings-http-compatibility.mjs"],
+        "remaining": []
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/settings/destination",
+        "implementation": "cantrip_server_rs/src/http/settings.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": ["scripts/server-rust/settings-http-compatibility.mjs"],
+        "remaining": []
+      },
+      {
+        "method": "POST",
+        "path": "/api/settings/models",
+        "implementation": "cantrip_server_rs/src/http/settings.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": ["scripts/server-rust/settings-http-compatibility.mjs"],
+        "remaining": []
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/settings/models/:modelId",
+        "implementation": "cantrip_server_rs/src/http/settings.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": ["scripts/server-rust/settings-http-compatibility.mjs"],
+        "remaining": []
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/settings/models/:modelId",
+        "implementation": "cantrip_server_rs/src/http/settings.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": ["scripts/server-rust/settings-http-compatibility.mjs"],
+        "remaining": []
+      },
+      {
+        "method": "GET",
+        "path": "/api/settings/models/:modelId/reasoning",
+        "implementation": "cantrip_server_rs/src/http/settings.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": ["scripts/server-rust/settings-http-compatibility.mjs"],
+        "remaining": []
+      },
+      {
+        "method": "GET",
+        "path": "/api/settings/computer-use/workers/:workerId/effects",
+        "implementation": "cantrip_server_rs/src/http/settings.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": ["scripts/server-rust/settings-http-compatibility.mjs"],
+        "remaining": []
+      },
+      {
+        "method": "GET",
+        "path": "/api/internal/workers/providers/:providerId/accounts/:accountId/credential",
+        "implementation": "cantrip_server_rs/src/http/provider_credentials.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/provider-credential-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged product acceptance."
+        ]
+      },
+      {
+        "method": "PUT",
+        "path": "/api/internal/workers/providers/:providerId/accounts/:accountId/credential",
+        "implementation": "cantrip_server_rs/src/http/provider_credentials.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/provider-credential-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged product acceptance."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/settings/providers/:providerId/accounts",
+        "implementation": "cantrip_server_rs/src/http/provider_accounts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/provider-account-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged product acceptance."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/settings/providers/:providerId/accounts",
+        "implementation": "cantrip_server_rs/src/http/provider_accounts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/provider-account-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged product acceptance."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/settings/providers/:providerId/accounts/order",
+        "implementation": "cantrip_server_rs/src/http/provider_accounts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/provider-account-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged product acceptance."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/settings/providers/:providerId/accounts/:accountId",
+        "implementation": "cantrip_server_rs/src/http/provider_accounts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/provider-account-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged product acceptance."
+        ]
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/settings/providers/:providerId/accounts/:accountId",
+        "implementation": "cantrip_server_rs/src/http/provider_accounts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/provider-account-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged product acceptance."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/codex/auth/logout",
+        "implementation": "cantrip_server_rs/src/http/provider_accounts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/provider-account-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged product acceptance."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/settings/providers/:providerId/catalog",
+        "implementation": "cantrip_server_rs/src/http/provider_catalogs.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/provider-catalog-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged product acceptance."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/settings/providers/:providerId/catalog/refresh",
+        "implementation": "cantrip_server_rs/src/http/provider_catalogs.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/provider-catalog-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged product acceptance."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/codex/auth/status",
+        "implementation": "cantrip_server_rs/src/http/provider_accounts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/provider-auth-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform, product and packaging acceptance."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/codex/auth/device-login",
+        "implementation": "cantrip_server_rs/src/http/provider_accounts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/provider-auth-http-compatibility.mjs",
+          "scripts/server-rust/provider-device-scenarios.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform, product and packaging acceptance."
+        ]
       }
     ]
   },
@@ -650,7 +851,7 @@
   "durableTables": {
     "defaultStatus": "schema-migrated-only",
     "evidence": ["cantrip_server_rs/tests/database_contract.rs"],
-    "implementedSubset": "Account/session, mobile sign-in, local provisioning, configured-administrator, license-whitelist, audit-query/write and encryption-registry operations in the native auth and encryption repositories. Complete domain operations remain unported. Worker, enrollment-code and credential persistence, atomic replacement/rotation/revocation and heartbeat storage are implemented in workers/repository.rs; this is not the full worker-management or execution domain. Policy owner/bootstrap/collection state, opaque policy CRUD/order, project/workspace assignment transactions, cascade handling and IDE/standalone effective-policy resolution execute natively in policies/repository.rs; project/workspace creation and chat execution remain unported."
+    "implementedSubset": "Account/session, mobile sign-in, local provisioning, configured-administrator, license-whitelist, audit-query/write and encryption-registry operations in the native auth and encryption repositories. Complete domain operations remain unported. Worker, enrollment-code and credential persistence, atomic replacement/rotation/revocation and heartbeat storage are implemented in workers/repository.rs; this is not the full worker-management or execution domain. Policy owner/bootstrap/collection state, opaque policy CRUD/order, project/workspace assignment transactions, cascade handling and IDE/standalone effective-policy resolution execute natively in policies/repository.rs; project/workspace creation and chat execution remain unported. Settings/model/provider/account/catalog persistence and quota-observation insert/deduplication/weekly projections execute natively; remaining telemetry and execution consumers are unported."
   },
   "repositoryMethods": {
     "defaultStatus": "unported",
@@ -784,6 +985,14 @@
         "implementation": "cantrip_server_rs/src/live/repository.rs",
         "status": "implemented-pending-platform-acceptance",
         "evidence": ["scripts/server-rust/live-repository-compatibility.mjs"]
+      },
+      {
+        "method": "recordProviderQuotaObservation",
+        "implementation": "cantrip_server_rs/src/settings/quota.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/settings-repository-compatibility.mjs"
+        ]
       }
     ]
   },
@@ -923,7 +1132,7 @@
         "cantrip_server_rs/tests/worker_command_contracts.rs",
         "cantrip_server_rs/tests/worker_request_admission.rs"
       ],
-      "validatedSubset": "46 actual protocol exports; 37,396 validation comparisons and 69,647 JavaScript JSON round trips. Includes App Live client/server messages, bounded event payloads, client-control refinements, project wire summaries/lists and model configuration. Development export rejects unregistered checks/transforms; default URL behavior is covered, not arbitrary URL options. Native JSON tree construction, clone, equality, serialization and drop now use explicit stacks. Small-stack tests exercise 32,768 nested arrays and 12,000 alternating object/array pairs. Actual anonymous/password HTTP and App Live comparisons cover accepted, stripped, rejected, malformed, poisoned, numeric-overflow and raw UTF-16 inputs. Current ingress branch: 48 actual schema exports with 59,830 base validation comparisons, plus 22,697 complete incoming worker-envelope comparisons including all 142 reachable union alternatives across 23 union identities, 31 explicitly registered custom check identities and eight recursive JSON schema sites. Recursive JSON tests compare 8,228 bare/nested value/error cases and bounded-stack deep inputs. Date.parse comparisons use 4,456 actual Node values in each of 15 timezone configurations, including the actual system default, DST folds/gaps, invalid/case-sensitive zone IDs and extreme years. The shared TypeScript decoder rejects validator exceptions without taking down its socket service. These are local results; later edits and supported platforms require fresh results.",
+      "validatedSubset": "46 actual protocol exports; 37,396 validation comparisons and 69,647 JavaScript JSON round trips. Includes App Live client/server messages, bounded event payloads, client-control refinements, project wire summaries/lists and model configuration. Development export rejects unregistered checks/transforms; default URL behavior is covered, not arbitrary URL options. Native JSON tree construction, clone, equality, serialization and drop now use explicit stacks. Small-stack tests exercise 32,768 nested arrays and 12,000 alternating object/array pairs. Actual anonymous/password HTTP and App Live comparisons cover accepted, stripped, rejected, malformed, poisoned, numeric-overflow and raw UTF-16 inputs. Current ingress branch: 48 actual schema exports with 59,830 base validation comparisons, plus 22,697 complete incoming worker-envelope comparisons including all 142 reachable union alternatives across 23 union identities, 31 explicitly registered custom check identities and eight recursive JSON schema sites. Recursive JSON tests compare 8,228 bare/nested value/error cases and bounded-stack deep inputs. Date.parse comparisons use 4,456 actual Node values in each of 15 timezone configurations, including the actual system default, DST folds/gaps, invalid/case-sensitive zone IDs and extreme years. The shared TypeScript decoder rejects validator exceptions without taking down its socket service. These are local results; later edits and supported platforms require fresh results. Current settings/provider export has 85 actual roots and 5881 nodes; the retained native wire run matches 78419 actual protocol cases, including legacy credential capture/purge and authenticated credential upload/read records. These local checks do not establish the unported schemas or current-platform acceptance. Subsequent account-auth export adds codexAuthStatusSchema:86 actual roots/5893 nodes and78742 actual protocol cases pass locally.",
       "remaining": [
         "Remaining protocol schemas, coercion/refinement boundaries and authenticated/hash serialization across all domains. Selected HTTP/WS paths and nesting examples do not establish all-server parser or schema parity."
       ]
@@ -1145,6 +1354,175 @@
         "Observe the policy milestone Linux/macOS/Windows CI and inspect its actual uploaded reports.",
         "Complete product UI and the unported chat/native runtime consumers, project/workspace CRUD and shared multi-instance coordination.",
         "Existing-installation conversion, packaged artifacts and full deployment acceptance remain in the overall goal."
+      ]
+    },
+    "settingsAndProviderDiscovery": {
+      "status": "partial",
+      "implementation": [
+        "cantrip_server_rs/src/settings/",
+        "cantrip_server_rs/src/http/settings.rs",
+        "cantrip_server_rs/src/settings/catalog_runtime.rs"
+      ],
+      "evidence": [
+        "scripts/server-rust/settings-repository-compatibility.mjs",
+        "scripts/server-rust/settings-http-compatibility.mjs",
+        "cantrip_server_rs/tests/settings_semantics.rs",
+        "scripts/server-rust/zai-catalog-data.mjs",
+        "scripts/server-rust/openrouter-cache-oracle.mjs",
+        "cantrip_server_rs/tests/openrouter_cache.rs",
+        "scripts/server-rust/settings-openrouter-cases.mjs",
+        "scripts/server-rust/openrouter-http-compatibility.mjs",
+        "scripts/server-rust/settings-grok-cases.mjs",
+        "scripts/server-rust/openrouter-hydrator-oracle.mjs",
+        "cantrip_server_rs/tests/openrouter_hydrator.rs",
+        "scripts/server-rust/provider-credential-http-compatibility.mjs",
+        "scripts/server-rust/settings-auth-cases.mjs",
+        "scripts/server-rust/settings-auth-semantics.mjs",
+        "scripts/server-rust/provider-account-http-compatibility.mjs",
+        "scripts/server-rust/settings-catalog-runtime-cases.mjs",
+        "scripts/server-rust/provider-catalog-http-compatibility.mjs",
+        "scripts/server-rust/provider-auth-http-compatibility.mjs"
+      ],
+      "validatedSubset": "Native settings preferences and destination updates, model CRUD and route/default reasoning resolution, provider/account/catalog repositories and analytics. Seven production HTTP routes have local actual Node/Rust comparisons on all three storage modes. Native Z.ai, Ollama, ChatGPT, Grok and OpenRouter services preserve hydration, cache/force/offline/failure behavior, credential-home keys, hidden-model discovery, per-account state and quota-before-catalog commits. Grok shares one optional public vision lookup across an account batch and emits the source operational warning call through an explicit diagnostics dependency. Current repository/service suites compare710 scenarios and278 unchanged-state snapshots per store;240023 actual-source helper comparisons cover catalog normalization/enrichment and JSON diagnostics. Twenty-one actual-source cache timelines and nine runtime-hydration timelines cover shared work, retry, invalidation, unobserved callers, ETags, stale data and failure recovery. Main settings/provider HTTP and diagnostic/runtime integration remain incomplete. Native legacy credential capture and global account sign-out preserve secret-free failure summaries, revision/identity fencing, acknowledged purge, atomic clear before parallel cleanup and owned work after caller drop. Native account authentication now covers owned target selection, original-worker reconnect requirements, sign-out preparation/capture/fallback cleanup, caller-independent lifetime, global auth status and reauthentication revision races. Browser-auth/runtime integration remains incomplete. Six additional native browser routes now implement protected account CRUD/order and global sign-out through server-owned services and shutdown drains. Actual HTTP/Live tests cover ownership, CSRF, strict validation, optimistic credential lifecycle, atomic rollback, cleanup failures, disconnected callers and shutdown with admitted work. The production server now constructs the native provider catalog composition service and drains hydration, admitted operations, fetches and background persistence at shutdown. Per-call owner binding is explicit in shared hydration. Dispatch/default-worker/logging-call comparisons execute the actual source route-runtime function with real owner/preferences/worker repositories and controlled catalog services; these are composition tests, separate from the existing actual-service suites. Current local repository/service acceptance is753 comparisons and317 unchanged-state snapshots per store;10 source/native hydration timelines include owner changes across shared loads/retries. The existing161 account HTTP comparisons per store pass with the new factory and shutdown integration. Two additional browser catalog routes now preserve actual catalog services, raw repeated-key worker identity, source query errors after real SQL failures and caller-independent persistence. The latest all-store repository/service evidence is768 comparisons and332 exact unchanged snapshots per store; the wire suite passes80901 protocol cases against93 roots/5969 nodes.",
+      "remaining": [
+        "GET settings and remaining provider/quota/reset/telemetry HTTP consumers.",
+        "Native diagnostic logger formatting/redaction/rate-limit summaries/buffer/archive.",
+        "Worker connect/reconnect reconciliation and remaining observation consumers.",
+        "Model runtime consumers of scoped hydration, complete retained reversal and supported-platform/product/package acceptance."
+      ]
+    },
+    "workerCommandBudgets": {
+      "status": "partial",
+      "implementation": [
+        "cantrip_server_rs/src/workers/command_bus.rs",
+        "cantrip_server_rs/src/relay/quotas.rs"
+      ],
+      "evidence": [
+        "cantrip_server_rs/tests/worker_command_budgets.rs",
+        "cantrip_server_rs/tests/relay_quotas.rs",
+        "scripts/server-rust/worker-command-http-compatibility.mjs"
+      ],
+      "validatedSubset": "Local actual-source comparisons cover owner caching, account/worker concurrency and rate admission, byte windows, shared relay/upload budgets, remote-surface claim accounting, event/callback/response settlement and statistics. The real native bridge preserves default, explicit and disabled deadlines, owned work after caller cancellation and drain completion. Actual production HTTP/WS tests cover concurrency and response quota rejection, error bodies and recovery on all three storage modes. The Node reference counter now computes bytes iteratively for plain wire JSON when V8 serialization overflows; the real HTTP regression prevents deeply nested replies bypassing the relay budget. Unsupported JavaScript hooks, proxies and cycles retain the existing zero-byte fallback.",
+      "remaining": [
+        "Production rate-limited logging/archive parity.",
+        "Wire binary/relay/upload/surface domain consumers to the shared quotas as those transports are ported.",
+        "Supported-platform acceptance and later transport integration."
+      ]
+    },
+    "providerQuotaCapture": {
+      "status": "partial",
+      "implementation": "cantrip_server_rs/src/settings/quota.rs",
+      "evidence": [
+        "scripts/server-rust/settings-repository-compatibility.mjs",
+        "scripts/server-rust/settings-quota-cases.mjs",
+        "scripts/server-rust/settings-chatgpt-cases.mjs"
+      ],
+      "validatedSubset": "Immutable owner-scoped quota observations, event deduplication, historical dimensions, ordered credits/window commits and independent monotonic account/worker weekly projections. Native snapshot reads and rate-limit activity capture preserve worker requests, trigger/version metadata, epoch resets, TimeClip and retries after partial failure. Credit timestamps use the same millisecond-clipped PostgreSQL ISO text input as the source driver; actual year-zero rejection and equal-millisecond updates are verified on all stores. Explicit observation/reset times are compared as instants instead of normalized away.",
+      "remaining": [
+        "Wire authenticated quota endpoints and native activity observers as their resource/execution domains are ported.",
+        "Current-head supported-platform, product and packaging acceptance."
+      ]
+    },
+    "publicProviderCatalogHttp": {
+      "status": "partial",
+      "implementation": [
+        "cantrip_server_rs/src/settings/openrouter/",
+        "cantrip_server_rs/src/wire/json_text.rs",
+        "cantrip_server_rs/third-party/hyper/"
+      ],
+      "evidence": [
+        "scripts/server-rust/openrouter-http-compatibility.mjs",
+        "scripts/server-rust/settings-openrouter-semantics.mjs"
+      ],
+      "scope": "Native public HTTP transport, compressed payloads, redirects, request credential rejection, conditional ETag retention, shared cache and catalog persistence. V8-compatible JSON text diagnostics are compared with the actual reference runtime; a focused hyper patch retains non-UTF8 HTTP reason bytes. See current QA receipts for actual HTTP/deadline outcomes; configured CI is not platform evidence.",
+      "remaining": [
+        "Server-owned service lifecycle and authenticated route integration.",
+        "Current-head supported-platform acceptance, including public request failures and deadlines.",
+        "Full provider/runtime/product/packaging acceptance."
+      ],
+      "validatedLocally": "27 actual Node/Rust loopback HTTP comparisons pass, including gzip/deflate/Brotli, UTF8 BOM/replacement, redirects, duplicate and Latin1 ETags, custom/non-UTF8 reasons, malformed JSON, disconnected/truncated responses, URL credential rejection and actual30-second header/body deadlines. Native factory and all3store service tests are local macOS evidence; no packaged or supported-platform claim."
+    },
+    "providerCredentialMigrationAndLifecycle": {
+      "status": "partial",
+      "implementation": [
+        "cantrip_server_rs/src/settings/credential_migrations.rs",
+        "cantrip_server_rs/src/settings/lifecycle.rs",
+        "cantrip_server_rs/src/settings/accounts.rs",
+        "cantrip_server_rs/src/settings/account_service.rs"
+      ],
+      "evidence": [
+        "scripts/server-rust/settings-credential-service-cases.mjs",
+        "scripts/server-rust/settings-repository-compatibility.mjs",
+        "scripts/server-rust/provider-credential-http-compatibility.mjs",
+        "scripts/server-rust/provider-account-http-compatibility.mjs"
+      ],
+      "validatedSubset": "Protected legacy capture, per-candidate secret-free counters, identity/revision race recovery, conflict CAS retry, opt-in purge with subject/revision acknowledgements and native caller-independent task ownership/drain. Global sign-out commits opaque credential removal before parallel catalog/worker cleanup, preserves partial-failure summaries and diagnostic-call contexts, excludes foreign/unlinked/offline workers, and supports the optional info logger. Real Node/Rust tests verify that unobserved captures commit and unobserved sign-outs finish. Source text-encoded expiry semantics are preserved, including actual year-zero PostgreSQL rejection/rollback and nanosecond input clipping. Worker credential reads/uploads are now integrated through authenticated native HTTP routes; browser account CRUD/global sign-out now use server-owned preparation and lifecycle services, with caller-independent completion and shutdown drain. Device login and worker auth observations now use the production account services. Runtime migration/reconnect hooks remain unfinished.",
+      "remaining": [
+        "Native diagnostic formatting/redaction/buffer/archive and remaining quota/reset/runtime integration.",
+        "Worker connect/reconnect migration/reconciliation hooks.",
+        "Current-head supported-platform, product and packaging acceptance."
+      ]
+    },
+    "providerCredentialHttp": {
+      "status": "implemented-pending-platform-acceptance",
+      "implementation": ["cantrip_server_rs/src/http/provider_credentials.rs"],
+      "evidence": [
+        "scripts/server-rust/provider-credential-http-compatibility.mjs",
+        "scripts/server-rust/settings-wire-fixtures.mjs"
+      ],
+      "validatedSubset": "Actual HTTP comparisons cover both account authentication and local development on native PGlite, private PostgreSQL and external PostgreSQL: worker credential owner/scope/grant checks, foreign browser sessions and workers, state-specific reads, strict upload validation, revision conflicts, sanitized identity failures, real SQL expiry rejection with retained writes, millisecond clipping, restart persistence and credential revocation. Repeated-query identities containing commas reproduce the actual reference driver text conversion. The latest retained run has 125 paired HTTP observations per storage mode.",
+      "remaining": [
+        "Current-head supported-platform and packaged product acceptance."
+      ]
+    },
+    "providerAccountAuthentication": {
+      "status": "partial",
+      "implementation": [
+        "cantrip_server_rs/src/settings/authentication.rs",
+        "cantrip_server_rs/src/settings/account_service.rs",
+        "cantrip_server_rs/src/settings/raw_identifiers.rs",
+        "cantrip_server_rs/src/http/provider_accounts.rs",
+        "cantrip_server_rs/src/settings/account_service/auth_flow.rs",
+        "cantrip_server_rs/src/settings/account_service/auth_observations.rs"
+      ],
+      "evidence": [
+        "scripts/server-rust/settings-auth-cases.mjs",
+        "scripts/server-rust/settings-auth-semantics.mjs",
+        "cantrip_server_rs/tests/settings_semantics.rs",
+        "scripts/server-rust/provider-account-http-compatibility.mjs",
+        "scripts/server-rust/provider-auth-http-compatibility.mjs",
+        "scripts/server-rust/provider-device-scenarios.mjs",
+        "scripts/server-rust/worker-command-budget-oracle.mjs",
+        "cantrip_server_rs/tests/worker_ingress.rs"
+      ],
+      "validatedSubset": "Native account target resolution, original-worker reconnect handling, protected capture, optimistic revision/identity checks, global sign-out and safe owner-scoped Live publication. HTTP account CRUD/order/delete, logout, stored auth-status projection and device login use owned operations that survive caller disconnect. Device observations retain insertion order, capacity, reference identity across asynchronous validation, sequence/time filtering and original published expiry. Notification owner context comes from the authenticated, generation-checked worker peer before its first database await; an owned worker/account lookup then confirms current access. Successful authentication captures only opaque credentials, commits account/binding status and starts catalog refresh; capture failures publish a fixed safe failure code. The worker-handler drain precedes final account/catalog/command/database drains. Real HTTP/worker/Live comparisons exercise early terminal status before the login reply, an admitted capture after observation replacement, expired observations receiving a later sequence, actual disconnected clients, held purge during shutdown and retained credentials/quota on restart. Actual account/binding constraint failures return source SQL context after failed operations, roll back durable state and retain pending observations. Raw body selectors preserve JavaScript truthiness, driver parameter typing, reference/primitive Map identities and every UTF16 worker-key unit; malformed strings cannot alias a connected UTF8 peer. Validation receipts, rather than configured CI, define accepted revisions and platforms. Observation replacement, non-authenticated notification advancement/publication/deletion, and sign-out removal/publication now share one auth-state critical section. Auth revision allocation remains guarded through Live enqueue. Concurrent HTTP/worker/Live phases retain raw completion order while comparing only explicitly independent pairs; per-stream monotonicity, per-account ordering and complete payload assertions remain strict.",
+      "remaining": [
+        "Worker migration/reconnect hooks, remaining settings/provider/quota/reset/telemetry consumers and full production diagnostics.",
+        "Current-head supported-platform, product and packaging acceptance."
+      ],
+      "referenceLifecycle": "The opt-in Node auth fixture drains actual source notification/repository promises before database close, including background catalog persistence. Original uninstrumented PGlite shutdown hangs and an insufficient callback-only drain are retained as failures. This does not prove original Node shutdown behavior. Rust uses its production shutdown without this instrumentation."
+    },
+    "providerCatalogComposition": {
+      "status": "partial",
+      "implementation": [
+        "cantrip_server_rs/src/settings/catalog_runtime.rs",
+        "cantrip_server_rs/src/settings/openrouter/hydrator.rs",
+        "cantrip_server_rs/src/auth/service.rs",
+        "cantrip_server_rs/src/main.rs",
+        "cantrip_server_rs/src/http/provider_catalogs.rs"
+      ],
+      "evidence": [
+        "scripts/server-rust/settings-catalog-runtime-cases.mjs",
+        "scripts/server-rust/openrouter-hydrator-oracle.mjs",
+        "cantrip_server_rs/tests/openrouter_hydrator.rs",
+        "scripts/server-rust/provider-account-http-compatibility.mjs",
+        "scripts/server-rust/provider-catalog-http-compatibility.mjs"
+      ],
+      "validatedSubset": "Production construction of real native provider services; typed internal dispatch, explicit owner capture, owned operation lifetime, public hydration marking and shutdown drains. Actual-source composition tests cover missing/foreign providers, all provider families, explicit/default/connected/offline worker selection, force/account/quota-trigger forwarding, source diagnostic context/options and error boundaries, real SQL completion after a dropped caller, and shared hydration owner changes. Current-head all-store repository/service suites and existing account HTTP suites pass locally; strict all-target Clippy passes. The fresh full native all-target run passes89 tests across42 targets, including catalog composition/API and the auth-status extension. Native GET/catalog and POST/refresh now call the real native services through production HTTP. Local all-store comparisons cover built-in catalogs, authenticated/local profiles, headers/HEAD/CSRF/body parsing, ownership and runner selection, cache/force/stale/failure/retry behavior, repeated worker query arrays retaining distinct bridge identity, actual SQL sync failure context, disconnected callers and retained restart. The cancellation observer proves committed model data without dispatching a replacement worker request; a later explicit refresh removes its nondeterministic sync-state race from paired comparisons. Current local repository/service suites pass768 comparisons/332 unchanged snapshots per store. The93-root/5969-node wire export passes80901 protocol comparisons; strict current all-target Clippy passes. Database-state assertions and final foreign/unlinked runner HTTP checks are recorded in the latest retained reports, not inferred from configured CI.",
+      "remaining": [
+        "Main settings, provider CRUD/test and quota/reset/telemetry HTTP consumers.",
+        "Worker reconnect and model runtime consumers.",
+        "Shared operational diagnostics, supported-platform/product/package acceptance."
       ]
     }
   },

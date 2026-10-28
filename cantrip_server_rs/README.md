@@ -38,6 +38,186 @@ in staging before promotion. Windows keeps its kill-on-close process job.
 retained account/worker state and external database isolation. Current local
 macOS results require fresh platform and packaging acceptance.
 
+## Settings and provider port in progress
+
+Native settings now include preference and destination updates, model CRUD,
+ordered routes and reasoning resolution, provider/account/catalog persistence,
+usage analytics, Z.ai built-in hydration, Ollama, ChatGPT and Grok discovery, and
+quota capture. The shared account flow preserves per-account caching and legacy credential homes,
+hidden-model discovery and independently committed quota writes before catalog
+reconciliation. Quota events are immutable and deduplicated; account and worker
+weekly projections advance independently by observation time. Credit timestamp
+writes use the existing driver's millisecond-clipped ISO text semantics.
+The native OpenRouter public catalog uses a Rust HTTP client and shared cache.
+It preserves stale reads, in-flight deduplication, conditional ETag refreshes,
+global metadata persistence, background reconciliation and last-good fallback.
+Public requests carry no provider credentials and create no logical models.
+Owned fetch and persistence tasks expose a drain for server shutdown integration.
+The HTTP client's JSON diagnostics retain V8 positions and UTF16 context. A
+focused hyper patch preserves non-UTF8 HTTP reason bytes; its provenance and
+license live under `third-party/hyper/`.
+
+The seven current settings HTTP routes have actual Node/Rust socket comparisons. Main settings
+reads and the remaining provider/quota HTTP operations still require their domain
+consumers; they are not registered as placeholders.
+Grok lazily shares one optional public
+vision lookup across each account batch. Its diagnostic interface carries the
+source rate-limit key, context and options; production logger redaction,
+formatting, buffer and archive wiring remain unfinished.
+
+The native runtime hydrator coalesces provider loads, retries false or failed
+results, honors explicit invalidation and retains work after a caller stops
+awaiting it. Successful providers hydrate once per process. Each call binds its
+owner before starting shared work; a retry from another owner binds that caller's
+context without changing the owner of work already in flight.
+
+The production server now constructs a catalog composition service backed by the
+native Z.ai, OpenRouter, ChatGPT, Grok and Ollama implementations. It preserves
+automatic worker selection, connected-default preference and the offline-default
+fallback needed by service cache handling. An absent runner retains the provider's
+specific error. Successful public loads mark the shared hydrator. Admitted catalog
+work survives a dropped caller; shutdown drains hydration, catalog operations,
+public fetches and background persistence before closing the database. Actual
+source-function comparisons exercise dispatch with real owner/preferences/worker
+repositories and controlled catalog services; service internals have their own
+repository, worker and public HTTP suites. Main settings HTTP consumers and worker reconnect hooks remain unfinished. Operational event and rate-limit
+call sites preserve the source context; the shared production diagnostic logger
+still requires its formatting, redaction, summaries, buffer and archive work.
+
+Native catalog GET and POST refresh routes now use this composition layer and
+the actual response contract. They preserve built-in discovery, worker cache and
+force behavior, account-provider availability errors, fallback after upstream
+failure, and retained restart. Repeated worker query values keep their database
+text conversion and distinct bridge Map identity: reading a fresh cache can
+succeed while a forced refresh treats that array key as offline. Actual SQL
+sync-state failures retain the source query context after the real failed write.
+Real socket cancellation tests prove that catalog persistence continues without
+a replacement worker request from the completion observer. The observer can race
+the final sync-state write, so comparisons establish a deterministic current
+state only after the independent persistence assertion. Main settings consumers and worker reconnect hooks remain incomplete.
+
+Native legacy provider-credential migration captures only protected envelopes,
+checks optimistic revisions and subject identity, and purges worker copies only
+when explicitly enabled and acknowledged with the matching committed revision.
+Candidate failures return counters without exposing worker OAuth error text.
+Sign-out commits the credential clear before catalog and connected-worker cleanup;
+partial cleanup produces the source summary and operational diagnostic calls.
+Both services retain admitted work when a caller stops awaiting it and expose
+shutdown drains. Credential expiry writes use the source driver's clipped ISO
+text input, including real PostgreSQL rejection and rollback at year zero.
+The server now owns these services for provider-account CRUD and global sign-out,
+and drains admitted operations before closing the worker command bus and database.
+The remaining quota/reset routes, runtime hooks and production diagnostics
+still require integration. Legacy OAuth capture does not implement PGlite data conversion.
+
+Native account authentication resolves owned account targets, retains default
+selection and explicit disabled-account behavior, and prepares global sign-out
+by selecting an owned, connected runner. Legacy migration can require the
+original worker to reconnect; an existing portable credential permits best-effort
+legacy logout. Captured credentials remain committed when later cleanup fails.
+Preparation retains its work after caller cancellation and exposes a shutdown
+drain. Global account-status projection preserves quota timestamps, credential
+state errors and protocol defaults. Reauthentication marking retains the opaque
+credential and uses its optimistic revision. Six browser HTTP routes now expose
+protected account listing/create/update/order/delete and global sign-out. Account
+deletion and sign-out run the actual preparation and lifecycle services; a caller
+disconnect does not cancel admitted cleanup or its post-commit Live publication.
+Sign-out invalidates settings before publishing safe provider-auth status, scoped
+to the requesting owner. Unvalidated legacy body selectors retain JavaScript
+truthiness separately from database text conversion and the actual PostgreSQL
+driver's boolean parameter inference. Truthy empty arrays cannot select the default
+account. Quota/reset routes and worker reconnect consumers remain unfinished.
+
+The native auth-status GET/HEAD route projects stored account state, selects the
+first enabled or explicitly requested account, and can capture an opaque legacy
+credential from an owned connected worker. Missing/malformed/failed captures
+retain the source status and fixed outward error messages; upstream OAuth details
+remain absent. A successful authenticated status starts an owned catalog refresh
+without delaying the response. Repeated provider keys retain database text
+conversion, while repeated account keys keep strict identity comparison and
+repeated worker keys cannot become connected string keys. Real socket tests
+verify capture after caller disconnect and protected credential retention across
+restart. Device login now creates bounded observations and dispatches the existing worker
+command. Safe worker notifications complete sign-in through opaque credential
+capture, account/binding persistence, settings invalidation and Live publication.
+Generation-checked peer ownership and observation identity are retained before
+the first database await. A terminal notification can finish before the login
+reply, and an already admitted notification can finish after a later login
+removes its map entry. Internal expiry clamping does not change the published
+expiry. Observation replacement and the synchronous advancement/publication
+steps share one state lock, preserving the source event loop's atomic sections
+across Tokio threads. Auth revisions remain ordered through actual Live enqueue.
+Paired socket scenarios also exercise simultaneous logins for one account and
+parallel publications for independent accounts. Account and worker-binding failures roll back durable writes and retain
+the pending observation, with the reference SQL context attached only after the
+actual failed query.
+
+Raw device-body worker selectors retain primitive or reference Map identity
+separately from database text conversion. Unpaired UTF16 strings cannot route to
+a peer whose database ID contains the UTF8 replacement character; the outward
+error also retains the original units. The production command bus receives the
+original identifier for actual typed owner lookup and preserves account/worker
+byte, rate and concurrency accounting before bridge rejection.
+
+The auth HTTP suite exercises actual Live, worker and client sockets, caller
+disconnect, observation replacement, safe capture failures, SQL rollback and a
+held credential purge during shutdown. The opt-in Node reference fixture drains
+its actual notification and repository promises before closing the database.
+Uninstrumented Node PGlite shutdown hangs and the insufficient callback-only
+drain remain retained failures; this fixture plumbing does not establish the
+original server's shutdown readiness. Rust uses its production drains without
+instrumentation. Supported-platform and packaged product acceptance remain
+unfinished.
+
+The native worker credential GET/PUT routes authenticate the worker's owner,
+require its provider-credential grant, and retain opaque envelopes, identity
+checks, optimistic revisions and state-specific read errors. Upload parsing
+and the actual SQL write preserve the existing failure and rollback boundaries.
+Repeated query keys retain the reference drivers' text conversion. The socket
+comparison covers account authentication and local development, foreign browser
+sessions and workers, revision/identity failures, nanosecond expiry clipping,
+restart persistence and worker-credential revocation on all three stores.
+
+The shared command bus enforces owner-scoped concurrency, rate and byte quotas
+around the existing native bridge. Admitted requests retain their claims after
+their HTTP caller stops awaiting them. Normal, explicitly disabled and custom
+deadlines are distinct. Surface/upload accounting primitives are implemented;
+their future transport consumers and production logging still need integration.
+The Node reference byte counter also charges deeply nested wire JSON after V8
+serialization exhausts its stack, closing a zero-byte relay quota bypass. The
+same actual-socket regression exercises both servers with a deeply nested
+response larger than the configured relay budget.
+
+Run the current domain suites against disposable stores:
+
+```sh
+node scripts/server-rust/settings-repository-compatibility.mjs --database pglite --report .qa/rust-server/settings-repository.json
+node scripts/server-rust/settings-http-compatibility.mjs --database pglite --report .qa/rust-server/settings-http.json
+node scripts/server-rust/provider-credential-http-compatibility.mjs --database pglite --report .qa/rust-server/provider-credential-http.json
+node scripts/server-rust/provider-account-http-compatibility.mjs --database pglite --report .qa/rust-server/provider-account-http.json
+node scripts/server-rust/provider-catalog-http-compatibility.mjs --database pglite --report .qa/rust-server/provider-catalog-http.json
+node scripts/server-rust/provider-auth-http-compatibility.mjs --database pglite --report .qa/rust-server/provider-auth-http.json
+node scripts/server-rust/worker-command-http-compatibility.mjs --database pglite --report .qa/rust-server/command-http.json
+node --import tsx scripts/server-rust/openrouter-http-compatibility.mjs --timeouts --report .qa/rust-server/openrouter-public-http.json
+```
+
+Repeat with `--database bundled-postgres` and `--database postgres`. The worker
+fixtures use real HTTP/WebSocket entrypoints with controlled replies; they do
+not claim full worker runtime acceptance. Repository service tests invoke the
+actual Node services against isolated databases and compare retained state,
+cache/offline behavior, refresh failures and retries. Equal SQL sort keys are
+avoided in the fixtures; ordered response assertions remain strict. An actual
+Node/PostgreSQL maintenance probe also confirms that equal display names can
+reverse order without any logical model-field changes. The native query keeps
+the same display-name-only ordering as the source.
+
+The native Z.ai catalog embeds generated data from the reference service.
+`node --import tsx scripts/server-rust/zai-catalog-data.mjs --check` verifies it;
+omit `--check` to regenerate during the migration. Runtime discovery does not
+load JavaScript. Native ICU data and its provenance/licenses live under
+`third-party/`; distribution artifacts must retain their notices. Current local
+settings results do not establish packaged or supported-platform acceptance.
+
 ## Worker compatibility evidence
 
 Build the existing shared packages before executing the development harnesses:

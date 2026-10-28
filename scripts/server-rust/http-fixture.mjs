@@ -33,6 +33,7 @@ export class HttpFixture {
     databaseMode,
     environment = {},
     workerIngress = false,
+    providerAuthDrain = false,
   }) {
     Object.assign(this, {
       kind,
@@ -40,6 +41,7 @@ export class HttpFixture {
       name,
       databaseMode,
       workerIngress,
+      providerAuthDrain,
     });
     this.environment = {
       ...fixtureEnvironment(path.join(root, name, kind)),
@@ -76,6 +78,7 @@ export class HttpFixture {
               "tsx",
               "scripts/server-rust/node-server.mjs",
               ...(this.workerIngress ? ["--worker-ingress-fixture"] : []),
+              ...(this.providerAuthDrain ? ["--drain-auth-notifications"] : []),
             ],
             { cwd: repositoryRoot, env: this.environment },
           )
@@ -169,7 +172,7 @@ export class HttpFixture {
       body:
         options.raw ??
         (input === undefined ? undefined : JSON.stringify(input)),
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(options.timeoutMs ?? 15000),
     });
     const text = await response.text();
     const body = text ? JSON.parse(text) : null;
@@ -205,7 +208,7 @@ export class HttpFixture {
         this.enrollments.get(body.id),
         "Retained enrollment expiry",
       );
-    if (body?.credential) {
+    if (typeof body?.credential === "string") {
       assert.match(body.credential, /^ctwk_[A-Za-z0-9_-]{43}$/);
       const bytes = Buffer.from(body.credential.slice(5), "base64url");
       assert.equal(bytes.length, 32);

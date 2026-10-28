@@ -33,6 +33,8 @@ pub struct RequestLimiters {
 pub struct WorkerService {
     pub repository: WorkerRepository,
     pub bridge: Arc<WorkerBridge>,
+    pub commands: Arc<super::command_bus::LimitedCommandBus>,
+    pub relay_quotas: Arc<crate::relay::RelayQuotas>,
     pub invalidations: broadcast::Sender<Invalidation>,
     publication: OnceLock<InvalidationSink>,
     pub revoked: RwLock<HashSet<String>>,
@@ -53,9 +55,19 @@ impl WorkerService {
         config: &ServerConfig,
         usage: Option<crate::live::UsageRecorder>,
     ) -> Arc<Self> {
+        let bridge = WorkerBridge::with_usage(Duration::from_secs(15), usage);
+        let relay_quotas = crate::relay::RelayQuotas::new(config);
+        let commands = super::command_bus::LimitedCommandBus::new(
+            database.clone(),
+            bridge.clone(),
+            relay_quotas.clone(),
+            config,
+        );
         Arc::new(Self {
             repository: WorkerRepository::new(database),
-            bridge: WorkerBridge::with_usage(Duration::from_secs(15), usage),
+            bridge,
+            commands,
+            relay_quotas,
             invalidations: broadcast::channel(4096).0,
             publication: OnceLock::new(),
             revoked: RwLock::new(HashSet::new()),
@@ -197,6 +209,7 @@ impl WorkerService {
             .clone()
             .acquire_many_owned(HANDSHAKE_CAPACITY)
             .await?;
+        self.commands.drained().await;
         Ok(())
     }
 }

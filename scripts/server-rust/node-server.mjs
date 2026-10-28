@@ -7,24 +7,83 @@ import { installWorkerIngressFixture } from "./worker-ingress-node-fixture.mjs";
 
 const config = readServerConfig();
 const database = await connectDatabase(config);
+const drainAuthNotifications = process.argv.includes(
+  "--drain-auth-notifications",
+);
+const notifications = new Set();
+const repositoryOperations = new Set();
+if (drainAuthNotifications) {
+  const wrappers = new WeakMap();
+  database.repository = new Proxy(database.repository, {
+    get(target, key) {
+      const method = Reflect.get(target, key, target);
+      if (typeof method !== "function") return method;
+      if (!wrappers.has(method))
+        wrappers.set(method, (...args) => {
+          const result = Reflect.apply(method, target, args);
+          if (result && typeof result.then === "function") {
+            // Assimilate a lazy thenable once; tracking and returning the
+            // original builder could otherwise execute its query twice.
+            const pending = Promise.resolve(result);
+            repositoryOperations.add(pending);
+            pending.then(
+              () => repositoryOperations.delete(pending),
+              () => repositoryOperations.delete(pending),
+            );
+            return pending;
+          }
+          return result;
+        });
+      return wrappers.get(method);
+    },
+  });
+}
 const diagnose = (event, details = {}) =>
   console.error(JSON.stringify({ event, ...details }));
 const closeDatabase = database.close.bind(database);
 database.close = async () => {
+  if (drainAuthNotifications) {
+    // The original PGlite fixture can deadlock if close races a notification's
+    // transaction after bridge shutdown. This opt-in oracle plumbing retains
+    // the real source consumer and awaits its actual promise; the unmodified
+    // baseline failures are retained separately. Rust uses its production drain.
+    diagnose("fixture.auth-notifications.draining", {
+      active: notifications.size,
+    });
+    while (notifications.size || repositoryOperations.size)
+      await Promise.allSettled([...notifications, ...repositoryOperations]);
+  }
   diagnose("fixture.database.closing");
   await closeDatabase();
   diagnose("fixture.database.closed");
 };
-const ingressBridge = process.argv.includes("--worker-ingress-fixture")
-  ? new WorkerBridge()
-  : undefined;
+const ingressFixture = process.argv.includes("--worker-ingress-fixture");
+const ingressBridge =
+  ingressFixture || drainAuthNotifications ? new WorkerBridge() : undefined;
+if (drainAuthNotifications) {
+  const subscribe = ingressBridge.subscribeNotifications.bind(ingressBridge);
+  const wrappers = new WeakMap();
+  ingressBridge.subscribeNotifications = (worker, listener) => {
+    if (!wrappers.has(listener))
+      wrappers.set(listener, (notification) => {
+        const pending = Promise.resolve(listener(notification));
+        notifications.add(pending);
+        pending.then(
+          () => notifications.delete(pending),
+          () => notifications.delete(pending),
+        );
+        return pending;
+      });
+    return subscribe(worker, wrappers.get(listener));
+  };
+}
 const app = await buildApp({
   config,
   database,
   logger: false,
   ...(ingressBridge ? { workerBridge: ingressBridge } : {}),
 });
-const closeIngress = ingressBridge
+const closeIngress = ingressFixture
   ? installWorkerIngressFixture(app, ingressBridge)
   : undefined;
 const sockets = new Set();

@@ -1,0 +1,10 @@
+{
+  "collation_diacritics_v1.rs.data": "d98a3fe2feb42e58d2da8af61de0c2e006cf80b255d458718a6639a32b6d2f88",
+  "collation_jamo_v1.rs.data": "d8848f5900bb2684a9cdff9b853a598402d67e483aa4bd10488b51fa982d0318",
+  "collation_metadata_v1.rs.data": "42cb65d8d6f9d7906cb56b7284f585f51fda09a3e63341a926a42df51025b36d",
+  "collation_reordering_v1.rs.data": "c56264e465cd28efcc1128ac3c495eede187079aff5568b8485b040619fb943a",
+  "collation_root_v1.rs.data": "6e00250737ab225074e4f63222345de174f8bbddee69287b3f101db5e9bd11b4",
+  "collation_special_primaries_v1.rs.data": "7d37c4b798bff633737d1b63300b0d324082bdc49c7f691e0a73d69acdb1d6f7",
+  "collation_tailoring_v1.rs.data": "9630139a9f57c0d292e06ab6efd3f95b342b022ec74244815b3a1481b3b2e7fc",
+  "mod.rs": "f9c447849b13acc8279a34d4f431462abae85e19eced54ca7b123844df0727d5"
+}

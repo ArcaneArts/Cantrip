@@ -19,7 +19,11 @@ mod live_socket;
 mod middleware;
 mod on_response;
 mod policies;
+mod provider_accounts;
+mod provider_catalogs;
+mod provider_credentials;
 mod sessions;
+mod settings;
 mod usage;
 mod usage_hooks;
 mod websocket;
@@ -100,6 +104,10 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(account::routes())
         .merge(usage::routes())
         .merge(policies::routes())
+        .merge(settings::routes())
+        .merge(provider_accounts::routes())
+        .merge(provider_catalogs::routes())
+        .merge(provider_credentials::routes())
         .merge(workers::routes())
         .merge(worker_socket::routes())
         .merge(live_socket::routes())

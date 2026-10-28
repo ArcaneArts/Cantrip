@@ -1,0 +1,90 @@
+{
+  "version": 1,
+  "scope": "zai:built-in",
+  "source": "https://docs.z.ai/devpack/tool/codex",
+  "models": [
+    {
+      "nativeModelId": "glm-5.3",
+      "canonicalModelId": "glm-5.3",
+      "displayName": "glm-5.3",
+      "description": "Z.ai's latest flagship model.",
+      "contextWindow": 1048576,
+      "maxOutputTokens": null,
+      "inputModalities": ["text"],
+      "outputModalities": ["text"],
+      "supportsTools": true,
+      "supportsParallelTools": true,
+      "supportsStructuredOutput": null,
+      "supportsVision": false,
+      "supportsReasoning": true,
+      "supportedReasoningEfforts": [
+        {
+          "effort": "low",
+          "description": "Low reasoning effort"
+        },
+        {
+          "effort": "high",
+          "description": "High reasoning effort"
+        },
+        {
+          "effort": "max",
+          "description": "Maximum reasoning effort"
+        }
+      ],
+      "defaultReasoningEffort": "max",
+      "reasoningMandatory": null,
+      "family": "glm-5",
+      "parameterSize": null,
+      "quantization": null,
+      "digest": null,
+      "metadataSource": "zai",
+      "matchConfidenceBasisPoints": 10000,
+      "hidden": false,
+      "isDefault": true,
+      "rawMetadata": {
+        "applyPatchToolType": "freeform",
+        "contextWindowPercent": 95,
+        "defaultReasoningLevel": "max",
+        "shellToolType": "shell_command",
+        "supportedReasoningLevels": ["low", "high", "max"],
+        "catalogVersion": 1,
+        "source": "https://docs.z.ai/devpack/tool/codex"
+      }
+    },
+    {
+      "nativeModelId": "glm-5-turbo",
+      "canonicalModelId": "glm-5-turbo",
+      "displayName": "glm-5-turbo",
+      "description": "Agent-optimized model.",
+      "contextWindow": 204800,
+      "maxOutputTokens": null,
+      "inputModalities": ["text"],
+      "outputModalities": ["text"],
+      "supportsTools": true,
+      "supportsParallelTools": true,
+      "supportsStructuredOutput": null,
+      "supportsVision": false,
+      "supportsReasoning": true,
+      "supportedReasoningEfforts": [],
+      "defaultReasoningEffort": "max",
+      "reasoningMandatory": null,
+      "family": "glm-5",
+      "parameterSize": null,
+      "quantization": null,
+      "digest": null,
+      "metadataSource": "zai",
+      "matchConfidenceBasisPoints": 10000,
+      "hidden": false,
+      "isDefault": false,
+      "rawMetadata": {
+        "applyPatchToolType": "freeform",
+        "contextWindowPercent": 95,
+        "defaultReasoningLevel": "max",
+        "shellToolType": "shell_command",
+        "supportedReasoningLevels": [],
+        "catalogVersion": 1,
+        "source": "https://docs.z.ai/devpack/tool/codex"
+      }
+    }
+  ]
+}
