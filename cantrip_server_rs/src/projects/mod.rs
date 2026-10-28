@@ -1,4 +1,6 @@
+pub mod placement;
 pub mod repository;
+pub mod targets;
 
 use serde::Serialize;
 

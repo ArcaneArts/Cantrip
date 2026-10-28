@@ -40,6 +40,17 @@ on:
       - cantrip_server/src/workers/**
       - cantrip_server/src/db/repository/workers.ts
       - cantrip_server/src/db/repository/projects.ts
+      - cantrip_server/src/db/repository/placement.ts
+      - cantrip_server/src/db/repository/execution-targets.ts
+      - cantrip_server/src/execution-targets/**
+      - cantrip_server/src/app/routes/project-catalog-and-placement.ts
+      - cantrip_server/src/db/repository/chat-catalog.ts
+      - cantrip_server/src/db/repository/chat-mappers.ts
+      - cantrip_server/src/db/repository/terminals.ts
+      - cantrip_server/src/db/repository/explorers.ts
+      - cantrip_server/src/db/repository/code-surfaces.ts
+      - cantrip_server/src/db/repository/browsers.ts
+      - cantrip_server/src/db/repository/remote-surfaces.ts
       - cantrip_server/src/db/repository/chat-runtime-context.ts
       - cantrip_server/src/app/routes/live.ts
       - cantrip_server/src/app/runtime/session-socket-runtime.ts
@@ -145,6 +156,26 @@ jobs:
         run: node --import tsx scripts/server-rust/actual-worker-client.mjs --database bundled-postgres --report .qa/rust-server/actual-worker-client-bundled.json
       - name: Actual browser, server and full worker catalog flow with external PostgreSQL
         run: node --import tsx scripts/server-rust/actual-worker-client.mjs --database postgres --report .qa/rust-server/actual-worker-client-external.json
+      - name: Execution target descriptor composition and wire ordering
+        run: node scripts/server-rust/project-target-catalog-compatibility.mjs --report .qa/rust-server/project-target-catalog.json
+      - name: Project placement selection with native PGlite
+        run: node scripts/server-rust/project-placement-compatibility.mjs --report .qa/rust-server/project-placement-pglite.json
+      - name: Project placement selection with private PostgreSQL
+        run: node scripts/server-rust/project-placement-compatibility.mjs --database bundled-postgres --report .qa/rust-server/project-placement-bundled.json
+      - name: Project placement selection with external PostgreSQL
+        run: node scripts/server-rust/project-placement-compatibility.mjs --database postgres --report .qa/rust-server/project-placement-external.json
+      - name: Protected execution target repositories with native PGlite
+        run: node scripts/server-rust/project-target-repository-compatibility.mjs --report .qa/rust-server/project-target-repository-pglite.json
+      - name: Protected execution target repositories with private PostgreSQL
+        run: node scripts/server-rust/project-target-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/project-target-repository-bundled.json
+      - name: Protected execution target repositories with external PostgreSQL
+        run: node scripts/server-rust/project-target-repository-compatibility.mjs --database postgres --report .qa/rust-server/project-target-repository-external.json
+      - name: Project HTTP contracts and actual worker presence with native PGlite
+        run: node --import tsx scripts/server-rust/project-http-compatibility.mjs --report .qa/rust-server/project-http-pglite.json
+      - name: Project HTTP contracts and actual worker presence with private PostgreSQL
+        run: node --import tsx scripts/server-rust/project-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/project-http-bundled.json
+      - name: Project HTTP contracts and actual worker presence with external PostgreSQL
+        run: node --import tsx scripts/server-rust/project-http-compatibility.mjs --database postgres --report .qa/rust-server/project-http-external.json
       - name: Encryption and account security with native PGlite
         run: node --import tsx scripts/server-rust/security-compatibility.mjs --report .qa/rust-server/security-pglite-http.json
       - name: Encryption and account security with private PostgreSQL

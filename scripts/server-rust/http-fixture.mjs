@@ -282,7 +282,8 @@ export class HttpFixture {
     return {
       status: response.status,
       headers: Object.fromEntries(
-        (this.auditObservations && method === "HEAD"
+        ((this.auditObservations && method === "HEAD") ||
+        options.compareContentLength
           ? [...comparedHeaders, "content-length"]
           : comparedHeaders
         ).map((name) => [name, response.headers.get(name)]),

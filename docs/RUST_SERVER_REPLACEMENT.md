@@ -2,6 +2,41 @@
 
 Status: **implementation in progress; not a deployable replacement**.
 
+## Project catalog and execution placement
+
+The Rust server implements the four project catalog/placement routes: project
+listing, placement selection, execution-target listing and explicit target
+resolution. All seven surface kinds retain their existing ownership, context,
+readiness and capability rules. Worker-bound folders and local Git projects
+preserve their source restrictions. Protected labels and surface state stay
+opaque. Stored resource projections preserve validation failures even when the
+catalog does not display the invalid field.
+
+Actual Node/Rust comparisons pass on native PGlite, private PostgreSQL and
+external PostgreSQL: 165 placement cases and nine catalog cases, 86 target
+repository cases plus one rejected SQL constraint, and 129 HTTP observations per
+runtime across anonymous and account profiles. HTTP cases use the unchanged
+Node WorkerConnection after real enrollment and credential rotation, covering
+connected/offline presence, all target/surface types, owner isolation, errors,
+HEAD and retained restart. Background worker commands use an explicitly
+unsupported metadata-fixture handler; these cases do not execute filesystem,
+chat or model operations.
+
+Sixty-two additional comparisons execute the actual TypeScript descriptor
+builder, checking serialized property order, Unicode, resource filters,
+availability and the 2,000-target limit. In-memory identifiers preserve UTF-16;
+SQL-bound identifiers preserve PostgreSQL's UTF-8 replacement behavior. Six new
+protocol roots and four native refinements bring the actual protocol comparison
+to 150,879 cases. Existing project mapping and Live authorization read suites
+pass again on all three stores after the shared replica mapper extraction. A
+local native PGlite process limited to a 1 MiB main stack completes schema
+startup, 45 seed writes, catalog composition and all seven surface resolutions.
+
+Supported-platform CI for this group is configured; acceptance is still pending.
+Presence checks currently use the local worker bridge. Redis/multi-instance
+coordination, project/resource mutations, execution, full client/UI flows and
+packaged operation remain required by the replacement goal.
+
 Mutation audits now begin after body completion rather than delaying the HTTP
 response. An owned admission retains the audit through its deferred write, and
 shutdown drains those admissions before closing the database. HEAD discards

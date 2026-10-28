@@ -55,6 +55,12 @@ export const contractRoots = [
   "clientControlRequestSchema",
   "projectWireSummarySchema",
   "projectWireListSchema",
+  "executionPlacementResolutionSchema",
+  "executionPlacementResolveRequestSchema",
+  "executionTargetResolutionSchema",
+  "executionTargetResolveRequestSchema",
+  "executionTargetWireCatalogSchema",
+  "chatWireSummarySchema",
   "modelConfigurationSchema",
   "agentInteractionProvenanceSchema",
   "workerServerEnvelopeSchema",
@@ -174,6 +180,16 @@ registerChecks(protocol.clientNotificationOpaqueSchema, [
 ]);
 registerChecks(protocol.appLiveEventPayloadSchema, ["live-payload-bytes"]);
 registerChecks(protocol.projectWireSummarySchema, ["project-wire-summary"]);
+registerChecks(protocol.chatWireSummarySchema, ["chat-title-kind"]);
+registerChecks(protocol.githubAgentWorkflowContextSchema, [
+  "github-agent-workflow-context",
+]);
+registerChecks(protocol.executionPlacementSchema, [
+  "execution-placement-replica",
+]);
+registerChecks(protocol.executionTargetWireDescriptorSchema, [
+  "execution-target-title",
+]);
 registerChecks(protocol.encryptedPrivateDisplayLabelSchema, [
   "private-label-envelope",
 ]);
