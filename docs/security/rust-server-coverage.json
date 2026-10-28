@@ -852,6 +852,45 @@
         "remaining": [
           "Current-head supported-platform and full product/package acceptance."
         ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/analytics/provider-telemetry",
+        "implementation": "cantrip_server_rs/src/http/provider_telemetry.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/telemetry-http-compatibility.mjs",
+          "scripts/server-rust/telemetry-delete-shutdown.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform acceptance; execution write consumers and complete product/package acceptance remain in scope."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/analytics/provider-telemetry/:providerId/export",
+        "implementation": "cantrip_server_rs/src/http/provider_telemetry.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/telemetry-http-compatibility.mjs",
+          "scripts/server-rust/telemetry-delete-shutdown.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform acceptance; execution write consumers and complete product/package acceptance remain in scope."
+        ]
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/analytics/provider-telemetry/:providerId",
+        "implementation": "cantrip_server_rs/src/http/provider_telemetry.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/telemetry-http-compatibility.mjs",
+          "scripts/server-rust/telemetry-delete-shutdown.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform acceptance; execution write consumers and complete product/package acceptance remain in scope."
+        ]
       }
     ]
   },
@@ -875,7 +914,7 @@
   "durableTables": {
     "defaultStatus": "schema-migrated-only",
     "evidence": ["cantrip_server_rs/tests/database_contract.rs"],
-    "implementedSubset": "Account/session, mobile sign-in, local provisioning, configured-administrator, license-whitelist, audit-query/write and encryption-registry operations in the native auth and encryption repositories. Complete domain operations remain unported. Worker, enrollment-code and credential persistence, atomic replacement/rotation/revocation and heartbeat storage are implemented in workers/repository.rs; this is not the full worker-management or execution domain. Policy owner/bootstrap/collection state, opaque policy CRUD/order, project/workspace assignment transactions, cascade handling and IDE/standalone effective-policy resolution execute natively in policies/repository.rs; project/workspace creation and chat execution remain unported. Settings/model/provider/account/catalog persistence and quota-observation insert/deduplication/weekly projections execute natively; remaining telemetry and execution consumers are unported."
+    "implementedSubset": "Account/session, mobile sign-in, local provisioning, configured-administrator, license-whitelist, audit-query/write and encryption-registry operations in the native auth and encryption repositories. Complete domain operations remain unported. Worker, enrollment-code and credential persistence, atomic replacement/rotation/revocation and heartbeat storage are implemented in workers/repository.rs; this is not the full worker-management or execution domain. Policy owner/bootstrap/collection state, opaque policy CRUD/order, project/workspace assignment transactions, cascade handling and IDE/standalone effective-policy resolution execute natively in policies/repository.rs; project/workspace creation and chat execution remain unported. Settings/model/provider/account/catalog persistence and quota-observation insert/deduplication/weekly projections execute natively; telemetry analytics/export/atomic deletion now execute natively; remaining execution and telemetry write consumers are unported."
   },
   "repositoryMethods": {
     "defaultStatus": "unported",
@@ -1017,6 +1056,46 @@
         "evidence": [
           "scripts/server-rust/settings-repository-compatibility.mjs"
         ]
+      },
+      {
+        "method": "getQuotaTokenAnalytics",
+        "implementation": "cantrip_server_rs/src/settings/telemetry",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/telemetry-repository-compatibility.mjs",
+          "cantrip_server_rs/tests/telemetry_semantics.rs"
+        ],
+        "remaining": ["Current-head supported-platform acceptance."]
+      },
+      {
+        "method": "getProviderTelemetryAnalytics",
+        "implementation": "cantrip_server_rs/src/settings/telemetry",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/telemetry-repository-compatibility.mjs",
+          "cantrip_server_rs/tests/telemetry_semantics.rs"
+        ],
+        "remaining": ["Current-head supported-platform acceptance."]
+      },
+      {
+        "method": "exportProviderTelemetry",
+        "implementation": "cantrip_server_rs/src/settings/telemetry",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/telemetry-repository-compatibility.mjs",
+          "cantrip_server_rs/tests/telemetry_semantics.rs"
+        ],
+        "remaining": ["Current-head supported-platform acceptance."]
+      },
+      {
+        "method": "deleteProviderTelemetry",
+        "implementation": "cantrip_server_rs/src/settings/telemetry",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/telemetry-repository-compatibility.mjs",
+          "cantrip_server_rs/tests/telemetry_semantics.rs"
+        ],
+        "remaining": ["Current-head supported-platform acceptance."]
       }
     ]
   },
@@ -1560,6 +1639,21 @@
       "remaining": [
         "Current-head supported-platform acceptance, full product/package flows and original keep-alive shutdown acceptance. The paired shutdown request explicitly asks Connection: close; original Node keep-alive shutdown failure is retained.",
         "Shared production logger formatting/redaction/rate-limit summaries/buffer/archive; this milestone preserves the fixed warning context and message."
+      ]
+    },
+    "providerTelemetry": {
+      "status": "implemented-pending-platform-acceptance",
+      "scope": "Native quota interval attribution, pending consumption, confidence, finite-value statistics, locale and calendar breakdowns, period comparisons and all eight change metrics. Owner-scoped analytics preserve five raw query filters, prior-reading selection and 800-per-account chart sampling. Exports whitelist opaque IDs and structured metrics; deletion atomically removes four history tables while retaining account projections. Owned service tasks survive caller disconnect and drain before database shutdown.",
+      "localEvidence": "3,768 actual Source helper comparisons; 56 repository comparisons per store; 102 exact real HTTP observations per store across accounts and local modes. Deep structured telemetry at 100/150/300 levels is retained through JSONB reads, analytics, protocol validation and export. External PostgreSQL additionally verifies actual blocked DELETE survives caller disconnect and shutdown, all four deletes commit before process exit, and retained reopen on both runtimes (104 HTTP observations total). Equal-timestamp SQL ties are avoided in controlled seed data; response assertions and runtime ordering remain unchanged.",
+      "evidence": [
+        "cantrip_server_rs/tests/telemetry_semantics.rs",
+        "scripts/server-rust/telemetry-repository-compatibility.mjs",
+        "scripts/server-rust/telemetry-http-compatibility.mjs",
+        "scripts/server-rust/telemetry-delete-shutdown.mjs"
+      ],
+      "remaining": [
+        "Current-head supported-platform acceptance. Local all-target Rust passes 92 tests across 44 targets; strict all-target Clippy, rustfmt and changed-file Prettier pass. Root checks retain reproduced baseline CUA, worker filesystem and formatting failures; a broad worker history timeout was not reproduced by focused tests.",
+        "Telemetry write consumers in the unported chat/native execution domains; full product, migration/rollback, packaging and cutover acceptance."
       ]
     }
   },

@@ -5,7 +5,7 @@ use icu_locale_core::Locale;
 use sha2::{Digest, Sha256};
 use std::sync::OnceLock;
 
-fn collator() -> Result<&'static CollatorBorrowed<'static>> {
+pub(super) fn collator() -> Result<&'static CollatorBorrowed<'static>> {
     static VALUE: OnceLock<Result<CollatorBorrowed<'static>, String>> = OnceLock::new();
     VALUE
         .get_or_init(|| {

@@ -239,7 +239,7 @@ async fn operation(
     Ok(match text(r, "op")? {
         "migration-worker" | "migration-account" | "lifecycle-signout" | "auth-resolve"
         | "auth-prepare" | "auth-reauth" | "runtime-catalog" => {
-            provider_services::run(repo, r, input).await?
+            provider_services::run(repo, r, input).boxed().await?
         }
         "openrouter-get" => {
             *public.control.input.lock().unwrap() = input.clone();
@@ -253,6 +253,7 @@ async fn operation(
             let result = public
                 .service
                 .get_provider_catalog(owner()?, text(r, "provider")?, r["force"] == true)
+                .boxed()
                 .await;
             let calls = WireValue::Array(public.control.calls.lock().unwrap().clone());
             match result {
@@ -271,17 +272,18 @@ async fn operation(
                 .send(())
                 .ok()
                 .context("Pending public catalog receiver closed.")?;
-            let errors = public.service.drain().await;
+            let errors = public.service.drain().boxed().await;
             anyhow::ensure!(
                 errors.is_empty(),
                 "Public catalog persistence failed: {errors:?}"
             );
             repo.get_provider_model_catalog(owner()?, text(r, "provider")?, false)
+                .boxed()
                 .await?
                 .unwrap_or(Value::Null)
         }
         "sql" => {
-            repo.database.execute(text(r, "sql")?).await?;
+            repo.database.execute(text(r, "sql")?).boxed().await?;
             Value::Null
         }
         "transaction" => {
@@ -295,23 +297,25 @@ async fn operation(
                 .transaction(move |tx| {
                     Box::pin(async move {
                         for sql in statements {
-                            tx.execute(&sql).await?;
+                            tx.execute(&sql).boxed().await?;
                         }
                         Ok(())
                     })
                 })
+                .boxed()
                 .await?;
             Value::Null
         }
         "query-json" => repo
             .database
             .query(text(r, "sql")?, &[])
+            .boxed()
             .await?
             .first()
             .context("JSON query")?
             .get(0)?,
         "ensure-account" => {
-            repo.ensure_account_configuration(owner()?).await?;
+            repo.ensure_account_configuration(owner()?).boxed().await?;
             Value::Null
         }
         "ensure-default" => {
@@ -320,17 +324,20 @@ async fn operation(
                 text(r, "model")?,
                 text(r, "baseUrl")?,
             )
+            .boxed()
             .await?;
             Value::Null
         }
-        "settings" => repo.get_settings(owner()?).await?,
-        "preferences" => repo.get_user_settings(owner()?).await?,
+        "settings" => repo.get_settings(owner()?).boxed().await?,
+        "preferences" => repo.get_user_settings(owner()?).boxed().await?,
         "update" => repo
             .update_settings(owner()?, &r["input"])
+            .boxed()
             .await?
             .unwrap_or(Value::Null),
         "destination" => repo
             .update_app_destination(owner()?, &r["input"])
+            .boxed()
             .await?
             .unwrap_or(Value::Null),
         "runtimes" => json!(
@@ -341,15 +348,18 @@ async fn operation(
                 r["includeDisabled"].as_bool().unwrap_or(false),
                 r["provider"].as_str()
             )
+            .boxed()
             .await?
         ),
         "catalog-hash" => json!(cantrip_server::settings::catalog::metadata_snapshot(input)?),
         "quota-observe" => json!(
             repo.record_provider_quota_observation(owner()?, input)
+                .boxed()
                 .await?
         ),
         "quota-persist" => json!(
             repo.persist_quota_snapshot(&quota_context(r)?, input)
+                .boxed()
                 .await?
         ),
         "quota-activity" => json!(
@@ -358,6 +368,7 @@ async fn operation(
                 input,
                 r["now"].as_i64().context("activity clock")?
             )
+            .boxed()
             .await?
         ),
         "chatgpt-unavailable" => {
@@ -366,6 +377,7 @@ async fn operation(
                 text(r, "provider")?,
                 text(r, "account")?,
             )
+            .boxed()
             .await?;
             Value::Null
         }
@@ -420,18 +432,18 @@ async fn operation(
             let result: Result<Value> = match text(r,"op")? {
                 "grok-get"=>grok.as_ref().unwrap().get_provider_catalog(&cantrip_server::settings::chatgpt::AccountCatalogRequest{
                     owner:owner()?,provider:text(r,"provider")?,worker:text(r,"worker")?,worker_key_is_string:true,force:r["force"]==true,requested_account:r["account"].as_str(),quota_trigger:r["trigger"].as_str(),
-                }).await.map(|value|json!(value)),
-                "grok-unavailable"=>grok.as_ref().unwrap().mark_account_unavailable(owner()?,text(r,"provider")?,text(r,"account")?).await.map(|()|Value::Null),
+                }).boxed().await.map(|value|json!(value)),
+                "grok-unavailable"=>grok.as_ref().unwrap().mark_account_unavailable(owner()?,text(r,"provider")?,text(r,"account")?).boxed().await.map(|()|Value::Null),
                 "chatgpt-get" => repo.get_chatgpt_provider_catalog(&cantrip_server::settings::chatgpt::AccountCatalogRequest {
                     owner:owner()?,provider:text(r,"provider")?,worker:text(r,"worker")?,worker_key_is_string:true,force:r["force"].as_bool().unwrap_or(false),requested_account:r["account"].as_str(),quota_trigger:r["trigger"].as_str(),
-                },&commands).await.map(|value|json!(value)),
+                },&commands).boxed().await.map(|value|json!(value)),
                 "quota-read" => async {
-                    let (inserted,snapshot)=repo.read_and_persist_quota_snapshot(&quota_context(r)?,&commands,&WireValue::from_serialize(&r["context"]["provider"])).await?;
+                    let (inserted,snapshot)=repo.read_and_persist_quota_snapshot(&quota_context(r)?,&commands,&WireValue::from_serialize(&r["context"]["provider"])).boxed().await?;
                     Ok(json!({"inserted":inserted,"snapshot":serde_json::from_str::<Value>(&snapshot.stringify())?}))
-                }.await,
-                _ => repo.get_ollama_provider_catalog(owner()?,text(r,"provider")?,text(r,"worker")?,r["force"].as_bool().unwrap_or(false),&commands).await.map(|value|json!(value)),
+                }.boxed().await,
+                _ => repo.get_ollama_provider_catalog(owner()?,text(r,"provider")?,text(r,"worker")?,r["force"].as_bool().unwrap_or(false),&commands).boxed().await.map(|value|json!(value)),
             };
-            commands.drained().await;
+            commands.drained().boxed().await;
             let calls: Value = serde_json::from_str(
                 &WireValue::Array(delegate.calls.lock().unwrap().clone()).stringify(),
             )?;
@@ -457,44 +469,53 @@ async fn operation(
         }
         "zai-get" => json!(
             repo.get_zai_provider_catalog(owner()?, text(r, "provider")?)
+                .boxed()
                 .await?
         ),
-        "zai-reconcile" => json!(repo.reconcile_zai_owner_providers(owner()?).await?),
+        "zai-reconcile" => json!(repo.reconcile_zai_owner_providers(owner()?).boxed().await?),
         "zai-predicate" => json!(cantrip_server::settings::zai::is_coding_plan_provider(
             &r["input"]
         )),
         "zai-constants" => cantrip_server::settings::zai::catalog_data().clone(),
         "model-create" => repo
             .create_model_profile(owner()?, input)
+            .boxed()
             .await?
             .unwrap_or(Value::Null),
         "model-update" => repo
             .update_model_profile(owner()?, text(r, "model")?, input)
+            .boxed()
             .await?
             .unwrap_or(Value::Null),
         "model-delete" => json!(
             repo.delete_model_profile(owner()?, text(r, "model")?)
+                .boxed()
                 .await?
         ),
-        "provider-create" => repo.create_model_provider(owner()?, input).await?,
+        "provider-create" => repo.create_model_provider(owner()?, input).boxed().await?,
         "provider-get" => repo
             .get_model_provider(owner()?, text(r, "provider")?)
+            .boxed()
             .await?
             .unwrap_or(Value::Null),
         "provider-update" => repo
             .update_model_provider(owner()?, text(r, "provider")?, input)
+            .boxed()
             .await?
             .unwrap_or(Value::Null),
         "provider-delete" => json!(
             repo.delete_model_provider(owner()?, text(r, "provider")?)
+                .boxed()
                 .await?
         ),
         "provider-runtime" => repo
             .get_provider_catalog_runtime(owner()?, text(r, "provider")?)
+            .boxed()
             .await?
             .unwrap_or(Value::Null),
         "provider-routes" => json!(
             repo.has_model_routes_for_provider(owner()?, text(r, "provider")?)
+                .boxed()
                 .await?
         ),
         "account-runtimes" => json!(
@@ -504,14 +525,17 @@ async fn operation(
                 text(r, "worker")?,
                 r["model"].as_str()
             )
+            .boxed()
             .await?
         ),
         "accounts-list" => json!(
             repo.list_provider_accounts(owner()?, text(r, "provider")?)
+                .boxed()
                 .await?
         ),
         "account-create" => json!(
             repo.create_provider_account(owner()?, text(r, "provider")?, input)
+                .boxed()
                 .await?
         ),
         "account-update" => json!(
@@ -521,6 +545,7 @@ async fn operation(
                 text(r, "account")?,
                 input
             )
+            .boxed()
             .await?
         ),
         "accounts-order" => json!(
@@ -534,10 +559,12 @@ async fn operation(
                     .map(|id| id.as_js_string().cloned().context("account ID"))
                     .collect::<Result<Vec<_>>>()?
             )
+            .boxed()
             .await?
         ),
         "account-delete" => json!(
             repo.delete_provider_account(owner()?, text(r, "provider")?, text(r, "account")?)
+                .boxed()
                 .await?
         ),
         "account-runtime" => json!(
@@ -546,6 +573,7 @@ async fn operation(
                 text(r, "provider")?,
                 r["account"].as_str()
             )
+            .boxed()
             .await?
         ),
         "credential-get" => json!(
@@ -554,15 +582,21 @@ async fn operation(
                 text(r, "provider")?,
                 text(r, "account")?
             )
+            .boxed()
             .await?
         ),
-        "credential-migrations" => json!(repo.list_provider_credential_migrations(owner()?).await?),
+        "credential-migrations" => json!(
+            repo.list_provider_credential_migrations(owner()?)
+                .boxed()
+                .await?
+        ),
         "credential-migration" => json!(
             repo.get_provider_credential_migration(
                 owner()?,
                 text(r, "provider")?,
                 text(r, "account")?
             )
+            .boxed()
             .await?
         ),
         "credential-store" => json!(
@@ -574,6 +608,7 @@ async fn operation(
                 &r["metadata"],
                 r["expectedRevision"].as_f64()
             )
+            .boxed()
             .await?
         ),
         "credential-state" => json!(
@@ -584,6 +619,7 @@ async fn operation(
                 r["expectedRevision"].as_f64().context("revision")?,
                 text(r, "state")?
             )
+            .boxed()
             .await?
         ),
         "credential-clear" => json!(
@@ -593,6 +629,7 @@ async fn operation(
                 text(r, "account")?,
                 r["expectedRevision"].as_f64()
             )
+            .boxed()
             .await?
         ),
         "credential-signout" => json!(
@@ -602,6 +639,7 @@ async fn operation(
                 text(r, "account")?,
                 r["expectedRevision"].as_f64()
             )
+            .boxed()
             .await?
         ),
         "credential-parallel" => json!(
@@ -616,6 +654,7 @@ async fn operation(
                             &r["metadata"],
                             r["expectedRevision"].as_f64(),
                         )
+                        .boxed()
                         .await
                     {
                         Ok(value) => Ok::<_, anyhow::Error>(json!({"value":value})),
@@ -623,6 +662,7 @@ async fn operation(
                     }
                 }
             ))
+            .boxed()
             .await
             .into_iter()
             .collect::<Result<Vec<_>>>()?
@@ -646,6 +686,7 @@ async fn operation(
                 status["planType"].as_str(),
                 weekly,
             )
+            .boxed()
             .await?;
             Value::Null
         }
@@ -658,6 +699,7 @@ async fn operation(
                 chrono::DateTime::parse_from_rfc3339(text(r, "observedAt")?)?
                     .with_timezone(&chrono::Utc)
             )
+            .boxed()
             .await?
         ),
         "account-usage" => {
@@ -679,13 +721,17 @@ async fn operation(
                     r["resetsAt"].as_f64(),
                     used
                 )
+                .boxed()
                 .await?
             )
         }
-        "catalog-targets" => json!(repo.list_provider_catalog_targets(owner()?).await?),
-        "catalog-refresh-targets" => json!(repo.list_provider_refresh_targets(owner()?).await?),
+        "catalog-targets" => json!(repo.list_provider_catalog_targets(owner()?).boxed().await?),
+        "catalog-refresh-targets" => {
+            json!(repo.list_provider_refresh_targets(owner()?).boxed().await?)
+        }
         "catalog-sync" => {
             repo.set_provider_catalog_sync_state(text(r, "provider")?, &r["input"])
+                .boxed()
                 .await?;
             Value::Null
         }
@@ -695,6 +741,7 @@ async fn operation(
                 text(r, "provider")?,
                 r["servedStale"].as_bool().unwrap_or(false)
             )
+            .boxed()
             .await?
         ),
         "catalog-availability" => json!(
@@ -703,6 +750,7 @@ async fn operation(
                 text(r, "provider")?,
                 text(r, "model")?
             )
+            .boxed()
             .await?
         ),
         "catalog-reconcile" => {
@@ -747,6 +795,7 @@ async fn operation(
                             .map(|id| id.lossy().into_owned()),
                     }
                 )
+                .boxed()
                 .await?
             )
         }
@@ -758,6 +807,7 @@ async fn operation(
                     chrono::DateTime::parse_from_rfc3339(text(r, "now")?)?
                         .with_timezone(&chrono::Utc),
                 )
+                .boxed()
                 .await?;
             json!({"total":a.total,"models":a.models,"providers":a.providers})
         }
@@ -836,21 +886,72 @@ async fn main() -> Result<()> {
         ) {
             request["input"] = serde_json::from_str(&raw["input"].stringify())?;
         }
-        let result = operation(&repo, &public, &request, &raw["input"]).await;
-        let mut reply = json!({"id":request["id"],"rejected":result.is_err()});
+        // Keep the IPC dispatch future on the heap. Its independent database
+        // and service futures are boxed at their await boundaries as well;
+        // embedding all of them in one union exhausted the Windows main stack.
+        let result: Result<WireValue> = async {
+            Ok(match text(&request, "op")? {
+                "telemetry-export" => repo
+                    .export_provider_telemetry(
+                        text(&request, "owner")?,
+                        text(&request, "provider")?,
+                    )
+                    .boxed()
+                    .await?
+                    .unwrap_or(WireValue::Null),
+                "telemetry-delete" => repo
+                    .delete_provider_telemetry(
+                        text(&request, "owner")?,
+                        text(&request, "provider")?,
+                    )
+                    .boxed()
+                    .await?
+                    .unwrap_or(WireValue::Null),
+                "telemetry-analytics" | "telemetry-quota" => {
+                    let query = cantrip_server::settings::telemetry::TelemetryQuery::from_value(
+                        &raw["query"],
+                    )?;
+                    if request["op"] == "telemetry-analytics" {
+                        repo.get_provider_telemetry_analytics(text(&request, "owner")?, &query)
+                            .boxed()
+                            .await?
+                    } else {
+                        repo.get_quota_token_analytics(text(&request, "owner")?, &query)
+                            .boxed()
+                            .await?
+                    }
+                }
+                _ => WireValue::from_serialize(
+                    &operation(&repo, &public, &request, &raw["input"])
+                        .boxed()
+                        .await?,
+                ),
+            })
+        }
+        .boxed()
+        .await;
+        let mut reply = WireValue::object([
+            ("id", raw["id"].clone()),
+            ("rejected", WireValue::Bool(result.is_err())),
+        ]);
         match result {
             Ok(value) => reply["value"] = value,
             Err(error) => {
-                reply["diagnostic"] = json!(error.to_string());
+                reply["diagnostic"] = WireValue::String(error.to_string().into());
                 if let Some(kind) =
                     error.downcast_ref::<cantrip_server::settings::accounts::CredentialConflict>()
                 {
-                    reply["kind"] = json!(match kind {
-                        cantrip_server::settings::accounts::CredentialConflict::Identity =>
-                            "credential-identity",
-                        cantrip_server::settings::accounts::CredentialConflict::Revision =>
-                            "credential-revision",
-                    });
+                    reply["kind"] = WireValue::String(
+                        (match kind {
+                            cantrip_server::settings::accounts::CredentialConflict::Identity => {
+                                "credential-identity"
+                            }
+                            cantrip_server::settings::accounts::CredentialConflict::Revision => {
+                                "credential-revision"
+                            }
+                        })
+                        .into(),
+                    );
                 }
             }
         };

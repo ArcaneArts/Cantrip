@@ -5,6 +5,7 @@ use crate::{
     workers::{command_bus::LimitedCommandBus, repository::WorkerRepository},
 };
 use anyhow::Result;
+use futures::FutureExt;
 use serde_json::{Value as Json, json};
 use std::{collections::HashSet, sync::Arc, time::Duration};
 
@@ -12,7 +13,7 @@ fn positive_integer(value: &Value) -> Option<f64> {
     value
         .as_f64()
         .filter(|number| number.is_finite() && *number > 0.0)
-        .map(f64::round)
+        .map(super::round_nonnegative)
         .filter(|number| *number != 0.0)
 }
 fn context_window(model: &Value) -> Value {
@@ -123,6 +124,7 @@ impl SettingsRepository {
         commands: &Arc<LimitedCommandBus>,
     ) -> Result<Option<Json>> {
         self.get_ollama_provider_catalog_for_key(owner, provider, worker, force, commands, true)
+            .boxed()
             .await
     }
     pub(super) async fn get_ollama_provider_catalog_for_key(
@@ -192,10 +194,10 @@ impl SettingsRepository {
             self.reconcile_provider_model_catalog(owner,provider,CatalogUpdate {
                 models, available, availability_scope:scope.clone(), auto_create:true, auto_create_native_ids:None,
                 worker_id:Some(worker.into()), account_id:None, default_native_id:None,
-            }).await?;
+            }).boxed().await?;
             self.set_provider_catalog_sync_state(provider, &json!({"scopeKey":scope,"workerId":worker,"status":"current","errorCode":null,"lastSuccessAt":now()})).await?;
             self.get_provider_model_catalog(owner,provider,false).await
-        }.await;
+        }.boxed().await;
         match refresh {
             Ok(result) => Ok(result),
             Err(error) => {

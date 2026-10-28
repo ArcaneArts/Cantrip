@@ -176,6 +176,45 @@ impl AccountService {
         }
         .boxed()
     }
+    pub fn telemetry_analytics(
+        self: &Arc<Self>,
+        owner: &str,
+        query: super::telemetry::TelemetryQuery,
+    ) -> BoxFuture<'static, Result<Value>> {
+        let owner = owner.to_owned();
+        self.launch(move |service| async move {
+            service
+                .repository
+                .get_provider_telemetry_analytics(&owner, &query)
+                .await
+        })
+    }
+    pub fn telemetry_export(
+        self: &Arc<Self>,
+        owner: &str,
+        provider: &str,
+    ) -> BoxFuture<'static, Result<Option<Value>>> {
+        let (owner, provider) = (owner.to_owned(), provider.to_owned());
+        self.launch(move |service| async move {
+            service
+                .repository
+                .export_provider_telemetry(&owner, &provider)
+                .await
+        })
+    }
+    pub fn telemetry_delete(
+        self: &Arc<Self>,
+        owner: &str,
+        provider: &str,
+    ) -> BoxFuture<'static, Result<Option<Value>>> {
+        let (owner, provider) = (owner.to_owned(), provider.to_owned());
+        self.launch(move |service| async move {
+            service
+                .repository
+                .delete_provider_telemetry(&owner, &provider)
+                .await
+        })
+    }
     pub fn delete_account(
         self: &Arc<Self>,
         owner: &str,

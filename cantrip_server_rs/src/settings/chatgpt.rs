@@ -2,6 +2,7 @@ pub use super::account_catalog::AccountCatalogRequest;
 use super::repository::SettingsRepository;
 use crate::{wire::Value, workers::command_bus::LimitedCommandBus};
 use anyhow::Result;
+use futures::FutureExt;
 use serde_json::{Value as Json, json};
 use std::sync::Arc;
 
@@ -109,6 +110,7 @@ impl SettingsRepository {
             provider,
             account,
         )
+        .boxed()
         .await
     }
     pub async fn get_chatgpt_provider_catalog(
@@ -122,6 +124,7 @@ impl SettingsRepository {
             super::account_catalog::Family::ChatGpt,
             None,
         )
+        .boxed()
         .await
     }
 }

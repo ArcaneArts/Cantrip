@@ -1,4 +1,8 @@
 import * as p from "../../packages/protocol/dist/index.js";
+import {
+  telemetryWireFixtures,
+  telemetryWireCases,
+} from "./telemetry-wire-fixtures.mjs";
 import { policyEnvelope } from "./policy-wire-fixtures.mjs";
 import {
   chatGptCatalogModel,
@@ -56,6 +60,7 @@ const providerAccount = {
   updatedAt: "2026-10-25T00:00:00.000Z",
 };
 export const settingsWireFixtures = {
+  ...telemetryWireFixtures,
   providerModelCatalogResultSchema: [
     {
       providerId: "fixture-provider",
@@ -339,6 +344,7 @@ export const settingsWireFixtures = {
 };
 
 export function* settingsWireCases(name) {
+  yield* telemetryWireCases(name);
   if (name === "providerRateLimitResetConsumeRequestSchema") {
     const sample = settingsWireFixtures[name][0];
     for (const length of [0, 1, 500, 501])

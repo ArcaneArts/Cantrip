@@ -9,6 +9,7 @@ use crate::{
 };
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
+use futures::FutureExt;
 use serde_json::{Value, json};
 use std::{collections::HashMap, sync::Arc};
 
@@ -387,13 +388,13 @@ impl SettingsRepository {
         let at = now();
         let parameters: Parameters<'_> = &[&owner];
         let (preferences,providers,accounts,bindings,models,routes,provider_usage,model_usage,time) = tokio::try_join!(
-            self.get_user_settings(owner),
-            self.json_rows("SELECT to_jsonb(p) FROM model_providers p WHERE owner_id=$1 ORDER BY name ASC", parameters),
-            self.json_rows("SELECT to_jsonb(a) FROM model_provider_accounts a INNER JOIN model_providers p ON p.id=a.provider_id AND p.owner_id=$1 ORDER BY a.position ASC", parameters),
-            self.json_rows("SELECT to_jsonb(b) FROM model_provider_account_workers b INNER JOIN model_provider_accounts a ON a.id=b.account_id INNER JOIN model_providers p ON p.id=a.provider_id AND p.owner_id=$1", parameters),
-            self.json_rows("SELECT to_jsonb(m) FROM model_profiles m WHERE owner_id=$1 ORDER BY name ASC", parameters),
-            self.json_rows("SELECT jsonb_build_object('route',to_jsonb(r),'providerName',p.name) FROM model_routes r INNER JOIN model_profiles m ON m.id=r.model_id INNER JOIN model_providers p ON p.id=r.provider_id WHERE m.owner_id=$1 ORDER BY r.position ASC", parameters),
-            self.usage_totals(owner,true),self.usage_totals(owner,false),self.agent_time_analytics(owner,None,at),
+            self.get_user_settings(owner).boxed(),
+            self.json_rows("SELECT to_jsonb(p) FROM model_providers p WHERE owner_id=$1 ORDER BY name ASC", parameters).boxed(),
+            self.json_rows("SELECT to_jsonb(a) FROM model_provider_accounts a INNER JOIN model_providers p ON p.id=a.provider_id AND p.owner_id=$1 ORDER BY a.position ASC", parameters).boxed(),
+            self.json_rows("SELECT to_jsonb(b) FROM model_provider_account_workers b INNER JOIN model_provider_accounts a ON a.id=b.account_id INNER JOIN model_providers p ON p.id=a.provider_id AND p.owner_id=$1", parameters).boxed(),
+            self.json_rows("SELECT to_jsonb(m) FROM model_profiles m WHERE owner_id=$1 ORDER BY name ASC", parameters).boxed(),
+            self.json_rows("SELECT jsonb_build_object('route',to_jsonb(r),'providerName',p.name) FROM model_routes r INNER JOIN model_profiles m ON m.id=r.model_id INNER JOIN model_providers p ON p.id=r.provider_id WHERE m.owner_id=$1 ORDER BY r.position ASC", parameters).boxed(),
+            self.usage_totals(owner,true).boxed(),self.usage_totals(owner,false).boxed(),self.agent_time_analytics(owner,None,at).boxed(),
         )?;
         let providers = providers
             .iter()
@@ -486,6 +487,7 @@ impl SettingsRepository {
             if let Some(model) = input[field].as_str().filter(|id| !id.is_empty())
                 && self
                     .get_model_runtimes(owner, Some(model), None, false, None)
+                    .boxed()
                     .await?
                     .is_empty()
             {
@@ -532,7 +534,9 @@ impl SettingsRepository {
         }
         sets.push("updated_at=$3".into());
         self.database.query(&format!("UPDATE user_settings s SET {} FROM jsonb_populate_record(NULL::user_settings,$2::jsonb) v WHERE s.user_id=$1",sets.join(",")), &[&owner,&Value::Object(values),&now()]).await?;
-        Ok(Some(self.get_settings(owner).await?))
+        // Keep the complete settings projection out of the mutation future's
+        // inline state. Windows' main-stack limit exposed this nested frame.
+        Ok(Some(self.get_settings(owner).boxed().await?))
     }
 
     pub async fn get_model_runtimes(

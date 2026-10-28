@@ -8,6 +8,7 @@ use crate::{
     workers::{command_bus::LimitedCommandBus, repository::WorkerRepository},
 };
 use anyhow::{Context, Result};
+use futures::FutureExt;
 use serde_json::{Value as Json, json};
 use std::{sync::Arc, time::Duration};
 
@@ -80,6 +81,7 @@ impl SettingsRepository {
                 default_native_id: None,
             },
         )
+        .boxed()
         .await?;
         self.set_provider_catalog_sync_state(provider,&json!({"scopeKey":scope,"workerId":null,"providerAccountId":account,"status":"current","errorCode":null,"lastSuccessAt":now()})).await
     }
@@ -209,7 +211,7 @@ impl SettingsRepository {
                 self.set_provider_catalog_sync_state(provider,&json!({"scopeKey":scope,"workerId":null,"providerAccountId":id,"status":"current","errorCode":null,"lastSuccessAt":now()})).await?;
                 succeeded+=1;
                 Ok(())
-            }.await;
+            }.boxed().await;
             if let Err(error) = refresh {
                 last_error = Some(error);
                 self.set_provider_catalog_sync_state(provider,&json!({"scopeKey":scope,"workerId":null,"providerAccountId":id,"status":if has_models {"stale"} else {"failed"},"errorCode":format!("{}-catalog-refresh-failed",family.kind())})).await?;
