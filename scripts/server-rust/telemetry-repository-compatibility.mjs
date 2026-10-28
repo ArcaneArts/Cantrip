@@ -21,6 +21,8 @@ const report = {
   databaseMode,
   root,
   completeReplacement: false,
+  repositoryParityPassed: false,
+  timestampBoundsPassed: false,
   runtimes: [],
 };
 const owners = [
@@ -58,20 +60,28 @@ try {
       });
     let repository = await open();
     const request = async (label, input) => {
+      const monotonicBefore = process.hrtime.bigint();
       const before = Date.now(),
         response = await repository.request(input);
       if (
         response.value?.generatedAt &&
         !(input.op === "telemetry-quota" && input.query?.to != null)
       ) {
-        assert.ok(
-          Date.parse(response.value.generatedAt) >= before &&
-            Date.parse(response.value.generatedAt) <= Date.now(),
-        );
-        result.exports.push({
+        // Preserve the actual observation before asserting it. In Windows CI
+        // the unmodified Node reference failed here after reopen, but the old
+        // report discarded both the failed timestamp and its request bounds.
+        const timing = {
           label,
+          kind,
+          before,
+          after: Date.now(),
           actualGeneratedAt: response.value.generatedAt,
-        });
+          generatedMilliseconds: Date.parse(response.value.generatedAt),
+          elapsedNanoseconds: (
+            process.hrtime.bigint() - monotonicBefore
+          ).toString(),
+        };
+        result.exports.push(timing);
         response.value.generatedAt = "<actual-generated-timestamp>";
       }
       const normalized = {
@@ -405,6 +415,18 @@ try {
     report.runtimes[0].observations,
     "actual repository exports and rollback state",
   );
+  report.repositoryParityPassed = true;
+  // A timing observation must not prevent the actual Rust operations and
+  // source comparison from running. Keep the same inclusive bounds and fail
+  // the suite after both implementations have exercised the complete sequence.
+  for (const runtime of report.runtimes)
+    for (const timing of runtime.exports)
+      assert.ok(
+        timing.generatedMilliseconds >= timing.before &&
+          timing.generatedMilliseconds <= timing.after,
+        JSON.stringify(timing),
+      );
+  report.timestampBoundsPassed = true;
 } catch (error) {
   failure = error;
   report.failure = { message: error.message, stack: error.stack };
