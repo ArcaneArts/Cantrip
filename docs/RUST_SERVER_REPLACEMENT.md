@@ -2,6 +2,34 @@
 
 Status: **implementation in progress; not a deployable replacement**.
 
+The existing browser account/provider API modules and AppLiveClient now run a
+real Ollama catalog operation through each server and the full, unchanged built
+worker entrypoint. Local macOS runs pass eight product steps per runtime on
+native PGlite, private PostgreSQL and external PostgreSQL: account/session setup,
+worker enrollment and command readiness, committed Live notification, provider
+creation and discovery, retained catalog while stopped, persisted-credential
+worker restart, stale-catalog behavior after an actual Ollama HTTP 503, and
+recovery. Catalog capabilities, worker-scoped availability, sync state and model
+identity are checked through the existing client. The test builds the native
+Cantrip CLI required by worker startup; no worker command handler is replaced.
+All twelve worker processes exit cleanly on macOS. The installed Codex runtime
+is advertised as incompatible; this flow does not execute Codex or a model.
+Windows process termination does not exercise Node's Unix shutdown handlers.
+Supported-platform CI is configured but remains unaccepted. Full UI, execution,
+packaging and deployment acceptance are still required.
+
+```sh
+pnpm --filter @cantrip/worker build
+node --import tsx scripts/server-rust/actual-worker-client.mjs --report .qa/rust-server/actual-worker-client-pglite.json
+node --import tsx scripts/server-rust/actual-worker-client.mjs --database bundled-postgres --report .qa/rust-server/actual-worker-client-bundled.json
+node --import tsx scripts/server-rust/actual-worker-client.mjs --database postgres --report .qa/rust-server/actual-worker-client-external.json
+```
+
+Build shared workspace packages and install Chromium as for the existing
+browser harness. The PostgreSQL modes use `CANTRIP_TEST_POSTGRES_BIN_DIR`.
+Every worker uses a disposable data directory and its real startup, enrollment,
+transport, command dispatcher and catalog implementation.
+
 Global settings reads and provider create/update/delete now use native services.
 Settings reads reconcile the bundled Z.ai catalog before returning their snapshot
 and start account/Ollama discovery without delaying the response. Provider
@@ -389,8 +417,9 @@ or product-flow acceptance matrix.
    configuration parity is implemented and requires cross-platform acceptance.
 3. Port authentication, sessions, tenant authorization, encryption envelopes,
    worker enrollment and revocation.
-4. Complete an unchanged app-to-worker operation, including ordered events,
-   reconnect continuity and committed App Live notifications.
+4. Extend the actual browser-to-full-worker Ollama operation to the remaining
+   resource/execution flows, ordered events, reconnect continuity and committed
+   App Live notifications across supported artifacts and platforms.
 5. Port durable account, provider, policy, project, workspace, source, worktree,
    file, tab, surface, chat, attachment, usage and administration domains.
 6. Port native admission/receipts, history, managed queues, settings/permissions,

@@ -49,12 +49,12 @@ on:
       - cantrip_server/test/worker-notification-connect-order.test.ts
       - cantrip_server/test/buffered-worker-socket.test.ts
       - cantrip_server/test/websocket-subprotocol.test.ts
-      - cantrip_worker/src/transport.ts
-      - cantrip_worker/src/enrollment.ts
-      - cantrip_worker/src/heartbeat.ts
-      - cantrip_worker/src/credential-store.ts
+      - cantrip_worker/**
+      - cantrip_cli/**
       - cantrip_app/src/lib/api/workers.ts
       - cantrip_app/src/lib/api/account.ts
+      - cantrip_app/src/lib/api/models.ts
+      - cantrip_app/src/lib/protected-secrets.ts
       - cantrip_app/src/lib/api-client.ts
       - cantrip_app/src/lib/app-live-client.ts
       - cantrip_server/src/app/http/**
@@ -63,6 +63,7 @@ on:
       - packages/protocol/**
       - packages/crypto/**
       - scripts/server-rust/**
+      - scripts/cantrip-cli/**
       - scripts/version.mjs
       - version.json
       - package.json
@@ -130,8 +131,16 @@ jobs:
           echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(brew --prefix postgresql@18)/bin" >> "$GITHUB_ENV"
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol --filter @cantrip/crypto --filter @cantrip/glitch -r build
+      - name: Build the production worker used by browser integration
+        run: pnpm --filter @cantrip/worker build
       - name: Browser for unchanged client and worker control integration
         run: node node_modules/playwright-core/cli.js install --with-deps chromium
+      - name: Actual browser, server and full worker catalog flow with PGlite
+        run: node --import tsx scripts/server-rust/actual-worker-client.mjs --report .qa/rust-server/actual-worker-client-pglite.json
+      - name: Actual browser, server and full worker catalog flow with private PostgreSQL
+        run: node --import tsx scripts/server-rust/actual-worker-client.mjs --database bundled-postgres --report .qa/rust-server/actual-worker-client-bundled.json
+      - name: Actual browser, server and full worker catalog flow with external PostgreSQL
+        run: node --import tsx scripts/server-rust/actual-worker-client.mjs --database postgres --report .qa/rust-server/actual-worker-client-external.json
       - name: Reference worker authentication shutdown and socket ordering
         # Each integration file initializes PGlite's WASM runtime and full SQL
         # schema. Avoid competing cold initializations on the hosted runners.
