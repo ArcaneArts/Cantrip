@@ -108,6 +108,53 @@ async fn main() -> Result<()> {
                 Ok(Value::Null)
             } else if request["op"]
                 .as_str()
+                .is_some_and(|op| op.starts_with("terminal-"))
+            {
+                let repo = cantrip_server::terminals::Repository::new(database.clone());
+                let owner = request["owner"].as_str().context("Terminal owner")?;
+                let terminal = request["terminal"]
+                    .as_js_string()
+                    .map(|s| s.lossy().into_owned())
+                    .unwrap_or_default();
+                match request["op"].as_str().unwrap() {
+                    "terminal-list" => Ok(Value::Array(
+                        repo.list(
+                            owner,
+                            request["project"].as_str().context("Terminal project")?,
+                        )
+                        .await?,
+                    )),
+                    "terminal-context" => {
+                        Ok(repo.context(owner, &terminal).await?.unwrap_or(Value::Null))
+                    }
+                    "terminal-update" => Ok(repo
+                        .update(owner, &terminal, &request["input"])
+                        .await?
+                        .unwrap_or(Value::Null)),
+                    "terminal-service" => Ok(repo
+                        .configure_service(owner, &terminal, &request["input"])
+                        .await?
+                        .unwrap_or(Value::Null)),
+                    "terminal-create" => {
+                        let connected = |id: &str| {
+                            request["connected"]
+                                .as_array()
+                                .is_some_and(|v| v.iter().any(|v| v == id))
+                        };
+                        Ok(repo
+                            .create(
+                                owner,
+                                request["project"].as_str().context("Terminal project")?,
+                                &request["input"],
+                                Some(&connected),
+                            )
+                            .await?
+                            .unwrap_or(Value::Null))
+                    }
+                    _ => anyhow::bail!("Unknown terminal operation"),
+                }
+            } else if request["op"]
+                .as_str()
                 .is_some_and(|s| s.starts_with("folder-"))
             {
                 folder_operation(&folders, &request).boxed().await

@@ -55,6 +55,43 @@ try {
           request.status,
         );
         value = null;
+      } else if (request.op.startsWith("terminal-")) {
+        const repo = database.repository;
+        switch (request.op) {
+          case "terminal-list":
+            value = await repo.listTerminals(request.owner, request.project);
+            break;
+          case "terminal-context":
+            value = await repo.getTerminalExecutionContext(
+              request.owner,
+              request.terminal,
+            );
+            break;
+          case "terminal-update":
+            value = await repo.updateTerminal(
+              request.owner,
+              request.terminal,
+              request.input,
+            );
+            break;
+          case "terminal-service":
+            value = await repo.updateTerminalService(
+              request.owner,
+              request.terminal,
+              request.input,
+            );
+            break;
+          case "terminal-create":
+            value = await repo.createTerminal(
+              request.owner,
+              request.project,
+              request.input,
+              (id) => request.connected?.includes(id) ?? false,
+            );
+            break;
+          default:
+            throw new Error("Unknown terminal operation");
+        }
       } else if (request.op.startsWith("folder-")) {
         const repo = database.repository;
         const jobs = repo.projectFolderSetupJobs;
@@ -196,7 +233,9 @@ try {
           ...(request.op.startsWith("folder-")
             ? { folderError: error.constructor.name }
             : {}),
-          ...(["placement", "target-resolve"].includes(request.op)
+          ...(["placement", "target-resolve", "terminal-create"].includes(
+            request.op,
+          )
             ? { code: error.code }
             : {}),
         }),

@@ -2,6 +2,60 @@
 
 Status: **implementation in progress; not a deployable replacement**.
 
+## Terminal management and encrypted PTY services
+
+The Rust server implements terminal listing, creation, encrypted title updates,
+service configuration and service restart. Creation preserves execution placement,
+cross-resource tab positions, pane selection and membership, center topology and
+layout revisions in one transaction. Center validation preserves duplicate-node,
+set-membership, depth and node-count failures. Position overflow reaches an actual
+PostgreSQL integer conversion instead of wrapping in Rust.
+
+Managed-runtime terminals retain their read-only errors. Linked consoles cannot
+become services. Service configuration persists before worker reconciliation;
+a later reconciliation failure retains the configuration and records offline
+status. Status and response-completion invalidations retain their separate
+current-user/project scopes and ordering. Shared custom validation issues now
+preserve the reference property order when rendered into error-message strings.
+
+Local macOS actual-source comparisons pass 9,639 protocol and error-message cases,
+35 repository cases and 29 complete state snapshots on each store. Failed
+creation leaves exact terminal, pane, membership, topology, revision and timestamp
+snapshots unchanged. Independent SQL ties retain raw order in the receipts while
+comparisons enforce the declared position/creation-time ordering. Actual HTTP and
+Live comparisons pass 79 observations per runtime/store across local and account
+profiles, with nonempty ordered notifications and tenant isolation. A real
+PostgreSQL pane-member INSERT remains owned after its caller disconnects and
+shutdown begins; lock release atomically commits the terminal, membership and
+layout revision, which remain after reopening.
+
+The existing browser encryption and terminal API modules also run against each
+server and the full unchanged worker. All 13 combined folder/terminal product
+steps pass on all three stores. A terminal in the newly created managed folder
+decrypts its title/state at the endpoints, runs a persistent real PTY process,
+restarts, rejects an offline restart, resumes its persisted service on reconnect
+and stops the process when disabled. Request-body checks retain opaque titles,
+commands and paths. The test never changes persisted worker encryption bindings
+to accommodate the fixture's later port-changing server restart.
+
+All 100 native tests and strict all-target Clippy pass. The production native
+PGlite HTTP matrix also passes with an observed 1 MiB main stack. The standard
+`pnpm check` passes typechecking and the server/app/protocol suites, then fails
+the existing worker filesystem-notification test. Focused current and clean
+baseline runs both reproduce that failure with nine passing tests; all 2,072
+compared Node server, worker, shared and dependency files are identical.
+
+```sh
+node --import tsx scripts/server-rust/terminal-repository-compatibility.mjs --report .qa/rust-server/terminal-repository-pglite.json
+node --import tsx scripts/server-rust/terminal-http-compatibility.mjs --report .qa/rust-server/terminal-http-pglite.json
+node --import tsx scripts/server-rust/actual-folder-client.mjs --terminals --report .qa/rust-server/actual-terminals-pglite.json
+```
+
+Repeat with `--database bundled-postgres` and `--database postgres`. Supported
+platforms, packaging, movement/deletion and resource revocation, interactive
+terminal output, WorkerLink/direct attachments and shared coordination remain
+required by the complete replacement goal.
+
 ## Worker encryption refresh and terminal-service reconciliation
 
 The Rust server implements worker encryption refresh with the existing request
@@ -32,9 +86,10 @@ sibling remains owned through shutdown and commits after lock release.
 The existing browser repository flow now approves and refreshes its encryption
 grant through each server and the full unchanged worker. All nine folder product
 steps pass on all three stores without manual grant preloading or a worker
-restart to acquire the key. Full terminal CRUD, actual encrypted PTY service
-flows, shared coordination, supported-platform acceptance and packaging remain
-required by the replacement goal.
+restart to acquire the key. The following terminal milestone adds management
+and actual encrypted PTY service flows. Movement/deletion, terminal transports,
+shared coordination, supported-platform acceptance and packaging remain required
+by the replacement goal.
 
 ```sh
 node --import tsx scripts/server-rust/maintenance-repository-compatibility.mjs --report .qa/rust-server/maintenance-repository-pglite.json

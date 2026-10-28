@@ -11,6 +11,7 @@ pub mod policies;
 pub mod projects;
 pub mod relay;
 pub mod settings;
+pub mod terminals;
 mod text;
 pub mod usage;
 pub mod wire;
