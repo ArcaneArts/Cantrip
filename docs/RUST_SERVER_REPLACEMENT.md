@@ -2,6 +2,58 @@
 
 Status: **implementation in progress; not a deployable replacement**.
 
+## Worker encryption refresh and terminal-service reconciliation
+
+The Rust server implements worker encryption refresh with the existing request
+and response contracts, 20-second command deadline, owner checks, error mapping
+and successful post-response worker invalidation. Only a material fingerprint
+change for surface-private-state triggers terminal-service reconciliation;
+timestamps and grant ordering do not. Reconciliation reads enabled services from
+their bound worker worktrees, sends the actual 30-second worker command, then
+starts parallel running-status writes and current-user terminal invalidations.
+No response schema is imposed on the reconciliation command.
+
+Worker reconnect also runs reconciliation. The reference callback inherits its
+HTTP application-owner context: local sockets publish terminal invalidations,
+while credential-only account sockets commit status updates without an owner for
+their best-effort publication. Authenticated refresh requests publish under the
+requesting account. Raw Live receipts retain arrival order; independent terminal
+writes can complete in either order, and successful refresh always publishes its
+worker invalidation after those writes.
+
+Local macOS comparisons pass 25,600 actual TypeScript helper cases, 22 repository
+cases and three SQL state snapshots on each of the three stores, and 45 HTTP
+observations per runtime/store across local and account profiles. The HTTP matrix
+requires nonempty terminal events and rejects foreign-owner delivery. Actual
+PostgreSQL locks prove that status writes survive caller disconnect and shutdown.
+A rejected status write returns HTTP 502 before a held sibling completes; that
+sibling remains owned through shutdown and commits after lock release.
+
+The existing browser repository flow now approves and refreshes its encryption
+grant through each server and the full unchanged worker. All nine folder product
+steps pass on all three stores without manual grant preloading or a worker
+restart to acquire the key. Full terminal CRUD, actual encrypted PTY service
+flows, shared coordination, supported-platform acceptance and packaging remain
+required by the replacement goal.
+
+```sh
+node --import tsx scripts/server-rust/maintenance-repository-compatibility.mjs --report .qa/rust-server/maintenance-repository-pglite.json
+node --import tsx scripts/server-rust/maintenance-http-compatibility.mjs --report .qa/rust-server/maintenance-http-pglite.json
+```
+
+Repeat with `--database bundled-postgres` and `--database postgres`. The latter
+HTTP suite exercises the actual locks and shutdown faults.
+
+All 98 native tests and strict all-target Clippy pass locally. Existing worker,
+command-quota and folder HTTP regressions also pass. The production native
+PGlite HTTP matrix passes with an observed 1 MiB main-stack limit.
+The standard `pnpm check` passes typechecking and the server/app/protocol suites,
+then fails two existing worker worktree tests. A focused current run passes all
+ten tests; a clean retained baseline still reproduces the filesystem failure.
+All 2,072 compared Node server, worker, shared and dependency files are identical
+to that baseline; the earlier baseline receipts also retain both failing tests.
+The repository-wide check is not reported as passing.
+
 ## Managed-folder provisioning
 
 Native folder creation now includes default workspace/storage bootstrap,
@@ -15,8 +67,7 @@ invalidations retain the existing creation and retry notifications.
 The worker-scoped encrypted repository-operation route also runs natively.
 Private path registration and resolution use the existing browser encryption and
 full worker implementation; the server routes ciphertext and opaque handles.
-Project/worktree agent operations and worker encryption-refresh routing still
-require their separate native consumers.
+Project/worktree agent operations still require their separate native consumers.
 
 Repository comparisons inspect seven complete SQL tables and rejected-write
 snapshots: 56 cases and 33 snapshots pass on all three stores, including missing
@@ -41,9 +92,9 @@ project and repository APIs against each server and the full built Node worker.
 It creates real worker directories, attaches an existing folder without changing
 its file, repairs an actual missing path and retries, resumes an offline job on
 reconnect, and reopens encrypted labels and completed jobs after server restart.
-Names and paths are checked for absence from server request bodies. The worker
-loads an approved repository grant at startup; this does not establish support
-for the still-unported browser encryption-refresh route. These are focused product
+Names and paths are checked for absence from server request bodies. The browser
+now authorizes and refreshes the repository grant through the normal existing
+client flow without restarting the worker. These are focused product
 flows, with full UI, project/worktree routes, shared coordination, supported
 platforms and packaging still required.
 

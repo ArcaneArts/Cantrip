@@ -33,6 +33,7 @@ mod settings;
 mod usage;
 mod usage_hooks;
 mod websocket;
+mod worker_maintenance;
 mod worker_socket;
 mod workers;
 
@@ -121,6 +122,7 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(provider_quota::routes())
         .merge(provider_telemetry::routes())
         .merge(workers::routes())
+        .merge(worker_maintenance::routes())
         .merge(worker_socket::routes())
         .merge(live_socket::routes())
         .fallback(not_found)

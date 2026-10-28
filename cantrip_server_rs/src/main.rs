@@ -174,6 +174,7 @@ async fn main() -> Result<()> {
         // Finish active HTTP requests before permanently closing the bridge,
         // disabling publications, or draining service/database owners.
         service.folder_setup.stop();
+        service.worker_maintenance.stop();
         service.live.close();
         service.workers.close();
         service.live.transports.drained().await;
@@ -190,6 +191,7 @@ async fn main() -> Result<()> {
         }
         service.workers.commands.drained().await;
         service.folder_setup.drained().await;
+        service.worker_maintenance.drained().await;
         service.mutation_audits.drained().await;
         service.usage.close().await;
     }

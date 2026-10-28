@@ -115,7 +115,9 @@
     "managedFolderMaterializeReadySchema": 6454,
     "projectWorkspaceStorageContextSchema": 2785,
     "repositoryWorkerOperationWireRequestSchema": 6466,
-    "repositoryOperationWireResponseSchema": 6469
+    "repositoryOperationWireResponseSchema": 6469,
+    "workerEncryptionRefreshRequestSchema": 6496,
+    "workerEncryptionRefreshResultSchema": 6497
   },
   "nodes": [
     {
@@ -37415,6 +37417,21 @@
       "checks": []
     },
     { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "workerEncryptionRefreshRequestSchema",
+      "shape": { "component": 105, "keyRevision": 23 },
+      "catchall": 2358,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "workerEncryptionRefreshResultSchema",
+      "shape": { "component": 105, "keyRevision": 23, "status": 360 },
+      "catchall": 6498,
+      "checks": []
+    },
     { "type": "never", "checks": [] }
   ]
 }

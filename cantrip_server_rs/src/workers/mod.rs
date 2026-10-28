@@ -2,6 +2,7 @@ pub mod bridge;
 pub mod command_bus;
 pub mod credentials;
 pub mod limits;
+pub mod maintenance;
 mod notifications;
 pub mod repository;
 pub mod request;
