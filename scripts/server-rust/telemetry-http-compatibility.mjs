@@ -4,13 +4,17 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { buildRustServer, buildRustExample } from "./build.mjs";
+import { buildRustExample } from "./build.mjs";
 import { HttpFixture } from "./http-fixture.mjs";
 import { LiveProbe } from "./live-sockets.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
 import { repositoryFixture } from "./repository-fixture.mjs";
 import { policyEnvelope } from "./policy-wire-fixtures.mjs";
 import { telemetryDeleteShutdown } from "./telemetry-delete-shutdown.mjs";
+import {
+  startOperationClock,
+  assertGeneratedAtInOperation,
+} from "./operation-clock.mjs";
 const option = (key) => {
   const i = process.argv.indexOf(key);
   return i < 0 ? undefined : process.argv[i + 1];
@@ -24,6 +28,8 @@ const report = {
   root,
   completeReplacement: false,
   profiles: [],
+  httpParityPassed: false,
+  timestampBoundsPassed: false,
 };
 const literal = (value) => "'" + String(value).replaceAll("'", "''") + "'";
 const anchor = Math.floor(Date.now() / 86400000) * 86400000;
@@ -36,7 +42,8 @@ const seedTimes = new Set([...times, reset]);
 let postgresOwner, failure;
 try {
   const executable =
-    process.env.CANTRIP_RUST_SERVER_BINARY ?? (await buildRustServer());
+    process.env.CANTRIP_RUST_SERVER_BINARY ??
+    (await buildRustExample("http-clock-fixture"));
   const repositoryExecutable = await buildRustExample(
     "settings-repository-fixture",
   );
@@ -56,6 +63,7 @@ try {
         root,
         name: mode,
         databaseMode,
+        observeHttpClocks: true,
         environment: {
           CANTRIP_AUTH_MODE: mode,
           CANTRIP_REGISTRATION_ENABLED: "true",
@@ -74,32 +82,44 @@ try {
           ? value
           : originalNormalize(value, key);
       const result = { kind, observations: [], generatedTimes: [], events: [] };
+      const pendingClocks = [];
       profile.runtimes.push(result);
       const base = "/api/analytics/provider-telemetry";
       const visit = async (label, method, target, options = {}) => {
-        const before = Date.now();
+        const finishParentClock = startOperationClock();
         const response = await fixture.observe(label, method, target, {
           csrf: !["GET", "HEAD"].includes(method),
           ...options,
         });
+        const parentClock = finishParentClock();
         const actual = fixture.records.get(label);
-        if (actual?.generatedAt) {
-          assert.ok(
-            Date.parse(actual.generatedAt) >= before &&
-              Date.parse(actual.generatedAt) <= Date.now(),
-            "actual generatedAt within request",
-          );
-          result.generatedTimes.push({
+        if (actual?.generatedAt || actual?.range) {
+          const requestId = [...fixture.requests].findLast(
+            ([, value]) => value === label,
+          )?.[0];
+          const timing = {
             label,
-            generatedAt: actual.generatedAt,
-          });
+            requestId,
+            generatedAt: actual.generatedAt ?? null,
+            rangeTo: actual.range?.to ?? null,
+            parentClock,
+            parentBoundsPassed: Object.fromEntries(
+              [
+                ["generatedAt", actual.generatedAt],
+                ["rangeTo", actual.range?.to],
+              ]
+                .filter(([, value]) => value != null)
+                .map(([field, value]) => [
+                  field,
+                  Date.parse(value) >= parentClock.before &&
+                    Date.parse(value) <= parentClock.after,
+                ]),
+            ),
+          };
+          result.generatedTimes.push(timing);
+          pendingClocks.push({ timing, events: fixture.server.events });
         }
         if (actual?.range) {
-          assert.ok(
-            Date.parse(actual.range.to) >= before &&
-              Date.parse(actual.range.to) <= Date.now(),
-            "actual range request time",
-          );
           const values = new URL(target, "http://fixture").searchParams.getAll(
             "days",
           );
@@ -528,6 +548,16 @@ try {
         await live?.close();
         await fixture.close();
         await repository?.close();
+        // Child close drains its diagnostic stream. Resolve receipts without
+        // asserting here so both actual runtimes execute before clock checks.
+        for (const { timing, events } of pendingClocks) {
+          timing.operationClock =
+            events.find(
+              (event) =>
+                event.event === "fixture.http.clock" &&
+                event.requestId === timing.requestId,
+            )?.operationClock ?? null;
+        }
       }
     }
     assert.deepEqual(
@@ -542,6 +572,28 @@ try {
         "actual blocked deletion and shutdown parity",
       );
   }
+  report.httpParityPassed = true;
+  for (const profile of report.profiles)
+    for (const runtime of profile.runtimes) {
+      assert.ok(
+        runtime.generatedTimes.length > 0,
+        "Each actual runtime must exercise generated timestamps",
+      );
+      for (const timing of runtime.generatedTimes)
+        for (const [field, value] of [
+          ["generatedAt", timing.generatedAt],
+          ["range.to", timing.rangeTo],
+        ])
+          if (value !== null)
+            assertGeneratedAtInOperation({
+              ...timing,
+              profile: profile.mode,
+              runtime: runtime.kind,
+              field,
+              actualGeneratedAt: value,
+            });
+    }
+  report.timestampBoundsPassed = true;
 } catch (error) {
   failure = error;
   report.failure = { message: error.message, stack: error.stack };

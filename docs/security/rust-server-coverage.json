@@ -1854,7 +1854,29 @@
           "scripts/server-rust/telemetry-repository-compatibility.mjs"
         ],
         "scope": "Optional fixture-only independent wall and monotonic reads bracket the actual operation in each producer process. The generated timestamp must satisfy the unchanged strict inclusive predicate in that process. Original parent readings and their inclusive predicate remain diagnostic data. Bounds are not derived from the response and production timestamps are unchanged. Exact-endpoint controls pass; one-millisecond excursions, missing/invalid/reversed observations and invalid dates fail.",
-        "validatedLocally": "All56 repository observations and27 timestamp comparisons per runtime on each of native PGlite/private PostgreSQL/external PostgreSQL pass; current Windows execution remains required."
+        "validatedLocally": "All56 repository observations and27 timestamp comparisons per runtime pass on native PGlite/private PostgreSQL/external PostgreSQL.",
+        "observedWindows": {
+          "run": "https://github.com/ArcaneArts/Cantrip/actions/runs/40711050999",
+          "head": "ce3c71f51ed606f979ea21d618a5c11fd6b3ee38",
+          "job": 122896105178,
+          "scope": "All3 actual telemetry repository suites and strict producer clock controls passed. A later private-PG HTTP assertion failed in the Node reference; complete platform/replacement acceptance is not established."
+        }
+      },
+      "httpClockObservation": {
+        "implementation": [
+          "cantrip_server_rs/examples/http-clock-fixture.rs",
+          "scripts/server-rust/node-server.mjs",
+          "scripts/server-rust/telemetry-http-compatibility.mjs"
+        ],
+        "evidence": [
+          "scripts/server-rust/http-clock-compatibility.mjs",
+          "scripts/server-rust/operation-clock.test.mjs"
+        ],
+        "scope": "Development-only request-ID-correlated producer readings bracket the real router/JSON response construction in Rust and onRequest/onResponse in Node. Native example includes the unmodified production main and wraps its real router. Raw generatedAt/range.to, original parent wall/monotonic readings and predicates are retained before assertions. Both actual runtimes execute HTTP/Live/restart/retained-state comparisons before strict producer checks; no production timestamp or tolerance changes.",
+        "localEvidence": "Node/Rust HTTP parity and producer bounds pass102HTTP/76timestamp responses per runtime on native PGlite/private PostgreSQL,104HTTP/78timestamp responses with external PostgreSQL including actual blocked deletion/shutdown. Each runtime/store also validates66range.to timestamps against producer bounds.12actual HTTP controls verify observation is opt-in/development-only and reject8one-millisecond excursions.",
+        "remaining": [
+          "Current-head supported-platform execution and artifact inspection; complete server/packaged acceptance."
+        ]
       }
     },
     "providerManagementHttp": {

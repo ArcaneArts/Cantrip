@@ -36,6 +36,7 @@ export class HttpFixture {
     workerIngress = false,
     providerAuthDrain = false,
     auditObservations = false,
+    observeHttpClocks = false,
   }) {
     Object.assign(this, {
       kind,
@@ -45,6 +46,7 @@ export class HttpFixture {
       workerIngress,
       providerAuthDrain,
       auditObservations,
+      observeHttpClocks,
     });
     this.environment = {
       ...fixtureEnvironment(path.join(root, name, kind)),
@@ -85,6 +87,7 @@ export class HttpFixture {
               ...(this.workerIngress ? ["--worker-ingress-fixture"] : []),
               ...(this.providerAuthDrain ? ["--drain-auth-notifications"] : []),
               ...(this.auditObservations ? ["--observe-audits"] : []),
+              ...(this.observeHttpClocks ? ["--observe-http-clocks"] : []),
             ],
             { cwd: repositoryRoot, env: this.environment },
           )

@@ -173,8 +173,25 @@ remain in every timing report; production timestamp generation is unchanged.
 Boundary controls accept exact endpoints and reject even one millisecond outside
 the producer interval, including when parent bounds would accept that value.
 Local comparisons pass all 56 repository observations and 27 generated-timestamp
-checks per runtime on each of the three stores. Fresh Windows execution of this
-measurement change and full platform acceptance remain required.
+checks per runtime on each of the three stores. Windows run 40711050999 passes
+all three repository suites and the strict clock controls. Its later private
+PostgreSQL HTTP suite fails the parent-clock assertion in the Node reference;
+the failed timestamp and bounds were not saved, and Rust was not reached.
+
+The HTTP comparison now retains raw generatedAt/range.to values, parent
+wall/monotonic readings and their original predicates before timing assertions.
+Opt-in Node request hooks and a development-only Rust example record independent
+producer clocks correlated by the actual request ID. The example includes the
+unchanged production main source and wraps its actual router; it preserves the
+CLI, storage initialization and shutdown paths. Rust records the real router's
+request/response-construction interval; Node records its onRequest/onResponse
+interval. These JSON handlers generate timestamps within those intervals.
+Both runtimes complete the HTTP/Live and retained-state comparisons before the
+same strict inclusive predicate checks producer bounds. No production timestamp
+generation or tolerance changes. The normal entrypoints emit no clock receipts;
+12 real HTTP controls cover enabled/disabled observation and reject eight values
+one millisecond outside actual producer intervals. Supported-platform acceptance
+of the HTTP measurement change and complete replacement remain required.
 
 The audit milestone's repository-wide check passes the Node server's 1,616 tests, the app's
 3,899 tests and all type checks, but fails four worker cases: Grok login,
