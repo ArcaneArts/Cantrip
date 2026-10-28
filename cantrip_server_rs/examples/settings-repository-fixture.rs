@@ -889,6 +889,13 @@ async fn main() -> Result<()> {
         // Keep the IPC dispatch future on the heap. Its independent database
         // and service futures are boxed at their await boundaries as well;
         // embedding all of them in one union exhausted the Windows main stack.
+        let operation_clock =
+            (request["observeOperationClock"].as_bool() == Some(true)).then(|| {
+                (
+                    chrono::Utc::now().timestamp_millis(),
+                    std::time::Instant::now(),
+                )
+            });
         let result: Result<WireValue> = async {
             Ok(match text(&request, "op")? {
                 "telemetry-export" => repo
@@ -930,10 +937,18 @@ async fn main() -> Result<()> {
         }
         .boxed()
         .await;
+        // Independent real clock reads surround dispatch; no response field is
+        // used to construct these bounds, including on a rejected operation.
+        let operation_clock = operation_clock.map(|(before, started)| {
+            json!({"before":before,"after":chrono::Utc::now().timestamp_millis(),"elapsedNanoseconds":started.elapsed().as_nanos().to_string()})
+        });
         let mut reply = WireValue::object([
             ("id", raw["id"].clone()),
             ("rejected", WireValue::Bool(result.is_err())),
         ]);
+        if let Some(clock) = operation_clock {
+            reply["operationClock"] = WireValue::from_serialize(&clock);
+        }
         match result {
             Ok(value) => reply["value"] = value,
             Err(error) => {
