@@ -1,0 +1,44 @@
+diff --git a/dist/server.js b/dist/server.js
+index 49603eca15ea88d77ddb6126c2e0f54a4c1b2679..7e8d8b36acb2afb4809c1644d1b8210074879855 100644
+--- a/dist/server.js
++++ b/dist/server.js
+@@ -69,6 +69,7 @@ export function createComputerUseServer(opts = {}) {
+         spawnBounded: opts.spawnBounded,
+         lockPath: opts.lockPath,
+         disableSessionLock: opts.disableSessionLock,
++        manageProcessSignals: opts.manageProcessSignals,
+         elicitApproval: opts.elicitApproval !== undefined ? opts.elicitApproval : elicitApproval,
+         profile,
+     });
+diff --git a/dist/session.d.ts b/dist/session.d.ts
+index cd779693d2a2732e7607c2ee91e35ace8b9fa6be..62428f40b8bf43618b6940e3c944a7382ef01759 100644
+--- a/dist/session.d.ts
++++ b/dist/session.d.ts
+@@ -80,6 +80,8 @@ export interface SessionOptions {
+      * self-deadlock. Default: false (lock enabled).
+      */
+     disableSessionLock?: boolean;
++    /** Let an embedding host own SIGINT/SIGTERM. Default true; exit cleanup and session locking remain enabled. */
++    manageProcessSignals?: boolean;
+     /**
+      * Optional host elicitation callback for policy approval (PR-10).
+      * Invoked only when approval is required and no valid approval_token is present.
+diff --git a/dist/session.js b/dist/session.js
+index ea57fbbed2e8c768e23656ac82dffeb59e7ac584..4622bf0f1246aa5e3c783665706d23573cfaa044 100644
+--- a/dist/session.js
++++ b/dist/session.js
+@@ -208,8 +208,12 @@ export function createSession(opts = {}) {
+             catch { /* ignore */ }
+         };
+         process.once('exit', forceRelease);
+-        process.once('SIGINT', () => { forceRelease(); process.exit(130); });
+-        process.once('SIGTERM', () => { forceRelease(); process.exit(143); });
++        // Embedding hosts may own graceful signal handling. Retain lock cleanup
++        // on actual exit without terminating their asynchronous shutdown.
++        if (opts.manageProcessSignals !== false) {
++            process.once('SIGINT', () => { forceRelease(); process.exit(130); });
++            process.once('SIGTERM', () => { forceRelease(); process.exit(143); });
++        }
+     }
+     const defaultProvider = opts.provider ?? process.env.COMPUTER_USE_PROVIDER ?? 'auto';
+     // Screenshot dedup cache — keyed on the last encoded image hash.

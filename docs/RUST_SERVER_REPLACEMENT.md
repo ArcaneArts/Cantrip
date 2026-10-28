@@ -2,6 +2,19 @@
 
 Status: **implementation in progress; not a deployable replacement**.
 
+The actual Linux worker flow exposed an embedded desktop backend signal handler
+that called `process.exit(143)` before Cantrip could drain its services. The
+worker now opts out of that backend's SIGINT/SIGTERM handlers through a narrow
+dependency patch. The cross-process session lock and normal-exit lock cleanup
+remain enabled; standalone library callers retain their original signal
+behavior. Four subprocess cases exercise the real desktop client, both signals,
+Cantrip's completed asynchronous close, and the standalone exit codes. The SIGTERM
+case reproduces the original failure before the patch; all four cases pass
+locally afterward.
+On Windows the subprocess test invokes the actual registered Node listeners
+over IPC, since process termination cannot deliver Unix signal handlers.
+Supported-platform execution and full-worker acceptance remain required.
+
 The existing browser account/provider API modules and AppLiveClient now run a
 real Ollama catalog operation through each server and the full, unchanged built
 worker entrypoint. Local macOS runs pass eight product steps per runtime on
