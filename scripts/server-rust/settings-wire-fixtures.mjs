@@ -1,5 +1,9 @@
 import * as p from "../../packages/protocol/dist/index.js";
 import {
+  providerManagementWireFixtures,
+  providerManagementWireCases,
+} from "./provider-management-wire-fixtures.mjs";
+import {
   telemetryWireFixtures,
   telemetryWireCases,
 } from "./telemetry-wire-fixtures.mjs";
@@ -60,6 +64,7 @@ const providerAccount = {
   updatedAt: "2026-10-25T00:00:00.000Z",
 };
 export const settingsWireFixtures = {
+  ...providerManagementWireFixtures,
   ...telemetryWireFixtures,
   providerModelCatalogResultSchema: [
     {
@@ -344,6 +349,7 @@ export const settingsWireFixtures = {
 };
 
 export function* settingsWireCases(name) {
+  yield* providerManagementWireCases(name);
   yield* telemetryWireCases(name);
   if (name === "providerRateLimitResetConsumeRequestSchema") {
     const sample = settingsWireFixtures[name][0];

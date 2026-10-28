@@ -22,6 +22,7 @@ mod policies;
 mod provider_accounts;
 mod provider_catalogs;
 mod provider_credentials;
+mod provider_management;
 mod provider_quota;
 mod provider_telemetry;
 mod sessions;
@@ -110,6 +111,7 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(provider_accounts::routes())
         .merge(provider_catalogs::routes())
         .merge(provider_credentials::routes())
+        .merge(provider_management::routes())
         .merge(provider_quota::routes())
         .merge(provider_telemetry::routes())
         .merge(workers::routes())

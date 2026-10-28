@@ -60,18 +60,20 @@ impl SettingsRepository {
         let reserve = input["weeklyUsageReservePercent"].as_i64().unwrap_or(3);
         let protected_key = json_value(&input["protectedApiKey"])?;
         let initial = input["initialAccount"].clone();
+        let insert_context = super::query_error::provider_insert(&id, owner, input, &base, reserve);
         let owner = owner.to_owned();
         self.database.transaction(move |tx| Box::pin(async move {
             if account_kind(&kind) && !tx.query("SELECT id FROM model_providers WHERE owner_id=$1 AND kind=$2 LIMIT 1", &[&owner,&kind]).await?.is_empty() {
                 anyhow::bail!("A {} provider already exists. Add another sign-in to that provider instead.",label(&kind));
             }
-            let rows=tx.query("INSERT INTO model_providers(id,owner_id,name,kind,base_url,weekly_usage_reserve_percent,protected_api_key) VALUES($1,$2,$3,$4,$5,$6::text::integer,$7) RETURNING to_jsonb(model_providers)", &[&id,&owner,&name,&kind,&base,&reserve.to_string(),&protected_key.as_object().map(|_| &protected_key)]).await?;
+            let rows=super::query_error::context(tx.query("INSERT INTO model_providers(id,owner_id,name,kind,base_url,weekly_usage_reserve_percent,protected_api_key) VALUES($1,$2,$3,$4,$5,$6::text::integer,$7) RETURNING to_jsonb(model_providers)", &[&id,&owner,&name,&kind,&base,&reserve.to_string(),&protected_key.as_object().map(|_| &protected_key)]).await, &insert_context.0, &insert_context.1)?;
             let provider=rows.first().context("Database returned no row after creating a model provider.")?.get::<Value>(0)?;
             if !account_kind(&kind) { return provider_summary(&provider,vec![],None,None) }
             if initial.is_null() { anyhow::bail!("The provider is missing its protected account label.") }
             let account_id=text(&initial,"id")?.lossy();
             let protected_label=json_value(&initial["protectedLabel"])?;
-            let rows=tx.query("INSERT INTO model_provider_accounts(id,provider_id,protected_label,position,credential_home_key) VALUES($1,$2,$3,0,$2) RETURNING to_jsonb(model_provider_accounts)", &[&account_id.as_ref(),&id,&protected_label]).await?;
+            let reference=super::query_error::provider_initial_account(&id,&initial);
+            let rows=super::query_error::context(tx.query("INSERT INTO model_provider_accounts(id,provider_id,protected_label,position,credential_home_key) VALUES($1,$2,$3,0,$2) RETURNING to_jsonb(model_provider_accounts)", &[&account_id.as_ref(),&id,&protected_label]).await, &reference.0, &reference.1)?;
             let account=rows.first().with_context(|| format!("Database returned no row after creating a {} account.",label(&kind)))?.get::<Value>(0)?;
             provider_summary(&provider,vec![account_summary(&account,&[])?],None,None)
         })).await
@@ -137,7 +139,9 @@ impl SettingsRepository {
             values["protected_api_key"] = json_value(key)?;
             sets.push("protected_api_key=v.protected_api_key");
         }
-        let rows=self.json_rows(&format!("UPDATE model_providers p SET {} FROM jsonb_populate_record(NULL::model_providers,$2::jsonb) v WHERE p.id=$1 AND p.owner_id=$4 RETURNING to_jsonb(p)",sets.join(",")), &[&provider,&values,&now(),&owner]).await?;
+        let at = now();
+        let reference = super::query_error::provider_update(owner, provider, input, &base, at);
+        let rows=super::query_error::context(self.json_rows(&format!("UPDATE model_providers p SET {} FROM jsonb_populate_record(NULL::model_providers,$2::jsonb) v WHERE p.id=$1 AND p.owner_id=$4 RETURNING to_jsonb(p)",sets.join(",")), &[&provider,&values,&at,&owner]).await, &reference.0, &reference.1)?;
         let Some(row) = rows.first() else {
             return Ok(None);
         };
@@ -149,7 +153,10 @@ impl SettingsRepository {
             )
             .await?;
         for route in routes {
-            self.database.query("UPDATE chat_runtime_sessions SET codex_thread_id=NULL,status='detached',updated_at=$2 WHERE model_route_id=$1", &[&route.get::<String>(0)?,&now()]).await?;
+            let route = route.get::<String>(0)?;
+            let at = now();
+            let reference = super::query_error::provider_detach(&route, at);
+            super::query_error::context(self.database.query("UPDATE chat_runtime_sessions SET codex_thread_id=NULL,status='detached',updated_at=$2 WHERE model_route_id=$1", &[&route,&at]).await, &reference.0, &reference.1)?;
         }
         Ok(Some(provider_summary(row, vec![], None, None)?))
     }

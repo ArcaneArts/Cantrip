@@ -228,6 +228,12 @@ jobs:
         run: node scripts/server-rust/provider-catalog-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/provider-catalog-http-bundled.json
       - name: Provider catalog HTTP, cancellation and retained cache with external PostgreSQL
         run: node scripts/server-rust/provider-catalog-http-compatibility.mjs --database postgres --report .qa/rust-server/provider-catalog-http-external.json
+      - name: Global settings and provider CRUD with native PGlite
+        run: node scripts/server-rust/provider-management-http-compatibility.mjs --report .qa/rust-server/provider-management-http-pglite.json
+      - name: Global settings and provider CRUD with private PostgreSQL
+        run: node scripts/server-rust/provider-management-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/provider-management-http-bundled.json
+      - name: Global settings and provider CRUD with external PostgreSQL
+        run: node scripts/server-rust/provider-management-http-compatibility.mjs --database postgres --report .qa/rust-server/provider-management-http-external.json
       - name: Provider auth status, opaque capture and caller lifetime with native PGlite
         run: node scripts/server-rust/provider-auth-http-compatibility.mjs --report .qa/rust-server/provider-auth-http-pglite.json
       - name: Provider auth status, opaque capture and caller lifetime with private PostgreSQL

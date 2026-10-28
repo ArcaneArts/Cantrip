@@ -19,6 +19,7 @@ use std::sync::{
 use tokio::sync::Notify;
 mod auth_flow;
 mod auth_observations;
+mod providers;
 mod quota;
 use auth_flow::AuthObservation;
 pub(crate) use quota::{QuotaAuthenticationUpdateError, REAUTH_MESSAGE};

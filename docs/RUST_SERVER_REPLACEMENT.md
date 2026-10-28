@@ -2,6 +2,26 @@
 
 Status: **implementation in progress; not a deployable replacement**.
 
+Global settings reads and provider create/update/delete now use native services.
+Settings reads reconcile the bundled Z.ai catalog before returning their snapshot
+and start account/Ollama discovery without delaying the response. Provider
+mutations preserve opaque keys, initial-account validation, hydration ordering,
+cache invalidation and the account sign-out sequence before deletion. Admitted
+operations and background catalog work retain their existing shutdown drains.
+
+Local Node/Rust socket comparisons pass 99 observations per storage mode across
+account and local authentication. They include real account-insert rollback,
+rejected provider updates, retained writes after a later runtime-detach failure,
+model deletion restrictions, built-in discovery and restart. Generated discovery
+IDs are checked for UUID format and model/route/default relationships before
+normalization. SQL error context is attached only after the actual failed query.
+External PostgreSQL additionally holds a real provider UPDATE behind a row lock,
+disconnects its caller and requests shutdown. Both runtimes wait for release,
+commit the update and reopen with its value retained (103 HTTP observations).
+The local native suite passes 92 tests across 44 targets and strict all-target
+Clippy passes. Supported-platform acceptance and remaining settings/provider
+operations are still required.
+
 The provider telemetry milestone implements the analytics, export and deletion
 routes natively. Quota attribution, pending consumption, confidence, calendar
 and locale breakdowns, period comparisons and all eight change metrics retain
@@ -35,7 +55,12 @@ settings/provider refresh seams now keep those futures on the heap. All 768
 existing settings comparisons pass with the native process limited to a 1 MiB
 main stack, and a native regression performs real settings reads and rejected/
 committed updates on a 1 MiB thread. No runtime stack allowance was increased.
-Fresh Windows CI remains necessary before platform acceptance is claimed.
+PR 2294's Windows run completed all 768 settings comparisons on each of the
+three stores at `fc5b06aac`, accepting that fixture's stack fix. It later failed
+the telemetry private-PostgreSQL suite's generated-timestamp assertion in the
+unmodified Node reference before starting Rust. The failed timestamp and request
+bounds were not retained; a diagnostic follow-up and full platform acceptance
+remain required.
 
 The repository-wide checks are not green: native CUA execution-budget failures,
 worker filesystem observations and 12 formatting failures reproduce on the clean
