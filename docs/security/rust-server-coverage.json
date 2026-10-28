@@ -1086,6 +1086,101 @@
           "Supported-platform acceptance and packaged operation.",
           "Full terminal CRUD, actual encrypted PTY service flows and shared coordination remain part of the terminal-resource milestone."
         ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/terminals",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/terminals.rs",
+          "cantrip_server_rs/src/terminals/"
+        ],
+        "evidence": [
+          "cantrip_server_rs/tests/terminal_contracts.rs",
+          "scripts/server-rust/terminal-repository-compatibility.mjs",
+          "scripts/server-rust/terminal-http-compatibility.mjs",
+          "scripts/server-rust/actual-terminal-services.mjs"
+        ],
+        "remaining": [
+          "Current supported-platform and packaged acceptance.",
+          "Worktree movement, deletion/revocation, WorkerLink/direct attachments and terminal output transports remain separate native consumers."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/terminals",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/terminals.rs",
+          "cantrip_server_rs/src/terminals/"
+        ],
+        "evidence": [
+          "cantrip_server_rs/tests/terminal_contracts.rs",
+          "scripts/server-rust/terminal-repository-compatibility.mjs",
+          "scripts/server-rust/terminal-http-compatibility.mjs",
+          "scripts/server-rust/actual-terminal-services.mjs"
+        ],
+        "remaining": [
+          "Current supported-platform and packaged acceptance.",
+          "Worktree movement, deletion/revocation, WorkerLink/direct attachments and terminal output transports remain separate native consumers."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/terminals/:terminalId",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/terminals.rs",
+          "cantrip_server_rs/src/terminals/"
+        ],
+        "evidence": [
+          "cantrip_server_rs/tests/terminal_contracts.rs",
+          "scripts/server-rust/terminal-repository-compatibility.mjs",
+          "scripts/server-rust/terminal-http-compatibility.mjs",
+          "scripts/server-rust/actual-terminal-services.mjs"
+        ],
+        "remaining": [
+          "Current supported-platform and packaged acceptance.",
+          "Worktree movement, deletion/revocation, WorkerLink/direct attachments and terminal output transports remain separate native consumers."
+        ]
+      },
+      {
+        "method": "PUT",
+        "path": "/api/terminals/:terminalId/service",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/terminals.rs",
+          "cantrip_server_rs/src/terminals/"
+        ],
+        "evidence": [
+          "cantrip_server_rs/tests/terminal_contracts.rs",
+          "scripts/server-rust/terminal-repository-compatibility.mjs",
+          "scripts/server-rust/terminal-http-compatibility.mjs",
+          "scripts/server-rust/actual-terminal-services.mjs"
+        ],
+        "remaining": [
+          "Current supported-platform and packaged acceptance.",
+          "Worktree movement, deletion/revocation, WorkerLink/direct attachments and terminal output transports remain separate native consumers."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/terminals/:terminalId/service/restart",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/terminals.rs",
+          "cantrip_server_rs/src/terminals/"
+        ],
+        "evidence": [
+          "cantrip_server_rs/tests/terminal_contracts.rs",
+          "scripts/server-rust/terminal-repository-compatibility.mjs",
+          "scripts/server-rust/terminal-http-compatibility.mjs",
+          "scripts/server-rust/actual-terminal-services.mjs"
+        ],
+        "remaining": [
+          "Current supported-platform and packaged acceptance.",
+          "Worktree movement, deletion/revocation, WorkerLink/direct attachments and terminal output transports remain separate native consumers."
+        ]
       }
     ]
   },
@@ -1150,16 +1245,32 @@
       },
       {
         "command": "terminal.services.reconcile",
-        "status": "partial",
+        "status": "implemented-pending-platform-acceptance",
         "implementation": "cantrip_server_rs/src/workers/maintenance/",
         "evidence": [
-          "cantrip_server_rs/tests/worker_maintenance.rs",
-          "scripts/server-rust/maintenance-repository-compatibility.mjs",
-          "scripts/server-rust/maintenance-http-compatibility.mjs"
+          "cantrip_server_rs/tests/terminal_contracts.rs",
+          "scripts/server-rust/terminal-repository-compatibility.mjs",
+          "scripts/server-rust/terminal-http-compatibility.mjs",
+          "scripts/server-rust/actual-terminal-services.mjs"
         ],
         "remaining": [
-          "Native refresh and reconnect hooks, persisted services, actual dispatch, parallel running-state writes and Live publication are implemented. Full terminal CRUD and actual encrypted PTY service acceptance remain required."
+          "Supported-platform, packaged and shared-coordination acceptance; terminal movement/deletion and output transports remain unported."
         ]
+      },
+      {
+        "command": "terminal.service.restart",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/terminals.rs",
+          "cantrip_server_rs/src/workers/maintenance/service.rs"
+        ],
+        "evidence": [
+          "cantrip_server_rs/tests/terminal_contracts.rs",
+          "scripts/server-rust/terminal-repository-compatibility.mjs",
+          "scripts/server-rust/terminal-http-compatibility.mjs",
+          "scripts/server-rust/actual-terminal-services.mjs"
+        ],
+        "remaining": ["Current supported-platform and packaged acceptance."]
       }
     ]
   },
@@ -1458,6 +1569,56 @@
           "scripts/server-rust/maintenance-repository-compatibility.mjs",
           "scripts/server-rust/maintenance-http-compatibility.mjs"
         ]
+      },
+      {
+        "method": "listTerminals",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/terminals/",
+        "evidence": [
+          "cantrip_server_rs/tests/terminal_contracts.rs",
+          "scripts/server-rust/terminal-repository-compatibility.mjs",
+          "scripts/server-rust/terminal-http-compatibility.mjs"
+        ]
+      },
+      {
+        "method": "createTerminal",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/terminals/",
+        "evidence": [
+          "cantrip_server_rs/tests/terminal_contracts.rs",
+          "scripts/server-rust/terminal-repository-compatibility.mjs",
+          "scripts/server-rust/terminal-http-compatibility.mjs"
+        ]
+      },
+      {
+        "method": "getTerminalExecutionContext",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/terminals/",
+        "evidence": [
+          "cantrip_server_rs/tests/terminal_contracts.rs",
+          "scripts/server-rust/terminal-repository-compatibility.mjs",
+          "scripts/server-rust/terminal-http-compatibility.mjs"
+        ]
+      },
+      {
+        "method": "updateTerminal",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/terminals/",
+        "evidence": [
+          "cantrip_server_rs/tests/terminal_contracts.rs",
+          "scripts/server-rust/terminal-repository-compatibility.mjs",
+          "scripts/server-rust/terminal-http-compatibility.mjs"
+        ]
+      },
+      {
+        "method": "updateTerminalService",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/terminals/",
+        "evidence": [
+          "cantrip_server_rs/tests/terminal_contracts.rs",
+          "scripts/server-rust/terminal-repository-compatibility.mjs",
+          "scripts/server-rust/terminal-http-compatibility.mjs"
+        ]
       }
     ]
   },
@@ -1512,12 +1673,29 @@
         "status": "partial",
         "implementation": "cantrip_server_rs/src/workers/maintenance/service.rs",
         "evidence": [
-          "cantrip_server_rs/tests/worker_maintenance.rs",
-          "scripts/server-rust/maintenance-repository-compatibility.mjs",
-          "scripts/server-rust/maintenance-http-compatibility.mjs"
+          "cantrip_server_rs/tests/terminal_contracts.rs",
+          "scripts/server-rust/terminal-repository-compatibility.mjs",
+          "scripts/server-rust/terminal-http-compatibility.mjs",
+          "scripts/server-rust/actual-terminal-services.mjs"
         ],
         "remaining": [
-          "Only service-reconciliation status invalidations are implemented. Complete terminal lifecycle, subscribers, shared coordination and supported-platform acceptance remain required."
+          "Management and service status invalidations are implemented. Movement, deletion/revocation, terminal transports, shared coordination and supported-platform acceptance remain required."
+        ]
+      },
+      {
+        "resource": "project-tab-layout",
+        "status": "partial",
+        "implementation": [
+          "cantrip_server_rs/src/terminals/layout.rs",
+          "cantrip_server_rs/src/http/terminals.rs"
+        ],
+        "evidence": [
+          "cantrip_server_rs/tests/terminal_contracts.rs",
+          "scripts/server-rust/terminal-repository-compatibility.mjs",
+          "scripts/server-rust/terminal-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Only terminal creation transactions and terminal mutation invalidations are implemented. Complete pane/window/workspace layout operations remain required."
         ]
       }
     ]
@@ -2182,8 +2360,27 @@
       ],
       "validatedLocally": "macOS: 25,600 actual TypeScript fingerprint/refresh-decision comparisons; 22 repository cases and 3 state snapshots per store; 45 paired HTTP observations per runtime/store across accounts and local profiles, including nonempty terminal Live updates, owner isolation, actual refresh/reconcile failures and malformed worker responses. Real external PostgreSQL locks prove admitted status writes survive caller disconnect, and fail-fast HTTP failure leaves a held sibling owned through shutdown and durable completion. Credential-only account reconnects preserve the reference absence of an application-owner publication context while their status writes continue. Actual browser/full unchanged worker folder flows pass nine steps per runtime on all three stores without manual grant preloading or a worker restart to acquire the key.",
       "remaining": [
-        "Current Linux/macOS/Windows acceptance and packaged operation.",
-        "Complete terminal resource lifecycle and actual encrypted PTY service flows remain unported."
+        "Current Linux/macOS/Windows and packaged acceptance.",
+        "Terminal management and actual encrypted PTY service flows are implemented in the following milestone; movement/deletion and output transports remain required."
+      ]
+    },
+    "terminalManagement": {
+      "status": "partial",
+      "implementation": [
+        "cantrip_server_rs/src/http/terminals.rs",
+        "cantrip_server_rs/src/terminals/",
+        "cantrip_server_rs/src/workers/maintenance/service.rs"
+      ],
+      "evidence": [
+        "cantrip_server_rs/tests/terminal_contracts.rs",
+        "scripts/server-rust/terminal-repository-compatibility.mjs",
+        "scripts/server-rust/terminal-http-compatibility.mjs",
+        "scripts/server-rust/actual-terminal-services.mjs"
+      ],
+      "validatedLocally": "macOS: all five management routes execute natively. 9,639 actual protocol/error-message comparisons; 35 repository cases and29 complete terminal/pane/project snapshots per store, with exact rollback comparisons for failed inserts, unsupported placement, destination ownership, position overflow, duplicate leaves/splits, topology bounds and set mismatch. HTTP/Live comparisons pass79 observations per runtime/store across local/account profiles, require nonempty ordered notifications and reject foreign-owner events. External PostgreSQL holds a real pane-member INSERT after caller disconnect and shutdown; release commits exactly one terminal/member pair and its layout revision. Existing browser and full unchanged worker exercise13 product steps per runtime on all3stores, including actual encrypted terminal creation/rename, grant refresh, PTY launch, restart, offline rejection, reconnect and process cleanup.",
+      "remaining": [
+        "Current Linux/macOS/Windows and packaged acceptance.",
+        "Terminal movement/deletion and resource revocation, interactive output/WorkerLink/direct attachments, shared coordination and the rest of the server replacement remain unported."
       ]
     }
   },

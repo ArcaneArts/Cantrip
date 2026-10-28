@@ -117,7 +117,12 @@
     "repositoryWorkerOperationWireRequestSchema": 6466,
     "repositoryOperationWireResponseSchema": 6469,
     "workerEncryptionRefreshRequestSchema": 6496,
-    "workerEncryptionRefreshResultSchema": 6497
+    "workerEncryptionRefreshResultSchema": 6497,
+    "encryptedTerminalCreateSchema": 6499,
+    "encryptedTerminalUpdateSchema": 6511,
+    "encryptedTerminalServiceConfigurationSchema": 6513,
+    "terminalWireSummarySchema": 6516,
+    "terminalWireListSchema": 6536
   },
   "nodes": [
     {
@@ -37432,6 +37437,257 @@
       "catchall": 6498,
       "checks": []
     },
-    { "type": "never", "checks": [] }
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "encryptedTerminalCreateSchema",
+      "shape": {
+        "worktreeId": 6500,
+        "paneId": 6502,
+        "tabGroupId": 6504,
+        "targetRegion": 6506,
+        "target": 6508,
+        "id": 6509,
+        "titleProtection": 689,
+        "stateProtection": 2896
+      },
+      "catchall": 6510,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "terminal-placement",
+          "messageAfterPath": false
+        },
+        {
+          "check": "refinement",
+          "tag": "terminal-title",
+          "messageAfterPath": true,
+          "message": "Terminal title classification must be terminal.",
+          "path": ["titleProtection", "classification", "recordKind"]
+        }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 6501,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 6503,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 6505,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 6507,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "surfacePlacementRegionSchema",
+      "values": ["center", "right", "bottom", "left"],
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 722,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "encryptedTerminalUpdateSchema",
+      "shape": { "titleProtection": 689 },
+      "catchall": 6512,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "terminal-title",
+          "messageAfterPath": true,
+          "message": "Terminal title classification must be terminal.",
+          "path": ["titleProtection", "classification", "recordKind"]
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "encryptedTerminalServiceConfigurationSchema",
+      "shape": { "enabled": 6514, "stateProtection": 2896 },
+      "catchall": 6515,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "terminalWireSummarySchema",
+      "shape": {
+        "id": 6517,
+        "projectId": 6518,
+        "kind": 6519,
+        "position": 6520,
+        "status": 6521,
+        "activeWorkerId": 6522,
+        "worktreeId": 6523,
+        "linkedChatId": 6524,
+        "runConfigurationId": 6526,
+        "runConfigurationRuntimeId": 6528,
+        "createdAt": 6530,
+        "updatedAt": 6531,
+        "titleProtection": 6532,
+        "stateProtection": 6533,
+        "serviceEnabled": 6534
+      },
+      "catchall": 6535,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "terminal-wire",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "enum",
+      "name": "terminalKindSchema",
+      "values": ["interactive", "chat-console", "run-configuration"],
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "enum",
+      "values": ["idle", "running", "exited", "offline", "failed"],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 6525, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 6527, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 6529, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 689, "checks": [] },
+    { "type": "nullable", "innerType": 2896, "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "array",
+      "name": "terminalWireListSchema",
+      "element": 6516,
+      "checks": []
+    }
   ]
 }

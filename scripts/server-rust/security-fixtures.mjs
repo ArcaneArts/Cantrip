@@ -7,6 +7,7 @@ import { policyWireFixtures } from "./policy-wire-fixtures.mjs";
 import { settingsWireFixtures } from "./settings-wire-fixtures.mjs";
 import { placementWireFixtures } from "./placement-wire-fixtures.mjs";
 import { folderWireFixtures } from "./folder-wire-fixtures.mjs";
+import { terminalWireFixtures } from "./terminal-wire-fixtures.mjs";
 
 export const owner = "11111111-1111-4111-8111-111111111111";
 export const clientId = "22222222-2222-4222-8222-222222222222";
@@ -649,6 +650,7 @@ export const securityFixtures = {
   ...settingsWireFixtures,
   ...placementWireFixtures(projectLabel),
   ...folderWireFixtures(projectLabel),
+  ...terminalWireFixtures(projectLabel),
   workerRequestEnvelopeSchema: [
     ...workerCommands.commands.map((item) => item.input),
     ...commandRefinements.cases.map((item) => item.input),

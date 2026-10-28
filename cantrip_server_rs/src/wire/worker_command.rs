@@ -73,8 +73,8 @@ pub(super) fn refine(
         at.extend_from_slice(suffix);
         issues.push(Value::object([
             ("code", Value::String("custom".into())),
-            ("path", Value::Array(at)),
             ("message", Value::String(message)),
+            ("path", Value::Array(at)),
         ]));
     };
     macro_rules! issue {

@@ -25,6 +25,7 @@ import { eventually, launchActualWorker } from "./full-worker.mjs";
 import { HttpFixture } from "./http-fixture.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
 import { password } from "./security-fixtures.mjs";
+import { actualTerminalServices } from "./actual-terminal-services.mjs";
 
 const option = (name) => {
   const i = process.argv.indexOf(name);
@@ -368,6 +369,16 @@ async function flow(fixture, result, cliBinary) {
     result.steps.push(
       "offline folder job resumes on actual worker reconnect and existing AppLiveClient receives completion",
     );
+    if (process.argv.includes("--terminals"))
+      await actualTerminalServices({
+        page,
+        projectId: created.id,
+        directory: await filesystem(created.id),
+        workerId,
+        startWorker,
+        stopWorker,
+        result,
+      });
     const wire = await page.evaluate(() =>
       window.folderWire.getProjectWireList(),
     );

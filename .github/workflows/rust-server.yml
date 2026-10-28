@@ -190,12 +190,12 @@ jobs:
         run: node --import tsx scripts/server-rust/folder-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/folder-http-bundled.json
       - name: Managed-folder HTTP, Live, encrypted routing and shutdown with external PostgreSQL
         run: node --import tsx scripts/server-rust/folder-http-compatibility.mjs --database postgres --report .qa/rust-server/folder-http-external.json
-      - name: Actual browser and full worker folder creation and recovery with native PGlite
-        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --report .qa/rust-server/actual-folder-client-pglite.json
-      - name: Actual browser and full worker folder creation and recovery with private PostgreSQL
-        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --database bundled-postgres --report .qa/rust-server/actual-folder-client-bundled.json
-      - name: Actual browser and full worker folder creation and recovery with external PostgreSQL
-        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --database postgres --report .qa/rust-server/actual-folder-client-external.json
+      - name: Actual browser folders and encrypted terminal services through full worker PTYs with native PGlite
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --terminals --report .qa/rust-server/actual-folder-client-pglite.json
+      - name: Actual browser folders and encrypted terminal services through full worker PTYs with private PostgreSQL
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --terminals --database bundled-postgres --report .qa/rust-server/actual-folder-client-bundled.json
+      - name: Actual browser folders and encrypted terminal services through full worker PTYs with external PostgreSQL
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --terminals --database postgres --report .qa/rust-server/actual-folder-client-external.json
       - name: Terminal-service repository compatibility with native PGlite
         run: node --import tsx scripts/server-rust/maintenance-repository-compatibility.mjs --report .qa/rust-server/maintenance-repository-pglite.json
       - name: Terminal-service repository compatibility with private PostgreSQL
@@ -208,6 +208,18 @@ jobs:
         run: node --import tsx scripts/server-rust/maintenance-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/maintenance-http-bundled.json
       - name: Worker encryption refresh, fail-fast siblings and shutdown with external PostgreSQL
         run: node --import tsx scripts/server-rust/maintenance-http-compatibility.mjs --database postgres --report .qa/rust-server/maintenance-http-external.json
+      - name: Terminal resources and transactional layouts with native PGlite
+        run: node --import tsx scripts/server-rust/terminal-repository-compatibility.mjs --report .qa/rust-server/terminal-repository-pglite.json
+      - name: Terminal resources and transactional layouts with private PostgreSQL
+        run: node --import tsx scripts/server-rust/terminal-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/terminal-repository-bundled.json
+      - name: Terminal resources and transactional layouts with external PostgreSQL
+        run: node --import tsx scripts/server-rust/terminal-repository-compatibility.mjs --database postgres --report .qa/rust-server/terminal-repository-external.json
+      - name: Terminal HTTP and ordered Live notifications with native PGlite
+        run: node --import tsx scripts/server-rust/terminal-http-compatibility.mjs --report .qa/rust-server/terminal-http-pglite.json
+      - name: Terminal HTTP and ordered Live notifications with private PostgreSQL
+        run: node --import tsx scripts/server-rust/terminal-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/terminal-http-bundled.json
+      - name: Terminal HTTP and disconnected creation through shutdown with external PostgreSQL
+        run: node --import tsx scripts/server-rust/terminal-http-compatibility.mjs --database postgres --report .qa/rust-server/terminal-http-external.json
       - name: Encryption and account security with native PGlite
         run: node --import tsx scripts/server-rust/security-compatibility.mjs --report .qa/rust-server/security-pglite-http.json
       - name: Encryption and account security with private PostgreSQL

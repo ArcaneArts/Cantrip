@@ -16,6 +16,12 @@ pub struct TargetRepository {
     database: Arc<Database>,
 }
 impl TargetRepository {
+    pub async fn terminals(&self, owner: &str, project: &str) -> Result<Vec<Value>> {
+        Reads::new(self.database.clone())
+            .resources(Kind::Terminal, owner, project)
+            .await
+            .map_err(terminal_error)
+    }
     pub async fn worker(&self, owner: &str, id: &Value) -> Result<Option<Value>> {
         Reads::new(self.database.clone()).worker(owner, id).await
     }
@@ -100,5 +106,16 @@ impl TargetRepository {
             targets.retain(|t| t["resourceKind"] != "replica" && t["resourceKind"] != "worktree");
         }
         Ok(Some(result))
+    }
+}
+
+pub(crate) fn terminal_summary(raw: &Value) -> Result<Value> {
+    reads::resource(Kind::Terminal, raw).map_err(terminal_error)
+}
+fn terminal_error(error: anyhow::Error) -> anyhow::Error {
+    if error.to_string() == "Invalid stored resource date" {
+        anyhow::anyhow!("Invalid time value")
+    } else {
+        error
     }
 }

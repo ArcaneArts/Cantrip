@@ -30,6 +30,7 @@ mod provider_telemetry;
 mod repository_operations;
 mod sessions;
 mod settings;
+mod terminals;
 mod usage;
 mod usage_hooks;
 mod websocket;
@@ -115,6 +116,7 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(folders::routes())
         .merge(repository_operations::routes())
         .merge(settings::routes())
+        .merge(terminals::routes())
         .merge(provider_accounts::routes())
         .merge(provider_catalogs::routes())
         .merge(provider_credentials::routes())

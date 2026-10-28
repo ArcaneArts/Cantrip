@@ -127,6 +127,11 @@ export const contractRoots = [
   "repositoryOperationWireResponseSchema",
   "workerEncryptionRefreshRequestSchema",
   "workerEncryptionRefreshResultSchema",
+  "encryptedTerminalCreateSchema",
+  "encryptedTerminalUpdateSchema",
+  "encryptedTerminalServiceConfigurationSchema",
+  "terminalWireSummarySchema",
+  "terminalWireListSchema",
 ];
 
 const refinements = new Map([
@@ -254,6 +259,12 @@ registerChecks(protocol.providerAuthLiveStatusSchema, [
   "provider-auth-live-kind",
 ]);
 const recursiveJson = registerWorkerContracts(registerChecks);
+registerChecks(protocol.encryptedTerminalCreateSchema, [
+  "terminal-placement",
+  "terminal-title",
+]);
+registerChecks(protocol.encryptedTerminalUpdateSchema, ["terminal-title"]);
+registerChecks(protocol.terminalWireSummarySchema, ["terminal-wire"]);
 const commandContracts = registerWorkerCommandContracts(registerCustom);
 const transforms = new Map([
   [protocol.appLiveEventPayloadSchema._zod.def.out, "live-json-object"],

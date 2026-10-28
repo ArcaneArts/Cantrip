@@ -7,6 +7,9 @@ pub(super) fn apply(
     path: &[Value],
     message: Option<&str>,
 ) -> Result<(), ValidationError> {
+    if super::terminals::refine(tag, result, path, message)? {
+        return Ok(());
+    }
     if super::worker_command::refine(tag, result, path, message)? {
         return Ok(());
     }

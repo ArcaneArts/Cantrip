@@ -114,6 +114,28 @@ impl Service {
         }
         Ok(result)
     }
+    pub async fn reconcile_services(self: &Arc<Self>, owner: &str, worker: &str) -> Result<()> {
+        self.reconcile(Some(owner), worker).await
+    }
+    pub async fn record_status(&self, owner: &str, terminal: &str, status: &str) -> Result<()> {
+        self.repository.set_status(terminal, status).await?;
+        self.live.invalidate(owner, "terminal", terminal);
+        Ok(())
+    }
+    pub async fn restart_service(self: &Arc<Self>, worker: &str, terminal: &str) -> Result<()> {
+        self.commands
+            .request(
+                worker,
+                Value::object([
+                    ("type", Value::String("terminal.service.restart".into())),
+                    ("terminalId", Value::String(terminal.into())),
+                ]),
+                Some(Duration::from_secs(30)),
+                None,
+            )
+            .await?;
+        Ok(())
+    }
     async fn reconcile(self: &Arc<Self>, owner: Option<&str>, worker: &str) -> Result<()> {
         if !self.bridge.is_connected(worker) {
             return Ok(());
