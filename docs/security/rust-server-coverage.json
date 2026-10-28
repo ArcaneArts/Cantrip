@@ -947,6 +947,66 @@
         "remaining": [
           "Current-head supported-platform and complete product/package acceptance."
         ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects",
+        "implementation": "cantrip_server_rs/src/http/projects.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/project-placement-compatibility.mjs",
+          "scripts/server-rust/project-target-catalog-compatibility.mjs",
+          "scripts/server-rust/project-target-repository-compatibility.mjs",
+          "scripts/server-rust/project-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform results for this milestone; complete Redis/shared worker presence and packaged/full-product acceptance."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/placement/resolve",
+        "implementation": "cantrip_server_rs/src/http/projects.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/project-placement-compatibility.mjs",
+          "scripts/server-rust/project-target-catalog-compatibility.mjs",
+          "scripts/server-rust/project-target-repository-compatibility.mjs",
+          "scripts/server-rust/project-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform results for this milestone; complete Redis/shared worker presence and packaged/full-product acceptance."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/execution-targets",
+        "implementation": "cantrip_server_rs/src/http/projects.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/project-placement-compatibility.mjs",
+          "scripts/server-rust/project-target-catalog-compatibility.mjs",
+          "scripts/server-rust/project-target-repository-compatibility.mjs",
+          "scripts/server-rust/project-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform results for this milestone; complete Redis/shared worker presence and packaged/full-product acceptance."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/execution-targets/resolve",
+        "implementation": "cantrip_server_rs/src/http/projects.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/project-placement-compatibility.mjs",
+          "scripts/server-rust/project-target-catalog-compatibility.mjs",
+          "scripts/server-rust/project-target-repository-compatibility.mjs",
+          "scripts/server-rust/project-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform results for this milestone; complete Redis/shared worker presence and packaged/full-product acceptance."
+        ]
       }
     ]
   },
@@ -1152,6 +1212,76 @@
           "cantrip_server_rs/tests/telemetry_semantics.rs"
         ],
         "remaining": ["Current-head supported-platform acceptance."]
+      },
+      {
+        "method": "getProject",
+        "implementation": "cantrip_server_rs/src/projects/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/project-placement-compatibility.mjs",
+          "scripts/server-rust/project-target-catalog-compatibility.mjs",
+          "scripts/server-rust/project-target-repository-compatibility.mjs",
+          "scripts/server-rust/project-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform results for this milestone; complete Redis/shared worker presence and packaged/full-product acceptance."
+        ]
+      },
+      {
+        "method": "listProjectReplicas",
+        "implementation": "cantrip_server_rs/src/projects/repository.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/project-placement-compatibility.mjs",
+          "scripts/server-rust/project-target-catalog-compatibility.mjs",
+          "scripts/server-rust/project-target-repository-compatibility.mjs",
+          "scripts/server-rust/project-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform results for this milestone; complete Redis/shared worker presence and packaged/full-product acceptance."
+        ]
+      },
+      {
+        "method": "resolveProjectExecutionPlacement",
+        "implementation": "cantrip_server_rs/src/projects/placement.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/project-placement-compatibility.mjs",
+          "scripts/server-rust/project-target-catalog-compatibility.mjs",
+          "scripts/server-rust/project-target-repository-compatibility.mjs",
+          "scripts/server-rust/project-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform results for this milestone; complete Redis/shared worker presence and packaged/full-product acceptance."
+        ]
+      },
+      {
+        "method": "listProjectExecutionTargets",
+        "implementation": "cantrip_server_rs/src/projects/targets/mod.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/project-placement-compatibility.mjs",
+          "scripts/server-rust/project-target-catalog-compatibility.mjs",
+          "scripts/server-rust/project-target-repository-compatibility.mjs",
+          "scripts/server-rust/project-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform results for this milestone; complete Redis/shared worker presence and packaged/full-product acceptance."
+        ]
+      },
+      {
+        "method": "resolveExecutionTarget",
+        "implementation": "cantrip_server_rs/src/projects/targets/resolve.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/project-placement-compatibility.mjs",
+          "scripts/server-rust/project-target-catalog-compatibility.mjs",
+          "scripts/server-rust/project-target-repository-compatibility.mjs",
+          "scripts/server-rust/project-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform results for this milestone; complete Redis/shared worker presence and packaged/full-product acceptance."
+        ]
       }
     ]
   },
@@ -1786,6 +1916,28 @@
       "remaining": [
         "Observe supported-platform execution for the current head and retain artifacts.",
         "Remaining resource/execution audit domains, operational privacy acceptance and packaged/deployment matrix."
+      ]
+    },
+    "projectCatalogAndPlacement": {
+      "status": "partial",
+      "implementation": [
+        "cantrip_server_rs/src/http/projects.rs",
+        "cantrip_server_rs/src/projects/placement.rs",
+        "cantrip_server_rs/src/projects/targets/"
+      ],
+      "evidence": [
+        "scripts/server-rust/project-placement-compatibility.mjs",
+        "scripts/server-rust/project-target-catalog-compatibility.mjs",
+        "scripts/server-rust/project-target-repository-compatibility.mjs",
+        "scripts/server-rust/project-http-compatibility.mjs",
+        "scripts/server-rust/project-repository-compatibility.mjs",
+        "scripts/server-rust/live-repository-compatibility.mjs"
+      ],
+      "validatedSubset": "Native project listing, all7surface placement, protected target catalog and explicit resolution. Actual Source/Rust comparisons on all3stores pass165placement+9catalog,86target+1database constraint,129HTTP observations per runtime across anonymous/accounts. Actual Node WorkerConnection uses persisted credentials from real enrollment/rotation and checks connect/disconnect/restart.62actual helper comparisons preserve opaque labels, serialized property order, UTF16 keys, filters and2000cap. Existing project/Live mapper regressions pass all3stores.",
+      "remaining": [
+        "Supported-platform acceptance of this group.",
+        "Shared/Redis worker presence and multi-instance coordination.",
+        "Project/source/worktree/resource mutations, execution consumers, whole product/UI, packaging and deployment acceptance."
       ]
     }
   },

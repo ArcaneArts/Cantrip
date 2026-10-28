@@ -50,6 +50,8 @@ async fn main() -> Result<()> {
     AuthRepository::new(database.clone()).local_user().await?;
     eprintln!("project-fixture identity ready");
     let repository = ProjectRepository::new(database.clone())?;
+    let placement =
+        cantrip_server::projects::placement::PlacementRepository::new(database.clone())?;
     let live = cantrip_server::live::repository::LiveRepository::new(database.clone())?;
     eprintln!("project-fixture repository ready");
     writeln!(
@@ -89,6 +91,71 @@ async fn main() -> Result<()> {
                     })
                     .await?;
                 Ok(Value::Null)
+            } else if request["op"] == "target-resolve" {
+                let connected = |worker: &str| {
+                    request["connected"]
+                        .as_array()
+                        .is_some_and(|workers| workers.iter().any(|w| w == worker))
+                };
+                cantrip_server::projects::targets::TargetRepository::new(database.clone())
+                    .resolve(
+                        request["owner"].as_str().context("Fixture owner")?,
+                        request["project"].as_str().context("Fixture project")?,
+                        &request["target"],
+                        request["connected"]
+                            .as_array()
+                            .map(|_| &connected as &(dyn Fn(&str) -> bool + Send + Sync)),
+                        request["allowUnavailable"].as_bool().unwrap_or(false),
+                    )
+                    .await
+            } else if request["op"] == "catalog-repository" {
+                let connected = |worker: &str| {
+                    request["connected"]
+                        .as_array()
+                        .is_some_and(|workers| workers.iter().any(|w| w == worker))
+                };
+                Ok(
+                    cantrip_server::projects::targets::TargetRepository::new(database.clone())
+                        .catalog(
+                            request["owner"].as_str().context("Fixture owner")?,
+                            request["project"].as_str().context("Fixture project")?,
+                            request["connected"]
+                                .as_array()
+                                .map(|_| &connected as &(dyn Fn(&str) -> bool + Send + Sync)),
+                        )
+                        .await?
+                        .unwrap_or(Value::Null),
+                )
+            } else if request["op"] == "target-catalog" {
+                let connected = |worker: &str| {
+                    request["connected"]
+                        .as_array()
+                        .is_some_and(|workers| workers.iter().any(|w| w == worker))
+                };
+                cantrip_server::projects::targets::catalog::build(
+                    &request["input"],
+                    request["connected"]
+                        .as_array()
+                        .map(|_| &connected as &(dyn Fn(&str) -> bool + Send + Sync)),
+                )
+            } else if request["op"] == "placement" {
+                let connected = |worker: &str| {
+                    request["connected"]
+                        .as_array()
+                        .is_some_and(|workers| workers.iter().any(|w| w == worker))
+                };
+                placement
+                    .resolve(
+                        request["owner"].as_str().context("Fixture owner")?,
+                        request["project"].as_str().context("Fixture project")?,
+                        request["surface"].as_str().context("Fixture surface")?,
+                        request.get("target").filter(|v| !v.is_null()),
+                        request["connected"]
+                            .as_array()
+                            .map(|_| &connected as &(dyn Fn(&str) -> bool + Send + Sync)),
+                        request["allowOffline"].as_bool().unwrap_or(false),
+                    )
+                    .await
             } else if request["op"] == "scope" {
                 Ok(Value::Bool(
                     live.authorize(
@@ -119,7 +186,14 @@ async fn main() -> Result<()> {
         )?;
         match outcome {
             Ok(value) => reply["value"] = value,
-            Err(error) => reply["diagnostic"] = Value::String(error.to_string().into()),
+            Err(error) => {
+                reply["diagnostic"] = Value::String(error.to_string().into());
+                if let Some(error) =
+                    error.downcast_ref::<cantrip_server::projects::placement::Unavailable>()
+                {
+                    reply["code"] = Value::String(error.code.into());
+                }
+            }
         };
         writeln!(output, "\n{}", reply.stringify())?;
         output.flush()?;

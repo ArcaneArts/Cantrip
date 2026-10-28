@@ -228,6 +228,54 @@ impl ProjectRepository {
                 Ok(raw["id"].as_str().context("Project identity")?.to_owned())
             })
             .collect::<Result<Vec<_>>>()?;
+        let mut by_project = self.replicas_by_project(owner, &ids).await?;
+        projects
+            .iter()
+            .map(|row| {
+                let raw: Value = serde_json::from_str(&row.get::<String>(0)?)?;
+                let id = raw["id"].as_str().context("Project identity")?;
+                project(
+                    &raw,
+                    by_project.remove(id).unwrap_or_default(),
+                    row.get(1)?,
+                    row.get(2)?,
+                )
+            })
+            .collect()
+    }
+    pub async fn get(&self, owner: &str, id: &str) -> Result<Option<Value>> {
+        let rows = self.database.query("SELECT to_jsonb(p)::text,p.created_at,p.updated_at FROM projects p WHERE id=$1 AND owner_id=$2 LIMIT 1", &[&id,&owner]).await?;
+        let Some(row) = rows.first() else {
+            return Ok(None);
+        };
+        let raw = serde_json::from_str(&row.get::<String>(0)?)?;
+        let replicas = self.replicas(owner, id).await?.unwrap_or_default();
+        Ok(Some(project(&raw, replicas, row.get(1)?, row.get(2)?)?))
+    }
+    pub async fn replicas(&self, owner: &str, id: &str) -> Result<Option<Vec<Value>>> {
+        if self
+            .database
+            .query(
+                "SELECT id FROM projects WHERE id=$1 AND owner_id=$2 LIMIT 1",
+                &[&id, &owner],
+            )
+            .await?
+            .is_empty()
+        {
+            return Ok(None);
+        }
+        Ok(Some(
+            self.replicas_by_project(owner, &[id.to_owned()])
+                .await?
+                .remove(id)
+                .unwrap_or_default(),
+        ))
+    }
+    async fn replicas_by_project(
+        &self,
+        owner: &str,
+        ids: &[String],
+    ) -> Result<HashMap<String, Vec<Value>>> {
         let mut by_project = ids
             .iter()
             .map(|id| (id.clone(), Vec::new()))
@@ -289,18 +337,6 @@ impl ProjectRepository {
                 }
             }
         }
-        projects
-            .iter()
-            .map(|row| {
-                let raw: Value = serde_json::from_str(&row.get::<String>(0)?)?;
-                let id = raw["id"].as_str().context("Project identity")?;
-                project(
-                    &raw,
-                    by_project.remove(id).unwrap_or_default(),
-                    row.get(1)?,
-                    row.get(2)?,
-                )
-            })
-            .collect()
+        Ok(by_project)
     }
 }
