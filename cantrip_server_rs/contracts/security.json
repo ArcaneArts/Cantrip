@@ -80,21 +80,23 @@
     "cuaEffectWorkerStatusSchema": 5687,
     "ollamaModelInventorySchema": 5714,
     "providerQuotaSnapshotSchema": 5738,
-    "chatGptModelInventorySchema": 5785,
-    "grokModelInventorySchema": 5826,
-    "providerLegacyCredentialCaptureResultSchema": 5854,
-    "providerLegacyCredentialPurgeResultSchema": 5869,
-    "providerCredentialUploadSchema": 5872,
-    "providerCredentialWireRecordSchema": 5875,
-    "codexAuthStatusSchema": 5881,
-    "codexDeviceLoginSchema": 5893,
-    "encryptedModelProviderAccountCreateSchema": 5897,
-    "encryptedModelProviderAccountUpdateSchema": 5900,
+    "providerRateLimitResetConsumeRequestSchema": 5785,
+    "providerRateLimitResetConsumeResultSchema": 5788,
+    "chatGptModelInventorySchema": 5791,
+    "grokModelInventorySchema": 5832,
+    "providerLegacyCredentialCaptureResultSchema": 5860,
+    "providerLegacyCredentialPurgeResultSchema": 5875,
+    "providerCredentialUploadSchema": 5878,
+    "providerCredentialWireRecordSchema": 5881,
+    "codexAuthStatusSchema": 5887,
+    "codexDeviceLoginSchema": 5899,
+    "encryptedModelProviderAccountCreateSchema": 5903,
+    "encryptedModelProviderAccountUpdateSchema": 5906,
     "modelProviderAccountWireSummarySchema": 5631,
     "modelProviderAccountWireListSchema": 5630,
-    "orderedIdsSchema": 5905,
-    "providerAuthLiveStatusSchema": 5908,
-    "providerModelCatalogResultSchema": 5918
+    "orderedIdsSchema": 5911,
+    "providerAuthLiveStatusSchema": 5914,
+    "providerModelCatalogResultSchema": 5924
   },
   "nodes": [
     {
@@ -33668,41 +33670,69 @@
     },
     {
       "type": "object",
+      "name": "providerRateLimitResetConsumeRequestSchema",
+      "shape": { "idempotencyKey": 2322, "creditId": 2323, "workerId": 5786 },
+      "catchall": 5787,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 500, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "providerRateLimitResetConsumeResultSchema",
+      "shape": { "outcome": 5789, "quotaSnapshot": 5790 },
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "providerRateLimitResetConsumeOutcomeSchema",
+      "values": ["reset", "nothingToReset", "noCredit", "alreadyRedeemed"],
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 5738, "checks": [] },
+    {
+      "type": "object",
       "name": "chatGptModelInventorySchema",
       "shape": {
-        "models": 5786,
-        "observedAt": 5821,
-        "weeklyUsage": 5822,
-        "quotaSnapshot": 5824
+        "models": 5792,
+        "observedAt": 5827,
+        "weeklyUsage": 5828,
+        "quotaSnapshot": 5830
       },
       "checks": []
     },
     {
       "type": "array",
-      "element": 5787,
+      "element": 5793,
       "checks": [{ "check": "max_length", "maximum": 1000, "when": "length" }]
     },
     {
       "type": "object",
       "name": "chatGptModelInventoryItemSchema",
       "shape": {
-        "id": 5788,
-        "model": 5789,
-        "displayName": 5790,
-        "description": 5791,
-        "hidden": 5792,
-        "isDefault": 5793,
-        "inputModalities": 5794,
-        "supportedReasoningEfforts": 5796,
+        "id": 5794,
+        "model": 5795,
+        "displayName": 5796,
+        "description": 5797,
+        "hidden": 5798,
+        "isDefault": 5799,
+        "inputModalities": 5800,
+        "supportedReasoningEfforts": 5802,
         "defaultReasoningEffort": 2402,
-        "modelSpecialty": 5799,
-        "supportsPersonality": 5801,
-        "upgrade": 5802,
-        "upgradeInfo": 5804,
-        "availabilityNux": 5808,
-        "additionalSpeedTiers": 5812,
-        "serviceTiers": 5814,
-        "defaultServiceTier": 5819
+        "modelSpecialty": 5805,
+        "supportsPersonality": 5807,
+        "upgrade": 5808,
+        "upgradeInfo": 5810,
+        "availabilityNux": 5814,
+        "additionalSpeedTiers": 5818,
+        "serviceTiers": 5820,
+        "defaultServiceTier": 5825
       },
       "checks": []
     },
@@ -33738,7 +33768,7 @@
     { "type": "boolean", "checks": [] },
     {
       "type": "array",
-      "element": 5795,
+      "element": 5801,
       "checks": [{ "check": "max_length", "maximum": 32, "when": "length" }]
     },
     {
@@ -33751,40 +33781,40 @@
     },
     {
       "type": "array",
-      "element": 5797,
+      "element": 5803,
       "checks": [{ "check": "max_length", "maximum": 32, "when": "length" }]
     },
     {
       "type": "object",
-      "shape": { "reasoningEffort": 2402, "description": 5798 },
+      "shape": { "reasoningEffort": 2402, "description": 5804 },
       "checks": []
     },
     {
       "type": "string",
       "checks": [{ "check": "max_length", "maximum": 500, "when": "length" }]
     },
-    { "type": "nullable", "innerType": 5800, "checks": [] },
+    { "type": "nullable", "innerType": 5806, "checks": [] },
     {
       "type": "string",
       "checks": [{ "check": "max_length", "maximum": 500, "when": "length" }]
     },
     { "type": "boolean", "checks": [] },
-    { "type": "nullable", "innerType": 5803, "checks": [] },
+    { "type": "nullable", "innerType": 5809, "checks": [] },
     {
       "type": "string",
       "checks": [{ "check": "max_length", "maximum": 500, "when": "length" }]
     },
-    { "type": "nullable", "innerType": 5805, "checks": [] },
-    { "type": "record", "keyType": 5806, "valueType": 5807, "checks": [] },
+    { "type": "nullable", "innerType": 5811, "checks": [] },
+    { "type": "record", "keyType": 5812, "valueType": 5813, "checks": [] },
     { "type": "string", "checks": [] },
     { "type": "unknown", "checks": [] },
-    { "type": "nullable", "innerType": 5809, "checks": [] },
-    { "type": "record", "keyType": 5810, "valueType": 5811, "checks": [] },
+    { "type": "nullable", "innerType": 5815, "checks": [] },
+    { "type": "record", "keyType": 5816, "valueType": 5817, "checks": [] },
     { "type": "string", "checks": [] },
     { "type": "unknown", "checks": [] },
     {
       "type": "array",
-      "element": 5813,
+      "element": 5819,
       "checks": [{ "check": "max_length", "maximum": 32, "when": "length" }]
     },
     {
@@ -33793,12 +33823,12 @@
     },
     {
       "type": "array",
-      "element": 5815,
+      "element": 5821,
       "checks": [{ "check": "max_length", "maximum": 32, "when": "length" }]
     },
     {
       "type": "object",
-      "shape": { "id": 5816, "name": 5817, "description": 5818 },
+      "shape": { "id": 5822, "name": 5823, "description": 5824 },
       "checks": []
     },
     {
@@ -33813,7 +33843,7 @@
       "type": "string",
       "checks": [{ "check": "max_length", "maximum": 2000, "when": "length" }]
     },
-    { "type": "nullable", "innerType": 5820, "checks": [] },
+    { "type": "nullable", "innerType": 5826, "checks": [] },
     {
       "type": "string",
       "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
@@ -33833,7 +33863,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 5823,
+      "innerType": 5829,
       "defaultValue": null,
       "checks": []
     },
@@ -33841,7 +33871,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 5825,
+      "innerType": 5831,
       "defaultValue": null,
       "checks": []
     },
@@ -33850,35 +33880,35 @@
       "type": "object",
       "name": "grokModelInventorySchema",
       "shape": {
-        "models": 5827,
-        "observedAt": 5849,
-        "weeklyUsage": 5850,
-        "quotaSnapshot": 5852
+        "models": 5833,
+        "observedAt": 5855,
+        "weeklyUsage": 5856,
+        "quotaSnapshot": 5858
       },
       "checks": []
     },
     {
       "type": "array",
-      "element": 5828,
+      "element": 5834,
       "checks": [{ "check": "max_length", "maximum": 1000, "when": "length" }]
     },
     {
       "type": "object",
       "name": "grokModelInventoryItemSchema",
       "shape": {
-        "id": 5829,
-        "displayName": 5830,
-        "description": 5831,
-        "contextWindow": 5833,
-        "maxOutputTokens": 5835,
-        "inputModalities": 5837,
-        "outputModalities": 5839,
-        "supportedReasoningEfforts": 5841,
-        "defaultReasoningEffort": 5842,
-        "supportsReasoning": 5843,
-        "hidden": 5844,
-        "isDefault": 5845,
-        "rawMetadata": 5846
+        "id": 5835,
+        "displayName": 5836,
+        "description": 5837,
+        "contextWindow": 5839,
+        "maxOutputTokens": 5841,
+        "inputModalities": 5843,
+        "outputModalities": 5845,
+        "supportedReasoningEfforts": 5847,
+        "defaultReasoningEffort": 5848,
+        "supportsReasoning": 5849,
+        "hidden": 5850,
+        "isDefault": 5851,
+        "rawMetadata": 5852
       },
       "checks": []
     },
@@ -33898,12 +33928,12 @@
         { "check": "max_length", "maximum": 500, "when": "length" }
       ]
     },
-    { "type": "nullable", "innerType": 5832, "checks": [] },
+    { "type": "nullable", "innerType": 5838, "checks": [] },
     {
       "type": "string",
       "checks": [{ "check": "max_length", "maximum": 20000, "when": "length" }]
     },
-    { "type": "nullable", "innerType": 5834, "checks": [] },
+    { "type": "nullable", "innerType": 5840, "checks": [] },
     {
       "type": "number",
       "checks": [
@@ -33911,7 +33941,7 @@
         { "check": "greater_than", "value": 0, "inclusive": false }
       ]
     },
-    { "type": "nullable", "innerType": 5836, "checks": [] },
+    { "type": "nullable", "innerType": 5842, "checks": [] },
     {
       "type": "number",
       "checks": [
@@ -33921,7 +33951,7 @@
     },
     {
       "type": "array",
-      "element": 5838,
+      "element": 5844,
       "checks": [{ "check": "max_length", "maximum": 32, "when": "length" }]
     },
     {
@@ -33934,7 +33964,7 @@
     },
     {
       "type": "array",
-      "element": 5840,
+      "element": 5846,
       "checks": [{ "check": "max_length", "maximum": 32, "when": "length" }]
     },
     {
@@ -33954,7 +33984,7 @@
     { "type": "boolean", "checks": [] },
     { "type": "boolean", "checks": [] },
     { "type": "boolean", "checks": [] },
-    { "type": "record", "keyType": 5847, "valueType": 5848, "checks": [] },
+    { "type": "record", "keyType": 5853, "valueType": 5854, "checks": [] },
     { "type": "string", "checks": [] },
     { "type": "unknown", "checks": [] },
     {
@@ -33972,7 +34002,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 5851,
+      "innerType": 5857,
       "defaultValue": null,
       "checks": []
     },
@@ -33980,7 +34010,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 5853,
+      "innerType": 5859,
       "defaultValue": null,
       "checks": []
     },
@@ -33988,21 +34018,21 @@
     {
       "type": "union",
       "name": "providerLegacyCredentialCaptureResultSchema",
-      "options": [5855, 5857, 5859],
+      "options": [5861, 5863, 5865],
       "discriminator": "status",
       "checks": []
     },
-    { "type": "object", "shape": { "status": 5856 }, "checks": [] },
+    { "type": "object", "shape": { "status": 5862 }, "checks": [] },
     { "type": "literal", "values": ["missing"], "checks": [] },
-    { "type": "object", "shape": { "status": 5858 }, "checks": [] },
+    { "type": "object", "shape": { "status": 5864 }, "checks": [] },
     { "type": "literal", "values": ["malformed"], "checks": [] },
     {
       "type": "object",
       "shape": {
-        "credential": 5860,
-        "metadata": 5862,
-        "portableAuth": 5866,
-        "status": 5868
+        "credential": 5866,
+        "metadata": 5868,
+        "portableAuth": 5872,
+        "status": 5874
       },
       "checks": []
     },
@@ -34010,18 +34040,18 @@
       "type": "object",
       "name": "protectedProviderCredentialSchema",
       "shape": { "subjectBlindIndex": 33, "protectedCredential": 2289 },
-      "catchall": 5861,
+      "catchall": 5867,
       "checks": []
     },
     { "type": "never", "checks": [] },
     {
       "type": "object",
       "name": "providerCredentialPublicMetadataSchema",
-      "shape": { "expiresAt": 5863 },
-      "catchall": 5865,
+      "shape": { "expiresAt": 5869 },
+      "catchall": 5871,
       "checks": []
     },
-    { "type": "nullable", "innerType": 5864, "checks": [] },
+    { "type": "nullable", "innerType": 5870, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -34038,7 +34068,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 5867,
+      "innerType": 5873,
       "defaultValue": false,
       "checks": []
     },
@@ -34048,8 +34078,8 @@
       "type": "object",
       "name": "providerLegacyCredentialPurgeResultSchema",
       "shape": {
-        "purged": 5870,
-        "serverCredentialRevision": 5871,
+        "purged": 5876,
+        "serverCredentialRevision": 5877,
         "subjectBlindIndex": 33
       },
       "checks": []
@@ -34066,11 +34096,11 @@
       "type": "object",
       "name": "providerCredentialUploadSchema",
       "shape": {
-        "credential": 5860,
-        "expectedRevision": 5873,
-        "metadata": 5862
+        "credential": 5866,
+        "expectedRevision": 5879,
+        "metadata": 5868
       },
-      "catchall": 5874,
+      "catchall": 5880,
       "checks": []
     },
     {
@@ -34085,13 +34115,13 @@
       "type": "object",
       "name": "providerCredentialWireRecordSchema",
       "shape": {
-        "accountId": 5876,
-        "credential": 5860,
-        "credentialRevision": 5877,
-        "providerId": 5878,
-        "providerKind": 5879
+        "accountId": 5882,
+        "credential": 5866,
+        "credentialRevision": 5883,
+        "providerId": 5884,
+        "providerKind": 5885
       },
-      "catchall": 5880,
+      "catchall": 5886,
       "checks": []
     },
     {
@@ -34121,26 +34151,26 @@
       "type": "object",
       "name": "codexAuthStatusSchema",
       "shape": {
-        "authenticated": 5882,
+        "authenticated": 5888,
         "authMode": 1880,
-        "email": 5883,
-        "planType": 5885,
-        "weeklyUsage": 5887,
-        "loginPending": 5888,
-        "loginError": 5890
+        "email": 5889,
+        "planType": 5891,
+        "weeklyUsage": 5893,
+        "loginPending": 5894,
+        "loginError": 5896
       },
       "checks": []
     },
     { "type": "boolean", "checks": [] },
-    { "type": "nullable", "innerType": 5884, "checks": [] },
+    { "type": "nullable", "innerType": 5890, "checks": [] },
     { "type": "string", "checks": [] },
-    { "type": "nullable", "innerType": 5886, "checks": [] },
+    { "type": "nullable", "innerType": 5892, "checks": [] },
     { "type": "string", "checks": [] },
     { "type": "nullable", "innerType": 1887, "checks": [] },
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 5889,
+      "innerType": 5895,
       "defaultValue": false,
       "checks": []
     },
@@ -34148,11 +34178,11 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 5891,
+      "innerType": 5897,
       "defaultValue": null,
       "checks": []
     },
-    { "type": "nullable", "innerType": 5892, "checks": [] },
+    { "type": "nullable", "innerType": 5898, "checks": [] },
     {
       "type": "string",
       "checks": [{ "check": "max_length", "maximum": 2000, "when": "length" }]
@@ -34160,7 +34190,7 @@
     {
       "type": "object",
       "name": "codexDeviceLoginSchema",
-      "shape": { "loginId": 5894, "verificationUrl": 5895, "userCode": 5896 },
+      "shape": { "loginId": 5900, "verificationUrl": 5901, "userCode": 5902 },
       "checks": []
     },
     {
@@ -34178,8 +34208,8 @@
     {
       "type": "object",
       "name": "encryptedModelProviderAccountCreateSchema",
-      "shape": { "id": 5898, "protectedLabel": 2289 },
-      "catchall": 5899,
+      "shape": { "id": 5904, "protectedLabel": 2289 },
+      "catchall": 5905,
       "checks": []
     },
     {
@@ -34199,8 +34229,8 @@
     {
       "type": "object",
       "name": "encryptedModelProviderAccountUpdateSchema",
-      "shape": { "protectedLabel": 5901, "enabled": 5902 },
-      "catchall": 5904,
+      "shape": { "protectedLabel": 5907, "enabled": 5908 },
+      "catchall": 5910,
       "checks": [
         {
           "check": "refinement",
@@ -34221,7 +34251,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 5903,
+      "innerType": 5909,
       "checks": []
     },
     { "type": "boolean", "checks": [] },
@@ -34229,12 +34259,12 @@
     {
       "type": "object",
       "name": "orderedIdsSchema",
-      "shape": { "ids": 5906 },
+      "shape": { "ids": 5912 },
       "checks": []
     },
     {
       "type": "array",
-      "element": 5907,
+      "element": 5913,
       "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
     },
     {
@@ -34245,16 +34275,16 @@
       "type": "object",
       "name": "providerAuthLiveStatusSchema",
       "shape": {
-        "providerId": 5909,
-        "providerAccountId": 5910,
-        "providerKind": 5911,
-        "workerId": 5912,
-        "revision": 5913,
-        "observedAt": 5914,
-        "expiresAt": 5915,
+        "providerId": 5915,
+        "providerAccountId": 5916,
+        "providerKind": 5917,
+        "workerId": 5918,
+        "revision": 5919,
+        "observedAt": 5920,
+        "expiresAt": 5921,
         "status": 1878
       },
-      "catchall": 5917,
+      "catchall": 5923,
       "checks": [
         {
           "check": "refinement",
@@ -34305,7 +34335,7 @@
         }
       ]
     },
-    { "type": "nullable", "innerType": 5916, "checks": [] },
+    { "type": "nullable", "innerType": 5922, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -34323,11 +34353,11 @@
       "type": "object",
       "name": "providerModelCatalogResultSchema",
       "shape": {
-        "providerId": 5919,
-        "models": 5920,
-        "availability": 5941,
-        "syncStates": 5953,
-        "servedStale": 5972
+        "providerId": 5925,
+        "models": 5926,
+        "availability": 5947,
+        "syncStates": 5959,
+        "servedStale": 5978
       },
       "checks": []
     },
@@ -34335,15 +34365,15 @@
       "type": "string",
       "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
     },
-    { "type": "array", "element": 5921, "checks": [] },
+    { "type": "array", "element": 5927, "checks": [] },
     {
       "type": "object",
       "name": "providerModelCatalogEntrySchema",
       "shape": {
-        "id": 5922,
-        "providerId": 5923,
+        "id": 5928,
+        "providerId": 5929,
         "nativeModelId": 3942,
-        "canonicalModelId": 5924,
+        "canonicalModelId": 5930,
         "displayName": 3943,
         "description": 3944,
         "contextWindow": 3946,
@@ -34358,17 +34388,17 @@
         "supportedReasoningEfforts": 3964,
         "defaultReasoningEffort": 3969,
         "reasoningMandatory": 3970,
-        "family": 5926,
-        "parameterSize": 5928,
-        "quantization": 5930,
-        "digest": 5932,
+        "family": 5932,
+        "parameterSize": 5934,
+        "quantization": 5936,
+        "digest": 5938,
         "metadataSource": 3972,
-        "matchConfidence": 5934,
-        "hidden": 5936,
-        "isDefault": 5937,
-        "createdAt": 5938,
-        "updatedAt": 5939,
-        "lastSeenAt": 5940
+        "matchConfidence": 5940,
+        "hidden": 5942,
+        "isDefault": 5943,
+        "createdAt": 5944,
+        "updatedAt": 5945,
+        "lastSeenAt": 5946
       },
       "checks": []
     },
@@ -34380,7 +34410,7 @@
       "type": "string",
       "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
     },
-    { "type": "nullable", "innerType": 5925, "checks": [] },
+    { "type": "nullable", "innerType": 5931, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -34389,27 +34419,27 @@
         { "check": "max_length", "maximum": 500, "when": "length" }
       ]
     },
-    { "type": "nullable", "innerType": 5927, "checks": [] },
-    {
-      "type": "string",
-      "checks": [{ "check": "max_length", "maximum": 500, "when": "length" }]
-    },
-    { "type": "nullable", "innerType": 5929, "checks": [] },
-    {
-      "type": "string",
-      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
-    },
-    { "type": "nullable", "innerType": 5931, "checks": [] },
-    {
-      "type": "string",
-      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
-    },
     { "type": "nullable", "innerType": 5933, "checks": [] },
     {
       "type": "string",
       "checks": [{ "check": "max_length", "maximum": 500, "when": "length" }]
     },
     { "type": "nullable", "innerType": 5935, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 5937, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 5939, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 500, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 5941, "checks": [] },
     {
       "type": "number",
       "checks": [
@@ -34455,19 +34485,19 @@
         }
       ]
     },
-    { "type": "array", "element": 5942, "checks": [] },
+    { "type": "array", "element": 5948, "checks": [] },
     {
       "type": "object",
       "name": "providerModelAvailabilitySchema",
       "shape": {
-        "id": 5943,
-        "providerModelId": 5944,
-        "scopeKey": 5945,
-        "workerId": 5946,
-        "providerAccountId": 5948,
-        "state": 5950,
-        "lastSeenAt": 5951,
-        "updatedAt": 5952
+        "id": 5949,
+        "providerModelId": 5950,
+        "scopeKey": 5951,
+        "workerId": 5952,
+        "providerAccountId": 5954,
+        "state": 5956,
+        "lastSeenAt": 5957,
+        "updatedAt": 5958
       },
       "checks": []
     },
@@ -34486,12 +34516,12 @@
         { "check": "max_length", "maximum": 500, "when": "length" }
       ]
     },
-    { "type": "nullable", "innerType": 5947, "checks": [] },
+    { "type": "nullable", "innerType": 5953, "checks": [] },
     {
       "type": "string",
       "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
     },
-    { "type": "nullable", "innerType": 5949, "checks": [] },
+    { "type": "nullable", "innerType": 5955, "checks": [] },
     {
       "type": "string",
       "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
@@ -34526,22 +34556,22 @@
         }
       ]
     },
-    { "type": "array", "element": 5954, "checks": [] },
+    { "type": "array", "element": 5960, "checks": [] },
     {
       "type": "object",
       "name": "providerCatalogSyncStateSchema",
       "shape": {
-        "id": 5955,
-        "providerId": 5956,
-        "scopeKey": 5957,
-        "workerId": 5958,
-        "providerAccountId": 5960,
-        "status": 5962,
-        "error": 5963,
-        "etag": 5965,
-        "refreshStartedAt": 5967,
-        "lastSuccessAt": 5969,
-        "updatedAt": 5971
+        "id": 5961,
+        "providerId": 5962,
+        "scopeKey": 5963,
+        "workerId": 5964,
+        "providerAccountId": 5966,
+        "status": 5968,
+        "error": 5969,
+        "etag": 5971,
+        "refreshStartedAt": 5973,
+        "lastSuccessAt": 5975,
+        "updatedAt": 5977
       },
       "checks": []
     },
@@ -34560,12 +34590,12 @@
         { "check": "max_length", "maximum": 500, "when": "length" }
       ]
     },
-    { "type": "nullable", "innerType": 5959, "checks": [] },
+    { "type": "nullable", "innerType": 5965, "checks": [] },
     {
       "type": "string",
       "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
     },
-    { "type": "nullable", "innerType": 5961, "checks": [] },
+    { "type": "nullable", "innerType": 5967, "checks": [] },
     {
       "type": "string",
       "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
@@ -34576,17 +34606,17 @@
       "values": ["idle", "refreshing", "current", "stale", "failed"],
       "checks": []
     },
-    { "type": "nullable", "innerType": 5964, "checks": [] },
+    { "type": "nullable", "innerType": 5970, "checks": [] },
     {
       "type": "string",
       "checks": [{ "check": "max_length", "maximum": 20000, "when": "length" }]
     },
-    { "type": "nullable", "innerType": 5966, "checks": [] },
+    { "type": "nullable", "innerType": 5972, "checks": [] },
     {
       "type": "string",
       "checks": [{ "check": "max_length", "maximum": 1000, "when": "length" }]
     },
-    { "type": "nullable", "innerType": 5968, "checks": [] },
+    { "type": "nullable", "innerType": 5974, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -34599,7 +34629,7 @@
         }
       ]
     },
-    { "type": "nullable", "innerType": 5970, "checks": [] },
+    { "type": "nullable", "innerType": 5976, "checks": [] },
     {
       "type": "string",
       "checks": [

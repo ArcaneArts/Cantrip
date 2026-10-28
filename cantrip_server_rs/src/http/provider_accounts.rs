@@ -25,25 +25,9 @@ fn no_content() -> Response {
     *response.status_mut() = StatusCode::NO_CONTENT;
     response
 }
-fn auth_failure(failure: anyhow::Error) -> Response {
+pub(super) fn auth_failure(failure: anyhow::Error) -> Response {
     let command = failure.downcast_ref::<CommandFailure>();
-    let message = match command {
-        Some(CommandFailure::Bridge(error)) => match error.encoding_error.as_deref() {
-            Some(crate::wire::ValidationError::Invalid(issues)) => {
-                Value::Array(issues.clone()).stringify_pretty().into()
-            }
-            _ => error.message.clone(),
-        },
-        _ => command.map_or_else(
-            || {
-                failure
-                    .downcast_ref::<crate::settings::SettingsQueryError>()
-                    .map(|error| error.message.clone())
-                    .unwrap_or_else(|| failure.to_string().into())
-            },
-            CommandFailure::message,
-        ),
-    };
+    let message = crate::settings::operation_error_message(&failure);
     let status = if message.lossy().ends_with("not found.") {
         404
     } else if failure.is::<ReconnectRequired>() {

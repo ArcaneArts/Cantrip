@@ -73,7 +73,7 @@ export async function startServer(command, arguments_, options) {
     child,
     origin,
     startupMs: performance.now() - startedAt,
-    async close() {
+    async close({ shutdownTimeoutMs = 15_000 } = {}) {
       const shutdownStartedAt = performance.now();
       let forcedShutdown = false;
       if (child.exitCode === null && child.signalCode === null)
@@ -81,7 +81,7 @@ export async function startServer(command, arguments_, options) {
       const killTimer = setTimeout(() => {
         forcedShutdown = true;
         child.kill("SIGKILL");
-      }, 15_000);
+      }, shutdownTimeoutMs);
       try {
         const result = await completion;
         if (result.code !== 0)

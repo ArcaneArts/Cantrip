@@ -222,6 +222,12 @@ jobs:
         run: node scripts/server-rust/provider-auth-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/provider-auth-http-bundled.json
       - name: Provider auth status, opaque capture and caller lifetime with external PostgreSQL
         run: node scripts/server-rust/provider-auth-http-compatibility.mjs --database postgres --report .qa/rust-server/provider-auth-http-external.json
+      - name: Provider quota/reset HTTP and partial commits with native PGlite
+        run: node scripts/server-rust/provider-quota-http-compatibility.mjs --report .qa/rust-server/provider-quota-http-pglite.json
+      - name: Provider quota/reset HTTP and partial commits with private PostgreSQL
+        run: node scripts/server-rust/provider-quota-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/provider-quota-http-bundled.json
+      - name: Provider quota/reset HTTP and partial commits with external PostgreSQL
+        run: node scripts/server-rust/provider-quota-http-compatibility.mjs --database postgres --report .qa/rust-server/provider-quota-http-external.json
       - name: Command quotas through HTTP and worker sockets with native PGlite
         run: node scripts/server-rust/worker-command-http-compatibility.mjs --report .qa/rust-server/command-http-pglite.json
       - name: Command quotas through HTTP and worker sockets with private PostgreSQL

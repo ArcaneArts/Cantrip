@@ -165,11 +165,16 @@ async fn main() -> Result<()> {
         )
         .with_graceful_shutdown(async move {
             tokio::select! { _=shutdown()=>{}, _=receiver, if watch_parent=>{} }
+            eprintln!("{}", json!({"event":"server.shutdown.started"}));
             shutdown_service.live.transports.pre_close();
-            shutdown_service.live.close();
-            shutdown_service.workers.close();
+            shutdown_service.workers.pre_close();
         })
         .await?;
+        // Pre-close interrupts sockets with their normal disconnect semantics.
+        // Finish active HTTP requests before permanently closing the bridge,
+        // disabling publications, or draining service/database owners.
+        service.live.close();
+        service.workers.close();
         service.live.transports.drained().await;
         // A socket callback can admit an owned account task. Finish socket
         // handlers before the final account/catalog drain, then finish any

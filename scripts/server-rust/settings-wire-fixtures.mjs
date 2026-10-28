@@ -204,6 +204,41 @@ export const settingsWireFixtures = {
     quotaSnapshot,
     { ...quotaSnapshot, windows: [], credits: null },
   ],
+  providerRateLimitResetConsumeRequestSchema: [
+    { workerId: "fixture-worker", idempotencyKey: providerAccount.id },
+    { workerId: "\ud800", idempotencyKey: providerAccount.id, creditId: null },
+    {
+      workerId: "fixture-worker",
+      idempotencyKey: providerAccount.id,
+      creditId: " credit-🦀 ",
+    },
+  ],
+  providerRateLimitResetConsumeResultSchema: [
+    ...["reset", "nothingToReset", "noCredit", "alreadyRedeemed"].map(
+      (outcome) => ({ outcome, quotaSnapshot: null }),
+    ),
+    { outcome: "reset", quotaSnapshot },
+    {
+      outcome: "reset",
+      quotaSnapshot: {
+        ...quotaSnapshot,
+        rateLimitResetCredits: {
+          availableCount: 1,
+          credits: [
+            {
+              id: "credit-one",
+              resetType: "codexRateLimits",
+              status: "available",
+              grantedAt: 0,
+              expiresAt: null,
+              title: null,
+              description: null,
+            },
+          ],
+        },
+      },
+    },
+  ],
   chatGptModelInventorySchema: [
     { observedAt: "2026-10-27T00:00:00.000Z", models: [chatGptCatalogModel] },
     {
@@ -304,6 +339,15 @@ export const settingsWireFixtures = {
 };
 
 export function* settingsWireCases(name) {
+  if (name === "providerRateLimitResetConsumeRequestSchema") {
+    const sample = settingsWireFixtures[name][0];
+    for (const length of [0, 1, 500, 501])
+      yield { ...sample, workerId: "x".repeat(length) };
+    for (const length of [0, 1, 1000, 1001])
+      yield { ...sample, creditId: "x".repeat(length) };
+    yield { ...sample, creditId: " \ufeff " };
+    yield { ...sample, unexpected: true };
+  }
   if (name === "ollamaModelInventorySchema") {
     const inventory = settingsWireFixtures.ollamaModelInventorySchema[1];
     for (const count of [1000, 1001])

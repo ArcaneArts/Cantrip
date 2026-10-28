@@ -89,6 +89,8 @@ export const contractRoots = [
   "cuaEffectWorkerStatusSchema",
   "ollamaModelInventorySchema",
   "providerQuotaSnapshotSchema",
+  "providerRateLimitResetConsumeRequestSchema",
+  "providerRateLimitResetConsumeResultSchema",
   "chatGptModelInventorySchema",
   "grokModelInventorySchema",
   "providerLegacyCredentialCaptureResultSchema",
