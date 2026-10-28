@@ -1,7 +1,7 @@
 // Existing browser crypto/API modules and the full worker. The terminal uses
 // the managed folder created by the preceding actual product flow.
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { eventually } from "./full-worker.mjs";
 
@@ -16,7 +16,14 @@ export async function actualTerminalServices({
 }) {
   const proof = path.join(directory, "terminal-proof.jsonl"),
     secret = "private-terminal-command-" + crypto.randomUUID();
-  const command = `"${process.execPath}" -e "require('node:fs').appendFileSync('terminal-proof.jsonl',JSON.stringify({token:'${secret}',pid:process.pid})+'\\n');setInterval(()=>{},1000)"`;
+  const program = `terminal-service-probe-${crypto.randomUUID()}.cjs`;
+  // The worker's real platform shell runs this command. Keep shell syntax out
+  // of the probe while requiring it to recover the secret from encrypted argv.
+  await writeFile(
+    path.join(directory, program),
+    "require('node:fs').appendFileSync('terminal-proof.jsonl',JSON.stringify({token:process.argv[2],pid:process.pid})+'\\n');setInterval(()=>{},1000);\n",
+  );
+  const command = `node ${program} ${secret}`;
   const requests = [];
   const observe = (request) => {
     const pathname = new URL(request.url()).pathname;
