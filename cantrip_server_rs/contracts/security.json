@@ -67,7 +67,34 @@
     "policyAssignmentWireListSchema": 5400,
     "policyDeleteSchema": 5406,
     "effectivePolicyWireListSchema": 4732,
-    "standalonePolicyWireListSchema": 4753
+    "standalonePolicyWireListSchema": 4753,
+    "modelProfileCreateSchema": 5409,
+    "modelProfileUpdateSchema": 5409,
+    "modelProfileSummarySchema": 5419,
+    "chatReasoningStateSchema": 5452,
+    "modelConfigurationFailureSchema": 5458,
+    "userSettingsUpdateSchema": 5465,
+    "settingsBundleWireSchema": 5555,
+    "appDestinationUpdateSchema": 5669,
+    "appDestinationSchema": 5684,
+    "cuaEffectWorkerStatusSchema": 5687,
+    "ollamaModelInventorySchema": 5714,
+    "providerQuotaSnapshotSchema": 5738,
+    "chatGptModelInventorySchema": 5785,
+    "grokModelInventorySchema": 5826,
+    "providerLegacyCredentialCaptureResultSchema": 5854,
+    "providerLegacyCredentialPurgeResultSchema": 5869,
+    "providerCredentialUploadSchema": 5872,
+    "providerCredentialWireRecordSchema": 5875,
+    "codexAuthStatusSchema": 5881,
+    "codexDeviceLoginSchema": 5893,
+    "encryptedModelProviderAccountCreateSchema": 5897,
+    "encryptedModelProviderAccountUpdateSchema": 5900,
+    "modelProviderAccountWireSummarySchema": 5631,
+    "modelProviderAccountWireListSchema": 5630,
+    "orderedIdsSchema": 5905,
+    "providerAuthLiveStatusSchema": 5908,
+    "providerModelCatalogResultSchema": 5918
   },
   "nodes": [
     {
@@ -211,7 +238,13 @@
         "updatedAt": 46
       },
       "catchall": 47,
-      "checks": [{ "check": "refinement", "tag": "password-wrapper-pair" }]
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "password-wrapper-pair",
+          "messageAfterPath": false
+        }
+      ]
     },
     {
       "type": "string",
@@ -298,6 +331,7 @@
         {
           "check": "refinement",
           "tag": "canonical-base64url",
+          "messageAfterPath": true,
           "message": "Value is not canonical unpadded base64url."
         },
         { "check": "length_equals", "length": 43, "when": "length" }
@@ -316,7 +350,13 @@
         "envelope": 38
       },
       "catchall": 43,
-      "checks": [{ "check": "refinement", "tag": "password-wrapper" }]
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "password-wrapper",
+          "messageAfterPath": false
+        }
+      ]
     },
     {
       "type": "literal",
@@ -351,6 +391,7 @@
         {
           "check": "refinement",
           "tag": "canonical-base64url",
+          "messageAfterPath": true,
           "message": "Value is not canonical unpadded base64url."
         },
         { "check": "length_equals", "length": 16, "when": "length" }
@@ -369,6 +410,7 @@
         {
           "check": "refinement",
           "tag": "canonical-base64url",
+          "messageAfterPath": true,
           "message": "Value is not canonical unpadded base64url."
         },
         { "check": "max_length", "maximum": 22369643, "when": "length" },
@@ -403,7 +445,13 @@
       "name": "accountEncryptionProfileInitializeSchema",
       "shape": { "profile": 50, "initialClient": 55 },
       "catchall": 80,
-      "checks": [{ "check": "refinement", "tag": "initial-client-wrapper" }]
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "initial-client-wrapper",
+          "messageAfterPath": false
+        }
+      ]
     },
     {
       "type": "object",
@@ -415,7 +463,13 @@
         "payloadMigrationStatus": 53
       },
       "catchall": 54,
-      "checks": [{ "check": "refinement", "tag": "password-wrapper-pair" }]
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "password-wrapper-pair",
+          "messageAfterPath": false
+        }
+      ]
     },
     { "type": "nullable", "innerType": 25, "checks": [] },
     { "type": "nullable", "innerType": 36, "checks": [] },
@@ -490,6 +544,7 @@
         {
           "check": "refinement",
           "tag": "canonical-base64url",
+          "messageAfterPath": true,
           "message": "Value is not canonical unpadded base64url."
         },
         { "check": "length_equals", "length": 87, "when": "length" }
@@ -561,6 +616,7 @@
         {
           "check": "refinement",
           "tag": "canonical-base64url",
+          "messageAfterPath": true,
           "message": "Value is not canonical unpadded base64url."
         },
         { "check": "length_equals", "length": 64, "when": "length" }
@@ -603,7 +659,13 @@
         "updatedAt": 46
       },
       "catchall": 96,
-      "checks": [{ "check": "refinement", "tag": "principal-state" }]
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "principal-state",
+          "messageAfterPath": false
+        }
+      ]
     },
     {
       "type": "string",
@@ -670,7 +732,13 @@
         "updatedAt": 46
       },
       "catchall": 111,
-      "checks": [{ "check": "refinement", "tag": "grant-metadata" }]
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "grant-metadata",
+          "messageAfterPath": false
+        }
+      ]
     },
     {
       "type": "string",
@@ -808,7 +876,13 @@
         "passwordWrappedMasterKey": 36
       },
       "catchall": 121,
-      "checks": [{ "check": "refinement", "tag": "password-change-kdf" }]
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "password-change-kdf",
+          "messageAfterPath": false
+        }
+      ]
     },
     {
       "type": "string",
@@ -928,7 +1002,13 @@
       "name": "encryptionKeyGrantCreateSchema",
       "shape": { "component": 100, "keyRevision": 23, "wrappedKey": 143 },
       "catchall": 144,
-      "checks": [{ "check": "refinement", "tag": "grant-create-metadata" }]
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "grant-create-metadata",
+          "messageAfterPath": false
+        }
+      ]
     },
     { "type": "union", "options": [65, 102], "checks": [] },
     { "type": "never", "checks": [] },
@@ -956,7 +1036,13 @@
         "grants": 145
       },
       "catchall": 151,
-      "checks": [{ "check": "refinement", "tag": "worker-bootstrap" }]
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-bootstrap",
+          "messageAfterPath": false
+        }
+      ]
     },
     {
       "type": "string",
@@ -1987,7 +2073,13 @@
         "staticReading": 357
       },
       "catchall": 358,
-      "checks": [{ "check": "refinement", "tag": "managed-runtime-components" }]
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "managed-runtime-components",
+          "messageAfterPath": false
+        }
+      ]
     },
     { "type": "literal", "values": [1], "checks": [] },
     {
@@ -2083,6 +2175,7 @@
         {
           "check": "refinement",
           "tag": "managed-runtime-progress",
+          "messageAfterPath": true,
           "message": "Managed web runtime progress cannot exceed its total."
         }
       ]
@@ -2212,7 +2305,13 @@
         "error": 368
       },
       "catchall": 370,
-      "checks": [{ "check": "refinement", "tag": "worker-encryption-status" }]
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-encryption-status",
+          "messageAfterPath": false
+        }
+      ]
     },
     { "type": "boolean", "checks": [] },
     {
@@ -3045,6 +3144,7 @@
         {
           "check": "refinement",
           "tag": "live-control-capabilities-unique",
+          "messageAfterPath": true,
           "message": "Client-control capabilities must be unique."
         }
       ]
@@ -3106,7 +3206,11 @@
       "checks": [
         { "check": "min_length", "minimum": 1, "when": "length" },
         { "check": "max_length", "maximum": 128, "when": "length" },
-        { "check": "refinement", "tag": "live-scopes-unique" }
+        {
+          "check": "refinement",
+          "tag": "live-scopes-unique",
+          "messageAfterPath": false
+        }
       ]
     },
     {
@@ -3370,7 +3474,13 @@
       "name": "appLiveEventPayloadSchema",
       "in": 561,
       "out": 562,
-      "checks": [{ "check": "refinement", "tag": "live-payload-bytes" }]
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "live-payload-bytes",
+          "messageAfterPath": false
+        }
+      ]
     },
     { "type": "unknown", "checks": [] },
     {
@@ -3458,7 +3568,13 @@
         "type": 601
       },
       "catchall": 602,
-      "checks": [{ "check": "refinement", "tag": "live-control-window" }]
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "live-control-window",
+          "messageAfterPath": false
+        }
+      ]
     },
     {
       "type": "string",
@@ -3544,11 +3660,13 @@
         {
           "check": "refinement",
           "tag": "endpoint-protected-bytes",
+          "messageAfterPath": true,
           "message": "Protected endpoint content exceeds its byte limit."
         },
         {
           "check": "refinement",
           "tag": "live-notification-domain",
+          "messageAfterPath": true,
           "message": "Client notifications require client-control-content ciphertext."
         }
       ]
@@ -3658,7 +3776,13 @@
         "command": 582
       },
       "catchall": 602,
-      "checks": [{ "check": "refinement", "tag": "live-control-window" }]
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "live-control-window",
+          "messageAfterPath": false
+        }
+      ]
     },
     {
       "type": "object",
@@ -3681,7 +3805,13 @@
         "github": 699
       },
       "catchall": 707,
-      "checks": [{ "check": "refinement", "tag": "project-wire-summary" }]
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "project-wire-summary",
+          "messageAfterPath": false
+        }
+      ]
     },
     {
       "type": "string",
@@ -4117,7 +4247,13 @@
       "name": "encryptedPrivateDisplayLabelSchema",
       "shape": { "formatVersion": 694, "keyRevision": 23, "envelope": 695 },
       "catchall": 697,
-      "checks": [{ "check": "refinement", "tag": "private-label-envelope" }]
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "private-label-envelope",
+          "messageAfterPath": false
+        }
+      ]
     },
     { "type": "literal", "values": [1], "checks": [] },
     {
@@ -4145,6 +4281,7 @@
         {
           "check": "refinement",
           "tag": "canonical-base64url",
+          "messageAfterPath": true,
           "message": "Value is not canonical unpadded base64url."
         },
         { "check": "max_length", "maximum": 22369643, "when": "length" },
@@ -4224,7 +4361,13 @@
         "subagentReasoningEffort": 719
       },
       "catchall": 721,
-      "checks": [{ "check": "refinement", "tag": "model-configuration" }]
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "model-configuration",
+          "messageAfterPath": false
+        }
+      ]
     },
     { "type": "nullable", "innerType": 711, "checks": [] },
     {
@@ -4425,11 +4568,13 @@
       "checks": [
         {
           "check": "refinement",
-          "tag": "worker-wire-protected-interaction-owner"
+          "tag": "worker-wire-protected-interaction-owner",
+          "messageAfterPath": false
         },
         {
           "check": "refinement",
           "tag": "worker-wire-interaction-storage",
+          "messageAfterPath": true,
           "message": "Protected agent interaction request exceeds the storage limit."
         }
       ]
@@ -4471,7 +4616,11 @@
       "shape": { "formatVersion": 758, "keyRevision": 23, "envelope": 759 },
       "catchall": 761,
       "checks": [
-        { "check": "refinement", "tag": "worker-wire-communication-envelope" }
+        {
+          "check": "refinement",
+          "tag": "worker-wire-communication-envelope",
+          "messageAfterPath": false
+        }
       ]
     },
     { "type": "literal", "values": [1], "checks": [] },
@@ -4500,6 +4649,7 @@
         {
           "check": "refinement",
           "tag": "canonical-base64url",
+          "messageAfterPath": true,
           "message": "Value is not canonical unpadded base64url."
         },
         { "check": "max_length", "maximum": 22369643, "when": "length" },
@@ -4539,8 +4689,16 @@
       "type": "string",
       "name": "cuaIdSchema",
       "checks": [
-        { "check": "refinement", "tag": "worker-wire-utf8-256" },
-        { "check": "refinement", "tag": "worker-wire-cua-id" }
+        {
+          "check": "refinement",
+          "tag": "worker-wire-utf8-256",
+          "messageAfterPath": true
+        },
+        {
+          "check": "refinement",
+          "tag": "worker-wire-cua-id",
+          "messageAfterPath": true
+        }
       ]
     },
     {
@@ -4609,11 +4767,13 @@
         {
           "check": "refinement",
           "tag": "endpoint-protected-bytes",
+          "messageAfterPath": true,
           "message": "Protected endpoint content exceeds its byte limit."
         },
         {
           "check": "refinement",
           "tag": "worker-wire-computer-use-content",
+          "messageAfterPath": true,
           "message": "CUA content requires bounded client-control-content ciphertext."
         }
       ]
@@ -4656,7 +4816,11 @@
       "shape": { "counts": 783, "diagnosticCode": 792, "truncated": 794 },
       "catchall": 795,
       "checks": [
-        { "check": "refinement", "tag": "worker-wire-discovery-progress" }
+        {
+          "check": "refinement",
+          "tag": "worker-wire-discovery-progress",
+          "messageAfterPath": false
+        }
       ]
     },
     {
@@ -4840,7 +5004,11 @@
       },
       "catchall": 951,
       "checks": [
-        { "check": "refinement", "tag": "worker-wire-computer-use-activity" }
+        {
+          "check": "refinement",
+          "tag": "worker-wire-computer-use-activity",
+          "messageAfterPath": false
+        }
       ]
     },
     {
@@ -5093,7 +5261,13 @@
     { "type": "nullable", "innerType": 854, "checks": [] },
     {
       "type": "string",
-      "checks": [{ "check": "refinement", "tag": "worker-wire-raw-request" }]
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-wire-raw-request",
+          "messageAfterPath": false
+        }
+      ]
     },
     { "type": "nullable", "innerType": 856, "checks": [] },
     {
@@ -5112,7 +5286,13 @@
     { "type": "nullable", "innerType": 858, "checks": [] },
     {
       "type": "string",
-      "checks": [{ "check": "refinement", "tag": "worker-wire-raw-response" }]
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-wire-raw-response",
+          "messageAfterPath": false
+        }
+      ]
     },
     {
       "type": "record",
@@ -5122,6 +5302,7 @@
         {
           "check": "refinement",
           "tag": "worker-wire-raw-metadata",
+          "messageAfterPath": true,
           "message": "Raw capture metadata may contain at most 32 entries."
         }
       ]
@@ -5273,8 +5454,16 @@
     {
       "type": "string",
       "checks": [
-        { "check": "refinement", "tag": "worker-wire-utf8-256" },
-        { "check": "refinement", "tag": "worker-wire-cursor-label" }
+        {
+          "check": "refinement",
+          "tag": "worker-wire-utf8-256",
+          "messageAfterPath": true
+        },
+        {
+          "check": "refinement",
+          "tag": "worker-wire-cursor-label",
+          "messageAfterPath": true
+        }
       ]
     },
     { "type": "boolean", "checks": [] },
@@ -5544,7 +5733,13 @@
         "cursorIncluded": 945
       },
       "catchall": 946,
-      "checks": [{ "check": "refinement", "tag": "worker-wire-image-pixels" }]
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-wire-image-pixels",
+          "messageAfterPath": true
+        }
+      ]
     },
     { "type": "literal", "values": ["image/png"], "checks": [] },
     {
@@ -5746,7 +5941,13 @@
     { "type": "nullable", "innerType": 985, "checks": [] },
     {
       "type": "string",
-      "checks": [{ "check": "refinement", "tag": "worker-wire-command-output" }]
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-wire-command-output",
+          "messageAfterPath": false
+        }
+      ]
     },
     {
       "type": "optional",
@@ -6905,7 +7106,11 @@
       },
       "catchall": 1244,
       "checks": [
-        { "check": "refinement", "tag": "worker-wire-inference-progress" }
+        {
+          "check": "refinement",
+          "tag": "worker-wire-inference-progress",
+          "messageAfterPath": false
+        }
       ]
     },
     { "type": "literal", "values": ["progress"], "checks": [] },
@@ -7119,7 +7324,11 @@
       "shape": { "formatVersion": 1264, "keyRevision": 23, "envelope": 1265 },
       "catchall": 1267,
       "checks": [
-        { "check": "refinement", "tag": "worker-wire-communication-envelope" }
+        {
+          "check": "refinement",
+          "tag": "worker-wire-communication-envelope",
+          "messageAfterPath": false
+        }
       ]
     },
     { "type": "literal", "values": [1], "checks": [] },
@@ -7148,6 +7357,7 @@
         {
           "check": "refinement",
           "tag": "canonical-base64url",
+          "messageAfterPath": true,
           "message": "Value is not canonical unpadded base64url."
         },
         { "check": "max_length", "maximum": 22369643, "when": "length" },
@@ -7396,6 +7606,7 @@
         {
           "check": "refinement",
           "tag": "worker-wire-attachment-ids",
+          "messageAfterPath": true,
           "message": "Task message attachment IDs must be unique."
         }
       ]
@@ -7413,7 +7624,13 @@
       "name": "encryptedTaskMessageProtectedContentSchema",
       "shape": { "formatVersion": 1323, "keyRevision": 23, "envelope": 1324 },
       "catchall": 1326,
-      "checks": [{ "check": "refinement", "tag": "worker-wire-task-envelope" }]
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-wire-task-envelope",
+          "messageAfterPath": false
+        }
+      ]
     },
     { "type": "literal", "values": [1], "checks": [] },
     {
@@ -7441,6 +7658,7 @@
         {
           "check": "refinement",
           "tag": "canonical-base64url",
+          "messageAfterPath": true,
           "message": "Value is not canonical unpadded base64url."
         },
         { "check": "max_length", "maximum": 22369643, "when": "length" },
@@ -7726,7 +7944,11 @@
       "shape": { "formatVersion": 1397, "keyRevision": 23, "envelope": 1398 },
       "catchall": 1400,
       "checks": [
-        { "check": "refinement", "tag": "worker-wire-communication-envelope" }
+        {
+          "check": "refinement",
+          "tag": "worker-wire-communication-envelope",
+          "messageAfterPath": false
+        }
       ]
     },
     { "type": "literal", "values": [1], "checks": [] },
@@ -7755,6 +7977,7 @@
         {
           "check": "refinement",
           "tag": "canonical-base64url",
+          "messageAfterPath": true,
           "message": "Value is not canonical unpadded base64url."
         },
         { "check": "max_length", "maximum": 22369643, "when": "length" },
@@ -7951,6 +8174,7 @@
         {
           "check": "refinement",
           "tag": "worker-wire-permission-cwd",
+          "messageAfterPath": true,
           "message": "Only native computer-use permission requests may omit a working directory.",
           "path": ["cwd"]
         }
@@ -8187,6 +8411,7 @@
         {
           "check": "refinement",
           "tag": "worker-wire-interaction-storage",
+          "messageAfterPath": true,
           "message": "Agent interaction response exceeds the 1 MB storage limit."
         }
       ]
@@ -8342,6 +8567,7 @@
         {
           "check": "refinement",
           "tag": "worker-wire-interaction-storage",
+          "messageAfterPath": true,
           "message": "Protected agent interaction response exceeds the storage limit."
         }
       ]
@@ -8359,7 +8585,11 @@
       "shape": { "formatVersion": 1553, "keyRevision": 23, "envelope": 1554 },
       "catchall": 1556,
       "checks": [
-        { "check": "refinement", "tag": "worker-wire-communication-envelope" }
+        {
+          "check": "refinement",
+          "tag": "worker-wire-communication-envelope",
+          "messageAfterPath": false
+        }
       ]
     },
     { "type": "literal", "values": [1], "checks": [] },
@@ -8388,6 +8618,7 @@
         {
           "check": "refinement",
           "tag": "canonical-base64url",
+          "messageAfterPath": true,
           "message": "Value is not canonical unpadded base64url."
         },
         { "check": "max_length", "maximum": 22369643, "when": "length" },
@@ -8473,7 +8704,13 @@
       "name": "workerLinkPeerSignalNotificationSchema",
       "shape": { "type": 1573, "envelope": 1574 },
       "catchall": 1612,
-      "checks": [{ "check": "refinement", "tag": "worker-wire-link-signal" }]
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-wire-link-signal",
+          "messageAfterPath": false
+        }
+      ]
     },
     { "type": "literal", "values": ["worker-link.peer.signal"], "checks": [] },
     {
@@ -8684,7 +8921,11 @@
       },
       "catchall": 1620,
       "checks": [
-        { "check": "refinement", "tag": "worker-wire-link-candidates" }
+        {
+          "check": "refinement",
+          "tag": "worker-wire-link-candidates",
+          "messageAfterPath": true
+        }
       ]
     },
     {
@@ -8735,7 +8976,13 @@
         "taskDispatchFence": 1639,
         "outcome": 1646
       },
-      "checks": [{ "check": "refinement", "tag": "worker-wire-chat-turn-root" }]
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-wire-chat-turn-root",
+          "messageAfterPath": false
+        }
+      ]
     },
     { "type": "literal", "values": ["chat.turn.outcome"], "checks": [] },
     {
@@ -9652,6 +9899,7 @@
         {
           "check": "refinement",
           "tag": "worker-wire-repository-path",
+          "messageAfterPath": true,
           "message": "Expected a safe repository-relative path."
         }
       ]
@@ -9899,7 +10147,11 @@
       },
       "catchall": 1855,
       "checks": [
-        { "check": "refinement", "tag": "worker-wire-runtime-observation" }
+        {
+          "check": "refinement",
+          "tag": "worker-wire-runtime-observation",
+          "messageAfterPath": false
+        }
       ]
     },
     {
@@ -10194,7 +10446,11 @@
       },
       "catchall": 1894,
       "checks": [
-        { "check": "refinement", "tag": "worker-wire-provider-observation" }
+        {
+          "check": "refinement",
+          "tag": "worker-wire-provider-observation",
+          "messageAfterPath": false
+        }
       ]
     },
     {
@@ -10275,7 +10531,11 @@
       },
       "catchall": 1893,
       "checks": [
-        { "check": "refinement", "tag": "worker-wire-provider-status" }
+        {
+          "check": "refinement",
+          "tag": "worker-wire-provider-status",
+          "messageAfterPath": false
+        }
       ]
     },
     {
@@ -10692,11 +10952,13 @@
         {
           "check": "refinement",
           "tag": "endpoint-protected-bytes",
+          "messageAfterPath": true,
           "message": "Protected endpoint content exceeds its byte limit."
         },
         {
           "check": "refinement",
           "tag": "worker-command-control-content:16777216",
+          "messageAfterPath": true,
           "message": "CUA content requires bounded client-control-content ciphertext."
         }
       ]
@@ -11246,6 +11508,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-tunnel-domain",
+          "messageAfterPath": true,
           "message": "Tunnel records require tunnel-content ciphertext."
         }
       ]
@@ -11285,6 +11548,7 @@
         {
           "check": "refinement",
           "tag": "endpoint-protected-bytes",
+          "messageAfterPath": true,
           "message": "Protected endpoint content exceeds its byte limit."
         }
       ]
@@ -11381,7 +11645,11 @@
       },
       "catchall": 2076,
       "checks": [
-        { "check": "refinement", "tag": "worker-command-link-session" }
+        {
+          "check": "refinement",
+          "tag": "worker-command-link-session",
+          "messageAfterPath": false
+        }
       ]
     },
     {
@@ -11437,7 +11705,13 @@
         "absoluteExpiresAt": 2064
       },
       "catchall": 2065,
-      "checks": [{ "check": "refinement", "tag": "worker-command-link-lease" }]
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-command-link-lease",
+          "messageAfterPath": false
+        }
+      ]
     },
     {
       "type": "string",
@@ -11474,6 +11748,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-unique",
+          "messageAfterPath": true,
           "message": "Enabled routes must be unique."
         }
       ]
@@ -11627,7 +11902,13 @@
       "name": "installedWorkerLinkGrantSchema",
       "shape": { "binding": 2097, "observation": 2110, "tokenHash": 2116 },
       "catchall": 2117,
-      "checks": [{ "check": "refinement", "tag": "worker-command-link-grant" }]
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-command-link-grant",
+          "messageAfterPath": false
+        }
+      ]
     },
     {
       "type": "object",
@@ -11703,6 +11984,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-unique",
+          "messageAfterPath": true,
           "message": "Grant lanes must be unique."
         }
       ]
@@ -11722,6 +12004,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-unique",
+          "messageAfterPath": true,
           "message": "Grant operations must be unique."
         }
       ]
@@ -11784,6 +12067,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-unique",
+          "messageAfterPath": true,
           "message": "Observation topics must be unique."
         }
       ]
@@ -11973,7 +12257,11 @@
       },
       "catchall": 2178,
       "checks": [
-        { "check": "refinement", "tag": "worker-command-link-configuration" }
+        {
+          "check": "refinement",
+          "tag": "worker-command-link-configuration",
+          "messageAfterPath": false
+        }
       ]
     },
     {
@@ -11995,6 +12283,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-unique",
+          "messageAfterPath": true,
           "message": "WorkerLink STUN URLs must be unique."
         }
       ]
@@ -12008,6 +12297,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-stun-url",
+          "messageAfterPath": true,
           "message": "WorkerLink STUN URLs must use stun: or stuns:."
         }
       ]
@@ -12337,6 +12627,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-scratch-archive",
+          "messageAfterPath": true,
           "message": "Archive expiry must be later than the archive timestamp."
         }
       ]
@@ -12425,6 +12716,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-scratch-reconcile",
+          "messageAfterPath": true,
           "message": "Archive timestamps and expiry are invalid."
         }
       ]
@@ -12638,7 +12930,11 @@
       "shape": { "component": 331, "action": 2251, "type": 2252 },
       "catchall": 2253,
       "checks": [
-        { "check": "refinement", "tag": "worker-command-runtime-profiles" }
+        {
+          "check": "refinement",
+          "tag": "worker-command-runtime-profiles",
+          "messageAfterPath": false
+        }
       ]
     },
     {
@@ -12849,6 +13145,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-protected-bytes:2097152",
+          "messageAfterPath": true,
           "message": "Encrypted secret exceeds its byte limit."
         }
       ]
@@ -13370,6 +13667,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-not-dot",
+          "messageAfterPath": true,
           "message": "Repository names cannot be dot path segments."
         }
       ]
@@ -13451,6 +13749,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-protected-bytes:4194304",
+          "messageAfterPath": true,
           "message": "Encrypted project automation content exceeds its byte limit."
         }
       ]
@@ -13982,7 +14281,11 @@
         "linkedIssueNumbers": 2492
       },
       "checks": [
-        { "check": "refinement", "tag": "worker-command-pull-branches" }
+        {
+          "check": "refinement",
+          "tag": "worker-command-pull-branches",
+          "messageAfterPath": false
+        }
       ]
     },
     {
@@ -13994,6 +14297,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-no-controls",
+          "messageAfterPath": true,
           "message": "Base branch cannot contain control characters."
         }
       ]
@@ -14007,6 +14311,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-no-controls",
+          "messageAfterPath": true,
           "message": "Head branch cannot contain control characters."
         }
       ]
@@ -14296,7 +14601,11 @@
       "name": "githubPullRequestReviewSubmitSchema",
       "shape": { "event": 2523, "body": 2524 },
       "checks": [
-        { "check": "refinement", "tag": "worker-command-review-reason" }
+        {
+          "check": "refinement",
+          "tag": "worker-command-review-reason",
+          "messageAfterPath": false
+        }
       ]
     },
     {
@@ -14360,7 +14669,11 @@
         "startSide": 2538
       },
       "checks": [
-        { "check": "refinement", "tag": "worker-command-inline-comment" }
+        {
+          "check": "refinement",
+          "tag": "worker-command-inline-comment",
+          "messageAfterPath": false
+        }
       ]
     },
     {
@@ -14380,6 +14693,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-review-path",
+          "messageAfterPath": true,
           "message": "Review path must be a repository-relative file path."
         }
       ]
@@ -14945,6 +15259,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-workflow-inputs",
+          "messageAfterPath": true,
           "message": "A workflow dispatch can contain at most 50 inputs.",
           "path": ["inputs"]
         }
@@ -15325,6 +15640,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-source-path-pair",
+          "messageAfterPath": true,
           "message": "External conversion source fields must be provided together."
         }
       ]
@@ -15386,6 +15702,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-source-path-pair",
+          "messageAfterPath": true,
           "message": "External conversion source fields must be provided together."
         }
       ]
@@ -15972,6 +16289,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-surface-kind:terminal-state",
+          "messageAfterPath": true,
           "message": "Expected terminal-state protected state.",
           "path": ["classification", "recordKind"]
         }
@@ -16004,7 +16322,11 @@
       "shape": { "formatVersion": 2801, "keyRevision": 23, "envelope": 2802 },
       "catchall": 2804,
       "checks": [
-        { "check": "refinement", "tag": "worker-command-surface-envelope" }
+        {
+          "check": "refinement",
+          "tag": "worker-command-surface-envelope",
+          "messageAfterPath": false
+        }
       ]
     },
     { "type": "literal", "values": [1], "checks": [] },
@@ -16033,6 +16355,7 @@
         {
           "check": "refinement",
           "tag": "canonical-base64url",
+          "messageAfterPath": true,
           "message": "Value is not canonical unpadded base64url."
         },
         { "check": "max_length", "maximum": 22369643, "when": "length" },
@@ -16236,6 +16559,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-nul-free",
+          "messageAfterPath": true,
           "message": "Queries cannot contain NULs."
         }
       ]
@@ -16278,7 +16602,11 @@
       },
       "catchall": 2955,
       "checks": [
-        { "check": "refinement", "tag": "worker-command-run-document" }
+        {
+          "check": "refinement",
+          "tag": "worker-command-run-document",
+          "messageAfterPath": false
+        }
       ]
     },
     {
@@ -16310,6 +16638,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-portable-directory",
+          "messageAfterPath": true,
           "message": "Expected a normalized repository-relative directory."
         }
       ]
@@ -16328,11 +16657,13 @@
         {
           "check": "refinement",
           "tag": "worker-command-portable-path",
+          "messageAfterPath": true,
           "message": "Expected a normalized repository-relative path."
         },
         {
           "check": "refinement",
           "tag": "worker-command-dart-path",
+          "messageAfterPath": true,
           "message": "Expected a repository-relative Flutter entrypoint path."
         }
       ]
@@ -16353,11 +16684,13 @@
         {
           "check": "refinement",
           "tag": "worker-command-nul-free",
+          "messageAfterPath": true,
           "message": "Values cannot contain NUL characters."
         },
         {
           "check": "refinement",
           "tag": "worker-command-not-blank",
+          "messageAfterPath": true,
           "message": "Commands cannot be blank."
         }
       ]
@@ -16381,6 +16714,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-nul-free",
+          "messageAfterPath": true,
           "message": "Values cannot contain NUL characters."
         }
       ]
@@ -16407,7 +16741,11 @@
       },
       "catchall": 2878,
       "checks": [
-        { "check": "refinement", "tag": "worker-command-environment-names" }
+        {
+          "check": "refinement",
+          "tag": "worker-command-environment-names",
+          "messageAfterPath": false
+        }
       ]
     },
     {
@@ -16437,6 +16775,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-portable-path",
+          "messageAfterPath": true,
           "message": "Expected a normalized repository-relative path."
         }
       ]
@@ -16480,6 +16819,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-nul-free",
+          "messageAfterPath": true,
           "message": "Values cannot contain NUL characters."
         }
       ]
@@ -16527,6 +16867,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-secret-path",
+          "messageAfterPath": true,
           "message": "Secret references must be normalized relative names."
         }
       ]
@@ -16661,7 +17002,11 @@
       },
       "catchall": 2908,
       "checks": [
-        { "check": "refinement", "tag": "worker-command-environment-names" }
+        {
+          "check": "refinement",
+          "tag": "worker-command-environment-names",
+          "messageAfterPath": false
+        }
       ]
     },
     {
@@ -16729,7 +17074,11 @@
       },
       "catchall": 2932,
       "checks": [
-        { "check": "refinement", "tag": "worker-command-dart-defines" }
+        {
+          "check": "refinement",
+          "tag": "worker-command-dart-defines",
+          "messageAfterPath": false
+        }
       ]
     },
     {
@@ -16747,6 +17096,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-nul-free",
+          "messageAfterPath": true,
           "message": "Values cannot contain NUL characters."
         },
         { "check": "trim" },
@@ -16768,6 +17118,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-nul-free",
+          "messageAfterPath": true,
           "message": "Values cannot contain NUL characters."
         },
         { "check": "trim" },
@@ -16789,6 +17140,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-nul-free",
+          "messageAfterPath": true,
           "message": "Values cannot contain NUL characters."
         },
         { "check": "trim" },
@@ -16828,6 +17180,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-nul-free",
+          "messageAfterPath": true,
           "message": "Values cannot contain NUL characters."
         },
         { "check": "trim" },
@@ -16835,6 +17188,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-no-equals",
+          "messageAfterPath": true,
           "message": "Dart define names cannot contain equals signs."
         }
       ]
@@ -16846,6 +17200,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-nul-free",
+          "messageAfterPath": true,
           "message": "Values cannot contain NUL characters."
         }
       ]
@@ -16916,7 +17271,11 @@
       },
       "catchall": 2949,
       "checks": [
-        { "check": "refinement", "tag": "worker-command-dart-defines" }
+        {
+          "check": "refinement",
+          "tag": "worker-command-dart-defines",
+          "messageAfterPath": false
+        }
       ]
     },
     {
@@ -17054,7 +17413,11 @@
       },
       "catchall": 3009,
       "checks": [
-        { "check": "refinement", "tag": "worker-command-run-document" }
+        {
+          "check": "refinement",
+          "tag": "worker-command-run-document",
+          "messageAfterPath": false
+        }
       ]
     },
     {
@@ -17115,11 +17478,13 @@
         {
           "check": "refinement",
           "tag": "worker-command-nul-free",
+          "messageAfterPath": true,
           "message": "Values cannot contain NUL characters."
         },
         {
           "check": "refinement",
           "tag": "worker-command-not-blank",
+          "messageAfterPath": true,
           "message": "Interpreters cannot be blank."
         }
       ]
@@ -17332,7 +17697,11 @@
       },
       "catchall": 3060,
       "checks": [
-        { "check": "refinement", "tag": "worker-command-run-document" }
+        {
+          "check": "refinement",
+          "tag": "worker-command-run-document",
+          "messageAfterPath": false
+        }
       ]
     },
     {
@@ -17631,7 +18000,11 @@
       },
       "catchall": 3134,
       "checks": [
-        { "check": "refinement", "tag": "worker-command-run-document" }
+        {
+          "check": "refinement",
+          "tag": "worker-command-run-document",
+          "messageAfterPath": false
+        }
       ]
     },
     {
@@ -17934,6 +18307,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-nul-free",
+          "messageAfterPath": true,
           "message": "Values cannot contain NUL characters."
         },
         { "check": "trim" },
@@ -18092,7 +18466,11 @@
       },
       "catchall": 3179,
       "checks": [
-        { "check": "refinement", "tag": "worker-command-run-document" }
+        {
+          "check": "refinement",
+          "tag": "worker-command-run-document",
+          "messageAfterPath": false
+        }
       ]
     },
     {
@@ -18131,11 +18509,13 @@
         {
           "check": "refinement",
           "tag": "worker-command-portable-path",
+          "messageAfterPath": true,
           "message": "Expected a normalized repository-relative path."
         },
         {
           "check": "refinement",
           "tag": "worker-command-dart-path",
+          "messageAfterPath": true,
           "message": "Expected a repository-relative Dart entrypoint path."
         }
       ]
@@ -18269,6 +18649,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-nul-free",
+          "messageAfterPath": true,
           "message": "Values cannot contain NUL characters."
         },
         { "check": "trim" },
@@ -18371,7 +18752,11 @@
       },
       "catchall": 3252,
       "checks": [
-        { "check": "refinement", "tag": "worker-command-run-document" }
+        {
+          "check": "refinement",
+          "tag": "worker-command-run-document",
+          "messageAfterPath": false
+        }
       ]
     },
     {
@@ -18571,7 +18956,11 @@
       },
       "catchall": 3230,
       "checks": [
-        { "check": "refinement", "tag": "worker-command-cargo-features" }
+        {
+          "check": "refinement",
+          "tag": "worker-command-cargo-features",
+          "messageAfterPath": false
+        }
       ]
     },
     {
@@ -18588,6 +18977,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-nul-free",
+          "messageAfterPath": true,
           "message": "Values cannot contain NUL characters."
         },
         { "check": "trim" },
@@ -18620,6 +19010,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-nul-free",
+          "messageAfterPath": true,
           "message": "Values cannot contain NUL characters."
         },
         { "check": "trim" },
@@ -18665,6 +19056,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-nul-free",
+          "messageAfterPath": true,
           "message": "Values cannot contain NUL characters."
         },
         { "check": "trim" },
@@ -18693,6 +19085,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-nul-free",
+          "messageAfterPath": true,
           "message": "Values cannot contain NUL characters."
         },
         { "check": "trim" },
@@ -18770,7 +19163,11 @@
       },
       "catchall": 3250,
       "checks": [
-        { "check": "refinement", "tag": "worker-command-cargo-features" }
+        {
+          "check": "refinement",
+          "tag": "worker-command-cargo-features",
+          "messageAfterPath": false
+        }
       ]
     },
     {
@@ -18977,7 +19374,11 @@
       "element": 3275,
       "checks": [
         { "check": "max_length", "maximum": 256, "when": "length" },
-        { "check": "refinement", "tag": "worker-command-secret-references" }
+        {
+          "check": "refinement",
+          "tag": "worker-command-secret-references",
+          "messageAfterPath": false
+        }
       ]
     },
     {
@@ -19003,11 +19404,13 @@
         {
           "check": "refinement",
           "tag": "worker-command-protected-bytes:2097152",
+          "messageAfterPath": true,
           "message": "Encrypted secret exceeds its byte limit."
         },
         {
           "check": "refinement",
           "tag": "worker-command-protected-bytes:65664",
+          "messageAfterPath": true,
           "message": "Encrypted Run configuration secret exceeds its byte limit."
         }
       ]
@@ -19188,6 +19591,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-chat-title",
+          "messageAfterPath": true,
           "message": "Project export title protection must be a chat label.",
           "path": ["titleProtection"]
         }
@@ -19874,7 +20278,11 @@
         "tag": 3427
       },
       "checks": [
-        { "check": "refinement", "tag": "worker-command-history-filter" }
+        {
+          "check": "refinement",
+          "tag": "worker-command-history-filter",
+          "messageAfterPath": false
+        }
       ]
     },
     {
@@ -20051,6 +20459,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-safe-revision",
+          "messageAfterPath": true,
           "message": "Expected a safe Git revision."
         }
       ]
@@ -20305,7 +20714,11 @@
         "tag": 3494
       },
       "checks": [
-        { "check": "refinement", "tag": "worker-command-commit-search" }
+        {
+          "check": "refinement",
+          "tag": "worker-command-commit-search",
+          "messageAfterPath": false
+        }
       ]
     },
     {
@@ -20956,7 +21369,13 @@
         "includeUnstaged": 3594,
         "includeUntracked": 3595
       },
-      "checks": [{ "check": "refinement", "tag": "worker-command-stash" }]
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-command-stash",
+          "messageAfterPath": false
+        }
+      ]
     },
     {
       "type": "string",
@@ -21633,7 +22052,13 @@
       "name": "gitTagActionSchema",
       "options": [3758, 3764, 3766, 3768],
       "discriminator": "type",
-      "checks": [{ "check": "refinement", "tag": "worker-command-tag-action" }]
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-command-tag-action",
+          "messageAfterPath": false
+        }
+      ]
     },
     {
       "type": "object",
@@ -21960,7 +22385,13 @@
       "type": "object",
       "name": "gitInteractiveRebaseTodoItemSchema",
       "shape": { "action": 1781, "revision": 1775, "message": 3826 },
-      "checks": [{ "check": "refinement", "tag": "worker-command-rebase-todo" }]
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-command-rebase-todo",
+          "messageAfterPath": false
+        }
+      ]
     },
     {
       "type": "default",
@@ -22169,7 +22600,13 @@
       "type": "object",
       "name": "gitConflictResolutionRequestSchema",
       "shape": { "path": 1786, "strategy": 3869, "content": 3870 },
-      "checks": [{ "check": "refinement", "tag": "worker-command-conflict" }]
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-command-conflict",
+          "messageAfterPath": false
+        }
+      ]
     },
     {
       "type": "enum",
@@ -22843,6 +23280,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-surface-kind:file-document-state",
+          "messageAfterPath": true,
           "message": "Expected file-document-state protected state.",
           "path": ["classification", "recordKind"]
         }
@@ -23100,7 +23538,8 @@
         { "check": "max_length", "maximum": 128, "when": "length" },
         {
           "check": "refinement",
-          "tag": "worker-command-observation-targets:worktree"
+          "tag": "worker-command-observation-targets:worktree",
+          "messageAfterPath": false
         }
       ]
     },
@@ -23159,7 +23598,8 @@
         { "check": "max_length", "maximum": 128, "when": "length" },
         {
           "check": "refinement",
-          "tag": "worker-command-observation-targets:codegraph"
+          "tag": "worker-command-observation-targets:codegraph",
+          "messageAfterPath": false
         }
       ]
     },
@@ -24011,7 +24451,11 @@
       "shape": { "formatVersion": 4198, "keyRevision": 23, "envelope": 4199 },
       "catchall": 4201,
       "checks": [
-        { "check": "refinement", "tag": "worker-command-attachment-envelope" }
+        {
+          "check": "refinement",
+          "tag": "worker-command-attachment-envelope",
+          "messageAfterPath": false
+        }
       ]
     },
     { "type": "literal", "values": [1], "checks": [] },
@@ -24040,6 +24484,7 @@
         {
           "check": "refinement",
           "tag": "canonical-base64url",
+          "messageAfterPath": true,
           "message": "Value is not canonical unpadded base64url."
         },
         { "check": "max_length", "maximum": 22369643, "when": "length" },
@@ -24151,6 +24596,7 @@
         {
           "check": "refinement",
           "tag": "canonical-base64url",
+          "messageAfterPath": true,
           "message": "Value is not canonical unpadded base64url."
         },
         { "check": "max_length", "maximum": 22369643, "when": "length" },
@@ -24744,7 +25190,11 @@
       },
       "catchall": 4365,
       "checks": [
-        { "check": "refinement", "tag": "worker-command-surface-command" }
+        {
+          "check": "refinement",
+          "tag": "worker-command-surface-command",
+          "messageAfterPath": false
+        }
       ]
     },
     { "type": "literal", "values": ["surface.attach"], "checks": [] },
@@ -24835,6 +25285,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-surface-kind:browser-state",
+          "messageAfterPath": true,
           "message": "Expected browser-state protected state.",
           "path": ["classification", "recordKind"]
         }
@@ -24849,6 +25300,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-surface-kind:remote-desktop-state",
+          "messageAfterPath": true,
           "message": "Expected remote-desktop-state protected state.",
           "path": ["classification", "recordKind"]
         }
@@ -25006,7 +25458,11 @@
       },
       "catchall": 4380,
       "checks": [
-        { "check": "refinement", "tag": "worker-command-surface-command" }
+        {
+          "check": "refinement",
+          "tag": "worker-command-surface-command",
+          "messageAfterPath": false
+        }
       ]
     },
     { "type": "literal", "values": ["surface.configure"], "checks": [] },
@@ -25785,7 +26241,13 @@
         "recentAttempts": 4521
       },
       "catchall": 4522,
-      "checks": [{ "check": "refinement", "tag": "worker-command-retry" }]
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-command-retry",
+          "messageAfterPath": false
+        }
+      ]
     },
     {
       "type": "enum",
@@ -26083,10 +26545,15 @@
       },
       "catchall": 721,
       "checks": [
-        { "check": "refinement", "tag": "model-configuration" },
+        {
+          "check": "refinement",
+          "tag": "model-configuration",
+          "messageAfterPath": false
+        },
         {
           "check": "refinement",
           "tag": "worker-command-task-model",
+          "messageAfterPath": true,
           "message": "A Task Worker root model must be selected.",
           "path": ["modelId"]
         }
@@ -26313,6 +26780,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-unique",
+          "messageAfterPath": true,
           "message": "Task attachment IDs must be unique."
         }
       ]
@@ -26329,7 +26797,13 @@
       "name": "encryptedTaskProtectedContentSchema",
       "shape": { "formatVersion": 4593, "keyRevision": 23, "envelope": 4594 },
       "catchall": 4596,
-      "checks": [{ "check": "refinement", "tag": "worker-wire-task-envelope" }]
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-wire-task-envelope",
+          "messageAfterPath": false
+        }
+      ]
     },
     { "type": "literal", "values": [1], "checks": [] },
     {
@@ -26357,6 +26831,7 @@
         {
           "check": "refinement",
           "tag": "canonical-base64url",
+          "messageAfterPath": true,
           "message": "Value is not canonical unpadded base64url."
         },
         { "check": "max_length", "maximum": 22369643, "when": "length" },
@@ -26548,7 +27023,13 @@
         "createdAt": 4654
       },
       "catchall": 4655,
-      "checks": [{ "check": "refinement", "tag": "worker-command-chat-root" }]
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-command-chat-root",
+          "messageAfterPath": false
+        }
+      ]
     },
     {
       "type": "string",
@@ -26851,7 +27332,13 @@
         "resultMode": 4789,
         "taskDispatchLease": 4829
       },
-      "checks": [{ "check": "refinement", "tag": "worker-command-chat-turn" }]
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-command-chat-turn",
+          "messageAfterPath": false
+        }
+      ]
     },
     { "type": "literal", "values": ["chat.turn"], "checks": [] },
     {
@@ -27136,6 +27623,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-protected-bytes:8192",
+          "messageAfterPath": true,
           "message": "Encrypted policy content exceeds its byte limit."
         }
       ]
@@ -27221,6 +27709,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-protected-bytes:131072",
+          "messageAfterPath": true,
           "message": "Encrypted policy content exceeds its byte limit."
         }
       ]
@@ -27411,7 +27900,13 @@
         "userMessage": 1314
       },
       "catchall": 4820,
-      "checks": [{ "check": "refinement", "tag": "worker-command-task-relay" }]
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-command-task-relay",
+          "messageAfterPath": false
+        }
+      ]
     },
     {
       "type": "string",
@@ -27471,7 +27966,13 @@
       "name": "encryptedTaskPlanningRoundProtectedContentSchema",
       "shape": { "formatVersion": 4812, "keyRevision": 23, "envelope": 4813 },
       "catchall": 4815,
-      "checks": [{ "check": "refinement", "tag": "worker-wire-task-envelope" }]
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-wire-task-envelope",
+          "messageAfterPath": false
+        }
+      ]
     },
     { "type": "literal", "values": [1], "checks": [] },
     {
@@ -27499,6 +28000,7 @@
         {
           "check": "refinement",
           "tag": "canonical-base64url",
+          "messageAfterPath": true,
           "message": "Value is not canonical unpadded base64url."
         },
         { "check": "max_length", "maximum": 22369643, "when": "length" },
@@ -27851,7 +28353,11 @@
       },
       "catchall": 4887,
       "checks": [
-        { "check": "refinement", "tag": "worker-command-interaction-response" }
+        {
+          "check": "refinement",
+          "tag": "worker-command-interaction-response",
+          "messageAfterPath": false
+        }
       ]
     },
     { "type": "literal", "values": ["reply"], "checks": [] },
@@ -28169,7 +28675,11 @@
       },
       "catchall": 4978,
       "checks": [
-        { "check": "refinement", "tag": "worker-command-queued-prompt" }
+        {
+          "check": "refinement",
+          "tag": "worker-command-queued-prompt",
+          "messageAfterPath": false
+        }
       ]
     },
     {
@@ -28262,7 +28772,11 @@
       "shape": { "formatVersion": 4956, "keyRevision": 23, "envelope": 4957 },
       "catchall": 4959,
       "checks": [
-        { "check": "refinement", "tag": "worker-wire-communication-envelope" }
+        {
+          "check": "refinement",
+          "tag": "worker-wire-communication-envelope",
+          "messageAfterPath": false
+        }
       ]
     },
     { "type": "literal", "values": [1], "checks": [] },
@@ -28291,6 +28805,7 @@
         {
           "check": "refinement",
           "tag": "canonical-base64url",
+          "messageAfterPath": true,
           "message": "Value is not canonical unpadded base64url."
         },
         { "check": "max_length", "maximum": 22369643, "when": "length" },
@@ -28806,7 +29321,13 @@
         "failureTask": 5063
       },
       "catchall": 5064,
-      "checks": [{ "check": "refinement", "tag": "worker-command-task-goal" }]
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-command-task-goal",
+          "messageAfterPath": false
+        }
+      ]
     },
     {
       "type": "object",
@@ -28848,7 +29369,13 @@
       "name": "encryptedTaskGoalObjectiveSchema",
       "shape": { "formatVersion": 5059, "keyRevision": 23, "envelope": 5060 },
       "catchall": 5062,
-      "checks": [{ "check": "refinement", "tag": "worker-wire-task-envelope" }]
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-wire-task-envelope",
+          "messageAfterPath": false
+        }
+      ]
     },
     { "type": "literal", "values": [1], "checks": [] },
     {
@@ -28876,6 +29403,7 @@
         {
           "check": "refinement",
           "tag": "canonical-base64url",
+          "messageAfterPath": true,
           "message": "Value is not canonical unpadded base64url."
         },
         { "check": "max_length", "maximum": 22369643, "when": "length" },
@@ -29596,7 +30124,13 @@
         "model": 3934,
         "provider": 3973
       },
-      "checks": [{ "check": "refinement", "tag": "worker-command-steer" }]
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-command-steer",
+          "messageAfterPath": false
+        }
+      ]
     },
     { "type": "literal", "values": ["chat.steer"], "checks": [] },
     {
@@ -30071,7 +30605,13 @@
       "name": "accountResourceUsageHistoryQuerySchema",
       "shape": { "metric": 5267, "resolution": 5268, "from": 5269, "to": 5270 },
       "catchall": 5271,
-      "checks": [{ "check": "refinement", "tag": "usage-history-window" }]
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "usage-history-window",
+          "messageAfterPath": false
+        }
+      ]
     },
     {
       "type": "enum",
@@ -30304,7 +30844,13 @@
       "name": "accountLiveTrafficQuerySchema",
       "shape": { "after": 5304, "epoch": 5306 },
       "catchall": 5308,
-      "checks": [{ "check": "refinement", "tag": "usage-live-traffic-query" }]
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "usage-live-traffic-query",
+          "messageAfterPath": false
+        }
+      ]
     },
     {
       "type": "optional",
@@ -30638,6 +31184,7 @@
         {
           "check": "refinement",
           "tag": "policy-update-fields",
+          "messageAfterPath": true,
           "message": "At least one encrypted policy field is required."
         }
       ]
@@ -30873,6 +31420,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-unique",
+          "messageAfterPath": true,
           "message": "Policy order cannot contain duplicate IDs."
         }
       ]
@@ -30902,6 +31450,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-unique",
+          "messageAfterPath": true,
           "message": "Policy assignments cannot contain duplicate IDs."
         }
       ]
@@ -30920,7 +31469,11 @@
       },
       "catchall": 5405,
       "checks": [
-        { "check": "refinement", "tag": "policy-assignment-references" }
+        {
+          "check": "refinement",
+          "tag": "policy-assignment-references",
+          "messageAfterPath": false
+        }
       ]
     },
     {
@@ -30943,6 +31496,7 @@
         {
           "check": "refinement",
           "tag": "worker-command-unique",
+          "messageAfterPath": true,
           "message": "Direct policy assignments cannot contain duplicate IDs."
         }
       ]
@@ -30966,6 +31520,3110 @@
         { "check": "greater_than", "value": 0, "inclusive": false }
       ]
     },
-    { "type": "never", "checks": [] }
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "modelProfileUpdateSchema",
+      "shape": { "name": 5410, "routes": 5411 },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 160, "when": "length" }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 5412,
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 32, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "model-routes-enabled",
+          "messageAfterPath": true,
+          "message": "At least one provider route must be enabled."
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "modelRouteInputSchema",
+      "shape": {
+        "id": 5413,
+        "providerId": 5415,
+        "modelName": 5416,
+        "enabled": 5417
+      },
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5414,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 160, "when": "length" }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5418,
+      "defaultValue": true,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "object",
+      "name": "modelProfileSummarySchema",
+      "shape": {
+        "name": 5410,
+        "routes": 5420,
+        "id": 5430,
+        "canonicalModelId": 5431,
+        "defaultReasoningEffort": 5434,
+        "discoveryManaged": 5436,
+        "routingPolicy": 5438,
+        "tokenUsage": 5439,
+        "agentTime": 5444,
+        "createdAt": 5450,
+        "updatedAt": 5451
+      },
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 5421,
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "modelRouteSummarySchema",
+      "shape": {
+        "id": 5422,
+        "providerId": 5415,
+        "modelName": 5416,
+        "enabled": 5417,
+        "providerName": 5423,
+        "providerModelId": 5424,
+        "position": 5427,
+        "discoveryManaged": 5428
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5425,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 5426, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5429,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5432,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 5433, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5435,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 2402, "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5437,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "literal", "values": ["priority"], "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5440,
+      "defaultValue": { "inputTokens": 0, "outputTokens": 0, "totalTokens": 0 },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "tokenUsageTotalsSchema",
+      "shape": {
+        "inputTokens": 5441,
+        "outputTokens": 5442,
+        "totalTokens": 5443
+      },
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5445,
+      "defaultValue": {
+        "activeAgentCount": 0,
+        "agentTimeMs": 0,
+        "wallTimeMs": 0,
+        "averageConcurrency": 0
+      },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "agentTimeSummarySchema",
+      "shape": {
+        "activeAgentCount": 5446,
+        "agentTimeMs": 5447,
+        "wallTimeMs": 5448,
+        "averageConcurrency": 5449
+      },
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [{ "check": "greater_than", "value": 0, "inclusive": true }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "chatReasoningStateSchema",
+      "shape": {
+        "modelId": 5453,
+        "reasoningEffort": 5454,
+        "options": 5455,
+        "reasoningMandatory": 5456,
+        "incompleteMetadata": 5457
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 2402, "checks": [] },
+    {
+      "type": "array",
+      "element": 3965,
+      "checks": [{ "check": "max_length", "maximum": 32, "when": "length" }]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "object",
+      "name": "modelConfigurationFailureSchema",
+      "shape": {
+        "error": 5459,
+        "code": 5460,
+        "field": 5461,
+        "retryable": 5463
+      },
+      "catchall": 5464,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 4000, "when": "length" }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "modelConfigurationFailureCodeSchema",
+      "values": [
+        "worker-offline",
+        "worker-subagents-unavailable",
+        "chat-runtime-active",
+        "root-model-unavailable",
+        "subagent-model-unavailable",
+        "root-reasoning-unsupported",
+        "subagent-reasoning-unsupported",
+        "provider-route-incompatible"
+      ],
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 5462, "checks": [] },
+    {
+      "type": "enum",
+      "name": "modelConfigurationFieldSchema",
+      "values": [
+        "modelId",
+        "reasoningEffort",
+        "customSubagentModel",
+        "subagentModelId",
+        "subagentReasoningEffort"
+      ],
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "userSettingsUpdateSchema",
+      "shape": {
+        "computerUseEnabled": 5466,
+        "computerUseEffects": 5468,
+        "protectedComputerUseCursor": 5470,
+        "theme": 5477,
+        "highContrast": 5479,
+        "proMode": 5481,
+        "proModeOpacity": 5483,
+        "contentGutters": 5485,
+        "eliteMode": 5487,
+        "eliteRevealConfig": 5489,
+        "sidebarWidth": 5500,
+        "workspaceLayoutProfile": 5502,
+        "showChatPromptOverlay": 5504,
+        "randomAgentNames": 5506,
+        "autoNameTasks": 5508,
+        "autoNameChats": 5510,
+        "labelingModelId": 5512,
+        "desktopFrameRate": 5515,
+        "desktopStreamQuality": 5520,
+        "defaultModelId": 5522,
+        "defaultReasoningEffort": 5525,
+        "defaultCustomSubagentModel": 5527,
+        "defaultSubagentModelId": 5529,
+        "defaultSubagentReasoningEffort": 5532,
+        "defaultPermissionProfileId": 5534,
+        "defaultChatModelId": 5536,
+        "defaultChatReasoningEffort": 5539,
+        "defaultChatPermissionProfileId": 5541,
+        "defaultWorkerId": 5542,
+        "automaticReplicaProvisioning": 5545,
+        "automaticReplicaSynchronization": 5547,
+        "mobileProjectTabConfigurations": 5549
+      },
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5467,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5469,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 1903,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5471,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5472,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 5473, "checks": [] },
+    {
+      "type": "object",
+      "shape": { "operationId": 5474, "protectedContent": 5475 },
+      "catchall": 5476,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "formatVersion": 587,
+        "domain": 588,
+        "keyRevision": 23,
+        "envelope": 38
+      },
+      "catchall": 589,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "endpoint-protected-bytes",
+          "messageAfterPath": true,
+          "message": "Protected endpoint content exceeds its byte limit."
+        },
+        {
+          "check": "refinement",
+          "tag": "settings-cursor-content",
+          "messageAfterPath": true,
+          "message": "Cursor preferences require bounded customization ciphertext."
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5478,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "themePreferenceSchema",
+      "values": ["system", "light", "dark"],
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5480,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5482,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5484,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 100, "inclusive": true }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5486,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5488,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5490,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "eliteRevealConfigSchema",
+      "shape": {
+        "glitchCountMax": 5491,
+        "glitchCountMin": 5492,
+        "glitchShowMs": 5493,
+        "staggerSpreadMs": 5494,
+        "variants": 5495,
+        "variantWeights": 5497
+      },
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "settings-elite-range",
+          "messageAfterPath": true,
+          "message": "Maximum glitches must be greater than or equal to minimum glitches.",
+          "path": ["glitchCountMax"]
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 1, "inclusive": true },
+        { "check": "less_than", "value": 32, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 1, "inclusive": true },
+        { "check": "less_than", "value": 32, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 5, "inclusive": true },
+        { "check": "less_than", "value": 120, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 250, "inclusive": true }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 5496,
+      "checks": [{ "check": "max_length", "maximum": 8, "when": "length" }]
+    },
+    {
+      "type": "enum",
+      "name": "eliteGlitchVariantSchema",
+      "values": [
+        "outline",
+        "full-frame",
+        "left-frame",
+        "right-frame",
+        "chromatic",
+        "spatial-shift",
+        "scanline",
+        "text-jitter"
+      ],
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5498,
+      "defaultValue": {
+        "outline": 1,
+        "full-frame": 0.01,
+        "left-frame": 0.01,
+        "right-frame": 0.01,
+        "chromatic": 0.25,
+        "spatial-shift": 1,
+        "scanline": 0.33,
+        "text-jitter": 1
+      },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "eliteGlitchVariantWeightsSchema",
+      "shape": {
+        "outline": 5499,
+        "full-frame": 5499,
+        "left-frame": 5499,
+        "right-frame": 5499,
+        "chromatic": 5499,
+        "spatial-shift": 5499,
+        "scanline": 5499,
+        "text-jitter": 5499
+      },
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 10, "inclusive": true }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5501,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "name": "sidebarWidthPreferenceSchema",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 192, "inclusive": true },
+        { "check": "less_than", "value": 480, "inclusive": true }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5503,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "workspaceLayoutProfileSchema",
+      "values": ["agent", "hybrid", "ide"],
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5505,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5507,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5509,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5511,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5513,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 5514, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5516,
+      "checks": []
+    },
+    { "type": "union", "options": [5517, 5518, 5519], "checks": [] },
+    { "type": "literal", "values": [15], "checks": [] },
+    { "type": "literal", "values": [30], "checks": [] },
+    { "type": "literal", "values": [60], "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5521,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": ["adaptive", "data-saver", "balanced", "sharp"],
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5523,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 5524, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5526,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 2402, "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5528,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5530,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 5531, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5533,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 2402, "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5535,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "configurablePermissionProfileIdSchema",
+      "values": [":read-only", ":workspace", ":danger-full-access", ":yolo"],
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5537,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 5538, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5540,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 2402, "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5535,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5543,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 5544, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5546,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5548,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": ["off", "verify-only", "fast-forward-primary"],
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5550,
+      "checks": []
+    },
+    {
+      "type": "record",
+      "name": "mobileProjectTabConfigurationsSchema",
+      "keyType": 5551,
+      "valueType": 5552,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "settings-mobile-project-limit",
+          "messageAfterPath": true,
+          "message": "Mobile tab configurations cannot contain more than 200 projects."
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 5553,
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 20, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 5554, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "settingsBundleWireSchema",
+      "shape": { "preferences": 5556, "models": 5616, "providers": 5617 },
+      "catchall": 5668,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "userSettingsSchema",
+      "shape": {
+        "computerUseEnabled": 5557,
+        "computerUseEffects": 5469,
+        "computerUseEffectsRevision": 5559,
+        "protectedComputerUseCursor": 5471,
+        "theme": 5478,
+        "highContrast": 5480,
+        "proMode": 5482,
+        "proModeOpacity": 5484,
+        "contentGutters": 5561,
+        "eliteMode": 5563,
+        "eliteRevealConfig": 5565,
+        "sidebarWidth": 5501,
+        "workspaceLayoutProfile": 5566,
+        "showChatPromptOverlay": 5567,
+        "randomAgentNames": 5569,
+        "autoNameTasks": 5571,
+        "autoNameChats": 5573,
+        "labelingModelId": 5575,
+        "desktopFrameRate": 5516,
+        "desktopStreamQuality": 5521,
+        "defaultModelId": 5523,
+        "defaultReasoningEffort": 5578,
+        "defaultCustomSubagentModel": 5580,
+        "defaultSubagentModelId": 5582,
+        "defaultSubagentReasoningEffort": 5585,
+        "defaultPermissionProfileId": 5587,
+        "defaultChatModelId": 5588,
+        "defaultChatReasoningEffort": 5591,
+        "defaultChatPermissionProfileId": 5593,
+        "defaultWorkerId": 5594,
+        "lastAppMode": 5597,
+        "lastIdeProjectId": 5600,
+        "lastIdeWorkspaceId": 5603,
+        "lastStandaloneChatId": 5606,
+        "destinationRevision": 5609,
+        "automaticReplicaProvisioning": 5611,
+        "automaticReplicaSynchronization": 5613,
+        "mobileProjectTabConfigurations": 5615
+      },
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5558,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5560,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5562,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5564,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5490,
+      "defaultValue": {
+        "glitchCountMax": 8,
+        "glitchCountMin": 4,
+        "glitchShowMs": 16,
+        "staggerSpreadMs": 50,
+        "variants": [
+          "outline",
+          "full-frame",
+          "left-frame",
+          "right-frame",
+          "chromatic",
+          "spatial-shift",
+          "scanline",
+          "text-jitter"
+        ],
+        "variantWeights": {
+          "outline": 1,
+          "full-frame": 0.01,
+          "left-frame": 0.01,
+          "right-frame": 0.01,
+          "chromatic": 0.25,
+          "spatial-shift": 1,
+          "scanline": 0.33,
+          "text-jitter": 1
+        }
+      },
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5503,
+      "defaultValue": "hybrid",
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5568,
+      "defaultValue": true,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5570,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5572,
+      "defaultValue": true,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5574,
+      "defaultValue": true,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5576,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 5577, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5579,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 2402, "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5581,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5583,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 5584, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5586,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 2402, "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5535,
+      "defaultValue": ":workspace",
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5589,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 5590, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5592,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 2402, "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5535,
+      "defaultValue": ":workspace",
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5595,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 5596, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5598,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 5599, "checks": [] },
+    { "type": "enum", "values": ["ide", "chat"], "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5601,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 5602, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5604,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 5605, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5607,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 5608, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5610,
+      "defaultValue": 1,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5612,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5614,
+      "defaultValue": "off",
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": ["off", "verify-only", "fast-forward-primary"],
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5550,
+      "defaultValue": {},
+      "checks": []
+    },
+    {
+      "type": "array",
+      "name": "modelProfileListSchema",
+      "element": 5419,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "name": "modelProviderWireListSchema",
+      "element": 5618,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "modelProviderWireSummarySchema",
+      "shape": {
+        "name": 5619,
+        "kind": 3974,
+        "baseUrl": 5620,
+        "weeklyUsageReservePercent": 5621,
+        "id": 5623,
+        "hasApiKey": 5624,
+        "tokenUsage": 5625,
+        "agentTime": 5626,
+        "createdAt": 5627,
+        "updatedAt": 5628,
+        "accounts": 5629
+      },
+      "catchall": 5667,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 80, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "string_format", "format": "url", "abort": false }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5622,
+      "defaultValue": 3,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 100, "inclusive": true }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5440,
+      "defaultValue": { "inputTokens": 0, "outputTokens": 0, "totalTokens": 0 },
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5445,
+      "defaultValue": {
+        "activeAgentCount": 0,
+        "agentTimeMs": 0,
+        "wallTimeMs": 0,
+        "averageConcurrency": 0
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5630,
+      "defaultValue": [],
+      "checks": []
+    },
+    {
+      "type": "array",
+      "name": "modelProviderAccountWireListSchema",
+      "element": 5631,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "modelProviderAccountWireSummarySchema",
+      "shape": {
+        "id": 5632,
+        "providerId": 5633,
+        "planType": 5634,
+        "position": 5636,
+        "enabled": 5637,
+        "credentialState": 5638,
+        "credits": 5640,
+        "creditsObservedAt": 5642,
+        "weeklyUsageUsedPercent": 5645,
+        "weeklyUsageResetsAt": 5648,
+        "authLastSyncedAt": 5651,
+        "workerBindings": 5654,
+        "createdAt": 5664,
+        "updatedAt": 5665,
+        "protectedLabel": 2289
+      },
+      "catchall": 5666,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 5635, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 160, "when": "length" }]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5639,
+      "defaultValue": "signed-out",
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "providerCredentialStateSchema",
+      "values": [
+        "signed-out",
+        "migration-needed",
+        "signed-in",
+        "reauth-required",
+        "conflict"
+      ],
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5641,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 1158, "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5643,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 5644, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5646,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 5647, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 100, "inclusive": true }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5649,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 5650, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5652,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 5653, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "array", "element": 5655, "checks": [] },
+    {
+      "type": "object",
+      "name": "modelProviderAccountWorkerSchema",
+      "shape": {
+        "workerId": 5656,
+        "authState": 5657,
+        "weeklyUsageUsedPercent": 5658,
+        "weeklyUsageResetsAt": 5660,
+        "lastSyncedAt": 5662
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "enum",
+      "values": ["unknown", "signed-out", "signed-in", "failed"],
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 5659, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 100, "inclusive": true }
+      ]
+    },
+    { "type": "nullable", "innerType": 5661, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 5663, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "appDestinationUpdateSchema",
+      "shape": {
+        "lastAppMode": 5670,
+        "lastIdeProjectId": 5673,
+        "lastIdeWorkspaceId": 5676,
+        "lastStandaloneChatId": 5679,
+        "expectedRevision": 5682
+      },
+      "catchall": 5683,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "settings-destination-fields",
+          "messageAfterPath": true,
+          "message": "At least one destination field must be updated."
+        }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5671,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 5672, "checks": [] },
+    {
+      "type": "enum",
+      "name": "appModeSchema",
+      "values": ["ide", "chat"],
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5674,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 5675, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5677,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 5678, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5680,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 5681, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "appDestinationSchema",
+      "shape": {
+        "lastAppMode": 5671,
+        "lastIdeProjectId": 5674,
+        "lastIdeWorkspaceId": 5677,
+        "lastStandaloneChatId": 5680,
+        "revision": 5685
+      },
+      "catchall": 5686,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "cuaEffectWorkerStatusSchema",
+      "shape": {
+        "revision": 5688,
+        "configuration": 1903,
+        "state": 5689,
+        "error": 5690,
+        "native": 5692
+      },
+      "catchall": 5713,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "enum", "values": ["idle", "running", "failed"], "checks": [] },
+    { "type": "nullable", "innerType": 5691, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 5693, "checks": [] },
+    {
+      "type": "object",
+      "name": "cuaEffectStatusSchema",
+      "shape": {
+        "supported": 5694,
+        "configuration": 1903,
+        "compiling": 5695,
+        "shaderSource": 5697,
+        "activeEffect": 5700,
+        "shaderError": 5703,
+        "windows": 5706
+      },
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5696,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5698,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 5699, "checks": [] },
+    { "type": "string", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5701,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 5702, "checks": [] },
+    {
+      "type": "enum",
+      "name": "cuaEffectIdSchema",
+      "values": ["off", "pass-through", "debug-gradient", "cursor-warp"],
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5704,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 5705, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "array", "element": 5707, "checks": [] },
+    {
+      "type": "object",
+      "shape": { "targetId": 5708, "phase": 5709, "error": 5710 },
+      "checks": []
+    },
+    { "type": "string", "checks": [] },
+    { "type": "string", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5711,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 5712, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "ollamaModelInventorySchema",
+      "shape": { "models": 5715, "observedAt": 5737 },
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 5716,
+      "checks": [{ "check": "max_length", "maximum": 1000, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "ollamaModelInventoryItemSchema",
+      "shape": {
+        "name": 5717,
+        "modifiedAt": 5718,
+        "sizeBytes": 5720,
+        "digest": 5722,
+        "family": 5724,
+        "families": 5726,
+        "parameterSize": 5728,
+        "quantization": 5730,
+        "capabilities": 5732,
+        "modelInfo": 5734
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 500, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 5719, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 5721, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "nullable", "innerType": 5723, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 500, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 5725, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 500, "when": "length" }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 5727,
+      "checks": [{ "check": "max_length", "maximum": 32, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 500, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 5729, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 5731, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100, "when": "length" }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 5733,
+      "checks": [{ "check": "max_length", "maximum": 64, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100, "when": "length" }
+      ]
+    },
+    { "type": "record", "keyType": 5735, "valueType": 5736, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "unknown", "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "providerQuotaSnapshotSchema",
+      "shape": {
+        "snapshotId": 5739,
+        "observedAt": 5740,
+        "workerVersion": 5741,
+        "codexVersion": 5743,
+        "windows": 5745,
+        "credits": 5766,
+        "rateLimitResetCredits": 5768
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 5742, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 200, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 5744, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 500, "when": "length" }]
+    },
+    {
+      "type": "array",
+      "element": 5746,
+      "checks": [{ "check": "max_length", "maximum": 500, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "providerQuotaWindowObservationSchema",
+      "shape": {
+        "limitId": 5747,
+        "limitName": 5749,
+        "planType": 5751,
+        "reachedType": 5753,
+        "windowKind": 5755,
+        "usedPercent": 5756,
+        "windowDurationMinutes": 5757,
+        "resetsAt": 5759,
+        "isWeeklyProjection": 5761,
+        "rawPayload": 5762
+      },
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 5748, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 500, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 5750, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 500, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 5752, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 500, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 5754, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 500, "when": "length" }]
+    },
+    { "type": "enum", "values": ["primary", "secondary"], "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 100, "inclusive": true }
+      ]
+    },
+    { "type": "nullable", "innerType": 5758, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "nullable", "innerType": 5760, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5763,
+      "defaultValue": {},
+      "checks": []
+    },
+    { "type": "record", "keyType": 5764, "valueType": 5765, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "unknown", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5767,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 1158, "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5769,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 5770, "checks": [] },
+    {
+      "type": "object",
+      "name": "providerRateLimitResetCreditsSummarySchema",
+      "shape": { "availableCount": 5771, "credits": 5772 },
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 9007199254740991, "inclusive": true }
+      ]
+    },
+    { "type": "nullable", "innerType": 5773, "checks": [] },
+    {
+      "type": "array",
+      "element": 5774,
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "providerRateLimitResetCreditSchema",
+      "shape": {
+        "id": 5775,
+        "resetType": 5776,
+        "status": 5777,
+        "grantedAt": 5778,
+        "expiresAt": 5779,
+        "title": 5781,
+        "description": 5783
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 1000, "when": "length" }
+      ]
+    },
+    { "type": "enum", "values": ["codexRateLimits", "unknown"], "checks": [] },
+    {
+      "type": "enum",
+      "values": ["available", "redeeming", "redeemed", "unknown"],
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "nullable", "innerType": 5780, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "nullable", "innerType": 5782, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 1000, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 5784, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 4000, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "chatGptModelInventorySchema",
+      "shape": {
+        "models": 5786,
+        "observedAt": 5821,
+        "weeklyUsage": 5822,
+        "quotaSnapshot": 5824
+      },
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 5787,
+      "checks": [{ "check": "max_length", "maximum": 1000, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "chatGptModelInventoryItemSchema",
+      "shape": {
+        "id": 5788,
+        "model": 5789,
+        "displayName": 5790,
+        "description": 5791,
+        "hidden": 5792,
+        "isDefault": 5793,
+        "inputModalities": 5794,
+        "supportedReasoningEfforts": 5796,
+        "defaultReasoningEffort": 2402,
+        "modelSpecialty": 5799,
+        "supportsPersonality": 5801,
+        "upgrade": 5802,
+        "upgradeInfo": 5804,
+        "availabilityNux": 5808,
+        "additionalSpeedTiers": 5812,
+        "serviceTiers": 5814,
+        "defaultServiceTier": 5819
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 500, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 500, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 500, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 20000, "when": "length" }]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "array",
+      "element": 5795,
+      "checks": [{ "check": "max_length", "maximum": 32, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 80, "when": "length" }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 5797,
+      "checks": [{ "check": "max_length", "maximum": 32, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "shape": { "reasoningEffort": 2402, "description": 5798 },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 500, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 5800, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 500, "when": "length" }]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "nullable", "innerType": 5803, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 500, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 5805, "checks": [] },
+    { "type": "record", "keyType": 5806, "valueType": 5807, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "unknown", "checks": [] },
+    { "type": "nullable", "innerType": 5809, "checks": [] },
+    { "type": "record", "keyType": 5810, "valueType": 5811, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "unknown", "checks": [] },
+    {
+      "type": "array",
+      "element": 5813,
+      "checks": [{ "check": "max_length", "maximum": 32, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    {
+      "type": "array",
+      "element": 5815,
+      "checks": [{ "check": "max_length", "maximum": 32, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "shape": { "id": 5816, "name": 5817, "description": 5818 },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 200, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 2000, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 5820, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5823,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 1887, "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5825,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 5738, "checks": [] },
+    {
+      "type": "object",
+      "name": "grokModelInventorySchema",
+      "shape": {
+        "models": 5827,
+        "observedAt": 5849,
+        "weeklyUsage": 5850,
+        "quotaSnapshot": 5852
+      },
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 5828,
+      "checks": [{ "check": "max_length", "maximum": 1000, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "grokModelInventoryItemSchema",
+      "shape": {
+        "id": 5829,
+        "displayName": 5830,
+        "description": 5831,
+        "contextWindow": 5833,
+        "maxOutputTokens": 5835,
+        "inputModalities": 5837,
+        "outputModalities": 5839,
+        "supportedReasoningEfforts": 5841,
+        "defaultReasoningEffort": 5842,
+        "supportsReasoning": 5843,
+        "hidden": 5844,
+        "isDefault": 5845,
+        "rawMetadata": 5846
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 500, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 500, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 5832, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 20000, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 5834, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    { "type": "nullable", "innerType": 5836, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 5838,
+      "checks": [{ "check": "max_length", "maximum": 32, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 80, "when": "length" }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 5840,
+      "checks": [{ "check": "max_length", "maximum": 32, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 80, "when": "length" }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 3965,
+      "checks": [{ "check": "max_length", "maximum": 32, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 2402, "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "record", "keyType": 5847, "valueType": 5848, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "unknown", "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5851,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 1887, "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5853,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 5738, "checks": [] },
+    {
+      "type": "union",
+      "name": "providerLegacyCredentialCaptureResultSchema",
+      "options": [5855, 5857, 5859],
+      "discriminator": "status",
+      "checks": []
+    },
+    { "type": "object", "shape": { "status": 5856 }, "checks": [] },
+    { "type": "literal", "values": ["missing"], "checks": [] },
+    { "type": "object", "shape": { "status": 5858 }, "checks": [] },
+    { "type": "literal", "values": ["malformed"], "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "credential": 5860,
+        "metadata": 5862,
+        "portableAuth": 5866,
+        "status": 5868
+      },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "protectedProviderCredentialSchema",
+      "shape": { "subjectBlindIndex": 33, "protectedCredential": 2289 },
+      "catchall": 5861,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "providerCredentialPublicMetadataSchema",
+      "shape": { "expiresAt": 5863 },
+      "catchall": 5865,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 5864, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5867,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "literal", "values": ["available"], "checks": [] },
+    {
+      "type": "object",
+      "name": "providerLegacyCredentialPurgeResultSchema",
+      "shape": {
+        "purged": 5870,
+        "serverCredentialRevision": 5871,
+        "subjectBlindIndex": 33
+      },
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "providerCredentialUploadSchema",
+      "shape": {
+        "credential": 5860,
+        "expectedRevision": 5873,
+        "metadata": 5862
+      },
+      "catchall": 5874,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "providerCredentialWireRecordSchema",
+      "shape": {
+        "accountId": 5876,
+        "credential": 5860,
+        "credentialRevision": 5877,
+        "providerId": 5878,
+        "providerKind": 5879
+      },
+      "catchall": 5880,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 512, "when": "length" }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 512, "when": "length" }
+      ]
+    },
+    { "type": "enum", "values": ["chatgpt", "grok"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "codexAuthStatusSchema",
+      "shape": {
+        "authenticated": 5882,
+        "authMode": 1880,
+        "email": 5883,
+        "planType": 5885,
+        "weeklyUsage": 5887,
+        "loginPending": 5888,
+        "loginError": 5890
+      },
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "nullable", "innerType": 5884, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 5886, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 1887, "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5889,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5891,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 5892, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 2000, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "codexDeviceLoginSchema",
+      "shape": { "loginId": 5894, "verificationUrl": 5895, "userCode": 5896 },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "string_format", "format": "url", "abort": false }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "encryptedModelProviderAccountCreateSchema",
+      "shape": { "id": 5898, "protectedLabel": 2289 },
+      "catchall": 5899,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "encryptedModelProviderAccountUpdateSchema",
+      "shape": { "protectedLabel": 5901, "enabled": 5902 },
+      "catchall": 5904,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "provider-account-update-fields",
+          "messageAfterPath": true,
+          "message": "Provide at least one provider account update."
+        }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 2289,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5903,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "orderedIdsSchema",
+      "shape": { "ids": 5906 },
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 5907,
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "providerAuthLiveStatusSchema",
+      "shape": {
+        "providerId": 5909,
+        "providerAccountId": 5910,
+        "providerKind": 5911,
+        "workerId": 5912,
+        "revision": 5913,
+        "observedAt": 5914,
+        "expiresAt": 5915,
+        "status": 1878
+      },
+      "catchall": 5917,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "provider-auth-live-kind",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 512, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 512, "when": "length" }
+      ]
+    },
+    { "type": "enum", "values": ["chatgpt", "grok"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 512, "when": "length" }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false },
+        { "check": "less_than", "value": 9007199254740991, "inclusive": true }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 5916, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "providerModelCatalogResultSchema",
+      "shape": {
+        "providerId": 5919,
+        "models": 5920,
+        "availability": 5941,
+        "syncStates": 5953,
+        "servedStale": 5972
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "array", "element": 5921, "checks": [] },
+    {
+      "type": "object",
+      "name": "providerModelCatalogEntrySchema",
+      "shape": {
+        "id": 5922,
+        "providerId": 5923,
+        "nativeModelId": 3942,
+        "canonicalModelId": 5924,
+        "displayName": 3943,
+        "description": 3944,
+        "contextWindow": 3946,
+        "maxOutputTokens": 3948,
+        "inputModalities": 3950,
+        "outputModalities": 3952,
+        "supportsTools": 3954,
+        "supportsParallelTools": 3956,
+        "supportsStructuredOutput": 3958,
+        "supportsVision": 3960,
+        "supportsReasoning": 3962,
+        "supportedReasoningEfforts": 3964,
+        "defaultReasoningEffort": 3969,
+        "reasoningMandatory": 3970,
+        "family": 5926,
+        "parameterSize": 5928,
+        "quantization": 5930,
+        "digest": 5932,
+        "metadataSource": 3972,
+        "matchConfidence": 5934,
+        "hidden": 5936,
+        "isDefault": 5937,
+        "createdAt": 5938,
+        "updatedAt": 5939,
+        "lastSeenAt": 5940
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 5925, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 500, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 5927, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 500, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 5929, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 5931, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 5933, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 500, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 5935, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 1, "inclusive": true }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "array", "element": 5942, "checks": [] },
+    {
+      "type": "object",
+      "name": "providerModelAvailabilitySchema",
+      "shape": {
+        "id": 5943,
+        "providerModelId": 5944,
+        "scopeKey": 5945,
+        "workerId": 5946,
+        "providerAccountId": 5948,
+        "state": 5950,
+        "lastSeenAt": 5951,
+        "updatedAt": 5952
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 500, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 5947, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 5949, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "enum",
+      "name": "providerModelAvailabilityStateSchema",
+      "values": ["available", "unavailable", "stale"],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "array", "element": 5954, "checks": [] },
+    {
+      "type": "object",
+      "name": "providerCatalogSyncStateSchema",
+      "shape": {
+        "id": 5955,
+        "providerId": 5956,
+        "scopeKey": 5957,
+        "workerId": 5958,
+        "providerAccountId": 5960,
+        "status": 5962,
+        "error": 5963,
+        "etag": 5965,
+        "refreshStartedAt": 5967,
+        "lastSuccessAt": 5969,
+        "updatedAt": 5971
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 500, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 5959, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 5961, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "enum",
+      "name": "providerCatalogSyncStatusSchema",
+      "values": ["idle", "refreshing", "current", "stale", "failed"],
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 5964, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 20000, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 5966, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 1000, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 5968, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 5970, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "boolean", "checks": [] }
   ]
 }

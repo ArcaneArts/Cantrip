@@ -14,6 +14,23 @@ on:
       - cantrip_server/src/account-usage/**
       - cantrip_server/src/db/account-resource-usage.ts
       - cantrip_server/src/db/policies.ts
+      - cantrip_server/src/db/repository/settings.ts
+      - cantrip_server/src/db/repository.ts
+      - cantrip_server/src/db/repository/provider*.ts
+      - cantrip_server/src/db/repository/telemetry.ts
+      - cantrip_server/src/db/repository-facade-identity-model.ts
+      - cantrip_server/src/db/schema.ts
+      - cantrip_server/src/db/repository/model*.ts
+      - cantrip_server/src/models/**
+      - cantrip_server/src/app/runtime/settings-routes.ts
+      - cantrip_server/src/app/runtime/application-service-foundation.ts
+      - cantrip_server/src/app/routes/provider-account-auth.ts
+      - cantrip_server/src/app/routes/internal-provider-credentials.ts
+      - cantrip_server/src/operations/relay-quotas.ts
+      - cantrip_server/src/security/abuse-limits.ts
+      - cantrip_server/src/security/json-bytes.ts
+      - cantrip_server/test/json-bytes.test.ts
+      - cantrip_server/test/abuse-limits.test.ts
       - cantrip_server/src/policies/**
       - cantrip_server/src/app/routes/policies.ts
       - policy_templates/**
@@ -118,9 +135,11 @@ jobs:
       - name: Reference worker authentication shutdown and socket ordering
         # Each integration file initializes PGlite's WASM runtime and full SQL
         # schema. Avoid competing cold initializations on the hosted runners.
-        run: pnpm --filter @cantrip/server exec vitest run test/worker-authentication-shutdown.test.ts test/worker-notification-connect-order.test.ts test/buffered-worker-socket.test.ts test/websocket-subprotocol.test.ts --maxWorkers=1
+        run: pnpm --filter @cantrip/server exec vitest run test/worker-authentication-shutdown.test.ts test/worker-notification-connect-order.test.ts test/buffered-worker-socket.test.ts test/websocket-subprotocol.test.ts test/json-bytes.test.ts test/abuse-limits.test.ts --maxWorkers=1
       - name: Shared message decoding isolates validator exceptions
         run: pnpm --filter @cantrip/protocol exec vitest run src/json-message.test.ts
+      - name: Built-in provider data matches the actual reference service
+        run: node --import tsx scripts/server-rust/zai-catalog-data.mjs --check
       - run: cargo fmt --manifest-path cantrip_server_rs/Cargo.toml -- --check
       - run: node scripts/server-rust/cargo.mjs clippy --all-targets -- -D warnings
       - name: Configuration parity, existing schema, all storage modes and restart
@@ -165,6 +184,52 @@ jobs:
         run: node --import tsx scripts/server-rust/usage-account-compatibility.mjs --database bundled-postgres --report .qa/rust-server/usage-accounts-bundled.json
       - name: Retained account usage and tenant isolation with external PostgreSQL
         run: node --import tsx scripts/server-rust/usage-account-compatibility.mjs --database postgres --report .qa/rust-server/usage-accounts-external.json
+      - name: Settings and provider repositories with native PGlite
+        run: node scripts/server-rust/settings-repository-compatibility.mjs --report .qa/rust-server/settings-repository-pglite.json
+      - name: Settings and provider repositories with private PostgreSQL
+        run: node scripts/server-rust/settings-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/settings-repository-bundled.json
+      - name: Settings and provider repositories with external PostgreSQL
+        run: node scripts/server-rust/settings-repository-compatibility.mjs --database postgres --report .qa/rust-server/settings-repository-external.json
+      - name: Public OpenRouter HTTP cache, errors and actual deadlines
+        run: node --import tsx scripts/server-rust/openrouter-http-compatibility.mjs --timeouts --report .qa/rust-server/openrouter-public-http.json
+      - name: Settings HTTP and worker effects with native PGlite
+        run: node scripts/server-rust/settings-http-compatibility.mjs --report .qa/rust-server/settings-http-pglite.json
+      - name: Settings HTTP and worker effects with private PostgreSQL
+        run: node scripts/server-rust/settings-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/settings-http-bundled.json
+      - name: Settings HTTP and worker effects with external PostgreSQL
+        run: node scripts/server-rust/settings-http-compatibility.mjs --database postgres --report .qa/rust-server/settings-http-external.json
+      - name: Worker provider credentials with native PGlite
+        run: node scripts/server-rust/provider-credential-http-compatibility.mjs --report .qa/rust-server/provider-credential-http-pglite.json
+      - name: Worker provider credentials with private PostgreSQL
+        run: node scripts/server-rust/provider-credential-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/provider-credential-http-bundled.json
+      - name: Worker provider credentials with external PostgreSQL
+        run: node scripts/server-rust/provider-credential-http-compatibility.mjs --database postgres --report .qa/rust-server/provider-credential-http-external.json
+      - name: Provider account HTTP, Live and shutdown with native PGlite
+        run: node scripts/server-rust/provider-account-http-compatibility.mjs --report .qa/rust-server/provider-account-http-pglite.json
+      - name: Provider account HTTP, Live and shutdown with private PostgreSQL
+        run: node scripts/server-rust/provider-account-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/provider-account-http-bundled.json
+      - name: Provider account HTTP, Live and shutdown with external PostgreSQL
+        run: node scripts/server-rust/provider-account-http-compatibility.mjs --database postgres --report .qa/rust-server/provider-account-http-external.json
+      - name: Provider catalog HTTP, cancellation and retained cache with native PGlite
+        run: node scripts/server-rust/provider-catalog-http-compatibility.mjs --report .qa/rust-server/provider-catalog-http-pglite.json
+      - name: Provider catalog HTTP, cancellation and retained cache with private PostgreSQL
+        run: node scripts/server-rust/provider-catalog-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/provider-catalog-http-bundled.json
+      - name: Provider catalog HTTP, cancellation and retained cache with external PostgreSQL
+        run: node scripts/server-rust/provider-catalog-http-compatibility.mjs --database postgres --report .qa/rust-server/provider-catalog-http-external.json
+      - name: Provider auth status, opaque capture and caller lifetime with native PGlite
+        run: node scripts/server-rust/provider-auth-http-compatibility.mjs --report .qa/rust-server/provider-auth-http-pglite.json
+      - name: Provider auth status, opaque capture and caller lifetime with private PostgreSQL
+        run: node scripts/server-rust/provider-auth-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/provider-auth-http-bundled.json
+      - name: Provider auth status, opaque capture and caller lifetime with external PostgreSQL
+        run: node scripts/server-rust/provider-auth-http-compatibility.mjs --database postgres --report .qa/rust-server/provider-auth-http-external.json
+      - name: Command quotas through HTTP and worker sockets with native PGlite
+        run: node scripts/server-rust/worker-command-http-compatibility.mjs --report .qa/rust-server/command-http-pglite.json
+      - name: Command quotas through HTTP and worker sockets with private PostgreSQL
+        run: node scripts/server-rust/worker-command-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/command-http-bundled.json
+      - name: Command quotas through HTTP and worker sockets with external PostgreSQL
+        run: node scripts/server-rust/worker-command-http-compatibility.mjs --database postgres --report .qa/rust-server/command-http-external.json
+      - name: Native PGlite host environment compatibility
+        run: node scripts/server-rust/pglite-environment-compatibility.mjs --report .qa/rust-server/pglite-host-environment.json
       # Policy scope rows are seeded fixtures; these suites do not claim
       # project/workspace CRUD or the unported chat execution runtime.
       - name: Policy persistence and rollback with native PGlite

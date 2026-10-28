@@ -142,6 +142,12 @@ impl LiveService {
     pub fn invalidate_resource(&self, owner: &str, resource: &str) {
         invalidation(&self.hub, &self.publishing, owner, resource, None);
     }
+    pub fn publish_event(&self, event: Value) -> Result<()> {
+        if self.publishing.load(Ordering::Acquire) {
+            self.hub.publish(event)?;
+        }
+        Ok(())
+    }
     pub fn revoke(&self, revocation: &Revocation) {
         match revocation {
             Revocation::Owner(owner) => {

@@ -1,4 +1,5 @@
 pub mod bridge;
+pub mod command_bus;
 pub mod credentials;
 pub mod limits;
 mod notifications;

@@ -4,6 +4,58 @@ use super::{JsString, Value};
 use std::{fmt, mem};
 
 impl Value {
+    /// JSON.stringify(value, null, 2), retaining original UTF-16 escapes and
+    /// ECMAScript key order. Formatting never reparses through UTF-8 strings.
+    pub fn stringify_pretty(&self) -> String {
+        let compact = self.stringify();
+        let mut output = String::new();
+        let (mut quoted, mut escaped, mut depth) = (false, false, 0_usize);
+        let mut chars = compact.chars().peekable();
+        let mut previous = ' ';
+        while let Some(ch) = chars.next() {
+            if quoted {
+                output.push(ch);
+                if escaped {
+                    escaped = false;
+                } else if ch == '\\' {
+                    escaped = true;
+                } else if ch == '"' {
+                    quoted = false;
+                }
+            } else {
+                match ch {
+                    '"' => {
+                        quoted = true;
+                        output.push(ch);
+                    }
+                    '{' | '[' => {
+                        output.push(ch);
+                        depth += 1;
+                        if chars.peek().is_some_and(|next| !matches!(next, '}' | ']')) {
+                            output.push('\n');
+                            output.push_str(&"  ".repeat(depth));
+                        }
+                    }
+                    '}' | ']' => {
+                        depth -= 1;
+                        if !matches!(previous, '{' | '[') {
+                            output.push('\n');
+                            output.push_str(&"  ".repeat(depth));
+                        }
+                        output.push(ch);
+                    }
+                    ',' => {
+                        output.push_str(",\n");
+                        output.push_str(&"  ".repeat(depth));
+                    }
+                    ':' => output.push_str(": "),
+                    _ => output.push(ch),
+                }
+            }
+            previous = ch;
+        }
+        output
+    }
     pub fn stringify(&self) -> String {
         enum Part<'a> {
             Value(&'a Value),

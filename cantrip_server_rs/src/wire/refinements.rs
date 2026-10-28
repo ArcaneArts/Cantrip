@@ -31,6 +31,84 @@ pub(super) fn apply(
     };
     let wrapper = &value["passwordWrappedMasterKey"];
     match tag {
+        "provider-account-update-fields" => {
+            if value
+                .as_object()
+                .ok_or(ValidationError::Operation)?
+                .is_empty()
+            {
+                custom(&[], "Provide at least one provider account update.");
+            }
+        }
+        "provider-auth-live-kind" => {
+            if value["status"]["state"] == "authenticated"
+                && value["status"]["authMode"] != value["providerKind"]
+            {
+                custom(
+                    &["status", "authMode"],
+                    "Provider auth mode must match the provider kind.",
+                );
+            }
+        }
+        "settings-elite-range" => {
+            if value["glitchCountMax"]
+                .as_f64()
+                .ok_or(ValidationError::Operation)?
+                < value["glitchCountMin"]
+                    .as_f64()
+                    .ok_or(ValidationError::Operation)?
+            {
+                custom(
+                    &[],
+                    "Maximum glitches must be greater than or equal to minimum glitches.",
+                );
+            }
+        }
+        "settings-cursor-content" => {
+            if value["domain"] != "customization-content"
+                || value["envelope"]["ciphertext"]
+                    .as_js_string()
+                    .ok_or(ValidationError::Operation)?
+                    .len()
+                    > 4 * 4112_usize.div_ceil(3)
+            {
+                custom(
+                    &[],
+                    "Cursor preferences require bounded customization ciphertext.",
+                );
+            }
+        }
+        "model-routes-enabled" => {
+            if !value
+                .as_array()
+                .ok_or(ValidationError::Operation)?
+                .iter()
+                .any(|route| route["enabled"] == Value::Bool(true))
+            {
+                custom(&[], "At least one provider route must be enabled.");
+            }
+        }
+        "settings-destination-fields" => {
+            if [
+                "lastAppMode",
+                "lastIdeProjectId",
+                "lastIdeWorkspaceId",
+                "lastStandaloneChatId",
+            ]
+            .iter()
+            .all(|name| value.get(name).is_none())
+            {
+                custom(&[], "At least one destination field must be updated.");
+            }
+        }
+        "settings-mobile-project-limit" => {
+            if value.as_object().ok_or(ValidationError::Operation)?.len() > 200 {
+                custom(
+                    &[],
+                    "Mobile tab configurations cannot contain more than 200 projects.",
+                );
+            }
+        }
         "policy-update-fields" => {
             if ["content", "enabled", "mandatory", "audience"]
                 .iter()

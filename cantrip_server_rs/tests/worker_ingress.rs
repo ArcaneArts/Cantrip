@@ -1,8 +1,8 @@
 use cantrip_server::{
     wire::Value,
     workers::bridge::{
-        Continuity, EventHandler, NotificationHandler, NotificationSubscription, Outgoing, Peer,
-        WorkerBridge,
+        Continuity, EventHandler, NotificationHandler, NotificationSubscription, Outgoing,
+        OwnedNotificationHandler, Peer, WorkerBridge,
     },
 };
 use std::{
@@ -89,6 +89,40 @@ async fn ingress_validates_and_normalizes_events_before_ordered_completion() {
     assert_eq!(pending.await.unwrap().unwrap().unwrap()["retained"], true);
     assert_eq!(*received.lock().unwrap(), vec!["one", "two"]);
     assert_eq!(bridge.stats().succeeded_requests, 1);
+    bridge.close();
+}
+
+#[tokio::test(start_paused = true)]
+async fn owned_notifications_bind_the_authenticated_generation_before_async_work() {
+    let bridge = WorkerBridge::new(Duration::from_secs(15));
+    let (first, _output) = peer(&bridge, "worker");
+    let owners = Arc::new(Mutex::new(Vec::new()));
+    let handler: OwnedNotificationHandler = {
+        let owners = owners.clone();
+        Arc::new(move |owner, _| {
+            // The prefix must run before receive returns, retaining the actual
+            // peer owner even if a later connection replaces that peer.
+            owners.lock().unwrap().push(owner);
+            Box::pin(async { Ok(()) })
+        })
+    };
+    let subscription = bridge.subscribe_owned_notifications("worker", handler.clone());
+    let duplicate = bridge.subscribe_owned_notifications("worker", handler);
+    bridge.receive("worker", &first, &notification(1));
+    assert_eq!(*owners.lock().unwrap(), ["fixture-owner"]);
+    let (second, _output) = Peer::new(Continuity {
+        owner: "other-owner".into(),
+        credential: "other-credential".into(),
+        process_generation: "other-process".into(),
+    });
+    assert!(bridge.attach("worker", second.clone(), None));
+    bridge.receive("worker", &first, &notification(2));
+    bridge.receive("worker", &second, &notification(3));
+    assert_eq!(*owners.lock().unwrap(), ["fixture-owner", "other-owner"]);
+    drop(subscription);
+    bridge.receive("worker", &second, &notification(4));
+    assert_eq!(owners.lock().unwrap().len(), 2);
+    drop(duplicate);
     bridge.close();
 }
 

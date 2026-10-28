@@ -69,6 +69,8 @@ pub struct AuthService {
     pub workers: Arc<crate::workers::service::WorkerService>,
     pub live: Arc<crate::live::LiveService>,
     pub usage: Arc<crate::usage::service::UsageService>,
+    pub provider_accounts: Arc<crate::settings::account_service::AccountService>,
+    pub provider_catalogs: Arc<crate::settings::catalog_runtime::CatalogRuntime>,
     rate_limit: Mutex<AuthRateLimiter>,
 }
 
@@ -131,6 +133,17 @@ impl AuthService {
                 live.invalidate(&event.owner, event.resource, &event.entity);
             }
         }));
+        let provider_catalogs = crate::settings::catalog_runtime::CatalogRuntime::new(
+            crate::settings::repository::SettingsRepository::new(repository.database.clone()),
+            workers.commands.clone(),
+        )?;
+        let provider_accounts = crate::settings::account_service::AccountService::new(
+            crate::settings::repository::SettingsRepository::new(repository.database.clone()),
+            workers.commands.clone(),
+            live.clone(),
+            provider_catalogs.clone(),
+            workers.bridge.clone(),
+        );
         Ok(Arc::new(Self {
             config,
             repository,
@@ -143,6 +156,8 @@ impl AuthService {
             workers,
             live,
             usage,
+            provider_accounts,
+            provider_catalogs,
             registration: Mutex::new(()),
             revocations: broadcast::channel(256).0,
         }))

@@ -37,7 +37,7 @@ pub(super) fn refine(
     let mut custom = |suffix: &[&str], message: &str| {
         let mut at = path.to_vec();
         at.extend(suffix.iter().map(|key| json!(key)));
-        issues.push(json!({"code":"custom","path":at,"message":message}));
+        issues.push(json!({"code":"custom","message":message,"path":at}));
     };
     match tag {
         "worker-wire-provider-observation" => {

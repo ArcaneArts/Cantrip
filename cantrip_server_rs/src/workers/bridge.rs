@@ -1,7 +1,9 @@
 //! Local command correlation and reconnect continuity. Domain event consumers
 //! attach async handlers; responses complete only after preceding events.
 use super::notifications::Notifications;
-pub use super::notifications::{NotificationHandler, NotificationSubscription};
+pub use super::notifications::{
+    NotificationHandler, NotificationSubscription, OwnedNotificationHandler,
+};
 use crate::wire::{self, JsString, Value};
 use std::{
     collections::HashMap,
@@ -396,7 +398,11 @@ impl WorkerBridge {
                     self.notifications.group(worker)
                 };
                 if let Some(group) = group {
-                    Notifications::deliver(group, envelope["notification"].clone());
+                    Notifications::deliver(
+                        group,
+                        &peer.identity.owner,
+                        envelope["notification"].clone(),
+                    );
                 }
             }
             _ => {}
@@ -408,6 +414,13 @@ impl WorkerBridge {
         handler: NotificationHandler,
     ) -> NotificationSubscription {
         self.notifications.subscribe(worker, handler)
+    }
+    pub fn subscribe_owned_notifications(
+        &self,
+        worker: &str,
+        handler: OwnedNotificationHandler,
+    ) -> NotificationSubscription {
+        self.notifications.subscribe_owned(worker, handler)
     }
     // The caller validates each domain event before dispatching it here.
     pub fn event(&self, worker: &str, peer: &Peer, id: &str, event: Value) {

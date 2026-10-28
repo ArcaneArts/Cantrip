@@ -171,7 +171,18 @@ async fn main() -> Result<()> {
         })
         .await?;
         service.live.transports.drained().await;
+        // A socket callback can admit an owned account task. Finish socket
+        // handlers before the final account/catalog drain, then finish any
+        // commands those tasks admitted before closing their database.
         service.workers.drained().await?;
+        service.provider_accounts.drained().await;
+        for _error in service.provider_catalogs.drain().await {
+            eprintln!(
+                "{}",
+                json!({"level":"warn","event":"provider.catalog.background-persistence-failed","message":"Provider catalog background persistence failed during shutdown"})
+            );
+        }
+        service.workers.commands.drained().await;
         service.usage.close().await;
     }
     database.close().await?;

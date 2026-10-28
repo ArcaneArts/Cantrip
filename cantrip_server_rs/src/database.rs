@@ -88,6 +88,11 @@ impl Transaction<'_> {
 
 impl Database {
     pub async fn pglite(directory: &Path) -> Result<Self> {
+        // Resolve the host before the native engine changes TZ/PGTZ/LANG.
+        let timezone = crate::environment::pglite_default_timezone()?;
+        // This chooses an initial setting; it never prevents the real open.
+        // Existing cluster settings must survive restart and host-zone changes.
+        let initialized = directory.join("PG_VERSION").is_file();
         let database = pglite::PGlite::open_with(
             directory,
             pglite::PGliteOptions {
@@ -103,6 +108,14 @@ impl Database {
         )
         .await
         .context("open native PGlite")?;
+        if !initialized {
+            database
+                .exec(&format!("ALTER SYSTEM SET TimeZone='{timezone}'"))
+                .await?;
+            database
+                .query("SELECT set_config('TimeZone',$1,false)", &[&timezone])
+                .await?;
+        }
         Ok(Self {
             backend: Backend::Pglite(Mutex::new(Some(database))),
             engine: "pglite",
@@ -168,6 +181,20 @@ impl Database {
                 .collect(),
             Backend::Postgres(database) => database.query(sql, parameters).await?,
         })
+    }
+
+    /// PostgreSQL's reference driver supplies explicit types for some values
+    /// passed through unvalidated legacy routes. Embedded PGlite instead uses
+    /// the statement's inferred types; its caller executes the ordinary query.
+    pub(crate) async fn query_postgres_typed(
+        &self,
+        sql: &str,
+        parameters: &[(&(dyn ToSql + Sync), postgres_types::Type)],
+    ) -> Result<Option<Vec<Row>>> {
+        match &self.backend {
+            Backend::Postgres(database) => database.query_typed(sql, parameters).await.map(Some),
+            Backend::Pglite(_) => Ok(None),
+        }
     }
 
     pub async fn listen(&self, channel: &str) -> Result<broadcast::Receiver<(String, String)>> {

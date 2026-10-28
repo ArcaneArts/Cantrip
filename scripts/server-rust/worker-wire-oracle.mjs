@@ -430,6 +430,11 @@ function dateVectors() {
     "2011-12-30T12:00",
   ]);
   const pad = (value, width = 2) => String(value).padStart(width, "0");
+  for (const year of [10000, 100000, 270000, 275760])
+    for (const prefix of ["", "+"])
+      for (const separator of ["T", " "])
+        for (const offset of ["Z", "+00:00", "-06", "-06:00", "-05:50:36"])
+          inputs.add(`${prefix}${year}-01-01${separator}00:00:00${offset}`);
   for (const year of [0, 1, 49, 50, 99, 100, 1900, 2000, 2024, 2026, 9999])
     for (const month of [0, 1, 2, 3, 4, 6, 9, 12, 13])
       for (const day of [0, 1, 28, 29, 30, 31, 32])

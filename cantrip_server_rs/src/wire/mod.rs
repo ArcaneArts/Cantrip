@@ -3,6 +3,8 @@
 pub(crate) mod coercion;
 mod js_date;
 mod json_contract;
+mod json_text;
+pub use json_text::parse_json_text;
 pub(crate) mod live;
 mod projects;
 mod refinements;
@@ -35,6 +37,8 @@ impl ValidationError {
 struct Check {
     #[serde(rename = "check")]
     kind: String,
+    #[serde(default)]
+    message_after_path: bool,
     #[serde(default)]
     format: String,
     #[serde(default)]
@@ -133,8 +137,13 @@ impl Parsed {
         self.issue_message(value, path, message.into(), abort);
     }
     fn issue_message(&mut self, mut value: Value, path: &[Value], message: JsString, abort: bool) {
-        value["path"] = json!(path);
-        value["message"] = json!(message);
+        if value["code"] == "custom" {
+            value["message"] = json!(message);
+            value["path"] = json!(path);
+        } else {
+            value["path"] = json!(path);
+            value["message"] = json!(message);
+        }
         self.issues.push(value);
         self.aborted |= abort;
     }
@@ -214,6 +223,15 @@ pub fn parse(name: &str, input: Option<&Value>) -> Result<Value, ValidationError
     } else {
         Err(ValidationError::Invalid(result.issues))
     }
+}
+
+/// Date values supplied by PostgreSQL retain Node's Date.parse/TimeClip domain.
+pub(crate) fn date_milliseconds(value: &JsString) -> Option<i64> {
+    js_date::parse(value)
+}
+
+pub(crate) fn date_iso_milliseconds(value: i64) -> Option<String> {
+    js_date::iso_milliseconds(value)
 }
 
 impl Contracts {
@@ -505,7 +523,15 @@ impl Contracts {
         let mut result = Parsed::new(input.cloned());
         if let Some(key) = &node.discriminator {
             let Some(object) = input.and_then(Value::as_object) else {
-                result.invalid("object", path);
+                result.issue(
+                    json!({"code":"invalid_type","expected":"object"}),
+                    path,
+                    format!(
+                        "Invalid input: expected object, received {}",
+                        received(input)
+                    ),
+                    true,
+                );
                 return Ok(result);
             };
             let mut values = Vec::new();
@@ -667,8 +693,10 @@ impl Contracts {
                     ),
                 };
                 if failed {
-                    let mut issue = json!({"origin":length.origin,"code":if big{"too_big"}else{"too_small"},"inclusive":true});
+                    let mut issue =
+                        json!({"origin":length.origin,"code":if big{"too_big"}else{"too_small"}});
                     issue[if big { "maximum" } else { "minimum" }] = bound.clone();
+                    issue["inclusive"] = json!(true);
                     if exact {
                         issue["exact"] = json!(true)
                     }
@@ -706,12 +734,15 @@ impl Contracts {
                     );
                 } else if check.format == "safeint" && value.abs() > 9007199254740991.0 {
                     let big = value > 0.0;
-                    let mut issue = json!({"code":if big{"too_big"}else{"too_small"},"note":"Integers must be within the safe integer range.","origin":"int","inclusive":true});
+                    let mut issue = json!({"code":if big{"too_big"}else{"too_small"}});
                     issue[if big { "maximum" } else { "minimum" }] = json!(if big {
                         9007199254740991_i64
                     } else {
                         -9007199254740991_i64
                     });
+                    issue["note"] = json!("Integers must be within the safe integer range.");
+                    issue["origin"] = json!("int");
+                    issue["inclusive"] = json!(true);
                     result.issue(
                         issue,
                         path,
@@ -745,8 +776,10 @@ impl Contracts {
                     value <= bound
                 };
                 if failed {
-                    let mut issue = json!({"origin":"number","code":if big{"too_big"}else{"too_small"},"inclusive":check.inclusive});
+                    let mut issue =
+                        json!({"origin":"number","code":if big{"too_big"}else{"too_small"}});
                     issue[if big { "maximum" } else { "minimum" }] = check.value.clone();
+                    issue["inclusive"] = json!(check.inclusive);
                     result.issue(
                         issue,
                         path,
@@ -815,12 +848,27 @@ impl Contracts {
                 }
             }
             "refinement" => {
+                let before = result.issues.len();
                 if check.path.is_empty() {
                     refinements::apply(&check.tag, result, path, check.message.as_deref())?;
                 } else {
                     let mut configured = path.to_vec();
                     configured.extend_from_slice(&check.path);
                     refinements::apply(&check.tag, result, &configured, check.message.as_deref())?;
+                }
+                // Predicate messages are filled during Zod's finalization.
+                // Callback field order is retained by the exported metadata.
+                if check.message_after_path {
+                    for issue in &mut result.issues[before..] {
+                        if issue["code"] == "custom"
+                            && let Value::Object(fields) = issue
+                        {
+                            let message = fields
+                                .shift_remove("message")
+                                .expect("custom issue message");
+                            fields.insert("message".into(), message);
+                        }
+                    }
                 }
             }
             _ => return Err(ValidationError::Operation),

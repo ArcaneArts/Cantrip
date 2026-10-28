@@ -113,7 +113,7 @@ function stableJsonValue(value: unknown): unknown {
   );
 }
 
-function catalogMetadataSnapshot(model: ProviderModelCatalogWrite) {
+export function catalogMetadataSnapshot(model: ProviderModelCatalogWrite) {
   const metadata = stableJsonValue(model) as Record<string, unknown>;
   return createHash("sha256").update(JSON.stringify(metadata)).digest("hex");
 }

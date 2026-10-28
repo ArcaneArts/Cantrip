@@ -1,0 +1,83 @@
+export function capturedCredentialFixture(fill = 75) {
+  return {
+    subjectBlindIndex: Buffer.alloc(32, fill ^ 90).toString("base64url"),
+    protectedCredential: {
+      formatVersion: 1,
+      keyRevision: 1,
+      envelope: {
+        version: 1,
+        algorithm: "AES-256-GCM",
+        keyRevision: 1,
+        nonce: Buffer.alloc(12, fill ^ 60).toString("base64url"),
+        ciphertext: Buffer.alloc(16, fill).toString("base64url"),
+      },
+    },
+  };
+}
+export const chatGptCatalogModel = {
+  id: "catalog-gpt",
+  model: "gpt-model",
+  displayName: " GPT model ",
+  description: "",
+  hidden: false,
+  isDefault: true,
+  inputModalities: ["text", "image"],
+  supportedReasoningEfforts: [{ reasoningEffort: "high", description: "" }],
+  defaultReasoningEffort: "high",
+  modelSpecialty: null,
+  supportsPersonality: false,
+  upgrade: null,
+  upgradeInfo: null,
+  availabilityNux: null,
+  additionalSpeedTiers: [],
+  serviceTiers: [],
+  defaultServiceTier: null,
+};
+export const grokCatalogModel = {
+  id: "grok-model",
+  displayName: " Grok model ",
+  description: null,
+  contextWindow: 128000,
+  maxOutputTokens: 8192,
+  inputModalities: ["text", "image"],
+  outputModalities: ["text"],
+  supportedReasoningEfforts: [{ effort: "high", description: "Reasoning" }],
+  defaultReasoningEffort: "high",
+  supportsReasoning: true,
+  hidden: false,
+  isDefault: true,
+  rawMetadata: { public: true },
+};
+export const quotaSnapshot = {
+  snapshotId: "snapshot-fixture",
+  observedAt: "2026-10-27T00:00:00.000Z",
+  workerVersion: "worker-fixture",
+  codexVersion: "codex-fixture",
+  credits: { hasCredits: true, unlimited: false, balance: "12.50" },
+  windows: [
+    {
+      limitId: "codex",
+      limitName: "Codex",
+      planType: null,
+      reachedType: null,
+      windowKind: "primary",
+      usedPercent: 10.5555555,
+      windowDurationMinutes: 300,
+      resetsAt: 0,
+      isWeeklyProjection: false,
+      rawPayload: {},
+    },
+    {
+      limitId: "codex",
+      limitName: "Codex",
+      planType: "pro",
+      reachedType: null,
+      windowKind: "secondary",
+      usedPercent: 12.3456785,
+      windowDurationMinutes: 10080,
+      resetsAt: 1793577600,
+      isWeeklyProjection: true,
+      rawPayload: { public: true },
+    },
+  ],
+};

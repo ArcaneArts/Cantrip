@@ -44,6 +44,7 @@ export class SocketProbe {
       credential,
       origin,
       rotation = "accept",
+      onRequest,
     } = {},
   ) {
     this.fixture = fixture;
@@ -87,6 +88,7 @@ export class SocketProbe {
       const frame = JSON.parse(bytes.toString());
       if (frame.kind === "request") {
         assert.match(frame.requestId, /^[0-9a-f-]{36}$/);
+        if (onRequest?.(frame, socket) === true) return;
         if (frame.command.type === "worker.credential.rotate") {
           assert.match(frame.command.credential, /^ctwk_[A-Za-z0-9_-]{43}$/);
           this.rotations.push(frame.command.credential);
