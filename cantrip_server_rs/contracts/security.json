@@ -99,7 +99,10 @@
     "providerModelCatalogResultSchema": 5924,
     "providerTelemetryWireAnalyticsSchema": 5979,
     "providerTelemetryExportSchema": 6123,
-    "providerTelemetryDeleteResultSchema": 6309
+    "providerTelemetryDeleteResultSchema": 6309,
+    "encryptedModelProviderCreateSchema": 6316,
+    "encryptedModelProviderUpdateSchema": 6324,
+    "modelProviderWireSummarySchema": 5618
   },
   "nodes": [
     {
@@ -36328,6 +36331,87 @@
         { "check": "number_format", "format": "safeint", "abort": false },
         { "check": "greater_than", "value": 0, "inclusive": true }
       ]
-    }
+    },
+    {
+      "type": "object",
+      "name": "encryptedModelProviderCreateSchema",
+      "shape": {
+        "name": 5619,
+        "kind": 3974,
+        "baseUrl": 5620,
+        "weeklyUsageReservePercent": 6317,
+        "id": 6319,
+        "initialAccount": 6320,
+        "protectedApiKey": 6321
+      },
+      "catchall": 6323,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "provider-initial-account",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 6318,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 100, "inclusive": true }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 5903, "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 6322,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 2289, "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "encryptedModelProviderUpdateSchema",
+      "shape": {
+        "name": 5619,
+        "kind": 3974,
+        "baseUrl": 5620,
+        "weeklyUsageReservePercent": 6317,
+        "protectedApiKey": 6325
+      },
+      "catchall": 6327,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 6326,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 2289, "checks": [] },
+    { "type": "never", "checks": [] }
   ]
 }

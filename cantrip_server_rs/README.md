@@ -57,9 +57,9 @@ The HTTP client's JSON diagnostics retain V8 positions and UTF16 context. A
 focused hyper patch preserves non-UTF8 HTTP reason bytes; its provenance and
 license live under `third-party/hyper/`.
 
-The seven current settings HTTP routes have actual Node/Rust socket comparisons. Main settings
-reads and the remaining provider HTTP operations still require their domain
-consumers; they are not registered as placeholders.
+Settings/model HTTP routes, the main settings read, and provider CRUD have
+actual Node/Rust socket comparisons. Provider connection testing and remaining
+settings domains still require their native consumers.
 Grok lazily shares one optional public
 vision lookup across each account batch. Its diagnostic interface carries the
 source rate-limit key, context and options; production logger redaction,
@@ -80,7 +80,7 @@ work survives a dropped caller; shutdown drains hydration, catalog operations,
 public fetches and background persistence before closing the database. Actual
 source-function comparisons exercise dispatch with real owner/preferences/worker
 repositories and controlled catalog services; service internals have their own
-repository, worker and public HTTP suites. Main settings HTTP consumers and worker reconnect hooks remain unfinished. Operational event and rate-limit
+repository, worker and public HTTP suites. Worker reconnect hooks and the remaining settings domains are unfinished. Operational event and rate-limit
 call sites preserve the source context; the shared production diagnostic logger
 still requires its formatting, redaction, summaries, buffer and archive work.
 
@@ -94,7 +94,7 @@ sync-state failures retain the source query context after the real failed write.
 Real socket cancellation tests prove that catalog persistence continues without
 a replacement worker request from the completion observer. The observer can race
 the final sync-state write, so comparisons establish a deterministic current
-state only after the independent persistence assertion. Main settings consumers and worker reconnect hooks remain incomplete.
+state only after the independent persistence assertion. Worker reconnect hooks and remaining settings domains are incomplete.
 
 Native legacy provider-credential migration captures only protected envelopes,
 checks optimistic revisions and subject identity, and purges worker copies only
@@ -374,6 +374,26 @@ node scripts/server-rust/provider-quota-http-compatibility.mjs --database pglite
 Repeat with private and external PostgreSQL as for the other socket suites.
 Remaining settings/provider operations, production diagnostic
 formatting and runtime consumers remain in the full replacement goal.
+
+## Global settings and provider management
+
+`GET /api/settings` reconciles the native bundled catalog, returns the current
+settings snapshot and starts account/Ollama discovery in owned background work.
+Provider create/update/delete use strict encrypted request contracts, retain
+opaque keys, preserve hydration/cache ordering and run account preparation and
+sign-out before deletion. Model references still prevent provider deletion.
+
+Local real-socket comparisons pass 99 observations on each of native PGlite,
+private PostgreSQL and external PostgreSQL. Real constraints/triggers verify
+initial-account transaction rollback, failed updates and provider writes retained
+when a later runtime detach fails. Response error context retains the source
+query and parameters after actual failures. Built-in discovery checks generated
+IDs and their relationships, and retained settings are compared after restart.
+External PostgreSQL also verifies a real row-locked UPDATE survives caller
+disconnect and shutdown, commits before exit and remains after reopen (103
+observations). Current-head platform/package acceptance remains required.
+Provider connection testing and worker reconnect/
+periodic catalog hooks remain unported.
 
 ## Provider telemetry
 

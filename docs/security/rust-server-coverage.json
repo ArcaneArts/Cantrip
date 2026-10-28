@@ -891,6 +891,62 @@
         "remaining": [
           "Current-head supported-platform acceptance; execution write consumers and complete product/package acceptance remain in scope."
         ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/settings",
+        "implementation": "cantrip_server_rs/src/http/settings.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/provider-management-http-compatibility.mjs",
+          "scripts/server-rust/provider-management-wire-fixtures.mjs",
+          "scripts/server-rust/provider-management-shutdown.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and complete product/package acceptance."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/settings/providers",
+        "implementation": "cantrip_server_rs/src/http/provider_management.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/provider-management-http-compatibility.mjs",
+          "scripts/server-rust/provider-management-wire-fixtures.mjs",
+          "scripts/server-rust/provider-management-shutdown.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and complete product/package acceptance."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/settings/providers/:providerId",
+        "implementation": "cantrip_server_rs/src/http/provider_management.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/provider-management-http-compatibility.mjs",
+          "scripts/server-rust/provider-management-wire-fixtures.mjs",
+          "scripts/server-rust/provider-management-shutdown.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and complete product/package acceptance."
+        ]
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/settings/providers/:providerId",
+        "implementation": "cantrip_server_rs/src/http/provider_management.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/provider-management-http-compatibility.mjs",
+          "scripts/server-rust/provider-management-wire-fixtures.mjs",
+          "scripts/server-rust/provider-management-shutdown.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and complete product/package acceptance."
+        ]
       }
     ]
   },
@@ -1654,6 +1710,18 @@
       "remaining": [
         "Current-head supported-platform acceptance. Local all-target Rust passes 92 tests across 44 targets; strict all-target Clippy, rustfmt and changed-file Prettier pass. Root checks retain reproduced baseline CUA, worker filesystem and formatting failures; a broad worker history timeout was not reproduced by focused tests.",
         "Telemetry write consumers in the unported chat/native execution domains; full product, migration/rollback, packaging and cutover acceptance."
+      ]
+    },
+    "providerManagementHttp": {
+      "status": "implemented-pending-platform-acceptance",
+      "implementation": [
+        "cantrip_server_rs/src/http/provider_management.rs",
+        "cantrip_server_rs/src/settings/account_service/providers.rs"
+      ],
+      "validatedLocally": "99 actual Node/Rust HTTP observations per database mode across accounts/local profiles: strict encrypted create/update validation, initial-account refinement, malformed JSON, owner/CSRF checks, account-kind conflicts, opaque key retention/clear, background Ollama discovery failure, built-in hydration and model references, initial-account transaction rollback, rejected updates and retained provider writes after failed runtime detach. Generated discovery IDs retain UUID syntax and model/route/default relationships; reopened state is compared. External PostgreSQL additionally proves an actual row-locked provider UPDATE survives caller disconnect and shutdown, commits before process exit and remains after reopen (103 observations). Native all-target tests pass 92 tests across 44 targets; strict Clippy passes. Wire acceptance passes 100421 actual protocol cases with 102 roots and 6328 nodes.",
+      "remaining": [
+        "Current-head supported-platform and packaged product acceptance.",
+        "Provider connection testing, worker reconnect/periodic catalog hooks and remaining settings domains are separate unported consumers."
       ]
     }
   },

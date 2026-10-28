@@ -43,6 +43,141 @@ pub(super) fn context<T>(result: Result<T>, query: &str, params: &[Value]) -> Re
     })
 }
 type QueryContext = (String, Vec<Value>);
+const PROVIDER_COLUMNS: &str = "\"id\", \"owner_id\", \"name\", \"kind\", \"base_url\", \"protected_api_key\", \"weekly_usage_reserve_percent\", \"created_at\", \"updated_at\"";
+pub(super) fn provider_insert(
+    id: &str,
+    owner: &str,
+    input: &Value,
+    base: &str,
+    reserve: i64,
+) -> QueryContext {
+    let mut parameters = vec![
+        Value::String(id.into()),
+        Value::String(owner.into()),
+        input["name"].clone(),
+        input["kind"].clone(),
+        Value::String(base.into()),
+    ];
+    let key = if let Some(key) = input.get("protectedApiKey") {
+        parameters.push(if key.is_null() {
+            Value::Null
+        } else {
+            Value::String(key.stringify().into())
+        });
+        "$6"
+    } else {
+        "default"
+    };
+    parameters.push(Value::Number(reserve as f64));
+    let columns = PROVIDER_COLUMNS;
+    (
+        format!(
+            "insert into \"model_providers\" ({columns}) values ($1, $2, $3, $4, $5, {key}, ${}, default, default) returning {columns}",
+            parameters.len()
+        ),
+        parameters,
+    )
+}
+pub(super) fn provider_update(
+    owner: &str,
+    provider: &str,
+    input: &Value,
+    base: &str,
+    at: chrono::DateTime<chrono::Utc>,
+) -> QueryContext {
+    let mut fields = vec![
+        ("name", input["name"].clone()),
+        ("kind", input["kind"].clone()),
+        ("base_url", Value::String(base.into())),
+    ];
+    if let Some(key) = input.get("protectedApiKey") {
+        fields.push((
+            "protected_api_key",
+            if key.is_null() {
+                Value::Null
+            } else {
+                Value::String(key.stringify().into())
+            },
+        ));
+    }
+    if let Some(reserve) = input.get("weeklyUsageReservePercent") {
+        fields.push(("weekly_usage_reserve_percent", reserve.clone()));
+    }
+    fields.push(("updated_at", Value::String(crate::auth::iso(at).into())));
+    let assignments = fields
+        .iter()
+        .enumerate()
+        .map(|(i, (field, _))| format!("\"{field}\" = ${}", i + 1))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let mut parameters = fields
+        .into_iter()
+        .map(|(_, value)| value)
+        .collect::<Vec<_>>();
+    parameters.push(Value::String(provider.into()));
+    parameters.push(Value::String(owner.into()));
+    (
+        format!(
+            "update \"model_providers\" set {assignments} where (\"model_providers\".\"id\" = ${} and \"model_providers\".\"owner_id\" = ${}) returning {PROVIDER_COLUMNS}",
+            parameters.len() - 1,
+            parameters.len()
+        ),
+        parameters,
+    )
+}
+pub(super) fn provider_detach(route: &str, at: chrono::DateTime<chrono::Utc>) -> QueryContext {
+    ("update \"chat_runtime_sessions\" set \"codex_thread_id\" = $1, \"status\" = $2, \"updated_at\" = $3 where \"chat_runtime_sessions\".\"model_route_id\" = $4".into(), vec![Value::Null,Value::String("detached".into()),Value::String(crate::auth::iso(at).into()),Value::String(route.into())])
+}
+pub(super) fn provider_initial_account(provider: &str, input: &Value) -> QueryContext {
+    let columns = [
+        "id",
+        "provider_id",
+        "protected_label",
+        "plan_type",
+        "position",
+        "enabled",
+        "credential_home_key",
+        "protected_credential",
+        "credential_revision",
+        "credential_state",
+        "credential_subject_blind_index",
+        "credential_expires_at",
+        "credential_updated_at",
+        "credential_refresh_lease_id",
+        "credential_refresh_lease_expires_at",
+        "credential_last_refresh_at",
+        "weekly_usage_used_basis_points",
+        "credits",
+        "credits_observed_at",
+        "weekly_usage_resets_at",
+        "weekly_usage_observed_at",
+        "auth_last_synced_at",
+        "created_at",
+        "updated_at",
+    ];
+    let mut values = vec!["default"; columns.len()];
+    for (column, parameter) in [(0, "$1"), (1, "$2"), (2, "$3"), (4, "$4"), (6, "$5")] {
+        values[column] = parameter;
+    }
+    let columns = columns
+        .iter()
+        .map(|column| format!("\"{column}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
+    (
+        format!(
+            "insert into \"model_provider_accounts\" ({columns}) values ({}) returning {columns}",
+            values.join(", ")
+        ),
+        vec![
+            input["id"].clone(),
+            Value::String(provider.into()),
+            Value::String(input["protectedLabel"].stringify().into()),
+            Value::Number(0.0),
+            Value::String(provider.into()),
+        ],
+    )
+}
 pub(super) fn account_status(
     account: &str,
     worker: &str,

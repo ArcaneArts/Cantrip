@@ -109,6 +109,9 @@ export const contractRoots = [
   "providerTelemetryWireAnalyticsSchema",
   "providerTelemetryExportSchema",
   "providerTelemetryDeleteResultSchema",
+  "encryptedModelProviderCreateSchema",
+  "encryptedModelProviderUpdateSchema",
+  "modelProviderWireSummarySchema",
 ];
 
 const refinements = new Map([
@@ -215,6 +218,9 @@ registerChecks(cuaCursorPreferenceRecordSchema.shape.protectedContent, [
 registerChecks(protocol.eliteRevealConfigSchema, ["settings-elite-range"]);
 registerChecks(protocol.encryptedModelProviderAccountUpdateSchema, [
   "provider-account-update-fields",
+]);
+registerChecks(protocol.encryptedModelProviderCreateSchema, [
+  "provider-initial-account",
 ]);
 registerChecks(protocol.providerAuthLiveStatusSchema, [
   "provider-auth-live-kind",

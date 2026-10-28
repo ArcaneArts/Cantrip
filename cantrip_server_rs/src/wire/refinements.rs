@@ -31,6 +31,15 @@ pub(super) fn apply(
     };
     let wrapper = &value["passwordWrappedMasterKey"];
     match tag {
+        "provider-initial-account" => {
+            let requires_account = value["kind"] == "chatgpt" || value["kind"] == "grok";
+            if requires_account == value["initialAccount"].is_null() {
+                custom(
+                    &["initialAccount"],
+                    "Account-backed providers require one protected initial account.",
+                );
+            }
+        }
         "provider-account-update-fields" => {
             if value
                 .as_object()

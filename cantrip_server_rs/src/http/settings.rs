@@ -182,6 +182,13 @@ async fn execute(
     let path = request.uri().path().to_owned();
     let method = request.method().clone();
     if method == Method::GET || method == Method::HEAD {
+        if path == "/api/settings" {
+            return output(
+                200,
+                "settingsBundleWireSchema",
+                &Value::from_serialize(&service.provider_accounts.settings_bundle(owner).await?),
+            );
+        }
         if let Some(worker) = params.get("workerId") {
             if service
                 .workers
@@ -393,7 +400,7 @@ async fn handle(
 }
 pub(super) fn routes() -> Router<Arc<AuthService>> {
     Router::new()
-        .route("/api/settings", patch(handle))
+        .route("/api/settings", get(handle).patch(handle))
         .route("/api/settings/destination", patch(handle))
         .route("/api/settings/models", post(handle))
         .route(
