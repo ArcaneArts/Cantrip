@@ -828,6 +828,30 @@
         "remaining": [
           "Current-head supported-platform, product and packaging acceptance."
         ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/settings/providers/:providerId/accounts/:accountId/rate-limit-resets",
+        "implementation": "cantrip_server_rs/src/http/provider_quota.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/provider-quota-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and full product/package acceptance."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/settings/providers/:providerId/accounts/:accountId/rate-limit-resets/consume",
+        "implementation": "cantrip_server_rs/src/http/provider_quota.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/provider-quota-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and full product/package acceptance."
+        ]
       }
     ]
   },
@@ -1385,7 +1409,7 @@
       ],
       "validatedSubset": "Native settings preferences and destination updates, model CRUD and route/default reasoning resolution, provider/account/catalog repositories and analytics. Seven production HTTP routes have local actual Node/Rust comparisons on all three storage modes. Native Z.ai, Ollama, ChatGPT, Grok and OpenRouter services preserve hydration, cache/force/offline/failure behavior, credential-home keys, hidden-model discovery, per-account state and quota-before-catalog commits. Grok shares one optional public vision lookup across an account batch and emits the source operational warning call through an explicit diagnostics dependency. Current repository/service suites compare710 scenarios and278 unchanged-state snapshots per store;240023 actual-source helper comparisons cover catalog normalization/enrichment and JSON diagnostics. Twenty-one actual-source cache timelines and nine runtime-hydration timelines cover shared work, retry, invalidation, unobserved callers, ETags, stale data and failure recovery. Main settings/provider HTTP and diagnostic/runtime integration remain incomplete. Native legacy credential capture and global account sign-out preserve secret-free failure summaries, revision/identity fencing, acknowledged purge, atomic clear before parallel cleanup and owned work after caller drop. Native account authentication now covers owned target selection, original-worker reconnect requirements, sign-out preparation/capture/fallback cleanup, caller-independent lifetime, global auth status and reauthentication revision races. Browser-auth/runtime integration remains incomplete. Six additional native browser routes now implement protected account CRUD/order and global sign-out through server-owned services and shutdown drains. Actual HTTP/Live tests cover ownership, CSRF, strict validation, optimistic credential lifecycle, atomic rollback, cleanup failures, disconnected callers and shutdown with admitted work. The production server now constructs the native provider catalog composition service and drains hydration, admitted operations, fetches and background persistence at shutdown. Per-call owner binding is explicit in shared hydration. Dispatch/default-worker/logging-call comparisons execute the actual source route-runtime function with real owner/preferences/worker repositories and controlled catalog services; these are composition tests, separate from the existing actual-service suites. Current local repository/service acceptance is753 comparisons and317 unchanged-state snapshots per store;10 source/native hydration timelines include owner changes across shared loads/retries. The existing161 account HTTP comparisons per store pass with the new factory and shutdown integration. Two additional browser catalog routes now preserve actual catalog services, raw repeated-key worker identity, source query errors after real SQL failures and caller-independent persistence. The latest all-store repository/service evidence is768 comparisons and332 exact unchanged snapshots per store; the wire suite passes80901 protocol cases against93 roots/5969 nodes.",
       "remaining": [
-        "GET settings and remaining provider/quota/reset/telemetry HTTP consumers.",
+        "GET settings and remaining provider/telemetry HTTP consumers.",
         "Native diagnostic logger formatting/redaction/rate-limit summaries/buffer/archive.",
         "Worker connect/reconnect reconciliation and remaining observation consumers.",
         "Model runtime consumers of scoped hydration, complete retained reversal and supported-platform/product/package acceptance."
@@ -1417,9 +1441,9 @@
         "scripts/server-rust/settings-quota-cases.mjs",
         "scripts/server-rust/settings-chatgpt-cases.mjs"
       ],
-      "validatedSubset": "Immutable owner-scoped quota observations, event deduplication, historical dimensions, ordered credits/window commits and independent monotonic account/worker weekly projections. Native snapshot reads and rate-limit activity capture preserve worker requests, trigger/version metadata, epoch resets, TimeClip and retries after partial failure. Credit timestamps use the same millisecond-clipped PostgreSQL ISO text input as the source driver; actual year-zero rejection and equal-millisecond updates are verified on all stores. Explicit observation/reset times are compared as instants instead of normalized away.",
+      "validatedSubset": "Immutable owner-scoped quota observations, event deduplication, historical dimensions, ordered credits/window commits and independent monotonic account/worker weekly projections. Native snapshot reads and rate-limit activity capture preserve worker requests, trigger/version metadata, epoch resets, TimeClip and retries after partial failure. Credit timestamps use the same millisecond-clipped PostgreSQL ISO text input as the source driver; actual year-zero rejection and equal-millisecond updates are verified on all stores. Explicit observation/reset times are compared as instants instead of normalized away. Authenticated quota/reset routes now have all-three-store socket comparisons, including independently committed credits, rollback of a failed window/projection and best-effort consumption persistence.",
       "remaining": [
-        "Wire authenticated quota endpoints and native activity observers as their resource/execution domains are ported.",
+        "Wire native activity observers as their resource/execution domains are ported. Authenticated quota/reset HTTP consumers are implemented separately.",
         "Current-head supported-platform, product and packaging acceptance."
       ]
     },
@@ -1458,7 +1482,7 @@
       ],
       "validatedSubset": "Protected legacy capture, per-candidate secret-free counters, identity/revision race recovery, conflict CAS retry, opt-in purge with subject/revision acknowledgements and native caller-independent task ownership/drain. Global sign-out commits opaque credential removal before parallel catalog/worker cleanup, preserves partial-failure summaries and diagnostic-call contexts, excludes foreign/unlinked/offline workers, and supports the optional info logger. Real Node/Rust tests verify that unobserved captures commit and unobserved sign-outs finish. Source text-encoded expiry semantics are preserved, including actual year-zero PostgreSQL rejection/rollback and nanosecond input clipping. Worker credential reads/uploads are now integrated through authenticated native HTTP routes; browser account CRUD/global sign-out now use server-owned preparation and lifecycle services, with caller-independent completion and shutdown drain. Device login and worker auth observations now use the production account services. Runtime migration/reconnect hooks remain unfinished.",
       "remaining": [
-        "Native diagnostic formatting/redaction/buffer/archive and remaining quota/reset/runtime integration.",
+        "Native diagnostic formatting/redaction/buffer/archive and remaining runtime integration.",
         "Worker connect/reconnect migration/reconciliation hooks.",
         "Current-head supported-platform, product and packaging acceptance."
       ]
@@ -1497,7 +1521,7 @@
       ],
       "validatedSubset": "Native account target resolution, original-worker reconnect handling, protected capture, optimistic revision/identity checks, global sign-out and safe owner-scoped Live publication. HTTP account CRUD/order/delete, logout, stored auth-status projection and device login use owned operations that survive caller disconnect. Device observations retain insertion order, capacity, reference identity across asynchronous validation, sequence/time filtering and original published expiry. Notification owner context comes from the authenticated, generation-checked worker peer before its first database await; an owned worker/account lookup then confirms current access. Successful authentication captures only opaque credentials, commits account/binding status and starts catalog refresh; capture failures publish a fixed safe failure code. The worker-handler drain precedes final account/catalog/command/database drains. Real HTTP/worker/Live comparisons exercise early terminal status before the login reply, an admitted capture after observation replacement, expired observations receiving a later sequence, actual disconnected clients, held purge during shutdown and retained credentials/quota on restart. Actual account/binding constraint failures return source SQL context after failed operations, roll back durable state and retain pending observations. Raw body selectors preserve JavaScript truthiness, driver parameter typing, reference/primitive Map identities and every UTF16 worker-key unit; malformed strings cannot alias a connected UTF8 peer. Validation receipts, rather than configured CI, define accepted revisions and platforms. Observation replacement, non-authenticated notification advancement/publication/deletion, and sign-out removal/publication now share one auth-state critical section. Auth revision allocation remains guarded through Live enqueue. Concurrent HTTP/worker/Live phases retain raw completion order while comparing only explicitly independent pairs; per-stream monotonicity, per-account ordering and complete payload assertions remain strict.",
       "remaining": [
-        "Worker migration/reconnect hooks, remaining settings/provider/quota/reset/telemetry consumers and full production diagnostics.",
+        "Worker migration/reconnect hooks, remaining settings/provider/telemetry consumers and full production diagnostics.",
         "Current-head supported-platform, product and packaging acceptance."
       ],
       "referenceLifecycle": "The opt-in Node auth fixture drains actual source notification/repository promises before database close, including background catalog persistence. Original uninstrumented PGlite shutdown hangs and an insufficient callback-only drain are retained as failures. This does not prove original Node shutdown behavior. Rust uses its production shutdown without this instrumentation."
@@ -1520,9 +1544,22 @@
       ],
       "validatedSubset": "Production construction of real native provider services; typed internal dispatch, explicit owner capture, owned operation lifetime, public hydration marking and shutdown drains. Actual-source composition tests cover missing/foreign providers, all provider families, explicit/default/connected/offline worker selection, force/account/quota-trigger forwarding, source diagnostic context/options and error boundaries, real SQL completion after a dropped caller, and shared hydration owner changes. Current-head all-store repository/service suites and existing account HTTP suites pass locally; strict all-target Clippy passes. The fresh full native all-target run passes89 tests across42 targets, including catalog composition/API and the auth-status extension. Native GET/catalog and POST/refresh now call the real native services through production HTTP. Local all-store comparisons cover built-in catalogs, authenticated/local profiles, headers/HEAD/CSRF/body parsing, ownership and runner selection, cache/force/stale/failure/retry behavior, repeated worker query arrays retaining distinct bridge identity, actual SQL sync failure context, disconnected callers and retained restart. The cancellation observer proves committed model data without dispatching a replacement worker request; a later explicit refresh removes its nondeterministic sync-state race from paired comparisons. Current local repository/service suites pass768 comparisons/332 unchanged snapshots per store. The93-root/5969-node wire export passes80901 protocol comparisons; strict current all-target Clippy passes. Database-state assertions and final foreign/unlinked runner HTTP checks are recorded in the latest retained reports, not inferred from configured CI.",
       "remaining": [
-        "Main settings, provider CRUD/test and quota/reset/telemetry HTTP consumers.",
+        "Main settings, provider CRUD/test and telemetry HTTP consumers.",
         "Worker reconnect and model runtime consumers.",
         "Shared operational diagnostics, supported-platform/product/package acceptance."
+      ]
+    },
+    "providerQuotaHttp": {
+      "status": "implemented-pending-platform-acceptance",
+      "implementation": [
+        "cantrip_server_rs/src/http/provider_quota.rs",
+        "cantrip_server_rs/src/settings/account_service/quota.rs"
+      ],
+      "evidence": ["scripts/server-rust/provider-quota-http-compatibility.mjs"],
+      "validatedSubset": "Local macOS real Node/Rust HTTP, worker and Live socket comparisons pass on native PGlite, private PostgreSQL and external PostgreSQL in accounts and local-development modes:105 paired HTTP observations and30 settings events per store. Covers ChatGPT account and runner ownership, strict reset requests, legacy signed-in bindings, explicit disabled accounts, two-minute worker deadlines, immutable quota deduplication, independent credits/window commits, best-effort reset-result persistence, reauthentication with retained opaque credentials and unchanged revision, actual SQL failures and query context, invalid JSONB credit text, rounding-neighbor projections, foreign-subscriber isolation, actual caller disconnect, real shutdown with disconnect grace and retained restart.",
+      "remaining": [
+        "Current-head supported-platform acceptance, full product/package flows and original keep-alive shutdown acceptance. The paired shutdown request explicitly asks Connection: close; original Node keep-alive shutdown failure is retained.",
+        "Shared production logger formatting/redaction/rate-limit summaries/buffer/archive; this milestone preserves the fixed warning context and message."
       ]
     }
   },

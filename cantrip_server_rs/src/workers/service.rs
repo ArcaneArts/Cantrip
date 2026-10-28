@@ -193,15 +193,21 @@ impl WorkerService {
             json!({"revision":row.get::<i32>(2)?,"configuration":if row.get::<bool>(0)?&&!configuration.is_null(){configuration}else{json!({"effect":"off","parameters":{}})}}),
         )
     }
-    pub fn close(&self) {
+    pub fn pre_close(&self) {
+        // Close socket ingress before waiting for active HTTP requests. Pending
+        // commands retain their normal disconnect/reconnect grace, as in the
+        // reference WebSocket plugin's preClose hook.
         self.shutdown.send_replace(true);
+    }
+    pub fn close(&self) {
+        self.pre_close();
         for (_, timer) in self.offline.lock().unwrap().drain() {
             timer.abort();
         }
         self.bridge.close();
     }
     pub async fn drained(&self) -> Result<()> {
-        // Shutdown is published before HTTP admission stops. A late upgraded
+        // Pre-close is published before HTTP admission stops. A late upgraded
         // handler sees that state before beginning authentication; handlers
         // already using the database retain their permits until completion.
         let _permits = self

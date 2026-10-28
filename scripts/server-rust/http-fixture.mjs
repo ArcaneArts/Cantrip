@@ -94,11 +94,11 @@ export class HttpFixture {
             { cwd: repositoryRoot, env: this.environment },
           );
   }
-  async close() {
+  async close(options) {
     const server = this.server;
     this.server = undefined;
     try {
-      await server?.close();
+      await server?.close(options);
     } catch (error) {
       error.message = `${this.name}/${this.kind}: ${error.message}`;
       throw error;

@@ -44,7 +44,7 @@ fn positive_integer(value: &Value) -> Option<Value> {
     value
         .as_f64()
         .filter(|n| n.is_finite() && *n > 0.0)
-        .map(|n| Value::Number(n.round()))
+        .map(|n| Value::Number(super::round_nonnegative(n)))
 }
 pub fn is_provider(kind: &str, base: &str) -> bool {
     kind == "openai-compatible"

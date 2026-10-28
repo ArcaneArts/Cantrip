@@ -84,12 +84,40 @@ impl SettingsRepository {
         credits: &Value,
         observed: DateTime<Utc>,
     ) -> Result<bool> {
+        self.record_provider_account_credits_wire(
+            owner,
+            provider,
+            account,
+            &crate::wire::Value::from_serialize(credits),
+            observed,
+        )
+        .await
+    }
+    pub(super) async fn record_provider_account_credits_wire(
+        &self,
+        owner: &str,
+        provider: &str,
+        account: &str,
+        credits: &crate::wire::Value,
+        observed: DateTime<Utc>,
+    ) -> Result<bool> {
         // Drizzle writes Date.toISOString(), including millisecond clipping.
         // A binary timestamp accepts values (such as year zero) that that
         // actual PostgreSQL text input rejects, and retains extra precision.
         let observed = crate::wire::date_iso_milliseconds(observed.timestamp_millis())
             .context("Invalid time value")?;
-        Ok(!self.database.query("UPDATE model_provider_accounts a SET credits=$4,credits_observed_at=$5::text::timestamptz,updated_at=$6 WHERE a.id=$3 AND a.provider_id=$2 AND (a.credits_observed_at IS NULL OR a.credits_observed_at<=$5::text::timestamptz) AND EXISTS(SELECT 1 FROM model_providers p WHERE p.id=$2 AND p.owner_id=$1 AND p.kind='chatgpt') RETURNING id", &[&owner,&provider,&account,&credits,&observed,&now()]).await?.is_empty())
+        let at = now();
+        let result = self.database.query("UPDATE model_provider_accounts a SET credits=$4::text::jsonb,credits_observed_at=$5::text::timestamptz,updated_at=$6 WHERE a.id=$3 AND a.provider_id=$2 AND (a.credits_observed_at IS NULL OR a.credits_observed_at<=$5::text::timestamptz) AND EXISTS(SELECT 1 FROM model_providers p WHERE p.id=$2 AND p.owner_id=$1 AND p.kind='chatgpt') RETURNING id", &[&owner,&provider,&account,&credits.stringify(),&observed,&at]).await;
+        let result = match result {
+            Ok(rows) => rows,
+            Err(error) => {
+                let context = super::quota_query_error::credits(
+                    owner, provider, account, credits, &observed, at,
+                );
+                super::query_error::context(Err(error), &context.0, &context.1)?
+            }
+        };
+        Ok(!result.is_empty())
     }
     pub async fn record_provider_account_usage(
         &self,

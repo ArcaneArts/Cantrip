@@ -58,7 +58,7 @@ focused hyper patch preserves non-UTF8 HTTP reason bytes; its provenance and
 license live under `third-party/hyper/`.
 
 The seven current settings HTTP routes have actual Node/Rust socket comparisons. Main settings
-reads and the remaining provider/quota HTTP operations still require their domain
+reads and the remaining provider/telemetry HTTP operations still require their domain
 consumers; they are not registered as placeholders.
 Grok lazily shares one optional public
 vision lookup across each account batch. Its diagnostic interface carries the
@@ -107,7 +107,7 @@ shutdown drains. Credential expiry writes use the source driver's clipped ISO
 text input, including real PostgreSQL rejection and rollback at year zero.
 The server now owns these services for provider-account CRUD and global sign-out,
 and drains admitted operations before closing the worker command bus and database.
-The remaining quota/reset routes, runtime hooks and production diagnostics
+The remaining telemetry routes, runtime hooks and production diagnostics
 still require integration. Legacy OAuth capture does not implement PGlite data conversion.
 
 Native account authentication resolves owned account targets, retains default
@@ -126,7 +126,7 @@ Sign-out invalidates settings before publishing safe provider-auth status, scope
 to the requesting owner. Unvalidated legacy body selectors retain JavaScript
 truthiness separately from database text conversion and the actual PostgreSQL
 driver's boolean parameter inference. Truthy empty arrays cannot select the default
-account. Quota/reset routes and worker reconnect consumers remain unfinished.
+account. Telemetry routes and worker reconnect consumers remain unfinished.
 
 The native auth-status GET/HEAD route projects stored account state, selects the
 first enabled or explicitly requested account, and can capture an opaque legacy
@@ -334,3 +334,43 @@ repository scope authorization and real-network/client tests described below.
 The core adapter alone does not establish whole-product behavior. Remaining
 resource publishers, coordination and full app/worker acceptance are still
 required.
+
+## Authenticated quota and reset-credit HTTP
+
+Native GET rate-limit-resets and POST consume routes use the account service and
+limited worker command bus. They retain owned-account and ChatGPT/runner checks,
+strict request/response contracts, two-minute command deadlines, legacy signed-in
+bindings and explicit disabled-account selection. Quota credits and individual
+window transactions remain independently committed. A failed GET preserves
+earlier commits and exposes the reference query context only after the actual
+SQL operation fails. Consume preserves the successful worker result when its
+optional snapshot cannot be saved. Reauthentication marks the current opaque
+credential through its revision check without clearing it or incrementing its
+revision. Admitted operations survive client disconnect and publish only owned
+settings invalidations.
+
+Socket pre-close and final bridge shutdown are separate phases. Active HTTP
+requests retain the normal worker disconnect grace before bridge/database owners
+are finally drained. The quota suite compares a held command during actual
+shutdown with an explicit HTTP `Connection: close` request. Its original Node
+keep-alive experiment returned the expected failure after the grace but then
+hung with an idle HTTP connection until the thirty-second fixture kill. That
+failure is retained; the explicit connection-close comparison does not claim
+that the original Node keep-alive shutdown path is healthy. Whole-product and
+packaged shutdown acceptance remain required.
+
+Windows PR 2292 CI found 279 OpenRouter normalization mismatches immediately below
+a rounding half across 240,023 actual-source comparisons. Provider metadata and
+quota integer projections now compare the fractional remainder before rounding,
+preserving `Math.round` without first adding 0.5. The original job log and both
+configuration reports are retained; the configuration reports themselves have
+zero mismatches. Fresh supported-platform acceptance of the correction remains
+required.
+
+```sh
+node scripts/server-rust/provider-quota-http-compatibility.mjs --database pglite --report .qa/rust-server/provider-quota-http.json
+```
+
+Repeat with private and external PostgreSQL as for the other socket suites.
+Provider telemetry, remaining settings/provider operations, production diagnostic
+formatting and runtime consumers remain in the full replacement goal.
