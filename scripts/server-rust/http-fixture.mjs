@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import { repositoryRoot } from "./build.mjs";
 import { fixtureEnvironment, startServer } from "./process.mjs";
+import { observeAuditCompletion } from "./audit-observations.mjs";
 
 const uuid =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -34,6 +35,7 @@ export class HttpFixture {
     environment = {},
     workerIngress = false,
     providerAuthDrain = false,
+    auditObservations = false,
   }) {
     Object.assign(this, {
       kind,
@@ -42,6 +44,7 @@ export class HttpFixture {
       databaseMode,
       workerIngress,
       providerAuthDrain,
+      auditObservations,
     });
     this.environment = {
       ...fixtureEnvironment(path.join(root, name, kind)),
@@ -62,6 +65,8 @@ export class HttpFixture {
     this.workerCodes = new Map();
     this.enrollmentExpirations = new Set();
     this.enrollments = new Map();
+    this.auditEffects = new Map();
+    this.auditOffsets = new Map();
   }
   client(name = "main") {
     if (!this.clients.has(name)) this.clients.set(name, { cookies: new Map() });
@@ -79,6 +84,7 @@ export class HttpFixture {
               "scripts/server-rust/node-server.mjs",
               ...(this.workerIngress ? ["--worker-ingress-fixture"] : []),
               ...(this.providerAuthDrain ? ["--drain-auth-notifications"] : []),
+              ...(this.auditObservations ? ["--observe-audits"] : []),
             ],
             { cwd: repositoryRoot, env: this.environment },
           )
@@ -267,10 +273,19 @@ export class HttpFixture {
         )
         .replace("session", "csrf");
     this.records.set(label, body);
+    if (this.auditObservations)
+      await observeAuditCompletion(this, {
+        label,
+        requestId,
+        client: options.client,
+      });
     return {
       status: response.status,
       headers: Object.fromEntries(
-        comparedHeaders.map((name) => [name, response.headers.get(name)]),
+        (this.auditObservations && method === "HEAD"
+          ? [...comparedHeaders, "content-length"]
+          : comparedHeaders
+        ).map((name) => [name, response.headers.get(name)]),
       ),
       setCookie,
       body: normalized,

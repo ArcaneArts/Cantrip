@@ -2,6 +2,29 @@
 
 Status: **implementation in progress; not a deployable replacement**.
 
+Mutation audits now begin after body completion rather than delaying the HTTP
+response. An owned admission retains the audit through its deferred write, and
+shutdown drains those admissions before closing the database. HEAD discards
+complete their audit while preserving the GET body's size hint and Content-Length.
+Response errors also complete audits; abandoned unfinished bodies do not. Explicit
+in-handler authentication audits retain their existing timing.
+
+A real PostgreSQL relation lock proves that Node and Rust both return the
+original HTTP 400 while the audit INSERT waits, retain it during shutdown,
+commit after release and reopen with one correlated row. A rejected audit INSERT
+preserves the HTTP response and permits clean shutdown/reopen. The local security
+matrix passes 387 comparisons per store across anonymous, password, account and
+administrator profiles on native PGlite, private PostgreSQL and external
+PostgreSQL, including exact HEAD Content-Length. Eight body-lifecycle tests and
+all 96 native tests pass; strict all-target Clippy passes. Platform acceptance
+remains required.
+
+The security harness observes the actual Node onResponse hooks and audit
+completions, then observes correlated Rust rows before the next scenario. Full
+audit lists, IDs, ordering and cursors remain exact comparisons. Test-only
+observation does not replace handlers, reorder responses or introduce a server
+runtime JavaScript dependency.
+
 The actual Linux worker flow exposed an embedded desktop backend signal handler
 that called `process.exit(143)` before Cantrip could drain its services. The
 worker now opts out of that backend's SIGINT/SIGTERM handlers through a narrow
@@ -107,11 +130,15 @@ their full state comparison now run before timing validation, so a reference
 clock observation cannot prevent the actual Rust comparison from executing.
 Fresh Windows evidence and full platform acceptance remain required.
 
-The repository-wide checks are not green: native CUA execution-budget failures,
-worker filesystem observations and 12 formatting failures reproduce on the clean
-baseline. A worker history-outbox timeout from the package sweep did not
-reproduce in its focused rerun. The Node server and app suites pass; original
-failures and baseline results are retained without changing assertions or limits.
+The latest repository-wide check passes the Node server's 1,616 tests, the app's
+3,899 tests and all type checks, but fails four worker cases: Grok login,
+history-outbox replay, filesystem status observation and the PNG size boundary.
+Focused runs of those four files on this revision and the retained clean baseline
+each pass 67 cases and reproduce the filesystem observation failure; the other
+three sweep failures do not reproduce in either focused run. Worker source and
+dependencies are unchanged by this milestone. The 12 repository-wide formatting
+failures are byte-identical to the baseline. Original failures and baseline
+results are retained without changing assertions or limits.
 
 The outgoing worker envelope now has native validation and normalization before
 bridge admission. Its development oracle exercises the actual TypeScript
@@ -548,9 +575,10 @@ enrollment/bootstrap HTTP integration remains unported.
 Account session lists, owner/admin audit queries and license-whitelist APIs
 are also present. Session connection indicators currently cover the current
 session; additional connected sessions require the remaining live transport.
-Mutation auditing covers the existing account/encryption responses. The final
-streaming lifecycle still needs to attach audit completion after body delivery,
-matching Fastify's `onResponse` timing.
+Mutation auditing for implemented routes now follows body/header completion,
+including HEAD and response errors, with owned shutdown draining. Remaining
+domain hooks, operational logging and packaged/platform acceptance are still
+required.
 
 `contracts/security.json` is generated from 36 actual protocol exports by
 `scripts/server-rust/contracts.mjs`. The native validator preserves defaults,

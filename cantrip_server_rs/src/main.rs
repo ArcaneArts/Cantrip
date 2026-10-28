@@ -188,6 +188,7 @@ async fn main() -> Result<()> {
             );
         }
         service.workers.commands.drained().await;
+        service.mutation_audits.drained().await;
         service.usage.close().await;
     }
     database.close().await?;

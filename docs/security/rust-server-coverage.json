@@ -1754,6 +1754,26 @@
         "Observe the patched full-worker flow and signal regression on Linux, macOS and Windows.",
         "Packaged process supervision and the complete deployment/platform product matrix."
       ]
+    },
+    "mutationAuditLifecycle": {
+      "status": "implemented-pending-platform-acceptance",
+      "implementation": [
+        "cantrip_server_rs/src/auth/audit.rs",
+        "cantrip_server_rs/src/http/audit.rs",
+        "cantrip_server_rs/src/http/on_response.rs",
+        "cantrip_server_rs/src/main.rs"
+      ],
+      "evidence": [
+        "scripts/server-rust/audit-lifecycle-compatibility.mjs",
+        "scripts/server-rust/audit-observations.mjs",
+        "scripts/server-rust/security-compatibility.mjs"
+      ],
+      "validatedLocally": "Actual Node/Rust PostgreSQL INSERT waits behind a held relation lock while HTTP 400 completes; shutdown retains the admitted audit until release, and a new process retains one correlated row. Actual rejected audit INSERT preserves HTTP and clean shutdown/reopen. All four auth profiles pass 387 exact security comparisons per store on native PGlite/private/external PostgreSQL, including HEAD Content-Length. Eight native body-lifecycle cases cover normal/error/empty/HEAD completion and abandoned bodies; full native suite passes 96 tests with strict all-target Clippy. Explicit authentication audits remain in-handler.",
+      "comparisonControl": "Test-only Node repository/onResponse receipts and actual Rust persisted rows sequence scenarios. Existing full response/audit ID/order/cursor comparisons remain unchanged; responses are not sorted or filtered for equality.",
+      "remaining": [
+        "Observe supported-platform execution for the current head and retain artifacts.",
+        "Remaining resource/execution audit domains, operational privacy acceptance and packaged/deployment matrix."
+      ]
     }
   },
   "remainingAcceptance": [

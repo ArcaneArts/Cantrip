@@ -71,6 +71,7 @@ pub struct AuthService {
     pub usage: Arc<crate::usage::service::UsageService>,
     pub provider_accounts: Arc<crate::settings::account_service::AccountService>,
     pub provider_catalogs: Arc<crate::settings::catalog_runtime::CatalogRuntime>,
+    pub mutation_audits: Arc<super::audit::AuditService>,
     rate_limit: Mutex<AuthRateLimiter>,
 }
 
@@ -144,6 +145,7 @@ impl AuthService {
             provider_catalogs.clone(),
             workers.bridge.clone(),
         );
+        let mutation_audits = super::audit::AuditService::new(repository.clone());
         Ok(Arc::new(Self {
             config,
             repository,
@@ -158,6 +160,7 @@ impl AuthService {
             usage,
             provider_accounts,
             provider_catalogs,
+            mutation_audits,
             registration: Mutex::new(()),
             revocations: broadcast::channel(256).0,
         }))
