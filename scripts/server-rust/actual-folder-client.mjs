@@ -39,6 +39,7 @@ import {
   actualWorkerTunnelLink,
 } from "./actual-worker-tunnel-link.mjs";
 import { actualWorkerTunnelRelay } from "./actual-worker-tunnel-relay.mjs";
+import { actualWorkerBrowserDiscovery } from "./actual-worker-browser-discovery.mjs";
 import {
   prepareBrowserSurface,
   actualWorkerBrowserSurface,
@@ -440,10 +441,14 @@ async function flow(
           workerId,
         )
       : undefined;
-    if (surface)
+    if (surface) {
       result.steps.push(
         "existing client creates a browser with encrypted title and state through the product route",
       );
+      // The production OS scan must finish before opening the later tunnel's
+      // exact-payload peer, which deliberately records every received byte.
+      await actualWorkerBrowserDiscovery({ page, surface, workerId, result });
+    }
     if (process.argv.includes("--tunnels"))
       tunnel = await prepareTunnelLink(page, created.id, workerId);
     // Capture after browser creation has committed its project layout update.

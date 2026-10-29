@@ -1257,6 +1257,38 @@
         "remaining": [
           "Current supported-platform, package and full product acceptance; the local all3store repository/HTTP/full-worker matrices and final-source122-test native regression pass."
         ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/browser-services",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/http/browser_discovery.rs",
+        "evidence": [
+          "scripts/server-rust/browser-discovery-http-compatibility.mjs",
+          "scripts/server-rust/browser-discovery-worker.mjs",
+          "cantrip_server_rs/tests/browser_contracts.rs",
+          "scripts/server-rust/actual-worker-browser-discovery.mjs",
+          "scripts/server-rust/actual-folder-client.mjs"
+        ],
+        "remaining": [
+          "Supported-platform and packaged acceptance; current local all3store HTTP and actual-client/full-worker matrices pass."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/browsers/:browserId/services",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/http/browser_discovery.rs",
+        "evidence": [
+          "scripts/server-rust/browser-discovery-http-compatibility.mjs",
+          "scripts/server-rust/browser-discovery-worker.mjs",
+          "cantrip_server_rs/tests/browser_contracts.rs",
+          "scripts/server-rust/actual-worker-browser-discovery.mjs",
+          "scripts/server-rust/actual-folder-client.mjs"
+        ],
+        "remaining": [
+          "Supported-platform and packaged acceptance; current local all3store HTTP and actual-client/full-worker matrices pass."
+        ]
       }
     ]
   },
@@ -1347,6 +1379,21 @@
           "scripts/server-rust/actual-terminal-services.mjs"
         ],
         "remaining": ["Current supported-platform and packaged acceptance."]
+      },
+      {
+        "command": "browser.services.discover",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/http/browser_discovery.rs",
+        "evidence": [
+          "scripts/server-rust/browser-discovery-http-compatibility.mjs",
+          "scripts/server-rust/browser-discovery-worker.mjs",
+          "cantrip_server_rs/tests/browser_contracts.rs",
+          "scripts/server-rust/actual-worker-browser-discovery.mjs",
+          "scripts/server-rust/actual-folder-client.mjs"
+        ],
+        "remaining": [
+          "Supported-platform and packaged acceptance. The worker remains Node by design."
+        ]
       }
     ]
   },
@@ -2912,13 +2959,32 @@
         "scripts/server-rust/browser-repository-locks.mjs",
         "scripts/server-rust/browser-cleanup-failure.mjs"
       ],
-      "scope": "Unmerged five native browser product routes, transactional layout/views, opaque state, worker configuration, runtime cleanup and ordered Live events. All3store actual repository comparisons40 operations/22 snapshots, with5 observed external write races. HTTP37 anonymous/41account observations per runtime/store and protocol7641 cases pass. Final-source existing-client/full-worker24-step flows passall3 stores with creation, retained decryption, encrypted saved URL update and active-grant deletion. Current final-source strictClippy and all3store311-operation tunnel repository regressions pass.",
+      "scope": "PR2308 merged five native browser product routes, transactional layout/views, opaque state, worker configuration, runtime cleanup and ordered Live events. All3store actual repository comparisons40 operations/22 snapshots, with5 observed external write races. HTTP37 anonymous/41account observations per runtime/store and protocol7641 cases pass. Final-source existing-client/full-worker24-step flows passall3 stores with creation, retained decryption, encrypted saved URL update and active-grant deletion. Current final-source strictClippy and all3store311-operation tunnel repository regressions pass.",
       "remaining": [
         "Current supported-platform/package observation. Final-source122 native tests/66 result groups, strictClippy, all3store full-worker24step flows and repository/HTTP regressions pass. CI configuration is not acceptance.",
-        "Browser service discovery, CLI/agent resource consumers and remaining owning domain integration.",
+        "CLI/agent resource consumers and remaining owning domain integration.",
         "All original data migration, rollback, packaging, Winterhold rehearsal, performance, cutover and Node-removal requirements."
       ],
       "siblingFailure": "Actual external PostgreSQL trigger rejects one of1024 stops; both runtimes finish1023siblings and preserve the managed write, with exact500 responses/state. Old native progress at15seconds was not discarded work. Matching the four required SQL values avoids full-row wire-JSON reconstruction; final observed completion about3.6seconds native/4.1Node. Work remains admitted/owned through shutdown."
+    },
+    "nativeBrowserServiceDiscovery": {
+      "status": "implemented-pending-platform-acceptance",
+      "implementation": [
+        "cantrip_server_rs/src/http/browser_discovery.rs",
+        "cantrip_server_rs/src/wire/browsers.rs"
+      ],
+      "evidence": [
+        "scripts/server-rust/browser-discovery-http-compatibility.mjs",
+        "scripts/server-rust/browser-discovery-worker.mjs",
+        "cantrip_server_rs/tests/browser_contracts.rs",
+        "scripts/server-rust/actual-worker-browser-discovery.mjs",
+        "scripts/server-rust/actual-folder-client.mjs"
+      ],
+      "scope": "Two native GET routes. Actual Node/Rust comparisons pass60 anonymous/61account HTTP observations per runtime/store and37 exact worker selections, ten concurrent admitted commands, real20-second deadlines, malformed discovery results and disconnects. All3stores preserve browser/surface state. Combined browser protocol9113cases pass. Existing-client/full-worker25step flows on all3stores discover and probe an actual HTTP listener through both unchanged client APIs. Final-source122native tests/66groups and strictClippy pass; current TCP diagnostic reruns retain all25steps on all3stores.",
+      "remaining": [
+        "New supported-platform execution of Ubuntu per-executable AppArmor policy and all database/client flows; old2308 Linux/macOS failures remain unwaived.",
+        "Complete owning CLI/agent consumers, remaining durable domains/execution, migration, rollback, artifacts, desktop/Winterhold readiness, performance and Node removal."
+      ]
     }
   },
   "remainingAcceptance": [
@@ -3006,6 +3072,16 @@
       "platforms": ["ubuntu-24.04", "macos-15", "windows-2025"],
       "conclusion": "success; all 141 actual JSON reports parsed and inspected; artifact SHA256 digests and native coverage receipts verified",
       "scope": "Usage metering/repositories/HTTP/socket/tenant restart, outgoing worker command admission and all prior foundation/security/transport regressions on all three stores. Each OS supplied 47 reports. Includes complete descendant Windows command acceptance; the earlier PR 2287 Windows attempt remains historically cancelled. Does not establish policy, complete resource/execution, migration, packaging or server replacement acceptance."
+    },
+    {
+      "pullRequest": "https://github.com/ArcaneArts/Cantrip/pull/2308",
+      "commit": "ba3a3f99320822e34c55023bb0c6d0ba258aa182",
+      "observedHead": "4c030a6016d4925e6e6a23a3a88fa4aff0106d79",
+      "observedRun": "https://github.com/ArcaneArts/Cantrip/actions/runs/40965083499",
+      "platforms": ["ubuntu-24.04", "macos-15", "windows-2025"],
+      "status": "in_progress",
+      "conclusion": null,
+      "scope": "Linux and macOS each passed6browser repository/HTTP steps, then failed the Node full-worker reference. Linux artifact12939240103 SHA2562722b22fd8ced150d308e65490b4b3907338df42f24278ee8583fd0513b02302 proves downloaded Chromium sandbox startup abort. macOS artifact12938452619 SHA25639fdb0423cd9c9e791417aae43b77c02baaf2999109fae0387efc6e0cd02a684 proves WorkerLink tunnel success then missing legacy CTTN reply. Windows still running at observation. No platform/package/full-replacement acceptance."
     }
   ]
 }

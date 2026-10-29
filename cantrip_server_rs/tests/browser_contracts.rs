@@ -32,6 +32,9 @@ fn browser_contracts_match_actual_protocol_exports() -> Result<()> {
         "browserWireSummarySchema",
         "browserWireListSchema",
         "browserTunnelWireRequestSchema",
+        "browserServiceSchema",
+        "browserServiceListSchema",
+        "browserServiceFleetDiscoverySchema",
     ] {
         let output = Command::new("node")
             .args(["scripts/server-rust/security-oracle.mjs", "--vectors", name])

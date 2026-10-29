@@ -40,7 +40,7 @@ pub(super) fn value(value: impl Into<String>) -> Value {
 fn millis(raw: &Value, key: &str) -> Option<i64> {
     raw[key].as_js_string().and_then(wire::date_milliseconds)
 }
-pub(super) fn collator() -> Result<CollatorBorrowed<'static>> {
+pub(crate) fn collator() -> Result<CollatorBorrowed<'static>> {
     let locale = sys_locale::get_locale()
         .and_then(|v| v.parse::<Locale>().ok())
         .unwrap_or_else(|| "en-US".parse().unwrap());

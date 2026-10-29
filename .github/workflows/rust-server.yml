@@ -19,6 +19,9 @@ on:
       - cantrip_server/src/db/repository.ts
       - cantrip_server/src/db/repository/browsers.ts
       - cantrip_server/src/app/routes/browser-management.ts
+      - cantrip_server/src/app/routes/browser-service-discovery.ts
+      - cantrip_server/src/projects/worker-affinity.ts
+      - cantrip_server/src/app/shared/constants.ts
       - cantrip_server/src/app/runtime/interactive-surface-runtime.ts
       - cantrip_server/src/db/repository/provider*.ts
       - cantrip_server/src/db/repository/telemetry.ts
@@ -180,6 +183,9 @@ jobs:
         run: pnpm --filter @cantrip/worker exec vitest run test/desktop-automation-lifecycle.test.ts --maxWorkers=1
       - name: Browser for unchanged client and worker control integration
         run: node node_modules/playwright-core/cli.js install --with-deps chromium
+      - name: Allow the downloaded Chromium to use its namespace sandbox on Ubuntu
+        if: runner.os == 'Linux'
+        run: node scripts/server-rust/linux-chromium-sandbox.mjs
       - name: Actual browser, server and full worker catalog flow with PGlite
         run: node --import tsx scripts/server-rust/actual-worker-client.mjs --report .qa/rust-server/actual-worker-client-pglite.json
       - name: Actual browser, server and full worker catalog flow with private PostgreSQL
@@ -230,6 +236,12 @@ jobs:
         run: node --import tsx scripts/server-rust/browser-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/browser-http-bundled.json
       - name: Browser HTTP, saved state and managed tunnel cleanup with external PostgreSQL
         run: node --import tsx scripts/server-rust/browser-http-compatibility.mjs --database postgres --report .qa/rust-server/browser-http-external.json
+      - name: Browser service discovery, worker deadlines and fleet bounds with native PGlite
+        run: node --import tsx scripts/server-rust/browser-discovery-http-compatibility.mjs --report .qa/rust-server/browser-discovery-http-pglite.json
+      - name: Browser service discovery, worker deadlines and fleet bounds with private PostgreSQL
+        run: node --import tsx scripts/server-rust/browser-discovery-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/browser-discovery-http-bundled.json
+      - name: Browser service discovery, worker deadlines and fleet bounds with external PostgreSQL
+        run: node --import tsx scripts/server-rust/browser-discovery-http-compatibility.mjs --database postgres --report .qa/rust-server/browser-discovery-http-external.json
       - name: Actual browser folders, encrypted PTYs and WorkerLink observations with native PGlite
         run: node --import tsx scripts/server-rust/actual-folder-client.mjs --terminals --worker-links --terminal-direct --surfaces --tunnels --report .qa/rust-server/actual-folder-client-pglite.json
       - name: Actual browser folders, encrypted PTYs and WorkerLink observations with private PostgreSQL
