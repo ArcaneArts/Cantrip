@@ -5,7 +5,14 @@ pub(super) fn refine(
     path: &[Value],
     message: Option<&str>,
 ) -> Result<bool, ValidationError> {
-    if !["browser-placement", "browser-title", "browser-update"].contains(&tag) {
+    if ![
+        "browser-placement",
+        "browser-title",
+        "browser-update",
+        "browser-service-http-url",
+    ]
+    .contains(&tag)
+    {
         return Ok(false);
     }
     let value = result
@@ -19,6 +26,21 @@ pub(super) fn refine(
         result.issue(json!({"code":"custom"}), &at, message.into(), false);
     };
     match tag {
+        "browser-service-http-url" => {
+            let text = value.as_js_string().ok_or(ValidationError::Operation)?;
+            if !text
+                .units()
+                .starts_with(&"http://".encode_utf16().collect::<Vec<_>>())
+                && !text
+                    .units()
+                    .starts_with(&"https://".encode_utf16().collect::<Vec<_>>())
+            {
+                issue(
+                    &[],
+                    message.unwrap_or("Browser service URLs must use HTTP or HTTPS."),
+                );
+            }
+        }
         "browser-placement" => {
             if ["paneId", "tabGroupId", "targetRegion"]
                 .iter()

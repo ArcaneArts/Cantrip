@@ -62,7 +62,7 @@ async fn revoke_attachments(
     futures::future::try_join_all(operations).await?;
     Ok(())
 }
-fn allows(project: &Value, worker: &Value) -> bool {
+pub(super) fn allows(project: &Value, worker: &Value) -> bool {
     if project["originKind"] != "managed-folder" {
         return true;
     }

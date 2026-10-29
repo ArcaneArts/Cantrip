@@ -18,7 +18,11 @@ export async function actualWorkerTunnelRelay({
 }) {
   const responses = [],
     before = tunnel.received.length;
-  result.tunnelRelay = { completed: false, responses };
+  result.tunnelRelay = {
+    completed: false,
+    responses,
+    peerEvents: tunnel.peerEvents,
+  };
   const observe = (response) => {
     const pathname = new URL(response.url()).pathname;
     if (
@@ -212,6 +216,11 @@ export async function actualWorkerTunnelRelay({
               ),
             ),
         );
+        assert.equal(
+          plain.length,
+          tunnel.reply.length,
+          "complete authenticated legacy reply length",
+        );
         assert.deepEqual(plain, tunnel.reply);
         assert.ok(
           frames.some(
@@ -276,6 +285,7 @@ export async function actualWorkerTunnelRelay({
       attachmentRevoked: true,
       closed,
       responses,
+      peerEvents: tunnel.peerEvents,
     };
     result.steps.push(
       "existing browser attachment API and full unchanged worker carry authenticated legacy CTTN ciphertext through the server to a real TCP target, preserve half-close, return an encrypted reply and revoke the attachment",

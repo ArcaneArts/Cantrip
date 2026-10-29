@@ -22,18 +22,40 @@ export async function prepareTunnelLink(page, projectId, workerId) {
       plaintext,
     ]);
   const sockets = new Set(),
-    received = [];
+    received = [],
+    peerEvents = [];
+  let nextPeer = 0;
   const server = createServer({ allowHalfOpen: true }, (socket) => {
+    const peer = nextPeer++;
+    const trace = (event, fields = {}) => {
+      if (peerEvents.length < 256)
+        peerEvents.push({ at: Date.now(), peer, event, ...fields });
+    };
+    trace("connected");
     sockets.add(socket);
-    socket.once("close", () => sockets.delete(socket));
+    socket.once("close", () => {
+      trace("closed");
+      sockets.delete(socket);
+    });
     const chunks = [];
-    socket.on("data", (bytes) => chunks.push(Buffer.from(bytes)));
-    socket.on("error", () => {});
+    socket.on("data", (bytes) => {
+      trace("data", { bytes: bytes.length });
+      chunks.push(Buffer.from(bytes));
+    });
+    socket.on("error", (error) =>
+      trace("error", { code: error.code, message: error.message }),
+    );
     socket.on("end", () => {
       const request = Buffer.concat(chunks);
+      trace("half-close", { bytes: request.length });
       received.push({ bytes: request.length, sha256: hash(request) });
       socket.end(
         Buffer.concat([Buffer.from("authenticated-worker-reply:"), request]),
+        () =>
+          trace("reply-written", {
+            bytes:
+              request.length + Buffer.byteLength("authenticated-worker-reply:"),
+          }),
       );
     });
   });
@@ -83,6 +105,7 @@ export async function prepareTunnelLink(page, projectId, workerId) {
       plaintext,
       reply,
       received,
+      peerEvents,
       close: async () => {
         for (const socket of sockets) socket.destroy();
         await new Promise((resolve) => server.close(resolve));

@@ -20,7 +20,70 @@ export function browserWireFixtures(label) {
     createdAt: "2026-10-25T00:00:00.000Z",
     updatedAt: "2026-10-25T00:00:00.000Z",
   };
+  const service = {
+    workerId: "worker",
+    host: "127.0.0.1",
+    port: 5173,
+    protocol: "http",
+    url: "http://127.0.0.1:5173/",
+    title: "Development",
+    processName: null,
+    statusCode: 200,
+  };
+  const result = {
+    workerId: "worker",
+    workerName: "Development worker",
+    status: "ok",
+    services: [
+      {
+        ...service,
+        workerName: "Development worker",
+        placement: {
+          projectId: "project",
+          workerId: "worker",
+          projectReplicaId: null,
+          worktreeId: null,
+          surface: null,
+        },
+      },
+    ],
+    error: null,
+    truncated: false,
+  };
   return {
+    browserServiceSchema: [
+      service,
+      {
+        ...service,
+        url: " https://localhost/path#\ud800 ",
+        title: null,
+        processName: " Process ",
+      },
+    ],
+    browserServiceListSchema: [[], [service]],
+    browserServiceFleetDiscoverySchema: [
+      {
+        projectId: "project",
+        observedAt: summary.createdAt,
+        partial: false,
+        workers: [result],
+      },
+      {
+        projectId: "project",
+        observedAt: summary.createdAt,
+        partial: true,
+        truncated: true,
+        workers: [
+          {
+            ...result,
+            workerName: "x".repeat(199) + "\ud83d",
+            status: "offline",
+            services: [],
+            error: { code: "worker-offline", message: "Offline" },
+          },
+        ],
+      },
+    ],
     encryptedBrowserCreateSchema: [
       input,
       ...["center", "right", "bottom"].map((targetRegion) => ({

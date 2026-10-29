@@ -2,6 +2,50 @@
 
 Status: **implementation in progress; not a deployable replacement**.
 
+## Browser service discovery in progress
+
+Native project-fleet and existing-browser discovery now use the unchanged worker
+command transport. Project ownership, folder affinity and ready local-Git replicas
+filter the eligible workers before ICU locale sorting and the 64-worker bound.
+Requests run concurrently with the source's 20-second deadline. Worker identities
+are validated before authenticated identities replace their claims; fleet entries
+retain explicit placement nulls. Per-worker parsing retains the 128-service bound,
+and ordered fleet aggregation enforces the 1,024-service budget. Offline, timeout,
+worker-error and partial/truncation behavior retain the source's exact contracts,
+including UTF-16 name and error truncation and whitespace-only errors.
+
+Actual Node/native HTTP comparisons pass 60 anonymous and 61 account observations
+per runtime on each of PGlite, private PostgreSQL and external PostgreSQL. Each
+compares 37 exact worker-selection observations, admits all ten controlled worker
+requests before any completes, exercises the actual 20-second deadline and
+disconnects an in-flight worker. Browser/surface rows remain byte-equivalent after
+the read-only operations and restart. The combined browser protocol suite matches
+9,113 validation and rendered-error cases from the actual schemas.
+
+The existing client/full-worker flow passes 25 steps against each server on all
+three stores. Both discovery APIs find a real HTTP listener through the full
+worker's OS enumeration and HTTP probes, with two actual requests witnessed by
+the listener. Discovery finishes before the later tunnel test opens its strict
+TCP payload peer: the original ordering correctly detected the scanner's HTTP
+and TLS probes as additional peer traffic. Exact tunnel payload assertions remain.
+The final native regression passes 122 tests across 66 result groups, with no
+failures or ignored tests. Strict Clippy, formatting, boundary and large-file
+checks pass. The final diagnostic-flow reruns pass all 25 steps on all three stores.
+
+PR 2308 is merged as `ba3a3f99320822e34c55023bb0c6d0ba258aa182`. Its Linux and
+macOS jobs each pass all six browser repository/HTTP steps, then fail the Node
+reference full-worker flow. The retained Linux Chromium stderr identifies an
+actual namespace-sandbox abort. The next CI run installs Chromium's documented
+per-executable AppArmor policy for that runner's downloaded binary; production
+worker launch arguments and the Chromium sandbox remain unchanged. This policy
+has not yet been exercised on the new CI head. The macOS failure is specifically
+the legacy CTTN reply poll; its WorkerLink tunnel already passed. The legacy poll
+now checks complete length before the original full-byte assertion, and the TCP
+peer retains bounded connection/data/half-close/reply-write timestamps. This does
+not establish the cause or resolution of the macOS failure. Both artifacts and
+their SHA256 digests are retained; Windows and subsequent platform results remain
+separate acceptance work. No platform failure is waived.
+
 ## Browser product management in progress
 
 The current browser-management lane implements the five native list, create,
