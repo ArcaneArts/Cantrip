@@ -1,76 +1,29 @@
 // Production browser WorkerLink/crypto modules and an unchanged full worker
-// rendering a real Chromium page. Database seeding supplies an existing surface;
-// browser CRUD is a separate, still-unported domain.
+// rendering a real Chromium page, created through the unchanged client API.
 import assert from "node:assert/strict";
-import path from "node:path";
 import { eventually } from "./full-worker.mjs";
-import { repositoryFixture } from "./repository-fixture.mjs";
-import { literal, json } from "./project-target-state.mjs";
 
-export async function prepareBrowserSurface(page, origin, projectId) {
-  const id = "actual-browser-" + crypto.randomUUID(),
-    token = "private-browser-" + crypto.randomUUID();
+export async function prepareBrowserSurface(page, origin, projectId, workerId) {
+  const token = "private-browser-" + crypto.randomUUID();
   const url = new URL("/__actual_surface_fixture/" + token, origin).href;
-  const protectedState = await page.evaluate(
-    async ({ id, url }) => {
-      const identity = window.folderIdentity;
-      const label = await import("/src/lib/private-label-encryption.ts");
-      const state =
-        await import("/src/lib/surface-private-state-encryption.ts");
-      return {
-        titleProtection: await label.encodePrivateDisplayLabelForClient({
-          identity,
-          recordKind: "browser",
-          rowId: id,
-          label: "Private WorkerLink browser",
-        }),
-        stateProtection: await state.encodeSurfacePrivateStateForClient({
-          identity,
-          context: {
-            serverId: identity.serverId,
-            resource: "browser-row",
-            resourceId: id,
-            operationId: null,
-            recordKind: "browser-state",
-          },
-          content: {
-            version: 1,
-            classification: { recordKind: "browser-state" },
-            revision: 1,
-            url,
-          },
-        }),
-      };
+  const created = await page.evaluate(
+    async ({ projectId, workerId, url }) => {
+      const api = await import("/src/lib/api/surfaces.ts");
+      return api.createBrowser(
+        projectId,
+        "Private WorkerLink browser",
+        undefined,
+        { kind: "worker", projectId, workerId },
+        url,
+      );
     },
-    { id, url },
+    { projectId, workerId, url },
   );
-  return { id, projectId, token, url, ...protectedState };
-}
-
-export async function seedBrowserSurface(
-  fixture,
-  root,
-  executable,
-  surface,
-  workerId,
-) {
-  const repo = await repositoryFixture({
-    kind: fixture.kind,
-    root: path.join(root, fixture.name),
-    executable,
-    databaseMode: fixture.databaseMode,
-    databaseUrl: fixture.environment.DATABASE_URL,
-  });
-  try {
-    await repo.seed(
-      `INSERT INTO browsers(id,project_id,protected_label,protected_state,state_revision) VALUES(${literal(surface.id)},${literal(surface.projectId)},${json(surface.titleProtection)},${json(surface.stateProtection)},1)`,
-    );
-    await repo.seed(
-      `INSERT INTO remote_surfaces(id,project_id,worker_id,kind,configuration) VALUES(${literal(surface.id)},${literal(surface.projectId)},${literal(workerId)},'browser','{"kind":"browser","profileId":null}')`,
-    );
-  } finally {
-    await repo.close();
-  }
+  assert.equal(created.url, url);
+  assert.equal(created.title, "Private WorkerLink browser");
+  assert.equal(created.workerId, workerId);
+  assert.equal(created.stateRevision, 1);
+  return { id: created.id, projectId, token, url };
 }
 
 export async function actualWorkerBrowserSurface({
@@ -93,10 +46,21 @@ export async function actualWorkerBrowserSurface({
   };
   page.on("response", observe);
   try {
+    const retained = await page.evaluate(async (projectId) => {
+      const api = await import("/src/lib/api/surfaces.ts");
+      return api.getBrowsers(projectId);
+    }, surface.projectId);
+    const browser = retained.find((value) => value.id === surface.id);
+    assert.equal(browser?.url, surface.url);
+    assert.equal(browser?.title, "Private WorkerLink browser");
+    assert.equal(browser?.workerId, workerId);
+    assert.equal(browser?.stateRevision, 1);
     await page.evaluate(
       async ({ id, workerId }) => {
         const { RemoteSurfaceWorkerLinkClient } =
           await import("/src/lib/remote-surface-worker-link.ts");
+        const { surfaceTitleEncryption } =
+          await import("/src/lib/surface-title-encryption.ts");
         window.actualBrowserSurfaceState = {
           state: "connecting",
           error: null,
@@ -104,11 +68,13 @@ export async function actualWorkerBrowserSurface({
           frames: 0,
           frameBytes: 0,
           titles: [],
+          urls: [],
+          stateRevisions: [],
           controls: [],
         };
         const state = window.actualBrowserSurfaceState;
         const viewport = { width: 1024, height: 768, devicePixelRatio: 1 };
-        window.actualBrowserSurface = new RemoteSurfaceWorkerLinkClient({
+        window.actualBrowserSurfaceOptions = {
           surfaceId: id,
           workerId,
           streamKind: "browser",
@@ -136,7 +102,7 @@ export async function actualWorkerBrowserSurface({
             )
               throw new Error("Actual ready viewport was not admitted");
           },
-          onFrame: ({ header, payload }) => {
+          onFrame: async ({ header, payload }) => {
             if (header.channel === "frame") {
               if (payload[0] !== 255 || payload[1] !== 216)
                 throw new Error("Authenticated browser image is not JPEG");
@@ -149,11 +115,23 @@ export async function actualWorkerBrowserSurface({
                 title: message.title,
                 loading: message.loading,
               });
-              if (message.type === "browser-state")
+              if (message.type === "browser-state") {
+                const privateState =
+                  await surfaceTitleEncryption.openBrowserOperation({
+                    browserId: id,
+                    operationId: message.operationId,
+                    stateProtection: message.stateProtection,
+                  });
                 state.titles.push(message.title);
+                state.urls.push(privateState.url);
+                state.stateRevisions.push(privateState.revision);
+              }
             }
           },
-        });
+        };
+        window.actualBrowserSurface = new RemoteSurfaceWorkerLinkClient(
+          window.actualBrowserSurfaceOptions,
+        );
         window.actualBrowserSurface.start();
       },
       { id: surface.id, workerId },
@@ -187,6 +165,22 @@ export async function actualWorkerBrowserSurface({
       assert.equal(state.error, null);
       assert.ok(state.titles.includes(surface.token + ":" + (initialLoad + 1)));
     });
+    const updatedUrl = surface.url + "?saved-state=updated";
+    const updated = await page.evaluate(
+      async ({ id, url }) => {
+        const api = await import("/src/lib/api/surfaces.ts");
+        return api.updateBrowser(id, { url });
+      },
+      { id: surface.id, url: updatedUrl },
+    );
+    assert.equal(updated.stateRevision, 2);
+    assert.equal(updated.url, updatedUrl);
+    const configured = await eventually(snapshot, (value) => {
+      assert.equal(value.error, null);
+      assert.ok(value.urls.includes(updatedUrl));
+      assert.ok(value.stateRevisions.includes(2));
+      assert.ok(value.frames > initial.frames);
+    });
     await page.evaluate(() => window.actualBrowserSurface.close());
     await eventually(
       () => responses,
@@ -214,6 +208,9 @@ export async function actualWorkerBrowserSurface({
       frameBytes: completed.frameBytes,
       authenticatedInitialState: true,
       authenticatedControlReload: true,
+      authenticatedSavedStateUpdate: true,
+      savedStateRevision: updated.stateRevision,
+      configuredFrames: configured.frames,
       initialLoad,
       reloadLoad: initialLoad + 1,
       released: true,
@@ -221,6 +218,41 @@ export async function actualWorkerBrowserSurface({
     };
     result.steps.push(
       "existing RemoteSurfaceWorkerLinkClient receives authenticated JPEG and private state from a real worker Chromium, sends encrypted reload and releases its grant",
+    );
+    // Open another live attachment so deletion must revoke an installed grant.
+    await page.evaluate(async () => {
+      const { RemoteSurfaceWorkerLinkClient } =
+        await import("/src/lib/remote-surface-worker-link.ts");
+      window.actualBrowserSurfaceState.error = null;
+      window.actualBrowserSurfaceState.state = "connecting";
+      window.actualBrowserSurface = new RemoteSurfaceWorkerLinkClient(
+        window.actualBrowserSurfaceOptions,
+      );
+      window.actualBrowserSurface.start();
+    });
+    await eventually(snapshot, (value) => {
+      assert.equal(value.error, null);
+      assert.equal(value.state, "ready");
+    });
+    const deleted = await page.evaluate(
+      async ({ id, project }) => {
+        const api = await import("/src/lib/api/surfaces.ts");
+        await api.deleteBrowser(id);
+        return api.getBrowsers(project);
+      },
+      { id: surface.id, project: surface.projectId },
+    );
+    assert.equal(
+      deleted.some((value) => value.id === surface.id),
+      false,
+    );
+    await eventually(snapshot, (value) =>
+      assert.notEqual(value.state, "ready"),
+    );
+    await page.evaluate(() => window.actualBrowserSurface.close());
+    result.browserSurface.deletedWithActiveGrant = true;
+    result.steps.push(
+      "existing browser API applies an encrypted saved URL through the full worker and deletion removes the row and revokes its active grant",
     );
   } finally {
     result.browserSurface.lastState = await page

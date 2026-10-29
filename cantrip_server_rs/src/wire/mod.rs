@@ -1,5 +1,6 @@
 //! Native execution of generated protocol contracts. JavaScript is used only
 //! by the development exporter/oracle; requests execute these Rust operations.
+mod browsers;
 pub(crate) mod coercion;
 mod intersections;
 mod js_date;

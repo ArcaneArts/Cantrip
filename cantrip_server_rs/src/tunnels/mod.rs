@@ -114,30 +114,46 @@ async fn lock_attachment(
         .transpose()
 }
 async fn recompute(tx: &Transaction<'_>, tunnel: &str, now: Time) -> Result<()> {
+    struct State {
+        id: String,
+        status: String,
+        error: Option<String>,
+        last_seen: bool,
+    }
     let rows = tx
         .query(
-            "SELECT to_jsonb(a)::text FROM tunnel_attachments a WHERE tunnel_id=$1",
+            "SELECT id,status,error_code,last_seen_at IS NOT NULL FROM tunnel_attachments WHERE tunnel_id=$1",
             &[&tunnel],
         )
         .await?;
-    let attachments = rows.iter().map(|r| raw(r, 0)).collect::<Result<Vec<_>>>()?;
+    // Match the source's four-column projection. Parsing entire attachment
+    // rows as wire JSON here made bulk cleanup repeatedly decode unrelated
+    // fields for every sibling operation.
+    let attachments = rows
+        .iter()
+        .map(|row| {
+            Ok(State {
+                id: row.get(0)?,
+                status: row.get(1)?,
+                error: row.get(2)?,
+                last_seen: row.get(3)?,
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
     if attachments.is_empty() {
         return Ok(());
     }
-    let ids = attachments
-        .iter()
-        .map(|a| text(a, "id"))
-        .collect::<Result<Vec<_>>>()?;
+    let ids = attachments.iter().map(|a| a.id.clone()).collect::<Vec<_>>();
     let direct=tx.query("SELECT attachment_id FROM tunnel_attachment_direct_leases WHERE attachment_id=ANY($1::text[]) AND status='active' AND lease_expires_at>$2",&[&ids,&now]).await?.iter().map(|r|r.get::<String>(0)).collect::<Result<std::collections::HashSet<_>>>()?;
     let mut effective = Vec::new();
     for attachment in &attachments {
-        let id = text(attachment, "id")?;
-        let previous = text(attachment, "status")?;
+        let id = &attachment.id;
+        let previous = &attachment.status;
         if ["stopped", "failed"].contains(&previous.as_str()) {
-            effective.push(previous);
+            effective.push(previous.clone());
             continue;
         }
-        let status = if !attachment["last_seen_at"].is_null() || direct.contains(&id) {
+        let status = if attachment.last_seen || direct.contains(id) {
             "active"
         } else if ["starting", "degraded", "stopping"].contains(&previous.as_str()) {
             previous.as_str()
@@ -148,11 +164,13 @@ async fn recompute(tx: &Transaction<'_>, tunnel: &str, now: Time) -> Result<()> 
             None
         } else {
             Some(
-                optional(attachment, "error_code")?
+                attachment
+                    .error
+                    .clone()
                     .unwrap_or_else(|| "attachment-disconnected".into()),
             )
         };
-        if previous != status || optional(attachment, "error_code")? != error {
+        if previous != status || attachment.error != error {
             tx.query(
                 "UPDATE tunnel_attachments SET error_code=$2,status=$3,updated_at=$4 WHERE id=$1",
                 &[&id, &error, &status, &now],
@@ -176,9 +194,10 @@ async fn recompute(tx: &Transaction<'_>, tunnel: &str, now: Time) -> Result<()> 
             attachments
                 .iter()
                 .zip(&effective)
-                .find(|(a, s)| s.as_str() == status && coercion::truthy(a.get("error_code")))
-                .map(|(a, _)| text(a, "error_code"))
-                .transpose()?
+                .find(|(a, s)| {
+                    s.as_str() == status && a.error.as_ref().is_some_and(|e| !e.is_empty())
+                })
+                .and_then(|(a, _)| a.error.clone())
                 .unwrap_or_else(|| "attachment-disconnected".into()),
         )
     };

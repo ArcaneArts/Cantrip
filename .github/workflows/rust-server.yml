@@ -17,6 +17,9 @@ on:
       - cantrip_server/src/db/policies.ts
       - cantrip_server/src/db/repository/settings.ts
       - cantrip_server/src/db/repository.ts
+      - cantrip_server/src/db/repository/browsers.ts
+      - cantrip_server/src/app/routes/browser-management.ts
+      - cantrip_server/src/app/runtime/interactive-surface-runtime.ts
       - cantrip_server/src/db/repository/provider*.ts
       - cantrip_server/src/db/repository/telemetry.ts
       - cantrip_server/src/db/repository-facade-identity-model.ts
@@ -165,6 +168,8 @@ jobs:
       - run: pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol --filter @cantrip/crypto --filter @cantrip/glitch -r build
       - name: Shared resource cleanup SQL matches the actual TypeScript helpers
         run: node --import tsx scripts/server-rust/resource-layout-query-manifest.mjs --check
+      - name: Browser query statements match the actual TypeScript repository
+        run: node --import tsx scripts/server-rust/browser-query-manifest.mjs --check
       - name: Shared desktop verifier retains its owning crate's formatting
         run: rustfmt --edition 2021 --check cantrip_app/src-tauri/src/direct_probe_connection.rs
       - name: Build the production worker used by browser integration
@@ -213,6 +218,18 @@ jobs:
         run: node --import tsx scripts/server-rust/folder-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/folder-http-bundled.json
       - name: Managed-folder HTTP, Live, encrypted routing and shutdown with external PostgreSQL
         run: node --import tsx scripts/server-rust/folder-http-compatibility.mjs --database postgres --report .qa/rust-server/folder-http-external.json
+      - name: Browser repositories, layouts and rollback with native PGlite
+        run: node --import tsx scripts/server-rust/browser-repository-compatibility.mjs --report .qa/rust-server/browser-repository-pglite.json
+      - name: Browser repositories, layouts and rollback with private PostgreSQL
+        run: node --import tsx scripts/server-rust/browser-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/browser-repository-bundled.json
+      - name: Browser repositories and observed write races with external PostgreSQL
+        run: node --import tsx scripts/server-rust/browser-repository-compatibility.mjs --database postgres --report .qa/rust-server/browser-repository-external.json
+      - name: Browser HTTP, saved state and managed tunnel cleanup with native PGlite
+        run: node --import tsx scripts/server-rust/browser-http-compatibility.mjs --report .qa/rust-server/browser-http-pglite.json
+      - name: Browser HTTP, saved state and managed tunnel cleanup with private PostgreSQL
+        run: node --import tsx scripts/server-rust/browser-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/browser-http-bundled.json
+      - name: Browser HTTP, saved state and managed tunnel cleanup with external PostgreSQL
+        run: node --import tsx scripts/server-rust/browser-http-compatibility.mjs --database postgres --report .qa/rust-server/browser-http-external.json
       - name: Actual browser folders, encrypted PTYs and WorkerLink observations with native PGlite
         run: node --import tsx scripts/server-rust/actual-folder-client.mjs --terminals --worker-links --terminal-direct --surfaces --tunnels --report .qa/rust-server/actual-folder-client-pglite.json
       - name: Actual browser folders, encrypted PTYs and WorkerLink observations with private PostgreSQL

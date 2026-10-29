@@ -36,6 +36,38 @@ try {
           consoleTrace,
         );
         value = { result: value, trace: consoleTrace };
+      } else if (request.op.startsWith("browser-")) {
+        const repo = database.repository;
+        switch (request.op) {
+          case "browser-list":
+            value = await repo.listBrowsers(request.owner, request.project);
+            break;
+          case "browser-owned":
+            value = await repo.browserIsOwnedBy(request.owner, request.browser);
+            break;
+          case "browser-create":
+            value = await repo.createBrowser(
+              request.owner,
+              request.project,
+              request.input,
+              request.connected
+                ? (id) => request.connected.includes(id)
+                : undefined,
+            );
+            break;
+          case "browser-update":
+            value = await repo.updateBrowser(
+              request.owner,
+              request.browser,
+              request.input,
+            );
+            break;
+          case "browser-delete":
+            value = await repo.deleteBrowser(request.owner, request.browser);
+            break;
+          default:
+            throw new Error("Unknown browser operation");
+        }
       } else if (request.op === "sql") {
         await database.repository.projects.database.execute(
           sql.raw(request.sql),
@@ -313,7 +345,9 @@ try {
         JSON.stringify({
           id: request.id,
           rejected: true,
-          ...(request.op.startsWith("tunnel-") && error.cause?.code
+          ...((request.op.startsWith("tunnel-") ||
+            request.op.startsWith("browser-")) &&
+          error.cause?.code
             ? { databaseCode: error.cause.code }
             : {}),
           ...(request.op.startsWith("console-")
@@ -323,9 +357,11 @@ try {
                 ...(error.code ? { code: error.code } : {}),
               }
             : {}),
-          diagnostic: request.op.startsWith("terminal-")
-            ? error.message
-            : (error.cause?.message ?? error.message),
+          diagnostic:
+            request.op.startsWith("terminal-") ||
+            request.op.startsWith("browser-")
+              ? error.message
+              : (error.cause?.message ?? error.message),
           ...(request.op.startsWith("folder-")
             ? { folderError: error.constructor.name }
             : {}),
@@ -333,6 +369,7 @@ try {
             "placement",
             "target-resolve",
             "terminal-create",
+            "browser-create",
             "chat-model",
             "chat-runtime",
             "chat-guard",

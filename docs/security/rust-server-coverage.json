@@ -1182,6 +1182,81 @@
           "Current supported-platform and packaged acceptance.",
           "Worktree movement, deletion/revocation, WorkerLink/direct attachments and terminal output transports remain separate native consumers."
         ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/browsers",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/http/browsers.rs",
+        "evidence": [
+          "scripts/server-rust/browser-repository-compatibility.mjs",
+          "scripts/server-rust/browser-http-compatibility.mjs",
+          "cantrip_server_rs/tests/browser_contracts.rs",
+          "scripts/server-rust/actual-folder-client.mjs"
+        ],
+        "remaining": [
+          "Current supported-platform, package and full product acceptance; the local all3store repository/HTTP/full-worker matrices and final-source122-test native regression pass."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/browsers",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/http/browsers.rs",
+        "evidence": [
+          "scripts/server-rust/browser-repository-compatibility.mjs",
+          "scripts/server-rust/browser-http-compatibility.mjs",
+          "cantrip_server_rs/tests/browser_contracts.rs",
+          "scripts/server-rust/actual-folder-client.mjs"
+        ],
+        "remaining": [
+          "Current supported-platform, package and full product acceptance; the local all3store repository/HTTP/full-worker matrices and final-source122-test native regression pass."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/browsers/:browserId",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/http/browsers.rs",
+        "evidence": [
+          "scripts/server-rust/browser-repository-compatibility.mjs",
+          "scripts/server-rust/browser-http-compatibility.mjs",
+          "cantrip_server_rs/tests/browser_contracts.rs",
+          "scripts/server-rust/actual-folder-client.mjs"
+        ],
+        "remaining": [
+          "Current supported-platform, package and full product acceptance; the local all3store repository/HTTP/full-worker matrices and final-source122-test native regression pass."
+        ]
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/browsers/:browserId",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/http/browsers.rs",
+        "evidence": [
+          "scripts/server-rust/browser-repository-compatibility.mjs",
+          "scripts/server-rust/browser-http-compatibility.mjs",
+          "cantrip_server_rs/tests/browser_contracts.rs",
+          "scripts/server-rust/actual-folder-client.mjs"
+        ],
+        "remaining": [
+          "Current supported-platform, package and full product acceptance; the local all3store repository/HTTP/full-worker matrices and final-source122-test native regression pass."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/browsers/:browserId/tunnel",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/http/browsers.rs",
+        "evidence": [
+          "scripts/server-rust/browser-repository-compatibility.mjs",
+          "scripts/server-rust/browser-http-compatibility.mjs",
+          "cantrip_server_rs/tests/browser_contracts.rs",
+          "scripts/server-rust/actual-folder-client.mjs"
+        ],
+        "remaining": [
+          "Current supported-platform, package and full product acceptance; the local all3store repository/HTTP/full-worker matrices and final-source122-test native regression pass."
+        ]
       }
     ]
   },
@@ -1620,6 +1695,46 @@
           "scripts/server-rust/terminal-repository-compatibility.mjs",
           "scripts/server-rust/terminal-http-compatibility.mjs"
         ]
+      },
+      {
+        "method": "listBrowsers",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/browsers/mod.rs",
+        "evidence": [
+          "scripts/server-rust/browser-repository-compatibility.mjs",
+          "scripts/server-rust/browser-repository-locks.mjs",
+          "scripts/server-rust/browser-http-compatibility.mjs"
+        ]
+      },
+      {
+        "method": "createBrowser",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/browsers/mod.rs",
+        "evidence": [
+          "scripts/server-rust/browser-repository-compatibility.mjs",
+          "scripts/server-rust/browser-repository-locks.mjs",
+          "scripts/server-rust/browser-http-compatibility.mjs"
+        ]
+      },
+      {
+        "method": "updateBrowser",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/browsers/mod.rs",
+        "evidence": [
+          "scripts/server-rust/browser-repository-compatibility.mjs",
+          "scripts/server-rust/browser-repository-locks.mjs",
+          "scripts/server-rust/browser-http-compatibility.mjs"
+        ]
+      },
+      {
+        "method": "deleteBrowser",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/browsers/mod.rs",
+        "evidence": [
+          "scripts/server-rust/browser-repository-compatibility.mjs",
+          "scripts/server-rust/browser-repository-locks.mjs",
+          "scripts/server-rust/browser-http-compatibility.mjs"
+        ]
       }
     ]
   },
@@ -1697,6 +1812,21 @@
         ],
         "remaining": [
           "Only terminal creation transactions and terminal mutation invalidations are implemented. Complete pane/window/workspace layout operations remain required."
+        ]
+      },
+      {
+        "resource": "browser",
+        "status": "partial",
+        "implementation": [
+          "cantrip_server_rs/src/browsers/runtime.rs",
+          "cantrip_server_rs/src/http/browsers.rs"
+        ],
+        "evidence": [
+          "scripts/server-rust/browser-http-compatibility.mjs",
+          "scripts/server-rust/actual-folder-client.mjs"
+        ],
+        "remaining": [
+          "Remaining CLI/agent/browser consumers, shared coordination and supported-platform/package product acceptance."
         ]
       }
     ]
@@ -2766,6 +2896,29 @@
         "Complete owning feature contracts, remaining consumers and operational hooks.",
         "Complete supported-platform/package/product acceptance and all original replacement requirements."
       ]
+    },
+    "nativeBrowserManagement": {
+      "status": "partial",
+      "implementation": [
+        "cantrip_server_rs/src/browsers/",
+        "cantrip_server_rs/src/http/browsers.rs",
+        "cantrip_server_rs/src/project_layout/"
+      ],
+      "evidence": [
+        "scripts/server-rust/browser-repository-compatibility.mjs",
+        "scripts/server-rust/browser-http-compatibility.mjs",
+        "cantrip_server_rs/tests/browser_contracts.rs",
+        "scripts/server-rust/actual-folder-client.mjs",
+        "scripts/server-rust/browser-repository-locks.mjs",
+        "scripts/server-rust/browser-cleanup-failure.mjs"
+      ],
+      "scope": "Unmerged five native browser product routes, transactional layout/views, opaque state, worker configuration, runtime cleanup and ordered Live events. All3store actual repository comparisons40 operations/22 snapshots, with5 observed external write races. HTTP37 anonymous/41account observations per runtime/store and protocol7641 cases pass. Final-source existing-client/full-worker24-step flows passall3 stores with creation, retained decryption, encrypted saved URL update and active-grant deletion. Current final-source strictClippy and all3store311-operation tunnel repository regressions pass.",
+      "remaining": [
+        "Current supported-platform/package observation. Final-source122 native tests/66 result groups, strictClippy, all3store full-worker24step flows and repository/HTTP regressions pass. CI configuration is not acceptance.",
+        "Browser service discovery, CLI/agent resource consumers and remaining owning domain integration.",
+        "All original data migration, rollback, packaging, Winterhold rehearsal, performance, cutover and Node-removal requirements."
+      ],
+      "siblingFailure": "Actual external PostgreSQL trigger rejects one of1024 stops; both runtimes finish1023siblings and preserve the managed write, with exact500 responses/state. Old native progress at15seconds was not discarded work. Matching the four required SQL values avoids full-row wire-JSON reconstruction; final observed completion about3.6seconds native/4.1Node. Work remains admitted/owned through shutdown."
     }
   },
   "remainingAcceptance": [

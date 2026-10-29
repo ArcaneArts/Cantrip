@@ -14,6 +14,7 @@ use crate::auth::service::AuthService;
 mod account;
 mod audit;
 mod body;
+mod browsers;
 mod direct_attachments;
 mod encryption;
 mod folders;
@@ -135,6 +136,7 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(repository_operations::routes())
         .merge(settings::routes())
         .merge(terminals::routes())
+        .merge(browsers::routes())
         .merge(tunnels::routes())
         .merge(tunnel_attachments::routes())
         .merge(tunnel_socket::routes())

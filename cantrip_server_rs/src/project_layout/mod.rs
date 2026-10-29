@@ -1,4 +1,4 @@
-//! Transactional pane placement used by terminal creation.
+//! Transactional pane placement shared by persisted project resources.
 mod center;
 mod detach;
 use crate::{
@@ -6,7 +6,7 @@ use crate::{
     wire::Value,
 };
 use anyhow::{Context, Result, ensure};
-pub use detach::detach_terminal;
+pub use detach::{detach_resource, detach_terminal};
 
 pub async fn next_position(database: &Database, project: &str) -> Result<i64> {
     let read = async |table: &str, extra: &str| -> Result<i64> {
@@ -30,10 +30,10 @@ pub async fn next_position(database: &Database, project: &str) -> Result<i64> {
         .unwrap()
         + 1)
 }
-fn supports(region: &str) -> Result<()> {
+fn supports(kind: &str, region: &str) -> Result<()> {
     ensure!(
         ["center", "right", "bottom"].contains(&region),
-        "project.terminal does not support the {region} region."
+        "project.{kind} does not support the {region} region."
     );
     Ok(())
 }
@@ -53,13 +53,22 @@ pub async fn attach_terminal(
     id: &str,
     input: &Value,
 ) -> Result<()> {
+    attach_resource(tx, project, id, "terminal", input).await
+}
+pub async fn attach_resource(
+    tx: &Transaction<'_>,
+    project: &str,
+    id: &str,
+    kind: &str,
+    input: &Value,
+) -> Result<()> {
     let at = crate::auth::now();
     tx.query(
         "UPDATE projects SET tab_layout_revision=tab_layout_revision+1,updated_at=$1 WHERE id=$2",
         &[&at, &project],
     )
     .await?;
-    let tab_key = format!("terminal:{id}");
+    let tab_key = format!("{kind}:{id}");
     let explicit = input
         .get("paneId")
         .filter(|v| !v.is_null())
@@ -76,7 +85,7 @@ pub async fn attach_terminal(
         let pane = rows
             .first()
             .context("The destination pane does not belong to this project.")?;
-        supports(&pane.get::<String>(1)?)?;
+        supports(kind, &pane.get::<String>(1)?)?;
         (group.to_owned(), member_position(tx, group).await?, false)
     } else {
         let region = if let Some(region) = input.get("targetRegion").and_then(Value::as_str) {
@@ -93,10 +102,10 @@ pub async fn attach_terminal(
             {
                 "center".into()
             } else {
-                "bottom".into()
+                if kind == "browser" { "right" } else { "bottom" }.into()
             }
         };
-        supports(&region)?;
+        supports(kind, &region)?;
         let panes=tx.query("SELECT id,position FROM tab_groups WHERE project_id=$1 AND region=$2 ORDER BY position ASC,id ASC",&[&project,&region]).await?;
         let dock = region == "right" || region == "bottom";
         ensure!(
@@ -120,7 +129,7 @@ pub async fn attach_terminal(
             (group, 0, region == "center")
         }
     };
-    tx.query("INSERT INTO tab_group_members (tab_key,group_id,project_id,tab_kind,tab_id,position) VALUES ($1,$2,$3,'terminal',$4,$5::bigint::integer)",&[&tab_key,&group,&project,&id,&position]).await?;
+    tx.query("INSERT INTO tab_group_members (tab_key,group_id,project_id,tab_kind,tab_id,position) VALUES ($1,$2,$3,$4,$5,$6::bigint::integer)",&[&tab_key,&group,&project,&kind,&id,&position]).await?;
     if center_created {
         center::append(tx, project, &group).await?;
     }

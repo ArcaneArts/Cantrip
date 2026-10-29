@@ -257,6 +257,11 @@ export async function actualWorkerTunnelLink({
             ),
           ),
         );
+        assert.equal(
+          opened.length,
+          tunnel.reply.length,
+          "complete authenticated reply length",
+        );
         assert.deepEqual(opened, tunnel.reply);
         assert.ok(
           frames.some(
