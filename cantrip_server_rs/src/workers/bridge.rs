@@ -1,8 +1,21 @@
 //! Local command correlation and reconnect continuity. Domain event consumers
 //! attach async handlers; responses complete only after preceding events.
+#[path = "link_frames.rs"]
+mod link_frames;
+#[path = "tunnel_frames.rs"]
+mod tunnel_frames;
+pub type TunnelFrameHandler = super::frames::Handler<crate::tunnels::frame::Frame>;
+pub type TunnelFrameSubscription = super::frames::Subscription<crate::tunnels::frame::Frame>;
 use super::notifications::Notifications;
 pub use super::notifications::{
     NotificationHandler, NotificationSubscription, OwnedNotificationHandler,
+};
+use super::offline::OfflineListeners;
+pub use super::offline::{OfflineHandler, OfflineSubscription};
+use super::{frames::Frames, output::Buffered};
+pub use super::{
+    frames::{FrameHandler, FrameSubscription},
+    output::Queued,
 };
 use crate::wire::{self, JsString, Value};
 use std::{
@@ -60,7 +73,9 @@ impl fmt::Display for CommandError {
 }
 impl std::error::Error for CommandError {}
 pub enum Outgoing {
-    Text(String),
+    Text(Queued<String>),
+    Binary(Queued<crate::worker_links::frame::Frame>),
+    Tunnel(Queued<crate::tunnels::frame::Frame>),
     Close(u16, String),
 }
 pub struct Peer {
@@ -69,6 +84,7 @@ pub struct Peer {
     pub open: AtomicBool,
     pub output: mpsc::UnboundedSender<Outgoing>,
     pub closing: watch::Sender<Option<(u16, String)>>,
+    buffered: Buffered,
 }
 impl Peer {
     pub fn new(identity: Continuity) -> (Arc<Self>, mpsc::UnboundedReceiver<Outgoing>) {
@@ -80,12 +96,32 @@ impl Peer {
                 open: AtomicBool::new(true),
                 output: tx,
                 closing: watch::channel(None).0,
+                buffered: Buffered::default(),
             }),
             rx,
         )
     }
     pub fn is_open(&self) -> bool {
         self.open.load(Ordering::Acquire) && !self.output.is_closed()
+    }
+    pub fn buffered_amount(&self) -> usize {
+        self.buffered.bytes()
+    }
+    fn send_text(&self, text: String) -> bool {
+        let bytes = super::output::framed_size(text.len());
+        self.output
+            .send(Outgoing::Text(self.buffered.reserve(text, bytes)))
+            .is_ok()
+    }
+    fn send_frame(&self, frame: crate::worker_links::frame::Frame) -> bool {
+        if !self.is_open() {
+            return false;
+        }
+        let bytes = super::output::framed_size(frame.bytes().len());
+        let Some(queued) = self.buffered.bounded(frame, bytes, 8 * 1024 * 1024) else {
+            return false;
+        };
+        self.output.send(Outgoing::Binary(queued)).is_ok()
     }
     pub fn close(&self, code: u16, reason: &str) {
         if self.open.swap(false, Ordering::AcqRel) {
@@ -126,13 +162,18 @@ struct State {
 pub struct WorkerBridge {
     closed: AtomicBool,
     state: Mutex<State>,
+    lifecycle: parking_lot::ReentrantMutex<()>,
     grace: Duration,
     pub notices: broadcast::Sender<BridgeNotice>,
     routed: AtomicU64,
     succeeded: AtomicU64,
     failed: AtomicU64,
     notifications: Arc<Notifications>,
+    frames: Arc<Frames>,
+    tunnel_frames: Arc<Frames<crate::tunnels::frame::Frame>>,
+    offline: Arc<OfflineListeners>,
     record_usage: Option<crate::live::UsageRecorder>,
+    logger: crate::operations::logging::Logger,
 }
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -144,6 +185,11 @@ pub struct BridgeStats {
     pub succeeded_requests: u64,
 }
 impl WorkerBridge {
+    /// Synchronous cross-component setup shares the Source lifecycle turn.
+    pub fn synchronized<T>(&self, operation: impl FnOnce() -> T) -> T {
+        let _lifecycle = self.lifecycle.lock();
+        operation()
+    }
     pub fn stats(&self) -> BridgeStats {
         let state = self.state.lock().unwrap();
         BridgeStats {
@@ -161,16 +207,32 @@ impl WorkerBridge {
         grace: Duration,
         record_usage: Option<crate::live::UsageRecorder>,
     ) -> Arc<Self> {
+        Self::with_usage_and_logger(
+            grace,
+            record_usage,
+            crate::operations::logging::server_logger(),
+        )
+    }
+    pub fn with_usage_and_logger(
+        grace: Duration,
+        record_usage: Option<crate::live::UsageRecorder>,
+        logger: crate::operations::logging::Logger,
+    ) -> Arc<Self> {
         Arc::new(Self {
             closed: AtomicBool::new(false),
             state: Mutex::new(State::default()),
+            lifecycle: parking_lot::ReentrantMutex::new(()),
             grace,
             notices: broadcast::channel(1024).0,
             routed: AtomicU64::new(0),
             succeeded: AtomicU64::new(0),
             failed: AtomicU64::new(0),
             notifications: Arc::new(Notifications::default()),
+            frames: Arc::new(Frames::default()),
+            tunnel_frames: Arc::new(Frames::default()),
+            offline: Arc::new(OfflineListeners::default()),
             record_usage,
+            logger,
         })
     }
     fn finish(&self, pending: &Pending, result: Outcome) {
@@ -193,7 +255,7 @@ impl WorkerBridge {
         worker: &str,
         error: CommandError,
         close: Option<(u16, &str)>,
-    ) {
+    ) -> bool {
         let socket = state.peers.remove(worker);
         let had = socket.is_some()
             | state.identities.contains_key(worker)
@@ -226,27 +288,34 @@ impl WorkerBridge {
         if had {
             let _ = self.notices.send(BridgeNotice::Offline(worker.into()));
         }
+        had
     }
     /// Readiness is queued on the same channel as commands before registration.
     pub fn attach(&self, worker: &str, peer: Arc<Peer>, ready: Option<String>) -> bool {
+        let _lifecycle = self.lifecycle.lock();
         if self.closed.load(Ordering::Acquire) || !peer.is_open() {
             return false;
         }
         let mut state = self.state.lock().unwrap();
         let had = state.peers.contains_key(worker) || state.interruptions.contains_key(worker);
         if had && state.identities.get(worker) != Some(&peer.identity) {
-            self.terminate(
+            let notify = self.terminate(
                 &mut state,
                 worker,
                 CommandError::unavailable(format!("Worker {worker} continuity identity changed.")),
                 Some((1008, "Worker continuity identity changed")),
             );
+            drop(state);
+            if notify {
+                self.offline.deliver(worker);
+            }
+            state = self.state.lock().unwrap();
         }
         if !peer.is_open() {
             return false;
         }
         if let Some(ready) = ready
-            && peer.output.send(Outgoing::Text(ready)).is_err()
+            && !peer.send_text(ready)
         {
             return false;
         }
@@ -274,14 +343,26 @@ impl WorkerBridge {
             .is_some_and(|p| p.is_open())
     }
     pub fn disconnect(&self, worker: &str, reason: &str, code: u16) {
-        self.terminate(
+        let _lifecycle = self.lifecycle.lock();
+        let notify = self.terminate(
             &mut self.state.lock().unwrap(),
             worker,
             CommandError::unavailable(format!("Worker {worker} disconnected.")),
             Some((code, reason)),
         );
+        if notify {
+            self.offline.deliver(worker);
+        }
+    }
+    pub fn subscribe_worker_offline(
+        &self,
+        worker: &str,
+        handler: OfflineHandler,
+    ) -> OfflineSubscription {
+        self.offline.subscribe(worker, handler)
     }
     pub fn interrupted(self: &Arc<Self>, worker: &str, peer: &Peer) {
+        let _lifecycle = self.lifecycle.lock();
         let mut state = self.state.lock().unwrap();
         if state.peers.get(worker).is_none_or(|p| p.id != peer.id) {
             return;
@@ -294,12 +375,16 @@ impl WorkerBridge {
         }
         let _ = self.notices.send(BridgeNotice::Interrupted(worker.into()));
         if self.grace.is_zero() {
-            self.terminate(
+            let notify = self.terminate(
                 &mut state,
                 worker,
                 CommandError::unavailable(format!("Worker {worker} disconnected.")),
                 None,
             );
+            drop(state);
+            if notify {
+                self.offline.deliver(worker);
+            }
             return;
         }
         let bridge = Arc::downgrade(self);
@@ -309,16 +394,21 @@ impl WorkerBridge {
         let task = tokio::spawn(async move {
             tokio::time::sleep(grace).await;
             if let Some(bridge) = bridge.upgrade() {
+                let _lifecycle = bridge.lifecycle.lock();
                 let mut state = bridge.state.lock().unwrap();
                 if !state.peers.contains_key(&worker)
                     && state.interruptions.get(&worker) == Some(&generation)
                 {
-                    bridge.terminate(
+                    let notify = bridge.terminate(
                         &mut state,
                         &worker,
                         CommandError::unavailable(format!("Worker {worker} disconnected.")),
                         None,
                     );
+                    drop(state);
+                    if notify {
+                        bridge.offline.deliver(&worker);
+                    }
                 }
             }
         });
@@ -439,88 +529,92 @@ impl WorkerBridge {
         timeout: Option<Duration>,
         on_event: Option<EventHandler>,
     ) -> Outcome {
-        // The Node bridge rejects an offline worker before encoding, and
-        // encoding failures do not admit a request, timer or routing metric.
-        if !self.is_connected(worker) {
-            return Err(CommandError::unavailable(format!(
-                "Worker {worker} is offline."
-            )));
-        }
-        let id = Uuid::new_v4().to_string();
-        let kind = command["type"].as_str().unwrap_or("").to_owned();
-        let envelope = Value::object([
-            ("kind", Value::String("request".into())),
-            ("requestId", Value::String(id.clone().into())),
-            ("command", command),
-        ]);
-        let envelope =
-            wire::parse("workerRequestEnvelopeSchema", Some(&envelope)).map_err(|error| {
-                CommandError {
-                    message: "Worker request encoding failed.".into(),
-                    code: None,
-                    unavailable: false,
-                    encoding_error: Some(Arc::new(error)),
-                }
-            })?;
-        let encoded = envelope.stringify();
-        let (tx, rx) = oneshot::channel();
-        let (events, mut delivery) = mpsc::unbounded_channel();
-        let pending = Arc::new(Pending {
-            worker: worker.into(),
-            command: kind.clone(),
-            delivery: events,
-            completion: Mutex::new(Some(tx)),
-            timer: Mutex::new(None),
-        });
-        {
-            let mut state = self.state.lock().unwrap();
-            let Some(peer) = state.peers.get(worker).filter(|p| p.is_open()).cloned() else {
+        let (id, rx, mut delivery, pending) = {
+            let _lifecycle = self.lifecycle.lock();
+            // The Node bridge rejects an offline worker before encoding, and
+            // encoding failures do not admit a request, timer or routing metric.
+            if !self.is_connected(worker) {
                 return Err(CommandError::unavailable(format!(
                     "Worker {worker} is offline."
                 )));
-            };
-            if let Some(timeout) = timeout {
-                let bridge = Arc::downgrade(self);
-                let key = id.clone();
-                let target = pending.clone();
-                let task = tokio::spawn(async move {
-                    tokio::time::sleep(timeout).await;
-                    if let Some(bridge) = bridge.upgrade() {
-                        let mut state = bridge.state.lock().unwrap();
-                        if state
-                            .pending
-                            .get(&key)
-                            .is_some_and(|p| Arc::ptr_eq(p, &target))
-                        {
-                            state.pending.remove(&key);
-                            bridge.finish(
-                                &target,
-                                Err(CommandError::command(
-                                    format!("Worker command {} timed out.", target.command),
-                                    "worker-command-timeout",
-                                )),
-                            );
-                        }
+            }
+            let id = Uuid::new_v4().to_string();
+            let kind = command["type"].as_str().unwrap_or("").to_owned();
+            let envelope = Value::object([
+                ("kind", Value::String("request".into())),
+                ("requestId", Value::String(id.clone().into())),
+                ("command", command),
+            ]);
+            let envelope =
+                wire::parse("workerRequestEnvelopeSchema", Some(&envelope)).map_err(|error| {
+                    CommandError {
+                        message: "Worker request encoding failed.".into(),
+                        code: None,
+                        unavailable: false,
+                        encoding_error: Some(Arc::new(error)),
                     }
-                });
-                *pending.timer.lock().unwrap() = Some(task.abort_handle());
+                })?;
+            let encoded = envelope.stringify();
+            let (tx, rx) = oneshot::channel();
+            let (events, delivery) = mpsc::unbounded_channel();
+            let pending = Arc::new(Pending {
+                worker: worker.into(),
+                command: kind.clone(),
+                delivery: events,
+                completion: Mutex::new(Some(tx)),
+                timer: Mutex::new(None),
+            });
+            {
+                let mut state = self.state.lock().unwrap();
+                let Some(peer) = state.peers.get(worker).filter(|p| p.is_open()).cloned() else {
+                    return Err(CommandError::unavailable(format!(
+                        "Worker {worker} is offline."
+                    )));
+                };
+                if let Some(timeout) = timeout {
+                    let bridge = Arc::downgrade(self);
+                    let key = id.clone();
+                    let target = pending.clone();
+                    let task = tokio::spawn(async move {
+                        tokio::time::sleep(timeout).await;
+                        if let Some(bridge) = bridge.upgrade() {
+                            let mut state = bridge.state.lock().unwrap();
+                            if state
+                                .pending
+                                .get(&key)
+                                .is_some_and(|p| Arc::ptr_eq(p, &target))
+                            {
+                                state.pending.remove(&key);
+                                bridge.finish(
+                                    &target,
+                                    Err(CommandError::command(
+                                        format!("Worker command {} timed out.", target.command),
+                                        "worker-command-timeout",
+                                    )),
+                                );
+                            }
+                        }
+                    });
+                    *pending.timer.lock().unwrap() = Some(task.abort_handle());
+                }
+                self.routed.fetch_add(1, Ordering::Relaxed);
+                state.pending.insert(id.clone(), pending.clone());
+                let bytes = encoded.len();
+                if !peer.send_text(encoded) {
+                    state.pending.remove(&id);
+                    self.finish(
+                        &pending,
+                        Err(CommandError::command(
+                            format!("Worker command {kind} could not be dispatched."),
+                            "worker-command-dispatch-failed",
+                        )),
+                    );
+                } else if let Some(record) = &self.record_usage {
+                    record(&peer.identity.owner, false, bytes, true);
+                }
             }
-            self.routed.fetch_add(1, Ordering::Relaxed);
-            state.pending.insert(id.clone(), pending.clone());
-            let bytes = encoded.len();
-            if peer.output.send(Outgoing::Text(encoded)).is_err() {
-                state.pending.remove(&id);
-                self.finish(
-                    &pending,
-                    Err(CommandError::command(
-                        format!("Worker command {kind} could not be dispatched."),
-                        "worker-command-dispatch-failed",
-                    )),
-                );
-            } else if let Some(record) = &self.record_usage {
-                record(&peer.identity.owner, false, bytes, true);
-            }
-        }
+            (id, rx, delivery, pending)
+        };
         let bridge = Arc::downgrade(self);
         let target = pending.clone();
         tokio::spawn(async move {
@@ -560,23 +654,32 @@ impl WorkerBridge {
             .unwrap_or_else(|_| Err(CommandError::unavailable("Server is shutting down.".into())))
     }
     pub fn close(&self) {
+        let _lifecycle = self.lifecycle.lock();
         self.closed.store(true, Ordering::Release);
-        let mut state = self.state.lock().unwrap();
-        let workers = state
-            .peers
-            .keys()
-            .chain(state.identities.keys())
-            .chain(state.interruptions.keys())
-            .cloned()
-            .collect::<std::collections::HashSet<_>>();
+        let workers = {
+            let state = self.state.lock().unwrap();
+            state
+                .peers
+                .keys()
+                .chain(state.identities.keys())
+                .chain(state.interruptions.keys())
+                .cloned()
+                .collect::<std::collections::HashSet<_>>()
+        };
         for worker in workers {
-            self.terminate(
-                &mut state,
+            let notify = self.terminate(
+                &mut self.state.lock().unwrap(),
                 &worker,
                 CommandError::unavailable("Server is shutting down.".into()),
                 Some((1001, "Server shutting down")),
             );
+            if notify {
+                self.offline.deliver(&worker);
+            }
         }
         self.notifications.clear();
+        self.frames.clear();
+        self.tunnel_frames.clear();
+        self.offline.clear();
     }
 }

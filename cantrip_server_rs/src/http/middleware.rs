@@ -421,13 +421,21 @@ pub(super) async fn guard(
         }
     };
     let path = request.uri().path();
+    let is_public = public(path)
+        || ([Method::GET, Method::HEAD].contains(request.method())
+            && request
+                .extensions()
+                .get::<axum::extract::MatchedPath>()
+                .is_some_and(|route| {
+                    route.as_str() == "/api/tunnel-attachments/{attachmentId}/connect"
+                }));
     let mut rejection = if service.config.auth_mode != AuthMode::None {
-        if !public(path) && !principal.authenticated() {
+        if !is_public && !principal.authenticated() {
             Some(json_response(
                 StatusCode::UNAUTHORIZED,
                 json!({"error":"Authentication is required."}),
             ))
-        } else if (!public(path) || path == "/api/auth/session")
+        } else if (!is_public || path == "/api/auth/session")
             && value(request.headers(), "x-cantrip-account-id")
                 .is_some_and(|v| principal.user.as_ref().is_some_and(|u| u.id != v))
         {
@@ -437,7 +445,7 @@ pub(super) async fn guard(
             );
             cookies(&mut response, service.cookies.clear());
             Some(response)
-        } else if ![Method::GET, Method::HEAD].contains(request.method()) && !public(path) {
+        } else if ![Method::GET, Method::HEAD].contains(request.method()) && !is_public {
             match service.resolve(cookie.as_deref()).await {
                 Ok(Some(resolved))
                     if crypto::csrf_matches(

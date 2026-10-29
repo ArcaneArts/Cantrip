@@ -12,9 +12,10 @@ const drainAuthNotifications = process.argv.includes(
   "--drain-auth-notifications",
 );
 const observeAudits = process.argv.includes("--observe-audits");
+const observeTunnelExpiry = process.argv.includes("--observe-tunnel-expiry");
 const notifications = new Set();
 const repositoryOperations = new Set();
-if (drainAuthNotifications || observeAudits) {
+if (drainAuthNotifications || observeAudits || observeTunnelExpiry) {
   const wrappers = new WeakMap();
   database.repository = new Proxy(database.repository, {
     get(target, key) {
@@ -26,11 +27,37 @@ if (drainAuthNotifications || observeAudits) {
           if (
             result &&
             typeof result.then === "function" &&
-            (drainAuthNotifications || key === "appendAuditEvent")
+            (drainAuthNotifications ||
+              key === "appendAuditEvent" ||
+              (observeTunnelExpiry &&
+                [
+                  "expireDesktopTunnelDirectLeases",
+                  "expireDesktopTunnelAttachments",
+                ].includes(key)))
           ) {
             // Assimilate a lazy thenable once; tracking and returning the
             // original builder could otherwise execute its query twice.
             const pending = Promise.resolve(result);
+            if (
+              observeTunnelExpiry &&
+              [
+                "expireDesktopTunnelDirectLeases",
+                "expireDesktopTunnelAttachments",
+              ].includes(key)
+            )
+              pending.then(
+                (changes) =>
+                  diagnose("fixture.tunnel-expiry.completed", {
+                    operation: key,
+                    changes,
+                  }),
+                (error) =>
+                  diagnose("fixture.tunnel-expiry.failed", {
+                    operation: key,
+                    error: error.message,
+                    cause: error.cause?.message,
+                  }),
+              );
             if (drainAuthNotifications) {
               repositoryOperations.add(pending);
               pending.then(
@@ -136,14 +163,40 @@ const closeIngress = ingressFixture
   ? installWorkerIngressFixture(app, ingressBridge)
   : undefined;
 const sockets = new Set();
+const activeHttp = new Map();
+app.server.prependListener("request", (request, response) => {
+  activeHttp.set(request, {
+    method: request.method,
+    path: request.url.split("?")[0],
+  });
+  const completed = () => activeHttp.delete(request);
+  response.once("finish", completed);
+  response.once("close", completed);
+});
 app.server.on("connection", (socket) => {
   sockets.add(socket);
   socket.once("close", () => sockets.delete(socket));
 });
+// Socket ownership diagnostics only: retain no headers, query strings or bodies.
+const socketRequests = new WeakMap();
+for (const event of ["request", "upgrade"])
+  app.server.on(event, (request) => {
+    const previous = socketRequests.get(request.socket);
+    socketRequests.set(request.socket, {
+      count: (previous?.count ?? 0) + 1,
+      event,
+      method: request.method,
+      path: request.url?.split("?")[0],
+    });
+  });
 app.server.once("close", () => diagnose("fixture.http.closed"));
 app.addHook("preClose", async () => diagnose("fixture.pre-close"));
 app.addHook("onClose", async () => diagnose("fixture.on-close.started"));
-const origin = await app.listen({ host: "127.0.0.1", port: 0 });
+const listenPortOption = process.argv.indexOf("--listen-port");
+const origin = await app.listen({
+  host: "127.0.0.1",
+  port: listenPortOption < 0 ? 0 : Number(process.argv[listenPortOption + 1]),
+});
 console.log(JSON.stringify({ event: "server.listening", origin }));
 
 let stopping = false;
@@ -157,10 +210,18 @@ async function stop() {
         destroyed: socket.destroyed,
         readable: socket.readable,
         writable: socket.writable,
+        localPort: socket.localPort,
+        remotePort: socket.remotePort,
+        bytesRead: socket.bytesRead,
+        bytesWritten: socket.bytesWritten,
+        lastRequest: socketRequests.get(socket) ?? null,
       })),
       websocketStates: [...app.websocketServer.clients].map(
         (socket) => socket.readyState,
       ),
+      activeHttp: [...activeHttp.values()],
+      activeRepositoryOperations: repositoryOperations.size,
+      activeNotifications: notifications.size,
       resources: process.getActiveResourcesInfo(),
     });
   snapshot("fixture.shutdown.started");

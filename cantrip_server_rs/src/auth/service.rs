@@ -74,6 +74,13 @@ pub struct AuthService {
     pub mutation_audits: Arc<super::audit::AuditService>,
     pub folder_setup: Arc<crate::projects::folders::service::FolderService>,
     pub worker_maintenance: Arc<crate::workers::maintenance::Service>,
+    pub worker_links: Arc<crate::worker_links::service::Service>,
+    pub direct_attachments: Arc<crate::direct_attachments::Coordinator>,
+    pub tunnel_leases: Arc<crate::tunnels::sweep::LeaseSweeper>,
+    pub tunnel_runtime: Arc<crate::tunnels::runtime::Runtime>,
+    pub transport_metrics: Arc<crate::operations::TransportMetrics>,
+    pub model_routing: Arc<crate::chats::routing::ModelRouting>,
+    pub managed_console: Arc<crate::chats::managed_console::ManagedConsole>,
     rate_limit: Mutex<AuthRateLimiter>,
 }
 
@@ -97,6 +104,16 @@ impl AuthService {
             repository.settings(&local.id).await?;
             Some(local)
         };
+        let surfaces = crate::remote_surfaces::Repository::new(database.clone());
+        if let Some(local) = local_user.as_ref() {
+            surfaces.ensure_browsers(&local.id).await?;
+        }
+        // This native runtime currently has one local coordinator. Shared
+        // coordination must use its observed instance count before recovery.
+        surfaces.reset_transient().await?;
+        crate::tunnels::Repository::new(database.clone())
+            .reset_transient()
+            .await?;
         let normalized_admin = config
             .admin_email
             .as_ref()
@@ -162,6 +179,99 @@ impl AuthService {
             live.clone(),
             server_id.clone(),
         );
+        let worker_links = crate::worker_links::service::Service::new(
+            server_id.clone(),
+            &config,
+            &workers,
+            &usage,
+        );
+        let tunnel_repository = crate::tunnels::Repository::new(repository.database.clone());
+        let tunnel_live = live.clone();
+        let tunnel_observer: crate::direct_attachments::Observer = Arc::new(move |kind, event| {
+            let repository = tunnel_repository.clone();
+            let live = tunnel_live.clone();
+            Box::pin(async move {
+                let owner = event["ownerId"]
+                    .as_str()
+                    .ok_or_else(|| anyhow::anyhow!("Direct tunnel owner"))?;
+                let attachment = event["attachmentId"]
+                    .as_str()
+                    .ok_or_else(|| anyhow::anyhow!("Direct tunnel attachment"))?;
+                let capability = event["capabilityId"]
+                    .as_str()
+                    .ok_or_else(|| anyhow::anyhow!("Direct tunnel capability"))?;
+                let expires = event["leaseExpiresAt"]
+                    .as_str()
+                    .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+                    .map(|v| v.with_timezone(&chrono::Utc));
+                let changed = if kind == "renewed" {
+                    repository
+                        .renew_direct(owner, attachment, capability, expires)
+                        .await?
+                } else {
+                    repository
+                        .finalize_direct(owner, attachment, capability, expires)
+                        .await?
+                };
+                if let Some(changed) = changed {
+                    crate::tunnels::publish(&live, &changed);
+                }
+                Ok(())
+            })
+        });
+        let direct_attachments = crate::direct_attachments::Coordinator::native(
+            workers.commands.clone(),
+            workers.bridge.clone(),
+            crate::direct_attachments::Options {
+                observer: Some(tunnel_observer),
+                ..Default::default()
+            },
+        );
+        let model_routing = crate::chats::routing::ModelRouting::new(
+            repository.database.clone(),
+            provider_catalogs.clone(),
+            workers.bridge.clone(),
+        );
+        let managed_console = crate::chats::managed_console::ManagedConsole::new(
+            repository.database.clone(),
+            model_routing.clone(),
+            workers.commands.clone(),
+        );
+        let quotas = workers.relay_quotas.clone();
+        let broker = crate::tunnels::broker::Broker::new(crate::tunnels::broker::Options {
+            consume: Arc::new(move |owner, worker, bytes| {
+                quotas.consume_relay_at(
+                    owner.as_str().expect("Tunnel owner"),
+                    worker.as_str().expect("Tunnel worker"),
+                    bytes as u64,
+                    crate::auth::now().timestamp_millis(),
+                )
+            }),
+            ..Default::default()
+        });
+        let publisher = Arc::downgrade(&live);
+        let recorder = Arc::downgrade(&usage);
+        let tunnel_runtime = crate::tunnels::runtime::Runtime::new(
+            crate::tunnels::Repository::new(repository.database.clone()),
+            workers.bridge.clone(),
+            broker,
+            Arc::new(move |change| {
+                if let Some(live) = publisher.upgrade() {
+                    crate::tunnels::publish(&live, &change);
+                }
+            }),
+            Some(Arc::new(move |owner, channel, ingress, bytes| {
+                if let Some(usage) = recorder.upgrade() {
+                    usage.record(owner, channel, ingress, bytes, 1, true);
+                }
+            })),
+            Default::default(),
+        )?;
+        let tunnel_leases = crate::tunnels::sweep::LeaseSweeper::start(
+            crate::tunnels::Repository::new(repository.database.clone()),
+            live.clone(),
+            tunnel_runtime.clone(),
+        );
         Ok(Arc::new(Self {
             config,
             repository,
@@ -179,6 +289,13 @@ impl AuthService {
             mutation_audits,
             folder_setup,
             worker_maintenance,
+            worker_links,
+            direct_attachments,
+            tunnel_leases,
+            tunnel_runtime,
+            transport_metrics: Arc::new(Default::default()),
+            model_routing,
+            managed_console,
             registration: Mutex::new(()),
             revocations: broadcast::channel(256).0,
         }))
@@ -262,19 +379,57 @@ impl AuthService {
             now().timestamp_millis(),
         )
     }
-    pub async fn revoke(&self, id: &str, owner: bool, reason: &str) -> Result<usize> {
-        let count = self.repository.revoke(id, owner, reason).await?;
-        self.revoke_connections(if owner {
-            Revocation::Owner(id.into())
-        } else {
-            Revocation::Session(Some(id.into()))
-        });
-        Ok(count)
+    pub async fn revoke(self: &Arc<Self>, id: &str, owner: bool, reason: &str) -> Result<usize> {
+        let (service, id, reason) = (self.clone(), id.to_owned(), reason.to_owned());
+        self.worker_links
+            .local
+            .owned(async move {
+                let count = service.repository.revoke(&id, owner, &reason).await?;
+                service
+                    .apply_revocation(if owner {
+                        Revocation::Owner(id)
+                    } else {
+                        Revocation::Session(Some(id))
+                    })
+                    .await;
+                Ok(count)
+            })
+            .await
     }
-    pub fn revoke_connections(&self, revocation: Revocation) {
+    pub async fn revoke_connections(self: &Arc<Self>, revocation: Revocation) -> Result<()> {
+        let service = self.clone();
+        self.worker_links
+            .local
+            .owned(async move {
+                service.apply_revocation(revocation).await;
+                Ok(())
+            })
+            .await
+    }
+    async fn apply_revocation(&self, revocation: Revocation) {
         // Complete local socket side effects before the logout/revoke response.
         // The broadcast remains available to other asynchronous consumers.
-        self.live.revoke(&revocation);
+        self.live.revoke_live(&revocation);
+        match &revocation {
+            Revocation::Owner(owner) => {
+                self.direct_attachments
+                    .revoke_scope(crate::direct_attachments::Scope::Owner(
+                        crate::wire::Value::String(owner.clone().into()),
+                    ))
+                    .await;
+                self.worker_links.revoke_owner(owner).await;
+            }
+            Revocation::Session(Some(session)) => {
+                self.direct_attachments
+                    .revoke_scope(crate::direct_attachments::Scope::Session(
+                        crate::wire::Value::String(session.clone().into()),
+                    ))
+                    .await;
+                self.worker_links.revoke_account(session).await;
+            }
+            Revocation::Session(None) => {}
+        }
+        self.live.close_revoked_sockets(&revocation);
         let _ = self.revocations.send(revocation);
     }
 }

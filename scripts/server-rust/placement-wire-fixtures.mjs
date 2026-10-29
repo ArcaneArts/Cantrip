@@ -62,7 +62,7 @@ export function placementWireFixtures(label) {
           : null,
     };
   });
-  return {
+  const fixtures = {
     chatWireSummarySchema: [
       {
         id: "chat",
@@ -142,6 +142,31 @@ export function placementWireFixtures(label) {
         truncated: false,
       })),
       { projectId, targets: descriptors, truncated: true },
+    ],
+  };
+  const standalone = fixtures.chatWireSummarySchema
+    .slice(0, 1)
+    .map(({ githubAgentContext: _github, ...chat }) => ({
+      ...chat,
+      id: "33333333-3333-4333-8333-333333333333",
+      contextKind: "standalone",
+      projectId: null,
+      activeWorktreeId: null,
+      activeScratchRootId: "44444444-4444-4444-8444-444444444444",
+      worktreeMode: null,
+      customSubagentModel: false,
+      subagentModelId: null,
+      subagentReasoningEffort: null,
+      planMode: "default",
+      hasPendingPlanQuestion: false,
+    }));
+  return {
+    ...fixtures,
+    projectChatWireSummarySchema: fixtures.chatWireSummarySchema,
+    standaloneChatWireSummarySchema: standalone,
+    contextualChatWireSummarySchema: [
+      ...fixtures.chatWireSummarySchema,
+      ...standalone,
     ],
   };
 }

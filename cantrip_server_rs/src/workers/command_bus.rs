@@ -11,7 +11,7 @@ use crate::{
     relay::{RelayLimitError, RelayQuotas},
     wire::{JsString, Value},
 };
-use futures::future::BoxFuture;
+use futures::{FutureExt, future::BoxFuture};
 use serde::Serialize;
 use std::{
     collections::HashMap,
@@ -145,6 +145,7 @@ struct State {
     succeeded: f64,
 }
 pub struct LimitedCommandBus {
+    dispatch: Arc<tokio::sync::Mutex<()>>,
     delegate: Arc<dyn CommandDelegate>,
     pub quotas: Arc<RelayQuotas>,
     resolver: OwnerResolver,
@@ -247,6 +248,7 @@ impl LimitedCommandBus {
         clock: Clock,
     ) -> Arc<Self> {
         Arc::new(Self {
+            dispatch: Arc::new(tokio::sync::Mutex::new(())),
             delegate,
             quotas,
             resolver,
@@ -378,8 +380,18 @@ impl LimitedCommandBus {
         command: Value,
         timeout: Option<Duration>,
         on_event: Option<EventHandler>,
+        mut dispatch: tokio::sync::OwnedMutexGuard<()>,
     ) -> Result<Option<Value>, CommandFailure> {
-        let owner = self.owner(&worker).await?;
+        let mut resolving = Box::pin(self.owner(&worker));
+        let owner = if let Some(owner) = resolving.as_mut().now_or_never() {
+            owner?
+        } else {
+            // Independent owner lookups complete independently in the source.
+            drop(dispatch);
+            let owner = resolving.await?;
+            dispatch = self.dispatch.clone().lock_owned().await;
+            owner
+        };
         let permit = self.admit(&owner, &worker, &command)?;
         let event_limit = Arc::new(Mutex::new(None));
         let on_event = on_event.map(|handler| {
@@ -419,16 +431,20 @@ impl LimitedCommandBus {
             }) as EventHandler
         });
         let delegated = if let Some(connected_key) = worker.value.as_str() {
-            self.delegate
-                .clone()
-                .request(
-                    owner.clone(),
-                    connected_key.to_owned(),
-                    command,
-                    timeout,
-                    on_event,
-                )
-                .await
+            let mut request = self.delegate.clone().request(
+                owner.clone(),
+                connected_key.to_owned(),
+                command,
+                timeout,
+                on_event,
+            );
+            let immediate = request.as_mut().now_or_never();
+            // Serialize dispatch, never acknowledgment or streamed execution.
+            drop(dispatch);
+            match immediate {
+                Some(result) => result,
+                None => request.await,
+            }
         } else {
             // The bridge's Map has no peer for a non-string key. Admission
             // and byte/rate accounting have already happened, as in Node.
@@ -528,11 +544,19 @@ impl LimitedCommandBus {
     ) -> Result<Option<Value>, CommandFailure> {
         self.tasks.fetch_add(1, Ordering::AcqRel);
         let task = RequestTask(self.clone());
+        // Reserve FIFO order in the caller, but execute transport in an owned
+        // task: offline callbacks can hold the bridge lifecycle lock.
+        let mut reservation = Box::pin(self.dispatch.clone().lock_owned());
+        let reserved = reservation.as_mut().now_or_never();
         tokio::spawn(async move {
             let _task = task;
+            let dispatch = match reserved {
+                Some(guard) => guard,
+                None => reservation.await,
+            };
             _task
                 .0
-                .run(worker, command, timeout.duration(), on_event)
+                .run(worker, command, timeout.duration(), on_event, dispatch)
                 .await
         })
         .await

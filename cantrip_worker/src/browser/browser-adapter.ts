@@ -202,6 +202,8 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
   #navigationStartedAtMs: number | null = null;
   #stateRevision: number;
   #stateRefresh: Promise<void> | null = null;
+  #stateBroadcastRequested = false;
+  readonly #stateRecipients = new Set<string>();
   readonly #navigationOperations = new BrowserNavigationOperationGuard();
 
   private constructor(options: {
@@ -637,48 +639,76 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
     return this.command<NavigationHistory>("Page.getNavigationHistory");
   }
 
-  private async publishState(onlyAttachmentId?: string): Promise<void> {
-    if (this.#stateRefresh) {
-      await this.#stateRefresh;
-      if (!onlyAttachmentId) return;
-    }
-    this.#stateRefresh = (async () => {
-      const history = await this.navigationHistory();
-      const entry = history.entries[history.currentIndex];
-      if (!entry) return;
-      this.#currentUrl = entry.url;
-      const operationId = randomUUID();
-      const state: RemoteBrowserServerMessage =
-        remoteBrowserServerMessageSchema.parse({
-          type: "browser-state",
-          operationId,
-          stateProtection: await protectBrowserLocationOperation({
-            operationId,
-            ownerId: this.#ownerId,
-            revision: this.#stateRevision,
-            serverId: this.#serverId,
-            service: this.#surfacePrivateState,
-            surfaceId: this.#surfaceId,
-            url: entry.url,
-          }),
-          title: entry.title,
-          canGoBack: history.currentIndex > 0,
-          canGoForward: history.currentIndex < history.entries.length - 1,
-          loading: this.#loading,
-        });
-      const payload = encoder.encode(JSON.stringify(state));
-      const recipients = onlyAttachmentId
-        ? [onlyAttachmentId]
-        : [...this.#attachments.keys()];
-      for (const attachmentId of recipients) {
-        if (this.#attachments.has(attachmentId)) {
-          this.#emit(attachmentId, "control", payload);
+  private publishState(onlyAttachmentId?: string): Promise<void> {
+    if (this.#closed) return Promise.resolve();
+    if (onlyAttachmentId) this.#stateRecipients.add(onlyAttachmentId);
+    else this.#stateBroadcastRequested = true;
+    if (this.#stateRefresh) return this.#stateRefresh;
+    // Install ownership before querying CDP. Events arriving during a query or
+    // encryption request one more snapshot rather than reusing the stale one.
+    this.#stateRefresh = Promise.resolve().then(async () => {
+      try {
+        while (
+          !this.#closed &&
+          (this.#stateBroadcastRequested || this.#stateRecipients.size > 0)
+        ) {
+          const recipients = this.#stateBroadcastRequested
+            ? null
+            : [...this.#stateRecipients];
+          this.#stateBroadcastRequested = false;
+          this.#stateRecipients.clear();
+          try {
+            await this.publishCurrentState(recipients);
+          } catch (error) {
+            // A renderer transition can reject the old snapshot while a page
+            // event has already requested its replacement.
+            if (
+              !this.#stateBroadcastRequested &&
+              this.#stateRecipients.size === 0
+            )
+              throw error;
+          }
         }
+      } finally {
+        this.#stateRefresh = null;
       }
-    })().finally(() => {
-      this.#stateRefresh = null;
     });
-    await this.#stateRefresh;
+    return this.#stateRefresh;
+  }
+
+  private async publishCurrentState(
+    recipients: string[] | null,
+  ): Promise<void> {
+    const history = await this.navigationHistory();
+    const entry = history.entries[history.currentIndex];
+    if (!entry || this.#closed) return;
+    this.#currentUrl = entry.url;
+    const operationId = randomUUID();
+    const state: RemoteBrowserServerMessage =
+      remoteBrowserServerMessageSchema.parse({
+        type: "browser-state",
+        operationId,
+        stateProtection: await protectBrowserLocationOperation({
+          operationId,
+          ownerId: this.#ownerId,
+          revision: this.#stateRevision,
+          serverId: this.#serverId,
+          service: this.#surfacePrivateState,
+          surfaceId: this.#surfaceId,
+          url: entry.url,
+        }),
+        title: entry.title,
+        canGoBack: history.currentIndex > 0,
+        canGoForward: history.currentIndex < history.entries.length - 1,
+        loading: this.#loading,
+      });
+    if (this.#closed) return;
+    const payload = encoder.encode(JSON.stringify(state));
+    for (const attachmentId of recipients ?? this.#attachments.keys()) {
+      if (this.#attachments.has(attachmentId)) {
+        this.#emit(attachmentId, "control", payload);
+      }
+    }
   }
 
   private async captureFrame(onlyAttachmentId?: string): Promise<void> {

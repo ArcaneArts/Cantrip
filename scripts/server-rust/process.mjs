@@ -85,6 +85,7 @@ export async function startServer(command, arguments_, options) {
     events,
     origin,
     startupMs: performance.now() - startedAt,
+    diagnostics: () => diagnostics,
     async close({ shutdownTimeoutMs = 15_000 } = {}) {
       const shutdownStartedAt = performance.now();
       let forcedShutdown = false;

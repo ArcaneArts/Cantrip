@@ -5,6 +5,10 @@ use cantrip_server::{
     migrations::migrate, projects::repository::ProjectRepository, wire::Value,
 };
 use clap::Parser;
+#[path = "support/chat_console.rs"]
+mod chat_console;
+#[path = "support/tunnels.rs"]
+mod tunnels;
 use futures::FutureExt;
 use std::{
     io::{self, BufRead, Write},
@@ -55,6 +59,7 @@ async fn main() -> Result<()> {
     let placement =
         cantrip_server::projects::placement::PlacementRepository::new(database.clone())?;
     let live = cantrip_server::live::repository::LiveRepository::new(database.clone())?;
+    let chats = cantrip_server::chats::Repository::new(database.clone());
     eprintln!("project-fixture repository ready");
     writeln!(
         output,
@@ -64,8 +69,24 @@ async fn main() -> Result<()> {
     output.flush()?;
     for line in io::BufReader::new(input).lines() {
         let request: Value = serde_json::from_str(&line?)?;
+        let console_trace = Arc::new(std::sync::Mutex::new(Vec::new()));
         let outcome: Result<Value> = async {
-            if request["op"] == "sql" {
+            if request["op"]
+                .as_str()
+                .is_some_and(|op| op.starts_with("console-"))
+            {
+                let result =
+                    chat_console::run(database.clone(), &request, console_trace.clone()).await?;
+                Ok(Value::object([
+                    ("result", result),
+                    ("trace", Value::Array(console_trace.lock().unwrap().clone())),
+                ]))
+            } else if request["op"]
+                .as_str()
+                .is_some_and(|op| op.starts_with("tunnel-"))
+            {
+                tunnels::run(database.clone(), &request).await
+            } else if request["op"] == "sql" {
                 database
                     .execute(request["sql"].as_str().context("Fixture SQL")?)
                     .await?;
@@ -85,6 +106,68 @@ async fn main() -> Result<()> {
                     .map(|row| Ok(serde_json::from_str::<Value>(&row.get::<String>(0)?)?))
                     .transpose()
                     .map(|value| value.unwrap_or(Value::Null))
+            } else if request["op"] == "surface-context" {
+                Ok(
+                    cantrip_server::remote_surfaces::Repository::new(database.clone())
+                        .context(
+                            request["owner"].as_str().context("Surface owner")?,
+                            &request["surface"]
+                                .as_js_string()
+                                .context("Surface ID")?
+                                .lossy(),
+                        )
+                        .await?
+                        .unwrap_or(Value::Null),
+                )
+            } else if request["op"] == "surface-status" {
+                let id = request["surface"]
+                    .as_js_string()
+                    .context("Surface ID")?
+                    .lossy();
+                let status = request["status"]
+                    .as_js_string()
+                    .context("Surface status")?
+                    .lossy();
+                let error = request["error"]
+                    .as_js_string()
+                    .map(|v| v.lossy().into_owned());
+                cantrip_server::remote_surfaces::Repository::new(database.clone())
+                    .set_status(&id, &status, error.as_deref())
+                    .await?;
+                Ok(Value::Null)
+            } else if request["op"] == "surface-reset" {
+                cantrip_server::remote_surfaces::Repository::new(database.clone())
+                    .reset_transient()
+                    .await?;
+                Ok(Value::Null)
+            } else if request["op"] == "surface-ensure-browsers" {
+                cantrip_server::remote_surfaces::Repository::new(database.clone())
+                    .ensure_browsers(request["owner"].as_str().context("Surface owner")?)
+                    .await?;
+                Ok(Value::Null)
+            } else if request["op"] == "chat-context" {
+                let chat = request["chat"]
+                    .as_js_string()
+                    .context("Chat identity")?
+                    .lossy();
+                Ok(chats
+                    .execution_context(request["owner"].as_str().context("Chat owner")?, &chat)
+                    .await?
+                    .unwrap_or(Value::Null))
+            } else if request["op"] == "mcp-effective" {
+                Ok(Value::Array(
+                    chats
+                        .effective_mcp_servers(
+                            request["owner"].as_str().context("MCP owner")?,
+                            request.get("project").and_then(Value::as_str),
+                            request["worker"].as_str().context("MCP worker")?,
+                            request
+                                .get("audience")
+                                .and_then(Value::as_str)
+                                .unwrap_or("ide"),
+                        )
+                        .await?,
+                ))
             } else if request["op"] == "terminal-services" {
                 let maintenance =
                     cantrip_server::workers::maintenance::Repository::new(database.clone());
@@ -131,6 +214,13 @@ async fn main() -> Result<()> {
                         .update(owner, &terminal, &request["input"])
                         .await?
                         .unwrap_or(Value::Null)),
+                    "terminal-worktree" => Ok(repo
+                        .update_worktree(owner, &terminal, &request["input"])
+                        .await?
+                        .unwrap_or(Value::Null)),
+                    "terminal-delete" => {
+                        Ok(repo.delete(owner, &terminal).await?.unwrap_or(Value::Null))
+                    }
                     "terminal-service" => Ok(repo
                         .configure_service(owner, &terminal, &request["input"])
                         .await?
@@ -216,6 +306,67 @@ async fn main() -> Result<()> {
                         .await?
                         .unwrap_or(Value::Null),
                 )
+            } else if request["op"] == "chat-model" {
+                let reasoning = request.get("reasoningEffort").map(|v| v.as_str());
+                Ok(chats
+                    .select_model(
+                        request["owner"].as_str().context("Chat owner")?,
+                        request["chat"].as_str().context("Chat identity")?,
+                        request["model"].as_str().context("Model identity")?,
+                        reasoning,
+                    )
+                    .await?
+                    .unwrap_or(Value::Null))
+            } else if request["op"] == "chat-runtime" {
+                let nullable = |key| request.get(key).and_then(Value::as_str).map(str::to_owned);
+                chats
+                    .update_runtime(cantrip_server::chats::RuntimeUpdate {
+                        chat: request["chat"].as_str().context("Runtime chat")?.into(),
+                        worker: request["worker"].as_str().context("Runtime worker")?.into(),
+                        worktree: nullable("worktree"),
+                        thread: nullable("thread"),
+                        route: request["route"].as_str().context("Runtime route")?.into(),
+                        status: request
+                            .get("status")
+                            .and_then(Value::as_str)
+                            .unwrap_or("ready")
+                            .into(),
+                        provider_account: request
+                            .get("providerAccountId")
+                            .map(|v| v.as_str().map(str::to_owned)),
+                        scratch_root: nullable("scratchRoot"),
+                    })
+                    .await?;
+                Ok(Value::Null)
+            } else if request["op"] == "chat-guard" {
+                let request = request.clone();
+                database
+                    .transaction(move |tx| {
+                        Box::pin(async move {
+                            use cantrip_server::chats::guard::{self, Access};
+                            let chat = request["chat"].as_str().context("Guard chat")?;
+                            guard::lock_chat(
+                                tx,
+                                request["owner"].as_str().context("Guard owner")?,
+                                chat,
+                            )
+                            .await?;
+                            guard::assert_runtime_writable(
+                                tx,
+                                chat,
+                                request.get("generation").and_then(Value::as_str),
+                                request.get("epoch").and_then(Value::as_str),
+                                if request["access"] == "attach" {
+                                    Access::Attach
+                                } else {
+                                    Access::Write
+                                },
+                            )
+                            .await?;
+                            Ok(Value::Null)
+                        })
+                    })
+                    .await
             } else if request["op"] == "target-catalog" {
                 let connected = |worker: &str| {
                     request["connected"]
@@ -278,6 +429,39 @@ async fn main() -> Result<()> {
             Ok(value) => reply["value"] = value,
             Err(error) => {
                 reply["diagnostic"] = Value::String(error.to_string().into());
+                if request["op"]
+                    .as_str()
+                    .is_some_and(|op| op.starts_with("tunnel-"))
+                {
+                    for cause in error.chain() {
+                        if let Some(pg) = cause.downcast_ref::<tokio_postgres::Error>()
+                            && let Some(code) = pg.code()
+                        {
+                            reply["databaseCode"] = Value::String(code.code().into());
+                        }
+                        if let Some(pglite::Error::Database { sqlstate, .. }) =
+                            cause.downcast_ref::<pglite::Error>()
+                        {
+                            reply["databaseCode"] = Value::String(sqlstate.as_str().into());
+                        }
+                    }
+                }
+                if request["op"]
+                    .as_str()
+                    .is_some_and(|op| op.starts_with("console-"))
+                {
+                    reply["trace"] = Value::Array(console_trace.lock().unwrap().clone());
+                    if let Some(failure) = error
+                        .downcast_ref::<cantrip_server::settings::reasoning::ConfigurationFailure>(
+                    ) {
+                        reply["failure"] = failure.0.clone();
+                    }
+                }
+                if let Some(error) =
+                    error.downcast_ref::<cantrip_server::chats::guard::NativeCommandError>()
+                {
+                    reply["code"] = Value::String(error.code.into());
+                }
                 if let Some(error) =
                     error.downcast_ref::<cantrip_server::projects::folders::FolderError>()
                 {

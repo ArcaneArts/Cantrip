@@ -633,6 +633,12 @@ where
 
         self.enforce_version(&mut head);
 
+        #[cfg(feature = "server")]
+        let date_header = self.state.date_header
+            && head
+                .extensions
+                .get::<crate::ext::NoAutomaticDateHeader>()
+                .is_none();
         let buf = self.io.headers_buf();
         match super::role::encode_headers::<T>(
             Encode {
@@ -643,7 +649,7 @@ where
                 req_method: &mut self.state.method,
                 title_case_headers: self.state.title_case_headers,
                 #[cfg(feature = "server")]
-                date_header: self.state.date_header,
+                date_header,
             },
             buf,
         ) {
@@ -708,6 +714,16 @@ where
                 head.version = Version::HTTP_10;
             }
             Version::HTTP_11 => {
+                #[cfg(feature = "server")]
+                if T::is_server()
+                    && head
+                        .extensions
+                        .get::<crate::ext::PreserveConnectionHeader>()
+                        .is_some()
+                {
+                    self.state.disable_keep_alive();
+                    return;
+                }
                 if let KA::Disabled = self.state.keep_alive.status() {
                     match head.headers.entry(CONNECTION) {
                         Entry::Occupied(mut entry) => {

@@ -29,6 +29,10 @@ export async function terminalCreationShutdown(
     controller = new AbortController();
   let transaction, closing, pending, lockerPid, shutdownFailure;
   try {
+    const before = (
+      await observer`SELECT tab_layout_revision revision FROM projects WHERE id=${projectId}`
+    )[0].revision;
+    report.beforeRevision = before;
     transaction = locker.begin(async (sql) => {
       lockerPid = (await sql`SELECT pg_backend_pid() pid`)[0].pid;
       await sql`LOCK TABLE tab_group_members IN SHARE MODE`;
@@ -111,7 +115,7 @@ export async function terminalCreationShutdown(
     assert.equal(rows[0].tab_key, "terminal:" + input.id);
     assert.equal(rows[0].project_id, projectId);
     assert.equal(rows[0].status, "idle");
-    assert.equal(rows[0].revision, 2);
+    assert.equal(rows[0].revision, before + 1);
     Object.assign(report, {
       callerDisconnected: true,
       shutdownWaitedForRelease: true,

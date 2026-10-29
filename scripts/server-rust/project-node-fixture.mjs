@@ -8,6 +8,9 @@ const { sql } = require("drizzle-orm");
 import { readServerConfig } from "../../cantrip_server/src/config.ts";
 import { connectDatabase } from "../../cantrip_server/src/db/index.ts";
 import { buildExecutionTargetCatalog } from "../../cantrip_server/src/execution-targets/catalog.ts";
+import { lockNativeCommandChat } from "../../cantrip_server/src/db/repository/native-command-lock.ts";
+import { assertNativeRuntimeWritable } from "../../cantrip_server/src/db/repository/native-runtime-handoff-guard.ts";
+import { managedConsoleFixture } from "./managed-console-node-fixture.mjs";
 console.error(JSON.stringify({ event: "repository-fixture.database.opening" }));
 const database = await connectDatabase(readServerConfig());
 console.error(JSON.stringify({ event: "repository-fixture.database.ready" }));
@@ -21,11 +24,19 @@ console.log(
 try {
   for await (const line of createInterface({ input: process.stdin })) {
     const request = JSON.parse(line);
+    const consoleTrace = [];
     try {
       // Seeding owns only this disposable fixture. Runtime TS private storage is
       // used solely to exercise the actual connector on both PostgreSQL and PGlite.
       let value;
-      if (request.op === "sql") {
+      if (request.op.startsWith("console-")) {
+        value = await managedConsoleFixture(
+          database.repository,
+          request,
+          consoleTrace,
+        );
+        value = { result: value, trace: consoleTrace };
+      } else if (request.op === "sql") {
         await database.repository.projects.database.execute(
           sql.raw(request.sql),
         );
@@ -44,6 +55,67 @@ try {
         );
         value =
           (Array.isArray(result) ? result : result.rows)[0]?.result ?? null;
+      } else if (request.op === "surface-context") {
+        value = await database.repository.getRemoteSurfaceExecutionContext(
+          request.owner,
+          request.surface,
+        );
+      } else if (request.op === "surface-status") {
+        await database.repository.setRemoteSurfaceStatus(
+          request.surface,
+          request.status,
+          request.error,
+        );
+        value = null;
+      } else if (request.op === "surface-reset") {
+        await database.repository.resetTransientRemoteSurfaceStatuses();
+        value = null;
+      } else if (request.op === "surface-ensure-browsers") {
+        await database.repository.ensureBrowserRemoteSurfaces(request.owner);
+        value = null;
+      } else if (request.op === "chat-context") {
+        value = await database.repository.getChatExecutionContext(
+          request.owner,
+          request.chat,
+        );
+      } else if (request.op === "chat-model") {
+        value = await database.repository.setChatModel(
+          request.owner,
+          request.chat,
+          { modelId: request.model },
+          request.reasoningEffort,
+        );
+      } else if (request.op === "chat-runtime") {
+        await database.repository.updateChatRuntime(
+          request.chat,
+          request.worker,
+          request.worktree ?? null,
+          request.thread ?? null,
+          request.route,
+          request.status ?? "ready",
+          request.providerAccountId,
+          request.scratchRoot ?? null,
+        );
+        value = null;
+      } else if (request.op === "chat-guard") {
+        await database.repository.projects.database.transaction(async (tx) => {
+          await lockNativeCommandChat(tx, request.owner, request.chat);
+          await assertNativeRuntimeWritable(
+            tx,
+            request.chat,
+            request.generation,
+            request.epoch,
+            request.access ?? "write",
+          );
+        });
+        value = null;
+      } else if (request.op === "mcp-effective") {
+        value = await database.repository.listEffectiveMcpServers(
+          request.owner,
+          request.project ?? null,
+          request.worker,
+          request.audience,
+        );
       } else if (request.op === "terminal-services") {
         value = await database.repository.listTerminalServicesForWorker(
           request.worker,
@@ -55,6 +127,10 @@ try {
           request.status,
         );
         value = null;
+      } else if (request.op.startsWith("tunnel-")) {
+        value = await (
+          await import("./tunnel-node-fixture.mjs")
+        ).tunnelOperation(database.repository, request);
       } else if (request.op.startsWith("terminal-")) {
         const repo = database.repository;
         switch (request.op) {
@@ -73,6 +149,16 @@ try {
               request.terminal,
               request.input,
             );
+            break;
+          case "terminal-worktree":
+            value = await repo.updateTerminalWorktree(
+              request.owner,
+              request.terminal,
+              request.input,
+            );
+            break;
+          case "terminal-delete":
+            value = await repo.deleteTerminal(request.owner, request.terminal);
             break;
           case "terminal-service":
             value = await repo.updateTerminalService(
@@ -227,15 +313,30 @@ try {
         JSON.stringify({
           id: request.id,
           rejected: true,
+          ...(request.op.startsWith("tunnel-") && error.cause?.code
+            ? { databaseCode: error.cause.code }
+            : {}),
+          ...(request.op.startsWith("console-")
+            ? {
+                trace: consoleTrace,
+                ...(error.failure ? { failure: error.failure } : {}),
+                ...(error.code ? { code: error.code } : {}),
+              }
+            : {}),
           diagnostic: request.op.startsWith("terminal-")
             ? error.message
             : (error.cause?.message ?? error.message),
           ...(request.op.startsWith("folder-")
             ? { folderError: error.constructor.name }
             : {}),
-          ...(["placement", "target-resolve", "terminal-create"].includes(
-            request.op,
-          )
+          ...([
+            "placement",
+            "target-resolve",
+            "terminal-create",
+            "chat-model",
+            "chat-runtime",
+            "chat-guard",
+          ].includes(request.op)
             ? { code: error.code }
             : {}),
         }),

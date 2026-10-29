@@ -1379,6 +1379,9 @@ export async function buildApp({
     workerLinkRelay.close();
     await workerLinks.close();
     await bridge.close();
+    // A closed legacy socket can still be awaiting its activation transaction.
+    // Keep the database open through its exact-generation offline/expiry write.
+    await tunnelRuntime.drained();
     await accountUsageMeter.close();
     liveInfrastructureRuntime.closeAccountResourceUsageInvalidations();
     await coordinator?.close();

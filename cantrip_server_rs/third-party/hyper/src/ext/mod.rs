@@ -54,6 +54,24 @@ mod h1_reason_phrase;
 #[cfg(any(feature = "http1", feature = "ffi"))]
 pub use h1_reason_phrase::ReasonPhrase;
 
+/// Preserve the authored HTTP/1.1 server `Connection` response header.
+///
+/// Raw WebSocket handlers may take ownership of connection shutdown and write
+/// their own handshake headers. This suppresses the automatic `close` token
+/// derived from the request and disables HTTP connection reuse after the
+/// response. An upgraded connection remains owned by the upgrade handler.
+#[cfg(all(feature = "http1", feature = "server"))]
+#[derive(Clone, Copy, Debug)]
+pub struct PreserveConnectionHeader;
+
+/// Suppress the automatic HTTP/1 server `Date` response header.
+///
+/// Explicitly authored `Date` headers are retained. Raw upgrade responses use
+/// this to preserve the reference handler's complete header set.
+#[cfg(all(feature = "http1", feature = "server"))]
+#[derive(Clone, Copy, Debug)]
+pub struct NoAutomaticDateHeader;
+
 #[cfg(all(feature = "http1", feature = "client"))]
 mod informational;
 #[cfg(all(feature = "http1", feature = "client"))]

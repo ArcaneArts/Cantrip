@@ -10,6 +10,7 @@
       "cantrip_server/src/app/http/auth-route-support.ts",
       "cantrip_server/src/app/http/bandwidth-hooks.ts",
       "cantrip_server/src/app/http/error-handler.ts",
+      "cantrip_server/src/app/http/idle-connections.ts",
       "cantrip_server/src/app/http/mutation-live-invalidation.ts",
       "cantrip_server/src/app/http/operational-hooks.ts",
       "cantrip_server/src/app/http/owner-context.ts",

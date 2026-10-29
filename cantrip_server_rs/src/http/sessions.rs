@@ -132,7 +132,7 @@ async fn bootstrap(
 }
 
 async fn execute(
-    service: &AuthService,
+    service: &Arc<AuthService>,
     ctx: &Context,
     path: &str,
     headers: &axum::http::HeaderMap,
@@ -514,7 +514,9 @@ async fn execute(
             } else if let Some(id) = &ctx.principal.session_id {
                 service.revoke(id, false, "signed-out").await?
             } else {
-                service.revoke_connections(Revocation::Session(None));
+                service
+                    .revoke_connections(Revocation::Session(None))
+                    .await?;
                 0
             };
             audit(

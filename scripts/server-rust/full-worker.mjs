@@ -23,7 +23,12 @@ export async function eventually(read, check, timeout = 30000) {
 export function launchActualWorker(
   fixture,
   dataDirectory,
-  { enrollmentCode, cliBinary, workerId = "actual-catalog-worker" } = {},
+  {
+    enrollmentCode,
+    cliBinary,
+    chromiumExecutable,
+    workerId = "actual-catalog-worker",
+  } = {},
 ) {
   const environment = {
     ...fixtureEnvironment(dataDirectory),
@@ -32,6 +37,9 @@ export function launchActualWorker(
     CANTRIP_WORKER_ID: workerId,
     CANTRIP_WORKER_NAME: "Disposable full worker",
     CANTRIP_CLI_BIN: cliBinary,
+    ...(chromiumExecutable
+      ? { CANTRIP_CHROMIUM_EXECUTABLE: chromiumExecutable }
+      : {}),
     ...(enrollmentCode
       ? { CANTRIP_WORKER_ENROLLMENT_CODE: enrollmentCode }
       : {}),

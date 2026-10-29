@@ -1,6 +1,7 @@
 mod postgres;
 mod postgres_url;
 pub(crate) mod query_error;
+pub(crate) mod resource_layout_queries;
 
 use std::{future::Future, path::Path, pin::Pin};
 

@@ -57,6 +57,7 @@ export interface TunnelRuntimeChange {
 export class TunnelRuntimeManager {
   readonly #activationTails = new Map<string, Promise<void>>();
   readonly #active = new Map<string, ActiveAttachment>();
+  readonly #pending = new Set<Promise<unknown>>();
   readonly #broker: TunnelStreamBroker;
   readonly #heartbeatTimeoutMs: number;
   readonly #heartbeatTimer: ReturnType<typeof setInterval>;
@@ -164,7 +165,7 @@ export class TunnelRuntimeManager {
     );
     const expires = setTimeout(() => {
       if (!this.#closeExact(active, "Attachment expired", 1008)) return;
-      void this.#expire(active).catch(() => undefined);
+      void this.owned(this.#expire(active)).catch(() => undefined);
     }, expiresIn);
     expires.unref();
     const unsubscribeWorker = subscribeWorkerTerminalOffline(
@@ -197,7 +198,7 @@ export class TunnelRuntimeManager {
     };
     socket.on("close", disconnected);
     socket.on("error", disconnected);
-    await this.#activate(active, source);
+    await this.owned(this.#activate(active, source));
     this.changed(this.#change(authorization));
     serverLogger.info("Tunnel attachment active", {
       event: "tunnel.attachment.active",
@@ -316,6 +317,21 @@ export class TunnelRuntimeManager {
       bytesFromSource: aggregate.bytesFromSource,
       bytesToSource: aggregate.bytesToSource,
     });
+  }
+
+  async drained(): Promise<void> {
+    while (this.#pending.size) {
+      await Promise.allSettled([...this.#pending]);
+    }
+  }
+
+  owned<T>(operation: Promise<T>): Promise<T> {
+    this.#pending.add(operation);
+    void operation.then(
+      () => this.#pending.delete(operation),
+      () => this.#pending.delete(operation),
+    );
+    return operation;
   }
 
   #change(authorization: TunnelAttachmentAuthorization): TunnelRuntimeChange {
@@ -499,7 +515,7 @@ export class TunnelRuntimeManager {
 
   #retireOffline(active: ActiveAttachment, reason: string, code: number): void {
     if (!this.#closeExact(active, reason, code)) return;
-    void this.#markOffline(active).catch(() => undefined);
+    void this.owned(this.#markOffline(active)).catch(() => undefined);
   }
 
   async #markOffline(active: ActiveAttachment): Promise<void> {

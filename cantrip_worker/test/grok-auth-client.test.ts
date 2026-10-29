@@ -96,26 +96,25 @@ describe("Grok OAuth accounts", () => {
         userCode: "GROK-1234",
         verificationUrl: "https://auth.x.ai/activate",
       });
-      let status = await client.status();
       await vi.waitFor(
         async () => {
-          status = await client.status();
-          expect(status.authenticated).toBe(true);
+          // Tokens become readable before profile enrichment and login cleanup
+          // finish. Wait for the complete result this test promises to verify.
+          expect(await client.status()).toMatchObject({
+            authenticated: true,
+            authMode: "grok",
+            email: "grok@example.com",
+            planType: "SuperGrok",
+            weeklyUsage: {
+              usedPercent: 28.5,
+              resetsAt: 1_787_443_200,
+            },
+            loginPending: false,
+            loginError: null,
+          });
         },
         { timeout: 2_000 },
       );
-      expect(status).toMatchObject({
-        authenticated: true,
-        authMode: "grok",
-        email: "grok@example.com",
-        planType: "SuperGrok",
-        weeklyUsage: {
-          usedPercent: 28.5,
-          resetsAt: 1_787_443_200,
-        },
-        loginPending: false,
-        loginError: null,
-      });
       const deviceRequest = requests.find(({ url }) =>
         url.endsWith("/oauth2/device/code"),
       );

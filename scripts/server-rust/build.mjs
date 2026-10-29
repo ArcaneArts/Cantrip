@@ -11,6 +11,7 @@ async function buildRustExecutable({
   example,
   manifest = "cantrip_server_rs/Cargo.toml",
   binary = "cantrip-server",
+  environment,
 } = {}) {
   const child = spawn(
     "cargo",
@@ -25,7 +26,7 @@ async function buildRustExecutable({
     ],
     {
       cwd: repositoryRoot,
-      env: await rustEnvironment(),
+      env: environment ?? (await rustEnvironment()),
       stdio: ["ignore", "pipe", "inherit"],
     },
   );
@@ -68,6 +69,14 @@ export function buildWorkerCli() {
   return buildRustExecutable({
     manifest: "cantrip_cli/Cargo.toml",
     binary: "cantrip",
+  });
+}
+
+export function buildDesktopDirectProbe() {
+  return buildRustExecutable({
+    manifest: "cantrip_app/src-tauri/Cargo.toml",
+    example: "server_direct_probe",
+    environment: process.env,
   });
 }
 

@@ -30,7 +30,7 @@ fn connect(
 }
 async fn text(rx: &mut mpsc::UnboundedReceiver<Outgoing>) -> String {
     match rx.recv().await.unwrap() {
-        Outgoing::Text(text) => text,
+        Outgoing::Text(mut text) => text.take(),
         _ => panic!("Expected control text"),
     }
 }
