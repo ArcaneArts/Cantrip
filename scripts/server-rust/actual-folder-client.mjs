@@ -20,19 +20,39 @@ import { createPasswordKdfParameters } from "../../packages/crypto/src/index.ts"
 import { loadStoredWorkerCredential } from "../../cantrip_worker/src/credential-store.ts";
 import { deriveManagedFolderLocation } from "../../cantrip_worker/src/managed-folders.ts";
 import { normalizeProjectSourcePath } from "../../cantrip_worker/src/project-source-path.ts";
-import { buildRustServer, buildWorkerCli, repositoryRoot } from "./build.mjs";
+import {
+  buildRustServer,
+  buildRustExample,
+  buildWorkerCli,
+  buildDesktopDirectProbe,
+  repositoryRoot,
+} from "./build.mjs";
 import { eventually, launchActualWorker } from "./full-worker.mjs";
 import { HttpFixture } from "./http-fixture.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
 import { password } from "./security-fixtures.mjs";
 import { actualTerminalServices } from "./actual-terminal-services.mjs";
+import { actualNativeDirectProbe } from "./actual-native-direct-probe.mjs";
+import {
+  prepareTunnelLink,
+  seedTunnelLink,
+  actualWorkerTunnelLink,
+} from "./actual-worker-tunnel-link.mjs";
+import { actualWorkerTunnelRelay } from "./actual-worker-tunnel-relay.mjs";
+import {
+  prepareBrowserSurface,
+  seedBrowserSurface,
+  actualWorkerBrowserSurface,
+} from "./actual-worker-browser-surface.mjs";
 
 const option = (name) => {
   const i = process.argv.indexOf(name);
   return i < 0 ? undefined : process.argv[i + 1];
 };
 const databaseMode = option("--database") ?? "pglite";
+const workerLinkRoute = option("--worker-link-route") ?? "relay";
 const reportPath = option("--report");
+const surfaceFixtureRequests = [];
 const root = await mkdtemp(path.join(tmpdir(), "cantrip-actual-folder-"));
 const appRoot = path.join(repositoryRoot, "cantrip_app");
 const appRequire = createRequire(path.join(appRoot, "package.json"));
@@ -47,8 +67,14 @@ const report = {
     "Existing browser account encryption, project and protected repository APIs; full worker startup, real managed/existing folders, failure/retry, reconnect and retained server state. Not whole UI, packaging, project worktree routes or multi-instance acceptance.",
   runtimes: [],
 };
-let vite, browser, postgres, failure;
-async function flow(fixture, result, cliBinary) {
+let vite, browser, postgres, failure, surfaceRepositoryBinary;
+async function flow(
+  fixture,
+  result,
+  cliBinary,
+  nativeProbeBinary,
+  directBrokerBinary,
+) {
   const context = await browser.newContext();
   const page = await context.newPage();
   const errors = [],
@@ -71,12 +97,15 @@ async function flow(fixture, result, cliBinary) {
   const existingPath = path.join(root, fixture.kind, "private-existing-folder");
   const missingPath = path.join(root, fixture.kind, "private-repaired-folder");
   const workerId = "actual-folder-worker";
-  let worker;
+  let worker, tunnel;
   const startWorker = async (enrollmentCode) => {
     worker = launchActualWorker(fixture, dataDirectory, {
       cliBinary,
       enrollmentCode,
       workerId,
+      ...(process.argv.includes("--surfaces")
+        ? { chromiumExecutable: chromium.executablePath() }
+        : {}),
     });
     await worker.ready();
   };
@@ -237,6 +266,12 @@ async function flow(fixture, result, cliBinary) {
       assert.equal(workers[0].managedFolders.attachExisting, true);
       assert.ok(workers[0].encryption.principalId);
     });
+    if (process.argv.includes("--tunnels"))
+      await page.evaluate(async (workerId) => {
+        await (
+          await import("/src/lib/api/tunnels.ts")
+        ).ensureTunnelWorker(workerId);
+      }, workerId);
     result.steps.push(
       "full worker enrolls, advertises folder capabilities and registers encryption principal",
     );
@@ -245,6 +280,13 @@ async function flow(fixture, result, cliBinary) {
       fixture.server.origin,
     );
     assert.ok(credential);
+    if (nativeProbeBinary)
+      await actualNativeDirectProbe({
+        page,
+        workerId,
+        binary: nativeProbeBinary,
+        result,
+      });
     const names = [
       "Private fresh 🍄 folder",
       "Private attached 🌲 folder",
@@ -369,7 +411,10 @@ async function flow(fixture, result, cliBinary) {
     result.steps.push(
       "offline folder job resumes on actual worker reconnect and existing AppLiveClient receives completion",
     );
-    if (process.argv.includes("--terminals"))
+    if (
+      process.argv.includes("--terminals") ||
+      process.argv.includes("--terminal-direct")
+    )
       await actualTerminalServices({
         page,
         projectId: created.id,
@@ -378,6 +423,9 @@ async function flow(fixture, result, cliBinary) {
         startWorker,
         stopWorker,
         result,
+        workerLinks: process.argv.includes("--worker-links"),
+        workerLinkRoute,
+        directBrokerBinary,
       });
     const wire = await page.evaluate(() =>
       window.folderWire.getProjectWireList(),
@@ -394,6 +442,15 @@ async function flow(fixture, result, cliBinary) {
       );
       assert.equal(project.name, undefined);
     }
+    const surface = process.argv.includes("--surfaces")
+      ? await prepareBrowserSurface(
+          page,
+          vite.resolvedUrls.local[0],
+          created.id,
+        )
+      : undefined;
+    if (process.argv.includes("--tunnels"))
+      tunnel = await prepareTunnelLink(page, created.id, workerId);
     const publicRequests = JSON.stringify(requests);
     for (const secret of [...names, existingPath, missingPath, dataDirectory])
       assert.equal(
@@ -406,8 +463,26 @@ async function flow(fixture, result, cliBinary) {
     );
     await stopWorker();
     await page.evaluate(() => window.folderLive.stop());
-    await fixture.close();
-    await fixture.start();
+    const retainedPort =
+      surface || tunnel ? Number(new URL(fixture.server.origin).port) : 0;
+    // Retain a generous diagnostic deadline for both implementations. Earlier
+    // reference runs retained a zero-byte connection beyond this whole window;
+    // production idle-connection cleanup now has separate real-socket tests.
+    // Record actual duration instead of treating the deadline as an observed timeout.
+    const shutdownStarted = Date.now();
+    await fixture.close({ shutdownTimeoutMs: 105000 });
+    result.serverRestartShutdownMs = Date.now() - shutdownStarted;
+    if (surface)
+      await seedBrowserSurface(
+        fixture,
+        root,
+        surfaceRepositoryBinary,
+        surface,
+        workerId,
+      );
+    if (tunnel)
+      await seedTunnelLink(fixture, root, surfaceRepositoryBinary, tunnel);
+    await fixture.start({ port: retainedPort });
     const retained = await page.evaluate(
       async ({ serverUrl, password }) => {
         const servers = await import("/src/lib/server-connections.ts");
@@ -460,6 +535,27 @@ async function flow(fixture, result, cliBinary) {
     );
     assert.deepEqual(retained.projects, wire);
     assert.deepEqual(retained.labels, names);
+    if (surface || tunnel) {
+      await startWorker();
+      if (surface)
+        await actualWorkerBrowserSurface({
+          page,
+          surface,
+          workerId,
+          result,
+          route: workerLinkRoute,
+        });
+      if (tunnel)
+        await actualWorkerTunnelLink({
+          page,
+          tunnel,
+          result,
+          route: workerLinkRoute,
+        });
+      if (tunnel)
+        await actualWorkerTunnelRelay({ page, tunnel, result, fixture });
+      await stopWorker();
+    }
     for (const project of retained.projects)
       assert.equal((await job(project.id)).state, "succeeded");
     result.steps.push(
@@ -476,13 +572,24 @@ async function flow(fixture, result, cliBinary) {
     assert.deepEqual(errors, []);
   } finally {
     await stopWorker();
+    await tunnel?.close();
     await page.evaluate(() => window.folderLive?.stop()).catch(() => {});
     await context.close();
   }
 }
 try {
   const executable = await buildRustServer();
+  if (process.argv.includes("--surfaces") || process.argv.includes("--tunnels"))
+    surfaceRepositoryBinary = await buildRustExample(
+      "project-repository-fixture",
+    );
   const cliBinary = await buildWorkerCli();
+  const nativeProbeBinary = process.argv.includes("--native-probe")
+    ? await buildDesktopDirectProbe()
+    : undefined;
+  const directBrokerBinary = process.argv.includes("--terminal-direct")
+    ? await buildRustExample("desktop-direct-broker")
+    : undefined;
   vite = await createServer({
     root: appRoot,
     configFile: path.join(appRoot, "vite.config.ts"),
@@ -491,6 +598,20 @@ try {
       {
         name: "actual-folder-client",
         configureServer(server) {
+          server.middlewares.use(
+            "/__actual_surface_fixture",
+            (request, response) => {
+              surfaceFixtureRequests.push({
+                path: request.url,
+                method: request.method,
+                at: Date.now(),
+              });
+              response.setHeader("content-type", "text/html");
+              response.end(
+                "<!doctype html><html><body style='background:linear-gradient(45deg,#f82,#28f);height:100vh'><h1>Private remote browser</h1><script>const n=Number(sessionStorage.loads||0)+1;sessionStorage.loads=n;document.title=location.pathname.split('/').pop()+':'+n;</script></body></html>",
+              );
+            },
+          );
           server.middlewares.use(
             "/__actual_folder_fixture",
             (_request, response) => {
@@ -518,6 +639,16 @@ try {
       providerAuthDrain: true,
       environment: {
         CANTRIP_AUTH_MODE: "accounts",
+        ...(process.argv.includes("--worker-links")
+          ? workerLinkRoute === "relay"
+            ? { CANTRIP_WORKER_LINK_RELAY_ONLY: "true" }
+            : {
+                CANTRIP_WORKER_LINK_RELAY_ONLY: "false",
+                CANTRIP_WORKER_LINK_LOCAL_ENABLED: "false",
+                CANTRIP_WORKER_LINK_LAN_ENABLED: "true",
+                CANTRIP_WORKER_LINK_WAN_ENABLED: "false",
+              }
+          : {}),
         CANTRIP_APP_ORIGINS: `http://127.0.0.1:5173,${new URL(vite.resolvedUrls.local[0]).origin}`,
       },
     });
@@ -532,7 +663,13 @@ try {
     report.runtimes.push(result);
     try {
       await fixture.start();
-      await flow(fixture, result, cliBinary);
+      await flow(
+        fixture,
+        result,
+        cliBinary,
+        nativeProbeBinary,
+        directBrokerBinary,
+      );
     } finally {
       await fixture.close();
     }
@@ -546,9 +683,13 @@ try {
   await browser?.close();
   await vite?.close();
   await postgres?.close();
-  await rm(root, { recursive: true, force: true });
+  if (failure) {
+    report.fixtureRoot = root;
+    console.error("Retained failed full-worker fixture:", root);
+  } else await rm(root, { recursive: true, force: true });
   if (reportPath) {
     await mkdir(path.dirname(path.resolve(reportPath)), { recursive: true });
+    report.surfaceFixtureRequests = surfaceFixtureRequests;
     await writeFile(reportPath, JSON.stringify(report, null, 2) + "\n");
   }
   console.log(

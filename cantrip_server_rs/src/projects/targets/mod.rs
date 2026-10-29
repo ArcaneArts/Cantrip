@@ -16,6 +16,22 @@ pub struct TargetRepository {
     database: Arc<Database>,
 }
 impl TargetRepository {
+    pub async fn ready_worktree(
+        &self,
+        owner: &str,
+        project: &str,
+        id: &Value,
+    ) -> Result<Option<Value>> {
+        Reads::new(self.database.clone())
+            .primary(owner, project, id)
+            .await
+            .map_err(terminal_error)
+    }
+    pub async fn remote_execution_context(&self, owner: &str, id: &Value) -> Result<Option<Value>> {
+        Reads::new(self.database.clone())
+            .remote_execution_context(owner, id)
+            .await
+    }
     pub async fn terminals(&self, owner: &str, project: &str) -> Result<Vec<Value>> {
         Reads::new(self.database.clone())
             .resources(Kind::Terminal, owner, project)

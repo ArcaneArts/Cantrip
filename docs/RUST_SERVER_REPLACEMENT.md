@@ -2,6 +2,767 @@
 
 Status: **implementation in progress; not a deployable replacement**.
 
+## Managed tunnel persistence and reference identity in progress
+
+Native managed-tunnel registration, lookup and removal now preserve the source's
+ownership/placement checks, feature identity, protected revisions, counter and
+creation-time retention, cascades and post-commit reads. Private display fields
+and endpoint addresses are omitted from persisted routing metadata. Missing
+protected content for a private endpoint retains its repository error; an
+unprotected public-adapter insert still reaches the actual database constraint.
+No SQL schema or external protocol changes are introduced.
+
+The combined repository comparison passes 311 operations and 146 complete tunnel/attachment/lease state
+snapshots on each of PGlite, private PostgreSQL and external PostgreSQL. Five new
+external PostgreSQL scenarios observe the actual blocked writes before changing
+the competing state: revision advancement, deletion, a management change,
+management-sensitive removal and duplicate creation. Source/native responses and
+committed state match, including the source's separate read/write boundaries and
+real SQLSTATE failures. Random generated IDs are validated, aliased and sorted
+only in unordered raw-state snapshots; public catalog order remains asserted.
+Creation-time, position and identity retention are asserted separately in each
+runtime so timestamp normalization cannot hide a changed relationship.
+
+An additional case exposes a native reference-cardinality defect: two distinct
+UTF-16 worker IDs could collapse to one replacement-character ID before SQL
+binding. Source rejects that registration while the original native code creates
+it. Native reference checks now retain original JS string identities through
+deduplication and placement comparisons, then bind their lossy UTF-8 text.
+Distinct and identical lone-surrogate cases pass on all three stores. The final-source full native run passes 120 tests across 65 result groups, with
+zero failures or ignored tests. Strict final-source Clippy passes; the rebuilt
+final-source client/full-worker flow passes all 22 steps on all three stores. Owning browser/project-share
+routes and their runtime cleanup still need native integration; these repository
+results do not advance accepted route or platform/package coverage.
+
+Three complete worker runs with actual callback/lifecycle instrumentation retain
+the existing filesystem notification failure. Real native FSWatcher/FSEvent
+handles are created without reported watcher errors, but the affected stream
+delivers no callbacks; one trace already sees the new file in Git status without
+a matching filesystem notification. This narrows the failure boundary without
+proving why native delivery is silent. No production watcher, timeout or test
+parallelism changes were made. Clean-Primary baseline evidence and the earlier
+startup controls remain retained.
+
+## Browser publication and raw handshake compatibility in progress
+
+The independently reproduced worker browser-state loss now has a bounded Node
+integration fix. Refreshes retain pending broadcasts and attachment recipients,
+serialize history/encryption work and take a new snapshot after an in-flight
+refresh. A renderer error can yield to an already queued replacement. Four
+deterministic regressions exercise the public adapter over an actual CDP
+WebSocket with real worker encryption, including concurrent broadcasts,
+concurrent attachments and renderer failure/recovery. The original publisher
+fails both concurrency regressions. No worker rewrite or wire change is involved.
+The focused browser/crypto/CDP/Grok set passes 29 tests. The complete
+client/server/worker rerun passes all 22 steps on each of the three stores;
+final acceptance is retained separately from the initial coalescing build.
+This fixes the proven loss mechanism; the precise cause of the earlier
+intermittent full-flow failure remains unproven.
+
+A new raw TCP handshake comparison retains actual response bytes and headers
+for valid upgrades, malformed keys/versions/protocols and automatic HEAD routes.
+Its first run finds native differences: HEAD incorrectly upgrades, a request's
+close token leaks into the successful response, and Hyper supplies a Date header
+that the raw source handler omits. Native code preserves the source HEAD error
+contract and uses explicit response extensions in the existing Hyper fork to
+retain authored connection headers, disable HTTP reuse and suppress automatic
+dates only for raw responses. Ordinary HTTP close/date behavior is a control.
+All 24 cases pass in both auth profiles against both runtimes on all three stores;
+all response headers are compared, with only validated dates/request IDs
+normalized. Current native HTTP tests pass 13 cases; strict Clippy, Rust formatting
+and the server-boundary audit pass. Configured CI is not platform acceptance.
+
+The isolated whole-repository rerun passes the server's 1,622 tests and app's
+3,899 tests but fails five worker tests. Full worker-only default runs in this
+lane and clean Primary each fail the same filesystem-added-notification assertion,
+with the other tests passing; a four-worker run still fails that assertion.
+No parallelism or timeout configuration was changed. The Grok test now waits for
+all its original final-status assertions within its original two-second timeout,
+since credentials can be readable before profile enrichment/login cleanup finish.
+The other broad-run timeouts remain unwaived. Whole-repository formatting also
+reports 12 unchanged files; the identical formatting failures reproduce in clean
+Primary and their source hashes match. Formatting of this milestone's changed
+files passes; those baseline warnings remain recorded separately.
+
+A controlled watcher-startup investigation disproves the competing-initialization
+hypothesis: the existing sweep guard retains one initialization and status awaits
+it. An uninstrumented held-startup run still misses the added notification;
+a subsequent instrumented run records the actual added event and passes.
+Neither establishes the exact broad-failure cause. No production watcher change
+was made; retain both observations and trace the missing event next.
+
+## Encrypted legacy TCP and shutdown ownership in progress
+
+The combined browser/full-worker flow now includes a legacy CTTN socket step.
+The existing browser attachment API creates credentials and opens the encrypted
+tunnel configuration; production tunnel cryptography protects 40,000+ request
+bytes. The full Node worker decrypts them, forwards to a real loopback
+TCP listener and returns an authenticated encrypted reply. Actual payload hashes,
+half-close and attachment revocation pass against Node and Rust on all three
+stores, bringing this flow to 22 steps per runtime/store. The WebSocket source
+endpoint is controlled test plumbing; production Tauri forwarding and packaged
+desktop acceptance remain required.
+
+Actual runtime fault comparisons cover the production initialization timeout and
+permanent worker credential revocation in local/account modes on all three
+stores. Revocation closes an open stream with its endpoint-disconnected broker
+frame before the socket closes, and persists the matching offline incarnation.
+External PostgreSQL also holds authorization beyond ten seconds: a first message
+captured before the timeout still activates after release, while a message sent
+after timeout cannot replace the rejected initialization promise. Tests observe
+the actual blocked queries and ungranted locks.
+
+Two further local/account PostgreSQL comparisons close the socket and server
+while either authorization or activation is blocked. The process remains alive
+with the admitted database operation, then exits cleanly after lock release.
+Persisted attachment state and relay byte/operation totals match. The activation
+case exposed a source shutdown race: Node ended its database before the late
+activation's offline write. The authorization case exposed usage recording after
+the meter had closed. Production source now owns complete socket initialization,
+activation, retirement and expiry promises, and drains them before ending the
+usage meter/database. Two focused source tests retain the late-write drain proof.
+The native writer also now sends an empty close payload for local code 1005;
+encoding that reserved code had produced an abnormal client close. Both original
+failures and passing comparisons are retained.
+
+The new full native regression passes 120 tests with none failed or ignored;
+strict Clippy, source typechecking and 53 focused source tests pass. The preceding
+attachment HTTP/socket/heartbeat/bandwidth matrix passes again on all three
+stores. CI configures the new encrypted step and fault/shutdown suites; observed
+supported-platform and packaged results remain required.
+
+One extended PGlite run failed an existing browser reload assertion before the
+legacy tunnel step. The worker logged a completed reload but the client retained
+the prior title. The unchanged assertion subsequently passed with added control
+state and actual navigation-request diagnostics. Its cause remains unresolved;
+the failure is retained and must not be treated as unrelated baseline evidence.
+Failed full-worker fixture directories are now retained for investigation.
+An isolated reproduction now executes the actual worker publisher with controlled
+CDP timing and real worker encryption: a concurrent broadcast refresh is dropped
+while an earlier history read is pending, and an explicit later call publishes
+the newer title. The temporary test module only resolves imports and exposes the
+private class; it does not replace the publisher algorithm. This confirms a
+worker publication defect independently of either server, while its causal link
+to the full-flow failure remains unproven. The bounded fix and regressions are
+recorded above; the original reproduction retains the unchanged source snapshot.
+
+The whole-repository `pnpm check` passes the server's 1,622 tests, then fails four
+worker tests (CodeGraph synchronization, filesystem debounce, linked-worktree
+metadata and the Sharp image boundary). Focused runs of the three affected files
+pass all 49 tests in both this lane and clean Primary; 919 worker/dependency source
+files are byte-identical. These broad-run failures remain unexplained, rather
+than established unrelated-baseline exclusions. Their original outputs and both
+focused results are retained.
+
+## Native attachment runtime and legacy sockets in progress
+
+The unmerged WorkerLink milestone now installs the native tunnel runtime in the
+server, lease sweeper and shutdown lifecycle. It owns physical subscriptions,
+activation reservations, heartbeat/expiry timers and late database cleanup.
+Reservations enter the per-attachment queue before task scheduling; replacement,
+disconnect and expiry retain their separate incarnation fences and source order.
+The broker's factory still uses its default activity policy and the production
+relay quota callback.
+
+All six attachment lifecycle/direct/socket routes now run natively. They preserve
+credential rotation, existence-only lease checks, preparation fencing, direct
+activation/finalization, attachment-specific WorkerLink revocation and Live
+invalidation ordering. The legacy socket retains secret/header/subprotocol
+authentication, public-route policy, owner capacity registration, first-message
+capture and timeout before authorization completes, opaque frames and FIFO close
+writes.
+
+Actual Node/native HTTP and socket comparisons pass locally on all three stores.
+Each runtime has 50 local-mode and 55 account-mode HTTP observations, with one
+additional external PostgreSQL race setup observation, plus 17/15 socket cases.
+The production 25-second/10-second heartbeat timers accept the matching 16-byte
+token and retire a wrong token. Rotation revokes the matching WorkerLink grant
+while a sibling grant still renews. Open streams receive their broker close frame
+before the socket close. Persisted relay bytes and operation counts match exactly
+after normal shutdown; actual opaque data and half-close frames are compared.
+
+External PostgreSQL additionally proves three runtime races using observed
+blocking PIDs and ungranted SQL locks: replacement queues behind activation with
+strictly increasing generations; disconnect retains the late activation's fenced
+offline write; expiry during a blocked activation UPDATE waits for that exact
+generation before stopping it. The expiry fixture uses the production Date's
+millisecond precision. An earlier SQL-now fixture accidentally retained
+microseconds and did not match the source's exact expiry fence; its failure is
+retained. The expanded protocol oracle matches 9,067 actual validation/error
+cases. It exposed and corrected a native starts-with issue/message mismatch.
+
+The full native regression passes 120 tests with no failures or ignored tests;
+strict server Clippy also passes. The existing 21-step browser/full-worker
+regression passes again against both servers on all three stores. That flow
+exercises the preceding WorkerLink/direct transports and remains separate from
+actual encrypted legacy TCP and Tauri/packaged acceptance.
+
+These preceding tests use production worker transport with controlled opaque
+responses. The encrypted TCP and fault section above extends their acceptance.
+Full transport operational hooks, managed registration, remaining runtime
+consumers, Redis, Tauri/packaged and supported-platform acceptance remain required.
+The work does not advance the accepted route ledger.
+
+## Legacy tunnel stream core in progress
+
+The same unmerged WorkerLink milestone now includes a native CTTN codec and
+stream broker. This protocol is separate from the WorkerLink carrier. The codec
+retains validated headers and opaque payload bytes, including the source's
+validation/error priority, UTF-8 replacement/BOM behavior, header limits and
+maximum-depth JSON within a valid header. Actual source comparisons pass 160
+byte/error cases. The expanded tunnel wire oracle matches 8,485 validation and
+rendered error cases, including the preceding catalog schemas.
+
+The broker preserves connection identity, sequence/direction checks, plaintext
+flow credit for authenticated ciphertext, half-close, congestion, owner/worker
+quotas, bandwidth windows, idle/lifetime expiry and statistics. Its reentrant
+serialization permits source-style synchronous activity/send callbacks to revoke
+the current route. Actual source execution matches 56 scenarios and 286 complete
+transition/byte/callback/statistics snapshots, including nested termination and
+stale close handles.
+
+The native worker bridge now has a separate typed tunnel binary path, ordered
+listeners and production WebSocket dispatch. Source comparisons cover buffer
+thresholds and in-flight reservations, listener mutation/deduplication, protocol
+isolation, stale peers, callback failure and replacement from inside a listener.
+Binary admission, decode and callback delivery share the reentrant lifecycle
+guard with connection replacement. Tunnel and WorkerLink decode failures now
+use the source's shared bounded warning policy without recording frame contents.
+An already locked dependency provides reentrant synchronization; actual offline
+resolution adds no package versions.
+
+The complete native regression passes 120 tests with none failed or ignored,
+and strict server Clippy passes locally. These preceding core comparisons alone
+do not establish legacy attachment/socket product acceptance. The native runtime
+and production route integration are covered by the section above; full product,
+failure and packaging acceptance remain required. The source production broker
+factory configures relay quota consumption; its activity callback uses the
+broker default. Production wiring must retain that activity policy and the
+relay quota callback.
+
+The existing 21-step real-browser/full-worker regression also passes again
+against Node and Rust on native PGlite, private PostgreSQL and external
+PostgreSQL after these bridge changes. This exercises the previously implemented
+WorkerLink/direct paths and does not substitute for the remaining legacy socket
+and actual Tauri/package acceptance.
+
+## Tunnel catalog and management in progress
+
+The same unmerged WorkerLink milestone now implements all six tunnel catalog
+and user-management HTTP routes, with native list/get/create/update/delete
+repositories. Ownership, owner-specific positions, project placement restrictions,
+active attachment guards, protected revisions, opaque content and ordered
+attachment summaries match the source. Project-scoped listing performs the
+complete project listing before its existence check. Mutations retain the
+source's separate writes and fresh post-write reads; they do not introduce a
+new transaction or optimistic revision predicate.
+
+Actual source/native repository comparisons pass 272 operations and 123 full
+tunnel/attachment/direct-lease state snapshots per store. The matrix includes
+the user/managed capability states, omitted/null fields, listener and destination
+worker ownership, local Git source readiness, numeric rounding, expanded/invalid
+dates, real integer overflow and write-trigger failures. Renamed unused columns
+cause actual PostgreSQL errors. A missing attachment projection after update
+proves that both implementations retain the committed protected revision despite
+the later read failing. Database failures retain raw driver diagnostics and
+compare the actual SQLSTATE and persisted state.
+
+External PostgreSQL additionally passes five catalog races under observed real
+row-lock waits: attachment insertion after the edit/delete guard, a competing
+protected revision after the initial read, and management changes before the
+final update/delete predicate. These supplement the four preceding attachment
+transaction races. The resulting response, fresh attachments, cascade cleanup
+and persisted state match the source.
+
+Actual HTTP comparisons pass on all three stores with 77 local-mode and 83
+account-mode observations per runtime. They compare response bodies/headers,
+CSRF, tenant isolation, typed management conflicts, generic database errors,
+restart persistence and exact response-completion Live invalidations. An invalid
+owned project projection still fails before a missing project's 404. The native
+wire interpreter now implements the installed protocol's strict-object
+intersection behavior; 7,192 actual tunnel validation and rendered error cases
+match. The HTTP and expanded repository suites are configured in CI; these local
+macOS results do not establish supported-platform or packaged acceptance.
+
+The complete native regression passes 117 tests with none failed or ignored;
+strict server Clippy also passes. The existing 21-step real-browser/full-worker
+flow passes again against both servers on all three databases after this change,
+including encrypted terminal, remote-surface and tunnel traffic. Its direct
+carrier still uses controlled forwarding; production Tauri IPC and packaged
+desktop acceptance remain separate requirements.
+
+Attachment management, managed tunnel registration/removal, direct activation,
+legacy relay sockets, complete runtime consumers, Redis and desktop forwarding
+remain required. This work is unmerged and does not advance the accepted route
+ledger or establish a deployable replacement.
+
+## Direct terminal data acceptance in progress
+
+Server-issued terminal capabilities now have actual data-path acceptance through
+the real worker broker. The desktop identity verifier is shared through
+`direct_probe_connection.rs`; its implementation is byte-identical to the prior
+verifier after removing the Tauri attribute. The desktop command remains a thin
+facade with the same request and result. A development Rust executable imports
+that production component using the desktop's WebSocket dependency version. A
+controlled TCP forwarder uses the existing tunnel codec, route/sequence checks
+and credit messages to carry the browser's inner terminal WebSocket.
+
+The existing client crypto protects input, a real PTY executes the private
+command, and the browser authenticates ordered encrypted output. Wrong terminal
+operations are rejected before execution. Actual broker checks reject secret
+reuse, completed revocation and mismatched identity; completed server revocation
+also interrupts an active native broker connection. Broker/tunnel bytes are
+checked for absence of the private command, token and path. These checks pass
+against both servers on native PGlite, private PostgreSQL and external PostgreSQL,
+bringing the combined real-browser/full-worker flow to 21 steps per runtime/store.
+
+The actual Tauri library and desktop probe compile after extraction; strict
+server Clippy passes including the shared verifier example. An additional strict
+desktop Clippy run reports four existing warnings in `tunnel_forward.rs`.
+The same four failures reproduce on clean Primary, and that file is
+byte-identical in both checkouts. The extraction's successful desktop compilation
+and actual native broker traffic are separate evidence from that baseline lint
+failure. No assertions or lint rules were relaxed.
+
+The Rust-server CI matrix now configures this direct-terminal flow on all three
+databases and watches changes to the shared desktop verifier. These are local
+macOS execution results and configured CI, with supported-platform observation
+still required. The forwarder is controlled test plumbing; actual Tauri IPC,
+the production native TCP forwarder, packaged artifacts, fallback across network
+topologies and complete replacement acceptance remain required. This work remains
+part of the same unmerged WorkerLink milestone.
+
+## Legacy terminal WebSocket relay in progress
+
+The unmerged WorkerLink milestone now implements `/api/terminals/:id/connect`.
+It preserves upgrade-time origin rejection, account/session registration, UTF-16
+operation limits, owner/read-only/offline checks, managed consoles, encrypted
+input/output frames, terminal status changes and close codes. Input commands wait
+for the preceding acknowledgment and recover after a rejected command; resize
+commands remain independent. Early frames are metered but ignored until the
+execution context is available. Socket close and late readiness retain their
+separate detach behavior. Child operations enter lifecycle accounting before
+they are spawned, so disconnect cleanup and its writes drain during shutdown.
+
+Local/account comparisons pass on all three storage modes. They
+compare actual socket frames, complete worker commands and persisted bandwidth
+bytes/operation counts, including malformed and binary messages, encrypted output,
+held input acknowledgments, independent resize, startup/exit failures, readiness
+after disconnect, managed consoles and session revocation. Matching attachment
+detach acknowledgments separate scenarios. The legacy logout close reason is
+`Session was revoked`, matching the source. A creation response's exact two
+project invalidations are observed before opening its direct stream; a Live ping
+alone could overtake the asynchronous response hook. External PostgreSQL's
+expanded matrix additionally exercises a genuinely blocked context read and a
+pong barrier before releasing its table lock. The observation uses the actual
+ungranted relation lock and blocking PID; PostgreSQL's activity view truncates
+the source query before its joins, so SQL text alone cannot identify that wait.
+
+The real-browser/full-worker flow passes 19 steps per runtime on all three
+storage modes. Its new legacy socket step encrypts input with the existing client
+module, executes a private command in a real PTY, authenticates ordered encrypted
+output, closes the socket and deletes the terminal. This includes the preceding
+18-step WorkerLink/browser/tunnel flow. The native terminal wire oracle matches
+10,857 actual validation/error cases, and strict Clippy passes. The preceding
+full native regression for this relay change passed 116 tests with none ignored.
+
+Current work remains unmerged. Real direct-terminal broker/data transport,
+remaining resource consumers, shared authority and supported-platform/package
+acceptance are still required, along with the rest of the replacement goal.
+
+## Legacy terminal direct bootstrap in progress
+
+The unmerged WorkerLink milestone now implements `POST /api/terminals/:id/direct`
+using the native direct-attachment coordinator. It preserves request validation,
+preparation leases, owner/worker checks, managed-console startup, opaque state,
+terminal readiness, bootstrap detach, status publication and twelve-hour leases.
+The returned route and installed capability share the same attachment and exact
+endpoint bindings, including UTF-16 client identifiers. Readiness wins over a
+subsequent streaming-command result, matching the source route. Revocation during
+preparation compensates the capability, closes the started terminal and releases
+the lease before resource deletion proceeds. Admitted work survives caller abort.
+
+Actual local/account HTTP comparisons pass on native PGlite, private PostgreSQL
+and external PostgreSQL. They compare complete commands, opaque payloads, schema
+errors and ordered committed/response Live invalidations. A second preparation
+is held at the real worker acknowledgment; deletion's existing-capability
+revocation proves its mutation fence is held before that acknowledgment is
+released. Both rejected preparation and deletion complete with the reference
+cleanup. The timeout scenario waits the real fifteen seconds. The fixture sends
+an authenticated heartbeat so the controlled worker retains normal presence.
+Native direct validation matches 1,584 actual protocol/error cases, including the
+new request and ticket schemas. Strict Clippy passes locally.
+
+The existing real-browser/full-worker flow also passes again on all three
+storage modes after these changes, with 18 steps per runtime/store covering
+encrypted PTYs, Chromium surfaces and tunnel traffic. This regression flow uses
+WorkerLink; it does not establish real direct-terminal data transport.
+
+This is controlled-worker HTTP acceptance. Real direct-terminal broker/data
+traffic, legacy relay sockets, supported-platform/package acceptance and merged
+delivery remain required; the route ledger is unchanged.
+
+## Terminal deletion and workspace ownership cleanup in progress
+
+The unmerged WorkerLink milestone now includes native terminal deletion under
+the direct resource mutation fence. WorkerLink resource grants are revoked first,
+including pending installations. The transaction locks the owning project and
+its ordered workspace rows, removes every matching view, preserves detached
+windows and conversion/transfer metadata, clears runtime bindings and detaches
+the legacy pane placement before deleting the terminal. Focus/history, pane
+anchors and labels, compact member positions and center-tree collapse match the
+source. Active Run configuration instances still prevent deletion. A rejected
+worker close does not undo the committed deletion, and admitted deletion survives
+caller disconnect while waiting for a revocation acknowledgment.
+
+Actual three-store repository comparisons pass 87 cases and 91 complete state
+snapshots per store. They include multiple device/window views, untouched foreign
+layouts, running interactive terminals, all four active Run states, revision
+overflow, invalid ownership, project scope mismatch, missing topology and exact
+transaction rollback. The source's pending-transfer behavior is retained. Native
+ownership/tab/recursive-center validation matches 7,131 actual protocol cases and
+their error messages; this is not a complete workspace command executor.
+
+The actual TypeScript cleanup helpers now generate 18 embedded SQL shapes and
+their projected column positions. Native reads execute those exact selections;
+failed writes retain the exact source SQL and parameters. Eleven real trigger
+failures and four missing-column failures compare diagnostics and complete
+transaction rollback. SQL write timestamps are checked against the actual run
+before normalization, while raw diagnostics remain in the reports. A JSONB
+`null` legacy root follows the source missing-root error, and an emptied center
+tree is stored as SQL `NULL`, matching the source's physical representation.
+
+Four external PostgreSQL races observe the deletion genuinely blocked before
+releasing its writer. They verify that workspace cleanup reads the updated,
+locked layout; deletion returns its pre-lock execution context; the Run guard
+retains the source's pre-lock admission snapshot; and a concurrent deletion still
+cleans up ownership. Complete response and persisted-state outcomes match.
+
+Expanded local/account HTTP comparisons pass on all three stores. An actual
+PostgreSQL foreign-key rejection proves deletion cleanup rolls back and preserves
+the exact source DELETE diagnostic. The multi-grant test exposed Tokio task
+spawning reordering commands from an ordered revocation batch. The command bus
+now reserves FIFO dispatch order in the caller and performs transport work in an
+owned task, releasing the reservation before awaiting acknowledgment. Independent
+owner lookups remain independent. Inline transport would reenter the bridge from
+an offline callback while its lifecycle lock is held; a retained thread sample
+proves that hang, and the corrected queue passes the actual offline/replacement,
+admission, budgets and bridge tests.
+
+The full-worker comparisons also reproduced Node shutdown hanging beyond 105
+seconds with one zero-byte TCP connection and no active HTTP work. The application
+now tracks actual admitted HTTP requests and closes idle/unadmitted connections
+at preClose; active requests drain and upgraded transports retain their existing
+owners. Four real-socket tests cover speculative connections, partial headers,
+an admitted held response and upgrade ownership. The original timeout reports
+and partial-header reproduction are retained. Successful reruns do not by
+themselves establish complete shutdown/platform acceptance.
+
+Terminal direct/legacy streams and other resource lifecycle consumers remain
+required, along with the rest of the replacement goal. This local work remains
+unmerged and does not advance the accepted route ledger or establish platform,
+packaging or migration readiness.
+
+## Terminal worktree lifecycle in progress
+
+The unmerged WorkerLink milestone now implements terminal worktree movement.
+It preserves request parsing, owner/project capability checks and their order,
+read-only/linked/running restrictions, ready and nonremoved target selection,
+worker placement, opaque state and response-completion Live invalidations.
+The direct-attachment resource mutation fence owns the full operation, while
+WorkerLink grants are revoked before resource checks, including a rejected move.
+The production service boundary now exposes resource-scoped grant revocation.
+
+Actual repository comparisons pass 50 cases and 30 complete terminal/layout
+snapshots on each of native PGlite, private PostgreSQL and external PostgreSQL.
+The expanded HTTP matrices pass local and account profiles on all three stores.
+They verify invalid requests retaining authority, foreign-owner isolation,
+rejection after revocation, an installation losing authority before its worker
+acknowledgment and exact ordered Live changes. External PostgreSQL additionally
+holds the worker revocation acknowledgment, aborts the HTTP caller and observes
+the subsequent placement write. An actual CHECK rejection preserves the source
+SQL error response and original placement. Diagnostics are captured from the
+actual source repository; only the validated wall-clock write timestamp is
+normalized for comparison.
+
+Further deletion failure/locking acceptance, terminal direct/legacy attachment
+routes and the remaining resource lifecycle consumers are still required.
+This progress remains unmerged and does not advance the
+accepted route ledger or establish packaged/platform readiness.
+
+## Tunnel grants and durable attachment leases in progress
+
+The unmerged WorkerLink milestone now includes native tunnel grant issuance,
+opaque attachment authorization, credential rotation, activation markers,
+generation-fenced disconnect/stop, bounded direct leases, finalization, expiry
+and single-instance startup recovery. Owning-tunnel row locks serialize writers.
+Preparation leases survive admitted HTTP work and are released on every return;
+late placement/client/deletion changes revoke the installed grant, and a changed
+credential generation cannot activate it. A real activation-write failure rolls
+back the database transaction and compensates the worker grant. Successful grants
+publish the reference project/current-user tunnel invalidation.
+
+Actual-source repository comparisons pass 80 cases and 17 full snapshots on each
+database mode. External PostgreSQL also observes four genuinely blocked writers,
+changes a credential or activation generation before releasing the lock, and
+compares complete outcomes. The comparison deliberately retains the reference's
+pre-lock renewal snapshot and exact millisecond Date stop fence, including the
+case where legacy microsecond expiry values cannot match it.
+
+The comparisons exposed a production Node PostgreSQL bug: four raw SQL lease
+expressions supplied Date objects to an adapter that disables the date serializer.
+The real-clock reference rotation failed before the fixture's deterministic clock
+was installed. Those expressions now bind ISO strings, preserving the timestamp
+calculation on PGlite and enabling the same rotation/lease behavior on PostgreSQL.
+The reproduction is retained; the actual repository matrices exercise the fix.
+
+The native minute sweep owns and drains admitted database writes, and direct
+coordinator renewal/finalization callbacks now persist tunnel leases. The actual
+60-second timer comparison on external PostgreSQL observes both lease expiry and
+hard attachment expiry, their ordered Live changes, and the committed rows.
+HTTP comparisons cover local/accounts, exact grants and command order, caller
+disconnects, post-install mutations and real SQL activation failure on all stores.
+
+The existing browser `openTunnelWorkerLink` and unchanged full worker carry an
+authenticated encrypted 40 KB request to a real loopback TCP target, preserve
+half-close and return an authenticated encrypted reply on all three stores. The
+source endpoint uses the production tunnel AES implementation; this is not the
+Tauri native forwarder or desktop IPC. The fixture seeds an existing encrypted
+tunnel and attachment after the production client authorizes the worker's
+`tunnel-content` key. The combined browser/terminal/surface/tunnel flow completes
+18 steps per server/store locally.
+
+Tunnel catalog/CRUD, attachment management/direct/legacy sockets, the complete
+runtime/brokers, resource mutation revocation consumers and desktop forwarding
+remain required. Redis/shared recovery, supported-platform/package acceptance
+and coherent merged delivery also remain unfinished. No route-ledger acceptance
+or production cutover is claimed by this progress.
+
+## Remote-surface grants and operational logging in progress
+
+The same unmerged WorkerLink milestone now includes native Browser and Remote
+Desktop grants. Requests preserve validation/authorization order, opaque state,
+desktop stream preferences, attachment acknowledgment, two-lane grant installation,
+post-install state/placement checks, compensating revocation and finally cleanup.
+Status writes publish the reference's three ordered current-user invalidations;
+successful HTTP responses publish the additional resource/layout invalidations.
+Terminal grants now also publish their reference response-completion invalidations.
+An actual database failure in the catch's status write still runs attachment
+cleanup. Disconnecting the HTTP caller does not abandon admitted work.
+
+Canonical remote contexts now require both the project and worker owner, matching
+the source join even for inconsistent cross-owner database rows. Browser backfill
+uses the source's project/default-worker and ready-worktree selection, preserves
+existing surfaces and skips missing sources. The native single-instance startup
+runs that local-owner backfill and resets transient surface statuses while
+preserving errors and last-connected timestamps. Shared startup recovery still
+requires the future coordinator's observed instance count.
+
+Local macOS comparisons pass 52 repository cases and 19 full state snapshots on
+each of native PGlite, private PostgreSQL and external PostgreSQL. The expanded
+terminal/surface HTTP matrices pass both local and account profiles on all three
+stores, including complete command order and committed status/response Live
+events. External PostgreSQL additionally exercises state changes and deletion
+during grant installation, primitive stored-label failure and an actual rejected
+error-status write. The real browser test now uses the existing
+`RemoteSurfaceWorkerLinkClient`, production encryption and a full unchanged worker
+rendering Chromium: authenticated private state/JPEG output, encrypted reload and
+grant release pass on all three database modes (17 combined product steps per
+runtime/store). It seeds an existing
+encrypted browser row; browser CRUD and Remote Desktop capture acceptance remain
+separate required work. A retained Chromium CDP attachment failure is recovered
+by the production client's normal retry; this is not proof that the underlying
+worker startup race is fixed.
+
+Shared log emission now implements source-compatible text/context redaction,
+UTF-16 truncation and keys, sampled events, bounded repeated-event suppression and
+window summaries. Actual TypeScript comparisons cover 65,937 sanitizer/error
+vectors and 2,136 policy actions across eight scenarios. Direct-attachment
+comparisons pass 334 cases/15 scenarios with the production log policy; routing
+and worker-link revocation diagnostics also match the source calls. Runtime log
+buffer/archive APIs, formatting and complete production metrics remain unfinished.
+All of this work remains unmerged and does not advance the accepted route ledger.
+The preceding local full native regression passed 116 tests with none ignored;
+strict server Clippy also passes. These are macOS results, not platform or
+packaged-artifact acceptance.
+
+## Managed consoles and terminal WorkerLink grants in progress
+
+The unmerged WorkerLink milestone now includes native terminal grant issuance.
+It validates the request before authority/resource lookup, preserves read-only
+and placement failures, waits for the actual terminal readiness event, detaches
+the bootstrap attachment, installs the grant and rechecks placement. Startup,
+worker-result, detach and installation failures preserve the reference cleanup
+and terminal status behavior. Caller disconnect does not cancel admitted work.
+Real PostgreSQL mutation during grant installation proves that moved/deleted
+resources receive a compensating grant revocation and a conflict response.
+
+Linked consoles use native model/account eligibility, usage reserves, credit
+balances, cooldowns, catalog hydration/reload, reasoning and exact root/subagent
+pairing. Effective permissions, managed session context and opaque MCP selection
+feed the real `chat.thread.ensure` command. Existing threads avoid binding writes;
+new threads select the model and update the canonical runtime in the reference's
+two separate transactions before `terminal.open` is sent. A failed second
+transaction retains the committed model selection. Thread identifiers retain
+UTF-16 on the wire and use Node-compatible UTF-8 replacement at database storage.
+
+The same complete project/standalone chat execution-context projection now serves
+Live authorization and execution targets. Actual-source comparisons pass 583
+repository/service/helper cases and 31 state snapshots per store on native
+PGlite, private PostgreSQL and external PostgreSQL. Three additional real
+PostgreSQL lock scenarios observe the blocked backend and introduce a handoff or
+route replacement before releasing the lock; both implementations reject the
+writer without committing its model update. Chat summaries match 8,013 actual
+protocol/error cases, and the expanded WorkerLink/result roots match 9,289 cases.
+These dependencies do not constitute a completed chat/execution domain.
+
+The controlled-worker terminal HTTP/Live matrix passes in local and account modes
+on all three stores, including exact terminal command order and persisted console
+bindings. It exercises invalid/open-before-ready and ready-before-result outcomes,
+the actual 15-second startup timer, detach retry cleanup, rejected installation
+and caller abort. External PostgreSQL additionally covers actual placement changes
+and deletion during installation. The existing browser terminal transport and
+encryption modules also run against each server and the full unchanged worker:
+encrypted input executes in a real PTY, produces filesystem proof and returns
+authenticated encrypted output over relay. This completes 16 combined product
+steps per runtime on each store. Linked Codex startup still has controlled worker
+results; a full real Codex-console product run remains required.
+
+The first two new terminal abort runs finished their Node scenarios but timed out
+during Node shutdown with one remaining socket. The abort fixture now owns a
+single-use HTTP caller socket; complete Node/Rust runs pass on all three stores
+without changing server shutdown behavior. A separate new combined native-probe
+browser run still timed out during Node shutdown before Rust. These retained
+failures do not establish that the earlier intermittent shutdown issue is fixed.
+
+## WorkerLink authority, native HTTP and binary relay in progress
+
+Native WorkerLink authority now models session identities, acknowledged session
+and grant installation, lease renewal/expiry, scoped revocation fences, peer
+rounds and ordered signaling mailboxes. Identity keys retain UTF-16 code units.
+Capabilities return only after the worker acknowledgment; worker installations
+receive SHA-256 token hashes. The controlled-worker comparison executes the
+actual TypeScript coordinator and the native coordinator: 567 cases pass locally,
+including installation/revocation and renewal/shutdown races, capacity limits,
+failed acknowledgments, mailbox cursors and signaling byte/count bounds.
+
+Native binary frame and remote-surface chunk codecs preserve validated bytes,
+header/payload bounds, UTF-8 replacement, chunk ordering and incomplete-frame
+replacement policy. All 127 actual-protocol binary/assembly/byte-bound cases and
+9,289 validation/error-message comparisons pass locally.
+
+The worker bridge now sends and receives these frames over its native binary
+socket, preserves ordered subscriptions and permanent-offline callbacks, and
+accounts for queued/in-flight WebSocket frame bytes through actual writer
+completion or cancellation. The native relay implements per-direction channel
+sequences, replay rejection, closing-channel tombstones, remote-surface permits,
+payload quotas, feature traffic recording, bounded lane queues, fair draining and
+stall retirement. It matches 148 actual-reference snapshots in 33 scenarios.
+
+The server runtime binds authority to its actual command bus, configuration,
+shared relay quotas and usage meter. Native HTTP handlers cover session
+opening/renewal, peer creation/signals/mailboxes/release and grant renewal/release;
+the authenticated binary relay socket checks Origin, client/session ownership,
+duplicate query values and stale generations before HTTP upgrade, and checks
+authority again afterward. Logout owns the database revocation and capability
+cleanup across caller cancellation, preserving Live/capability/socket ordering.
+Shutdown closes the relay and coordinator before the worker bridge and drains
+owned callbacks before database closure.
+
+Actual Node/Rust HTTP/socket comparisons pass locally on all three storage
+modes with the unchanged production WorkerConnection and controlled command
+acknowledgments. They include byte-exact bidirectional frames, persisted ingress
+and egress feature bytes, early peer signals, replay/error close codes and aborted
+HTTP installation/logout. Raw command traces are retained; only independent
+account-session revocation batches are compared without ordering, matching the
+reference's explicit Promise.all and asynchronous owner lookups. A full native
+regression run passes 114 tests with none ignored, including authentication,
+sessions, worker bridge, WorkerLink and the existing resource domains. Strict
+all-target server Clippy passes. The final thread storage conversion was added
+while that full run was in flight and is covered by the fresh three-store
+managed-console comparisons above and the final all-target Clippy run.
+
+Native direct-attachment authority now implements preparation leases, resource
+generation/kind fences, queued resource mutation, scoped revocation, per-capability
+renewal serialization, exact expiry/renewal decisions, activation, monotonic
+telemetry and bounded retired-tunnel accounting. It preserves transient transport
+failure versus fail-closed renewal behavior and drains lifecycle persistence.
+Actual-reference comparisons pass 270 cases across 14 scenarios, including late
+acknowledgments, caller-owned mutation failures, UTF-16 identity fences and delayed
+renewal during revocation. Another 841 protocol/error cases and 139 operational
+transport metric snapshots match the actual TypeScript implementation. Real native
+timer tests verify that expiry revocation survives through acknowledgment and
+shutdown waits for pending persistence; background expiry RPCs have a separate
+runtime drain before database closure.
+
+The production native runtime now composes this authority with its actual worker
+command bus and permanent-offline subscriptions. Logout revokes direct authority
+before WorkerLink authority; shutdown closes both before the bridge. Session
+route changes, release, direct preparation/activation and telemetry now use their
+native consumers. Generic direct probe, release and telemetry/renewal routes also
+execute in Rust, including the reference telemetry validator's thrown-error path.
+The operational transport collector retains direct/WorkerLink counters and exports
+the corresponding Prometheus series; the full operational endpoint remains a
+separate unported consumer.
+
+The expanded actual HTTP/socket matrix passes locally on native PGlite, private
+PostgreSQL and external PostgreSQL: 83 local-mode and 99 account-mode HTTP
+observations per runtime/store, plus 15 and 19 socket observations. It verifies
+direct ticket binding, activation/telemetry, route replacement, scoped release,
+worker failures and cleanup after aborted direct preparation. Observation grants
+now preserve body validation, owner/account-session isolation, actual worker
+installation, token hashing, renewal and release. A held installation surviving
+caller disconnect cannot resurrect a released session: both servers send the
+session revoke and a compensating grant revoke after the late acknowledgment.
+These HTTP tests use the production worker transport with controlled command
+outcomes; separate product flows below use the full unchanged worker.
+
+The existing browser WorkerObservationClient and WorkerLinkManager now exercise
+real observation grants and events channels through both servers and the full
+worker. Real PTY process exit generates the observation; the client validates its
+continuity and process generation, receives binary data and returns credit, then
+releases the grant and session. All three storage modes pass the complete flow.
+The native desktop probe is also executed from its production Rust source against
+the full worker's actual broker. It verifies the server-advertised signed identity
+and rejects secret reuse, completed server revocation and a mismatched broker
+identity. The combined folder/PTY/observation/native-probe flow passes 17 product
+steps per runtime on each store locally. This proves the native probe component,
+not packaged desktop supervision, WebView IPC or the LOCAL WorkerLink data carrier.
+
+Two actual LAN/WebRTC attempts failed in the Node reference before Rust was
+reached. One timed out a worker signaling request after five seconds; another
+acknowledged the offer, mDNS candidate and completion but remained on relay.
+The test requires LAN and rejects relay fallback. These failures remain retained
+and unresolved. An earlier external PostgreSQL Node product run also timed out
+during HTTP shutdown; request/repository/notification diagnostics were added to
+the disposable oracle, and a subsequent complete run passed. That intermittent
+shutdown failure is not considered resolved by the later pass.
+
+The native probe example builds and both Rust projects pass formatting. Strict
+desktop Clippy still fails four existing lints in `tunnel_forward.rs`; the same
+four errors were reproduced on clean `main`, with byte-identical source and Cargo
+files. This does not affect the separate passing server Clippy result and remains
+part of desktop acceptance work.
+
+Remaining remote/tunnel resource grants and resource mutation revocation consumers,
+full linked Codex/resource execution, desktop LOCAL carrier and IPC,
+congestion faults, shared/Redis authority and supported-platform/package acceptance
+remain unfinished. Tunnel lifecycle persistence observers are implemented and
+tested; the production tunnel repository/runtime consumer remains unported. The
+native operational logger now has the shared reference noise-control policy;
+buffer/archive APIs and complete metrics remain required.
+These checks do not establish complete WorkerLink product acceptance or advance
+the route coverage ledger yet. The current WorkerLink work remains unmerged.
+
+```sh
+node --import tsx scripts/server-rust/worker-link-coordinator-compatibility.mjs --report .qa/rust-server/worker-link-coordinator.json
+node --import tsx scripts/server-rust/direct-attachment-compatibility.mjs --report .qa/rust-server/direct-attachment-coordinator.json
+node --import tsx scripts/server-rust/worker-link-http-compatibility.mjs --database pglite --report .qa/rust-server/worker-link-http-pglite.json
+node --import tsx scripts/server-rust/worker-link-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/worker-link-http-bundled.json
+node --import tsx scripts/server-rust/worker-link-http-compatibility.mjs --database postgres --report .qa/rust-server/worker-link-http-external.json
+node --import tsx scripts/server-rust/actual-folder-client.mjs --terminals --worker-links --native-probe --database pglite --report .qa/rust-server/actual-worker-link-pglite.json
+```
+
 ## Terminal management and encrypted PTY services
 
 The first Windows terminal product run failed in the reference Node flow before

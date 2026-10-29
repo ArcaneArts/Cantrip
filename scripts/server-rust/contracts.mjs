@@ -61,6 +61,9 @@ export const contractRoots = [
   "executionTargetResolveRequestSchema",
   "executionTargetWireCatalogSchema",
   "chatWireSummarySchema",
+  "projectChatWireSummarySchema",
+  "standaloneChatWireSummarySchema",
+  "contextualChatWireSummarySchema",
   "modelConfigurationSchema",
   "agentInteractionProvenanceSchema",
   "workerServerEnvelopeSchema",
@@ -130,8 +133,57 @@ export const contractRoots = [
   "encryptedTerminalCreateSchema",
   "encryptedTerminalUpdateSchema",
   "encryptedTerminalServiceConfigurationSchema",
+  "worktreeSelectionSchema",
+  "workspaceOwnershipSchema",
+  "workspaceTabSchema",
+  "projectCenterLayoutNodeSchema",
   "terminalWireSummarySchema",
   "terminalWireListSchema",
+  "tunnelUserWireCreateSchema",
+  "tunnelUserWireUpdateSchema",
+  "tunnelWireSummarySchema",
+  "tunnelWireListSchema",
+  "tunnelDataPlaneFrameHeaderSchema",
+  "workerLinkIdentityResolveResultSchema",
+  "workerLinkSessionOpenRequestSchema",
+  "workerLinkSessionSchema",
+  "workerLinkLeaseSchema",
+  "workerLinkGrantBindingSchema",
+  "installedWorkerLinkGrantSchema",
+  "workerLinkResourceGrantSchema",
+  "workerLinkTunnelGrantRequestSchema",
+  "workerLinkTunnelGrantSchema",
+  "workerLinkObservationGrantRequestSchema",
+  "workerLinkTerminalGrantRequestSchema",
+  "workerLinkRemoteSurfaceGrantRequestSchema",
+  "remoteSurfaceAttachResultSchema",
+  "terminalOpenResultSchema",
+  "terminalClientMessageSchema",
+  "terminalServerMessageSchema",
+  "workerLinkPeerConfigurationSchema",
+  "workerLinkPeerSessionOpenRequestSchema",
+  "workerLinkPeerSessionSchema",
+  "workerLinkPeerSessionDescriptorSchema",
+  "workerLinkPeerSignalEnvelopeSchema",
+  "workerLinkPeerSignalBatchSchema",
+  "workerLinkPeerMailboxReadRequestSchema",
+  "workerLinkPeerMailboxSchema",
+  "workerLinkRouteUpdateRequestSchema",
+  "workerLinkDirectActivationSchema",
+  "workerLinkTelemetryBatchSchema",
+  "workerLinkFrameHeaderSchema",
+  "directAttachmentTicketSchema",
+  "projectShareDirectCreateSchema",
+  "directTunnelTicketSchema",
+  "directTunnelPrepareRequestSchema",
+  "tunnelAttachmentCreateSchema",
+  "tunnelAttachmentCreateResultSchema",
+  "tunnelAttachmentInitializeSchema",
+  "tunnelAttachmentReadySchema",
+  "tunnelDirectActivationSchema",
+  "directCapabilityPrepareResultSchema",
+  "directCapabilityRenewResultSchema",
+  "directTransportTelemetrySchema",
 ];
 
 const refinements = new Map([
@@ -178,6 +230,12 @@ function registerChecks(schema, tags) {
 registerChecks(protocol.repositoryWorkerOperationWireRequestSchema, [
   "repository-agent-model",
 ]);
+registerChecks(protocol.workerLinkPeerSignalBatchSchema, [
+  "worker-link-signal-bytes",
+]);
+registerChecks(protocol.workerLinkPeerMailboxSchema, [
+  "worker-link-mailbox-bytes",
+]);
 registerChecks(protocol.clientControlCapabilitiesSchema, [
   "live-control-capabilities-unique",
 ]);
@@ -198,6 +256,8 @@ registerChecks(protocol.clientNotificationOpaqueSchema, [
 registerChecks(protocol.appLiveEventPayloadSchema, ["live-payload-bytes"]);
 registerChecks(protocol.projectWireSummarySchema, ["project-wire-summary"]);
 registerChecks(protocol.chatWireSummarySchema, ["chat-title-kind"]);
+registerChecks(protocol.projectChatWireSummarySchema, ["chat-title-kind"]);
+registerChecks(protocol.standaloneChatWireSummarySchema, ["chat-title-kind"]);
 registerChecks(protocol.githubAgentWorkflowContextSchema, [
   "github-agent-workflow-context",
 ]);
@@ -265,6 +325,15 @@ registerChecks(protocol.encryptedTerminalCreateSchema, [
 ]);
 registerChecks(protocol.encryptedTerminalUpdateSchema, ["terminal-title"]);
 registerChecks(protocol.terminalWireSummarySchema, ["terminal-wire"]);
+registerChecks(protocol.tunnelUserWireCreateSchema, [
+  "tunnel-create-operation",
+  "tunnel-create-revision",
+]);
+registerChecks(protocol.workspaceOwnershipSchema, ["workspace-ownership"]);
+registerChecks(protocol.workspaceTabSchema, ["workspace-tab"]);
+registerChecks(protocol.projectSurfaceResourceRefSchema, [
+  "workspace-resource",
+]);
 const commandContracts = registerWorkerCommandContracts(registerCustom);
 const transforms = new Map([
   [protocol.appLiveEventPayloadSchema._zod.def.out, "live-json-object"],
@@ -280,6 +349,7 @@ const allowedTypes = new Set([
   "literal",
   "enum",
   "union",
+  "intersection",
   "nullable",
   "optional",
   "default",
@@ -350,6 +420,12 @@ export function buildContractManifest() {
       node.checks = [];
       return id;
     }
+    if (schema === protocol.projectCenterLayoutNodeSchema) {
+      node.type = "forward";
+      node.innerType = visit(schema._zod.def.getter(), where + "/lazy");
+      node.checks = [];
+      return id;
+    }
     const def = schema._zod.def;
     if (!allowedTypes.has(def.type))
       throw new Error(`Unimplemented native schema type ${def.type}: ${where}`);
@@ -371,6 +447,8 @@ export function buildContractManifest() {
       "in",
       "out",
       "rest",
+      "left",
+      "right",
     ])
       if (def[key]) node[key] = visit(def[key], `${where}/${key}`);
     if (def.options)
@@ -408,9 +486,20 @@ export function buildContractManifest() {
         return {
           check: "refinement",
           tag,
-          // This WorkerLink callback explicitly supplies path before message.
+          // These callbacks explicitly supply path before message. Predicate
+          // issues acquire their configured message during Zod finalization.
           messageAfterPath:
-            c.type === "custom" || tag === "worker-wire-link-candidates",
+            c.type === "custom" ||
+            [
+              "worker-wire-link-candidates",
+              "worker-command-link-lease",
+              "worker-command-link-configuration",
+              "worker-command-link-grant",
+              "worker-command-link-session",
+              "worker-link-signal-bytes",
+              "workspace-ownership",
+              "workspace-tab",
+            ].includes(tag),
           ...(message ? { message } : {}),
           ...(c.path ? { path: c.path } : {}),
           ...(c.abort ? { abort: true } : {}),
@@ -432,6 +521,7 @@ export function buildContractManifest() {
         "value",
         "inclusive",
         "abort",
+        "prefix",
       ])
         if (c[key] !== undefined) result[key] = c[key];
       if (c.pattern) {

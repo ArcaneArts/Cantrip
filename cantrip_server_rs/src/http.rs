@@ -14,6 +14,7 @@ use crate::auth::service::AuthService;
 mod account;
 mod audit;
 mod body;
+mod direct_attachments;
 mod encryption;
 mod folders;
 mod live_socket;
@@ -30,10 +31,23 @@ mod provider_telemetry;
 mod repository_operations;
 mod sessions;
 mod settings;
+mod terminal_direct;
+mod terminal_socket;
 mod terminals;
+mod tunnel_attachments;
+mod tunnel_direct;
+mod tunnel_socket;
+mod tunnels;
 mod usage;
 mod usage_hooks;
 mod websocket;
+mod worker_link_observations;
+mod worker_link_sessions;
+mod worker_link_socket;
+mod worker_link_surfaces;
+mod worker_link_terminals;
+mod worker_link_tunnels;
+mod worker_links;
 mod worker_maintenance;
 mod worker_socket;
 mod workers;
@@ -108,6 +122,10 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .route("/healthz", get(health))
         .route("/readyz", get(ready))
         .merge(sessions::routes())
+        .merge(worker_links::routes())
+        .merge(worker_link_sessions::routes())
+        .merge(direct_attachments::routes())
+        .merge(worker_link_socket::routes())
         .merge(encryption::routes())
         .merge(account::routes())
         .merge(usage::routes())
@@ -117,6 +135,10 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(repository_operations::routes())
         .merge(settings::routes())
         .merge(terminals::routes())
+        .merge(tunnels::routes())
+        .merge(tunnel_attachments::routes())
+        .merge(tunnel_socket::routes())
+        .merge(terminal_socket::routes())
         .merge(provider_accounts::routes())
         .merge(provider_catalogs::routes())
         .merge(provider_credentials::routes())

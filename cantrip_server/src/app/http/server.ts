@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import Fastify, { type FastifyInstance } from "fastify";
 
 import type { ServerConfig } from "../../config.js";
+import { installIdleConnectionShutdown } from "./idle-connections.js";
 import {
   createServerLogStream,
   SERVER_LOG_REDACTION_PATHS,
@@ -55,6 +56,7 @@ export function createApplicationServer(
     { bodyLimit: encryptedAttachmentUploadLimitBytes, parseAs: "buffer" },
     (_request, body, done) => done(null, body),
   );
+  installIdleConnectionShutdown(app);
 
   return {
     app,

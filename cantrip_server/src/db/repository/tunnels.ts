@@ -939,10 +939,12 @@ export class TunnelRepository {
           .update(schema.tunnelAttachments)
           .set(values)
           .where(eq(schema.tunnelAttachments.id, attachmentId));
+        // Raw SQL parameters bypass Drizzle's timestamp-column encoder. The
+        // PostgreSQL adapter expects these timestamps serialized already.
         await transaction
           .update(schema.tunnelAttachmentDirectLeases)
           .set({
-            leaseExpiresAt: sql`LEAST(${schema.tunnelAttachmentDirectLeases.leaseExpiresAt}, ${input.expiresAt})`,
+            leaseExpiresAt: sql`LEAST(${schema.tunnelAttachmentDirectLeases.leaseExpiresAt}, ${input.expiresAt.toISOString()})`,
             updatedAt: now,
           })
           .where(
@@ -1272,7 +1274,7 @@ export class TunnelRepository {
         .onConflictDoUpdate({
           target: schema.tunnelAttachmentDirectLeases.capabilityId,
           set: {
-            leaseExpiresAt: sql`LEAST(GREATEST(${schema.tunnelAttachmentDirectLeases.leaseExpiresAt}, ${boundedLeaseExpiresAt}), ${current.expiresAt})`,
+            leaseExpiresAt: sql`LEAST(GREATEST(${schema.tunnelAttachmentDirectLeases.leaseExpiresAt}, ${boundedLeaseExpiresAt.toISOString()}), ${current.expiresAt.toISOString()})`,
             updatedAt: now,
           },
           setWhere: and(
@@ -1350,7 +1352,7 @@ export class TunnelRepository {
       const rows = await transaction
         .update(schema.tunnelAttachmentDirectLeases)
         .set({
-          leaseExpiresAt: sql`LEAST(GREATEST(${schema.tunnelAttachmentDirectLeases.leaseExpiresAt}, ${boundedLeaseExpiresAt}), ${attachment.expiresAt})`,
+          leaseExpiresAt: sql`LEAST(GREATEST(${schema.tunnelAttachmentDirectLeases.leaseExpiresAt}, ${boundedLeaseExpiresAt.toISOString()}), ${attachment.expiresAt.toISOString()})`,
           updatedAt: now,
         })
         .where(
@@ -1443,7 +1445,7 @@ export class TunnelRepository {
           target: schema.tunnelAttachmentDirectLeases.capabilityId,
           set: {
             finalizedAt: now,
-            leaseExpiresAt: sql`LEAST(GREATEST(${schema.tunnelAttachmentDirectLeases.leaseExpiresAt}, ${boundedLeaseExpiresAt}), ${hardExpiresAt})`,
+            leaseExpiresAt: sql`LEAST(GREATEST(${schema.tunnelAttachmentDirectLeases.leaseExpiresAt}, ${boundedLeaseExpiresAt.toISOString()}), ${hardExpiresAt.toISOString()})`,
             status: "finalized",
             updatedAt: now,
           },

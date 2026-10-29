@@ -1,10 +1,12 @@
 //! Transactional pane placement used by terminal creation.
 mod center;
+mod detach;
 use crate::{
     database::{Database, Transaction},
     wire::Value,
 };
 use anyhow::{Context, Result, ensure};
+pub use detach::detach_terminal;
 
 pub async fn next_position(database: &Database, project: &str) -> Result<i64> {
     let read = async |table: &str, extra: &str| -> Result<i64> {

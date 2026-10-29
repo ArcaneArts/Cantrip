@@ -149,14 +149,22 @@ impl LiveService {
         Ok(())
     }
     pub fn revoke(&self, revocation: &Revocation) {
+        self.revoke_live(revocation);
+        self.close_revoked_sockets(revocation);
+    }
+    pub fn revoke_live(&self, revocation: &Revocation) {
+        match revocation {
+            Revocation::Owner(owner) => self.hub.revoke_owner(owner),
+            Revocation::Session(session) => self.hub.revoke_optional_session(session.as_deref()),
+        };
+    }
+    pub fn close_revoked_sockets(&self, revocation: &Revocation) {
         match revocation {
             Revocation::Owner(owner) => {
-                self.hub.revoke_owner(owner);
                 self.sessions
                     .close_owner(owner, "Account sessions were revoked");
             }
             Revocation::Session(session) => {
-                self.hub.revoke_optional_session(session.as_deref());
                 if let Some(session) = session {
                     self.sessions.close_session(session, "Session was revoked");
                 }

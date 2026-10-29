@@ -3,7 +3,7 @@
   "completeReplacement": false,
   "inventory": {
     "path": "docs/security/server-route-inventory.json",
-    "sha256": "d3d736303df411dfff7a1cb4cf8ebd72b682b8ae79a595c54d947a8eb94d1ae1",
+    "sha256": "66b1c0800a16dc6739f633fe99d96523abadb8915e15b41c6a797e0dfa96cde7",
     "baselineCommit": "899defa8bce147a196a7fad83cab130af7b55415",
     "counts": {
       "routes": 520,
@@ -11,7 +11,8 @@
       "durableTables": 110,
       "repositoryMethods": 363,
       "liveResources": 45
-    }
+    },
+    "workingTreeNote": "Source file inventory refreshed for the idle-HTTP shutdown helper; baseline route/command/table/method/resource counts are unchanged."
   },
   "interpretation": "Every row in the referenced inventory inherits its category default unless explicitly overridden. Schema creation is not domain behavior. Test commands and configured CI are not passing evidence.",
   "routes": {
@@ -1757,7 +1758,24 @@
       ]
     },
     "productionLoggingAndMetrics": {
-      "status": "partial"
+      "status": "partial",
+      "implementation": [
+        "cantrip_server_rs/src/operations/log_sanitize.rs",
+        "cantrip_server_rs/src/operations/logging.rs"
+      ],
+      "evidence": [
+        "cantrip_server_rs/tests/service_logs.rs",
+        "scripts/server-rust/service-log-oracle.mjs",
+        "scripts/server-rust/direct-attachment-compatibility.mjs",
+        "scripts/server-rust/chat-runtime-repository-compatibility.mjs",
+        "scripts/server-rust/worker-link-coordinator-compatibility.mjs"
+      ],
+      "scope": "Unmerged shared JSON operational log emission, UTF-16 text/key semantics, secret/context/error sanitization, sampled emission and bounded repeated-event windows match 65,937 actual Source sanitizer/error vectors and 2,136 actions/eight policy scenarios locally. Actual direct production log comparisons pass334 cases/15 groups, coordinator diagnostics575 cases, and routing583 cases/31 states per store on native PGlite/private/external PostgreSQL. This is not the complete operational logging/metrics product.",
+      "remaining": [
+        "Log buffer/archive services, production formatting and HTTP log APIs.",
+        "Full production metrics endpoint and remaining consumers.",
+        "Supported-platform/package acceptance."
+      ]
     },
     "legacyPGliteConversion": {
       "status": "unimplemented"
@@ -2381,6 +2399,372 @@
       "remaining": [
         "Current Linux/macOS/Windows and packaged acceptance.",
         "Terminal movement/deletion and resource revocation, interactive output/WorkerLink/direct attachments, shared coordination and the rest of the server replacement remain unported."
+      ]
+    },
+    "workerLinkAuthority": {
+      "status": "partial",
+      "implementation": [
+        "cantrip_server_rs/src/worker_links/mod.rs",
+        "cantrip_server_rs/src/worker_links/sessions.rs",
+        "cantrip_server_rs/src/worker_links/grants.rs",
+        "cantrip_server_rs/src/worker_links/peers.rs",
+        "cantrip_server_rs/src/worker_links/lifecycle.rs",
+        "cantrip_server_rs/src/worker_links/frame.rs",
+        "cantrip_server_rs/src/worker_links/native.rs",
+        "cantrip_server_rs/src/worker_links/service.rs",
+        "cantrip_server_rs/src/worker_links/relay/",
+        "cantrip_server_rs/src/workers/link_frames.rs",
+        "cantrip_server_rs/src/workers/frames.rs",
+        "cantrip_server_rs/src/workers/offline.rs",
+        "cantrip_server_rs/src/workers/output.rs",
+        "cantrip_server_rs/src/http/worker_links.rs",
+        "cantrip_server_rs/src/http/worker_link_socket.rs",
+        "cantrip_server_rs/src/http/worker_link_sessions.rs",
+        "cantrip_server_rs/src/http/direct_attachments.rs",
+        "cantrip_server_rs/src/direct_attachments/",
+        "cantrip_server_rs/src/operations/transport.rs",
+        "cantrip_server_rs/src/http/worker_link_observations.rs",
+        "cantrip_server_rs/src/chats/",
+        "cantrip_server_rs/src/http/worker_link_terminals.rs"
+      ],
+      "evidence": [
+        "scripts/server-rust/worker-link-coordinator-compatibility.mjs",
+        "cantrip_server_rs/tests/worker_link_contracts.rs",
+        "cantrip_server_rs/tests/worker_link_frames.rs",
+        "cantrip_server_rs/tests/worker_link_bridge.rs",
+        "cantrip_server_rs/tests/worker_link_native.rs",
+        "cantrip_server_rs/tests/worker_link_relay.rs",
+        "scripts/server-rust/worker-link-http-compatibility.mjs",
+        "scripts/server-rust/direct-attachment-compatibility.mjs",
+        "cantrip_server_rs/tests/direct_attachment_contracts.rs",
+        "cantrip_server_rs/tests/direct_attachment_lifetimes.rs",
+        "cantrip_server_rs/tests/transport_metrics.rs",
+        "scripts/server-rust/actual-worker-observations.mjs",
+        "scripts/server-rust/actual-native-direct-probe.mjs",
+        "cantrip_app/src-tauri/examples/server_direct_probe.rs",
+        "scripts/server-rust/chat-runtime-repository-compatibility.mjs",
+        "scripts/server-rust/chat-runtime-locks.mjs",
+        "scripts/server-rust/terminal-http-compatibility.mjs",
+        "scripts/server-rust/terminal-worker-link-cases.mjs",
+        "scripts/server-rust/actual-worker-terminal-link.mjs",
+        "cantrip_server_rs/tests/chat_contracts.rs"
+      ],
+      "scope": "Unmerged native local WorkerLink authority/worker bridge/relay/HTTP plus direct-attachment authority and observation grant consumers. Actual command bus/offline callbacks, auth revocation/shutdown ownership and session/direct controls are integrated. Local macOS comparisons pass WorkerLink567 cases, direct270/14 scenarios, validation9289+841, binary127, relay148/33 scenarios and transport metrics139 snapshots. The full native server regression run passes114 tests, none ignored, and strict all-target server Clippy passes. Actual controlled-worker HTTP/socket comparisons pass on all3 stores:83 local and99 account HTTP observations,15/19 socket observations and47/53 worker commands per runtime/store. Late aborted observation installation is compensated after session release. Actual unchanged browser observation consumer/full worker relay and the production desktop Rust broker-probe component pass the combined17-step product flow per runtime/store on all3 stores. Probe checks cover signed broker identity, one-use secret rejection, server revocation and mismatched identity; this is not WebView IPC, desktop packaging or LOCAL WorkerLink data-carrier acceptance. Route overrides remain unchanged pending milestone/platform acceptance. Native terminal grants now compose actual managed-console routing, opaque MCP/session/permission fields and separately committed model/runtime binding. Actual-reference comparisons pass583 cases/31 state snapshots per store plus3 real PostgreSQL late-fence lock scenarios. The terminal HTTP/Live/command matrix passes both auth modes on all3 stores, including actual15s startup timeout, abort ownership and external placement/deletion compensation. The unchanged browser terminal transport/crypto and full worker pass encrypted relay input execution/output authentication,16 combined product steps per runtime/store. Expanded WorkerLink/result validation9289 and chat summary validation8013 pass. Full linked Codex product execution is still pending; no route overrides or platform acceptance are advanced. The final UTF16-thread database conversion changed while that full run was in flight; fresh583-case/31-state comparisons on each store and final strict all-target Clippy cover the final source. Current unmerged remote-surface grant/status/backfill and shared operational logging consumers are tracked separately below. Terminal grants also retain the source successful-response invalidations.",
+      "remaining": [
+        "Remaining tunnel grants, resource mutation/revocation consumers, and full linked Codex-console product acceptance",
+        "Actual browser LAN/WAN peer, remaining remote/tunnel resource consumers, LOCAL desktop data carrier/IPC, and network congestion/recovery. Two Node reference LAN attempts failed before Rust; one timed out signaling and another acknowledged signaling but remained relayed.",
+        "Wire native tunnel repository lifecycle observers when that resource domain is ported; full operational metrics endpoint and log/archive APIs",
+        "Redis/shared authority, multi-instance forwarding/failure recovery and supported-platform/package acceptance",
+        "Coherent merged milestone delivery after full feature validation; retained CI failures still require actual fixes/acceptance",
+        "Retain and diagnose the earlier external PostgreSQL Node HTTP shutdown timeout; the later full product flow passes with actual request/repository/notification diagnostics, but that does not resolve the intermittent failure.",
+        "Strict desktop Clippy has four unchanged tunnel_forward.rs lints reproduced on clean main with byte-identical source/Cargo files. Native example build, both Rust format checks, all115 server tests and server Clippy pass; do not call the desktop check green.",
+        "Retain new Node shutdown failures in terminal abort/global-fetch and combined native-probe browser runs. The terminal fixture owns its single-use caller socket and the complete three-store HTTP matrix passes; this is not a production shutdown fix or resolution of all earlier failures."
+      ]
+    },
+    "directAttachmentAuthority": {
+      "status": "partial",
+      "implementation": "cantrip_server_rs/src/direct_attachments/",
+      "evidence": [
+        "scripts/server-rust/direct-attachment-compatibility.mjs",
+        "cantrip_server_rs/tests/direct_attachment_contracts.rs",
+        "cantrip_server_rs/tests/direct_attachment_lifetimes.rs"
+      ],
+      "scope": "Native preparation leases, resource generation/kind fences and mutation queues, scoped revocation, serialized renewal, expiry, activation, monotonic telemetry, bounded final tunnel reports and persistence/expiry drains execute natively and match270 Source comparisons/14 scenarios plus841 protocol cases locally. Runtime and first direct/session HTTP consumers are integrated; this is not full resource, desktop/transport or platform acceptance. The production desktop Rust probe also verifies actual signed broker proof through both servers/full worker and rejects reused/revoked capabilities and mismatched broker identity on all3 stores locally; packaged desktop and full LOCAL WorkerLink data/IPC acceptance remain required. Expanded operational comparisons now pass334 cases/15 groups in both raw-call and production-policy modes locally; production suppression/redaction is no longer pending.",
+      "remaining": [
+        "Packaged desktop, full LOCAL WorkerLink data carrier/IPC and remaining resource consumers; the standalone production native broker-probe component has local all3store evidence.",
+        "Production tunnel lifecycle repository callbacks",
+        "Reference operational noise control and complete deployment/platform acceptance"
+      ]
+    },
+    "remoteSurfaceWorkerLinkGrants": {
+      "status": "partial",
+      "implementation": [
+        "cantrip_server_rs/src/remote_surfaces.rs",
+        "cantrip_server_rs/src/http/worker_link_surfaces.rs",
+        "cantrip_server_rs/src/projects/targets/context.rs"
+      ],
+      "evidence": [
+        "scripts/server-rust/remote-surface-repository-compatibility.mjs",
+        "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+        "scripts/server-rust/terminal-http-compatibility.mjs",
+        "scripts/server-rust/actual-worker-browser-surface.mjs"
+      ],
+      "scope": "Unmerged native Browser/Remote Desktop grants, opaque canonical context, both project/worker ownership, durable status and local startup recovery/backfill. Actual Source comparisons pass52 repository cases/19 snapshots per store and the HTTP/ordered Live/worker-command matrices across local/account profiles on all3 stores. External PostgreSQL covers post-install mutation/deletion, primitive-label errors and actual catch-status failure with finally detach. Existing browser transport and production crypto run through each server/full unchanged worker to a real Chromium page: authenticated JPEG/private state, encrypted reload and grant release,17 combined steps per runtime/store locally. The fixture seeds an existing encrypted browser; this is not browser CRUD or desktop capture acceptance.",
+      "remaining": [
+        "Browser/remote-desktop resource CRUD, configure and mutation revocation consumers.",
+        "Actual desktop capture plus LOCAL/LAN/WAN and congestion acceptance.",
+        "Redis coordination and startup recovery using actual shared instance count.",
+        "Supported-platform and packaged-artifact acceptance."
+      ]
+    },
+    "terminalDeletionAndOwnershipCleanup": {
+      "status": "partial",
+      "implementation": [
+        "cantrip_server_rs/src/http/terminals.rs",
+        "cantrip_server_rs/src/terminals/repository.rs",
+        "cantrip_server_rs/src/terminals/layout/",
+        "cantrip_server_rs/src/workspaces/",
+        "cantrip_server_rs/src/wire/workspaces.rs",
+        "cantrip_server_rs/src/workers/command_bus.rs",
+        "cantrip_server_rs/src/database/resource_layout_queries.rs"
+      ],
+      "evidence": [
+        "scripts/server-rust/terminal-repository-compatibility.mjs",
+        "scripts/server-rust/terminal-delete-cases.mjs",
+        "scripts/server-rust/terminal-http-compatibility.mjs",
+        "scripts/server-rust/workspace-contract-oracle.mjs",
+        "cantrip_server_rs/tests/workspace_contracts.rs",
+        "scripts/server-rust/resource-layout-query-manifest.mjs",
+        "scripts/server-rust/terminal-layout-failure-cases.mjs",
+        "scripts/server-rust/terminal-repository-locks.mjs"
+      ],
+      "scope": "Unmerged native deletion with direct mutation fencing, pre-delete WorkerLink revocation, transactionally locked workspace-view cleanup, focus/history, runtime binding clear, pane anchors/positions and center topology collapse. Actual comparisons pass87 cases/91 complete snapshots per store,7131 ownership validation/error cases and local/account HTTP flows on all3 stores. Covers owner isolation, active Run states, retained transfer/legacy metadata, malformed ownership/revision/topology rollback, pending installation revocation, worker-close failure and caller-aborted deletion. External PostgreSQL injects an actual final DELETE rejection and compares exact diagnostics. Ordered concurrent revocation exposed task-spawn request reordering; FIFO dispatch reservations are made in caller order, with transport executed in owned tasks and acknowledgment waits remaining concurrent. A retained thread sample of an inline-dispatch attempt proves bridge-lifecycle reentrancy; corrected offline/replacement tests pass. The actual Source helpers generate18 SQL shapes and projection metadata. Eleven trigger failures and4 missing-column errors prove exact diagnostics and rollback. Four observed PostgreSQL blocked-writer races compare fresh workspace rows, pre-lock context/Run admission and concurrent deletion. Empty center trees persist SQL NULL, while legacy JSONB null follows the source missing-root error.",
+      "remaining": [
+        "Terminal direct/legacy streams, other resource mutation consumers and shared authority.",
+        "Supported-platform/package acceptance and coherent merged delivery."
+      ],
+      "referenceShutdownFix": {
+        "implementation": [
+          "cantrip_server/src/app/http/idle-connections.ts",
+          "cantrip_server/src/app/http/server.ts"
+        ],
+        "evidence": ["cantrip_server/test/http-idle-shutdown.test.ts"],
+        "scope": "Retained full-worker reference failures exceeded105 seconds with one zero-byte TCP connection. Production preClose now closes actual unadmitted/idle HTTP connections while retaining admitted requests and existing upgraded transport owners. Four real-socket cases cover speculative/partial headers, an admitted held response and upgrade ownership. Original failures remain retained; full platform/shutdown acceptance remains required."
+      }
+    },
+    "terminalWorktreeLifecycle": {
+      "status": "partial",
+      "implementation": [
+        "cantrip_server_rs/src/http/terminals.rs",
+        "cantrip_server_rs/src/terminals/repository.rs",
+        "cantrip_server_rs/src/worker_links/service.rs"
+      ],
+      "evidence": [
+        "scripts/server-rust/terminal-repository-compatibility.mjs",
+        "scripts/server-rust/terminal-worktree-cases.mjs",
+        "scripts/server-rust/terminal-http-compatibility.mjs",
+        "scripts/server-rust/terminal-query-manifest.mjs"
+      ],
+      "scope": "Unmerged native terminal worktree movement under the direct resource mutation fence. WorkerLink revocation precedes resource/capability/running checks; ready/nonremoved targets retain source placement and mapper behavior. All three stores pass50 repository cases/30 complete terminal/layout snapshots and local/account HTTP comparisons, including pending installation revocation and owner isolation. External PostgreSQL additionally proves the admitted write survives caller abort while revocation acknowledgment is held and compares an actual CHECK failure's exact source SQL response with only its validated wall-clock timestamp normalized.",
+      "remaining": [
+        "Terminal deletion with transactional workspace-view removal and pane/topology cleanup.",
+        "Terminal direct/legacy attachment and remaining resource mutation consumers.",
+        "Supported-platform/package acceptance and coherent merged delivery."
+      ]
+    },
+    "tunnelAttachmentWorkerLinkGrants": {
+      "status": "partial",
+      "implementation": [
+        "cantrip_server_rs/src/tunnels/",
+        "cantrip_server_rs/src/http/worker_link_tunnels.rs",
+        "cantrip_server_rs/src/auth/service.rs"
+      ],
+      "evidence": [
+        "scripts/server-rust/tunnel-repository-compatibility.mjs",
+        "scripts/server-rust/tunnel-repository-locks.mjs",
+        "scripts/server-rust/tunnel-worker-link-cases.mjs",
+        "scripts/server-rust/actual-worker-tunnel-link.mjs"
+      ],
+      "scope": "Unmerged native opaque tunnel attachment authorization, rotation/activation generations, stopped-incarnation fences, direct-lease persistence/expiry and single-instance recovery. Actual Source comparisons pass80 cases/17 state snapshots per store, with4 real PostgreSQL blocked-writer races. HTTP local/account matrices compare grants, worker commands and Live publications; actual minute expiry runs on external PostgreSQL. Real browser WorkerLink adapter/full unchanged worker/loopback TCP carry authenticated ciphertext and preserve half-close on all3 stores,18 combined steps per runtime/store locally. The source endpoint uses production AES and seeded encrypted records; this is not desktop Tauri/IPC or full tunnel management acceptance.",
+      "referenceFix": "A retained real-clock Node PostgreSQL reproduction failed because raw Date parameters in four SQL lease expressions bypassed Drizzle timestamp encoding. Production Source now binds ISO strings; the all3-store matrices exercise the actual fix.",
+      "remaining": [
+        "Managed tunnel registration/removal and complete broker/runtime consumers. Catalog/CRUD is recorded separately in tunnelCatalogManagement; native attachment lifecycle/direct/legacy routes are recorded in legacyTunnelAttachmentRuntime.",
+        "Resource mutation revocation consumers, including interactions with already ported terminal management.",
+        "Desktop forwarder/IPC, direct carriers and fault/congestion product acceptance.",
+        "Shared coordination/Redis recovery and supported-platform/package/merged delivery."
+      ]
+    },
+    "terminalDirectBootstrap": {
+      "status": "partial",
+      "implementation": [
+        "cantrip_server_rs/src/http/terminal_direct.rs",
+        "cantrip_server_rs/src/http/direct_attachments.rs"
+      ],
+      "evidence": [
+        "scripts/server-rust/terminal-direct-cases.mjs",
+        "scripts/server-rust/terminal-http-compatibility.mjs",
+        "cantrip_server_rs/tests/direct_attachment_contracts.rs",
+        "scripts/server-rust/actual-worker-terminal-direct.mjs"
+      ],
+      "scope": "Unmerged legacy direct-terminal HTTP bootstrap using native preparation fencing, managed console launch, opaque state, readiness-before-stream-completion semantics, detach/status publication, twelve-hour capabilities and exact tunnel route bindings. Local/account HTTP comparisons pass all3 stores with Unicode client identifiers, actual timeout, controlled worker failures, actual capability revocation before releasing a held preparation acknowledgment, compensating close/idle cleanup, caller-aborted ownership and ordered Live events. Native direct validation matches1584 actual protocol/error cases. The fixture sends a real authenticated heartbeat to maintain normal worker presence. Actual native desktop verification plus controlled TCP forwarding now carries encrypted browser input to a real worker PTY and authenticates ordered output on all3 storage modes; rejects wrong operations, one-use replay, revoked capabilities and mismatched broker identity and observes active revocation.",
+      "remaining": [
+        "Actual Tauri IPC, production native TCP forwarding, network fallback and packaged acceptance.",
+        "Legacy terminal relay sockets and remaining resource consumers.",
+        "Supported-platform/package acceptance and coherent merged delivery."
+      ]
+    },
+    "terminalLegacyRelay": {
+      "status": "partial",
+      "implementation": [
+        "cantrip_server_rs/src/http/terminal_socket.rs",
+        "cantrip_server_rs/src/terminals/relay.rs",
+        "cantrip_server_rs/src/workers/maintenance/service.rs"
+      ],
+      "evidence": [
+        "scripts/server-rust/terminal-relay-cases.mjs",
+        "scripts/server-rust/terminal-relay-locks.mjs",
+        "scripts/server-rust/terminal-relay-probe.mjs",
+        "scripts/server-rust/terminal-http-compatibility.mjs",
+        "scripts/server-rust/actual-worker-terminal-relay.mjs",
+        "cantrip_server_rs/tests/terminal_contracts.rs"
+      ],
+      "scope": "Unmerged native legacy terminal socket with upgrade-origin checks, account/session ownership, UTF-16 operation limits, opaque streaming frames, managed consoles, serial input acknowledgments, independent resize, status changes, late-readiness/disconnect detach and synchronously counted child work. Local/account matrices on all3 stores compare frames, commands and exact persisted bandwidth bytes/operations. The external PostgreSQL matrix proves a genuinely blocked context read using actual relation locks and blocking PIDs, then observes a pong before unlock to verify early messages are consumed and never replayed. Activity query text is retained even though PostgreSQL truncates the source SELECT before its joins. Actual browser/full-worker comparisons pass19 product steps per runtime/store on all3 databases, including encrypted legacy input executed in a PTY and authenticated ordered output. Terminal protocol validation matches10857 actual cases; strict Clippy passes locally.",
+      "remaining": [
+        "Supported-platform observation for the current socket and real-worker three-store matrices; the local full native regression passed116/0/0.",
+        "Real direct-terminal data transport and remaining resource mutation consumers.",
+        "Shared authority, supported-platform/package acceptance and coherent merged delivery."
+      ]
+    },
+    "terminalDirectData": {
+      "status": "partial",
+      "implementation": [
+        "cantrip_app/src-tauri/src/direct_probe.rs",
+        "cantrip_app/src-tauri/src/direct_probe_connection.rs",
+        "cantrip_server_rs/examples/desktop-direct-broker.rs"
+      ],
+      "evidence": [
+        "scripts/server-rust/actual-worker-terminal-direct.mjs",
+        "scripts/server-rust/native-broker-client.mjs",
+        "scripts/server-rust/direct-terminal-forwarder.mjs",
+        "scripts/server-rust/actual-folder-client.mjs"
+      ],
+      "scope": "Unmerged real-broker acceptance on all3 databases using the shared production desktop identity verifier and its WebSocket dependency version, a controlled TCP forwarder, production endpoint crypto and an unchanged full worker PTY. The21-step combined flow proves input execution, authenticated ordered output, no plaintext command/token/path in broker frames, wrong-operation rejection, one-use replay rejection, revoked-capability rejection, identity mismatch rejection and active revocation. Verifier implementation is byte-identical after moving its Tauri attribute to the unchanged command facade. Desktop library/probe compile and strict server Clippy pass. Additional strict desktop Clippy reproduces4 pre-existing tunnel_forward.rs warnings on clean Primary; source digests match. CI is configured, not observed platform acceptance.",
+      "remaining": [
+        "Actual Tauri IPC and production native TCP forwarder acceptance.",
+        "Packaged desktop, fallback across network topologies, supported-platform observation and coherent merged delivery."
+      ]
+    },
+    "tunnelCatalogManagement": {
+      "status": "partial",
+      "implementation": [
+        "cantrip_server_rs/src/tunnels/catalog.rs",
+        "cantrip_server_rs/src/tunnels/management.rs",
+        "cantrip_server_rs/src/tunnels/references.rs",
+        "cantrip_server_rs/src/http/tunnels.rs",
+        "cantrip_server_rs/src/wire/intersections.rs"
+      ],
+      "evidence": [
+        "scripts/server-rust/tunnel-repository-compatibility.mjs",
+        "scripts/server-rust/tunnel-catalog-cases.mjs",
+        "scripts/server-rust/tunnel-catalog-failures.mjs",
+        "scripts/server-rust/tunnel-catalog-locks.mjs",
+        "scripts/server-rust/tunnel-http-compatibility.mjs",
+        "cantrip_server_rs/tests/tunnel_contracts.rs",
+        "scripts/server-rust/actual-folder-client.mjs"
+      ],
+      "scope": "Unmerged six native catalog/user-management HTTP routes and actual repository behavior. Local macOS Source/native comparisons pass272 operations/123 full state snapshots per store; external PostgreSQL adds5 catalog blocked-writer races alongside4 existing attachment races. Actual local/account HTTP comparisons pass77/83 observations per runtime on each of all3 stores, with exact response-completion Live publications, CSRF/tenant isolation, actual database failures and restart persistence. Native strict-object intersection/validation and rendered error messages match7192 actual protocol cases. This does not advance the accepted route ledger.",
+      "failureEvidence": "Real integer overflow, unique and trigger failures compare actual SQLSTATE and unchanged full persisted state; renamed unused columns fail the corresponding reads. A missing attachment column after update proves both runtimes keep the committed protected revision when the fresh post-write projection fails. Five observed PostgreSQL row-lock races preserve pre-write attachment/revision snapshots and the final management predicate.",
+      "remaining": [
+        "Attachment management and managed tunnel registration/removal.",
+        "Direct activation/legacy sockets and complete tunnel broker/runtime consumers.",
+        "Desktop forwarding/IPC, shared coordination/Redis, supported-platform/package acceptance and merged delivery."
+      ],
+      "regression": "Full native117 tests pass with0 failures/0 ignored, strict server Clippy passes, and the existing21-step actual browser/full-worker Node/Rust flow passes again on all3 stores after this change. These remain local macOS results; the direct carrier uses controlled forwarding and does not establish Tauri IPC or packaged/platform acceptance."
+    },
+    "legacyTunnelStreamCore": {
+      "status": "partial",
+      "implementation": [
+        "cantrip_server_rs/src/tunnels/frame.rs",
+        "cantrip_server_rs/src/tunnels/broker/",
+        "cantrip_server_rs/src/workers/tunnel_frames.rs",
+        "cantrip_server_rs/src/workers/frames.rs",
+        "cantrip_server_rs/src/http/worker_socket.rs"
+      ],
+      "evidence": [
+        "scripts/server-rust/tunnel-frame-oracle.mjs",
+        "scripts/server-rust/tunnel-broker-oracle.mjs",
+        "scripts/server-rust/tunnel-bridge-oracle.mjs",
+        "cantrip_server_rs/tests/tunnel_frames.rs",
+        "cantrip_server_rs/tests/tunnel_broker.rs",
+        "cantrip_server_rs/tests/tunnel_bridge.rs",
+        "cantrip_server_rs/tests/tunnel_contracts.rs"
+      ],
+      "scope": "Unmerged legacy CTTN codec, opaque credited/half-close broker core and distinct worker binary bridge path. Actual source matches160 byte/error cases,8485 total tunnel validation/rendered error cases and56 broker scenarios/286 complete snapshots. Bridge comparisons verify ordered/mutable/deduplicated listeners, protocol isolation, bounded output/in-flight bytes, stale peers, callback-failure isolation, bounded warning call shape and synchronous reentrant replacement. Full native120 tests pass with0 failures/0 ignored; strict server Clippy passes locally. This is not production attachment/socket lifecycle acceptance and does not advance the accepted route ledger.",
+      "synchronization": "Broker transitions serialize while permitting synchronous activity/send callbacks to revoke routes. Binary frame check/decode/delivery and worker replacement use the same reentrant lifecycle boundary. Parking_lot was already locked transitively; actual offline resolution adds no package versions.",
+      "remaining": [
+        "Runtime composition and six attachment routes are now covered separately by legacyTunnelAttachmentRuntime; complete its remaining product/fault acceptance.",
+        "Managed tunnel registration/removal, remaining broker consumers, Redis/shared authority and actual desktop/Tauri forwarding.",
+        "Supported-platform and packaged acceptance; full goal remains incomplete."
+      ],
+      "regression": "Existing21-step actual browser/full-worker Node/Rust flow passes again on all3 stores after the shared bridge changes. These are local macOS regressions of existing WorkerLink/direct paths; legacy attachment/socket, actual Tauri and packaged/platform acceptance remain required."
+    },
+    "legacyTunnelAttachmentRuntime": {
+      "status": "partial",
+      "implementation": [
+        "cantrip_server_rs/src/tunnels/runtime/",
+        "cantrip_server_rs/src/tunnels/sweep.rs",
+        "cantrip_server_rs/src/http/tunnel_attachments.rs",
+        "cantrip_server_rs/src/http/tunnel_direct.rs",
+        "cantrip_server_rs/src/http/tunnel_socket.rs",
+        "cantrip_server_rs/src/http/tunnel_socket/",
+        "cantrip_server_rs/src/auth/service.rs",
+        "cantrip_server_rs/src/main.rs",
+        "cantrip_server_rs/src/worker_links/service.rs",
+        "cantrip_server/src/tunnels/runtime.ts",
+        "cantrip_server/src/app/routes/tunnel-attachments.ts",
+        "cantrip_server/src/app/build-app.ts",
+        "cantrip_worker/src/browser/browser-adapter.ts",
+        "cantrip_server_rs/src/http/websocket.rs",
+        "cantrip_server_rs/third-party/hyper/src/ext/mod.rs",
+        "cantrip_server_rs/third-party/hyper/src/proto/h1/conn.rs"
+      ],
+      "evidence": [
+        "scripts/server-rust/tunnel-attachment-compatibility.mjs",
+        "scripts/server-rust/tunnel-attachment-cases.mjs",
+        "scripts/server-rust/tunnel-attachment-probe.mjs",
+        "scripts/server-rust/tunnel-attachment-heartbeat.mjs",
+        "scripts/server-rust/tunnel-attachment-grants.mjs",
+        "scripts/server-rust/tunnel-attachment-locks.mjs",
+        "cantrip_server_rs/tests/tunnel_contracts.rs",
+        "scripts/server-rust/actual-worker-tunnel-relay.mjs",
+        "scripts/server-rust/tunnel-runtime-faults.mjs",
+        "scripts/server-rust/tunnel-runtime-shutdown.mjs",
+        "scripts/server-rust/tunnel-runtime-db-control.mjs",
+        "cantrip_server/test/tunnel-runtime-shutdown.test.ts",
+        "cantrip_worker/test/browser-state-publication.test.ts",
+        "scripts/server-rust/tunnel-handshake-compatibility.mjs"
+      ],
+      "scope": "Unmerged native runtime composition and six attachment lifecycle/direct/legacy socket routes. Actual Source/native comparisons pass on all3 stores locally:50 local and55 account HTTP observations per runtime (plus1 external race setup),17/15 socket cases, exact persisted relay bytes/operation counts, actual opaque data/half-close and queued broker-close-before-socket-close frames. Production25s/10s timers accept matching16-byte pong tokens and retire wrong tokens. Credential rotation revokes the matching WorkerLink grant while a sibling renews. External PostgreSQL proves3 real blocked-activation races: replacement FIFO/monotonic generations, disconnect with late fenced offline cleanup, and expiry awaiting the exact activation write. Encrypted legacy TCP and extended faults are recorded separately below; production Tauri forwarding, packaging and platform acceptance remain unproven, and the accepted route ledger is unchanged.",
+      "failureEvidence": "Expanded oracle9,067 cases exposed native starts_with issue prefix/message mismatch, now fixed. Initial harness expectations for Source direct failure statuses were corrected from actual HTTP responses (worker failure409, mismatched acknowledgment500; missing rotated WorkerLink grant renew409). A SQL-now expiry fixture retained microseconds unlike production JS Date; the exact Source fence did not match. The final actual-lock case preserves the success assertion and supplies/observes production millisecond precision.",
+      "remaining": [
+        "Trace the retained filesystem notification failure and remaining broad-run timeouts; exact causality of the earlier browser reload failure remains unproven. Complete remaining product/fault acceptance.",
+        "Complete transport operational hooks, managed tunnel registration/removal and remaining resource mutation/runtime consumers.",
+        "Redis/multi-instance coordination, production Tauri forwarding and supported-platform/packaged acceptance."
+      ],
+      "extendedAcceptance": "Local all3-store22-step flow now includes real encrypted legacy CTTN traffic using browser attachment API/crypto, a controlled WebSocket source, full unchanged Node worker and real TCP listener: authenticated payload/reply hashes, half-close and revocation. Actual local/account fault comparisons exercise production initialization timeout, permanent worker credential revocation and matching offline cleanup on all3 stores. External PostgreSQL holds authorization beyond10s to compare early captured and late rejected initialization; both auth modes also prove socket/server shutdown retains blocked authorization or activation through database release and exact persisted usage/state. Full native120 and53 focused source tests pass; source typecheck and strict Clippy pass locally. Supported-platform/package acceptance remains false.",
+      "shutdownFix": "Retained actual Source failures prove late activation persisted active after database close and late authorization missed65 ingress bytes/1operation after meter close. Source production runtime now owns whole socket setup plus activation/retirement/expiry promises, and build-app drains them before meter/database close. Native reserved1005 close-frame encoding caused1006; native now emits an empty payload matching Source1005.",
+      "unresolvedFailure": "One PGlite full-flow rerun failed the existing remote-browser reload assertion before legacy TCP. Worker logged completed reload, client retained prior title. Strict unchanged assertion passed on a later run with added controls and actual HTTP navigation diagnostics; root cause unproven. Retain failure and failed fixture directories; do not classify it as unrelated baseline.",
+      "browserPublisherReproduction": "A controlled CDP-history wait using the actual production worker publisher and real worker encryption reproducibly drops a concurrent broadcast refresh; explicit retry publishes the newer title. Temporary source copy only resolves original imports and exposes the private class, with original source SHA retained. Worker production sources remain unchanged. This confirms an independent publisher defect, but causality for the retained full-flow browser reload failure remains unproven; bounded coalescing/remediation and regression proof remain required.",
+      "repositoryCheck": "Latest isolated pnpm check:server1622 and app3899 pass;5worker failures (filesystem-added notification, linked-worktree timeout, image-boundary timeout, history-outbox timeout, partial-login snapshot). Current/cleanPrimary full default worker suites each fail only the identical filesystem-added assertion, with2531/2527 tests passing respectively; four-worker current full suite still fails only that assertion. Parallelism/timeouts unchanged. Grok test preserves all original final-state assertions but waits for their completion within original2s. Other broad timeouts remain unwaived.",
+      "browserPublisherFix": "Bounded Node integration fix retains pending broadcasts/attachment recipients and serializes history/encryption refreshes, including queued replacement after renderer failure. Four deterministic public-adapter regressions use real CDP WebSockets and worker crypto; original publisher fails both concurrency regressions. Final focused6-file set passes29 tests. Rebuilt final worker and current native server pass the strict22-step real client/server/worker flow on all3stores. Causal identity with the earlier intermittent full-flow browser failure remains unproven.",
+      "rawHandshakeProgress": "Actual raw TCP comparisons pass24 cases per runtime/auth profile/store on all3stores, comparing all response headers and bodies with only validated dates/request IDs normalized. Preserves Source HEAD500/error framing, authored Connection headers and raw handshake Date absence; ordinary HTTP close/date control passes. Existing Hyper fork has explicit response-local opt-ins, preserving standard HTTP behavior. Current13 native HTTP tests, strict all-target Clippy, Rust formatting and boundary audit pass. Platform/package acceptance remains false.",
+      "watcherStartupInvestigation": "Existing observationSweepRunning guard rules out the competing-init hypothesis. Actual held initialization control observes one initialization and no premature status. Uninstrumented variant misses added notification; later instrumented variant records actual added event and passes. These do not prove the broad failure mechanism; production watcher remains unchanged and failures retained.",
+      "formatCheck": "Whole pnpm format:check reports12 unchanged files; all12 failures reproduce in cleanPrimary and their hashes match. Changed-file formatting passes. No unrelated files were reformatted; repository-wide check remains non-green.",
+      "watcherFullTrace": "Three actual instrumented full worker runs reproduce the missing filesystem notification. Real unmocked native FSWatcher/FSEvent handles are created with no reported errors, but no actual record callbacks arrive for the failing root. One trace has dirty Git status without filesystem notification. Source duplicate-init hypothesis remains unsupported; no production watcher/timeout/parallelism change. Cause of silent native delivery remains unproven; baseline failure stays tracked."
+    },
+    "managedTunnelRepository": {
+      "status": "partial",
+      "implementation": [
+        "cantrip_server_rs/src/tunnels/managed.rs",
+        "cantrip_server_rs/src/tunnels/management.rs",
+        "cantrip_server_rs/src/tunnels/references.rs"
+      ],
+      "evidence": [
+        "scripts/server-rust/tunnel-managed-cases.mjs",
+        "scripts/server-rust/tunnel-managed-locks.mjs",
+        "scripts/server-rust/tunnel-repository-compatibility.mjs",
+        "scripts/server-rust/tunnel-node-fixture.mjs",
+        "cantrip_server_rs/examples/support/tunnels.rs"
+      ],
+      "scope": "Unmerged native feature-owned registration/get/removal, source read/write boundaries, protection and ownership checks, shared positions, retained identity/creation/counters, deletion cascades and post-commit projection errors. Combined tunnel comparison311operations/146tunnel-attachment-lease snapshots passes all3stores locally, with5 new actual externalSQL write-lock races. These are repository methods, not owning product route integration or supported-platform/package acceptance; accepted route ledger unchanged.",
+      "unicodeReferenceFix": "Actual Source returnsnull while old native creates a row for distinct lone-surrogate worker IDs that bind to the same UTF-8 replacement ID. Native now preserves original UTF-16 identity/deduplication/placement until SQL binding. Distinct-surrogate, surrogate/replacement and identical-surrogate cases pass all3stores. Original failing actual comparison retained.",
+      "databaseOutcomes": "Source public-adapter insert without protected content reaches real23514; overflows produce22003, duplicate-create race23505, and post-write missing projection column42703 retains committed row. No stronger synthetic gates, upsert or revision/management fences added.",
+      "comparisonNormalization": "Raw generated IDs are validated/aliased before canonical raw-state ordering. API/catalog ordering remains unchanged; identity/position/creation-time retention is additionally asserted per runtime.",
+      "verification": "Final-source strictClippy and all3store repository/race comparisons pass. Final-source full native suite120passed/0failed/0ignored across65groups passes. Rebuilt final-source real client/full-worker22-step flows pass all3stores. Supported-platform/package acceptance and full replacement remainfalse.",
+      "remaining": [
+        "Wire into native browser/project-share owning features with runtime/WorkerLink cleanup, events and recovery.",
+        "Complete owning feature contracts, remaining consumers and operational hooks.",
+        "Complete supported-platform/package/product acceptance and all original replacement requirements."
       ]
     }
   },

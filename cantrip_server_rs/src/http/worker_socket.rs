@@ -296,6 +296,7 @@ async fn run(
             if let Some((code, reason)) =
                 closed.or_else(|| stopped.then(|| (1001, "Server shutting down".into())))
             {
+                peer.open.store(false, Ordering::Release);
                 let _ = tokio::time::timeout(
                     Duration::from_secs(1),
                     sink.send(Message::Close(Some(CloseFrame {
@@ -309,7 +310,9 @@ async fn run(
             tokio::select! {biased;_ = closing.changed()=>continue,_ = shutdown.changed()=>continue,message=output.recv()=>{
                 let Some(message)=message else{break};match message{
                     Outgoing::Close(code,reason)=>{let _=tokio::time::timeout(Duration::from_secs(1),sink.send(Message::Close(Some(CloseFrame{code:code.into(),reason:reason.into()})))).await;break},
-                    Outgoing::Text(text)=>{tokio::select!{biased;_=closing.changed()=>continue,_=shutdown.changed()=>continue,result=sink.send(Message::Text(text.into()))=>{if result.is_err(){break}}}}
+                    Outgoing::Text(mut text)=>{let message=Message::Text(text.take().into());tokio::select!{biased;_=closing.changed()=>continue,_=shutdown.changed()=>continue,result=sink.send(message)=>{if result.is_err(){break}}}},
+                    Outgoing::Binary(mut frame)=>{let message=Message::Binary(tungstenite::Bytes::from_owner(frame.take()));tokio::select!{biased;_=closing.changed()=>continue,_=shutdown.changed()=>continue,result=sink.send(message)=>{if result.is_err(){break}}}}
+                    Outgoing::Tunnel(mut frame)=>{let message=Message::Binary(tungstenite::Bytes::from_owner(frame.take()));tokio::select!{biased;_=closing.changed()=>continue,_=shutdown.changed()=>continue,result=sink.send(message)=>{if result.is_err(){break}}}}
                 }
             }}
         }
@@ -342,7 +345,13 @@ fn receive(
     peer: &Peer,
     message: Message,
 ) {
-    if let Message::Text(text) = message {
+    if let Message::Binary(bytes) = message {
+        if crate::tunnels::frame::is_frame(&bytes) {
+            bridge.receive_tunnel_frame(worker, peer, bytes.to_vec().into());
+        } else if crate::worker_links::frame::is_frame(&bytes) {
+            bridge.receive_worker_link_frame(worker, peer, bytes.to_vec().into());
+        }
+    } else if let Message::Text(text) = message {
         usage.record(
             &peer.identity.owner,
             "worker-control-websocket",
@@ -353,8 +362,7 @@ fn receive(
         );
         bridge.receive(worker, peer, &text);
     }
-    // Binary relays and durable domain consumers remain in their resource,
-    // execution and streaming milestones.
+    // Other binary protocols retain their separate tunnel/surface consumers.
 }
 pub(super) fn routes() -> Router<Arc<AuthService>> {
     Router::new().route("/api/internal/workers/connect", get(connect))

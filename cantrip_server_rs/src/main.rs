@@ -175,13 +175,18 @@ async fn main() -> Result<()> {
         // disabling publications, or draining service/database owners.
         service.folder_setup.stop();
         service.worker_maintenance.stop();
+        service.tunnel_leases.stop();
+        service.tunnel_runtime.close();
         service.live.close();
+        service.direct_attachments.close().await;
+        service.worker_links.close().await;
         service.workers.close();
         service.live.transports.drained().await;
         // A socket callback can admit an owned account task. Finish socket
         // handlers before the final account/catalog drain, then finish any
         // commands those tasks admitted before closing their database.
         service.workers.drained().await?;
+        service.worker_links.local.drained().await;
         service.provider_accounts.drained().await;
         for _error in service.provider_catalogs.drain().await {
             eprintln!(
@@ -190,6 +195,9 @@ async fn main() -> Result<()> {
             );
         }
         service.workers.commands.drained().await;
+        service.direct_attachments.drained().await;
+        service.tunnel_leases.drained().await;
+        service.tunnel_runtime.drained().await;
         service.folder_setup.drained().await;
         service.worker_maintenance.drained().await;
         service.mutation_audits.drained().await;

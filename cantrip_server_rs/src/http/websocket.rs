@@ -140,6 +140,9 @@ fn rejected(message: &str, version: bool) -> Response {
     let mut response = response.body(Body::from(message.to_owned())).unwrap();
     response.extensions_mut().insert(RawUpgradeResponse);
     response
+        .extensions_mut()
+        .insert(hyper::ext::NoAutomaticDateHeader);
+    response
 }
 pub(super) fn upgrade<F, Fut>(mut request: Request, limit: usize, callback: F) -> Response
 where
@@ -238,5 +241,11 @@ where
     });
     let mut response = response.body(Body::empty()).unwrap();
     response.extensions_mut().insert(RawUpgradeResponse);
+    response
+        .extensions_mut()
+        .insert(hyper::ext::PreserveConnectionHeader);
+    response
+        .extensions_mut()
+        .insert(hyper::ext::NoAutomaticDateHeader);
     response
 }

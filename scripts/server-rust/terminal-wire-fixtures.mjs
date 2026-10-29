@@ -1,4 +1,5 @@
 import { surfacePrivateStateOpaqueSchema } from "../../packages/protocol/dist/surface-private-state.js";
+import { workerIngressFixtures } from "./worker-wire-fixtures.mjs";
 export function terminalWireFixtures(label) {
   const titleProtection = {
     ...label,
@@ -41,6 +42,49 @@ export function terminalWireFixtures(label) {
     },
   ];
   return {
+    terminalClientMessageSchema: [
+      { type: "resize", cols: 1, rows: 1000 },
+      { type: "resize", cols: 80, rows: 24, extra: true },
+      {
+        type: "input",
+        operationId: "fixture",
+        sequence: 0,
+        protectedData: workerIngressFixtures.find(
+          (v) => v.event?.type === "terminal.output",
+        ).event.protectedData,
+      },
+    ],
+    terminalServerMessageSchema: [
+      { type: "ready" },
+      { type: "error", message: "\ud800 error" },
+      { type: "exit", exitCode: 2, signal: null },
+      {
+        type: "output",
+        operationId: "fixture",
+        sequence: 0,
+        protectedData: workerIngressFixtures.find(
+          (v) => v.event?.type === "terminal.output",
+        ).event.protectedData,
+      },
+      {
+        type: "output",
+        operationId: "fixture",
+        sequence: 0,
+        protectedData: workerIngressFixtures.find(
+          (v) => v.event?.type === "terminal.output",
+        ).event.protectedData,
+        hydration: {
+          format: "legacy-raw",
+          version: 1,
+          generation: 0,
+          truncated: false,
+          snapshotCharacters: 0,
+          snapshotChunks: 1,
+          cols: 80,
+          rows: 24,
+        },
+      },
+    ],
     encryptedTerminalCreateSchema: [
       input,
       ...["center", "bottom", "right", "left"].map((targetRegion) => ({
@@ -59,5 +103,10 @@ export function terminalWireFixtures(label) {
     ],
     terminalWireSummarySchema: variants,
     terminalWireListSchema: [[], variants],
+    worktreeSelectionSchema: [
+      { worktreeId: "worktree" },
+      { worktreeId: "\ud800" },
+      { worktreeId: "worktree", extra: true },
+    ],
   };
 }

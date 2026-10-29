@@ -70,6 +70,20 @@ impl Service {
         });
         receive.await.context("Worker maintenance task ended")?
     }
+    /// Child work from an already admitted socket must be counted synchronously,
+    /// including close callbacks arriving after new HTTP admission has stopped.
+    pub(crate) fn spawn_child(
+        self: &Arc<Self>,
+        operation: impl Future<Output = Result<()>> + Send + 'static,
+    ) {
+        let admission = self.admission(true).expect("admitted worker child");
+        tokio::spawn(async move {
+            let _admission = admission;
+            if operation.await.is_err() {
+                eprintln!("{{\"level\":\"warn\",\"event\":\"worker.socket.background-failed\"}}");
+            }
+        });
+    }
     pub fn worker_connected(self: &Arc<Self>, owner: Option<String>, worker: String) {
         let Ok(admission) = self.admission(false) else {
             return;

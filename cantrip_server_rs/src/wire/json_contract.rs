@@ -194,6 +194,7 @@ pub(super) fn parse(input: Option<&Value>, path: &[Value]) -> Parsed {
     Parsed {
         value,
         aborted: !issues.is_empty(),
+        aborted_other: !issues.is_empty(),
         issues,
     }
 }

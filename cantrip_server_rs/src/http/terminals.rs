@@ -30,6 +30,7 @@ async fn mutate(
     project: Option<String>,
     terminal: Option<String>,
     method: Method,
+    worktree: bool,
     input: Value,
 ) -> Result<Response> {
     let repository = Repository::new(service.repository.database.clone());
@@ -61,6 +62,77 @@ async fn mutate(
         };
     }
     let terminal = terminal.context("Terminal route identity")?;
+    if method == Method::DELETE {
+        let scope = crate::direct_attachments::Scope::Resource {
+            owner: Value::String(owner.clone().into()),
+            kind: Value::String("terminal".into()),
+            resource: Value::String(terminal.clone().into()),
+        };
+        let result = service.direct_attachments.mutate(scope, async {
+            service.worker_links.revoke_resource(&owner,"terminal",&terminal,"resource-deleted").await;
+            let Some(context)=repository.delete(&owner,&terminal).await? else{return Ok(error(404,"Terminal not found."))};
+            let worker=context["workerId"].as_str().context("Deleted terminal worker")?;
+            if service.workers.bridge.is_connected(worker)
+                && let Err(failure)=service.workers.commands.request(worker,Value::object([
+                    ("type",Value::String("terminal.close".into())),("terminalId",context["terminalId"].clone())
+                ]),Some(std::time::Duration::from_secs(5)),None).await {
+                    (crate::operations::logging::server_logger())(crate::operations::logging::LogCall::event(
+                        "warn","Could not close deleted terminal",crate::wire::value::json!({"err":crate::operations::logging::error_details(&failure.into()),"terminalId":context["terminalId"]})
+                    ));
+                }
+            Ok(axum::response::IntoResponse::into_response(axum::http::StatusCode::NO_CONTENT))
+        }).await;
+        return Ok(result.unwrap_or_else(conflict));
+    }
+    if worktree {
+        let scope = crate::direct_attachments::Scope::Resource {
+            owner: Value::String(owner.clone().into()),
+            kind: Value::String("terminal".into()),
+            resource: Value::String(terminal.clone().into()),
+        };
+        let result = service
+            .direct_attachments
+            .mutate(scope, async {
+                // Revoke first, including for missing/read-only/running terminals.
+                // The direct resource fence stays held through every awaited write.
+                service
+                    .worker_links
+                    .revoke_resource(&owner, "terminal", &terminal, "resource-stopped")
+                    .await;
+                if let Some(context) = repository.context(&owner, &terminal).await? {
+                    if context["kind"] == "run-configuration" {
+                        return Ok(error(
+                            409,
+                            "Run configuration terminals cannot change worktrees.",
+                        ));
+                    }
+                    if let Some(project) = crate::projects::repository::ProjectRepository::new(
+                        service.repository.database.clone(),
+                    )?
+                    .get(
+                        &owner,
+                        context["projectId"].as_str().context("Terminal project")?,
+                    )
+                    .await?
+                        && project["capabilities"]["worktrees"] != true
+                    {
+                        anyhow::bail!(
+                            "This {} project does not support the worktrees capability.",
+                            project["originKind"].as_str().context("Project origin")?
+                        );
+                    }
+                }
+                match repository
+                    .update_worktree(&owner, &terminal, &input)
+                    .await?
+                {
+                    Some(value) => output(200, "terminalWireSummarySchema", &value),
+                    None => Ok(error(404, "Terminal or worktree not found.")),
+                }
+            })
+            .await;
+        return Ok(result.unwrap_or_else(conflict));
+    }
     if method == Method::PATCH {
         let result = async {
             match repository.update(&owner, &terminal, &input).await? {
@@ -141,6 +213,7 @@ async fn execute(
     request: Request,
 ) -> Result<Response> {
     let method = request.method().clone();
+    let worktree = request.uri().path().ends_with("/worktree");
     if method == Method::GET || method == Method::HEAD {
         let project = params.get("projectId").context("Terminal project")?;
         return output(
@@ -157,10 +230,14 @@ async fn execute(
         Ok(v) => v,
         Err(response) => return Ok(response),
     };
-    let input = if method == Method::POST && !params.contains_key("projectId") {
+    let input = if method == Method::DELETE
+        || (method == Method::POST && !params.contains_key("projectId"))
+    {
         Value::Null
     } else {
-        let schema = if params.contains_key("projectId") {
+        let schema = if worktree {
+            "worktreeSelectionSchema"
+        } else if params.contains_key("projectId") {
             "encryptedTerminalCreateSchema"
         } else if method == Method::PATCH {
             "encryptedTerminalUpdateSchema"
@@ -180,6 +257,7 @@ async fn execute(
             params.get("projectId").cloned(),
             params.get("terminalId").cloned(),
             method,
+            worktree,
             input,
         ))
         .await
@@ -235,7 +313,8 @@ pub(super) fn routes() -> Router<Arc<AuthService>> {
             "/api/projects/{projectId}/terminals",
             get(handle).post(handle),
         )
-        .route("/api/terminals/{terminalId}", patch(handle))
+        .route("/api/terminals/{terminalId}", patch(handle).delete(handle))
+        .route("/api/terminals/{terminalId}/worktree", patch(handle))
         .route("/api/terminals/{terminalId}/service", put(handle))
         .route("/api/terminals/{terminalId}/service/restart", post(handle))
 }

@@ -33,6 +33,7 @@ const pair = [],
     databaseMode,
     completeReplacement: false,
     cases: [],
+    contextCases: [],
     databaseCases: [],
   };
 let postgresOwner, failure;
@@ -74,13 +75,43 @@ async function compare(label, operation, value, rejected = false) {
     value: expected.value,
   });
 }
-const scope = (label, principal, resource, value, rejected = false) =>
-  compare(
+const scope = async (label, principal, resource, value, rejected = false) => {
+  await compare(
     label,
     { op: "scope", owner: principal, scope: resource },
     value,
     rejected,
   );
+  if (resource.kind === "chat") {
+    const operation = {
+      op: "chat-context",
+      owner: principal,
+      chat: resource.chatId,
+    };
+    const [expected, actual] = await Promise.all(
+      pair.map((fixture) => fixture.request(operation)),
+    );
+    const observable = ({ rejected, value, diagnostic }) =>
+      rejected ? { rejected, diagnostic } : { rejected, value };
+    report.contextCases.push({ label, operation, expected, actual });
+    assert.equal(
+      expected.rejected,
+      rejected,
+      "Actual Source context outcome: " + label,
+    );
+    if (!rejected)
+      assert.equal(
+        expected.value !== null,
+        value,
+        "Actual Source context presence: " + label,
+      );
+    assert.deepEqual(
+      observable(actual),
+      observable(expected),
+      "Complete execution context: " + label,
+    );
+  }
+};
 const project = (id = "project-one") => ({ kind: "project", projectId: id });
 const chat = (id = "chat-project") => ({ kind: "chat", chatId: id });
 const session = (label, id, principal, value) =>
@@ -89,6 +120,185 @@ const session = (label, id, principal, value) =>
     { op: "session-active", owner: principal, session: id },
     value,
   );
+async function mcpCases() {
+  const rows = new Map();
+  const index = (number) =>
+    Buffer.concat([Buffer.from([number * 16]), Buffer.alloc(31)]).toString(
+      "base64url",
+    );
+  const specifications = [
+    [1, owner, null, null, 0, "ide", true],
+    [2, owner, null, "worker", 0, "ide", true],
+    [3, owner, "project-one", null, 0, "ide", true],
+    [4, owner, "project-one", "worker", 0, "ide", true],
+    [5, owner, null, null, 1, "chat", true],
+    [6, owner, "project-two", null, 2, "ide", true],
+    [7, owner, null, null, 3, "both", true],
+    [8, owner, null, null, 4, "ide", false],
+    [9, other, null, null, 5, "both", true],
+    [10, owner, "project-one", "worker-two", 6, "ide", true],
+  ];
+  await seed(
+    `INSERT INTO workers(id,owner_id,name,platform,architecture,started_at,last_seen_at) VALUES ('worker-two',${literal(owner)},'Second worker','linux','x64',${literal(stamp)},${literal(stamp)});`,
+  );
+  for (const [
+    number,
+    principal,
+    project,
+    worker,
+    key,
+    audience,
+    enabled,
+  ] of specifications) {
+    const id = `77777777-7777-4777-8777-${String(number).padStart(12, "0")}`;
+    const opaque = {
+      ...projectLabel.protectedLabel,
+      envelope: {
+        ...projectLabel.protectedLabel.envelope,
+        nonce: Buffer.alloc(12, number).toString("base64url"),
+        ciphertext: Buffer.alloc(32, number).toString("base64url"),
+      },
+    };
+    rows.set(number, {
+      id,
+      enabled,
+      nameBlindIndex: index(key),
+      protectedConfiguration: opaque,
+    });
+    await seed(
+      `INSERT INTO mcp_servers(id,owner_id,project_id,worker_id,name_blind_index,protected_configuration,enabled,audience,created_at) VALUES (${literal(id)},${literal(principal)},${literal(project)},${literal(worker)},${literal(index(key))},${json(opaque)},${enabled},${literal(audience)},${literal(stamp)});`,
+    );
+  }
+  const expect = (
+    label,
+    project,
+    worker,
+    audience,
+    numbers,
+    principal = owner,
+  ) =>
+    compare(
+      label,
+      {
+        op: "mcp-effective",
+        owner: principal,
+        project,
+        worker,
+        ...(audience === undefined ? {} : { audience }),
+      },
+      numbers.map((n) => rows.get(n)),
+    );
+  await expect(
+    "MCP project and worker priority",
+    "project-one",
+    "worker",
+    undefined,
+    [4, 7],
+  );
+  await expect(
+    "MCP project scope overrides worker-global scope",
+    "project-one",
+    "worker-two",
+    "ide",
+    [3, 7, 10],
+  );
+  await expect("MCP global worker scope", null, "worker", "ide", [2, 7]);
+  await expect("MCP global unbound scope", null, "missing", "ide", [1, 7]);
+  await expect(
+    "MCP project selection includes matching global configuration",
+    "project-two",
+    "worker",
+    "ide",
+    [2, 6, 7],
+  );
+  await expect(
+    "MCP empty project retains global semantics",
+    "",
+    "worker",
+    "ide",
+    [2, 7],
+  );
+  await expect(
+    "MCP absent project does not reject global reads",
+    "missing",
+    "worker",
+    "ide",
+    [2, 7],
+  );
+  await expect(
+    "MCP foreign owner isolation",
+    "project-one",
+    "worker",
+    "ide",
+    [9],
+    other,
+  );
+  await expect(
+    "MCP unknown owner",
+    "project-one",
+    "worker",
+    "ide",
+    [],
+    "unowned",
+  );
+  await expect("MCP chat audience", "project-one", "worker", "chat", [5, 7]);
+  await expect("MCP both audience", "project-one", "worker", "both", [7]);
+  for (const [disabled, fallback] of [
+    [4, 3],
+    [3, 2],
+    [2, 1],
+    [1, null],
+  ]) {
+    await seed(
+      `UPDATE mcp_servers SET enabled=false WHERE id=${literal(rows.get(disabled).id)};`,
+    );
+    await expect(
+      "MCP disabled scope fallback " + disabled,
+      "project-one",
+      "worker",
+      "ide",
+      [...(fallback ? [fallback] : []), 7],
+    );
+  }
+  for (const n of [1, 2, 3, 4])
+    await seed(
+      `UPDATE mcp_servers SET enabled=true WHERE id=${literal(rows.get(n).id)};`,
+    );
+  await seed(
+    `UPDATE mcp_servers SET audience='chat' WHERE id=${literal(rows.get(4).id)};`,
+  );
+  await expect(
+    "MCP audience filter precedes priority",
+    "project-one",
+    "worker",
+    "ide",
+    [3, 7],
+  );
+  await expect(
+    "MCP project-worker chat override",
+    "project-one",
+    "worker",
+    "chat",
+    [4, 5, 7],
+  );
+  await seed(
+    `UPDATE mcp_servers SET audience='both' WHERE id=${literal(rows.get(4).id)};`,
+  );
+  await expect(
+    "MCP both scope overrides ide",
+    "project-one",
+    "worker",
+    "ide",
+    [4, 7],
+  );
+  await expect(
+    "MCP both scope overrides chat",
+    "project-one",
+    "worker",
+    "chat",
+    [4, 5, 7],
+  );
+}
 async function negative(label, sql) {
   const expected = await pair[0].request({ op: "sql", sql }),
     actual = await pair[1].request({ op: "sql", sql });
@@ -461,6 +671,7 @@ try {
   await session("revoked account session", "session", other, false);
   await seed("UPDATE user_sessions SET revoked_at=NULL WHERE id='session';");
   await session("restored active account session", "session", other, true);
+  await mcpCases();
 } catch (error) {
   failure = error;
   report.error = error.message;
@@ -492,6 +703,7 @@ try {
         suite: report.suite,
         databaseMode,
         cases: report.cases.length,
+        contextCases: report.contextCases.length,
         databaseCases: report.databaseCases.length,
         error: report.error,
       },

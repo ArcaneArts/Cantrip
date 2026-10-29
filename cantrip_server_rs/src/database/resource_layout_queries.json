@@ -1,0 +1,29 @@
+{
+  "queries": {
+    "workspace_project_lock": "select \"id\" from \"projects\" where (\"projects\".\"id\" = $1 and \"projects\".\"owner_id\" = $2) for update",
+    "workspace_rows": "select \"owner_id\", \"project_id\", \"workspace_id\", \"layout\" from \"workspace_layouts\" where (\"workspace_layouts\".\"owner_id\" = $1 and \"workspace_layouts\".\"project_id\" = $2) order by \"workspace_layouts\".\"workspace_id\" asc for update",
+    "workspace_update": "update \"workspace_layouts\" set \"layout\" = $1 where (\"workspace_layouts\".\"owner_id\" = $2 and \"workspace_layouts\".\"project_id\" = $3 and \"workspace_layouts\".\"workspace_id\" = $4)",
+    "layout_project_lock": "select \"id\" from \"projects\" where \"projects\".\"id\" = $1 limit $2 for update",
+    "member_select": "select \"tab_group_members\".\"tab_key\", \"tab_group_members\".\"group_id\", \"tab_group_members\".\"project_id\", \"tab_group_members\".\"tab_kind\", \"tab_group_members\".\"tab_id\", \"tab_group_members\".\"position\", \"tab_group_members\".\"created_at\", \"tab_group_members\".\"updated_at\", \"tab_groups\".\"id\", \"tab_groups\".\"project_id\", \"tab_groups\".\"protected_label\", \"tab_groups\".\"region\", \"tab_groups\".\"position\", \"tab_groups\".\"anchor_tab_key\", \"tab_groups\".\"created_at\", \"tab_groups\".\"updated_at\" from \"tab_group_members\" inner join \"tab_groups\" on \"tab_groups\".\"id\" = \"tab_group_members\".\"group_id\" where (\"tab_group_members\".\"project_id\" = $1 and \"tab_group_members\".\"tab_key\" = $2) limit $3",
+    "member_delete": "delete from \"tab_group_members\" where \"tab_group_members\".\"tab_key\" = $1",
+    "members_remaining": "select \"tab_key\" from \"tab_group_members\" where \"tab_group_members\".\"group_id\" = $1 order by \"tab_group_members\".\"position\" asc, \"tab_group_members\".\"tab_key\" asc",
+    "group_delete": "delete from \"tab_groups\" where \"tab_groups\".\"id\" = $1",
+    "groups_remaining": "select \"id\" from \"tab_groups\" where (\"tab_groups\".\"project_id\" = $1 and \"tab_groups\".\"region\" = $2) order by \"tab_groups\".\"position\" asc, \"tab_groups\".\"id\" asc",
+    "group_position": "update \"tab_groups\" set \"position\" = $1, \"updated_at\" = $2 where \"tab_groups\".\"id\" = $3",
+    "project_revision": "update \"projects\" set \"tab_layout_revision\" = \"projects\".\"tab_layout_revision\" + 1, \"updated_at\" = $1 where \"projects\".\"id\" = $2",
+    "center_read": "select \"center_layout_root\" from \"projects\" where \"projects\".\"id\" = $1 limit $2",
+    "center_panes": "select \"id\" from \"tab_groups\" where (\"tab_groups\".\"project_id\" = $1 and \"tab_groups\".\"region\" = $2)",
+    "center_update": "update \"projects\" set \"center_layout_root\" = $1, \"updated_at\" = $2 where \"projects\".\"id\" = $3",
+    "group_anchor_label": "update \"tab_groups\" set \"protected_label\" = $1, \"anchor_tab_key\" = $2, \"updated_at\" = $3 where \"tab_groups\".\"id\" = $4",
+    "member_position": "update \"tab_group_members\" set \"group_id\" = $1, \"position\" = $2, \"updated_at\" = $3 where \"tab_group_members\".\"tab_key\" = $4",
+    "group_anchor": "update \"tab_groups\" set \"anchor_tab_key\" = $1, \"updated_at\" = $2 where \"tab_groups\".\"id\" = $3",
+    "group_label": "update \"tab_groups\" set \"protected_label\" = $1, \"updated_at\" = $2 where \"tab_groups\".\"id\" = $3"
+  },
+  "columns": {
+    "group_id": 8,
+    "group_region": 11,
+    "group_anchor": 13,
+    "workspace_id": 2,
+    "workspace_layout": 3
+  }
+}

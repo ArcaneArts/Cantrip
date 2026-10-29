@@ -61,7 +61,7 @@ export interface TunnelAttachmentRouteDependencies {
   >;
   tunnelRuntime: Pick<
     TunnelRuntimeManager,
-    "attach" | "closeActive" | "revoke"
+    "attach" | "closeActive" | "revoke" | "owned"
   >;
   workerLinks: Pick<WorkerLinkService, "revokeAttachment">;
 }
@@ -429,80 +429,84 @@ export function installTunnelAttachmentRoutes(
   app.get<{ Params: { attachmentId: string } }>(
     "/api/tunnel-attachments/:attachmentId/connect",
     { websocket: true },
-    async (socket, request) => {
-      const initialized = new Promise<{ data: unknown; isBinary: boolean }>(
-        (resolve, reject) => {
-          const timer = setTimeout(
-            () => reject(new Error("Tunnel initialization timed out.")),
-            TUNNEL_ATTACHMENT_INITIALIZE_TIMEOUT_MS,
+    (socket, request) =>
+      tunnelRuntime.owned(
+        (async () => {
+          const initialized = new Promise<{ data: unknown; isBinary: boolean }>(
+            (resolve, reject) => {
+              const timer = setTimeout(
+                () => reject(new Error("Tunnel initialization timed out.")),
+                TUNNEL_ATTACHMENT_INITIALIZE_TIMEOUT_MS,
+              );
+              socket.once("message", (data, isBinary) => {
+                clearTimeout(timer);
+                resolve({ data, isBinary });
+              });
+              socket.once("close", () => {
+                clearTimeout(timer);
+                reject(new Error("Tunnel attachment disconnected."));
+              });
+            },
           );
-          socket.once("message", (data, isBinary) => {
-            clearTimeout(timer);
-            resolve({ data, isBinary });
-          });
-          socket.once("close", () => {
-            clearTimeout(timer);
-            reject(new Error("Tunnel attachment disconnected."));
-          });
-        },
-      );
-      void initialized.catch(() => undefined);
-      const secret = tunnelAttachmentSocketSecret(request.headers);
-      if (secret.length < 32 || secret.length > 512) {
-        socket.close(1008, "Attachment authentication failed");
-        return;
-      }
-      const authorization = await repository.authorizeDesktopTunnelAttachment(
-        request.params.attachmentId,
-        hashSecret(secret),
-      );
-      if (!authorization) {
-        socket.close(1008, "Attachment authentication failed");
-        return;
-      }
-      if (!registerAccountSocket(socket, authorization.ownerId)) return;
-      try {
-        const initializedFrame = await initialized;
-        const usageChannel = tunnelBandwidthChannel(authorization);
-        accountUsageMeter.record({
-          ownerId: authorization.ownerId,
-          direction: "ingress",
-          channel: usageChannel,
-          bytes: encodedFrameBytes(initializedFrame.data),
-        });
-        if (initializedFrame.isBinary) {
-          throw new Error("Tunnel initialization must be JSON.");
-        }
-        let initializedValue: unknown;
-        try {
-          initializedValue = JSON.parse(String(initializedFrame.data));
-        } catch {
-          throw new Error("Tunnel initialization is invalid.");
-        }
-        const initialize =
-          tunnelAttachmentInitializeSchema.parse(initializedValue);
-        const ready = await tunnelRuntime.attach(
-          socket,
-          authorization,
-          initialize,
-        );
-        if (socket.readyState === 1) {
-          const encoded = JSON.stringify(
-            tunnelAttachmentReadySchema.parse(ready),
-          );
-          socket.send(encoded);
-          recordEncodedFrame(accountUsageMeter, {
-            ownerId: authorization.ownerId,
-            direction: "egress",
-            channel: usageChannel,
-            data: encoded,
-          });
-        }
-      } catch (error) {
-        if (socket.readyState === 0 || socket.readyState === 1) {
-          socket.close(1008, errorMessage(error));
-        }
-      }
-    },
+          void initialized.catch(() => undefined);
+          const secret = tunnelAttachmentSocketSecret(request.headers);
+          if (secret.length < 32 || secret.length > 512) {
+            socket.close(1008, "Attachment authentication failed");
+            return;
+          }
+          const authorization =
+            await repository.authorizeDesktopTunnelAttachment(
+              request.params.attachmentId,
+              hashSecret(secret),
+            );
+          if (!authorization) {
+            socket.close(1008, "Attachment authentication failed");
+            return;
+          }
+          if (!registerAccountSocket(socket, authorization.ownerId)) return;
+          try {
+            const initializedFrame = await initialized;
+            const usageChannel = tunnelBandwidthChannel(authorization);
+            accountUsageMeter.record({
+              ownerId: authorization.ownerId,
+              direction: "ingress",
+              channel: usageChannel,
+              bytes: encodedFrameBytes(initializedFrame.data),
+            });
+            if (initializedFrame.isBinary) {
+              throw new Error("Tunnel initialization must be JSON.");
+            }
+            let initializedValue: unknown;
+            try {
+              initializedValue = JSON.parse(String(initializedFrame.data));
+            } catch {
+              throw new Error("Tunnel initialization is invalid.");
+            }
+            const initialize =
+              tunnelAttachmentInitializeSchema.parse(initializedValue);
+            const ready = await tunnelRuntime.attach(
+              socket,
+              authorization,
+              initialize,
+            );
+            if (socket.readyState === 1) {
+              const encoded = JSON.stringify(
+                tunnelAttachmentReadySchema.parse(ready),
+              );
+              socket.send(encoded);
+              recordEncodedFrame(accountUsageMeter, {
+                ownerId: authorization.ownerId,
+                direction: "egress",
+                channel: usageChannel,
+                data: encoded,
+              });
+            }
+          } catch (error) {
+            if (socket.readyState === 0 || socket.readyState === 1) {
+              socket.close(1008, errorMessage(error));
+            }
+          }
+        })(),
+      ),
   );
 }

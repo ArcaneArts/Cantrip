@@ -1,45 +1,13 @@
 use crate::{
-    database::Transaction,
-    wire::{JsString, Value},
+    database::{
+        Transaction,
+        resource_layout_queries::{context as checked, sql},
+    },
+    wire::{JsString, Value, value::json},
 };
 use anyhow::{Context, Result, ensure};
 use std::collections::HashSet;
 
-fn shape(root: &Value) -> Result<()> {
-    let mut pending = vec![root];
-    while let Some(node) = pending.pop() {
-        let fields = node
-            .as_object()
-            .context("Invalid stored center layout root")?;
-        if node["kind"] == "pane" {
-            ensure!(
-                fields.len() == 2
-                    && node["paneId"]
-                        .as_js_string()
-                        .is_some_and(|v| !v.units().is_empty()),
-                "Invalid stored center pane"
-            );
-        } else {
-            ensure!(
-                node["kind"] == "split"
-                    && fields.len() == 6
-                    && node["id"]
-                        .as_js_string()
-                        .is_some_and(|v| !v.units().is_empty())
-                    && ["horizontal", "vertical"]
-                        .iter()
-                        .any(|v| node["direction"] == *v)
-                    && node["fraction"]
-                        .as_f64()
-                        .is_some_and(|v| (0.1..=0.9).contains(&v)),
-                "Invalid stored center split"
-            );
-            pending.push(&node["second"]);
-            pending.push(&node["first"]);
-        }
-    }
-    Ok(())
-}
 pub fn leaf_ids(root: &Value) -> Result<Vec<JsString>> {
     if root.is_null() {
         return Ok(vec![]);
@@ -83,23 +51,23 @@ pub fn leaf_ids(root: &Value) -> Result<Vec<JsString>> {
     Ok(result)
 }
 pub async fn append(tx: &Transaction<'_>, project: &str, pane: &str) -> Result<()> {
-    let rows = tx
-        .query(
-            "SELECT center_layout_root::text FROM projects WHERE id=$1 LIMIT 1",
-            &[&project],
-        )
-        .await?;
-    let raw = rows
+    let rows = checked(
+        "center_read",
+        tx.query(sql("center_read"), &[&project, &1_i64]).await,
+        &[json!(project), json!(1)],
+    )?;
+    let current = rows
         .first()
         .context("The project no longer exists.")?
-        .get::<Option<String>>(0)?;
-    let current = raw
-        .map(|v| serde_json::from_str::<Value>(&v))
-        .transpose()?
+        .get::<Option<postgres_types::Json<Value>>>(0)?
+        .map(|v| v.0)
         .unwrap_or(Value::Null);
-    if !current.is_null() {
-        shape(&current)?;
-    }
+    let current = if current.is_null() {
+        current
+    } else {
+        crate::wire::parse("projectCenterLayoutNodeSchema", Some(&current))
+            .map_err(crate::settings::response_error)?
+    };
     let leaf = Value::object([
         ("kind", Value::String("pane".into())),
         ("paneId", Value::String(pane.into())),
@@ -116,13 +84,15 @@ pub async fn append(tx: &Transaction<'_>, project: &str, pane: &str) -> Result<(
             ("second", leaf),
         ])
     };
-    let ids = leaf_ids(&next)?;
-    let rows = tx
-        .query(
-            "SELECT id FROM tab_groups WHERE project_id=$1 AND region='center'",
-            &[&project],
-        )
-        .await?;
+    persist(tx, project, &next).await
+}
+async fn persist(tx: &Transaction<'_>, project: &str, next: &Value) -> Result<()> {
+    let ids = leaf_ids(next)?;
+    let rows = checked(
+        "center_panes",
+        tx.query(sql("center_panes"), &[&project, &"center"]).await,
+        &[json!(project), json!("center")],
+    )?;
     let panes = rows
         .iter()
         .map(|r| r.get::<String>(0).map(JsString::from))
@@ -132,20 +102,87 @@ pub async fn append(tx: &Transaction<'_>, project: &str, pane: &str) -> Result<(
         "The center layout tree does not exactly match its center panes."
     );
     let json = next.stringify();
+    let root = (!next.is_null()).then_some(json.as_str());
     let at = crate::auth::now();
-    tx.query(
-        "UPDATE projects SET center_layout_root=$1::text::jsonb,updated_at=$2 WHERE id=$3",
-        &[&json, &at, &project],
-    )
-    .await?;
+    checked(
+        "center_update",
+        tx.query(
+            "UPDATE projects SET center_layout_root=$1::text::jsonb,updated_at=$2 WHERE id=$3",
+            &[&root, &at, &project],
+        )
+        .await,
+        &[
+            if next.is_null() {
+                Value::Null
+            } else {
+                Value::String(json.into())
+            },
+            json!(crate::auth::iso(at)),
+            json!(project),
+        ],
+    )?;
     for (position, id) in ids.into_iter().enumerate() {
         let id = id.lossy().into_owned();
         let at = crate::auth::now();
-        tx.query(
-            "UPDATE tab_groups SET position=$1,updated_at=$2 WHERE id=$3",
-            &[&(position as i32), &at, &id],
-        )
-        .await?;
+        checked(
+            "group_position",
+            tx.query(
+                "UPDATE tab_groups SET position=$1,updated_at=$2 WHERE id=$3",
+                &[&(position as i32), &at, &id],
+            )
+            .await,
+            &[json!(position), json!(crate::auth::iso(at)), json!(id)],
+        )?;
     }
     Ok(())
+}
+fn remove_first(node: &Value, pane: &str) -> (Value, bool) {
+    if node["kind"] == "pane" {
+        return if node["paneId"] == pane {
+            (Value::Null, true)
+        } else {
+            (node.clone(), false)
+        };
+    }
+    let (first, removed) = remove_first(&node["first"], pane);
+    if removed {
+        if first.is_null() {
+            return (node["second"].clone(), true);
+        }
+        let mut next = node.clone();
+        next["first"] = first;
+        return (next, true);
+    }
+    let (second, removed) = remove_first(&node["second"], pane);
+    if removed {
+        if second.is_null() {
+            return (node["first"].clone(), true);
+        }
+        let mut next = node.clone();
+        next["second"] = second;
+        return (next, true);
+    }
+    (node.clone(), false)
+}
+pub async fn remove(tx: &Transaction<'_>, project: &str, pane: &str) -> Result<()> {
+    let rows = checked(
+        "center_read",
+        tx.query(sql("center_read"), &[&project, &1_i64]).await,
+        &[json!(project), json!(1)],
+    )?;
+    let root = rows
+        .first()
+        .context("The project no longer exists.")?
+        .get::<Option<postgres_types::Json<Value>>>(0)?
+        .map(|v| v.0)
+        .unwrap_or(Value::Null);
+    ensure!(!root.is_null(), "The center layout root is missing.");
+    let root = crate::wire::parse("projectCenterLayoutNodeSchema", Some(&root))
+        .map_err(crate::settings::response_error)?;
+    let (next, removed) = remove_first(&root, pane);
+    ensure!(
+        removed,
+        "Center pane {pane} is missing from the layout tree."
+    );
+    persist(tx, project, &next).await
 }

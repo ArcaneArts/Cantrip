@@ -4,6 +4,10 @@ import assert from "node:assert/strict";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { eventually } from "./full-worker.mjs";
+import { actualWorkerObservations } from "./actual-worker-observations.mjs";
+import { actualWorkerTerminalLink } from "./actual-worker-terminal-link.mjs";
+import { actualWorkerTerminalRelay } from "./actual-worker-terminal-relay.mjs";
+import { actualWorkerTerminalDirect } from "./actual-worker-terminal-direct.mjs";
 
 export async function actualTerminalServices({
   page,
@@ -13,6 +17,9 @@ export async function actualTerminalServices({
   startWorker,
   stopWorker,
   result,
+  workerLinks = false,
+  workerLinkRoute = "relay",
+  directBrokerBinary,
 }) {
   const proof = path.join(directory, "terminal-proof.jsonl"),
     secret = "private-terminal-command-" + crypto.randomUUID();
@@ -34,6 +41,7 @@ export async function actualTerminalServices({
       requests.push({ pathname, body: request.postData() });
   };
   page.on("request", observe);
+  let observations;
   try {
     await eventually(
       () => page.evaluate(() => window.folderWorkers.getWorkers()),
@@ -197,6 +205,13 @@ export async function actualTerminalServices({
           "running",
         ),
     );
+    if (workerLinks)
+      observations = await actualWorkerObservations({
+        page,
+        workerId,
+        result,
+        route: workerLinkRoute,
+      });
     const disabled = await page.evaluate(
       async ({ projectId, id, command }) => {
         const terminal = (
@@ -211,6 +226,10 @@ export async function actualTerminalServices({
     );
     assert.equal(disabled.status, "idle");
     assert.equal(disabled.service.enabled, false);
+    if (observations) {
+      await observations.expectTerminalExit(created.id);
+      await observations.close();
+    }
     await eventually(
       () => {
         try {
@@ -252,8 +271,36 @@ export async function actualTerminalServices({
       reconnected: true,
       disabled: true,
     };
+    if (workerLinks)
+      await actualWorkerTerminalLink({
+        page,
+        projectId,
+        worktreeId,
+        workerId,
+        directory,
+        result,
+        route: workerLinkRoute,
+      });
+    if (workerLinks)
+      await actualWorkerTerminalRelay({
+        page,
+        projectId,
+        worktreeId,
+        directory,
+        result,
+      });
+    if (directBrokerBinary)
+      await actualWorkerTerminalDirect({
+        page,
+        projectId,
+        worktreeId,
+        directory,
+        result,
+        binary: directBrokerBinary,
+      });
   } finally {
     page.off("request", observe);
+    await observations?.close();
     await stopWorker();
   }
 }

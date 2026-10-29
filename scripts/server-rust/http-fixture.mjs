@@ -37,6 +37,7 @@ export class HttpFixture {
     providerAuthDrain = false,
     auditObservations = false,
     observeHttpClocks = false,
+    observeTunnelExpiry = false,
   }) {
     Object.assign(this, {
       kind,
@@ -47,6 +48,7 @@ export class HttpFixture {
       providerAuthDrain,
       auditObservations,
       observeHttpClocks,
+      observeTunnelExpiry,
     });
     this.environment = {
       ...fixtureEnvironment(path.join(root, name, kind)),
@@ -74,7 +76,7 @@ export class HttpFixture {
     if (!this.clients.has(name)) this.clients.set(name, { cookies: new Map() });
     return this.clients.get(name);
   }
-  async start() {
+  async start({ port = 0 } = {}) {
     assert.equal(this.server, undefined);
     this.server =
       this.kind === "node"
@@ -84,10 +86,13 @@ export class HttpFixture {
               "--import",
               "tsx",
               "scripts/server-rust/node-server.mjs",
+              "--listen-port",
+              String(port),
               ...(this.workerIngress ? ["--worker-ingress-fixture"] : []),
               ...(this.providerAuthDrain ? ["--drain-auth-notifications"] : []),
               ...(this.auditObservations ? ["--observe-audits"] : []),
               ...(this.observeHttpClocks ? ["--observe-http-clocks"] : []),
+              ...(this.observeTunnelExpiry ? ["--observe-tunnel-expiry"] : []),
             ],
             { cwd: repositoryRoot, env: this.environment },
           )
@@ -95,7 +100,7 @@ export class HttpFixture {
             this.executable,
             [
               "--port",
-              "0",
+              String(port),
               "--database",
               this.databaseMode,
               "--shutdown-on-stdin-close",

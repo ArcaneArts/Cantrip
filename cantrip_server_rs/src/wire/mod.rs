@@ -1,6 +1,7 @@
 //! Native execution of generated protocol contracts. JavaScript is used only
 //! by the development exporter/oracle; requests execute these Rust operations.
 pub(crate) mod coercion;
+mod intersections;
 mod js_date;
 mod json_contract;
 mod json_text;
@@ -12,12 +13,26 @@ mod terminals;
 pub mod value;
 mod worker_command;
 mod worker_contract;
+mod workspaces;
 pub use value::{JsString, Value};
 use value::{Object, json};
 
 use serde::Deserialize;
 use serde_json::Map;
 use std::{collections::HashMap, sync::OnceLock};
+
+/// Access named JSON data properties at the source evaluation point. Null and
+/// missing receivers throw; other primitives have no such data property.
+pub(crate) fn property<'a>(
+    value: Option<&'a Value>,
+    key: &str,
+) -> anyhow::Result<Option<&'a Value>> {
+    match value {
+        None => anyhow::bail!("Cannot read properties of undefined (reading '{key}')"),
+        Some(Value::Null) => anyhow::bail!("Cannot read properties of null (reading '{key}')"),
+        Some(value) => Ok(value.get(key)),
+    }
+}
 
 #[derive(Debug)]
 pub enum ValidationError {
@@ -63,6 +78,8 @@ struct Check {
     #[serde(default)]
     display_pattern: String,
     #[serde(default)]
+    prefix: Value,
+    #[serde(default)]
     tag: String,
     #[serde(default)]
     message: Option<String>,
@@ -84,6 +101,10 @@ struct Node {
     shape: Map<String, serde_json::Value>,
     #[serde(default)]
     inner_type: Option<usize>,
+    #[serde(default)]
+    left: Option<usize>,
+    #[serde(default)]
+    right: Option<usize>,
     #[serde(default)]
     element: Option<usize>,
     #[serde(default)]
@@ -125,6 +146,7 @@ struct Parsed {
     value: Option<Value>,
     issues: Vec<Value>,
     aborted: bool,
+    aborted_other: bool,
 }
 impl Parsed {
     fn new(value: Option<Value>) -> Self {
@@ -132,6 +154,7 @@ impl Parsed {
             value,
             issues: Vec::new(),
             aborted: false,
+            aborted_other: false,
         }
     }
     fn issue(&mut self, value: Value, path: &[Value], message: String, abort: bool) {
@@ -145,6 +168,7 @@ impl Parsed {
             value["path"] = json!(path);
             value["message"] = json!(message);
         }
+        self.aborted_other |= abort && value["code"] != "unrecognized_keys";
         self.issues.push(value);
         self.aborted |= abort;
     }
@@ -161,6 +185,7 @@ impl Parsed {
     }
     fn merge(&mut self, other: Parsed) {
         self.aborted |= other.aborted;
+        self.aborted_other |= other.aborted_other;
         self.issues.extend(other.issues);
     }
 }
@@ -218,7 +243,29 @@ pub fn parse(name: &str, input: Option<&Value>) -> Result<Value, ValidationError
     let Some(id) = contracts.roots.get(name) else {
         return Err(ValidationError::Operation);
     };
-    let result = contracts.run(*id, input, &[])?;
+    parsed_value(contracts.run(*id, input, &[])?)
+}
+
+/// Match a protocol object's leaf schema, as routes do with Zod `.shape`.
+pub(crate) fn parse_property(
+    name: &str,
+    field: &str,
+    input: &Value,
+) -> Result<Value, ValidationError> {
+    let contracts = contracts();
+    let root = contracts
+        .roots
+        .get(name)
+        .ok_or(ValidationError::Operation)?;
+    let property = contracts.nodes[*root]
+        .shape
+        .get(field)
+        .and_then(serde_json::Value::as_u64)
+        .ok_or(ValidationError::Operation)?;
+    parsed_value(contracts.run(property as usize, Some(input), &[])?)
+}
+
+fn parsed_value(result: Parsed) -> Result<Value, ValidationError> {
     if result.issues.is_empty() {
         Ok(result.value.unwrap_or(Value::Null))
     } else {
@@ -354,6 +401,7 @@ impl Contracts {
                         if !present && schema.optional_in && schema.optional_out {
                             child.issues.clear();
                             child.aborted = false;
+                            child.aborted_other = false;
                         }
                         if !present && !schema.optional_in {
                             if child.issues.is_empty() {
@@ -433,6 +481,7 @@ impl Contracts {
             "record" => result = self.record(node, input, path)?,
             "tuple" => result = self.tuple(node, input, path)?,
             "union" => result = self.union(node, input, path)?,
+            "intersection" => result = self.intersection(node, input, path)?,
             _ => return Err(ValidationError::Operation),
         }
         for check in &node.checks {
@@ -844,7 +893,12 @@ impl Contracts {
                         other => other,
                     };
                     let message = check.message.clone().unwrap_or_else(|| {
-                        if format == "regex" {
+                        if format == "starts_with" {
+                            format!(
+                                "Invalid string: must start with {}",
+                                check.prefix.stringify()
+                            )
+                        } else if format == "regex" {
                             format!(
                                 "Invalid string: must match pattern {}",
                                 check.display_pattern
@@ -853,7 +907,12 @@ impl Contracts {
                             format!("Invalid {label}")
                         }
                     });
-                    result.issue(json!({"origin":"string","code":"invalid_format","format":format,"pattern":check.display_pattern}),path,message,check.abort);
+                    let issue = if format == "starts_with" {
+                        json!({"origin":"string","code":"invalid_format","format":format,"prefix":check.prefix})
+                    } else {
+                        json!({"origin":"string","code":"invalid_format","format":format,"pattern":check.display_pattern})
+                    };
+                    result.issue(issue, path, message, check.abort);
                 }
             }
             "refinement" => {

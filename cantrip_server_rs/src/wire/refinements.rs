@@ -7,6 +7,9 @@ pub(super) fn apply(
     path: &[Value],
     message: Option<&str>,
 ) -> Result<(), ValidationError> {
+    if super::workspaces::refine(tag, result, path)? {
+        return Ok(());
+    }
     if super::terminals::refine(tag, result, path, message)? {
         return Ok(());
     }
@@ -32,8 +35,34 @@ pub(super) fn apply(
         at.extend(suffix.iter().map(|v| json!(v)));
         result.issue(json!({"code":"custom"}), &at, message.into(), false);
     };
+    if tag == "worker-link-signal-bytes" || tag == "worker-link-mailbox-bytes" {
+        if value.stringify().len() > 4 * 1024 * 1024 {
+            if tag == "worker-link-signal-bytes" {
+                custom(
+                    &["signals"],
+                    "WorkerLink peer signaling exceeds the byte limit.",
+                );
+            } else {
+                custom(&[], "WorkerLink peer mailbox exceeds the byte limit.");
+            }
+        }
+        return Ok(());
+    }
     let wrapper = &value["passwordWrappedMasterKey"];
     match tag {
+        "tunnel-create-operation" => {
+            if value["id"] != value["protectedRecord"]["operationId"] {
+                custom(
+                    &[],
+                    "A new tunnel record must use its tunnel id as operation id.",
+                );
+            }
+        }
+        "tunnel-create-revision" => {
+            if value["protectedRecord"]["revision"] != 1 {
+                custom(&[], "A new tunnel record must begin at revision one.");
+            }
+        }
         "repository-agent-model" => {
             if value["agent"] != true && value.get("modelId").is_some() {
                 custom(

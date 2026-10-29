@@ -6,7 +6,23 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { buildRustServer, buildRustExample } from "./build.mjs";
-import { HttpFixture } from "./http-fixture.mjs";
+import {
+  TerminalLinkFixture,
+  terminalGrantWorker,
+  terminalWorkerLinkCases,
+} from "./terminal-worker-link-cases.mjs";
+import { remoteSurfaceWorkerLinkCases } from "./remote-surface-worker-link-cases.mjs";
+import { terminalWorktreeCases } from "./terminal-worktree-cases.mjs";
+import { terminalDeleteCases } from "./terminal-delete-cases.mjs";
+import { terminalDirectCases } from "./terminal-direct-cases.mjs";
+import { terminalRelayCases } from "./terminal-relay-cases.mjs";
+import { directAttachmentWireFixtures } from "./direct-attachment-wire-fixtures.mjs";
+import { workspaceState } from "./workspace-wire-fixtures.mjs";
+import {
+  tunnelWorkerLinkCases,
+  tunnelEvents,
+} from "./tunnel-worker-link-cases.mjs";
+import { tunnelStateSql, tunnelIds, attachmentIds } from "./tunnel-state.mjs";
 import { repositoryFixture } from "./repository-fixture.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
 import { terminalCreationShutdown } from "./terminal-creation-shutdown.mjs";
@@ -90,12 +106,13 @@ try {
           pg && (kind === "node" || databaseMode === "postgres")
             ? await pg.database()
             : undefined;
-      const fixture = new HttpFixture({
+      const fixture = new TerminalLinkFixture({
         kind,
         executable,
         root,
         name,
         databaseMode,
+        observeTunnelExpiry: true,
         environment: {
           CANTRIP_AUTH_MODE: profile,
           CANTRIP_REGISTRATION_ENABLED: "true",
@@ -166,7 +183,66 @@ try {
         await fixture.close();
         repo = await openRepo();
         for (const sql of targetStateSql(owner, other)) await repo.seed(sql);
+        for (const sql of tunnelStateSql(owner, other)) await repo.seed(sql);
+        await repo.seed(
+          `INSERT INTO tunnel_attachments(id,tunnel_id,kind,client_id,secret_hash,status,secret_expires_at,expires_at,created_at,updated_at) SELECT 'placement-tunnel-attachment',${literal(tunnelIds.placement)},kind,'placement-client','placement-secret',status,secret_expires_at,expires_at,created_at,updated_at FROM tunnel_attachments WHERE id=${literal(attachmentIds.main)}`,
+        );
+        for (const [id, project, worker] of [
+          ["placement-surface", "github", "beta"],
+          ["disposable-surface", "github", "alpha"],
+          ["foreign-project-owned-worker", "other", "alpha"],
+        ])
+          await repo.seed(
+            `INSERT INTO remote_surfaces(id,project_id,worker_id,kind,configuration,protected_label,protected_state,state_revision,created_at,updated_at) SELECT ${literal(id)},${literal(project)},${literal(worker)},kind,configuration,protected_label,protected_state,state_revision,created_at,updated_at FROM remote_surfaces WHERE id='raw-browser'`,
+          );
+        await repo.seed(
+          `INSERT INTO model_providers(id,owner_id,name,kind,base_url) VALUES('http-console-provider',${literal(owner)},'HTTP console provider','openai-compatible','https://example.invalid/api');`,
+        );
+        await repo.seed(
+          `INSERT INTO model_profiles(id,owner_id,name) VALUES('http-console-model',${literal(owner)},'HTTP console model');`,
+        );
+        await repo.seed(
+          "INSERT INTO model_routes(id,model_id,provider_id,model_name,position,enabled) VALUES('http-console-route','http-console-model','http-console-provider','console-model',0,true);",
+        );
+        await repo.seed(
+          "UPDATE chats SET model_id='http-console-model' WHERE id='chat';",
+        );
+        for (const [index, [id, worker, tree, chat]] of [
+          ["linked-console", "alpha", "github-alpha-main", "chat"],
+          ["placement-terminal", "beta", "github-beta-main", null],
+          ["disposable-terminal", "alpha", "github-alpha-main", null],
+          ["lifecycle-terminal", "alpha", "github-alpha-main", null],
+          ["delete-failure-terminal", "alpha", "github-alpha-main", null],
+          ["delete-abort-terminal", "alpha", "github-alpha-main", null],
+          ["delete-error-terminal", "alpha", "github-alpha-main", null],
+        ].entries())
+          await repo.seed(
+            `INSERT INTO terminals(id,project_id,kind,active_worker_id,worktree_id,linked_chat_id,protected_label,protected_state,created_at,updated_at) VALUES(${literal(id)},'github',${literal(chat ? "chat-console" : "interactive")},${literal(worker)},${literal(tree)},${literal(chat)},${json(titleProtection)},${json(stateProtection)},${literal(new Date(Date.parse(stamp) + index + 1).toISOString())},${literal(stamp)});`,
+          );
         await repo.seed("UPDATE terminals SET position=1 WHERE id='�'");
+        for (const [workspace, terminal] of [
+          ["http-delete", "lifecycle-terminal"],
+          ["http-delete-abort", "delete-abort-terminal"],
+          ["http-delete-error", "delete-error-terminal"],
+        ]) {
+          const layout = workspaceState(workspace, terminal);
+          layout.windows[0].panes[0].tabs[1].resource.resourceId = "terminal";
+          await repo.seed(
+            `INSERT INTO workspace_layouts(owner_id,project_id,workspace_id,layout) VALUES(${literal(owner)},'github',${literal(workspace)},${json(layout)})`,
+          );
+        }
+        await repo.seed(
+          "INSERT INTO tab_groups(id,project_id,region,position,anchor_tab_key) VALUES('delete-center','github','center',0,'terminal:lifecycle-terminal')",
+        );
+        await repo.seed(
+          "INSERT INTO tab_group_members(tab_key,group_id,project_id,tab_kind,tab_id,position) VALUES('terminal:lifecycle-terminal','delete-center','github','terminal','lifecycle-terminal',0)",
+        );
+        await repo.seed(
+          `UPDATE projects SET center_layout_root=${json({ kind: "pane", paneId: "delete-center" })} WHERE id='github'`,
+        );
+        await repo.seed(
+          `INSERT INTO terminals(id,project_id,active_worker_id,worktree_id,protected_label,protected_state,created_at,updated_at) VALUES('folder-terminal','folder','alpha','folder-alpha-main',${json(titleProtection)},${json(stateProtection)},${literal(stamp)},${literal(stamp)})`,
+        );
         await repo.seed(
           `INSERT INTO run_configuration_runtimes(id,owner_id,project_id,configuration_id,worktree_id,worker_id,definition_revision,requested_operation_id,created_at,updated_at) VALUES(${literal(runtimeId)},${literal(owner)},'github',${literal(configurationId)},'github-alpha-main','alpha',${literal("a".repeat(64))},${literal(ids[7])},${literal(stamp)},${literal(stamp)})`,
         );
@@ -176,6 +252,47 @@ try {
         await repo.seed(
           `UPDATE run_configuration_runtimes SET terminal_id='run-terminal' WHERE id=${literal(runtimeId)}`,
         );
+        await repo.seed(
+          `INSERT INTO browsers(id,project_id,protected_label,protected_state) VALUES('startup-browser','github',${json(label("browser"))},${json(state("browser-state"))})`,
+        );
+        await repo.seed(
+          "UPDATE remote_surfaces SET status=CASE id WHEN 'browser' THEN 'connecting' WHEN 'desktop' THEN 'active' WHEN 'remote' THEN 'offline' WHEN 'raw-browser' THEN 'error' ELSE status END,last_error='retained startup diagnostic' WHERE id IN ('browser','desktop','remote','raw-browser')",
+        );
+        await repo.seed(
+          `UPDATE remote_surfaces SET last_connected_at=${literal(stamp)} WHERE id='desktop'`,
+        );
+        await repo.close();
+        repo = undefined;
+        // Inspect actual startup recovery after stopping its owning process;
+        // PGlite must never have two runtime owners open at once.
+        await fixture.start();
+        await fixture.close();
+        repo = await openRepo();
+        const recovered = await repo.request({
+          op: "query-json",
+          sql: "SELECT jsonb_build_object('surfaces',(SELECT jsonb_agg(jsonb_build_object('id',id,'status',status,'lastError',last_error,'connected',last_connected_at IS NOT NULL) ORDER BY id) FROM remote_surfaces WHERE id IN ('browser','desktop','remote','raw-browser')),'browserWorker',(SELECT worker_id FROM remote_surfaces WHERE id='startup-browser')) result",
+        });
+        assert.equal(recovered.rejected, false);
+        result.startupSurfaces = recovered.value;
+        assert.deepEqual(result.startupSurfaces, {
+          browserWorker: profile === "none" ? "alpha" : null,
+          surfaces: [
+            {
+              id: "browser",
+              status: "idle",
+              lastError: null,
+              connected: false,
+            },
+            { id: "desktop", status: "idle", lastError: null, connected: true },
+            {
+              id: "raw-browser",
+              status: "error",
+              lastError: "retained startup diagnostic",
+              connected: false,
+            },
+            { id: "remote", status: "idle", lastError: null, connected: false },
+          ],
+        });
         await repo.close();
         repo = undefined;
         await fixture.start();
@@ -298,7 +415,13 @@ try {
           client: "worker",
           json: {
             code: fixture.records.get("enrollment code").code,
-            heartbeat: { ...heartbeat, workerId: "alpha" },
+            heartbeat: {
+              ...heartbeat,
+              workerId: "alpha",
+              directBroker:
+                directAttachmentWireFixtures.directAttachmentTicketSchema[0]
+                  .broker,
+            },
           },
           status: 201,
         });
@@ -325,6 +448,17 @@ try {
           tokenSource: "persisted",
           workerId: "alpha",
         };
+        const bootstrap = await visit(
+          "terminal grant bootstrap",
+          "GET",
+          "/api/bootstrap",
+        );
+        fixture.sqlErrorOwner = owner;
+        const grantWorker = terminalGrantWorker({
+          serverId: bootstrap.server.id,
+          owner,
+          commands: result.commands,
+        });
         const connectWorker = () => {
           saveWorkerCredential({
             credential: config.token,
@@ -334,7 +468,24 @@ try {
           });
           worker = new WorkerConnection(
             config,
-            async (command) => {
+            async (command, emit) => {
+              if (
+                command.type.startsWith("worker-link.") ||
+                command.type.startsWith("direct.capability.") ||
+                [
+                  "terminal.open",
+                  "terminal.input",
+                  "terminal.resize",
+                  "terminal.detach",
+                  "terminal.close",
+                  "chat.thread.ensure",
+                  "surface.attach",
+                  "surface.detach",
+                ].includes(command.type)
+              ) {
+                result.commands.push(command);
+                return await grantWorker.handle(command, emit);
+              }
               if (
                 ![
                   "terminal.services.reconcile",
@@ -492,8 +643,76 @@ try {
           "GET",
           "/api/projects/github/terminals",
         );
+        await terminalWorktreeCases({
+          fixture,
+          visit,
+          state: grantWorker,
+          result,
+          profile,
+          databaseMode,
+          live,
+        });
+        await terminalWorkerLinkCases({
+          fixture,
+          visit,
+          state: grantWorker,
+          result,
+          profile,
+          databaseMode,
+          live,
+        });
+        await terminalDirectCases({
+          fixture,
+          visit,
+          state: grantWorker,
+          result,
+          profile,
+          databaseMode,
+          live,
+        });
+        await terminalRelayCases({
+          fixture,
+          visit,
+          state: grantWorker,
+          result,
+          profile,
+          databaseMode,
+          live,
+        });
+        await remoteSurfaceWorkerLinkCases({
+          fixture,
+          visit,
+          state: grantWorker,
+          result,
+          profile,
+          databaseMode,
+          live,
+        });
+        await terminalDeleteCases({
+          fixture,
+          visit,
+          state: grantWorker,
+          result,
+          profile,
+          databaseMode,
+          live,
+        });
+        await tunnelWorkerLinkCases({
+          fixture,
+          visit,
+          state: grantWorker,
+          result,
+          profile,
+          databaseMode,
+          live,
+        });
         if (foreignLive) {
           await foreignLive.ping();
+          assert.deepEqual(
+            tunnelEvents(foreignLive),
+            [],
+            "other owner receives no tunnel mutations",
+          );
           assert.deepEqual(
             terminalEvents(foreignLive),
             [],
@@ -525,6 +744,58 @@ try {
           op: "query-json",
           sql: `SELECT jsonb_build_object('status',t.status,'enabled',t.service_enabled,'members',(SELECT count(*) FROM tab_group_members WHERE tab_id=t.id),'revision',p.tab_layout_revision) result FROM terminals t JOIN projects p ON p.id=t.project_id WHERE t.id=${literal(ids[0])}`,
         });
+        const binding = await repo.request({
+          op: "query-json",
+          sql: "SELECT jsonb_build_object('thread',r.codex_thread_id,'model',c.model_id,'route',r.model_route_id) result FROM chats c JOIN chat_runtime_sessions r ON r.chat_id=c.id WHERE c.id='chat'",
+        });
+        assert.equal(binding.rejected, false);
+        assert.deepEqual(binding.value, {
+          thread: "http-console-thread",
+          model: "http-console-model",
+          route: "http-console-route",
+        });
+        result.consoleBinding = binding.value;
+        const deletedOwnership = await repo.request({
+          op: "query-json",
+          sql: "SELECT jsonb_build_object('remaining',(SELECT count(*) FROM terminals WHERE id IN ('lifecycle-terminal','delete-failure-terminal','delete-abort-terminal')),'root',(SELECT center_layout_root FROM projects WHERE id='github'),'layouts',(SELECT jsonb_agg(jsonb_build_object('workspace',workspace_id,'layout',layout) ORDER BY workspace_id) FROM workspace_layouts)) result",
+        });
+        assert.equal(deletedOwnership.rejected, false);
+        result.deletedOwnership = deletedOwnership.value;
+        assert.equal(result.deletedOwnership.remaining, 0);
+        assert.equal(result.deletedOwnership.root, null);
+        for (const row of result.deletedOwnership.layouts) {
+          const deleted =
+            row.workspace !== "http-delete-error" ||
+            databaseMode === "postgres";
+          assert.equal(row.layout.revision, deleted ? 7 : 4);
+          if (deleted) {
+            assert.equal(row.layout.windows[0].panes.length, 1);
+            assert.equal(row.layout.windows[1].panes.length, 0);
+          }
+        }
+        const tunnelRows = await repo.request({
+          op: "query-json",
+          sql: "SELECT jsonb_build_object('tunnels',(SELECT jsonb_agg(jsonb_build_object('id',id,'status',status,'desiredState',desired_state,'error',error_code) ORDER BY id) FROM tunnels),'attachments',(SELECT jsonb_agg(jsonb_build_object('id',id,'status',status,'error',error_code,'connected',last_seen_at IS NOT NULL) ORDER BY id) FROM tunnel_attachments)) result",
+        });
+        assert.equal(tunnelRows.rejected, false);
+        result.tunnelState = tunnelRows.value;
+        const surfaces = await repo.request({
+          op: "query-json",
+          sql: "SELECT jsonb_agg(jsonb_build_object('id',id,'status',status,'lastError',last_error,'connected',last_connected_at IS NOT NULL) ORDER BY id) result FROM remote_surfaces",
+        });
+        assert.equal(surfaces.rejected, false);
+        result.surfaceState = surfaces.value;
+        const relayUsage = await repo.request({
+          op: "query-json",
+          sql: "SELECT coalesce(jsonb_object_agg(direction,jsonb_build_object('bytes',bytes,'operations',operations)),'{}'::jsonb) result FROM (SELECT direction,sum(bytes)::float8 bytes,sum(operation_count)::float8 operations FROM account_bandwidth_usage_buckets WHERE channel='terminal-relay' GROUP BY direction) totals",
+        });
+        assert.equal(relayUsage.rejected, false);
+        result.terminalRelayUsage = relayUsage.value;
+        assert.deepEqual(
+          result.terminalRelayUsage,
+          result.terminalRelayExpectedUsage,
+          "actual persisted terminal-relay application bytes and operations",
+        );
         assert.equal(persisted.rejected, false);
         result.persisted = persisted.value;
         assert.equal(result.persisted.status, "running");
@@ -532,7 +803,8 @@ try {
         assert.equal(result.persisted.members, 1);
         assert.equal(
           result.persisted.revision,
-          databaseMode === "postgres" ? 2 : 1,
+          // The direct mutation case also creates and deletes one terminal.
+          databaseMode === "postgres" ? 5 : 4,
         );
       } finally {
         worker?.close();
@@ -557,6 +829,41 @@ try {
       outputs[0].persisted,
       profile + " retained terminal/layout state",
     );
+    assert.deepEqual(
+      outputs[1].workerLinkCommands,
+      outputs[0].workerLinkCommands,
+      profile + " terminal WorkerLink command order and opaque payloads",
+    );
+    assert.deepEqual(
+      outputs[1].consoleBinding,
+      outputs[0].consoleBinding,
+      profile + " canonical console binding",
+    );
+    for (const key of [
+      "surfaceGrantCommands",
+      "surfaceGrantTransitions",
+      "surfaceState",
+      "startupSurfaces",
+      "tunnelGrantCommands",
+      "tunnelGrantTransitions",
+      "tunnelState",
+      "terminalLifecycleCommands",
+      "terminalLifecycleEvents",
+      "terminalDeleteCommands",
+      "terminalDeleteEvents",
+      "deletedOwnership",
+      "terminalDirectCommands",
+      "terminalDirectEvents",
+      "terminalRelaySockets",
+      "terminalRelayCommands",
+      "terminalRelayExpectedUsage",
+      "terminalRelayUsage",
+    ])
+      assert.deepEqual(
+        outputs[1][key],
+        outputs[0][key],
+        profile + " exact remote-surface " + key,
+      );
   }
 } catch (error) {
   failure = error;

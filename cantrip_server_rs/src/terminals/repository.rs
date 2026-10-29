@@ -14,6 +14,11 @@ struct Queries {
     context: String,
     update: String,
     service: String,
+    worktree_select: String,
+    worktree_update: String,
+    delete: String,
+    runtime_clear: String,
+    runtime_active: String,
 }
 fn queries() -> &'static Queries {
     static QUERIES: OnceLock<Queries> = OnceLock::new();
@@ -26,6 +31,72 @@ pub struct Repository {
     database: Arc<Database>,
 }
 impl Repository {
+    pub async fn delete(&self, owner: &str, terminal: &str) -> Result<Option<Value>> {
+        let Some(context) = self.context(owner, terminal).await? else {
+            return Ok(None);
+        };
+        if context["kind"]=="run-configuration" && !query_error::context(self.database.query("SELECT state FROM run_configuration_runtimes WHERE owner_id=$1 AND terminal_id=$2 AND state IN ('starting','running','restarting','stopping') LIMIT 1",&[&owner,&terminal]).await,&queries().runtime_active,&[Value::String(owner.into()),Value::String(terminal.into()),Value::Number(1.0)])?.is_empty() {
+            bail!("Stop the active Run configuration before closing its terminal.");
+        }
+        let owner = owner.to_owned();
+        let terminal = terminal.to_owned();
+        let project = context["projectId"]
+            .as_str()
+            .context("Terminal project")?
+            .to_owned();
+        self.database.transaction(|tx|Box::pin(async move {
+            crate::workspaces::remove_resource(tx,&owner,&project,"project.terminal",&terminal).await?;
+            let at=crate::auth::now();
+            query_error::context(tx.query("UPDATE run_configuration_runtimes SET terminal_id=NULL,updated_at=$1 WHERE owner_id=$2 AND terminal_id=$3",&[&at,&owner,&terminal]).await,&queries().runtime_clear,&[Value::Null,Value::String(crate::auth::iso(at).into()),Value::String(owner.clone().into()),Value::String(terminal.clone().into())])?;
+            super::layout::detach_terminal(tx,&project,&terminal).await?;
+            query_error::context(tx.query("DELETE FROM terminals WHERE id=$1",&[&terminal]).await,&queries().delete,&[Value::String(terminal.into())])?;
+            Ok(())
+        })).await?;
+        Ok(Some(context))
+    }
+    pub async fn update_worktree(
+        &self,
+        owner: &str,
+        terminal: &str,
+        input: &Value,
+    ) -> Result<Option<Value>> {
+        // The reference authorizes the terminal without joining its old worktree.
+        // Keep this separate from context(), including its validation order.
+        let rows = query_error::context(self.database.query(
+            "SELECT to_jsonb(t)::text FROM terminals t INNER JOIN projects p ON p.id=t.project_id AND p.owner_id=$1 WHERE t.id=$2 LIMIT 1",
+            &[&owner, &terminal]).await, &queries().worktree_select,
+            &[Value::String(owner.into()), Value::String(terminal.into()), Value::Number(1.0)])?;
+        let Some(row) = rows.first() else {
+            return Ok(None);
+        };
+        let raw: Value = serde_json::from_str(&row.get::<String>(0)?)?;
+        if raw["kind"] == "run-configuration" {
+            bail!("Run configuration terminals cannot change worktrees.");
+        }
+        if crate::wire::coercion::truthy(raw.get("linked_chat_id")) {
+            bail!("Linked Codex consoles inherit their parent chat worktree.");
+        }
+        if raw["status"] == "running" {
+            bail!("Stop the terminal before changing its worktree.");
+        }
+        let project = raw["project_id"].as_str().context("Terminal project")?;
+        let Some(target) = TargetRepository::new(self.database.clone())
+            .ready_worktree(owner, project, &input["worktreeId"])
+            .await?
+        else {
+            return Ok(None);
+        };
+        let worker = target["workerId"].as_str().context("Target worker")?;
+        let tree = target["id"].as_str().context("Target worktree")?;
+        let at = crate::auth::now();
+        let rows = query_error::context(self.database.query(
+            "UPDATE terminals SET active_worker_id=$1,worktree_id=$2,updated_at=$3 WHERE id=$4 RETURNING to_jsonb(terminals)::text",
+            &[&worker, &tree, &at, &terminal]).await, &queries().worktree_update,
+            &[Value::String(worker.into()), Value::String(tree.into()), Value::String(crate::auth::iso(at).into()), Value::String(terminal.into())])?;
+        rows.first()
+            .map(|row| terminal_summary(&serde_json::from_str::<Value>(&row.get::<String>(0)?)?))
+            .transpose()
+    }
     pub fn new(database: Arc<Database>) -> Self {
         Self { database }
     }
