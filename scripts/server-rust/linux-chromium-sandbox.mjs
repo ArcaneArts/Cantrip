@@ -3,7 +3,7 @@
 // https://chromium.googlesource.com/chromium/src/+/main/docs/security/apparmor-userns-restrictions.md
 // The worker's production command and Chromium sandbox remain unchanged.
 import { execFileSync } from "node:child_process";
-import { chromium } from "playwright";
+import { chromium } from "playwright-core";
 
 const executable = chromium.executablePath();
 const quotedPath =
