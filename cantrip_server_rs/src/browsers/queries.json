@@ -1,0 +1,26 @@
+{
+  "columns": [
+    "id",
+    "projectId",
+    "protectedLabel",
+    "protectedState",
+    "stateRevision",
+    "position",
+    "createdAt",
+    "updatedAt"
+  ],
+  "queries": {
+    "list": "select \"browsers\".\"id\", \"browsers\".\"project_id\", \"browsers\".\"protected_label\", \"browsers\".\"protected_state\", \"browsers\".\"state_revision\", \"browsers\".\"position\", \"browsers\".\"created_at\", \"browsers\".\"updated_at\", \"remote_surfaces\".\"worker_id\" from \"browsers\" inner join \"projects\" on (\"projects\".\"id\" = \"browsers\".\"project_id\" and \"projects\".\"owner_id\" = $1) left join \"remote_surfaces\" on \"remote_surfaces\".\"id\" = \"browsers\".\"id\" where \"browsers\".\"project_id\" = $2 order by \"browsers\".\"position\" asc, \"browsers\".\"created_at\" asc",
+    "owned": "select \"browsers\".\"id\" from \"browsers\" inner join \"projects\" on (\"projects\".\"id\" = \"browsers\".\"project_id\" and \"projects\".\"owner_id\" = $1) where \"browsers\".\"id\" = $2 limit $3",
+    "create": "insert into \"browsers\" (\"id\", \"project_id\", \"protected_label\", \"protected_state\", \"state_revision\", \"position\", \"created_at\", \"updated_at\") values ($1, $2, $3, $4, $5, $6, default, default) returning \"id\", \"project_id\", \"protected_label\", \"protected_state\", \"state_revision\", \"position\", \"created_at\", \"updated_at\"",
+    "surface_create": "insert into \"remote_surfaces\" (\"id\", \"project_id\", \"worker_id\", \"kind\", \"protected_label\", \"status\", \"preferred_transport\", \"configuration\", \"protected_state\", \"state_revision\", \"last_error\", \"last_connected_at\", \"created_at\", \"updated_at\") values ($1, $2, $3, $4, default, default, $5, $6, default, default, default, default, default, default)",
+    "update_title": "update \"browsers\" set \"protected_label\" = $1, \"updated_at\" = $2 where \"browsers\".\"id\" = $3 returning \"id\", \"project_id\", \"protected_label\", \"protected_state\", \"state_revision\", \"position\", \"created_at\", \"updated_at\"",
+    "surface_update": "update \"remote_surfaces\" set \"updated_at\" = $1 where \"remote_surfaces\".\"id\" = $2",
+    "update_state": "update \"browsers\" set \"protected_state\" = $1, \"state_revision\" = $2, \"updated_at\" = $3 where (\"browsers\".\"id\" = $4 and \"browsers\".\"state_revision\" = $5) returning \"id\", \"project_id\", \"protected_label\", \"protected_state\", \"state_revision\", \"position\", \"created_at\", \"updated_at\"",
+    "update_both": "update \"browsers\" set \"protected_label\" = $1, \"protected_state\" = $2, \"state_revision\" = $3, \"updated_at\" = $4 where (\"browsers\".\"id\" = $5 and \"browsers\".\"state_revision\" = $6) returning \"id\", \"project_id\", \"protected_label\", \"protected_state\", \"state_revision\", \"position\", \"created_at\", \"updated_at\"",
+    "update_revision_title": "update \"browsers\" set \"protected_label\" = $1, \"updated_at\" = $2 where (\"browsers\".\"id\" = $3 and \"browsers\".\"state_revision\" = $4) returning \"id\", \"project_id\", \"protected_label\", \"protected_state\", \"state_revision\", \"position\", \"created_at\", \"updated_at\"",
+    "update_empty": "update \"browsers\" set \"updated_at\" = $1 where \"browsers\".\"id\" = $2 returning \"id\", \"project_id\", \"protected_label\", \"protected_state\", \"state_revision\", \"position\", \"created_at\", \"updated_at\"",
+    "surface_delete": "delete from \"remote_surfaces\" where \"remote_surfaces\".\"id\" = $1",
+    "delete": "delete from \"browsers\" where \"browsers\".\"id\" = $1 returning \"id\""
+  }
+}

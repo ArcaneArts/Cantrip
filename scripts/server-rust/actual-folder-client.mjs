@@ -41,7 +41,6 @@ import {
 import { actualWorkerTunnelRelay } from "./actual-worker-tunnel-relay.mjs";
 import {
   prepareBrowserSurface,
-  seedBrowserSurface,
   actualWorkerBrowserSurface,
 } from "./actual-worker-browser-surface.mjs";
 
@@ -104,7 +103,10 @@ async function flow(
       enrollmentCode,
       workerId,
       ...(process.argv.includes("--surfaces")
-        ? { chromiumExecutable: chromium.executablePath() }
+        ? {
+            chromiumExecutable: chromium.executablePath(),
+            chromiumTraceDirectory: path.resolve(".qa/rust-server"),
+          }
         : {}),
     });
     await worker.ready();
@@ -427,6 +429,24 @@ async function flow(
         workerLinkRoute,
         directBrokerBinary,
       });
+    // The preceding terminal offline case intentionally stops the worker.
+    // Browser creation now uses real placement through the public client API.
+    if (process.argv.includes("--surfaces") && !worker) await startWorker();
+    const surface = process.argv.includes("--surfaces")
+      ? await prepareBrowserSurface(
+          page,
+          vite.resolvedUrls.local[0],
+          created.id,
+          workerId,
+        )
+      : undefined;
+    if (surface)
+      result.steps.push(
+        "existing client creates a browser with encrypted title and state through the product route",
+      );
+    if (process.argv.includes("--tunnels"))
+      tunnel = await prepareTunnelLink(page, created.id, workerId);
+    // Capture after browser creation has committed its project layout update.
     const wire = await page.evaluate(() =>
       window.folderWire.getProjectWireList(),
     );
@@ -442,17 +462,16 @@ async function flow(
       );
       assert.equal(project.name, undefined);
     }
-    const surface = process.argv.includes("--surfaces")
-      ? await prepareBrowserSurface(
-          page,
-          vite.resolvedUrls.local[0],
-          created.id,
-        )
-      : undefined;
-    if (process.argv.includes("--tunnels"))
-      tunnel = await prepareTunnelLink(page, created.id, workerId);
     const publicRequests = JSON.stringify(requests);
-    for (const secret of [...names, existingPath, missingPath, dataDirectory])
+    for (const secret of [
+      ...names,
+      existingPath,
+      missingPath,
+      dataDirectory,
+      ...(surface
+        ? [surface.token, surface.url, "Private WorkerLink browser"]
+        : []),
+    ])
       assert.equal(
         publicRequests.includes(secret),
         false,
@@ -472,14 +491,6 @@ async function flow(
     const shutdownStarted = Date.now();
     await fixture.close({ shutdownTimeoutMs: 105000 });
     result.serverRestartShutdownMs = Date.now() - shutdownStarted;
-    if (surface)
-      await seedBrowserSurface(
-        fixture,
-        root,
-        surfaceRepositoryBinary,
-        surface,
-        workerId,
-      );
     if (tunnel)
       await seedTunnelLink(fixture, root, surfaceRepositoryBinary, tunnel);
     await fixture.start({ port: retainedPort });

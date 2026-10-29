@@ -8,6 +8,14 @@ use crate::{
 use anyhow::{Result, ensure};
 
 pub async fn detach_terminal(tx: &Transaction<'_>, project: &str, terminal: &str) -> Result<()> {
+    detach_resource(tx, project, "terminal", terminal).await
+}
+pub async fn detach_resource(
+    tx: &Transaction<'_>,
+    project: &str,
+    kind: &str,
+    id: &str,
+) -> Result<()> {
     let lock = checked(
         "layout_project_lock",
         tx.query(sql("layout_project_lock"), &[&project, &1_i64])
@@ -15,7 +23,7 @@ pub async fn detach_terminal(tx: &Transaction<'_>, project: &str, terminal: &str
         &[json!(project), json!(1)],
     )?;
     ensure!(!lock.is_empty(), "The project no longer exists.");
-    let key = format!("terminal:{terminal}");
+    let key = format!("{kind}:{id}");
     let rows = checked(
         "member_select",
         tx.query(sql("member_select"), &[&project, &key, &1_i64])

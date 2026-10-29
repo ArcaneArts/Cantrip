@@ -2,6 +2,72 @@
 
 Status: **implementation in progress; not a deployable replacement**.
 
+## Browser product management in progress
+
+The current browser-management lane implements the five native list, create,
+update, delete and managed-tunnel routes. Creation uses the existing execution
+placement rules and one transaction for the opaque browser row, remote surface
+and project pane. Browser and terminal resources now share the same native pane
+placement and removal implementation, retaining their different profile defaults.
+State updates retain the expected-revision predicate, committed state during
+worker failures, explicit offline/error status and the source's Live event order.
+Deletion removes workspace views and panes transactionally, revokes browser
+WorkerLink grants, stops managed tunnel attachments and owns the asynchronous
+worker close through shutdown. No private URL or title is decrypted by the server.
+
+Actual Node/native repository comparisons pass 40 operations and 22 complete
+state snapshots on each database mode. External PostgreSQL additionally passes
+five write-lock scenarios: revision advancement, a worker change after the
+context read, row deletion with and without a revision predicate, and concurrent
+deletion that still commits source-style workspace/surface cleanup. These tests
+observe the blocked query, blocking backend and ungranted locks before releasing
+the competing transaction. Real trigger failures and integer overflow retain
+their actual SQLSTATE and transaction rollback behavior.
+
+The HTTP comparisons pass 37 anonymous-mode and 41 account-mode observations per
+runtime on all three stores. They assert complete responses, exact Live event
+order and scope, CSRF, tenant isolation, online/offline worker configuration,
+revision conflicts, managed-tunnel attachment reset and deletion cleanup. Native
+protocol validation and rendered errors match 7,641 cases from the actual schemas.
+The shared-pane extraction also passes the existing terminal repository suite.
+
+The full existing-client/full-worker flow passes 24 steps against each server on
+all three stores. Browser setup uses the unchanged client API instead of seeding rows:
+the client creates encrypted state, reopens/decrypts it after server restart,
+receives authenticated JPEG and encrypted location messages, changes the saved
+URL through the real worker, and deletes the browser with an installed grant.
+That grant is revoked; retained requests contain none of the authenticated private
+browser URLs. The final-source full native regression passes 122 tests with no failures
+or ignored tests across 66 result groups. Strict all-target Clippy also passes.
+This is not platform, package or full replacement acceptance.
+Browser service discovery, remaining owning domain consumers and
+the original migration/packaging/cutover requirements remain in scope.
+
+A real external PostgreSQL trigger rejects one of 1,024 sibling attachment stops.
+Node completes the other 1,023 and retains the earlier managed-tunnel write. The
+initial native run is still progressing at its 15-second observation deadline;
+that counter is not evidence of discarded work. Native recomputation repeatedly
+decoded complete attachment rows as wire JSON. It now selects the source's four
+required values directly, using SQL presence for the nullable last-seen field.
+Both runtimes complete all siblings with the same 500 response and committed
+state. Current local observations are about 3.6 seconds for Rust and 4.1 seconds
+for Node; this establishes this workload only. Child work is admitted before the
+aggregate is awaited and remains owned through shutdown. The failure, progress
+timeline, source snapshots and passing comparisons are retained.
+
+PR 2307 is merged as `17f3b20c5b0193991c13e23ab234f7ba252b45af` and clean
+Primary contains it. Its five other workflows pass, but the Rust workflow
+40951884864 fails on all three platforms: Linux fails the Node browser startup
+flow; macOS fails the Node encrypted tunnel reply; Windows passes both PGlite
+flows then fails the bundled PostgreSQL Rust tunnel reply. The two tunnel
+artifacts retain data, half-close and close frames after an earlier empty-buffer
+poll failed. A local empty-versus-40-KiB buffer assertion takes about 2.5 seconds
+and generates 360,873 diagnostic characters; the reply poll now checks complete
+length before retaining its original full-byte equality assertion. This does not
+prove that assertion cost caused the CI failures. A test-only preload records
+the actual unmodified Chromium launch and bounded startup stderr so the next
+Linux run retains the underlying failure. No platform failure is waived.
+
 ## Managed tunnel persistence and reference identity in progress
 
 Native managed-tunnel registration, lookup and removal now preserve the source's

@@ -139,6 +139,11 @@ export const contractRoots = [
   "projectCenterLayoutNodeSchema",
   "terminalWireSummarySchema",
   "terminalWireListSchema",
+  "encryptedBrowserCreateSchema",
+  "encryptedBrowserUpdateSchema",
+  "browserWireSummarySchema",
+  "browserWireListSchema",
+  "browserTunnelWireRequestSchema",
   "tunnelUserWireCreateSchema",
   "tunnelUserWireUpdateSchema",
   "tunnelWireSummarySchema",
@@ -325,6 +330,12 @@ registerChecks(protocol.encryptedTerminalCreateSchema, [
 ]);
 registerChecks(protocol.encryptedTerminalUpdateSchema, ["terminal-title"]);
 registerChecks(protocol.terminalWireSummarySchema, ["terminal-wire"]);
+registerChecks(protocol.encryptedBrowserCreateSchema, [
+  "browser-placement",
+  "browser-title",
+]);
+registerChecks(protocol.encryptedBrowserUpdateSchema, ["browser-update"]);
+registerChecks(protocol.browserWireSummarySchema, ["browser-title"]);
 registerChecks(protocol.tunnelUserWireCreateSchema, [
   "tunnel-create-operation",
   "tunnel-create-revision",

@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod browsers;
 pub mod chats;
 pub mod config;
 pub mod database;
@@ -11,6 +12,7 @@ pub mod managed_postgres;
 pub mod migrations;
 pub mod operations;
 pub mod policies;
+mod project_layout;
 pub mod projects;
 pub mod relay;
 pub mod remote_surfaces;

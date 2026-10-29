@@ -1,5 +1,5 @@
 //! Persisted terminal resources and their worker-owned services.
-mod layout;
+use crate::project_layout as layout;
 pub(crate) mod relay;
 mod repository;
 pub use repository::Repository;

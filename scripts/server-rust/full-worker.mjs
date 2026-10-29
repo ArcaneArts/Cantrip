@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { repositoryRoot } from "./build.mjs";
 import { fixtureEnvironment } from "./process.mjs";
@@ -27,6 +28,7 @@ export function launchActualWorker(
     enrollmentCode,
     cliBinary,
     chromiumExecutable,
+    chromiumTraceDirectory,
     workerId = "actual-catalog-worker",
   } = {},
 ) {
@@ -39,6 +41,23 @@ export function launchActualWorker(
     CANTRIP_CLI_BIN: cliBinary,
     ...(chromiumExecutable
       ? { CANTRIP_CHROMIUM_EXECUTABLE: chromiumExecutable }
+      : {}),
+    ...(chromiumTraceDirectory
+      ? {
+          CANTRIP_TEST_CHROMIUM_TRACE: chromiumTraceDirectory,
+          NODE_OPTIONS: [
+            process.env.NODE_OPTIONS,
+            "--import=" +
+              pathToFileURL(
+                path.join(
+                  repositoryRoot,
+                  "scripts/server-rust/chromium-launch-trace.mjs",
+                ),
+              ).href,
+          ]
+            .filter(Boolean)
+            .join(" "),
+        }
       : {}),
     ...(enrollmentCode
       ? { CANTRIP_WORKER_ENROLLMENT_CODE: enrollmentCode }
