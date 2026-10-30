@@ -1,3 +1,4 @@
+import { runSecretHttpCases } from "./run-secret-http-cases.mjs";
 // Actual Node/Rust HTTP routes with the unchanged worker protocol decoder.
 import {
   runLifecycleCases,
@@ -104,9 +105,13 @@ try {
             .filter(
               (e) =>
                 e.type === "event" &&
-                ["worktree", "project-token-usage", "run", "terminal"].includes(
-                  e.resource,
-                ),
+                [
+                  "worktree",
+                  "project-token-usage",
+                  "run",
+                  "terminal",
+                  "run-configuration",
+                ].includes(e.resource),
             )
             .map(
               ({ resource, scope, entityId, revision, payload, action }) => ({
@@ -1176,6 +1181,26 @@ try {
             runtimeReplyMode = value;
           },
         });
+        await runSecretHttpCases({ visit, projectId: gitProject, profile });
+        for (const name of [
+          "secret create",
+          "secret update same envelope",
+          "secret replay old receipt",
+        ]) {
+          // The route publishes first; the existing mutation hook then emits
+          // its project-scoped invalidation after response completion.
+          assert.deepEqual(
+            result.changes.find((change) => change.name === name).events,
+            [null, gitProject].map((entityId) => ({
+              resource: "run-configuration",
+              scope: { kind: "project", projectId: gitProject },
+              entityId,
+              revision: null,
+              payload: null,
+              action: "invalidated",
+            })),
+          );
+        }
         await worker.close();
         worker = undefined;
         await live.close();
@@ -1188,6 +1213,25 @@ try {
           databaseMode,
           databaseUrl,
         });
+        const secretAudit = await repo.request({
+          op: "query-json",
+          sql: `SELECT coalesce(jsonb_agg(jsonb_build_object('action',action,'result',result,'resourceType',resource_type,'resourceId',resource_id,'owned',owner_id=${literal(owner)},'actor',actor_user_id=${literal(owner)},'session',actor_session_id IS NOT NULL,'request',length(request_id)>0)),'[]') result FROM audit_events WHERE action='run.configuration.secret.app.set'`,
+        });
+        assert.equal(secretAudit.rejected, false);
+        assert.deepEqual(
+          secretAudit.value,
+          Array.from({ length: 3 }, () => ({
+            action: "run.configuration.secret.app.set",
+            result: "succeeded",
+            resourceType: "run-configuration-secret",
+            resourceId: "run/http-secret",
+            owned: true,
+            actor: true,
+            session: profile !== "none",
+            request: true,
+          })),
+        );
+        result.secretAudit = secretAudit.value;
         const resolved = await repo.request({
           op: "worktree-context",
           owner,
@@ -1259,6 +1303,7 @@ try {
       "runtimeReconciliations",
       "retirementBatch",
       "runLifecycle",
+      "secretAudit",
     ])
       assert.deepEqual(runtimes[1][key], runtimes[0][key], profile + " " + key);
   }

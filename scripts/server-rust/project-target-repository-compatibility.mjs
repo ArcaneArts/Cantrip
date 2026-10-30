@@ -775,6 +775,9 @@ try {
   await (
     await import("./run-runtime-contention-cases.mjs")
   ).runRuntimeContentionCases({ pair, seed, report, owner });
+  await (
+    await import("./run-secret-repository-cases.mjs")
+  ).runSecretCases({ pair, seed, report, owner, other });
 } catch (e) {
   failure = e;
   report.failure = { message: e.message, stack: e.stack };

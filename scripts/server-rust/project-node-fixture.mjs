@@ -464,6 +464,27 @@ try {
           usage: execution.measuredUsage,
         });
         value = null;
+      } else if (request.op === "run-secret-race") {
+        value = await Promise.all(
+          request.inputs.map((input) =>
+            database.repository.setRunConfigurationSecret(
+              request.owner,
+              request.project,
+              input,
+            ),
+          ),
+        );
+      } else if (request.op === "run-secret-set") {
+        value = await database.repository.setRunConfigurationSecret(
+          request.owner,
+          request.project,
+          request.input,
+        );
+      } else if (request.op === "run-secret-list") {
+        value = await database.repository.listRunConfigurationSecretSummaries(
+          request.owner,
+          request.project,
+        );
       } else if (request.op.startsWith("run-runtime-")) {
         switch (request.op) {
           case "run-runtime-observation-race":

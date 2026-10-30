@@ -143,6 +143,9 @@ export const contractRoots = [
   "runConfigurationGetResponseSchema",
   "runConfigurationProtectedSecretListSchema",
   "runConfigurationSecretSummaryListSchema",
+  "runConfigurationSecretListResultSchema",
+  "runConfigurationSecretSetRequestSchema",
+  "runConfigurationSecretSetResultSchema",
   "runConfigurationRuntimeStatusQuerySchema",
   "runConfigurationRuntimeStatusResultSchema",
   "runConfigurationRuntimeOutputQuerySchema",
@@ -292,6 +295,10 @@ const refinements = new Map([
     "run-codex-source",
   ],
   [runSecrets.runConfigurationSecretSummarySchema, "run-secret-summary"],
+  [
+    runSecrets.runConfigurationSecretSetResultSchema.shape.secret,
+    "run-secret-summary",
+  ],
   [runSecrets.runConfigurationSecretSummaryListSchema, "run-secret-summaries"],
   [
     runConfigurationRuntime.runConfigurationRuntimeWorkerOperationResultSchema,

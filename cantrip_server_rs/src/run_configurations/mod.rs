@@ -3,6 +3,7 @@ pub mod lifecycle;
 pub mod observations;
 mod operations;
 pub mod retirement;
+mod secret_writes;
 pub mod secrets;
 use crate::{
     database::Database,
