@@ -1,3 +1,6 @@
+import { ProjectSidebarPages } from "@/components/sidebar/project-sidebar-pages";
+import { ProjectConversationList } from "@/components/sidebar/project-conversation-list";
+import { focusWorkspaceNativeWindow } from "@/lib/desktop-popout";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import {
   Check,
@@ -87,6 +90,10 @@ export function DesktopAppModeMenu({
 
 export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
   const {
+    projectSidebarPage,
+    setProjectSidebarPage,
+    workspaceConnection,
+    selectedChat,
     activeProjectWorkspace,
     appMode,
     archiveStandaloneChat,
@@ -387,69 +394,132 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                 </div>
 
                 <nav
-                  className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-4"
+                  className="flex min-h-0 flex-1 flex-col px-2 pb-4"
                   data-slot="sidebar-scroll-region"
                 >
-                  <ProjectChatList
-                    folderSetupJobs={folderSetupJobs}
-                    projects={projects.data ?? []}
-                    projectSetupJobs={projectSetupJobs}
-                    overviewSelected={projectOverviewSelected}
-                    selectedProjectId={selectedProjectId}
-                    fileExplorer={sidebarExplorer}
-                    fileGraphAvailable={explorerRepositoryGraphAvailable(
-                      selectedProject?.capabilities,
-                    )}
-                    filePreviewPath={selectedExplorer?.selectedPath ?? null}
-                    fileTreeError={
-                      !sidebarExplorer && createSidebarExplorerMutation.isError
-                        ? errorText(createSidebarExplorerMutation.error)
-                        : null
-                    }
-                    fileTreeLoading={
-                      explorers.isLoading ||
-                      (!sidebarExplorer &&
-                        createSidebarExplorerMutation.isPending)
-                    }
-                    fileTreePinningPath={
-                      pinSidebarFileMutation.isPending
-                        ? (pinSidebarFileMutation.variables?.path ?? null)
-                        : null
-                    }
-                    fileTreeWorkerId={sidebarFileWorkerId}
-                    fileTreeWorkerOnline={sidebarFileWorkerOnline}
-                    fileRevealLabel={projectRevealButtonLabel ?? undefined}
-                    onFilePin={pinSidebarFile}
-                    onFileCreateFolder={createSidebarFolder}
-                    onFileCreateFile={createSidebarFile}
-                    onFileDelete={deleteSidebarFileEntry}
-                    onFileOpenGraph={openSidebarFolderGraph}
-                    onFileOpenNative={openSidebarFolderNative}
-                    onFileOpenNativeRoot={openSidebarRootNative}
-                    onFileOpenTerminal={openSidebarFolderTerminal}
-                    onFilePreview={openSidebarFilePreview}
-                    onFileRename={renameSidebarFileEntry}
-                    onFileTreeRetry={retrySidebarFileTree}
-                    onRemoveProject={(projectId, deleteLocalFiles) =>
-                      removeProjectMutation
-                        .mutateAsync({ projectId, deleteLocalFiles })
-                        .then(() => undefined)
-                    }
-                    onOpenProjectSettings={openProjectSettings}
-                    projectRevealLabel={projectRevealLabel ?? undefined}
-                    onRevealProject={(project, localFolder) =>
-                      revealProjectInNativeFileManager(
-                        project,
-                        localFolder,
-                        "",
-                        worktrees.data?.find(
-                          (worktree: ProjectWorktreeSummary) =>
-                            worktree.projectSourceId === project.source?.id &&
-                            worktree.isPrimary,
-                        ),
+                  <ProjectSidebarPages
+                    key={selectedProjectId ?? "none"}
+                    page={projectSidebarPage ?? "files"}
+                    onChange={setProjectSidebarPage}
+                    conversations={
+                      selectedProjectId ? (
+                        <ProjectConversationList
+                          key={selectedProjectId}
+                          projectId={selectedProjectId}
+                          randomAgentNames={
+                            bindings.settings?.data?.preferences
+                              .randomAgentNames ?? false
+                          }
+                          existingTitles={[
+                            ...(bindings.chats?.data ?? []),
+                            ...(bindings.terminals?.data ?? []),
+                            ...(bindings.explorers?.data ?? []),
+                            ...(bindings.browsers?.data ?? []),
+                            ...(bindings.codeTabs?.data ?? []),
+                            ...(bindings.projectViews?.data ?? []),
+                          ]
+                            .filter(
+                              (surface) =>
+                                surface.projectId === selectedProjectId,
+                            )
+                            .map((surface) => surface.title)}
+                          visible={
+                            projectSidebarPage === "conversations" &&
+                            sidebarExpanded
+                          }
+                          controller={
+                            workspaceConnection?.connection?.controller ?? null
+                          }
+                          selectedChatId={selectedChat?.id ?? null}
+                          workers={workers.data ?? []}
+                          onOpened={() => setDesktopSidebarDrawerOpen(false)}
+                          focusWindow={(id) =>
+                            focusWorkspaceNativeWindow(
+                              id ===
+                                workspaceConnection?.connection?.mainWindowId
+                                ? "main"
+                                : id,
+                            )
+                          }
+                        />
+                      ) : (
+                        <p className="p-3 text-xs text-muted-foreground">
+                          Select a project to view conversations.
+                        </p>
                       )
                     }
-                    onSelectProject={selectProjectFromSidebar}
+                    files={
+                      <ProjectChatList
+                        filesVisible={
+                          projectSidebarPage !== "conversations" &&
+                          sidebarExpanded
+                        }
+                        folderSetupJobs={folderSetupJobs}
+                        projects={projects.data ?? []}
+                        projectSetupJobs={projectSetupJobs}
+                        overviewSelected={projectOverviewSelected}
+                        selectedProjectId={selectedProjectId}
+                        fileExplorer={sidebarExplorer}
+                        fileGraphAvailable={explorerRepositoryGraphAvailable(
+                          selectedProject?.capabilities,
+                        )}
+                        filePreviewPath={
+                          bindings.sidebarFileReveal?.path ??
+                          selectedExplorer?.selectedPath ??
+                          null
+                        }
+                        fileTreeError={
+                          !sidebarExplorer &&
+                          createSidebarExplorerMutation.isError
+                            ? errorText(createSidebarExplorerMutation.error)
+                            : null
+                        }
+                        fileTreeLoading={
+                          explorers.isLoading ||
+                          (!sidebarExplorer &&
+                            createSidebarExplorerMutation.isPending)
+                        }
+                        fileTreePinningPath={
+                          pinSidebarFileMutation.isPending
+                            ? (pinSidebarFileMutation.variables?.path ?? null)
+                            : null
+                        }
+                        fileTreeWorkerId={sidebarFileWorkerId}
+                        fileTreeWorkerOnline={sidebarFileWorkerOnline}
+                        fileRevealLabel={projectRevealButtonLabel ?? undefined}
+                        onFilePin={pinSidebarFile}
+                        onFileCreateFolder={createSidebarFolder}
+                        onFileCreateFile={createSidebarFile}
+                        onFileDelete={deleteSidebarFileEntry}
+                        onFileOpenGraph={openSidebarFolderGraph}
+                        onFileOpenNative={openSidebarFolderNative}
+                        onFileOpenNativeRoot={openSidebarRootNative}
+                        onFileOpenTerminal={openSidebarFolderTerminal}
+                        onFilePreview={openSidebarFilePreview}
+                        onFileRename={renameSidebarFileEntry}
+                        onFileTreeRetry={retrySidebarFileTree}
+                        onRemoveProject={(projectId, deleteLocalFiles) =>
+                          removeProjectMutation
+                            .mutateAsync({ projectId, deleteLocalFiles })
+                            .then(() => undefined)
+                        }
+                        onOpenProjectSettings={openProjectSettings}
+                        projectRevealLabel={projectRevealLabel ?? undefined}
+                        onRevealProject={(project, localFolder) =>
+                          revealProjectInNativeFileManager(
+                            project,
+                            localFolder,
+                            "",
+                            worktrees.data?.find(
+                              (worktree: ProjectWorktreeSummary) =>
+                                worktree.projectSourceId ===
+                                  project.source?.id && worktree.isPrimary,
+                            ),
+                          )
+                        }
+                        onSelectProject={selectProjectFromSidebar}
+                      />
+                    }
                   />
                 </nav>
               </>

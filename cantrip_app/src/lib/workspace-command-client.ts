@@ -55,6 +55,7 @@ export class WorkspaceCommandClient {
   private refreshError: unknown | null = null;
   private refreshRequest: Promise<void> | null = null;
   private listeners = new Set<() => void>();
+  private activationListeners = new Set<(chatId: string) => void>();
   private state: WorkspaceClientState;
 
   constructor(
@@ -82,6 +83,38 @@ export class WorkspaceCommandClient {
       this.listeners.delete(listener);
     };
   };
+
+  /** Explicit navigation only; observations, recovery and close fallback do not emit. */
+  subscribeAgentActivation(listener: (chatId: string) => void) {
+    this.activationListeners.add(listener);
+    return () => {
+      this.activationListeners.delete(listener);
+    };
+  }
+  private noteActivation(action: WorkspaceAction) {
+    const resource =
+      action.type === "open" || action.type === "open-conversation"
+        ? action.type === "open"
+          ? action.tab.resource
+          : action.view.resource
+        : action.type === "select"
+          ? this.state.projected.windows
+              .flatMap((window) => window.panes.flatMap(workspacePaneViews))
+              .find((view) => view.id === action.tabId)?.resource
+          : undefined;
+    if (
+      resource?.kind !== "entity" ||
+      resource.definitionId !== "project.agent"
+    )
+      return;
+    for (const listener of this.activationListeners) {
+      try {
+        listener(resource.resourceId);
+      } catch {
+        /* Recency must never reject workspace navigation. */
+      }
+    }
+  }
 
   private assertAttachment() {
     if (
@@ -199,6 +232,7 @@ export class WorkspaceCommandClient {
     if (this.disposed)
       return Promise.reject(new Error("Workspace controller is disposed."));
     const parsed = workspaceActionSchema.parse(action);
+    this.noteActivation(parsed);
     return new Promise((resolve, reject) => {
       const pending = {
         id: this.allocateId(),
@@ -437,6 +471,7 @@ export class WorkspaceCommandClient {
     this.error = reason;
     this.publish();
     this.listeners.clear();
+    this.activationListeners.clear();
   }
   private async pump() {
     if (this.running || this.disposed) return;

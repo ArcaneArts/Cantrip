@@ -1,3 +1,4 @@
+import { sidebarFileRevealAction } from "@/lib/sidebar-file-reveal";
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import { TabColor, TabIndicator } from "./tab-color";
 import { surfaceColorKey } from "@/lib/tab-colors";
@@ -55,6 +56,7 @@ import {
 } from "@/lib/workspace-dnd-model";
 
 export interface ProjectPaneTabStripProps {
+  revealInFiles?: boolean;
   activeTabKey: string;
   allowedCreateKinds?: ReadonlySet<ProjectSurfaceCreateKind>;
   creatingKinds?: ReadonlySet<ProjectSurfaceCreateKind>;
@@ -133,6 +135,7 @@ function SurfaceTabIcon({ surface }: { surface: ProjectSurface }) {
 }
 
 export function ProjectPaneTabStrip({
+  revealInFiles = true,
   activeTabKey,
   allowedCreateKinds,
   creatingKinds,
@@ -245,6 +248,9 @@ export function ProjectPaneTabStrip({
               const canDelete = surfaceCanDelete(surface);
               const menuActions: SurfaceMenuActions = {
                 colorKey: surfaceColorKey(surface),
+                onRevealInFiles: revealInFiles
+                  ? sidebarFileRevealAction(surface)
+                  : undefined,
                 deleteLabel: surfaceDeleteLabel(surface),
                 moveTargets: surfaceMoveTargets(
                   surface,

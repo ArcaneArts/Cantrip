@@ -1,0 +1,152 @@
+import {
+  encryptedChatCreateSchema,
+  chatWireSummarySchema,
+  conversationCatalogQuerySchema,
+  conversationCatalogWirePageSchema,
+  conversationUsageSchema,
+  conversationUsageResultSchema,
+  type ConversationCatalogQuery,
+  type ConversationUsage,
+  type ChatSummary,
+  type ArchivedChatSummary,
+} from "@cantrip/protocol";
+import { CantripApiError, request, withQuery } from "@/lib/api-client";
+import { chatTitleEncryption } from "@/lib/chat-title-encryption";
+import {
+  clientSessionIdentityMatches,
+  getClientSessionIdentitySnapshot,
+  type ClientSessionIdentitySnapshot,
+} from "@/lib/client-session";
+
+export type AgentConversation = ChatSummary & { lastUsedAt: string };
+export type ArchivedAgentConversation = ArchivedChatSummary & {
+  lastUsedAt: string;
+};
+export type ConversationCatalogPage = {
+  total: number;
+  nextCursor: string | null;
+} & (
+  | { state: "active"; items: AgentConversation[] }
+  | { state: "archived"; items: ArchivedAgentConversation[] }
+);
+
+function identity() {
+  const captured = getClientSessionIdentitySnapshot();
+  if (!captured)
+    throw new CantripApiError("An authenticated session is required.", 401);
+  return captured;
+}
+function assertIdentity(captured: ClientSessionIdentitySnapshot) {
+  if (!clientSessionIdentityMatches(captured))
+    throw new CantripApiError(
+      "The account or server changed while opening conversations.",
+      409,
+      "client-identity-changed",
+    );
+}
+
+/** Decrypt only the requested page, retaining server ordering and cursor precision. */
+export async function getConversationCatalog(
+  projectId: string,
+  query: Partial<ConversationCatalogQuery> = {},
+): Promise<ConversationCatalogPage> {
+  const captured = identity();
+  const input = conversationCatalogQuerySchema.parse(query);
+  const page = conversationCatalogWirePageSchema.parse(
+    await request(
+      withQuery(
+        `/api/projects/${encodeURIComponent(projectId)}/conversations`,
+        input,
+      ),
+      {},
+      { expectedIdentity: captured },
+    ),
+  );
+  assertIdentity(captured);
+  if (
+    page.state !== input.state ||
+    page.items.some((chat) => chat.projectId !== projectId)
+  )
+    throw new CantripApiError("Conversation catalog scope mismatch.", 409);
+  const opened: ConversationCatalogPage =
+    page.state === "active"
+      ? {
+          ...page,
+          items: await Promise.all(
+            page.items.map(async (chat) => ({
+              ...(await chatTitleEncryption.open(chat)),
+              lastUsedAt: chat.lastUsedAt,
+            })),
+          ),
+        }
+      : {
+          ...page,
+          items: await Promise.all(
+            page.items.map(async (chat) => ({
+              ...(await chatTitleEncryption.openArchived(chat)),
+              lastUsedAt: chat.lastUsedAt,
+            })),
+          ),
+        };
+  assertIdentity(captured);
+  return opened;
+}
+
+/** The caller retains the receipt identity and sequence across uncertain retries. */
+export async function recordConversationUsage(
+  chatId: string,
+  input: ConversationUsage,
+  captured: ClientSessionIdentitySnapshot = identity(),
+) {
+  assertIdentity(captured);
+  return conversationUsageResultSchema.parse(
+    await request(
+      `/api/chats/${encodeURIComponent(chatId)}/usage`,
+      {
+        method: "POST",
+        body: JSON.stringify(conversationUsageSchema.parse(input)),
+      },
+      { expectedIdentity: captured, allowCsrfRecovery: false },
+    ),
+  );
+}
+
+/** Keep this prepared operation for retries so neither ID nor encrypted title changes. */
+export async function prepareConversationCreation(
+  projectId: string,
+  title = "New agent",
+  autoTitle = true,
+) {
+  const captured = identity();
+  const id = crypto.randomUUID();
+  const titleProtection = await chatTitleEncryption.protect(id, title);
+  assertIdentity(captured);
+  const body = JSON.stringify(
+    encryptedChatCreateSchema.parse({
+      id,
+      titleProtection,
+      autoTitle,
+      attachToTabLayout: false,
+    }),
+  );
+  return async () => {
+    assertIdentity(captured);
+    const wire = chatWireSummarySchema.parse(
+      await request(
+        `/api/projects/${encodeURIComponent(projectId)}/chats`,
+        { method: "POST", body },
+        { expectedIdentity: captured, allowCsrfRecovery: false },
+      ),
+    );
+    assertIdentity(captured);
+    if (
+      wire.projectId !== projectId ||
+      wire.id !== id ||
+      wire.experience !== "agent"
+    )
+      throw new CantripApiError("Created conversation scope mismatch.", 409);
+    const chat = await chatTitleEncryption.open(wire);
+    assertIdentity(captured);
+    return chat;
+  };
+}

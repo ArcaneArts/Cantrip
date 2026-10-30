@@ -1,3 +1,5 @@
+import { useSidebarFileReveal } from "@/components/sidebar/use-sidebar-file-reveal";
+import { useProjectSidebarPage } from "@/components/sidebar/use-project-sidebar-page";
 import { useProjectToolNavigationBridge } from "./project-tool-navigation-bridge";
 import { useWorkspaceConnection } from "./use-workspace-connection";
 import { useWorkspaceEditorTransfer } from "./use-workspace-editor-transfer";
@@ -270,6 +272,14 @@ export function App() {
     seedWorkspaceSelection,
   );
   const workspaceSelection = workspaceConnection.workspaceSelection;
+  const { page: projectSidebarPage, setPage: setProjectSidebarPage } =
+    useProjectSidebarPage(
+      selectedProjectId,
+      workspaceConnection.controllerState?.projected.projectId ===
+        selectedProjectId
+        ? workspaceConnection.controllerState.projected.id
+        : null,
+    );
   const [workspaceConnectionError, setWorkspaceConnectionError] =
     useState<unknown>(null);
   const setWorkspaceSelection = useCallback<typeof setSeedWorkspaceSelection>(
@@ -1097,7 +1107,17 @@ export function App() {
     lifecycleRevision: fileLifecycleRevision,
     queryClient,
   });
+  const sidebarFileReveal = useSidebarFileReveal(
+    selectedProjectId,
+    selectedSurface?.tabKey,
+    () => {
+      setProjectSidebarPage("files");
+      setSidebarCollapsed(false);
+      setDesktopSidebarDrawerOpen(true);
+    },
+  );
   const sidebarExplorerModel = useSidebarExplorerModel({
+    revealedWorktreeId: sidebarFileReveal?.worktreeId,
     unavailablePaneIds: unavailableDetachedPaneIds,
     environment: {
       explorerFileTarget,
@@ -1126,6 +1146,7 @@ export function App() {
     sidebarFileWorkerId,
     sidebarFileWorkerOnline,
   } = useSidebarExplorerProvisioning({
+    visible: projectSidebarPage === "files",
     explorers: explorers.data,
     explorersIsSuccess: explorers.isSuccess,
     isPopout,
@@ -2191,6 +2212,7 @@ export function App() {
     standaloneChatCreationAvailable, standaloneChatCreationUnavailableReason, standaloneChatWorkerAvailable, standaloneChats, standaloneFilePath,
     standaloneFilesOpen, stopAndDeleteRunTerminalMutation, surfaceCreationFailure, switchToChat, switchToIde,
     tabLayout, tabLayoutMutation, terminals, terminalCommandPaletteTerminalId, terminalServiceTerminalId, updateBrowserMutation, updateCodeTabMutation,
+    sidebarFileReveal, projectSidebarPage, setProjectSidebarPage,
     visibleProjects, workers, workspaceConnection, legacyDocumentMigration, workspaceDragError, workspaceSelection, worktreeActionError,
     worktreeCreateTarget, worktreeStatuses, worktrees,
   };

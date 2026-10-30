@@ -1,3 +1,4 @@
+import { noteConversationUsage } from "@/lib/conversation-usage";
 import {
   composerDraftWithAttachments,
   restoreComposerDraftAttachments,
@@ -1280,6 +1281,8 @@ export function useChatTranscriptController({
       nativeModeChange?: "default" | "plan";
       text: string;
     }) => {
+      if (chat.experience === "agent" && chat.contextKind !== "standalone")
+        noteConversationUsage(chat.id, "interaction");
       const startedAt = performance.now();
       clientLogger.info("Chat turn submission started", {
         chatId: chat.id,
@@ -1369,6 +1372,8 @@ export function useChatTranscriptController({
       message: ChatMessage;
       text: string;
     }) => {
+      if (chat.experience === "agent" && chat.contextKind !== "standalone")
+        noteConversationUsage(chat.id, "interaction");
       const modelId = message.modelId;
       if (!modelId) {
         throw new Error("The original model is no longer available.");
@@ -1464,8 +1469,11 @@ export function useChatTranscriptController({
       queryClient.invalidateQueries({ queryKey: ["prompt-queue", chat.id] }),
   });
   const steerPrompt = useMutation({
-    mutationFn: (prompt: QueuedPrompt) =>
-      steerQueuedPrompt(prompt.id, prompt.revision),
+    mutationFn: (prompt: QueuedPrompt) => {
+      if (chat.experience === "agent" && chat.contextKind !== "standalone")
+        noteConversationUsage(chat.id, "interaction");
+      return steerQueuedPrompt(prompt.id, prompt.revision);
+    },
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["prompt-queue", chat.id] }),

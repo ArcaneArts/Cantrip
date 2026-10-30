@@ -677,6 +677,7 @@ export function sidebarFileAncestorPaths(path: string | null): string[] {
 }
 
 export function ProjectSidebarFileTree({
+  visible = true,
   activePath,
   error,
   explorer,
@@ -697,6 +698,7 @@ export function ProjectSidebarFileTree({
   workerId,
   workerOnline,
 }: {
+  visible?: boolean;
   activePath: string | null;
   error?: string | null;
   explorer: ExplorerSummary | null;
@@ -755,7 +757,6 @@ export function ProjectSidebarFileTree({
     worktreeId: explorer?.worktreeId,
     workerId: explorer?.activeWorkerId,
   });
-  const [filesCollapsed, setFilesCollapsed] = useState(false);
   useEffect(() => {
     const ancestors = sidebarFileAncestorPaths(activePath);
     if (ancestors.length === 0) return;
@@ -763,12 +764,8 @@ export function ProjectSidebarFileTree({
       const missing = ancestors.filter((path) => !current.has(path));
       return missing.length > 0 ? new Set([...current, ...missing]) : current;
     });
-    setFilesCollapsed(false);
   }, [activePath, setExpandedPaths]);
-  const streamEncryption = useExplorerWorkerEncryption(
-    explorer,
-    !filesCollapsed,
-  );
+  const streamEncryption = useExplorerWorkerEncryption(explorer, visible);
   const mutationBindingKey = streamEncryption.ready
     ? streamEncryption.bindingKey
     : null;
@@ -781,7 +778,7 @@ export function ProjectSidebarFileTree({
     [],
   );
   const { directory, entries } = useExplorerDirectory({
-    enabled: Boolean(explorer) && !filesCollapsed && streamEncryption.ready,
+    enabled: Boolean(explorer) && visible && streamEncryption.ready,
     explorerId: explorer?.id ?? "unavailable",
     gitStatus: undefined,
     path: "",
@@ -1000,23 +997,16 @@ export function ProjectSidebarFileTree({
     <>
       <section
         ref={activityRef}
-        className="mt-2 flex min-h-0 flex-1 flex-col border-t border-transparent pt-2 transition-colors duration-150 group-hover/sidebar-shell:border-border/70"
+        className="flex min-h-0 flex-1 flex-col"
         aria-label="Files"
       >
-        <button
-          aria-expanded={!filesCollapsed}
-          className="mb-1 flex h-6 w-full items-center gap-2 rounded px-2 text-left text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70 hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50"
-          onClick={() => setFilesCollapsed((collapsed) => !collapsed)}
-          type="button"
-        >
-          <span className="min-w-0 flex-1 truncate" data-file-change-path="">
-            Files
-          </span>
-          {!filesCollapsed && pinningPath ? (
-            <Loader2 className="size-3 animate-spin" />
-          ) : null}
-        </button>
-        {!filesCollapsed && renameError ? (
+        {visible && pinningPath ? (
+          <Loader2
+            className="m-2 size-3 animate-spin"
+            aria-label="Opening file"
+          />
+        ) : null}
+        {visible && renameError ? (
           <p
             className="px-2 pb-1 text-[10px] leading-4 text-destructive"
             role="alert"
@@ -1024,7 +1014,7 @@ export function ProjectSidebarFileTree({
             {renameError}
           </p>
         ) : null}
-        {filesCollapsed ? null : loading ||
+        {!visible ? null : loading ||
           (explorer &&
             !streamEncryption.ready &&
             !streamEncryption.error &&

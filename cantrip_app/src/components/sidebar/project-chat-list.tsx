@@ -12,6 +12,7 @@ import {
 } from "@/components/sidebar/project-sidebar-file-tree";
 
 export function ProjectChatList({
+  filesVisible = true,
   fileExplorer,
   filePreviewPath,
   fileTreeError,
@@ -43,6 +44,7 @@ export function ProjectChatList({
   projectRevealLabel,
   selectedProjectId,
 }: {
+  filesVisible?: boolean;
   fileExplorer: ExplorerSummary | null;
   filePreviewPath: string | null;
   fileTreeError?: string | null;
@@ -110,6 +112,7 @@ export function ProjectChatList({
               {active ? (
                 <div className="flex min-h-8 flex-1 flex-col rounded-md transition-colors">
                   <ProjectSidebarFileTree
+                    visible={filesVisible}
                     activePath={filePreviewPath}
                     error={fileTreeError}
                     explorer={fileExplorer}
