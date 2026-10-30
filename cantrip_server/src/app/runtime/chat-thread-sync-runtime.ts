@@ -1,4 +1,5 @@
 import { agentThreadSyncSchema } from "@cantrip/protocol";
+import { boundManagedRuntime } from "../../terminals/bound-managed-runtime.js";
 
 import type { ChatThreadChangeNotification } from "../../chats/thread-change-reconciliation.js";
 import { canonicalMessagesFromThreadSync } from "../../chats/thread-sync.js";
@@ -71,7 +72,11 @@ export function createChatThreadSyncRuntime({
     if (!bridge.isConnected(context.workerId)) {
       throw new WorkerUnavailableError("Project worker is offline.");
     }
-    const runtime = resolvedRuntime ?? (await runtimeForContext(context));
+    const runtime =
+      resolvedRuntime ??
+      (context.experience === "agent" && context.modelRouteId
+        ? await boundManagedRuntime(applicationOwnerId(), context, repository)
+        : await runtimeForContext(context));
     if (!runtime) throw new Error("Selected model was not found.");
     const sync = agentThreadSyncSchema.parse(
       await bridge.request(context.workerId, {

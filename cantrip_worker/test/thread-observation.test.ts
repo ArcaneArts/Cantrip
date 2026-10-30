@@ -24,6 +24,16 @@ const snapshot = {
 };
 
 describe("bound thread observation", () => {
+  it("keeps observing the prepared native thread after its model selection changes", async () => {
+    const registry = new ThreadObservationRegistry();
+    const runtime = { observeThread: vi.fn().mockResolvedValue(snapshot) };
+    const coldRead = vi.fn().mockRejectedValue(new Error("thread not loaded"));
+    registry.bind(scope, runtime);
+    await expect(
+      registry.sync({ ...scope, modelRouteId: "new-model-route" }, coldRead),
+    ).resolves.toEqual(snapshot);
+    expect(coldRead).not.toHaveBeenCalled();
+  });
   it("uses the exact prepared runtime without selecting or configuring child models", async () => {
     const registry = new ThreadObservationRegistry();
     const runtime = { observeThread: vi.fn().mockResolvedValue(snapshot) };
@@ -46,7 +56,6 @@ describe("bound thread observation", () => {
     "chatId",
     "threadId",
     "cwd",
-    "modelRouteId",
     "providerId",
     "providerKind",
     "providerAccountId",

@@ -182,9 +182,25 @@ export function createNativeHistoryProjector(options: Options): Project {
     );
     const batches: NativeHistoryPreparedBatch[] = [];
     let batch: NativeHistoryPreparedBatch = { items: [], turns: [] };
+    let batchBytes = 0;
     const flush = () => {
       if (batch.items.length || batch.turns.length) batches.push(batch);
       batch = { items: [], turns: [] };
+      batchBytes = 0;
+    };
+    const append = <K extends "items" | "turns">(
+      kind: K,
+      value: NativeHistoryPreparedBatch[K][number],
+    ) => {
+      const bytes = Buffer.byteLength(JSON.stringify(value), "utf8");
+      if (
+        batch.items.length + batch.turns.length >= limit ||
+        (batchBytes + bytes > 4 * 1024 * 1024 && batchBytes > 0)
+      )
+        flush();
+      // A single large evidence item is indivisible; preserve it intact.
+      (batch[kind] as (typeof value)[]).push(value);
+      batchBytes += bytes;
     };
     const pending: Array<{
       draft: NativeHistoryRenderedItem;
@@ -260,8 +276,7 @@ export function createNativeHistoryProjector(options: Options): Project {
         // resolve result onto content prepared from an older observation.
         prepared.expectedRevision =
           prior?.canonicalRevision ?? prior?.revision ?? 0;
-        if (batch.items.length >= limit) flush();
-        batch.items.push(prepared);
+        append("items", prepared);
         publications.set(identityKey(entry.draft.identity), {
           identity: entry.draft.identity,
           revision,
@@ -416,8 +431,7 @@ export function createNativeHistoryProjector(options: Options): Project {
           ...(modelAttribution === undefined ? {} : { modelAttribution }),
         },
       });
-      if (batch.turns.length >= limit) flush();
-      batch.turns.push(prepared);
+      append("turns", prepared);
       turnPublications.set(turn.id, {
         turnId: turn.id,
         revision,

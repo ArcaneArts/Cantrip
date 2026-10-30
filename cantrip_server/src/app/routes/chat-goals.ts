@@ -38,6 +38,7 @@ import type {
 import { errorMessage, invalidBody } from "../../http/request-helpers.js";
 import type { WorkerCommandBus } from "../../workers/bridge.js";
 import { GOAL_RESUME_PROMPT } from "../shared/constants.js";
+import { boundManagedRuntime } from "../../terminals/bound-managed-runtime.js";
 
 interface GoalResumeTurnInput {
   customSubagentModel?: boolean;
@@ -98,6 +99,8 @@ export interface ChatGoalRouteDependencies {
     | "listEffectiveMcpServers"
     | "setChatModel"
     | "updateChatRuntime"
+    | "getModelRuntimeByRoute"
+    | "listModelProviderAccountRuntimes"
   >;
   routePairsForConfiguration: ManagedConsoleRouting["routePairsForConfiguration"];
   resolveModelId: (context: ChatExecutionContext) => Promise<string>;
@@ -180,7 +183,14 @@ export function installChatGoalRoutes(
             }),
           );
         }
-        const runtime = await runtimeForContext(context);
+        const runtime =
+          context.contextKind === "project" && context.modelRouteId
+            ? await boundManagedRuntime(
+                applicationOwnerId(),
+                context,
+                repository,
+              )
+            : await runtimeForContext(context);
         if (!runtime) {
           return reply
             .code(409)

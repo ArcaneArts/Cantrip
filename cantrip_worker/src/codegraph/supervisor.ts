@@ -208,6 +208,7 @@ function parseTimestamp(value: unknown): string | null {
 function parseStatus(
   stdout: string,
   expectedRoot: string,
+  allowAncestor = false,
 ): {
   edgeCount: number | null;
   fileCount: number | null;
@@ -231,6 +232,30 @@ function parseStatus(
     typeof payload.projectPath === "string" &&
     path.resolve(payload.projectPath) !== expectedRoot
   ) {
+    const relative = path.relative(
+      path.resolve(payload.projectPath),
+      expectedRoot,
+    );
+    // Before init, CodeGraph searches upward and may return an ancestor's
+    // index. That is evidence this worktree needs its own init, not a reason
+    // to prevent init from running. Validate the actual result afterwards.
+    if (
+      allowAncestor &&
+      relative &&
+      !relative.startsWith(`..${path.sep}`) &&
+      relative !== ".." &&
+      !path.isAbsolute(relative)
+    ) {
+      return {
+        initialized: false,
+        edgeCount: null,
+        fileCount: null,
+        lastIndexedAt: null,
+        nodeCount: null,
+        pendingChanges: null,
+        reindexRecommended: false,
+      };
+    }
     throw new Error("CodeGraph status resolved a different project path.");
   }
   const pending = payload.pendingChanges;
@@ -819,7 +844,7 @@ export class CodeGraphProjectSupervisor {
       action === "rebuild" || action === "ensure" ? "indexing" : "syncing";
     project.error = null;
     try {
-      const before = await this.#readStatus(project);
+      const before = await this.#readStatus(project, true);
       if (project.closed) return;
       const command =
         action === "rebuild" || before.reindexRecommended
@@ -918,6 +943,7 @@ export class CodeGraphProjectSupervisor {
 
   async #readStatus(
     project: ManagedProject,
+    allowAncestor = false,
   ): Promise<ReturnType<typeof parseStatus>> {
     const result = await this.#execute(
       this.#command,
@@ -946,7 +972,7 @@ export class CodeGraphProjectSupervisor {
         `codegraph status failed: ${output || `exit ${result.code}`}`,
       );
     }
-    const status = parseStatus(result.stdout, project.root);
+    const status = parseStatus(result.stdout, project.root, allowAncestor);
     project.edgeCount = status.edgeCount;
     project.fileCount = status.fileCount;
     project.lastIndexedAt = status.lastIndexedAt;
