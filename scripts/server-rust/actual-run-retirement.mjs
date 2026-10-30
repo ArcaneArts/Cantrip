@@ -1,8 +1,9 @@
+import { prepareRunDefinition } from "./actual-run-definitions.mjs";
 // Exercise the existing browser Run API and full worker with a real child process.
 import assert from "node:assert/strict";
-import { mkdir, writeFile, readFile } from "node:fs/promises";
+import { writeFile, readFile } from "node:fs/promises";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import { eventually } from "./full-worker.mjs";
 
 export async function startRetirementProbe({
@@ -12,8 +13,11 @@ export async function startRetirementProbe({
   primary,
   worktree,
   result,
+  deleteDefinition = false,
 }) {
   const configurationId = randomUUID();
+  const secret = randomUUID();
+  const secretPath = path.join(root, `run-secret-${configurationId}.sha256`);
   const pidPath = path.join(root, `run-retirement-${configurationId}.pid`);
   const exitPath = path.join(root, `run-retirement-${configurationId}.exit`);
   const scriptPath = path.join(root, `run-retirement-${configurationId}.cjs`);
@@ -21,6 +25,7 @@ export async function startRetirementProbe({
     scriptPath,
     `
 const fs = require('node:fs');
+fs.writeFileSync(${JSON.stringify(secretPath)}, require('node:crypto').createHash('sha256').update(process.env.ACCEPTANCE_RUN_SECRET || '').digest('hex'));
 const target = ${JSON.stringify(worktree.path)};
 process.on('SIGTERM', () => {
   fs.writeFileSync(${JSON.stringify(exitPath)}, JSON.stringify({directoryPresent:fs.existsSync(target),pid:process.pid}));
@@ -30,11 +35,19 @@ fs.writeFileSync(${JSON.stringify(pidPath)}, String(process.pid));
 setInterval(() => {}, 1000);
 `,
   );
-  const definitions = path.join(primary, ".cantrip", "run-configurations");
-  await mkdir(definitions, { recursive: true });
-  await writeFile(
-    path.join(definitions, `${configurationId}.json`),
-    JSON.stringify({
+  const definitionPath = path.join(
+    primary,
+    ".cantrip",
+    "run-configurations",
+    `${configurationId}.json`,
+  );
+  const definition = await prepareRunDefinition({
+    page,
+    projectId,
+    definitionPath,
+    secret,
+    result,
+    document: {
       schema: "cantrip.run-configuration",
       version: 1,
       id: configurationId,
@@ -44,10 +57,13 @@ setInterval(() => {}, 1000);
         kind: "command",
         command: `${JSON.stringify(process.execPath)} ${JSON.stringify(scriptPath)}`,
       },
-      environment: { includeCodexEnvironment: false },
+      environment: {
+        includeCodexEnvironment: false,
+        secrets: [{ name: "ACCEPTANCE_RUN_SECRET", secret: "run/acceptance" }],
+      },
       stop: { gracePeriodMs: 3000 },
-    }),
-  );
+    },
+  });
   const admitted = await page.evaluate(
     async ({ projectId, configurationId, worktreeId }) => {
       const api = await import("/src/lib/run-configuration-api.ts");
@@ -70,7 +86,14 @@ setInterval(() => {}, 1000);
     (value) => assert.ok(Number(value) > 0),
   );
   process.kill(Number(pid), 0);
-  result.actualRunRetirement = {
+  assert.equal(
+    await readFile(secretPath, "utf8"),
+    createHash("sha256").update(secret).digest("hex"),
+  );
+  result.steps.push(
+    "the real worker decrypts the browser-protected Run secret for its child process",
+  );
+  const evidence = {
     configurationId,
     runtimeId: admitted.runtime.id,
     terminalId: admitted.runtime.terminalId,
@@ -79,7 +102,39 @@ setInterval(() => {}, 1000);
   result.steps.push(
     "existing browser Run API starts a real long-lived worker child in the secondary worktree",
   );
+  result[
+    deleteDefinition ? "actualDefinitionRetirement" : "actualRunRetirement"
+  ] = evidence;
   return async () => {
+    if (deleteDefinition) {
+      const stale = await page.evaluate(
+        async ({ projectId, configurationId, revision }) => {
+          const api = await import("/src/lib/run-configuration-api.ts");
+          return api.deleteRunConfiguration(
+            projectId,
+            configurationId,
+            revision,
+          );
+        },
+        { projectId, configurationId, revision: definition.staleRevision },
+      );
+      assert.equal(stale.outcome, "revision-mismatch");
+      process.kill(Number(pid), 0);
+      const deleted = await page.evaluate(
+        async ({ projectId, configurationId, revision }) => {
+          const api = await import("/src/lib/run-configuration-api.ts");
+          return api.deleteRunConfiguration(
+            projectId,
+            configurationId,
+            revision,
+          );
+        },
+        { projectId, configurationId, revision: definition.revision },
+      );
+      assert.equal(deleted.outcome, "deleted");
+      await assert.rejects(readFile(definitionPath), { code: "ENOENT" });
+    }
+
     const exited = JSON.parse(await readFile(exitPath, "utf8"));
     assert.equal(exited.pid, Number(pid));
     assert.equal(
@@ -99,9 +154,11 @@ setInterval(() => {}, 1000);
       { projectId, configurationId, worktreeId: worktree.id },
     );
     assert.deepEqual(remaining, []);
-    result.actualRunRetirement.exit = exited;
+    evidence.exit = exited;
     result.steps.push(
-      "worktree deletion stops the real Run child before removing its directory and retires durable runtime state",
+      deleteDefinition
+        ? "definition deletion stops the real Run child, removes its definition file and retires durable runtime state"
+        : "worktree deletion stops the real Run child before removing its directory and retires durable runtime state",
     );
   };
 }

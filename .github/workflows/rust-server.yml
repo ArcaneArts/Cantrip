@@ -384,6 +384,15 @@ jobs:
         run: node --import tsx scripts/server-rust/project-share-http-compatibility.mjs --database postgres --report .qa/rust-server/project-share-http-external.json
       - name: Admitted share registration survives caller disconnect and shutdown
         run: node --import tsx scripts/server-rust/project-share-shutdown.mjs --report .qa/rust-server/project-share-shutdown.json
+      - name: Actual POSIX Run secrets, definitions and process retirement with native PGlite
+        if: runner.os != 'Windows'
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --worktrees --report .qa/rust-server/actual-run-product-pglite.json
+      - name: Actual POSIX Run secrets, definitions and process retirement with private PostgreSQL
+        if: runner.os != 'Windows'
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --database bundled-postgres --worktrees --report .qa/rust-server/actual-run-product-bundled.json
+      - name: Actual POSIX Run secrets, definitions and process retirement with external PostgreSQL
+        if: runner.os != 'Windows'
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --database postgres --worktrees --report .qa/rust-server/actual-run-product-external.json
       - name: Actual browser folders, encrypted PTYs and WorkerLink observations with native PGlite
         run: node --import tsx scripts/server-rust/actual-folder-client.mjs --terminals --worker-links --terminal-direct --surfaces --tunnels --project-shares --file-documents --workspaces --report .qa/rust-server/actual-folder-client-pglite.json
       - name: Actual browser folders, encrypted PTYs and WorkerLink observations with private PostgreSQL

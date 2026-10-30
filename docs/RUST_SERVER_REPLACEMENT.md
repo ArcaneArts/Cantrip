@@ -12,6 +12,34 @@ feature set.
 
 Status: **implementation in progress; not a deployable replacement**.
 
+## Actual Run product acceptance
+
+The browser/worker probe now uses the existing app API to store an opaque Run
+secret, discover capabilities/paths, create and update definitions, reject stale
+writes, read/list/validate definitions, and launch a real child. The child writes
+only a SHA-256 digest to prove it received the decrypted secret. Stale definition
+deletion preserves the live process; current-revision deletion stops it, removes
+the definition, and retires durable runtime state. A second child verifies
+worktree retirement while preserving the Primary file.
+
+This exposed a client grant gap: start/restart did not authorize `run-content`
+before dispatch. They now install the existing endpoint encryption grant, as
+output reads already do. Stop remains callable without obtaining a grant.
+Focused app tests pass 37 assertions and app typecheck passes.
+
+Local macOS runs pass 25 steps per Node/Rust runtime on all three stores
+(`run-product-pglite-v5.json`, `run-product-postgres-v1.json`, and
+`run-product-bundled-postgres-v3.json`). A prior PGlite run completed all Node product
+assertions but timed out stopping the worker; the next full run passed. A private
+PostgreSQL attempt timed out stopping the Node-connected worker before the Run
+flows; both the diagnostic rerun and the next uninstrumented run passed. These
+failed reports are retained; they are not passing evidence. Linux CI run
+`41066792147` also failed the Node pane-lifetimes shutdown deadline after logging
+fixture shutdown completion. Its job log and artifacts are retained for further
+investigation; platform verification remains incomplete.
+Linux/macOS CI now includes the POSIX child-retirement probe. Windows needs an
+equivalent process-termination probe; none of this proves packaged acceptance.
+
 ## Run definition administration
 
 Native project routes now cover list/get, capabilities, detection, path discovery,
@@ -43,8 +71,8 @@ read back after server shutdown. Concurrent identical repository writes produce
 one revision and one receipt on all three stores under the 1 MiB fixture stack.
 Evidence: `run-admin-secret-http-*-final.json` and
 `run-admin-repository-*-v5.json` in `.qa/rust-server/`.
-Supported-platform/package verification and Run definition administration remain
-incomplete. The default server is still Node.
+Supported-platform/package verification remains incomplete. Native Run definition
+administration is described above. The default server is still Node.
 
 ## Protected Git operations and worker observations (in progress)
 

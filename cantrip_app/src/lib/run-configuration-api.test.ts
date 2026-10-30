@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ensureRunOperationWorker } from "@/lib/api";
 
 vi.mock("@/lib/api", () => ({
   ensureRunOperationWorker: vi.fn().mockResolvedValue(undefined),
@@ -91,9 +92,50 @@ function jsonResponse(value: unknown, status = 200): Response {
   });
 }
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.clearAllMocks();
+});
 
 describe("Run configuration app API", () => {
+  it.each(["start", "restart"] as const)(
+    "installs the worker Run grant before admitting %s",
+    async (operation) => {
+      const fetch = vi.fn().mockRejectedValue(new Error("admission reached"));
+      vi.stubGlobal("fetch", fetch);
+      vi.mocked(ensureRunOperationWorker).mockImplementationOnce(async () => {
+        expect(fetch).not.toHaveBeenCalled();
+        return undefined as never;
+      });
+      await expect(
+        operateRunConfigurationRuntime({
+          operation,
+          projectId,
+          configurationId,
+          targetWorktreeId: operation === "start" ? worktreeId : null,
+        }),
+      ).rejects.toThrow("admission reached");
+      expect(ensureRunOperationWorker).toHaveBeenCalledExactlyOnceWith({
+        projectId,
+        ...(operation === "start" ? { worktreeId } : {}),
+      });
+    },
+  );
+
+  it("can stop a Run without obtaining a decryption grant", async () => {
+    const fetch = vi.fn().mockRejectedValue(new Error("stop reached"));
+    vi.stubGlobal("fetch", fetch);
+    await expect(
+      operateRunConfigurationRuntime({
+        operation: "stop",
+        projectId,
+        configurationId,
+        targetWorktreeId: worktreeId,
+      }),
+    ).rejects.toThrow("stop reached");
+    expect(ensureRunOperationWorker).not.toHaveBeenCalled();
+  });
+
   it("lists definitions, capabilities, detection, and paths through correlated project routes", async () => {
     const fetch = vi
       .fn()
