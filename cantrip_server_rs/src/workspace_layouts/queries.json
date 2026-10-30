@@ -539,6 +539,31 @@
         }
       ]
     },
+    "resolve_conversation": {
+      "source": "select \"protected_label\" from \"chats\" where (\"chats\".\"id\" = $1 and \"chats\".\"project_id\" = $2 and \"chats\".\"owner_id\" = $3 and \"chats\".\"context_kind\" = $4 and \"chats\".\"experience\" = $5 and \"chats\".\"archived_at\" is null)",
+      "bindings": [
+        {
+          "key": "resource",
+          "kind": "text"
+        },
+        {
+          "key": "project",
+          "kind": "text"
+        },
+        {
+          "key": "owner",
+          "kind": "text"
+        },
+        {
+          "constant": "project",
+          "kind": "text"
+        },
+        {
+          "constant": "agent",
+          "kind": "text"
+        }
+      ]
+    },
     "resolve_chats": {
       "source": "select \"id\", \"protected_label\" from \"chats\" where (\"chats\".\"id\" = $1 and \"chats\".\"project_id\" = $2 and \"chats\".\"archived_at\" is null) limit $3",
       "bindings": [

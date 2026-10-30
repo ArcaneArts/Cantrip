@@ -66,3 +66,18 @@ export function registerChatTransferLifecycle(
 export function getChatTransferLifecycle(owner: ChatTransferOwner) {
   return owners.get(keyFor(owner));
 }
+
+/** Checkpoint protected drafts before a view is replaced/closed, without stopping execution. */
+export async function checkpointChatView(owner: ChatTransferOwner) {
+  const lifecycle = getChatTransferLifecycle(owner);
+  // An unmounted view has no live composer to checkpoint.
+  if (!lifecycle) return () => {};
+  const release = lifecycle.suspendTransfer();
+  try {
+    await lifecycle.captureTransfer();
+    return release;
+  } catch (error) {
+    release();
+    throw error;
+  }
+}

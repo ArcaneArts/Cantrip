@@ -1,3 +1,4 @@
+import { checkpointChatView } from "@/components/chat/chat-transfer-lifecycle";
 import { confirmNativeCodeDiscard } from "@/components/code/native-code-lifecycle";
 import type { ProjectTabLayoutSummary } from "@cantrip/protocol";
 import { useMutation, type QueryClient } from "@tanstack/react-query";
@@ -274,7 +275,11 @@ export function useProjectSurfaceViewOperations({
         )
           throw new Error("Workspace command belongs to another project.");
         return workspace.controller
-          .dispatch({ type: "close-tab", tabId: surface.tabKey })
+          .dispatch(
+            surface.conversation
+              ? { type: "close-conversation", viewId: surface.tabKey }
+              : { type: "close-tab", tabId: surface.tabKey },
+          )
           .then(() => null);
       }
       const layout = queryClient.getQueryData<ProjectTabLayoutSummary>([
@@ -301,8 +306,21 @@ export function useProjectSurfaceViewOperations({
         surfaceClose.begin(closeInputForSurface(surface));
       // Retain the prepared renderer's finalizer: authoritative close may
       // unmount it and remove its registry entry before onSuccess runs.
-      const finalize = await beforeClose?.(surface);
-      return { finalize, committed: false };
+      const release =
+        surface.kind === "chat"
+          ? await checkpointChatView({
+              tabId: surface.tabKey,
+              chatId: surface.tabId,
+              projectId: surface.projectId,
+            })
+          : undefined;
+      try {
+        const finalize = await beforeClose?.(surface);
+        return { finalize, release, committed: false };
+      } catch (error) {
+        release?.();
+        throw error;
+      }
     },
     onError: (error, surface, preparation) => {
       // The duplicate never prepared this renderer and cannot release another
@@ -324,8 +342,9 @@ export function useProjectSurfaceViewOperations({
         surfaceClose.commitView(closeInputForSurface(surface), result.layout);
       await preparation?.finalize?.();
     },
-    onSettled: (_data, error, surface) => {
+    onSettled: (_data, error, surface, preparation) => {
       if (error instanceof SurfaceCloseInProgress) return;
+      preparation?.release?.();
       closing.current.delete(closeOperationKey(surface));
       return workspace !== undefined
         ? undefined

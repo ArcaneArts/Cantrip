@@ -15,6 +15,7 @@ import type { ServerConfig } from "../src/config.js";
 import { installWorkspaceLayoutRoutes } from "../src/app/routes/workspace-layouts.js";
 import {
   protectedProjectFields,
+  protectedChatFields,
   protectedTerminalFields,
 } from "./private-label-fixture.js";
 
@@ -474,6 +475,124 @@ it("rejects an unknown detached pane without persisting a partial seed", async (
   expect(
     await db.repository.workspaceLayouts.get(owner, projectId, workspaceId),
   ).toBeNull();
+});
+
+it("owns direct Agent views, fences old clients, and archives an in-flight transfer atomically", async () => {
+  await db.repository.completeGithubProjectSetup(
+    owner,
+    projectId,
+    "workspace-worker",
+    {
+      path: path.join(directory, "repository"),
+      displayPath: "ArcaneArts/Cantrip",
+      reused: false,
+      updated: false,
+      warning: null,
+    },
+  );
+  await db.repository.settings.ensureAccountConfiguration(owner);
+  const fields = protectedChatFields();
+  const chat = await db.repository.createChat(owner, projectId, {
+    ...fields,
+    attachToTabLayout: false,
+  });
+  expect(chat).not.toBeNull();
+  let layout = await seed();
+  const open: WorkspaceAction = {
+    type: "open-conversation",
+    newPaneId: randomUUID(),
+    splitId: randomUUID(),
+    view: {
+      id: randomUUID(),
+      resource: {
+        kind: "entity",
+        definitionId: "project.agent",
+        resourceId: fields.id,
+      },
+      preview: false,
+      titleProtection: null,
+      builtInState: null,
+      dockPresentation: null,
+    },
+  };
+  const url = `/api/projects/${projectId}/workspace-layouts/${layout.id}`;
+  const old = await app.inject({
+    method: "POST",
+    url: `${url}/commands`,
+    payload: command(layout, open),
+  });
+  expect(old.statusCode, old.body).toBe(409);
+  expect(old.json()).toMatchObject({ code: "version", requiredVersion: 2 });
+  const created = await app.inject({
+    method: "POST",
+    url: `${url}/commands`,
+    headers: { "x-cantrip-workspace-version": "2" },
+    payload: command(layout, open),
+  });
+  expect(created.statusCode, created.body).toBe(200);
+  layout = created.json().layout;
+  expect(layout.version).toBe(2);
+  const pane = layout.windows[0]!.panes.find(
+    (p) =>
+      p.conversationView?.resource.kind === "entity" &&
+      p.conversationView.resource.resourceId === fields.id,
+  )!;
+  expect(pane.conversationView?.titleProtection).toEqual(
+    fields.titleProtection,
+  );
+  expect(
+    pane.tabs.some(
+      (t) =>
+        t.resource.kind === "entity" && t.resource.resourceId === fields.id,
+    ),
+  ).toBe(false);
+  expect((await app.inject({ method: "GET", url })).statusCode).toBe(409);
+  expect(
+    (
+      await app.inject({
+        method: "GET",
+        url,
+        headers: { "x-cantrip-workspace-version": "2" },
+      })
+    ).statusCode,
+  ).toBe(200);
+  const stale = await app.inject({
+    method: "POST",
+    url: `${url}/commands`,
+    payload: command(layout, { type: "home" }),
+  });
+  expect(stale.statusCode).toBe(409);
+  expect(
+    (await db.repository.workspaceLayouts.get(owner, projectId, layout.id))
+      ?.revision,
+  ).toBe(layout.revision);
+  const transfer = await db.repository.workspaceLayouts.execute(
+    owner,
+    command(layout, {
+      type: "prepare-detach",
+      transferId: randomUUID(),
+      paneId: pane.id,
+      tabId: pane.conversationView!.id,
+      destinationWindowId: "direct-popout",
+      destinationPaneId: randomUUID(),
+    }),
+  );
+  expect(transfer?.layout.pendingTransfers).toHaveLength(1);
+  expect(await db.repository.archiveAgentConversation(owner, fields.id)).toBe(
+    "archived",
+  );
+  const archived = (await db.repository.workspaceLayouts.get(
+    owner,
+    projectId,
+    layout.id,
+  ))!;
+  expect(archived.pendingTransfers).toEqual([]);
+  expect(archived.windows.some((w) => w.id === "direct-popout")).toBe(false);
+  expect(
+    archived.windows
+      .flatMap((w) => w.panes)
+      .some((p) => p.conversationView?.id === pane.conversationView!.id),
+  ).toBe(false);
 });
 
 it("retains workspace and idempotency receipts across a database restart", async () => {

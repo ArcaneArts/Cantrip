@@ -1,3 +1,4 @@
+import { workspacePaneViews } from "@cantrip/protocol";
 import {
   applyWorkspaceCommand,
   workspaceActionSchema,
@@ -241,6 +242,70 @@ export class WorkspaceCommandClient {
       return Promise.reject(error);
     }
   }
+  async openConversation(
+    chatId: string,
+    options: {
+      checkpoint?: (owner: {
+        tabId: string;
+        chatId: string;
+        projectId: string;
+      }) => Promise<() => void>;
+    } = {},
+  ): Promise<WorkspaceReceipt> {
+    if (this.disposed) throw new Error("Workspace controller is disposed.");
+    const layout = this.state.projected;
+    const window = layout.windows.find((w) => w.id === this.windowId);
+    if (!window) throw new Error("Workspace window attachment changed.");
+    const existing = layout.windows
+      .flatMap((w) => w.panes.flatMap(workspacePaneViews))
+      .find(
+        (view) =>
+          view.resource.kind === "entity" &&
+          view.resource.definitionId === "project.agent" &&
+          view.resource.resourceId === chatId,
+      );
+    const pane =
+      window.recentPaneIds
+        .map((id) =>
+          window.panes.find((p) => p.id === id && p.region === "center"),
+        )
+        .find((p) => p !== undefined) ??
+      window.panes.find((p) => p.region === "center");
+    const previous = existing ? undefined : pane?.conversationView;
+    const action: WorkspaceAction = {
+      type: "open-conversation",
+      paneId: pane?.id,
+      expectedConversationViewId: pane?.conversationView?.id ?? null,
+      newPaneId: this.allocateId(),
+      splitId: this.allocateId(),
+      view: {
+        id: this.allocateId(),
+        resource: {
+          kind: "entity",
+          definitionId: "project.agent",
+          resourceId: chatId,
+        },
+        preview: false,
+        titleProtection: null,
+        builtInState: null,
+        dockPresentation: null,
+      },
+    };
+    const release =
+      previous?.resource.kind === "entity"
+        ? await options.checkpoint?.({
+            tabId: previous.id,
+            chatId: previous.resource.resourceId,
+            projectId: layout.projectId,
+          })
+        : undefined;
+    try {
+      return await this.dispatch(action);
+    } finally {
+      release?.();
+    }
+  }
+
   openResource(
     resource: ProjectSurfaceResourceRef,
     options: {
@@ -281,7 +346,7 @@ export class WorkspaceCommandClient {
           })();
       const alreadyOpen = this.state.projected.windows.some((owner) =>
         owner.panes.some((pane) =>
-          pane.tabs.some(
+          workspacePaneViews(pane).some(
             (tab) =>
               tab.resource.kind === resource.kind &&
               tab.resource.definitionId === resource.definitionId &&

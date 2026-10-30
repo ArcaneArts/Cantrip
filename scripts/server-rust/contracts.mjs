@@ -433,6 +433,10 @@ registerChecks(protocol.tunnelUserWireCreateSchema, [
 ]);
 registerChecks(protocol.workspaceOwnershipSchema, ["workspace-ownership"]);
 registerChecks(protocol.workspaceTabSchema, ["workspace-tab"]);
+registerChecks(protocol.workspaceConversationViewSchema, [
+  "workspace-tab",
+  "workspace-conversation-view",
+]);
 registerChecks(protocol.workspaceReceiptSchema, ["workspace-receipt"]);
 registerChecks(protocol.explorerPrivateStateOpaqueSchema, [
   "worker-command-surface-kind:explorer-state",

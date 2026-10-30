@@ -748,3 +748,66 @@ it("commits restored transfers when the destination update has not reached the s
       ?.id,
   ).toBe("tab");
 });
+
+it("opens tab-free conversations and checkpoints replacement before changing ownership", async () => {
+  const { client, transport } = setup();
+  await client.openConversation("first");
+  const first =
+    client.getSnapshot().authoritative.windows[0]!.panes[0]!.conversationView!;
+  expect(client.getSnapshot().authoritative.windows[0]!.panes[0]!.tabs).toEqual(
+    [],
+  );
+  const pending = deferred<() => void>();
+  const checkpoint = vi.fn(() => pending.promise);
+  const release = vi.fn();
+  const replacement = client.openConversation("second", { checkpoint });
+  expect(checkpoint).toHaveBeenCalledWith({
+    tabId: first.id,
+    chatId: "first",
+    projectId: "project",
+  });
+  expect(transport.execute).toHaveBeenCalledTimes(1);
+  expect(
+    client.getSnapshot().projected.windows[0]!.panes[0]!.conversationView?.id,
+  ).toBe(first.id);
+  pending.resolve(release);
+  await replacement;
+  expect(release).toHaveBeenCalledTimes(1);
+  expect(
+    client.getSnapshot().authoritative.windows[0]!.panes[0]!.conversationView
+      ?.resource,
+  ).toMatchObject({ resourceId: "second" });
+});
+
+it("failed draft checkpoint retains the current conversation and sends no replacement", async () => {
+  const { client, transport } = setup();
+  await client.openConversation("first");
+  const before = client.getSnapshot().authoritative;
+  await expect(
+    client.openConversation("second", {
+      checkpoint: async () => {
+        throw new Error("draft save failed");
+      },
+    }),
+  ).rejects.toThrow("draft save failed");
+  expect(client.getSnapshot().authoritative).toBe(before);
+  expect(transport.execute).toHaveBeenCalledTimes(1);
+});
+
+it("does not overwrite a different conversation selected while a checkpoint is pending", async () => {
+  const { client } = setup();
+  await client.openConversation("first");
+  const pending = deferred<() => void>();
+  const replacement = client.openConversation("second", {
+    checkpoint: () => pending.promise,
+  });
+  await client.openConversation("intervening");
+  const release = vi.fn();
+  pending.resolve(release);
+  await expect(replacement).rejects.toThrow("Conversation selection changed");
+  expect(release).toHaveBeenCalledTimes(1);
+  expect(
+    client.getSnapshot().authoritative.windows[0]!.panes[0]!.conversationView
+      ?.resource,
+  ).toMatchObject({ resourceId: "intervening" });
+});
