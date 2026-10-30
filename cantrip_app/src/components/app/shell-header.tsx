@@ -50,9 +50,7 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
     codeHeader,
     compactManagedHeader,
     compactShell,
-    contentScrolled,
     desktopSidebarDrawer,
-    displayedGitProject,
     explorerDisplayPath,
     gitHistoryHeader,
     gitHistoryProject,
@@ -609,15 +607,6 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
               ? renderProjectRunConfigurationControl(overlayTitlebar)
               : null}
           </div>
-          <span
-            aria-hidden="true"
-            className={cn(
-              "pointer-events-none absolute inset-x-0 bottom-0 h-px bg-border transition-opacity duration-200",
-              contentScrolled && !displayedGitProject
-                ? "opacity-100"
-                : "opacity-0",
-            )}
-          />
         </header>
       ) : null}
     </>

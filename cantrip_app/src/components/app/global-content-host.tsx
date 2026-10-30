@@ -118,7 +118,6 @@ export function GlobalContentHost({
     codeAppearance,
     codeTabs,
     compactShell,
-    contentScrolled,
     createProjectSurface,
     createWorkspaceMutation,
     creatingSurfaceKinds,
@@ -514,7 +513,6 @@ export function GlobalContentHost({
                   : selectedProjectView?.id
               }
               chats={chats.data ?? []}
-              contentScrolled={contentScrolled}
               includeOverviewTab={false}
               navigationActive={gitHistoryNavigationActive}
               navigationRequest={gitHistoryNavigation.request}
