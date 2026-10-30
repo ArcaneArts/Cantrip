@@ -21,6 +21,10 @@ import { password } from "./security-fixtures.mjs";
 import { fileDocumentWireFixtures } from "./file-document-wire-fixtures.mjs";
 import { fileDocumentHttpWorker } from "./file-document-http-worker.mjs";
 import { eventually } from "./full-worker.mjs";
+import {
+  streamingHttpRequest,
+  headersOnlyHttpRequest,
+} from "./streaming-http-request.mjs";
 const option = (k) => {
   const i = process.argv.indexOf(k);
   return i < 0 ? undefined : process.argv[i + 1];
@@ -329,7 +333,28 @@ try {
           await visit(name, "POST", `/api/file-documents/${id}/operation`, {
             json: body,
             status,
+            ...(status === 413 ? { fetcher: streamingHttpRequest } : {}),
           });
+        for (const [name, contentType, status] of [
+          ["JSON oversized headers", "application/json", 413],
+          ["text oversized headers", "text/plain", 413],
+          ["binary oversized headers", "application/octet-stream", 413],
+          ["unsupported oversized headers", "application/xml", 415],
+          ["missing content type oversized headers", undefined, 415],
+        ])
+          await visit(
+            "operation route rejects " + name + " before reading body",
+            "POST",
+            `/api/file-documents/${ids[0]}/operation`,
+            {
+              headers: {
+                ...(contentType ? { "content-type": contentType } : {}),
+                "content-length": String(4 * 1024 * 1024 + 1),
+              },
+              fetcher: headersOnlyHttpRequest,
+              status,
+            },
+          );
         for (const mode of ["error", "invalid", "extra"]) {
           worker.mode = mode;
           await visit(

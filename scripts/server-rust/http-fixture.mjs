@@ -180,14 +180,17 @@ export class HttpFixture {
       ...extraHeaders,
     };
     const startedAt = Date.now();
-    const response = await fetch(this.server.origin + target, {
-      method,
-      headers,
-      body:
-        options.raw ??
-        (input === undefined ? undefined : JSON.stringify(input)),
-      signal: AbortSignal.timeout(options.timeoutMs ?? 15000),
-    });
+    const response = await (options.fetcher ?? fetch)(
+      this.server.origin + target,
+      {
+        method,
+        headers,
+        body:
+          options.raw ??
+          (input === undefined ? undefined : JSON.stringify(input)),
+        signal: AbortSignal.timeout(options.timeoutMs ?? 15000),
+      },
+    );
     const text = await response.text();
     const body = text ? JSON.parse(text) : null;
     assert.equal(

@@ -181,6 +181,8 @@ jobs:
         run: node --import tsx scripts/server-rust/browser-query-manifest.mjs --check
       - name: File-document query statements match the actual TypeScript repository
         run: node --import tsx scripts/server-rust/file-document-query-manifest.mjs --check
+      - name: Early HTTP replies survive upload termination while resets and partial replies fail
+        run: node --test scripts/server-rust/streaming-http-request.test.mjs
       - name: File-document and surface-stream protocol compatibility
         run: node scripts/server-rust/cargo.mjs test --test file_document_contracts -- --nocapture
       - name: Shared desktop verifier retains its owning crate's formatting
