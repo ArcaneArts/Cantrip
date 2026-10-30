@@ -2326,10 +2326,12 @@
         "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "scripts/server-rust/run-secret-http-cases.mjs",
+          "scripts/server-rust/actual-run-definitions.mjs",
+          "scripts/server-rust/actual-run-retirement.mjs",
           "scripts/server-rust/project-git-http-compatibility.mjs"
         ],
         "remaining": [
-          "Supported-platform and packaged acceptance; Run definition administration remains separate and incomplete."
+          "Supported-platform and packaged acceptance remain pending. Local macOS browser/worker secret delivery is exercised; intermittent shutdown failures remain under investigation."
         ]
       },
       {
@@ -2339,10 +2341,12 @@
         "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "scripts/server-rust/run-secret-http-cases.mjs",
+          "scripts/server-rust/actual-run-definitions.mjs",
+          "scripts/server-rust/actual-run-retirement.mjs",
           "scripts/server-rust/project-git-http-compatibility.mjs"
         ],
         "remaining": [
-          "Supported-platform and packaged acceptance; Run definition administration remains separate and incomplete."
+          "Supported-platform and packaged acceptance remain pending. Local macOS browser/worker secret delivery is exercised; intermittent shutdown failures remain under investigation."
         ]
       },
       {
@@ -2353,10 +2357,12 @@
         "evidence": [
           "scripts/server-rust/run-definition-http-cases.mjs",
           "scripts/server-rust/project-git-http-compatibility.mjs",
-          "scripts/server-rust/run-definition-contract-oracle.mjs"
+          "scripts/server-rust/run-definition-contract-oracle.mjs",
+          "scripts/server-rust/actual-run-definitions.mjs",
+          "scripts/server-rust/actual-run-retirement.mjs"
         ],
         "remaining": [
-          "Actual full-worker file operations, additional interruption/serialization boundaries, supported-platform and packaging acceptance remain to be demonstrated."
+          "Additional interruption/serialization boundaries, supported-platform and packaging acceptance remain pending. Actual browser/worker CRUD and active deletion run locally on macOS."
         ]
       },
       {
@@ -2367,10 +2373,12 @@
         "evidence": [
           "scripts/server-rust/run-definition-http-cases.mjs",
           "scripts/server-rust/project-git-http-compatibility.mjs",
-          "scripts/server-rust/run-definition-contract-oracle.mjs"
+          "scripts/server-rust/run-definition-contract-oracle.mjs",
+          "scripts/server-rust/actual-run-definitions.mjs",
+          "scripts/server-rust/actual-run-retirement.mjs"
         ],
         "remaining": [
-          "Actual full-worker file operations, additional interruption/serialization boundaries, supported-platform and packaging acceptance remain to be demonstrated."
+          "Additional interruption/serialization boundaries, supported-platform and packaging acceptance remain pending. Actual browser/worker CRUD and active deletion run locally on macOS."
         ]
       },
       {
@@ -2381,10 +2389,12 @@
         "evidence": [
           "scripts/server-rust/run-definition-http-cases.mjs",
           "scripts/server-rust/project-git-http-compatibility.mjs",
-          "scripts/server-rust/run-definition-contract-oracle.mjs"
+          "scripts/server-rust/run-definition-contract-oracle.mjs",
+          "scripts/server-rust/actual-run-definitions.mjs",
+          "scripts/server-rust/actual-run-retirement.mjs"
         ],
         "remaining": [
-          "Actual full-worker file operations, additional interruption/serialization boundaries, supported-platform and packaging acceptance remain to be demonstrated."
+          "Additional interruption/serialization boundaries, supported-platform and packaging acceptance remain pending. Actual browser/worker CRUD and active deletion run locally on macOS."
         ]
       },
       {
@@ -2395,10 +2405,12 @@
         "evidence": [
           "scripts/server-rust/run-definition-http-cases.mjs",
           "scripts/server-rust/project-git-http-compatibility.mjs",
-          "scripts/server-rust/run-definition-contract-oracle.mjs"
+          "scripts/server-rust/run-definition-contract-oracle.mjs",
+          "scripts/server-rust/actual-run-definitions.mjs",
+          "scripts/server-rust/actual-run-retirement.mjs"
         ],
         "remaining": [
-          "Actual full-worker file operations, additional interruption/serialization boundaries, supported-platform and packaging acceptance remain to be demonstrated."
+          "Additional interruption/serialization boundaries, supported-platform and packaging acceptance remain pending. Actual browser/worker CRUD and active deletion run locally on macOS."
         ]
       },
       {
@@ -2409,10 +2421,12 @@
         "evidence": [
           "scripts/server-rust/run-definition-http-cases.mjs",
           "scripts/server-rust/project-git-http-compatibility.mjs",
-          "scripts/server-rust/run-definition-contract-oracle.mjs"
+          "scripts/server-rust/run-definition-contract-oracle.mjs",
+          "scripts/server-rust/actual-run-definitions.mjs",
+          "scripts/server-rust/actual-run-retirement.mjs"
         ],
         "remaining": [
-          "Actual full-worker file operations, additional interruption/serialization boundaries, supported-platform and packaging acceptance remain to be demonstrated."
+          "Additional interruption/serialization boundaries, supported-platform and packaging acceptance remain pending. Actual browser/worker CRUD and active deletion run locally on macOS."
         ]
       },
       {
@@ -2437,10 +2451,12 @@
         "evidence": [
           "scripts/server-rust/run-definition-http-cases.mjs",
           "scripts/server-rust/project-git-http-compatibility.mjs",
-          "scripts/server-rust/run-definition-contract-oracle.mjs"
+          "scripts/server-rust/run-definition-contract-oracle.mjs",
+          "scripts/server-rust/actual-run-definitions.mjs",
+          "scripts/server-rust/actual-run-retirement.mjs"
         ],
         "remaining": [
-          "Actual full-worker file operations, additional interruption/serialization boundaries, supported-platform and packaging acceptance remain to be demonstrated."
+          "Additional interruption/serialization boundaries, supported-platform and packaging acceptance remain pending. Actual browser/worker CRUD and active deletion run locally on macOS."
         ]
       },
       {
@@ -2451,10 +2467,12 @@
         "evidence": [
           "scripts/server-rust/run-definition-http-cases.mjs",
           "scripts/server-rust/project-git-http-compatibility.mjs",
-          "scripts/server-rust/run-definition-contract-oracle.mjs"
+          "scripts/server-rust/run-definition-contract-oracle.mjs",
+          "scripts/server-rust/actual-run-definitions.mjs",
+          "scripts/server-rust/actual-run-retirement.mjs"
         ],
         "remaining": [
-          "Actual full-worker file operations, additional interruption/serialization boundaries, supported-platform and packaging acceptance remain to be demonstrated."
+          "Additional interruption/serialization boundaries, supported-platform and packaging acceptance remain pending. Actual browser/worker CRUD and active deletion run locally on macOS."
         ]
       },
       {
@@ -2465,10 +2483,12 @@
         "evidence": [
           "scripts/server-rust/run-definition-http-cases.mjs",
           "scripts/server-rust/project-git-http-compatibility.mjs",
-          "scripts/server-rust/run-definition-contract-oracle.mjs"
+          "scripts/server-rust/run-definition-contract-oracle.mjs",
+          "scripts/server-rust/actual-run-definitions.mjs",
+          "scripts/server-rust/actual-run-retirement.mjs"
         ],
         "remaining": [
-          "Actual full-worker file operations, additional interruption/serialization boundaries, supported-platform and packaging acceptance remain to be demonstrated."
+          "Additional interruption/serialization boundaries, supported-platform and packaging acceptance remain pending. Actual browser/worker CRUD and active deletion run locally on macOS."
         ]
       }
     ]

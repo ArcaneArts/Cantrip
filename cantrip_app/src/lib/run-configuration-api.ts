@@ -286,6 +286,14 @@ export async function operateRunConfigurationRuntime(
   input: Omit<RunConfigurationRuntimeLifecycleRequest, "operationId">,
   operationId = crypto.randomUUID(),
 ): Promise<RunConfigurationRuntimeOperationResult> {
+  if (input.operation === "start" || input.operation === "restart") {
+    await ensureRunOperationWorker({
+      projectId: input.projectId,
+      ...(input.targetWorktreeId === null
+        ? {}
+        : { worktreeId: input.targetWorktreeId }),
+    });
+  }
   const result = runConfigurationRuntimeOperationResultSchema.parse(
     await request("/api/run-configuration-runtimes/operations", {
       method: "POST",

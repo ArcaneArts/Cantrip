@@ -168,6 +168,16 @@ export async function actualProjectWorktrees({
     result.steps.push(
       "dirty checkout removal is rejected without losing files or leaving the worktree unavailable",
     );
+    const verifyDefinitionRetirement = await startRetirementProbe({
+      page,
+      root,
+      projectId,
+      primary: directory,
+      worktree: created,
+      result,
+      deleteDefinition: true,
+    });
+    await verifyDefinitionRetirement();
     const verifyRetirement = await startRetirementProbe({
       page,
       root,
