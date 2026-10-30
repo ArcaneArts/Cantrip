@@ -1,3 +1,4 @@
+import { sidebarFileRevealAction } from "@/lib/sidebar-file-reveal";
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import { TabColor, TabIndicator } from "@/components/workspace/tab-color";
 import { surfaceColorKey } from "@/lib/tab-colors";
@@ -118,6 +119,7 @@ function VisibleChatLiveScope({ chatId }: { chatId: string }) {
 }
 
 function SortableDockRailTab({
+  revealInFiles = true,
   active,
   expanded,
   disabled,
@@ -131,6 +133,7 @@ function SortableDockRailTab({
   region,
   surface,
 }: {
+  revealInFiles?: boolean;
   active: boolean;
   expanded: boolean;
   disabled: boolean;
@@ -260,6 +263,9 @@ function SortableDockRailTab({
               <StyledContextMenuContent className="min-w-40">
                 <SurfaceMenuItems
                   colorKey={surfaceColorKey(surface)}
+                  onRevealInFiles={
+                    revealInFiles ? sidebarFileRevealAction(surface) : undefined
+                  }
                   deleteLabel={surfaceDeleteLabel(surface)}
                   kind="context"
                   moveTargets={surfaceMoveTargets(
@@ -283,6 +289,7 @@ function SortableDockRailTab({
 }
 
 export function DockRail({
+  revealInFiles = true,
   activeTabKey,
   creatingKinds,
   onCreate,
@@ -300,6 +307,7 @@ export function DockRail({
   region,
   surfaces,
 }: {
+  revealInFiles?: boolean;
   activeTabKey: string | null;
   creatingKinds?: ReadonlySet<ProjectSurfaceCreateKind>;
   onCreate(kind: ProjectSurfaceCreateKind, target?: ExecutionTarget): void;
@@ -442,6 +450,7 @@ export function DockRail({
                 />
               ) : null}
               <SortableDockRailTab
+                revealInFiles={revealInFiles}
                 active={
                   surface.tabKey === activeTabKey &&
                   surface.member.dockPresentation?.preferredMode !== "closed"
@@ -932,6 +941,7 @@ export function ProjectWorkspaceFrame({
         key={`${presentation.pane.id}:tabs`}
       >
         <ProjectPaneTabStrip
+          revealInFiles={!bindings.isPopout}
           activeTabKey={presentation.activeTabKey}
           allowedCreateKinds={createKindsForPaneRegion(
             presentation.pane.region,
@@ -1150,6 +1160,7 @@ export function ProjectWorkspaceFrame({
             style={{ gridArea: "center-root" }}
           >
             <ProjectPaneTabStrip
+              revealInFiles={!bindings.isPopout}
               activeTabKey=""
               allowedCreateKinds={createKindsForPaneRegion("center")}
               creatingKinds={bindings.creatingSurfaceKinds}
@@ -1250,6 +1261,7 @@ export function ProjectWorkspaceFrame({
       </div>
       {railsVisible ? (
         <DockRail
+          revealInFiles={!bindings.isPopout}
           activeTabKey={right?.activeTabKey ?? null}
           creatingKinds={bindings.creatingSurfaceKinds}
           onOpenRunning={(terminalId) =>
@@ -1280,6 +1292,7 @@ export function ProjectWorkspaceFrame({
       ) : null}
       {railsVisible ? (
         <DockRail
+          revealInFiles={!bindings.isPopout}
           activeTabKey={bottom?.activeTabKey ?? null}
           creatingKinds={bindings.creatingSurfaceKinds}
           onOpenRunning={(terminalId) =>

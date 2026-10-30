@@ -56,6 +56,7 @@ export interface SurfaceMenuActions {
   onPopOut?: () => void;
   onPopOutPane?: () => void;
   onRename?: () => void;
+  onRevealInFiles?: () => void;
   title: string;
 }
 
@@ -74,6 +75,7 @@ export function SurfaceMenuItems({
   onPopOut,
   onPopOutPane,
   onRename,
+  onRevealInFiles,
   title,
 }: SurfaceMenuActions & { kind: "context" | "dropdown" }) {
   const Item =
@@ -94,6 +96,9 @@ export function SurfaceMenuItems({
         <Item onSelect={onDuplicate}>
           <CopyPlus className="size-4" /> Duplicate
         </Item>
+      ) : null}
+      {onRevealInFiles ? (
+        <Item onSelect={onRevealInFiles}>Reveal in Files</Item>
       ) : null}
       {onKeepOpen ? <Item onSelect={onKeepOpen}>Keep Open</Item> : null}
       {onPopOut ? (

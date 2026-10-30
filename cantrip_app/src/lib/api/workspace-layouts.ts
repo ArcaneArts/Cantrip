@@ -1,3 +1,4 @@
+import { noteConversationUsage } from "@/lib/conversation-usage";
 import {
   workspaceCommandSchema,
   workspaceOwnershipSchema,
@@ -150,6 +151,9 @@ export async function connectWorkspaceCommands(
     window.attachmentGeneration,
     transport,
   );
+  const stopUsage = controller.subscribeAgentActivation((chatId) => {
+    if (clientSessionIdentityMatches(identity)) noteConversationUsage(chatId);
+  });
   const closeRefreshChannel = bindWorkspaceRefreshChannel(controller, identity);
   let disposed = false;
   let unsubscribe = () => {};
@@ -158,6 +162,7 @@ export async function connectWorkspaceCommands(
     disposed = true;
     lifetime?.signal.removeEventListener("abort", endLifetime);
     closeRefreshChannel();
+    stopUsage();
     unsubscribe();
     controller.dispose(reason);
     lifetime?.releaseConnection?.();

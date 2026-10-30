@@ -42,7 +42,7 @@ changing its assertions. PR [#2326](https://github.com/ArcaneArts/Cantrip/pull/2
 The next cycle, `codex/conversation-views`, implements owned conversation slots
 and their lifecycle integration.
 
-### Owned conversation views cycle (in progress, not merged)
+### Owned conversation views cycle (merged)
 
 The isolated `codex/conversation-views` branch adds version 2 ownership with a
 retained center conversation slot and explicit content selection, separate from
@@ -50,8 +50,10 @@ rail tabs. The current changes cover TypeScript commands, projection, draft
 checkpoint integration, direct-view recovery, and server version negotiation.
 Native commands, validation, resource removal, detach/return, and version
 negotiation now have matching implementations and compatibility fixtures.
-The final diff and delivery checks are underway before this cycle can be
-published. It does not yet expose the sidebar entry points from milestone 3.
+PR [#2332](https://github.com/ArcaneArts/Cantrip/pull/2332) squash-merged as
+`b04530e3c`. Clean Primary was fast-forwarded and the cycle worktree removed.
+Optional GitHub workflows were still running at merge time; they are not
+recorded here as passing. Sidebar entry points remain milestone 3 work.
 
 All 977 protocol tests pass, including 16 focused conversation-view tests.
 Coverage includes same-pane rail conversion without losing another tab,
@@ -82,6 +84,43 @@ Sidebar rendering, client usage signals, inline archive interaction, full rail
 placement interaction, Rust workspace parity, and real-interaction and scale
 acceptance remain outstanding. No feature acceptance item below is claimed
 complete by these partial changes.
+
+### Sidebar shell cycle (ready for PR)
+
+The isolated `codex/conversations-sidebar` branch adds the app catalog client,
+Files/Conversations switcher, persisted page preference, visibility-aware file
+tree, active conversation list, resource-only creation, and direct selection.
+Creation retains encrypted request identity across uncertain retries and follows
+the existing Agent naming preference. Pending actions are fenced against changed
+sessions, projects, workspace controllers, and unmounted sidebars.
+
+Explicit owned Agent open/select commands and composer send/retry/steer actions
+record usage without blocking navigation or execution. The tracker coalesces
+same-activation focus signals, retains receipt identities for bounded retries,
+and discards obsolete pending activity. Passive reads, restoration, and close
+fallback do not emit usage events. Catalog queries reuse chat Live invalidation
+and poll only while visible without Live coverage.
+
+File tabs in the sidebar-bearing window offer Reveal in Files. This explicitly
+selects Files and expands the requested worktree/path; ordinary file selection
+does not switch sidebar pages. File scroll restoration survives asynchronous
+reauthorization/directory loading. Detached windows retain their existing return
+to main-window workflow rather than offering a nonfunctional sidebar command.
+
+The final app suite passed 3,936 tests with 3 skipped across 562 files. Coverage
+includes the reveal/sidebar/rail subset and delayed scroll restoration. App
+typechecking, production build, five source-corpus tests, decomposition budgets,
+changed-file formatting, and diff whitespace checks passed.
+
+The repository `pnpm check` stopped at two CUA tests with "JavaScript execution
+limit exceeded": `compact_score_supports_full_frame_budget_and_default_holds`
+and `live_help_and_large_generated_score_match_runtime_limits`. Both pass when
+run individually unchanged; the broad check remains recorded as failed, not
+converted to a pass by those isolated retries. No CUA source or limits changed.
+
+Inline archive, resource drag placement, list virtualization/scroll anchoring,
+and the complete real-interaction acceptance matrix remain subsequent milestones.
+No full-feature acceptance checkbox is marked complete by this cycle alone.
 
 ## Product outcome
 

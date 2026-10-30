@@ -811,3 +811,33 @@ it("does not overwrite a different conversation selected while a checkpoint is p
       ?.resource,
   ).toMatchObject({ resourceId: "intervening" });
 });
+
+it("emits Agent activation for deliberate navigation but not passive observations or view closure", async () => {
+  const { client } = setup();
+  const activated = vi.fn();
+  const unsubscribe = client.subscribeAgentActivation(activated);
+  await client.openConversation("chat-one");
+  expect(activated).toHaveBeenLastCalledWith("chat-one");
+  activated.mockClear();
+  client.observe(client.getSnapshot().authoritative);
+  await client.refresh();
+  expect(activated).not.toHaveBeenCalled();
+  await client.updateSelection((current) => current);
+  expect(activated).not.toHaveBeenCalled();
+  activated.mockClear();
+  await client.dispatch(open());
+  expect(activated).not.toHaveBeenCalled();
+  const window = client.getSnapshot().projected.windows[0]!;
+  const pane = window.panes.find((pane) => pane.conversationView)!;
+  await client.dispatch({ type: "select", tabId: pane.conversationView!.id });
+  expect(activated).toHaveBeenCalledExactlyOnceWith("chat-one");
+  activated.mockClear();
+  await client.dispatch({
+    type: "close-conversation",
+    viewId: pane.conversationView!.id,
+  });
+  expect(activated).not.toHaveBeenCalled();
+  unsubscribe();
+  await client.openConversation("chat-two");
+  expect(activated).not.toHaveBeenCalled();
+});

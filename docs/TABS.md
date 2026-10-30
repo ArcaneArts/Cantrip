@@ -56,6 +56,28 @@ Source: [client queue](../cantrip_app/src/lib/workspace-command-client.ts),
 [server persistence](../cantrip_server/src/db/workspace-layouts.ts),
 [presentation](../cantrip_app/src/lib/workspace-presentation-store.ts).
 
+## Conversations sidebar and direct views
+
+The project sidebar switches between Files and Conversations. Conversations
+lists active project Agents, including Agents with open tabs, in server-issued
+last-usage order. Its plus button creates a resource and opens it directly in a
+center pane without adding a rail tab. Selecting an already-open Agent focuses
+its existing view, including a view in another window of the same workspace.
+
+Version 2 ownership retains one optional conversation view per center pane,
+separate from the ordered rail tabs. Explicit content selection chooses the
+conversation or a tab. Replacing a direct view checkpoints its protected draft;
+switching to Files changes only the sidebar page. Closing a rail tab never
+archives the conversation or stops execution.
+
+Usage comes from explicit navigation and Agent send/steer interactions. Passive
+mounting, background tokens, polling, and automatic title updates do not change
+this order. File tabs in the main sidebar window offer Reveal in Files, which
+selects Files and expands the requested path without opening another tab.
+
+Inline archived conversations and resource-to-rail dragging are still tracked
+as unfinished work in [the sidebar implementation plan](CONVERSATIONS_SIDEBAR.md).
+
 ## Opening, selecting, and closing
 
 - Opening an existing resource normally focuses its existing tab in this
