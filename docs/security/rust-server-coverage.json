@@ -2344,6 +2344,132 @@
         "remaining": [
           "Supported-platform and packaged acceptance; Run definition administration remains separate and incomplete."
         ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/run-configurations",
+        "implementation": "cantrip_server_rs/src/http/run_definitions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/run-definition-http-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-definition-contract-oracle.mjs"
+        ],
+        "remaining": [
+          "Actual full-worker file operations, additional interruption/serialization boundaries, supported-platform and packaging acceptance remain to be demonstrated."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/run-configurations/capabilities",
+        "implementation": "cantrip_server_rs/src/http/run_definitions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/run-definition-http-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-definition-contract-oracle.mjs"
+        ],
+        "remaining": [
+          "Actual full-worker file operations, additional interruption/serialization boundaries, supported-platform and packaging acceptance remain to be demonstrated."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/run-configurations/detect",
+        "implementation": "cantrip_server_rs/src/http/run_definitions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/run-definition-http-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-definition-contract-oracle.mjs"
+        ],
+        "remaining": [
+          "Actual full-worker file operations, additional interruption/serialization boundaries, supported-platform and packaging acceptance remain to be demonstrated."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/run-configurations/paths",
+        "implementation": "cantrip_server_rs/src/http/run_definitions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/run-definition-http-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-definition-contract-oracle.mjs"
+        ],
+        "remaining": [
+          "Actual full-worker file operations, additional interruption/serialization boundaries, supported-platform and packaging acceptance remain to be demonstrated."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/run-configurations/validate",
+        "implementation": "cantrip_server_rs/src/http/run_definitions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/run-definition-http-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-definition-contract-oracle.mjs"
+        ],
+        "remaining": [
+          "Actual full-worker file operations, additional interruption/serialization boundaries, supported-platform and packaging acceptance remain to be demonstrated."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/run-configurations/flutter-devices",
+        "implementation": "cantrip_server_rs/src/http/run_definitions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/run-definition-http-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-definition-contract-oracle.mjs"
+        ],
+        "remaining": [
+          "Actual full-worker file operations, additional interruption/serialization boundaries, supported-platform and packaging acceptance remain to be demonstrated."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/run-configurations/:configurationId",
+        "implementation": "cantrip_server_rs/src/http/run_definitions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/run-definition-http-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-definition-contract-oracle.mjs"
+        ],
+        "remaining": [
+          "Actual full-worker file operations, additional interruption/serialization boundaries, supported-platform and packaging acceptance remain to be demonstrated."
+        ]
+      },
+      {
+        "method": "PUT",
+        "path": "/api/projects/:projectId/run-configurations/:configurationId",
+        "implementation": "cantrip_server_rs/src/http/run_definitions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/run-definition-http-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-definition-contract-oracle.mjs"
+        ],
+        "remaining": [
+          "Actual full-worker file operations, additional interruption/serialization boundaries, supported-platform and packaging acceptance remain to be demonstrated."
+        ]
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/projects/:projectId/run-configurations/:configurationId",
+        "implementation": "cantrip_server_rs/src/http/run_definitions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/run-definition-http-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-definition-contract-oracle.mjs"
+        ],
+        "remaining": [
+          "Actual full-worker file operations, additional interruption/serialization boundaries, supported-platform and packaging acceptance remain to be demonstrated."
+        ]
       }
     ]
   },
@@ -2564,14 +2690,119 @@
       },
       {
         "command": "project.run-configuration-definitions.get",
-        "implementation": "cantrip_server_rs/src/run_configurations/lifecycle.rs",
+        "implementation": "cantrip_server_rs/src/run_configurations/definitions.rs",
         "status": "implemented-pending-platform-acceptance",
         "evidence": [
+          "scripts/server-rust/run-definition-http-cases.mjs",
           "scripts/server-rust/project-git-http-compatibility.mjs",
-          "scripts/server-rust/run-lifecycle-http-cases.mjs"
+          "scripts/server-rust/run-definition-contract-oracle.mjs"
         ],
         "remaining": [
-          "Full definition administration, failure-boundary and platform acceptance."
+          "Actual full-worker file operations, additional interruption/serialization boundaries, supported-platform and packaging acceptance remain to be demonstrated."
+        ]
+      },
+      {
+        "command": "project.run-configuration-definitions.list",
+        "implementation": "cantrip_server_rs/src/run_configurations/definitions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/run-definition-http-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-definition-contract-oracle.mjs"
+        ],
+        "remaining": [
+          "Actual full-worker file operations, additional interruption/serialization boundaries, supported-platform and packaging acceptance remain to be demonstrated."
+        ]
+      },
+      {
+        "command": "project.run-configuration-definitions.capabilities",
+        "implementation": "cantrip_server_rs/src/run_configurations/definitions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/run-definition-http-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-definition-contract-oracle.mjs"
+        ],
+        "remaining": [
+          "Actual full-worker file operations, additional interruption/serialization boundaries, supported-platform and packaging acceptance remain to be demonstrated."
+        ]
+      },
+      {
+        "command": "project.run-configuration-definitions.detect",
+        "implementation": "cantrip_server_rs/src/run_configurations/definitions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/run-definition-http-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-definition-contract-oracle.mjs"
+        ],
+        "remaining": [
+          "Actual full-worker file operations, additional interruption/serialization boundaries, supported-platform and packaging acceptance remain to be demonstrated."
+        ]
+      },
+      {
+        "command": "project.run-configuration-definitions.paths",
+        "implementation": "cantrip_server_rs/src/run_configurations/definitions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/run-definition-http-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-definition-contract-oracle.mjs"
+        ],
+        "remaining": [
+          "Actual full-worker file operations, additional interruption/serialization boundaries, supported-platform and packaging acceptance remain to be demonstrated."
+        ]
+      },
+      {
+        "command": "project.run-configuration-definitions.validate",
+        "implementation": "cantrip_server_rs/src/run_configurations/definitions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/run-definition-http-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-definition-contract-oracle.mjs"
+        ],
+        "remaining": [
+          "Actual full-worker file operations, additional interruption/serialization boundaries, supported-platform and packaging acceptance remain to be demonstrated."
+        ]
+      },
+      {
+        "command": "project.run-configuration-definitions.flutter-devices",
+        "implementation": "cantrip_server_rs/src/run_configurations/definitions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/run-definition-http-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-definition-contract-oracle.mjs"
+        ],
+        "remaining": [
+          "Actual full-worker file operations, additional interruption/serialization boundaries, supported-platform and packaging acceptance remain to be demonstrated."
+        ]
+      },
+      {
+        "command": "project.run-configuration-definitions.write",
+        "implementation": "cantrip_server_rs/src/run_configurations/definitions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/run-definition-http-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-definition-contract-oracle.mjs"
+        ],
+        "remaining": [
+          "Actual full-worker file operations, additional interruption/serialization boundaries, supported-platform and packaging acceptance remain to be demonstrated."
+        ]
+      },
+      {
+        "command": "project.run-configuration-definitions.delete",
+        "implementation": "cantrip_server_rs/src/run_configurations/definitions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/run-definition-http-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-definition-contract-oracle.mjs"
+        ],
+        "remaining": [
+          "Actual full-worker file operations, additional interruption/serialization boundaries, supported-platform and packaging acceptance remain to be demonstrated."
         ]
       }
     ]

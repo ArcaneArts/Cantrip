@@ -1,5 +1,6 @@
+import * as operations from "../../packages/protocol/dist/run-configuration-operations.js";
+import * as definitions from "../../packages/protocol/dist/run-configuration-definitions.js";
 import { runDefinition } from "./run-lifecycle-http-cases.mjs";
-import { runConfigurationGetResponseSchema } from "../../packages/protocol/dist/run-configuration-operations.js";
 import { runConfigurationSecretSummaryListSchema } from "../../packages/protocol/dist/run-configuration-secrets.js";
 import { outcome } from "./security-oracle.mjs";
 const base = runDefinition({
@@ -13,9 +14,9 @@ function add(schema, input) {
     schema,
     input,
     outcome: outcome(
-      schema === "runConfigurationGetResponseSchema"
-        ? runConfigurationGetResponseSchema
-        : runConfigurationSecretSummaryListSchema,
+      operations[schema] ??
+        definitions[schema] ??
+        runConfigurationSecretSummaryListSchema,
       input,
     ),
   });
@@ -56,4 +57,114 @@ for (const available of [false, true])
 const mismatched = structuredClone(base);
 mismatched.result.entry.id = base.projectId;
 add("runConfigurationGetResponseSchema", mismatched);
+const context = { operationId: base.operationId, projectId: base.projectId };
+const entry = base.result.entry;
+const validation = {
+  configurationId: entry.id,
+  provider: "shell",
+  platform: "linux",
+  effectiveCommand: "echo acceptance",
+  valid: true,
+  diagnostics: [],
+};
+for (const valid of [false, true])
+  for (const diagnostics of [
+    [],
+    [{ severity: "error", code: "test", message: "test" }],
+  ]) {
+    add("runConfigurationValidateResponseSchema", {
+      operation: "validate",
+      ...context,
+      validation: { ...validation, valid, diagnostics },
+    });
+  }
+for (const entries of [[], [entry], [entry, entry]])
+  for (const validations of [
+    [],
+    [validation],
+    [validation, validation],
+    [{ ...validation, provider: "node" }],
+  ]) {
+    add("runConfigurationListResponseSchema", {
+      operation: "list",
+      ...context,
+      inventory: {
+        directory: ".cantrip/run-configurations",
+        entries,
+        diagnostics: [],
+      },
+      validations,
+    });
+  }
+for (const provider of ["shell", "node"])
+  add("runConfigurationDetectResponseSchema", {
+    operation: "detect",
+    ...context,
+    candidates: [
+      {
+        provider,
+        confidence: "high",
+        reason: "fixture",
+        effectiveCommand: "echo test",
+        document: entry.document,
+      },
+    ],
+    diagnostics: [],
+  });
+for (const status of ["ready", "invalid", "unsupported"])
+  add("runConfigurationWriteResponseSchema", {
+    operation: "write",
+    ...context,
+    result: { outcome: "created", entry: { ...entry, status } },
+  });
+for (const value of [
+  null,
+  {},
+  { operationId: context.operationId },
+  { operationId: context.operationId, purpose: "file" },
+  { operationId: context.operationId, purpose: "file", query: "a\0b" },
+  { operationId: context.operationId, purpose: "file", query: "a".repeat(257) },
+  { operationId: [context.operationId, context.operationId] },
+]) {
+  for (const schema of [
+    "runConfigurationListQuerySchema",
+    "runConfigurationDetectQuerySchema",
+    "runConfigurationPathsQuerySchema",
+  ])
+    add(schema, value);
+}
+for (const value of [
+  null,
+  {},
+  { operationId: context.operationId, document: entry.document },
+  {
+    operationId: context.operationId,
+    document: entry.document,
+    expectedRevision: null,
+  },
+]) {
+  for (const schema of [
+    "runConfigurationApiValidateRequestSchema",
+    "runConfigurationApiFlutterDevicesRequestSchema",
+    "runConfigurationApiWriteRequestSchema",
+    "runConfigurationApiDeleteRequestSchema",
+  ])
+    add(schema, value);
+}
+const capability = {
+  provider: "shell",
+  label: "Shell",
+  icon: "terminal",
+  available: true,
+  supportsDiscovery: true,
+  supportsCommandOverride: true,
+  supportsBeforeLaunch: true,
+  supportsPlatformOverrides: true,
+};
+for (const capabilities of [[capability], [capability, capability]])
+  add("runConfigurationCapabilitiesResponseSchema", {
+    operation: "capabilities",
+    ...context,
+    capabilities,
+  });
 console.log(JSON.stringify({ cases }));

@@ -37,50 +37,9 @@ fn invalidate(service: &AuthService, owner: &str, runtime: &Value) -> Result<()>
     Ok(())
 }
 async fn definition(service: &AuthService, owner: &str, input: &Value) -> Result<Value> {
-    let targets = TargetRepository::new(service.repository.database.clone());
-    let project = text(input, "projectId")?;
-    let source = targets
-        .observation_source(owner, project, &|id| {
-            service.workers.bridge.is_connected(id)
-        })
-        .await?
-        .ok_or_else(|| {
-            api(
-                404,
-                "not-found",
-                "The project Primary source was not found.",
-            )
-        })?;
-    let worker = text(&source, "workerId")?;
-    if !service.workers.bridge.is_connected(worker) {
-        return Err(api(
-            503,
-            "unavailable",
-            "The project Primary worker is offline.",
-        ));
-    }
-    service.run_configuration_observations.subscribe(worker);
-    let response=service.workers.commands.request(worker,json!({"type":"project.run-configuration-definitions.get","operationId":input["operationId"],"projectId":input["projectId"],"sourcePath":source["cwd"],"configurationId":input["configurationId"]}),None,None).await?;
-    let mut result =
-        crate::settings::parse_response("runConfigurationGetResponseSchema", response.as_ref())?;
-    if result["operationId"] != input["operationId"] || result["projectId"] != input["projectId"] {
-        bail!("The Run configuration read response was misrouted.");
-    }
-    let references = if result["result"]["found"] == true
-        && result["result"]["entry"]["status"] == "ready"
-        && !result["result"]["entry"]["document"].is_null()
-    {
-        secrets::references(&result["result"]["entry"]["document"])?
-    } else {
-        Vec::new()
-    };
-    result["secretReferences"] = Value::Array(
-        Repository::new(service.repository.database.clone())
-            .secret_statuses(owner, project, &references)
-            .await?,
-    );
-    crate::settings::parse_response("runConfigurationGetResponseSchema", Some(&result))
+    super::definitions::read(service, owner, "get", input).await
 }
+
 fn failed(
     identity: &Value,
     runtime: &Value,

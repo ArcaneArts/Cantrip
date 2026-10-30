@@ -12,6 +12,25 @@ feature set.
 
 Status: **implementation in progress; not a deployable replacement**.
 
+## Run definition administration
+
+Native project routes now cover list/get, capabilities, detection, path discovery,
+validation, Flutter devices, writes and deletion. Worker files remain owned by the
+worker; Primary resolution and response correlation match Node. Writes/deletes
+share the existing project queue with runtime and worktree operations. Deletion
+reads the actual definition and checks its revision before runtime retirement;
+a still-active stop result prevents the worker delete command.
+
+The controlled-worker HTTP suite exercises creation/update, stale writes/deletes,
+missing/foreign ownership, malformed and misrouted replies, query parsing,
+server-owned secret summaries, active-runtime retirement, ordered command/Live
+streams and persisted audit rows. Exact protocol comparisons cover 106 definition
+request/response vectors. Evidence: `.qa/rust-server/run-definitions-contract-tests-v2-exit.json`
+and `run-definitions-http-{postgres,bundled-postgres}-v1.json` plus
+`run-definitions-http-pglite-v3.json`. All nine local storage/authentication
+combinations pass with 116/120/127 HTTP observations per runtime. This is not full-worker filesystem or packaged-platform
+acceptance. Additional interruption/concurrent-definition tests remain pending.
+
 ## Run secret administration
 
 Native GET/PUT project secret routes preserve validation-before-lookup, tenant
