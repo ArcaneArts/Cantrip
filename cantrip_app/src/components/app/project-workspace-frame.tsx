@@ -356,8 +356,10 @@ export function DockRail({
     [drop.setNodeRef, setElement],
   );
   const crossPaneDrag =
-    workspaceDnd.activeDrag?.type === "surface" &&
-    workspaceDnd.activeDrag.paneId !== (pane?.id ?? null)
+    (workspaceDnd.activeDrag?.type === "conversation" ||
+      workspaceDnd.activeDrag?.type === "surface") &&
+    (workspaceDnd.activeDrag.type === "conversation" ||
+      workspaceDnd.activeDrag.paneId !== (pane?.id ?? null))
       ? workspaceDnd.activeDrag
       : null;
   const dropPreview = workspaceSurfaceDropPreview({
@@ -445,7 +447,11 @@ export function DockRail({
                   label={crossPaneDrag.label}
                   orientation={region === "right" ? "vertical" : "horizontal"}
                   paneId={pane?.id ?? null}
-                  tabKey={crossPaneDrag.tabKey}
+                  tabKey={
+                    crossPaneDrag.type === "conversation"
+                      ? `conversation:${crossPaneDrag.chatId}`
+                      : crossPaneDrag.tabKey
+                  }
                   visualKind={crossPaneDrag.visualKind}
                 />
               ) : null}
@@ -486,7 +492,11 @@ export function DockRail({
               label={crossPaneDrag.label}
               orientation={region === "right" ? "vertical" : "horizontal"}
               paneId={pane?.id ?? null}
-              tabKey={crossPaneDrag.tabKey}
+              tabKey={
+                crossPaneDrag.type === "conversation"
+                  ? `conversation:${crossPaneDrag.chatId}`
+                  : crossPaneDrag.tabKey
+              }
               visualKind={crossPaneDrag.visualKind}
             />
           ) : null}

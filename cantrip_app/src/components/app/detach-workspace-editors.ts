@@ -1,3 +1,4 @@
+import { workspacePaneViews } from "@cantrip/protocol";
 import type { ExplorerLifecycleActions } from "@/components/explorer/explorer-view";
 import type { ExplorerTransferEntry } from "@/components/explorer/explorer-transfer-batch";
 import {
@@ -85,7 +86,9 @@ export async function detachWorkspaceEditors(
         const chatEntries: ChatTransferEntry[] = [];
         const desktopEntries: RemoteDesktopTransferEntry[] = [];
         for (const tabId of tabIds) {
-          const tab = pane?.tabs.find(({ id }) => id === tabId);
+          const tab = pane
+            ? workspacePaneViews(pane).find(({ id }) => id === tabId)
+            : undefined;
           const surface = input.surfaces.get(tabId);
           if (
             !tab ||

@@ -359,11 +359,15 @@ interface WorkspaceDropMutation<Input> {
 }
 
 export function createWorkspaceDropHandler({
+  placeConversation,
   projects,
   reorderProjectsMutation,
   setWorkspaceDragError,
   tabLayoutMutation,
 }: {
+  placeConversation?: (
+    operation: Extract<WorkspaceDropOperation, { type: "place-conversation" }>,
+  ) => Promise<unknown>;
   projects: readonly ProjectSummary[];
   reorderProjectsMutation: WorkspaceDropMutation<string[]>;
   setWorkspaceDragError: (error: string | null) => void;
@@ -374,6 +378,16 @@ export function createWorkspaceDropHandler({
 }) {
   return (operation: WorkspaceDropOperation) => {
     setWorkspaceDragError(null);
+    if (operation.type === "place-conversation") {
+      if (!placeConversation) {
+        setWorkspaceDragError("Conversation placement is not connected.");
+        return;
+      }
+      void placeConversation(operation).catch((error) =>
+        setWorkspaceDragError(errorText(error)),
+      );
+      return;
+    }
     if (operation.type === "tab-layout") {
       if (tabLayoutMutation.isPending) {
         setWorkspaceDragError("Wait for the current tab move to finish.");

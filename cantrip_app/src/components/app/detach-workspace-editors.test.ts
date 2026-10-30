@@ -271,78 +271,87 @@ it("uses the registered terminal view for a mixed pane transfer", async () => {
   }
 });
 
-it("captures a chat by tab identity alongside editors without stopping execution", async () => {
-  const f = fixture();
-  const tab =
-    f.input.controller.getSnapshot().authoritative.windows[0]!.panes[0]!
-      .tabs[1]!;
-  tab.resource = {
-    kind: "entity",
-    definitionId: "project.agent",
-    resourceId: "chat",
-  };
-  f.input.surfaces.set("code", {
-    kind: "chat",
-    entity: { id: "chat", projectId: "project" },
-  } as ProjectSurface);
-  const release = vi.fn();
-  const retire = vi.fn(async () => {});
-  const unregister = registerChatTransferLifecycle(
-    { tabId: "code", chatId: "chat", projectId: "project" },
-    {
-      suspendTransfer: () => release,
-      captureTransfer: async () => ({
-        version: 1,
-        chatId: "chat",
-        projectId: "project",
-        draft: { text: "unsent", mode: "default", reasoningEffort: null },
-        nativeModeIntent: null,
-        composerSelection: { start: 2, end: 4, scrollTop: 0 },
-        transcript: { scrollTop: 250, following: false },
-        editingPrompt: null,
-        editingSentMessage: null,
-        inspectTab: "trajectory",
-        trajectoryTargetKey: null,
-        sidePanelView: { type: "inspect" },
-      }),
-      retireTransfer: retire,
-    },
-  );
-  try {
-    await detachWorkspaceEditors(f.input, async (options) => {
-      const lease = await options.prepare(["file", "code"]);
-      const payload = JSON.parse(
-        new TextDecoder().decode(await lease.capture()),
-      );
-      expect(payload.editors).toHaveLength(1);
-      expect(payload.chats).toMatchObject([
-        {
-          tabId: "code",
-          state: {
-            chatId: "chat",
-            draft: { text: "unsent" },
-            transcript: { scrollTop: 250 },
+it.each(["rail", "direct"] as const)(
+  "captures a %s chat alongside editors without stopping execution",
+  async (placement) => {
+    const f = fixture();
+    const tab =
+      f.input.controller.getSnapshot().authoritative.windows[0]!.panes[0]!
+        .tabs[1]!;
+    tab.resource = {
+      kind: "entity",
+      definitionId: "project.agent",
+      resourceId: "chat",
+    };
+    if (placement === "direct") {
+      const pane =
+        f.input.controller.getSnapshot().authoritative.windows[0]!.panes[0]!;
+      pane.conversationView = tab;
+      pane.tabs = pane.tabs.filter((view) => view.id !== tab.id);
+    }
+    f.input.surfaces.set("code", {
+      kind: "chat",
+      entity: { id: "chat", projectId: "project" },
+    } as ProjectSurface);
+    const release = vi.fn();
+    const retire = vi.fn(async () => {});
+    const unregister = registerChatTransferLifecycle(
+      { tabId: "code", chatId: "chat", projectId: "project" },
+      {
+        suspendTransfer: () => release,
+        captureTransfer: async () => ({
+          version: 1,
+          chatId: "chat",
+          projectId: "project",
+          draft: { text: "unsent", mode: "default", reasoningEffort: null },
+          nativeModeIntent: null,
+          composerSelection: { start: 2, end: 4, scrollTop: 0 },
+          transcript: { scrollTop: 250, following: false },
+          editingPrompt: null,
+          editingSentMessage: null,
+          inspectTab: "trajectory",
+          trajectoryTargetKey: null,
+          sidePanelView: { type: "inspect" },
+        }),
+        retireTransfer: retire,
+      },
+    );
+    try {
+      await detachWorkspaceEditors(f.input, async (options) => {
+        const lease = await options.prepare(["file", "code"]);
+        const payload = JSON.parse(
+          new TextDecoder().decode(await lease.capture()),
+        );
+        expect(payload.editors).toHaveLength(1);
+        expect(payload.chats).toMatchObject([
+          {
+            tabId: "code",
+            state: {
+              chatId: "chat",
+              draft: { text: "unsent" },
+              transcript: { scrollTop: 250 },
+            },
           },
-        },
-      ]);
-      await lease.retire();
-      expect(retire).toHaveBeenCalledOnce();
-      await lease.resume();
-      expect(release).toHaveBeenCalledOnce();
-      return "destination";
-    });
-    unregister();
-    await expect(
-      detachWorkspaceEditors(f.input, async (options) => {
-        await options.prepare(["code"]);
+        ]);
+        await lease.retire();
+        expect(retire).toHaveBeenCalledOnce();
+        await lease.resume();
+        expect(release).toHaveBeenCalledOnce();
         return "destination";
-      }),
-    ).rejects.toThrow("chat view is not attached");
-  } finally {
-    unregister();
-    f.cleanup();
-  }
-});
+      });
+      unregister();
+      await expect(
+        detachWorkspaceEditors(f.input, async (options) => {
+          await options.prepare(["code"]);
+          return "destination";
+        }),
+      ).rejects.toThrow("chat view is not attached");
+    } finally {
+      unregister();
+      f.cleanup();
+    }
+  },
+);
 
 it("captures and retires all reserved editors without save or discard", async () => {
   const f = fixture();

@@ -85,8 +85,6 @@ export async function detachWorkspaceViews(
 ) {
   const { controller } = input;
   input.signal?.throwIfAborted();
-  if (input.returnToMain && input.tabId)
-    throw new Error("Window return transfers a complete pane.");
   const transferId = dependencies.allocateId();
   const destinationWindowId = input.returnToMain
     ? controller.getSnapshot().authoritative.mainWindowId
@@ -102,6 +100,7 @@ export async function detachWorkspaceViews(
           type: "prepare-return",
           transferId,
           paneId: input.paneId,
+          ...(input.tabId ? { tabId: input.tabId, destinationPaneId } : {}),
           splitId: dependencies.allocateId(),
         }
       : {

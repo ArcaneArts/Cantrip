@@ -340,6 +340,123 @@ export class WorkspaceCommandClient {
     }
   }
 
+  /** Explicit placement differs from opening: resolve current ownership, then
+   * move that view (including a direct slot) to the requested rail position. */
+  async placeConversation(
+    chatId: string,
+    destination: {
+      paneId?: string;
+      region: ProjectPaneRegion;
+      position?: number;
+    },
+    options: {
+      assertCurrent?(): void;
+      checkpoint(owner: {
+        tabId: string;
+        chatId: string;
+        projectId: string;
+      }): Promise<() => void>;
+      transfer(owner: {
+        windowId: string;
+        paneId: string;
+        viewId: string;
+      }): Promise<void>;
+    },
+  ): Promise<WorkspaceReceipt> {
+    const locate = () =>
+      this.state.projected.windows.flatMap((owner) =>
+        owner.panes.flatMap((pane) =>
+          workspacePaneViews(pane)
+            .filter(
+              (view) =>
+                view.resource.kind === "entity" &&
+                view.resource.definitionId === "project.agent" &&
+                view.resource.resourceId === chatId,
+            )
+            .map((view) => ({ owner, pane, view })),
+        ),
+      )[0];
+    await this.refresh();
+    options.assertCurrent?.();
+    let existing = locate();
+    if (existing && existing.owner.id !== this.windowId) {
+      await options.transfer({
+        windowId: existing.owner.id,
+        paneId: existing.pane.id,
+        viewId: existing.view.id,
+      });
+      await this.refresh();
+      options.assertCurrent?.();
+      existing = locate();
+      if (!existing || existing.owner.id !== this.windowId)
+        throw new Error(
+          "Conversation transfer did not establish ownership in this window.",
+        );
+    }
+    const release = existing
+      ? await options.checkpoint({
+          tabId: existing.view.id,
+          chatId,
+          projectId: this.state.projected.projectId,
+        })
+      : undefined;
+    try {
+      options.assertCurrent?.();
+      let opened: WorkspaceReceipt | undefined;
+      if (!existing) {
+        opened = await this.openResource(
+          { kind: "entity", definitionId: "project.agent", resourceId: chatId },
+          {
+            targetPaneId: destination.paneId,
+            targetRegion: destination.region,
+          },
+        );
+        options.assertCurrent?.();
+        existing = locate();
+      }
+      if (!existing || existing.owner.id !== this.windowId)
+        throw new Error(
+          "Conversation ownership changed during placement. Try again.",
+        );
+      const owner = this.state.projected.windows.find(
+        (window) => window.id === this.windowId,
+      );
+      const target = destination.paneId
+        ? owner?.panes.find((pane) => pane.id === destination.paneId)
+        : (owner?.panes.find(
+            (pane) =>
+              pane.region === destination.region &&
+              pane.id === owner.focusedPaneId,
+          ) ?? owner?.panes.find((pane) => pane.region === destination.region));
+      const samePaneTab =
+        target?.id === existing.pane.id &&
+        target.tabs.some((tab) => tab.id === existing!.view.id);
+      const sourceIndex = samePaneTab
+        ? target!.tabs.findIndex((tab) => tab.id === existing!.view.id)
+        : -1;
+      const position =
+        destination.position === undefined
+          ? Math.max(0, (target?.tabs.length ?? 0) - (samePaneTab ? 1 : 0))
+          : destination.position -
+            (sourceIndex >= 0 && sourceIndex < destination.position ? 1 : 0);
+      if (
+        opened &&
+        target?.id === existing.pane.id &&
+        target.tabs[position]?.id === existing.view.id
+      )
+        return opened;
+      return await this.dispatchLayout({
+        type: "move-member",
+        tabKey: existing.view.id,
+        targetPaneId: destination.paneId ?? target?.id ?? null,
+        targetRegion: destination.region,
+        targetMemberPosition: position,
+      });
+    } finally {
+      release?.();
+    }
+  }
+
   openResource(
     resource: ProjectSurfaceResourceRef,
     options: {
