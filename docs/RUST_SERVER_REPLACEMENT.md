@@ -121,6 +121,43 @@ storage/authentication combinations with unchanged 116/120/127 recorded
 observations per runtime. Reports: `observation-order-http-*-v1.json`. Platform
 verification remains pending for this adjustment.
 
+## Product acceptance observation boundaries
+
+The acceptance driver now waits for the real Run child's exit witness and its
+actual `ESRCH` result before asserting retirement. Linux platform traces show a
+PTY shell-group PID distinct from the Node child PID. A bounded Linux reproduction
+using the unchanged production process-tree controller confirmed five cases where
+the shell exited before a child flushed its witness 150 ms later. This timing
+reproduction does not replace whole-worker Linux acceptance. The existing child
+identity, worktree-directory ordering, secret hash and durable-runtime assertions
+remain intact.
+
+The browser-discovery fixture now serves its HTTP listener in a separately
+supervised process. In the macOS failure, both services hosted by the browser/Vite
+driver disappeared from the fleet reply while independently served ports remained.
+An actual worker-probe reproduction stalls the driver for 1.1 seconds: the inline
+listener misses the unchanged 750 ms probe deadline, while the isolated listener
+responds. Only candidate addresses are supplied in this bounded timing experiment;
+the full product flow still uses the production OS listener inventory. Both client
+APIs must still find the exact listener, title, worker and placement, and the
+fixture retains the real request/response events.
+
+Local Run product checks pass 25 steps per Node/Rust runtime on PGlite, private
+PostgreSQL and external PostgreSQL. The full encrypted resource flow passes 35
+steps per runtime on each store, including actual fleet discovery, terminals,
+WorkerLink/direct routing, tunnels, protected shares, file documents and workspaces.
+It retains exact tunnel-byte assertions. These host-wide OS discovery flows must run serially when
+sharing a machine: one validation run's HTTP/TLS probes otherwise reach another
+run's raw TCP peer. No traffic is filtered out to make that assertion pass.
+
+Current-head supported-platform and packaged acceptance remain required. A separate
+Windows conversion job in run `41141260086` timed out during native PGlite opening;
+its logs and artifact are retained rather than counted as a pass. The serialized
+standard `pnpm check` for this milestone finishes with 1,662 source-server tests
+passing, 57 skipped and only the previously reproduced provider-routing assertion
+at `local-foundation.test.ts:7218` failing. No assertions or deadlines were changed;
+the broad check remains non-green.
+
 ## Actual Run product acceptance
 
 The browser/worker probe now uses the existing app API to store an opaque Run

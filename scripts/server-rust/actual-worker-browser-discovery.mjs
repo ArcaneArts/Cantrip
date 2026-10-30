@@ -1,7 +1,9 @@
 // The production worker enumerates OS listeners and probes an actual HTTP service.
 import assert from "node:assert/strict";
-import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
+import { fileURLToPath } from "node:url";
+import { startServer } from "./process.mjs";
+import { eventually } from "./full-worker.mjs";
 
 export async function actualWorkerBrowserDiscovery({
   page,
@@ -10,20 +12,19 @@ export async function actualWorkerBrowserDiscovery({
   result,
 }) {
   const title = "Cantrip discovery " + randomUUID();
-  const requests = [];
-  const server = createServer((request, response) => {
-    requests.push({ method: request.method, url: request.url });
-    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-    response.end(
-      "<!doctype html><title>" + title + "</title><p>Discovery fixture</p>",
-    );
+  const listener = await startServer(process.execPath, [
+    fileURLToPath(new URL("./discovery-http-listener.mjs", import.meta.url)),
+    title,
+  ]);
+  const port = Number(new URL(listener.origin).port);
+  const requests = () =>
+    listener.events.filter((event) => event.event === "test.discovery.request");
+  const evidence = (result.browserServiceDiscovery = {
+    port,
+    listenerPid: listener.child.pid,
+    requests: [],
+    completed: false,
   });
-  await new Promise((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", resolve);
-  });
-  const port = server.address().port;
-  result.browserServiceDiscovery = { port, requests, completed: false };
   try {
     const values = await page.evaluate(
       async ({ id, projectId }) => {
@@ -66,9 +67,11 @@ export async function actualWorkerBrowserDiscovery({
       worktreeId: null,
       surface: null,
     });
-    assert.ok(
-      requests.filter((r) => r.method === "GET").length >= 2,
-      "Both real worker commands probed the listener",
+    await eventually(requests, (values) =>
+      assert.ok(
+        values.filter((r) => r.method === "GET").length >= 2,
+        "Both real worker commands probed the listener",
+      ),
     );
     result.browserServiceDiscovery.completed = true;
     result.browserServiceDiscovery.service = found;
@@ -77,7 +80,14 @@ export async function actualWorkerBrowserDiscovery({
       "existing browser and project discovery APIs find a real HTTP listener through the unchanged full worker's OS scan and probes",
     );
   } finally {
-    server.closeAllConnections();
-    await new Promise((resolve) => server.close(resolve));
+    try {
+      await listener.close();
+    } finally {
+      evidence.requests = requests();
+      evidence.responses = listener.events.filter(
+        (event) => event.event === "test.discovery.response",
+      );
+      evidence.diagnostics = listener.diagnostics();
+    }
   }
 }
