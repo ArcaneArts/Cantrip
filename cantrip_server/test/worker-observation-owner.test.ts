@@ -10,9 +10,10 @@ import WebSocket from "ws";
 import { buildApp } from "../src/app.js";
 import type { ServerConfig } from "../src/config.js";
 import { connectDatabase } from "../src/db/index.js";
+import { AppLiveHub } from "../src/live/hub.js";
 import { WorkerBridge } from "../src/workers/bridge.js";
 
-it("configures reconnected workers under their credential owners in account mode", async () => {
+it("reconciles reconnected workers and publishes runtime changes under their credential owners", async () => {
   const dataDirectory = await mkdtemp(
     path.join(tmpdir(), "cantrip-observation-owner-"),
   );
@@ -55,10 +56,44 @@ it("configures reconnected workers under their credential owners in account mode
     database.repository,
     "listWorkerExecutionRootContexts",
   );
+  const identity = (workerId: string) => ({
+    runtimeId: owners.get(workerId)!,
+    projectId: owners.get(workerId)!,
+    configurationId: owners.get(workerId)!,
+    worktreeId: owners.get(workerId)!,
+    workerId,
+    definitionRevision: "a".repeat(64),
+    codexEnvironmentRevision: null,
+    generation: 1,
+    operationId: owners.get(workerId)!,
+    terminalId: owners.get(workerId)!,
+  });
+  vi.spyOn(
+    database.repository,
+    "listActiveRunConfigurationRuntimeIdentitiesForWorker",
+  ).mockImplementation(async (_owner, worker) => [identity(worker)]);
+  const observations = vi
+    .spyOn(database.repository, "applyRunConfigurationRuntimeObservation")
+    .mockImplementation(async (_owner, _worker, observation) => ({
+      applied: true,
+      reason: "applied",
+      runtime: {
+        ...observation,
+        id: observation.runtimeId,
+        requestedOperationId: observation.operationId,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    }));
+  const publications = vi.spyOn(AppLiveHub.prototype, "publish");
   const bridge = new WorkerBridge();
   const requests = vi
     .spyOn(bridge, "request")
-    .mockResolvedValue({ accepted: true, paths: [] });
+    .mockImplementation(async (_worker, command) =>
+      command.type === "project.run-configuration-runtime.reconcile"
+        ? { orphanedRuntimeIds: [], runtimes: [] }
+        : { accepted: true, paths: [] },
+    );
   const app = await buildApp({
     config,
     database,
@@ -78,6 +113,25 @@ it("configures reconnected workers under their credential owners in account mode
       await once(socket, "open");
       await vi.waitFor(
         () => {
+          expect(observations).toHaveBeenCalledWith(
+            owner,
+            worker,
+            expect.objectContaining({ state: "lost" }),
+          );
+          expect(publications).toHaveBeenCalledWith(
+            expect.objectContaining({
+              ownerId: owner,
+              resource: "run",
+              entityId: owner,
+            }),
+          );
+          expect(publications).toHaveBeenCalledWith(
+            expect.objectContaining({
+              ownerId: owner,
+              resource: "terminal",
+              entityId: owner,
+            }),
+          );
           expect(targets).toHaveBeenCalledWith(owner, worker);
           expect(roots).toHaveBeenCalledWith(owner, worker);
           expect(requests).toHaveBeenCalledWith(
