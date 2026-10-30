@@ -65,7 +65,7 @@ const fixtureSource = `
         continue;
       }
       const id = message.requestId, kind = message.operation.operation;
-      if(kind === 'host') { waiting.set(id,{calls:message.operation.calls ?? 1,late:message.operation.late}); host(id); }
+      if(kind === 'host') { waiting.set(id,{calls:message.operation.calls ?? 1,late:message.operation.late}); if(message.operation.hostDelayMs) setTimeout(() => host(id), message.operation.hostDelayMs); else host(id); }
       else if(kind === 'host-duplicate') { host(id); host(id); }
       else if(kind === 'host-overlap') { host(id); host(id,2); }
       else if(kind === 'host-gap') { host(id,2); }
@@ -317,34 +317,52 @@ describe("CUA child transport", () => {
       const release = deferred<unknown>();
       const transport = fixture();
       await transport.request({ operation: "echo" });
-      const evaluating = transport.request(
-        { operation: "host" },
-        {
-          timeoutMs: kind === "timeout" ? 30 : 1000,
-          onHostCall: async (_action, signal) => {
-            entered.resolve(signal);
-            return release.promise;
+      // The callback must enter before its deadline fires. Windows or a busy
+      // runner can otherwise expire 30 ms while the child is still scheduling
+      // its hostCall, leaving entered unresolved even though cancellation works.
+      if (kind === "timeout")
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      try {
+        const evaluating = transport.request(
+          {
+            operation: "host",
+            ...(kind === "timeout" ? { hostDelayMs: 60 } : {}),
           },
-        },
-      );
-      const outcome = evaluating.catch((error) => error);
-      const signal = await entered.promise;
-      if (kind === "settle")
-        await transport.request({
-          operation: "finish-host",
-          evaluationRequestId: 2,
-          error: true,
-        });
-      if (kind === "close") await transport.close();
-      if (kind === "crash")
-        await transport.request({ operation: "crash" }).catch(() => {});
-      const result = await outcome;
-      expect(signal.aborted).toBe(true);
-      if (kind === "settle") {
-        expect(result).toBeInstanceOf(CuaNativeError);
-        expect(transport.closed).toBe(false);
-      } else expect(result).toMatchObject({ outcome: "unknown" });
-      release.resolve(null);
+          {
+            timeoutMs: kind === "timeout" ? 30 : 1000,
+            onHostCall: async (_action, signal) => {
+              entered.resolve(signal);
+              return release.promise;
+            },
+          },
+        );
+        const outcome = evaluating.catch((error) => error);
+        const signal = await entered.promise;
+        if (kind === "settle")
+          await transport.request({
+            operation: "finish-host",
+            evaluationRequestId: 2,
+            error: true,
+          });
+        if (kind === "close") await transport.close();
+        if (kind === "crash")
+          await transport.request({ operation: "crash" }).catch(() => {});
+        if (kind === "timeout") await vi.advanceTimersByTimeAsync(30);
+        const result = await outcome;
+        expect(signal.aborted).toBe(true);
+        if (kind === "settle") {
+          expect(result).toBeInstanceOf(CuaNativeError);
+          expect(transport.closed).toBe(false);
+        } else if (kind === "timeout") {
+          expect(result).toMatchObject({ code: "timeout", outcome: "unknown" });
+          // A real framed round trip also observes the cancellation reply and
+          // clears its grace timer before restoring the test clock.
+          await transport.request({ operation: "echo" });
+        } else expect(result).toMatchObject({ outcome: "unknown" });
+      } finally {
+        release.resolve(null);
+        if (kind === "timeout") vi.useRealTimers();
+      }
     },
   );
 
