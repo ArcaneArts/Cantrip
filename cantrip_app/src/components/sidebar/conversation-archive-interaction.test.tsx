@@ -19,10 +19,13 @@ vi.mock("@/lib/api/conversations", () => ({
   restoreAgentConversation: api.restore,
   permanentlyDeleteAgentConversation: api.remove,
   prepareConversationCreation: vi.fn(),
+  prepareConversationFork:
+    async (...args: unknown[]) =>
+    () =>
+      api.fork(...args),
 }));
 vi.mock("@/lib/api/chats", () => ({
   renameChat: api.rename,
-  forkChat: api.fork,
 }));
 vi.mock("@/lib/client-session", () => ({
   getClientSessionIdentitySnapshot: () => ({ userId: "owner" }),
@@ -314,9 +317,7 @@ it("forks from the sidebar without creating or opening a rail tab", async () => 
   );
   await act(async () => item("Fork").click());
   await flush();
-  expect(api.fork).toHaveBeenCalledWith("one", "Agent one", undefined, {
-    attachToTabLayout: false,
-  });
+  expect(api.fork).toHaveBeenCalledWith("project", "one", "Agent one");
   expect(host.querySelector('[data-conversation-id="fork"]')).not.toBeNull();
   expect(openConversation).not.toHaveBeenCalled();
 });
@@ -352,3 +353,72 @@ it("renames through the shared encrypted chat action and refreshes the catalog",
   expect(api.rename).toHaveBeenCalledWith("one", "Renamed agent");
   expect(host.textContent).toContain("Renamed agent");
 });
+
+it.each(["active", "archived"])(
+  "does not cancel the %s Live refresh by requesting an obsolete next cursor",
+  async (state) => {
+    const summary =
+      state === "active"
+        ? chat
+        : {
+            ...chat,
+            archivedAt: chat.createdAt,
+            expiresAt: "2027-01-28T00:00:00.000Z",
+            lastUsedAt: chat.createdAt,
+          };
+    let refreshing = false;
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const cursors: string[] = [];
+    api.catalog.mockImplementation(
+      async (_: string, query: { state: string; cursor?: string }) => {
+        if (query.state !== state)
+          return { state: query.state, items: [], total: 0, nextCursor: null };
+        if (query.cursor) cursors.push(query.cursor);
+        else if (refreshing) await held;
+        return {
+          state,
+          items: [summary],
+          total: 2,
+          nextCursor: refreshing ? "fresh-cursor" : "old-cursor",
+        };
+      },
+    );
+    await mount();
+    refreshing = true;
+    let refresh!: Promise<void>;
+    await act(async () => {
+      refresh = client.invalidateQueries({
+        queryKey: ["chats", "project", "conversations", state],
+      });
+    });
+    await flush();
+    await act(async () =>
+      button(
+        state === "active"
+          ? "Load more conversations"
+          : "Load more archived conversations",
+      ).click(),
+    );
+    try {
+      expect(cursors).toEqual([]);
+    } finally {
+      await act(async () => {
+        release();
+        await refresh;
+      });
+    }
+    await flush();
+    await act(async () =>
+      button(
+        state === "active"
+          ? "Load more conversations"
+          : "Load more archived conversations",
+      ).click(),
+    );
+    await flush();
+    expect(cursors).toEqual(["fresh-cursor"]);
+  },
+);

@@ -406,6 +406,7 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                         <ProjectConversationList
                           key={selectedProjectId}
                           projectId={selectedProjectId}
+                          placementPending={bindings.placeConversation?.pending}
                           onPlace={(chatId, region) =>
                             bindings.placeConversation(
                               selectedProjectId,

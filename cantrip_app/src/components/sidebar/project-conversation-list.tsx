@@ -35,6 +35,7 @@ import { cn } from "@/lib/utils";
 export function ProjectConversationList({
   projectId,
   onPlace,
+  placementPending = new Set<string>(),
   archiveFocusRequest,
   onArchiveFocusHandled,
   randomAgentNames = false,
@@ -47,6 +48,7 @@ export function ProjectConversationList({
   focusWindow,
 }: {
   projectId: string;
+  placementPending?: ReadonlySet<string>;
   onPlace?: (
     chatId: string,
     region: "center" | "right" | "bottom",
@@ -133,6 +135,7 @@ export function ProjectConversationList({
     desiredFocus.current = { attribute, id: ids[index + 1] ?? ids[index - 1] };
   }
   function requestArchive(chat: ChatSummary) {
+    if (placementPending.has(chat.id)) return;
     const error = lifecycle.errors.get(chat.id);
     if (
       chat.status === "running" ||
@@ -328,7 +331,11 @@ export function ProjectConversationList({
                   projectId={projectId}
                   chatId={chat.id}
                   title={chat.title}
-                  placementEnabled={Boolean(onPlace)}
+                  placementEnabled={
+                    Boolean(onPlace) && !placementPending.has(chat.id)
+                  }
+                  disabled={placementPending.has(chat.id)}
+                  aria-busy={placementPending.has(chat.id)}
                   type="button"
                   data-conversation-id={chat.id}
                   aria-current={selectedChatId === chat.id ? "true" : undefined}
@@ -358,7 +365,8 @@ export function ProjectConversationList({
                     });
                   }}
                 >
-                  {lifecycle.pending.has(chat.id) ? (
+                  {lifecycle.pending.has(chat.id) ||
+                  placementPending.has(chat.id) ? (
                     <Loader2 className="size-3.5 shrink-0 animate-spin" />
                   ) : (
                     <Bot className="size-3.5 shrink-0" />
@@ -378,7 +386,8 @@ export function ProjectConversationList({
                   title={chat.title}
                   pending={
                     lifecycle.pending.has(chat.id) ||
-                    chatActions.pending.has(chat.id)
+                    chatActions.pending.has(chat.id) ||
+                    placementPending.has(chat.id)
                   }
                   rename={() => chatActions.rename(chat)}
                   fork={() => chatActions.fork(chat)}
@@ -413,8 +422,8 @@ export function ProjectConversationList({
             className="w-full"
             variant="ghost"
             size="sm"
-            disabled={query.isFetchingNextPage}
-            onClick={() => void query.fetchNextPage()}
+            disabled={query.isFetching}
+            onClick={() => void query.fetchNextPage({ cancelRefetch: false })}
           >
             Load more conversations
           </Button>

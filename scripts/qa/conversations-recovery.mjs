@@ -214,10 +214,104 @@ try {
     "recovery.catalog",
     "Unavailable catalogs expose Retry while the direct view and protected draft remain intact; recovery restores the row",
   );
+  let forkId;
+  let forkRequests = 0;
+  await page.route("**/api/chats/" + chatId + "/fork", async (route) => {
+    forkRequests++;
+    forkId = route.request().postDataJSON().id;
+    const response = await route.fetch();
+    assert.ok(response.ok(), "Fork committed before losing its reply");
+    await route.abort("failed");
+  });
+  await row
+    .locator("..")
+    .getByRole("button", { name: /Actions for/ })
+    .click();
+  await page.getByRole("menuitem", { name: "Fork", exact: true }).click();
+  await page.waitForFunction(
+    () => document.querySelectorAll("[data-conversation-id]").length === 2,
+  );
+  await page.locator('[data-conversation-id="' + forkId + '"]').waitFor();
+  assert.equal(forkRequests, 1);
+  assert.equal(
+    (await workspace()).windows
+      .flatMap((window) =>
+        window.panes.flatMap((pane) => [
+          ...pane.tabs,
+          ...(pane.conversationView ? [pane.conversationView] : []),
+        ]),
+      )
+      .filter((view) => view.resource.resourceId === forkId).length,
+    0,
+  );
+  assert.equal(
+    await composer.inputValue(),
+    "Keep this draft through uncertain archive and restore",
+  );
+  record(
+    "recovery.fork",
+    "A committed fork with a lost reply reconciles to exactly one catalog resource, without a tab or a second request",
+  );
+  const railIds = (layout) =>
+    layout.windows.flatMap((window) =>
+      window.panes.flatMap((pane) => pane.tabs.map((view) => view.id)),
+    );
+  const originalRails = railIds(await workspace());
+  const forkRow = page.locator('[data-conversation-id="' + forkId + '"]');
+  await forkRow.click();
+  await composer.waitFor();
+  await composer.fill("A separate draft in the second direct conversation");
+  await row.click();
+  await page.waitForFunction(
+    () =>
+      document.querySelector('textarea[aria-autocomplete="list"]')?.value ===
+      "Keep this draft through uncertain archive and restore",
+  );
+  await forkRow.click();
+  await page.waitForFunction(
+    () =>
+      document.querySelector('textarea[aria-autocomplete="list"]')?.value ===
+      "A separate draft in the second direct conversation",
+  );
+  assert.deepEqual(railIds(await workspace()), originalRails);
+  await page.reload();
+  await composer.waitFor({ timeout: 90000 });
+  await page.waitForFunction(
+    () =>
+      document.querySelector('textarea[aria-autocomplete="list"]')?.value ===
+      "A separate draft in the second direct conversation",
+  );
+  assert.equal(
+    await composer.inputValue(),
+    "A separate draft in the second direct conversation",
+  );
+  await row.click();
+  await page.waitForFunction(
+    () =>
+      document.querySelector('textarea[aria-autocomplete="list"]')?.value ===
+      "Keep this draft through uncertain archive and restore",
+  );
+  assert.deepEqual(railIds(await workspace()), originalRails);
+  record(
+    "recovery.multiple-direct",
+    "Two direct conversations retain independent protected drafts across replacement and reload while file rail views remain unchanged",
+  );
   await page.screenshot({
     path: path.join(fixture.directory, "conversations-recovery.png"),
     fullPage: true,
   });
+} catch (error) {
+  if (page)
+    await page
+      .screenshot({
+        path: path.join(
+          fixture.directory,
+          "conversations-recovery-failure.png",
+        ),
+        fullPage: true,
+      })
+      .catch(() => {});
+  throw error;
 } finally {
   await writeFile(
     path.join(fixture.directory, "conversations-recovery-results.json"),

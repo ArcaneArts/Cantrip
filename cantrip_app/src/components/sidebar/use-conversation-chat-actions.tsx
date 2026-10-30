@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { ChatSummary } from "@cantrip/protocol";
-import { forkChat, renameChat } from "@/lib/api/chats";
+import { renameChat } from "@/lib/api/chats";
 import {
   clientSessionIdentityMatches,
   getClientSessionIdentitySnapshot,
 } from "@/lib/client-session";
+import { prepareConversationFork } from "@/lib/api/conversations";
 import { errorMessage } from "@/lib/error-message";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
@@ -23,6 +24,18 @@ export function useConversationChatActions(projectId: string) {
       mounted.current = false;
     };
   }, []);
+  const forks = useRef(
+    new Map<
+      string,
+      {
+        projectId: string;
+        identity: NonNullable<
+          ReturnType<typeof getClientSessionIdentitySnapshot>
+        >;
+        run: Awaited<ReturnType<typeof prepareConversationFork>>;
+      }
+    >(),
+  );
   const busy = useRef(new Set<string>());
   const [pending, setPending] = useState(new Set<string>());
   const [errors, setErrors] = useState(new Map<string, unknown>());
@@ -50,18 +63,38 @@ export function useConversationChatActions(projectId: string) {
       return next;
     });
     try {
-      const changed =
-        action === "rename"
-          ? await renameChat(chat.id, title.trim())
-          : await forkChat(chat.id, chat.title, undefined, {
-              attachToTabLayout: false,
-            });
+      let changed;
+      if (action === "rename")
+        changed = await renameChat(chat.id, title.trim());
+      else {
+        let operation = forks.current.get(chat.id);
+        if (
+          operation &&
+          (operation.projectId !== projectId ||
+            !clientSessionIdentityMatches(operation.identity))
+        ) {
+          forks.current.delete(chat.id);
+          operation = undefined;
+        }
+        if (!operation) {
+          const run = await prepareConversationFork(
+            projectId,
+            chat.id,
+            chat.title,
+          );
+          if (!current()) return;
+          operation = { projectId, identity: identity!, run };
+          forks.current.set(chat.id, operation);
+        }
+        changed = await operation.run();
+      }
       if (!current()) return;
       if (
         changed.contextKind === "standalone" ||
         changed.projectId !== projectId
       )
         throw new Error("Conversation action returned another project.");
+      if (action === "fork") forks.current.delete(chat.id);
       await queryClient.invalidateQueries({ queryKey: ["chats", projectId] });
       if (current() && action === "rename") setTarget(null);
     } catch (error) {

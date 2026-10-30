@@ -75,8 +75,22 @@ mounting, background tokens, polling, and automatic title updates do not change
 this order. File tabs in the main sidebar window offer Reveal in Files, which
 selects Files and expands the requested path without opening another tab.
 
-Inline archived conversations and resource-to-rail dragging are still tracked
-as unfinished work in [the sidebar implementation plan](CONVERSATIONS_SIDEBAR.md).
+Dragging a conversation into the top, right, or bottom rail places its existing
+view there; row menus provide the same placement actions for keyboard and touch.
+A chat remains listed regardless of placement. Pending placement affects only
+that conversation. Active row menus also offer Rename and Fork; sidebar Fork
+creates another conversation without adding a tab.
+
+Middle-clicking an active sidebar conversation archives it. Running chats offer
+Stop and Archive. The Archived section below the active list retains empty and
+draft-only Agents, and its menus offer Restore and Permanently Delete. Restore
+returns the resource to the active list without opening a view. Permanent
+deletion requires confirmation. Task archives remain in project Settings;
+Settings links Agent recovery to the Conversations sidebar.
+
+Both catalogs use bounded pages and virtual rows with keyboard navigation.
+The [sidebar implementation plan](CONVERSATIONS_SIDEBAR.md) records validation
+and the remaining acceptance audit.
 
 ## Opening, selecting, and closing
 

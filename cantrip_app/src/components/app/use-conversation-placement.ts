@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { workspacePaneViews } from "@cantrip/protocol";
 import { checkpointChatView } from "@/components/chat/chat-transfer-lifecycle";
 import {
@@ -20,6 +20,15 @@ export function useConversationPlacement(
   source: Source | null,
   onPlaced: () => void,
 ) {
+  const busy = useRef(new Map<Source["controller"], Set<string>>());
+  const [, renderPending] = useState(0);
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const current = useRef({ source, onPlaced });
   current.current = { source, onPlaced };
   const bridge = useRef<ReturnType<typeof createConversationHandoff> | null>(
@@ -82,7 +91,7 @@ export function useConversationPlacement(
       if (bridge.current === connection) bridge.current = null;
     };
   }, [source?.controller, source?.windowId]);
-  return async (
+  const place = async (
     projectId: string,
     chatId: string,
     destination: ConversationPlacement,
@@ -91,6 +100,7 @@ export function useConversationPlacement(
     const active = current.current.source;
     const assertCurrent = () => {
       if (
+        !mounted.current ||
         !active ||
         current.current.source?.controller !== active.controller ||
         !captured ||
@@ -205,4 +215,31 @@ export function useConversationPlacement(
     assertCurrent();
     current.current.onPlaced();
   };
+  return Object.assign(
+    async (...args: Parameters<typeof place>) => {
+      const controller = current.current.source?.controller;
+      if (!mounted.current || !controller) return place(...args);
+      const chatId = args[1];
+      const pending = busy.current.get(controller) ?? new Set<string>();
+      if (pending.has(chatId))
+        throw new Error(
+          "This conversation is already being placed. Wait for it to finish.",
+        );
+      busy.current.set(controller, pending);
+      pending.add(chatId);
+      renderPending((value) => value + 1);
+      try {
+        await place(...args);
+      } finally {
+        pending.delete(chatId);
+        if (!pending.size) busy.current.delete(controller);
+        if (mounted.current) renderPending((value) => value + 1);
+      }
+    },
+    {
+      pending: new Set(
+        source ? busy.current.get(source.controller) : undefined,
+      ),
+    },
+  );
 }

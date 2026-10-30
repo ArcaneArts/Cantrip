@@ -205,11 +205,13 @@ try {
         row.getBoundingClientRect().bottom > box.top &&
         row.getBoundingClientRect().top < box.bottom,
     );
+    row.querySelector("button").focus({ preventScroll: true });
     return {
       id: row.dataset.virtualConversation,
       offset: row.getBoundingClientRect().top - box.top,
     };
   });
+  const beforeLivePages = pages.length;
   await Promise.all([
     page.waitForResponse(async (response) => {
       if (
@@ -243,7 +245,48 @@ try {
       ) < 2
     );
   }, anchor);
-  record("live-anchor", anchor);
+  await Promise.all(reads);
+  const refreshed = pages
+    .slice(beforeLivePages)
+    .filter((page) => page.state === "active");
+  const refreshedIds = refreshed.flatMap((page) =>
+    page.items.map((chat) => chat.id),
+  );
+  assert.equal(refreshed.length, 20, "Live refresh visits every loaded page");
+  assert.equal(refreshedIds.length, 1000);
+  assert.equal(
+    new Set(refreshedIds).size,
+    1000,
+    "Live refresh has no duplicate rows",
+  );
+  const expectedIds = new Set(
+    catalog
+      .filter((page) => page.state === "active")
+      .flatMap((page) => page.items.map((chat) => chat.id)),
+  );
+  assert.deepEqual(
+    new Set(refreshedIds),
+    expectedIds,
+    "Live refresh loses no resources",
+  );
+  assert.equal(
+    await page.evaluate(
+      () =>
+        document.activeElement?.closest("[data-virtual-conversation]")?.dataset
+          .virtualConversation,
+    ),
+    anchor.id,
+  );
+  assert.equal(
+    (await active.locator('[aria-setsize="1000"]').count()) > 0,
+    true,
+  );
+  record("live-anchor", {
+    ...anchor,
+    refreshedPages: refreshed.length,
+    uniqueResources: refreshedIds.length,
+    focusRetained: true,
+  });
   await page.screenshot({
     path: path.join(fixture.directory, "conversations-scale.png"),
     fullPage: true,
