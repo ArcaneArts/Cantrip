@@ -2,6 +2,30 @@
 
 Status: **implementation in progress; not a deployable replacement**.
 
+## Workspace read stack usage follow-up
+
+PR 2318's Windows run `41035166842` still aborts at the first owned workspace
+seed on its 1 MiB test thread, after missing-project and foreign-owner checks
+pass. The earlier fixture-dispatch extraction is not sufficient Windows
+remediation. Artifact `12967972359` has SHA256
+`682dfad190623bf073d574bce32c38b57c006014cab5fb38a9eb7da030de526f`.
+
+The legacy layout reader now allocates each of its ten joined database futures
+on the heap. It retains concurrent reads, their original executor and the
+caller's transaction boundaries. In the observed ARM debug executable this
+reduces the reader's polling frame from 171,808 to 33,744 bytes. That is a frame
+measurement, not a claim about total process memory or Windows acceptance.
+Both ARM and x86 macOS can run the original workspace suite at 1 MiB; platform
+revalidation remains necessary to establish whether this fixes Windows.
+
+After this change, workspace repository compatibility passes all three storage
+modes at 1 MiB (66 cases and 11 snapshots per mode), as does legacy pane
+repository compatibility. The x86 macOS workspace run, PGlite workspace HTTP
+comparisons, PostgreSQL pane concurrency/read-boundary/shutdown checks, strict
+all-target Clippy and Rust formatting also pass. The broad repository check
+is still running; these focused results do not establish full replacement
+or Windows readiness.
+
 ## Explorer, Code tabs and project views
 
 All 18 project-surface routes now execute natively, preserving their distinct
