@@ -1,0 +1,95 @@
+{
+  "sourceColumns": [
+    "id",
+    "project_id",
+    "worker_id",
+    "source_kind",
+    "absolute_path",
+    "display_path",
+    "placement_mode",
+    "ownership_kind",
+    "requested_path",
+    "link_path",
+    "repository_fingerprint",
+    "removed_at",
+    "created_at",
+    "updated_at"
+  ],
+  "worktreeColumns": [
+    "id",
+    "project_source_id",
+    "worker_id",
+    "root_kind",
+    "name",
+    "absolute_path",
+    "display_path",
+    "is_primary",
+    "is_default",
+    "origin",
+    "lifecycle_state",
+    "branch",
+    "head",
+    "detached",
+    "locked",
+    "lock_reason",
+    "status_snapshot",
+    "status_observed_at",
+    "last_scanned_at",
+    "created_at",
+    "updated_at"
+  ],
+  "queries": {
+    "source": {
+      "source": "select \"project_sources\".\"id\", \"project_worktrees\".\"worker_id\", \"project_worktrees\".\"absolute_path\", \"project_worktrees\".\"id\" from \"projects\" inner join \"project_sources\" on \"project_sources\".\"project_id\" = \"projects\".\"id\" inner join \"project_worktrees\" on (\"project_worktrees\".\"project_source_id\" = \"project_sources\".\"id\" and \"project_worktrees\".\"is_primary\" = $1) left join \"user_settings\" on \"user_settings\".\"user_id\" = \"projects\".\"owner_id\" where (\"projects\".\"id\" = $2 and \"projects\".\"owner_id\" = $3 and \"project_sources\".\"removed_at\" is null and \"project_worktrees\".\"lifecycle_state\" = $4 and \"project_sources\".\"worker_id\" = $5) order by coalesce(\"project_sources\".\"worker_id\" = \"projects\".\"preferred_worker_id\", false) desc, coalesce(\"project_sources\".\"worker_id\" = \"user_settings\".\"default_worker_id\", false) desc, \"project_sources\".\"created_at\" asc, \"project_sources\".\"id\" asc",
+      "array": "select jsonb_build_array(\"project_sources\".\"id\", \"project_worktrees\".\"worker_id\", \"project_worktrees\".\"absolute_path\", \"project_worktrees\".\"id\")::text from \"projects\" inner join \"project_sources\" on \"project_sources\".\"project_id\" = \"projects\".\"id\" inner join \"project_worktrees\" on (\"project_worktrees\".\"project_source_id\" = \"project_sources\".\"id\" and \"project_worktrees\".\"is_primary\" = $1) left join \"user_settings\" on \"user_settings\".\"user_id\" = \"projects\".\"owner_id\" where (\"projects\".\"id\" = $2 and \"projects\".\"owner_id\" = $3 and \"project_sources\".\"removed_at\" is null and \"project_worktrees\".\"lifecycle_state\" = $4 and \"project_sources\".\"worker_id\" = $5) order by coalesce(\"project_sources\".\"worker_id\" = \"projects\".\"preferred_worker_id\", false) desc, coalesce(\"project_sources\".\"worker_id\" = \"user_settings\".\"default_worker_id\", false) desc, \"project_sources\".\"created_at\" asc, \"project_sources\".\"id\" asc",
+      "bindings": [
+        {
+          "constant": true,
+          "kind": "boolean"
+        },
+        {
+          "key": "project",
+          "kind": "text"
+        },
+        {
+          "key": "owner",
+          "kind": "text"
+        },
+        {
+          "constant": "ready",
+          "kind": "text"
+        },
+        {
+          "key": "target",
+          "kind": "text"
+        }
+      ]
+    },
+    "worktree": {
+      "source": "select \"projects\".\"id\", \"project_sources\".\"id\", \"project_sources\".\"project_id\", \"project_sources\".\"worker_id\", \"project_sources\".\"source_kind\", \"project_sources\".\"absolute_path\", \"project_sources\".\"display_path\", \"project_sources\".\"placement_mode\", \"project_sources\".\"ownership_kind\", \"project_sources\".\"requested_path\", \"project_sources\".\"link_path\", \"project_sources\".\"repository_fingerprint\", \"project_sources\".\"removed_at\", \"project_sources\".\"created_at\", \"project_sources\".\"updated_at\", \"project_worktrees\".\"id\", \"project_worktrees\".\"project_source_id\", \"project_worktrees\".\"worker_id\", \"project_worktrees\".\"root_kind\", \"project_worktrees\".\"name\", \"project_worktrees\".\"absolute_path\", \"project_worktrees\".\"display_path\", \"project_worktrees\".\"is_primary\", \"project_worktrees\".\"is_default\", \"project_worktrees\".\"origin\", \"project_worktrees\".\"lifecycle_state\", \"project_worktrees\".\"branch\", \"project_worktrees\".\"head\", \"project_worktrees\".\"detached\", \"project_worktrees\".\"locked\", \"project_worktrees\".\"lock_reason\", \"project_worktrees\".\"status_snapshot\", \"project_worktrees\".\"status_observed_at\", \"project_worktrees\".\"last_scanned_at\", \"project_worktrees\".\"created_at\", \"project_worktrees\".\"updated_at\" from \"project_worktrees\" inner join \"project_sources\" on \"project_sources\".\"id\" = \"project_worktrees\".\"project_source_id\" inner join \"projects\" on (\"projects\".\"id\" = \"project_sources\".\"project_id\" and \"projects\".\"owner_id\" = $1) where (\"projects\".\"id\" = $2 and \"project_worktrees\".\"id\" = $3 and \"project_sources\".\"removed_at\" is null and \"project_worktrees\".\"lifecycle_state\" = $4) limit $5",
+      "array": "select jsonb_build_array(\"projects\".\"id\", \"project_sources\".\"id\", \"project_sources\".\"project_id\", \"project_sources\".\"worker_id\", \"project_sources\".\"source_kind\", \"project_sources\".\"absolute_path\", \"project_sources\".\"display_path\", \"project_sources\".\"placement_mode\", \"project_sources\".\"ownership_kind\", \"project_sources\".\"requested_path\", \"project_sources\".\"link_path\", \"project_sources\".\"repository_fingerprint\", \"project_sources\".\"removed_at\", \"project_sources\".\"created_at\", \"project_sources\".\"updated_at\", \"project_worktrees\".\"id\", \"project_worktrees\".\"project_source_id\", \"project_worktrees\".\"worker_id\", \"project_worktrees\".\"root_kind\", \"project_worktrees\".\"name\", \"project_worktrees\".\"absolute_path\", \"project_worktrees\".\"display_path\", \"project_worktrees\".\"is_primary\", \"project_worktrees\".\"is_default\", \"project_worktrees\".\"origin\", \"project_worktrees\".\"lifecycle_state\", \"project_worktrees\".\"branch\", \"project_worktrees\".\"head\", \"project_worktrees\".\"detached\", \"project_worktrees\".\"locked\", \"project_worktrees\".\"lock_reason\", \"project_worktrees\".\"status_snapshot\", \"project_worktrees\".\"status_observed_at\", \"project_worktrees\".\"last_scanned_at\", \"project_worktrees\".\"created_at\", \"project_worktrees\".\"updated_at\")::text from \"project_worktrees\" inner join \"project_sources\" on \"project_sources\".\"id\" = \"project_worktrees\".\"project_source_id\" inner join \"projects\" on (\"projects\".\"id\" = \"project_sources\".\"project_id\" and \"projects\".\"owner_id\" = $1) where (\"projects\".\"id\" = $2 and \"project_worktrees\".\"id\" = $3 and \"project_sources\".\"removed_at\" is null and \"project_worktrees\".\"lifecycle_state\" = $4) limit $5",
+      "bindings": [
+        {
+          "key": "owner",
+          "kind": "text"
+        },
+        {
+          "key": "project",
+          "kind": "text"
+        },
+        {
+          "key": "target",
+          "kind": "text"
+        },
+        {
+          "constant": "ready",
+          "kind": "text"
+        },
+        {
+          "constant": 1,
+          "kind": "bigint"
+        }
+      ]
+    }
+  }
+}

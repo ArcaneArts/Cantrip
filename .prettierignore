@@ -5,6 +5,7 @@ cantrip_server/drizzle/meta/*.json
 cantrip_app/android/
 cantrip_app/ios/
 cantrip_app/src-tauri/target/
+cantrip_server_rs/target/
 
 # Mechanically imported upstream sources are verified by content manifest.
 cantrip_codex/upstream/

@@ -1,0 +1,451 @@
+// Development-only driver of the actual reference connector/repository.
+import { createInterface } from "node:readline";
+import { createRequire } from "node:module";
+const require = createRequire(
+  new URL("../../cantrip_server/package.json", import.meta.url),
+);
+const { sql } = require("drizzle-orm");
+import { readServerConfig } from "../../cantrip_server/src/config.ts";
+import { connectDatabase } from "../../cantrip_server/src/db/index.ts";
+import { buildExecutionTargetCatalog } from "../../cantrip_server/src/execution-targets/catalog.ts";
+import { lockNativeCommandChat } from "../../cantrip_server/src/db/repository/native-command-lock.ts";
+import { assertNativeRuntimeWritable } from "../../cantrip_server/src/db/repository/native-runtime-handoff-guard.ts";
+import { managedConsoleFixture } from "./managed-console-node-fixture.mjs";
+console.error(JSON.stringify({ event: "repository-fixture.database.opening" }));
+const database = await connectDatabase(readServerConfig());
+console.error(JSON.stringify({ event: "repository-fixture.database.ready" }));
+console.log(
+  JSON.stringify({
+    event: "server.listening",
+    origin: "repository-fixture",
+    locale: new Intl.Collator().resolvedOptions().locale,
+  }),
+);
+try {
+  for await (const line of createInterface({ input: process.stdin })) {
+    const request = JSON.parse(line);
+    const consoleTrace = [];
+    try {
+      // Seeding owns only this disposable fixture. Runtime TS private storage is
+      // used solely to exercise the actual connector on both PostgreSQL and PGlite.
+      let value;
+      if (request.op.startsWith("console-")) {
+        value = await managedConsoleFixture(
+          database.repository,
+          request,
+          consoleTrace,
+        );
+        value = { result: value, trace: consoleTrace };
+      } else if (request.op.startsWith("browser-")) {
+        const repo = database.repository;
+        switch (request.op) {
+          case "browser-list":
+            value = await repo.listBrowsers(request.owner, request.project);
+            break;
+          case "browser-owned":
+            value = await repo.browserIsOwnedBy(request.owner, request.browser);
+            break;
+          case "browser-create":
+            value = await repo.createBrowser(
+              request.owner,
+              request.project,
+              request.input,
+              request.connected
+                ? (id) => request.connected.includes(id)
+                : undefined,
+            );
+            break;
+          case "browser-update":
+            value = await repo.updateBrowser(
+              request.owner,
+              request.browser,
+              request.input,
+            );
+            break;
+          case "browser-delete":
+            value = await repo.deleteBrowser(request.owner, request.browser);
+            break;
+          default:
+            throw new Error("Unknown browser operation");
+        }
+      } else if (request.op.startsWith("workspace-")) {
+        const repo = database.repository.workspaceLayouts;
+        const input =
+          request.inputRaw === undefined
+            ? request.input
+            : JSON.parse(request.inputRaw);
+        if (request.op === "workspace-get")
+          value = await repo.get(
+            request.owner,
+            request.project,
+            request.workspace,
+          );
+        else if (request.op === "workspace-seed")
+          value = await repo.seed(
+            request.owner,
+            request.project,
+            request.workspace,
+            input.mainWindowId,
+            input,
+          );
+        else if (request.op === "workspace-execute")
+          value = await repo.execute(request.owner, input);
+        else if (request.op === "workspace-import")
+          value = await repo.importLegacyFiles(
+            request.owner,
+            request.project,
+            request.workspace,
+            input,
+          );
+        else throw new Error("Unknown workspace operation");
+      } else if (request.op.startsWith("document-")) {
+        const repo = database.repository.fileDocuments;
+        switch (request.op) {
+          case "document-list":
+            value = await repo.list(request.owner, request.project);
+            break;
+          case "document-get":
+            value = await repo.get(request.owner, request.document);
+            break;
+          case "document-context":
+            value = await repo.executionContext(
+              request.owner,
+              request.document,
+            );
+            break;
+          case "document-create":
+            value = await repo.create(
+              request.owner,
+              request.project,
+              request.input,
+            );
+            break;
+          default:
+            throw new Error("Unknown document operation");
+        }
+      } else if (request.op === "sql") {
+        await database.repository.projects.database.execute(
+          sql.raw(request.sql),
+        );
+        value = null;
+      } else if (request.op === "transaction") {
+        await database.repository.projects.database.transaction(
+          async (transaction) => {
+            for (const statement of request.statements)
+              await transaction.execute(sql.raw(statement));
+          },
+        );
+        value = null;
+      } else if (request.op === "query-json") {
+        const result = await database.repository.projects.database.execute(
+          sql.raw(request.sql),
+        );
+        value =
+          (Array.isArray(result) ? result : result.rows)[0]?.result ?? null;
+      } else if (request.op === "surface-context") {
+        value = await database.repository.getRemoteSurfaceExecutionContext(
+          request.owner,
+          request.surface,
+        );
+      } else if (request.op === "surface-status") {
+        await database.repository.setRemoteSurfaceStatus(
+          request.surface,
+          request.status,
+          request.error,
+        );
+        value = null;
+      } else if (request.op === "surface-reset") {
+        await database.repository.resetTransientRemoteSurfaceStatuses();
+        value = null;
+      } else if (request.op === "surface-ensure-browsers") {
+        await database.repository.ensureBrowserRemoteSurfaces(request.owner);
+        value = null;
+      } else if (request.op === "chat-context") {
+        value = await database.repository.getChatExecutionContext(
+          request.owner,
+          request.chat,
+        );
+      } else if (request.op === "chat-model") {
+        value = await database.repository.setChatModel(
+          request.owner,
+          request.chat,
+          { modelId: request.model },
+          request.reasoningEffort,
+        );
+      } else if (request.op === "chat-runtime") {
+        await database.repository.updateChatRuntime(
+          request.chat,
+          request.worker,
+          request.worktree ?? null,
+          request.thread ?? null,
+          request.route,
+          request.status ?? "ready",
+          request.providerAccountId,
+          request.scratchRoot ?? null,
+        );
+        value = null;
+      } else if (request.op === "chat-guard") {
+        await database.repository.projects.database.transaction(async (tx) => {
+          await lockNativeCommandChat(tx, request.owner, request.chat);
+          await assertNativeRuntimeWritable(
+            tx,
+            request.chat,
+            request.generation,
+            request.epoch,
+            request.access ?? "write",
+          );
+        });
+        value = null;
+      } else if (request.op === "mcp-effective") {
+        value = await database.repository.listEffectiveMcpServers(
+          request.owner,
+          request.project ?? null,
+          request.worker,
+          request.audience,
+        );
+      } else if (request.op === "terminal-services") {
+        value = await database.repository.listTerminalServicesForWorker(
+          request.worker,
+          request.server,
+        );
+      } else if (request.op === "terminal-status") {
+        await database.repository.setTerminalStatus(
+          request.terminal,
+          request.status,
+        );
+        value = null;
+      } else if (request.op.startsWith("tunnel-")) {
+        value = await (
+          await import("./tunnel-node-fixture.mjs")
+        ).tunnelOperation(database.repository, request);
+      } else if (request.op.startsWith("terminal-")) {
+        const repo = database.repository;
+        switch (request.op) {
+          case "terminal-list":
+            value = await repo.listTerminals(request.owner, request.project);
+            break;
+          case "terminal-context":
+            value = await repo.getTerminalExecutionContext(
+              request.owner,
+              request.terminal,
+            );
+            break;
+          case "terminal-update":
+            value = await repo.updateTerminal(
+              request.owner,
+              request.terminal,
+              request.input,
+            );
+            break;
+          case "terminal-worktree":
+            value = await repo.updateTerminalWorktree(
+              request.owner,
+              request.terminal,
+              request.input,
+            );
+            break;
+          case "terminal-delete":
+            value = await repo.deleteTerminal(request.owner, request.terminal);
+            break;
+          case "terminal-service":
+            value = await repo.updateTerminalService(
+              request.owner,
+              request.terminal,
+              request.input,
+            );
+            break;
+          case "terminal-create":
+            value = await repo.createTerminal(
+              request.owner,
+              request.project,
+              request.input,
+              (id) => request.connected?.includes(id) ?? false,
+            );
+            break;
+          default:
+            throw new Error("Unknown terminal operation");
+        }
+      } else if (request.op.startsWith("folder-")) {
+        const repo = database.repository;
+        const jobs = repo.projectFolderSetupJobs;
+        switch (request.op) {
+          case "folder-default":
+            value = {
+              id: (await repo.ensureDefaultProjectWorkspace(request.owner)).id,
+            };
+            break;
+          case "folder-storage":
+            value = await repo.getProjectWorkspaceStorageContext(
+              request.owner,
+              request.project,
+            );
+            break;
+          case "folder-create":
+            value = await repo.createManagedFolderProject(
+              request.owner,
+              request.input,
+            );
+            break;
+          case "folder-get":
+            value = await jobs.get(request.owner, request.project);
+            break;
+          case "folder-claim":
+            value = await jobs.claimNext();
+            break;
+          case "folder-renew":
+            value = await jobs.renewLease(
+              request.job,
+              request.command,
+              request.attempt,
+            );
+            break;
+          case "folder-settle":
+            value = await jobs[request.state === "failed" ? "fail" : "block"](
+              request.job,
+              request.command,
+              request.error,
+            );
+            break;
+          case "folder-complete":
+            value = await jobs.complete(
+              request.job,
+              request.command,
+              request.input,
+            );
+            break;
+          case "folder-retry":
+            value = await jobs.retry(
+              request.owner,
+              request.project,
+              request.revision,
+            );
+            break;
+          case "folder-recover":
+            value = await jobs.recoverInterrupted(
+              request.force ?? true,
+              request.at ? new Date(request.at) : new Date(),
+            );
+            break;
+          case "folder-requeue":
+            value = await jobs.requeueRetryableForWorker(request.worker);
+            break;
+          default:
+            throw new Error("Unknown folder fixture operation");
+        }
+      } else if (request.op === "session-active")
+        value = await database.repository.isUserSessionActive(
+          request.session,
+          request.owner,
+        );
+      else if (request.op === "target-resolve")
+        value = await database.repository.resolveExecutionTarget(
+          request.owner,
+          request.project,
+          request.target,
+          Array.isArray(request.connected)
+            ? (worker) => request.connected.includes(worker)
+            : undefined,
+          request.allowUnavailable ?? false,
+        );
+      else if (request.op === "catalog-repository")
+        value = await database.repository.listProjectExecutionTargets(
+          request.owner,
+          request.project,
+          Array.isArray(request.connected)
+            ? (worker) => request.connected.includes(worker)
+            : undefined,
+        );
+      else if (request.op === "target-catalog")
+        value = buildExecutionTargetCatalog({
+          ...request.input,
+          ...(Array.isArray(request.connected)
+            ? {
+                isWorkerConnected: (worker) =>
+                  request.connected.includes(worker),
+              }
+            : {}),
+        });
+      else if (request.op === "placement")
+        value = await database.repository.resolveProjectExecutionPlacement(
+          request.owner,
+          request.project,
+          request.surface,
+          request.target,
+          Array.isArray(request.connected)
+            ? (worker) => request.connected.includes(worker)
+            : undefined,
+          request.allowOffline ?? false,
+        );
+      else if (request.op === "scope") {
+        const scope = request.scope;
+        value =
+          scope.kind === "current-user"
+            ? true
+            : scope.kind === "project"
+              ? (await database.repository.listProjects(request.owner)).some(
+                  (p) => p.id === scope.projectId,
+                )
+              : scope.kind === "chat"
+                ? Boolean(
+                    await database.repository.getChatExecutionContext(
+                      request.owner,
+                      scope.chatId,
+                    ),
+                  )
+                : false;
+      } else value = await database.repository.listProjects(request.owner);
+      console.log(JSON.stringify({ id: request.id, rejected: false, value }));
+    } catch (error) {
+      console.log(
+        JSON.stringify({
+          id: request.id,
+          rejected: true,
+          ...((request.op.startsWith("tunnel-") ||
+            request.op.startsWith("browser-") ||
+            request.op.startsWith("document-") ||
+            request.op.startsWith("workspace-")) &&
+          error.cause?.code
+            ? { databaseCode: error.cause.code }
+            : {}),
+          ...(request.op.startsWith("console-")
+            ? {
+                trace: consoleTrace,
+                ...(error.failure ? { failure: error.failure } : {}),
+                ...(error.code ? { code: error.code } : {}),
+              }
+            : {}),
+          ...(request.op.startsWith("workspace-")
+            ? {
+                errorName: error.name,
+                ...(error.code ? { code: error.code } : {}),
+                ...(error.statusCode ? { statusCode: error.statusCode } : {}),
+              }
+            : {}),
+          diagnostic:
+            request.op.startsWith("terminal-") ||
+            request.op.startsWith("browser-") ||
+            request.op.startsWith("document-") ||
+            request.op.startsWith("workspace-")
+              ? error.message
+              : (error.cause?.message ?? error.message),
+          ...(request.op.startsWith("folder-")
+            ? { folderError: error.constructor.name }
+            : {}),
+          ...([
+            "placement",
+            "target-resolve",
+            "terminal-create",
+            "browser-create",
+            "chat-model",
+            "chat-runtime",
+            "chat-guard",
+          ].includes(request.op)
+            ? { code: error.code }
+            : {}),
+        }),
+      );
+    }
+  }
+} finally {
+  await database.close();
+}

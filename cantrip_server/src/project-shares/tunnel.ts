@@ -82,6 +82,8 @@ export class ProjectShareTunnelBroker {
   readonly #maxLifetimeMs: number;
   #changed: ProjectShareTunnelChange | null = null;
   #repository: ServerRepository | null = null;
+  #revokeWorkerLinks:
+    ((ownerId: string, tunnelId: string) => Promise<unknown>) | null = null;
 
   constructor(
     private readonly bridge: WorkerCommandBus,
@@ -103,11 +105,13 @@ export class ProjectShareTunnelBroker {
     repository: ServerRepository,
     _streamBroker: TunnelStreamBroker,
     changed: ProjectShareTunnelChange,
+    revokeWorkerLinks: (ownerId: string, tunnelId: string) => Promise<unknown>,
   ): void {
     if (this.#repository) {
       throw new Error("Project share control plane is already configured.");
     }
     this.#repository = repository;
+    this.#revokeWorkerLinks = revokeWorkerLinks;
     this.#changed = changed;
   }
 
@@ -293,6 +297,7 @@ export class ProjectShareTunnelBroker {
     ) {
       return false;
     }
+    await this.#revokeWorkerLinks?.(ownerId, tunnel.id);
     await this.#closeWorkerShare(tunnel.id, tunnel.destination.workerId);
     const removed = await repository.removeManagedTunnel(
       ownerId,
@@ -322,6 +327,7 @@ export class ProjectShareTunnelBroker {
     const managedBy = { kind: "project-share" as const, id: resourceId };
     const tunnel = await repository.getManagedTunnel(ownerId, managedBy);
     if (!tunnel) return false;
+    await this.#revokeWorkerLinks?.(ownerId, tunnel.id);
     await this.#closeWorkerShare(tunnel.id, tunnel.destination.workerId);
     const removed = await repository.removeManagedTunnel(ownerId, managedBy);
     this.#active.delete(tunnel.id);

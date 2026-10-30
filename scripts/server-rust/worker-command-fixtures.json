@@ -1,0 +1,5666 @@
+{
+  "commands": [
+    {
+      "type": "computer-use.effects.sync",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "computer-use.effects.sync",
+          "preferences": {
+            "revision": 1,
+            "configuration": {
+              "effect": "off",
+              "parameters": {}
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "computer-use.operation",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "computer-use.operation",
+          "serverId": "fixture",
+          "chatId": "fixture",
+          "executionLaneId": null,
+          "request": {
+            "operationId": "00000000-0000-4000-8000-000000000001",
+            "operation": "capabilities.get",
+            "protectedContent": {
+              "formatVersion": 1,
+              "domain": "client-control-content",
+              "keyRevision": 1,
+              "envelope": {
+                "version": 1,
+                "algorithm": "AES-256-GCM",
+                "keyRevision": 1,
+                "nonce": "AAAAAAAAAAAAAAAA",
+                "ciphertext": "00000000-0000-4000-8000-000000000001"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "computer-use.approval.respond",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "computer-use.approval.respond",
+          "ownerId": "fixture",
+          "chatId": "fixture",
+          "executionLaneId": null,
+          "requestKey": "00000000-0000-4000-8000-000000000001",
+          "response": {
+            "classification": {
+              "kind": "commandExecution"
+            },
+            "protectedResponse": {
+              "formatVersion": 1,
+              "keyRevision": 1,
+              "envelope": {
+                "version": 1,
+                "algorithm": "AES-256-GCM",
+                "keyRevision": 1,
+                "nonce": "AAAAAAAAAAAAAAAA",
+                "ciphertext": "00000000-0000-4000-8000-000000000001"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "computer-use.preview.open",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "computer-use.preview.open",
+          "authority": {
+            "ownerId": "fixture",
+            "serverId": "fixture",
+            "workerId": "fixture",
+            "chatId": "fixture",
+            "projectId": null,
+            "contextKind": "project",
+            "placementId": "fixture",
+            "generation": 1,
+            "profile": {
+              "selectedId": "fixture",
+              "effectiveId": "fixture",
+              "forcedByWorktreePolicy": false,
+              "usesDefault": false
+            }
+          },
+          "contentDomain": "chat"
+        }
+      }
+    },
+    {
+      "type": "computer-use.preview.stop",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "computer-use.preview.stop",
+          "ownerId": "fixture",
+          "serverId": "fixture",
+          "chatId": "fixture",
+          "leaseId": "00000000-0000-4000-8000-000000000001",
+          "operationId": "00000000-0000-4000-8000-000000000001"
+        }
+      }
+    },
+    {
+      "type": "computer-use.preview.revoke",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "computer-use.preview.revoke",
+          "ownerId": "fixture",
+          "serverId": "fixture",
+          "scope": {
+            "kind": "chat",
+            "chatId": "fixture"
+          }
+        }
+      }
+    },
+    {
+      "type": "direct.capability.prepare",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "direct.capability.prepare",
+          "binding": {
+            "capabilityId": "00000000-0000-4000-8000-000000000001",
+            "ownerId": "fixture",
+            "authSessionId": "fixture",
+            "workerId": "fixture",
+            "resourceKind": "probe",
+            "resourceId": "fixture",
+            "attachmentId": "fixture",
+            "channels": ["fixture"],
+            "expiresAt": "2026-10-26T00:00:00.000Z",
+            "leaseExpiresAt": "2026-10-26T00:00:00.000Z"
+          },
+          "secret": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "tunnelRoute": null
+        }
+      }
+    },
+    {
+      "type": "direct.capability.revoke",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "direct.capability.revoke",
+          "capabilityId": "00000000-0000-4000-8000-000000000001",
+          "reason": "fixture"
+        }
+      }
+    },
+    {
+      "type": "direct.capability.renew",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "direct.capability.renew",
+          "capabilityId": "00000000-0000-4000-8000-000000000001",
+          "leaseExpiresAt": "2026-10-26T00:00:00.000Z"
+        }
+      }
+    },
+    {
+      "type": "worker-link.session.install",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "worker-link.session.install",
+          "session": {
+            "sessionId": "00000000-0000-4000-8000-000000000001",
+            "identity": {
+              "serverId": "fixture",
+              "serverGeneration": "fixture",
+              "ownerId": "fixture",
+              "accountSessionId": "fixture",
+              "clientInstanceId": "fixture",
+              "workerId": "fixture",
+              "workerProcessGeneration": "fixture"
+            },
+            "lease": {
+              "issuedAt": "2026-10-26T00:00:00.000Z",
+              "expiresAt": "2026-10-26T01:00:00.000Z",
+              "absoluteExpiresAt": "2026-10-26T02:00:00.000Z"
+            },
+            "routePolicy": {
+              "priority": ["local", "lan", "wan", "relay"],
+              "enabled": ["local"]
+            },
+            "routeGeneration": 1,
+            "preferredRoute": "local"
+          }
+        }
+      }
+    },
+    {
+      "type": "worker-link.session.renew",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "worker-link.session.renew",
+          "sessionId": "00000000-0000-4000-8000-000000000001",
+          "lease": {
+            "issuedAt": "2026-10-26T00:00:00.000Z",
+            "expiresAt": "2026-10-26T01:00:00.000Z",
+            "absoluteExpiresAt": "2026-10-26T02:00:00.000Z"
+          }
+        }
+      }
+    },
+    {
+      "type": "worker-link.session.route",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "worker-link.session.route",
+          "sessionId": "00000000-0000-4000-8000-000000000001",
+          "routeGeneration": 1,
+          "preferredRoute": "local"
+        }
+      }
+    },
+    {
+      "type": "worker-link.session.revoke",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "worker-link.session.revoke",
+          "sessionId": "00000000-0000-4000-8000-000000000001",
+          "revocation": {
+            "reason": "released",
+            "revokedAt": "2026-10-26T00:00:00.000Z"
+          }
+        }
+      }
+    },
+    {
+      "type": "worker-link.grant.install",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "worker-link.grant.install",
+          "sessionId": "00000000-0000-4000-8000-000000000001",
+          "grant": {
+            "binding": {
+              "grantId": "00000000-0000-4000-8000-000000000001",
+              "grantGeneration": 1,
+              "sessionId": "00000000-0000-4000-8000-000000000001",
+              "identity": {
+                "serverId": "fixture",
+                "serverGeneration": "fixture",
+                "ownerId": "fixture",
+                "accountSessionId": "fixture",
+                "clientInstanceId": "fixture",
+                "workerId": "fixture",
+                "workerProcessGeneration": "fixture"
+              },
+              "resource": {
+                "kind": "terminal",
+                "resourceId": "fixture",
+                "attachmentId": null
+              },
+              "lanes": ["events"],
+              "operations": ["stream:open"],
+              "maxChannels": 1,
+              "lease": {
+                "issuedAt": "2026-10-26T00:00:00.000Z",
+                "expiresAt": "2026-10-26T01:00:00.000Z",
+                "absoluteExpiresAt": "2026-10-26T02:00:00.000Z"
+              }
+            },
+            "tokenHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      }
+    },
+    {
+      "type": "worker-link.grant.renew",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "worker-link.grant.renew",
+          "sessionId": "00000000-0000-4000-8000-000000000001",
+          "grantId": "00000000-0000-4000-8000-000000000001",
+          "grantGeneration": 1,
+          "lease": {
+            "issuedAt": "2026-10-26T00:00:00.000Z",
+            "expiresAt": "2026-10-26T01:00:00.000Z",
+            "absoluteExpiresAt": "2026-10-26T02:00:00.000Z"
+          }
+        }
+      }
+    },
+    {
+      "type": "worker-link.grant.revoke",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "worker-link.grant.revoke",
+          "sessionId": "00000000-0000-4000-8000-000000000001",
+          "grantId": "00000000-0000-4000-8000-000000000001",
+          "grantGeneration": 1,
+          "revocation": {
+            "reason": "released",
+            "revokedAt": "2026-10-26T00:00:00.000Z"
+          }
+        }
+      }
+    },
+    {
+      "type": "worker-link.identity.resolve",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "worker-link.identity.resolve"
+        }
+      }
+    },
+    {
+      "type": "worker-link.peer.install",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "worker-link.peer.install",
+          "peerSession": {
+            "peerSessionId": "00000000-0000-4000-8000-000000000001",
+            "sessionId": "00000000-0000-4000-8000-000000000001",
+            "identity": {
+              "serverId": "fixture",
+              "serverGeneration": "fixture",
+              "ownerId": "fixture",
+              "accountSessionId": "fixture",
+              "clientInstanceId": "fixture",
+              "workerId": "fixture",
+              "workerProcessGeneration": "fixture"
+            },
+            "routeGeneration": 1,
+            "route": "lan",
+            "lease": {
+              "issuedAt": "2026-10-26T00:00:00.000Z",
+              "expiresAt": "2026-10-26T01:00:00.000Z",
+              "absoluteExpiresAt": "2026-10-26T02:00:00.000Z"
+            }
+          },
+          "configuration": {
+            "directRoutes": {
+              "local": false,
+              "lan": false,
+              "wan": false
+            },
+            "relayOnly": false,
+            "stunUrls": [],
+            "interfacePolicy": {
+              "mode": "default",
+              "interfaces": []
+            },
+            "vpnPolicy": {
+              "defaultRoute": "wan",
+              "lanAllowlist": []
+            },
+            "negotiationTimeoutMs": 1000,
+            "upgradeProbeTimeoutMs": 1000,
+            "maxPeerSessionsPerClient": 1,
+            "maxPeerSessionsPerWorker": 1,
+            "invalidHandshakeRatePerMinute": 1,
+            "laneLimits": {
+              "events": {
+                "maxChannels": 1,
+                "maxQueuedFrames": 1,
+                "maxQueuedBytes": 65536,
+                "maxBytesPerSecond": 65536
+              },
+              "interactive": {
+                "maxChannels": 1,
+                "maxQueuedFrames": 1,
+                "maxQueuedBytes": 65536,
+                "maxBytesPerSecond": 65536
+              },
+              "stream": {
+                "maxChannels": 1,
+                "maxQueuedFrames": 1,
+                "maxQueuedBytes": 65536,
+                "maxBytesPerSecond": 65536
+              },
+              "realtime": {
+                "maxChannels": 1,
+                "maxQueuedFrames": 1,
+                "maxQueuedBytes": 65536,
+                "maxBytesPerSecond": 65536
+              },
+              "bulk": {
+                "maxChannels": 1,
+                "maxQueuedFrames": 1,
+                "maxQueuedBytes": 65536,
+                "maxBytesPerSecond": 65536
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "worker-link.peer.renew",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "worker-link.peer.renew",
+          "peerSessionId": "00000000-0000-4000-8000-000000000001",
+          "sessionId": "00000000-0000-4000-8000-000000000001",
+          "lease": {
+            "issuedAt": "2026-10-26T00:00:00.000Z",
+            "expiresAt": "2026-10-26T01:00:00.000Z",
+            "absoluteExpiresAt": "2026-10-26T02:00:00.000Z"
+          }
+        }
+      }
+    },
+    {
+      "type": "worker-link.peer.revoke",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "worker-link.peer.revoke",
+          "peerSessionId": "00000000-0000-4000-8000-000000000001",
+          "sessionId": "00000000-0000-4000-8000-000000000001",
+          "revocation": {
+            "reason": "released",
+            "revokedAt": "2026-10-26T00:00:00.000Z"
+          }
+        }
+      }
+    },
+    {
+      "type": "worker-link.peer.signal",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "worker-link.peer.signal",
+          "envelope": {
+            "peerSessionId": "00000000-0000-4000-8000-000000000001",
+            "sessionId": "00000000-0000-4000-8000-000000000001",
+            "routeGeneration": 1,
+            "route": "lan",
+            "sender": "client",
+            "signalSequence": 0,
+            "signal": {
+              "type": "offer",
+              "sdp": "fixture"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "chat.scratch.provision",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.scratch.provision",
+          "jobId": "00000000-0000-4000-8000-000000000001",
+          "attempt": 1,
+          "rootId": "00000000-0000-4000-8000-000000000001",
+          "chatId": "00000000-0000-4000-8000-000000000001"
+        }
+      }
+    },
+    {
+      "type": "chat.scratch.resolve",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.scratch.resolve",
+          "rootId": "00000000-0000-4000-8000-000000000001",
+          "chatId": "00000000-0000-4000-8000-000000000001"
+        }
+      }
+    },
+    {
+      "type": "chat.scratch.archive",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.scratch.archive",
+          "rootId": "00000000-0000-4000-8000-000000000001",
+          "chatId": "00000000-0000-4000-8000-000000000001",
+          "archivedAt": "2026-10-26T00:00:00.000Z",
+          "archiveExpiresAt": "2026-10-26T01:00:00.000Z"
+        }
+      }
+    },
+    {
+      "type": "chat.scratch.restore",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.scratch.restore",
+          "rootId": "00000000-0000-4000-8000-000000000001",
+          "chatId": "00000000-0000-4000-8000-000000000001"
+        }
+      }
+    },
+    {
+      "type": "chat.scratch.delete",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.scratch.delete",
+          "jobId": "00000000-0000-4000-8000-000000000001",
+          "attempt": 1,
+          "rootId": "00000000-0000-4000-8000-000000000001",
+          "chatId": "00000000-0000-4000-8000-000000000001"
+        }
+      }
+    },
+    {
+      "type": "chat.scratch.reconcile",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.scratch.reconcile",
+          "roots": []
+        }
+      }
+    },
+    {
+      "type": "chat.scratch.files.operation",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.scratch.files.operation",
+          "rootId": "00000000-0000-4000-8000-000000000001",
+          "chatId": "00000000-0000-4000-8000-000000000001",
+          "serverId": "fixture",
+          "root": "fixture",
+          "intent": "list",
+          "operationId": "fixture",
+          "sequence": 0,
+          "protectedRequest": {
+            "formatVersion": 1,
+            "keyRevision": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "00000000-0000-4000-8000-000000000001"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "chat.files.references",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.files.references",
+          "chatId": "00000000-0000-4000-8000-000000000001",
+          "serverId": "fixture",
+          "root": "fixture",
+          "operationId": "fixture",
+          "sequence": 0,
+          "protectedRequest": {
+            "formatVersion": 1,
+            "keyRevision": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "00000000-0000-4000-8000-000000000001"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "workspace.repositories.discover",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "workspace.repositories.discover",
+          "jobId": "00000000-0000-4000-8000-000000000001",
+          "attempt": 1,
+          "rootPath": "ctrr_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "depth": 0
+        }
+      }
+    },
+    {
+      "type": "workspace.repository-import.validate",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "workspace.repository-import.validate",
+          "candidateId": "00000000-0000-4000-8000-000000000001",
+          "attempt": 1,
+          "rootPath": "ctrr_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "path": "ctrr_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "expectedRepositoryFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    },
+    {
+      "type": "worker.version",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "worker.version"
+        }
+      }
+    },
+    {
+      "type": "worker.restart",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "worker.restart"
+        }
+      }
+    },
+    {
+      "type": "web-runtime.action",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "component": "searxng",
+          "action": "check-update",
+          "type": "web-runtime.action"
+        }
+      }
+    },
+    {
+      "type": "worker.encryption.refresh",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "component": "chat-content",
+          "keyRevision": 1,
+          "type": "worker.encryption.refresh"
+        }
+      }
+    },
+    {
+      "type": "diagnostics.logs.read",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "diagnostics.logs.read",
+          "afterCursor": 0,
+          "limit": 200,
+          "minimumLevel": "trace"
+        }
+      }
+    },
+    {
+      "type": "diagnostics.logs.stream.start",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "diagnostics.logs.stream.start",
+          "subscriptionId": "00000000-0000-4000-8000-000000000001",
+          "afterCursor": 0,
+          "minimumLevel": "trace",
+          "leaseMs": 10000
+        }
+      }
+    },
+    {
+      "type": "diagnostics.logs.stream.renew",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "diagnostics.logs.stream.renew",
+          "subscriptionId": "00000000-0000-4000-8000-000000000001",
+          "leaseMs": 10000
+        }
+      }
+    },
+    {
+      "type": "diagnostics.logs.stream.stop",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "diagnostics.logs.stream.stop",
+          "subscriptionId": "00000000-0000-4000-8000-000000000001"
+        }
+      }
+    },
+    {
+      "type": "worker.credential.rotate",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "worker.credential.rotate",
+          "credential": "ctwk_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        }
+      }
+    },
+    {
+      "type": "model.ollama.catalog",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "model.ollama.catalog",
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "ollama",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          }
+        }
+      }
+    },
+    {
+      "type": "model.chatgpt.catalog",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "model.chatgpt.catalog",
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": "fixture",
+            "credentialHomeKey": "fixture"
+          }
+        }
+      }
+    },
+    {
+      "type": "model.grok.catalog",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "model.grok.catalog",
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "grok",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": "fixture",
+            "credentialHomeKey": "fixture"
+          }
+        }
+      }
+    },
+    {
+      "type": "provider.quota.read",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "provider.quota.read",
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": "fixture",
+            "credentialHomeKey": "fixture"
+          }
+        }
+      }
+    },
+    {
+      "type": "provider.rate-limit-reset.consume",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "provider.rate-limit-reset.consume",
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": "fixture",
+            "credentialHomeKey": "fixture"
+          },
+          "idempotencyKey": "00000000-0000-4000-8000-000000000001"
+        }
+      }
+    },
+    {
+      "type": "codex.auth.status",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "codex.auth.status",
+          "providerId": "fixture",
+          "providerKind": "chatgpt"
+        }
+      }
+    },
+    {
+      "type": "codex.auth.login.start",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "codex.auth.login.start",
+          "providerId": "fixture",
+          "providerAccountId": "fixture",
+          "providerKind": "chatgpt",
+          "observationId": "00000000-0000-4000-8000-000000000001"
+        }
+      }
+    },
+    {
+      "type": "codex.auth.logout",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "codex.auth.logout",
+          "providerId": "fixture",
+          "providerAccountId": "fixture",
+          "providerKind": "chatgpt"
+        }
+      }
+    },
+    {
+      "type": "provider.auth.legacy.capture",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "provider.auth.legacy.capture",
+          "providerId": "fixture",
+          "providerKind": "chatgpt",
+          "providerAccountId": "fixture",
+          "credentialHomeKey": "fixture"
+        }
+      }
+    },
+    {
+      "type": "provider.auth.legacy.purge",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "provider.auth.legacy.purge",
+          "providerId": "fixture",
+          "providerKind": "chatgpt",
+          "providerAccountId": "fixture",
+          "credentialHomeKey": "fixture",
+          "expectedSubjectBlindIndex": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "serverCredentialRevision": 1
+        }
+      }
+    },
+    {
+      "type": "provider.auth.account.clear",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "provider.auth.account.clear",
+          "providerId": "fixture",
+          "providerKind": "chatgpt",
+          "providerAccountId": "fixture",
+          "credentialHomeKey": "fixture"
+        }
+      }
+    },
+    {
+      "type": "github.auth.status",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "github.auth.status"
+        }
+      }
+    },
+    {
+      "type": "github.repositories.cached",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "github.repositories.cached",
+          "login": "fixture"
+        }
+      }
+    },
+    {
+      "type": "github.repositories.list",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "github.repositories.list"
+        }
+      }
+    },
+    {
+      "type": "github.repository-owners.list",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "github.repository-owners.list"
+        }
+      }
+    },
+    {
+      "type": "github.repositories.create",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "github.repositories.create",
+          "request": {
+            "owner": "fixture",
+            "name": "fixture",
+            "description": "fixture",
+            "visibility": "public",
+            "initialize": "readme"
+          }
+        }
+      }
+    },
+    {
+      "type": "automation.dispatch.protect",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "automation.dispatch.protect",
+          "automationId": "00000000-0000-4000-8000-000000000001",
+          "content": {
+            "protectedName": {
+              "formatVersion": 1,
+              "keyRevision": 1,
+              "envelope": {
+                "version": 1,
+                "algorithm": "AES-256-GCM",
+                "keyRevision": 1,
+                "nonce": "AAAAAAAAAAAAAAAA",
+                "ciphertext": "00000000-0000-4000-8000-000000000001"
+              }
+            },
+            "protectedPrompt": {
+              "formatVersion": 1,
+              "keyRevision": 1,
+              "envelope": {
+                "version": 1,
+                "algorithm": "AES-256-GCM",
+                "keyRevision": 1,
+                "nonce": "AAAAAAAAAAAAAAAA",
+                "ciphertext": "00000000-0000-4000-8000-000000000001"
+              }
+            },
+            "protectedCondition": {
+              "formatVersion": 1,
+              "keyRevision": 1,
+              "envelope": {
+                "version": 1,
+                "algorithm": "AES-256-GCM",
+                "keyRevision": 1,
+                "nonce": "AAAAAAAAAAAAAAAA",
+                "ciphertext": "00000000-0000-4000-8000-000000000001"
+              }
+            }
+          },
+          "cwd": "fixture",
+          "repository": null,
+          "promptId": "00000000-0000-4000-8000-000000000001",
+          "messageId": "00000000-0000-4000-8000-000000000001",
+          "mode": "default",
+          "modelId": "fixture",
+          "reasoningEffort": null,
+          "idempotencyKey": "fixture"
+        }
+      }
+    },
+    {
+      "type": "github.issues.list",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "github.issues.list",
+          "repository": "fixture/path",
+          "state": "open",
+          "cursor": null,
+          "limit": 100,
+          "filters": {}
+        }
+      }
+    },
+    {
+      "type": "github.inbox.list",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "github.inbox.list",
+          "repository": "fixture/path",
+          "kind": "issue",
+          "state": "open",
+          "view": "all",
+          "cursor": null,
+          "limit": 50
+        }
+      }
+    },
+    {
+      "type": "github.issue.get",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "github.issue.get",
+          "repository": "fixture/path",
+          "number": 1
+        }
+      }
+    },
+    {
+      "type": "github.issue.create",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "github.issue.create",
+          "repository": "fixture/path",
+          "request": {
+            "title": "fixture",
+            "body": ""
+          }
+        }
+      }
+    },
+    {
+      "type": "github.issue.comment",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "github.issue.comment",
+          "repository": "fixture/path",
+          "number": 1,
+          "body": "fixture"
+        }
+      }
+    },
+    {
+      "type": "github.issue.close",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "github.issue.close",
+          "repository": "fixture/path",
+          "number": 1,
+          "comment": null
+        }
+      }
+    },
+    {
+      "type": "github.pull-request.create",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "github.pull-request.create",
+          "cwd": "fixture",
+          "repository": "fixture/path",
+          "request": {
+            "base": "fixture",
+            "head": "fixture-next",
+            "title": "fixture",
+            "body": "",
+            "draft": false,
+            "labels": [],
+            "reviewers": [],
+            "linkedIssueNumbers": []
+          }
+        }
+      }
+    },
+    {
+      "type": "github.pull-requests.list",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "github.pull-requests.list",
+          "repository": "fixture/path",
+          "state": "open",
+          "cursor": null,
+          "limit": 100,
+          "filters": {}
+        }
+      }
+    },
+    {
+      "type": "github.pull-request.get",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "github.pull-request.get",
+          "cwd": "fixture",
+          "repository": "fixture/path",
+          "number": 1,
+          "section": "all"
+        }
+      }
+    },
+    {
+      "type": "github.pull-request.agent-context",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "github.pull-request.agent-context",
+          "cwd": "fixture",
+          "repository": "fixture/path",
+          "number": 1,
+          "request": {
+            "intent": "address-review"
+          }
+        }
+      }
+    },
+    {
+      "type": "github.pull-request.comment",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "github.pull-request.comment",
+          "cwd": "fixture",
+          "repository": "fixture/path",
+          "number": 1,
+          "body": "fixture"
+        }
+      }
+    },
+    {
+      "type": "github.pull-request.review.submit",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "github.pull-request.review.submit",
+          "cwd": "fixture",
+          "repository": "fixture/path",
+          "number": 1,
+          "review": {
+            "event": "comment",
+            "body": ""
+          }
+        }
+      }
+    },
+    {
+      "type": "github.pull-request.review.comment",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "github.pull-request.review.comment",
+          "cwd": "fixture",
+          "repository": "fixture/path",
+          "number": 1,
+          "comment": {
+            "body": "fixture",
+            "path": "fixture",
+            "line": 1,
+            "side": "LEFT",
+            "startLine": null,
+            "startSide": null
+          }
+        }
+      }
+    },
+    {
+      "type": "github.pull-request.review.reply",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "github.pull-request.review.reply",
+          "cwd": "fixture",
+          "repository": "fixture/path",
+          "number": 1,
+          "commentId": 1,
+          "body": "fixture"
+        }
+      }
+    },
+    {
+      "type": "github.pull-request.review.mutate",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "github.pull-request.review.mutate",
+          "cwd": "fixture",
+          "repository": "fixture/path",
+          "number": 1,
+          "action": {
+            "type": "comment",
+            "body": "fixture"
+          }
+        }
+      }
+    },
+    {
+      "type": "github.pull-request.lifecycle.preview",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "github.pull-request.lifecycle.preview",
+          "cwd": "fixture",
+          "repository": "fixture/path",
+          "number": 1,
+          "action": {
+            "type": "close"
+          }
+        }
+      }
+    },
+    {
+      "type": "github.pull-request.lifecycle.apply",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "github.pull-request.lifecycle.apply",
+          "cwd": "fixture",
+          "repository": "fixture/path",
+          "number": 1,
+          "request": {
+            "action": {
+              "type": "close"
+            },
+            "token": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "confirmation": ""
+          }
+        }
+      }
+    },
+    {
+      "type": "github.pull-request.checkout.prepare",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "github.pull-request.checkout.prepare",
+          "cwd": "fixture",
+          "repository": "fixture/path",
+          "number": 1
+        }
+      }
+    },
+    {
+      "type": "github.actions.overview",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "github.actions.overview",
+          "cwd": "fixture",
+          "repository": "fixture/path",
+          "page": 1,
+          "limit": 50
+        }
+      }
+    },
+    {
+      "type": "github.actions.run.get",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "github.actions.run.get",
+          "cwd": "fixture",
+          "repository": "fixture/path",
+          "runId": 1
+        }
+      }
+    },
+    {
+      "type": "github.actions.run.logs",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "github.actions.run.logs",
+          "cwd": "fixture",
+          "repository": "fixture/path",
+          "runId": 1,
+          "jobId": null
+        }
+      }
+    },
+    {
+      "type": "github.actions.workflow.dispatch",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "github.actions.workflow.dispatch",
+          "cwd": "fixture",
+          "repository": "fixture/path",
+          "request": {
+            "workflowId": 1,
+            "ref": "fixture",
+            "inputs": {}
+          }
+        }
+      }
+    },
+    {
+      "type": "github.actions.run.action",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "github.actions.run.action",
+          "cwd": "fixture",
+          "repository": "fixture/path",
+          "request": {
+            "runId": 1,
+            "action": "cancel"
+          }
+        }
+      }
+    },
+    {
+      "type": "github.actions.run.checkout.prepare",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "github.actions.run.checkout.prepare",
+          "cwd": "fixture",
+          "repository": "fixture/path",
+          "runId": 1
+        }
+      }
+    },
+    {
+      "type": "github.releases.list",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "github.releases.list",
+          "cwd": "fixture",
+          "repository": "fixture/path"
+        }
+      }
+    },
+    {
+      "type": "github.release.get",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "github.release.get",
+          "cwd": "fixture",
+          "repository": "fixture/path",
+          "releaseId": 1
+        }
+      }
+    },
+    {
+      "type": "github.release.create",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "github.release.create",
+          "cwd": "fixture",
+          "repository": "fixture/path",
+          "request": {
+            "tagName": "fixture",
+            "name": "fixture",
+            "body": "fixture",
+            "draft": false,
+            "prerelease": false
+          }
+        }
+      }
+    },
+    {
+      "type": "project.clone",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.clone",
+          "repository": {
+            "nameWithOwner": "fixture/path"
+          }
+        }
+      }
+    },
+    {
+      "type": "project.folder.materialize",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.folder.materialize",
+          "jobId": "00000000-0000-4000-8000-000000000001",
+          "attempt": 1,
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "workspaceStorage": {
+            "kind": "system"
+          }
+        }
+      }
+    },
+    {
+      "type": "project.folder.delete",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.folder.delete",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "workspaceStorage": {
+            "kind": "system"
+          }
+        }
+      }
+    },
+    {
+      "type": "project.folder-conversion.preflight",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.folder-conversion.preflight",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "repository": {
+            "repositoryId": "fixture",
+            "nameWithOwner": "fixture/path",
+            "url": "stun:example.test"
+          },
+          "workspaceStorage": {
+            "kind": "system"
+          }
+        }
+      }
+    },
+    {
+      "type": "project.folder-conversion.execute",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.folder-conversion.execute",
+          "jobId": "00000000-0000-4000-8000-000000000001",
+          "attempt": 1,
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "repository": {
+            "repositoryId": "fixture",
+            "nameWithOwner": "fixture/path",
+            "url": "stun:example.test"
+          },
+          "workspaceStorage": {
+            "kind": "system"
+          },
+          "confirmationToken": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "initialCommit": null
+        }
+      }
+    },
+    {
+      "type": "project.replica.provision",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.replica.provision",
+          "jobId": "00000000-0000-4000-8000-000000000001",
+          "attempt": 1,
+          "repository": null,
+          "workspaceStorage": {
+            "kind": "system"
+          },
+          "expectedRevision": null
+        }
+      }
+    },
+    {
+      "type": "project.replica.synchronize",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.replica.synchronize",
+          "jobId": "00000000-0000-4000-8000-000000000001",
+          "attempt": 1,
+          "repository": {
+            "nameWithOwner": "fixture/path"
+          },
+          "sourcePath": "fixture",
+          "expectedRevision": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "policy": "verify-only"
+        }
+      }
+    },
+    {
+      "type": "project.replica.remove",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.replica.remove",
+          "jobId": "00000000-0000-4000-8000-000000000001",
+          "attempt": 1,
+          "repository": null,
+          "sourcePath": "fixture",
+          "deleteLocalFiles": false
+        }
+      }
+    },
+    {
+      "type": "project.replica.link.repair",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.replica.link.repair",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "repository": {
+            "nameWithOwner": "fixture/path"
+          },
+          "sourcePath": "fixture",
+          "linkPath": "fixture",
+          "repositoryFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    },
+    {
+      "type": "project.files.delete",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.files.delete",
+          "path": "fixture"
+        }
+      }
+    },
+    {
+      "type": "project.script-commands",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.script-commands",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "terminalId": "fixture",
+          "serverId": "fixture",
+          "worktreePath": "fixture",
+          "stateProtection": {
+            "classification": {
+              "recordKind": "terminal-state"
+            },
+            "protectedState": {
+              "formatVersion": 1,
+              "keyRevision": 1,
+              "envelope": {
+                "version": 1,
+                "algorithm": "AES-256-GCM",
+                "keyRevision": 1,
+                "nonce": "AAAAAAAAAAAAAAAA",
+                "ciphertext": "00000000-0000-4000-8000-000000000001"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "project.script-commands.inspect",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.script-commands.inspect",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "projectId": "fixture",
+          "worktreeId": "fixture",
+          "serverId": "fixture",
+          "sourcePath": "fixture"
+        }
+      }
+    },
+    {
+      "type": "project.run-configuration-definitions.list",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.run-configuration-definitions.list",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "sourcePath": "fixture"
+        }
+      }
+    },
+    {
+      "type": "project.run-configuration-definitions.get",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.run-configuration-definitions.get",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "sourcePath": "fixture",
+          "configurationId": "00000000-0000-4000-8000-000000000001"
+        }
+      }
+    },
+    {
+      "type": "project.run-configuration-definitions.capabilities",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.run-configuration-definitions.capabilities",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "sourcePath": "fixture"
+        }
+      }
+    },
+    {
+      "type": "project.run-configuration-definitions.detect",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.run-configuration-definitions.detect",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "sourcePath": "fixture",
+          "providerKind": null
+        }
+      }
+    },
+    {
+      "type": "project.run-configuration-definitions.paths",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.run-configuration-definitions.paths",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "sourcePath": "fixture",
+          "purpose": "directory",
+          "query": "fixture"
+        }
+      }
+    },
+    {
+      "type": "project.run-configuration-definitions.flutter-devices",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.run-configuration-definitions.flutter-devices",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "sourcePath": "fixture",
+          "document": {
+            "schema": "cantrip.run-configuration",
+            "version": 1,
+            "id": "00000000-0000-4000-8000-000000000001",
+            "name": "fixture",
+            "provider": "flutter",
+            "workingDirectory": ".",
+            "target": {
+              "kind": "entrypoint",
+              "path": "main.dart"
+            },
+            "commandOverride": null,
+            "arguments": [],
+            "environment": {
+              "includeCodexEnvironment": true,
+              "files": [],
+              "variables": [],
+              "secrets": []
+            },
+            "beforeLaunch": [],
+            "platformOverrides": {},
+            "options": {
+              "sdkHome": null,
+              "deviceId": null,
+              "flavor": null,
+              "mode": "debug",
+              "dartDefines": [],
+              "dartDefineFiles": [],
+              "usePub": true
+            },
+            "stop": {
+              "gracePeriodMs": 3000
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "project.run-configuration-definitions.validate",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.run-configuration-definitions.validate",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "sourcePath": "fixture",
+          "document": {
+            "schema": "cantrip.run-configuration",
+            "version": 1,
+            "id": "00000000-0000-4000-8000-000000000001",
+            "name": "fixture",
+            "provider": "shell",
+            "workingDirectory": ".",
+            "target": {
+              "kind": "command",
+              "command": "fixture"
+            },
+            "commandOverride": null,
+            "arguments": [],
+            "environment": {
+              "includeCodexEnvironment": true,
+              "files": [],
+              "variables": [],
+              "secrets": []
+            },
+            "beforeLaunch": [],
+            "platformOverrides": {},
+            "options": {
+              "shell": "automatic",
+              "login": true
+            },
+            "stop": {
+              "gracePeriodMs": 3000
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "project.run-configuration-definitions.write",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.run-configuration-definitions.write",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "sourcePath": "fixture",
+          "request": {
+            "expectedRevision": null,
+            "document": {
+              "schema": "cantrip.run-configuration",
+              "version": 1,
+              "id": "00000000-0000-4000-8000-000000000001",
+              "name": "fixture",
+              "provider": "shell",
+              "workingDirectory": ".",
+              "target": {
+                "kind": "command",
+                "command": "fixture"
+              },
+              "commandOverride": null,
+              "arguments": [],
+              "environment": {
+                "includeCodexEnvironment": true,
+                "files": [],
+                "variables": [],
+                "secrets": []
+              },
+              "beforeLaunch": [],
+              "platformOverrides": {},
+              "options": {
+                "shell": "automatic",
+                "login": true
+              },
+              "stop": {
+                "gracePeriodMs": 3000
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "project.run-configuration-definitions.delete",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.run-configuration-definitions.delete",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "sourcePath": "fixture",
+          "request": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      }
+    },
+    {
+      "type": "project.run-configuration-runtime.start",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.run-configuration-runtime.start",
+          "identity": {
+            "runtimeId": "00000000-0000-4000-8000-000000000001",
+            "projectId": "00000000-0000-4000-8000-000000000001",
+            "configurationId": "00000000-0000-4000-8000-000000000001",
+            "worktreeId": "00000000-0000-4000-8000-000000000001",
+            "workerId": "fixture",
+            "definitionRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "codexEnvironmentRevision": null,
+            "generation": 1,
+            "operationId": "00000000-0000-4000-8000-000000000001",
+            "terminalId": "00000000-0000-4000-8000-000000000001"
+          },
+          "rootKind": "git-root",
+          "sourcePath": "fixture",
+          "targetPath": "fixture",
+          "protectedSecrets": []
+        }
+      }
+    },
+    {
+      "type": "project.run-configuration-runtime.restart",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.run-configuration-runtime.restart",
+          "identity": {
+            "runtimeId": "00000000-0000-4000-8000-000000000001",
+            "projectId": "00000000-0000-4000-8000-000000000001",
+            "configurationId": "00000000-0000-4000-8000-000000000001",
+            "worktreeId": "00000000-0000-4000-8000-000000000001",
+            "workerId": "fixture",
+            "definitionRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "codexEnvironmentRevision": null,
+            "generation": 1,
+            "operationId": "00000000-0000-4000-8000-000000000001",
+            "terminalId": "00000000-0000-4000-8000-000000000001"
+          },
+          "rootKind": "git-root",
+          "sourcePath": "fixture",
+          "targetPath": "fixture",
+          "protectedSecrets": []
+        }
+      }
+    },
+    {
+      "type": "project.run-configuration-runtime.stop",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.run-configuration-runtime.stop",
+          "identity": {
+            "runtimeId": "00000000-0000-4000-8000-000000000001",
+            "projectId": "00000000-0000-4000-8000-000000000001",
+            "configurationId": "00000000-0000-4000-8000-000000000001",
+            "worktreeId": "00000000-0000-4000-8000-000000000001",
+            "workerId": "fixture",
+            "definitionRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "codexEnvironmentRevision": null,
+            "generation": 1,
+            "operationId": "00000000-0000-4000-8000-000000000001",
+            "terminalId": "00000000-0000-4000-8000-000000000001"
+          }
+        }
+      }
+    },
+    {
+      "type": "project.run-configuration-runtime.status",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.run-configuration-runtime.status",
+          "identity": {
+            "runtimeId": "00000000-0000-4000-8000-000000000001",
+            "projectId": "00000000-0000-4000-8000-000000000001",
+            "configurationId": "00000000-0000-4000-8000-000000000001",
+            "worktreeId": "00000000-0000-4000-8000-000000000001",
+            "workerId": "fixture",
+            "definitionRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "codexEnvironmentRevision": null,
+            "generation": 0,
+            "operationId": "00000000-0000-4000-8000-000000000001",
+            "terminalId": null
+          }
+        }
+      }
+    },
+    {
+      "type": "project.run-configuration-runtime.output",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.run-configuration-runtime.output",
+          "requestOperationId": "00000000-0000-4000-8000-000000000001",
+          "serverId": "fixture",
+          "identity": {
+            "runtimeId": "00000000-0000-4000-8000-000000000001",
+            "projectId": "00000000-0000-4000-8000-000000000001",
+            "configurationId": "00000000-0000-4000-8000-000000000001",
+            "worktreeId": "00000000-0000-4000-8000-000000000001",
+            "workerId": "fixture",
+            "definitionRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "codexEnvironmentRevision": null,
+            "generation": 0,
+            "operationId": "00000000-0000-4000-8000-000000000001",
+            "terminalId": null
+          },
+          "tail": 1
+        }
+      }
+    },
+    {
+      "type": "project.run-configuration-runtime.reconcile",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.run-configuration-runtime.reconcile",
+          "identities": []
+        }
+      }
+    },
+    {
+      "type": "project.repository-stats",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.repository-stats",
+          "cwd": "fixture"
+        }
+      }
+    },
+    {
+      "type": "project.folder-stats",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.folder-stats",
+          "root": "fixture"
+        }
+      }
+    },
+    {
+      "type": "project.export.target.inspect",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.export.target.inspect",
+          "target": {
+            "kind": "codex-local"
+          },
+          "cwd": "fixture"
+        }
+      }
+    },
+    {
+      "type": "project.export.chat.begin",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.export.chat.begin",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "target": {
+            "kind": "codex-local"
+          },
+          "chatId": "fixture",
+          "cwd": "fixture",
+          "titleProtection": {
+            "classification": {
+              "recordKind": "chat"
+            },
+            "protectedLabel": {
+              "formatVersion": 1,
+              "keyRevision": 1,
+              "envelope": {
+                "version": 1,
+                "algorithm": "AES-256-GCM",
+                "keyRevision": 1,
+                "nonce": "AAAAAAAAAAAAAAAA",
+                "ciphertext": "00000000-0000-4000-8000-000000000001"
+              }
+            }
+          },
+          "transcriptSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "sizeBytes": 0
+        }
+      }
+    },
+    {
+      "type": "project.export.chat.chunk",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.export.chat.chunk",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "chatId": "fixture",
+          "chunkIndex": 0,
+          "data": "fixture"
+        }
+      }
+    },
+    {
+      "type": "project.export.chat.complete",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.export.chat.complete",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "chatId": "fixture"
+        }
+      }
+    },
+    {
+      "type": "external.chat-history.discover",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "external.chat-history.discover",
+          "includeArchived": false,
+          "targets": [
+            {
+              "projectReplicaId": "fixture",
+              "path": "fixture",
+              "repositoryFingerprint": null,
+              "worktrees": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "external.chat-history.read",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "external.chat-history.read",
+          "ownerId": "fixture",
+          "chatId": "00000000-0000-4000-8000-000000000001",
+          "sourceKind": "chatgpt-codex",
+          "sourceId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "sourceThreadId": "fixture",
+          "targets": [
+            {
+              "projectReplicaId": "fixture",
+              "path": "fixture",
+              "repositoryFingerprint": null,
+              "worktrees": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "external.chat-history.attachment.read",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "external.chat-history.attachment.read",
+          "ownerId": "fixture",
+          "chatId": "00000000-0000-4000-8000-000000000001",
+          "sourceKind": "chatgpt-codex",
+          "sourceId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "sourceThreadId": "fixture",
+          "attachmentId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "targetAttachmentId": "00000000-0000-4000-8000-000000000001",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "sequence": 0,
+          "offset": 0,
+          "limit": 1
+        }
+      }
+    },
+    {
+      "type": "external.chat-history.attachments.release",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "external.chat-history.attachments.release",
+          "sourceKind": "chatgpt-codex",
+          "sourceId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "sourceThreadId": "fixture"
+        }
+      }
+    },
+    {
+      "type": "browser.services.discover",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "browser.services.discover"
+        }
+      }
+    },
+    {
+      "type": "mcp.configurations.discover",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "mcp.configurations.discover",
+          "projectRoot": null
+        }
+      }
+    },
+    {
+      "type": "project.share.open",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.share.open",
+          "shareId": "fixture",
+          "protectedRecord": {
+            "operationId": "00000000-0000-4000-8000-000000000001",
+            "revision": 1,
+            "protectedContent": {
+              "formatVersion": 1,
+              "domain": "tunnel-content",
+              "keyRevision": 1,
+              "envelope": {
+                "version": 1,
+                "algorithm": "AES-256-GCM",
+                "keyRevision": 1,
+                "nonce": "AAAAAAAAAAAAAAAA",
+                "ciphertext": "00000000-0000-4000-8000-000000000001"
+              }
+            }
+          },
+          "standaloneRoot": null
+        }
+      }
+    },
+    {
+      "type": "project.share.close",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "project.share.close",
+          "shareId": "fixture"
+        }
+      }
+    },
+    {
+      "type": "git.change-summary",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "since": "2026-10-26T00:00:00.000Z",
+          "until": null,
+          "type": "git.change-summary",
+          "cwd": "fixture"
+        }
+      }
+    },
+    {
+      "type": "git.history",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.history",
+          "cwd": "fixture",
+          "cursor": 0,
+          "limit": 100,
+          "revisions": [],
+          "options": {
+            "filters": {
+              "message": null,
+              "author": null,
+              "hash": null,
+              "dateFrom": null,
+              "dateTo": null,
+              "path": null,
+              "branch": null,
+              "tag": null
+            },
+            "firstParent": false,
+            "hideMerges": false
+          }
+        }
+      }
+    },
+    {
+      "type": "git.graph.snapshot",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.graph.snapshot",
+          "cwd": "fixture",
+          "revision": "HEAD",
+          "rootPath": null,
+          "maxNodes": 100000,
+          "includeBlame": false
+        }
+      }
+    },
+    {
+      "type": "git.graph.metrics",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.graph.metrics",
+          "cwd": "fixture",
+          "revision": "HEAD",
+          "rootPath": null,
+          "maxNodes": 100000,
+          "includeBlame": false
+        }
+      }
+    },
+    {
+      "type": "git.graph.commit-overlay",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.graph.commit-overlay",
+          "cwd": "fixture",
+          "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "rootPath": null
+        }
+      }
+    },
+    {
+      "type": "git.file.history",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.file.history",
+          "cwd": "fixture",
+          "path": "fixture",
+          "revision": "HEAD",
+          "cursor": 0,
+          "limit": 100
+        }
+      }
+    },
+    {
+      "type": "git.file.blame",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.file.blame",
+          "cwd": "fixture",
+          "path": "fixture",
+          "revision": "HEAD",
+          "cursor": 0,
+          "limit": 200
+        }
+      }
+    },
+    {
+      "type": "git.commit.search",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.commit.search",
+          "cwd": "fixture",
+          "query": {
+            "message": null,
+            "author": null,
+            "hash": null,
+            "dateFrom": null,
+            "dateTo": null,
+            "path": null,
+            "branch": "fixture",
+            "tag": null
+          },
+          "cursor": 0,
+          "limit": 100
+        }
+      }
+    },
+    {
+      "type": "git.recovery.list",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.recovery.list",
+          "cwd": "fixture",
+          "kind": "reflog",
+          "cursor": 0,
+          "limit": 100
+        }
+      }
+    },
+    {
+      "type": "git.recovery.preview",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.recovery.preview",
+          "cwd": "fixture",
+          "action": {
+            "type": "createBranch",
+            "branch": "fixture",
+            "target": "fixture"
+          }
+        }
+      }
+    },
+    {
+      "type": "git.recovery.apply",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.recovery.apply",
+          "cwd": "fixture",
+          "request": {
+            "action": {
+              "type": "createBranch",
+              "branch": "fixture",
+              "target": "fixture"
+            },
+            "token": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "confirmation": "fixture"
+          }
+        }
+      }
+    },
+    {
+      "type": "git.commit.get",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.commit.get",
+          "cwd": "fixture",
+          "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "parentIndex": 0,
+          "revisions": []
+        }
+      }
+    },
+    {
+      "type": "git.commit.signature.get",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.commit.signature.get",
+          "cwd": "fixture",
+          "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    },
+    {
+      "type": "git.refs.list",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.refs.list",
+          "cwd": "fixture"
+        }
+      }
+    },
+    {
+      "type": "git.compare",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.compare",
+          "cwd": "fixture",
+          "left": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "right": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "mode": "direct"
+        }
+      }
+    },
+    {
+      "type": "git.revision.diff",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.revision.diff",
+          "cwd": "fixture",
+          "revision": "fixture",
+          "baseRevision": null,
+          "path": "fixture",
+          "contextLines": 3
+        }
+      }
+    },
+    {
+      "type": "git.status",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.status",
+          "cwd": "fixture"
+        }
+      }
+    },
+    {
+      "type": "git.diff",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.diff",
+          "cwd": "fixture",
+          "path": "fixture",
+          "scope": "unstaged",
+          "contextLines": 3
+        }
+      }
+    },
+    {
+      "type": "git.patch.preview",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.patch.preview",
+          "cwd": "fixture",
+          "request": {
+            "operation": "stage",
+            "path": "fixture",
+            "hunks": [
+              {
+                "hunkIndex": 0,
+                "lineIndexes": null
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "git.patch.apply",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.patch.apply",
+          "cwd": "fixture",
+          "request": {
+            "operation": "stage",
+            "path": "fixture",
+            "hunks": [
+              {
+                "hunkIndex": 0,
+                "lineIndexes": null
+              }
+            ]
+          },
+          "token": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    },
+    {
+      "type": "git.stash.list",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.stash.list",
+          "cwd": "fixture"
+        }
+      }
+    },
+    {
+      "type": "git.stash.create",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.stash.create",
+          "cwd": "fixture",
+          "request": {
+            "message": "fixture",
+            "includeStaged": true,
+            "includeUnstaged": true,
+            "includeUntracked": false
+          }
+        }
+      }
+    },
+    {
+      "type": "git.stash.diff",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.stash.diff",
+          "cwd": "fixture",
+          "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "path": "fixture",
+          "contextLines": 3
+        }
+      }
+    },
+    {
+      "type": "git.stash.action.preview",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.stash.action.preview",
+          "cwd": "fixture",
+          "action": {
+            "type": "clear"
+          }
+        }
+      }
+    },
+    {
+      "type": "git.stash.action.apply",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.stash.action.apply",
+          "cwd": "fixture",
+          "action": {
+            "type": "clear"
+          },
+          "token": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    },
+    {
+      "type": "git.branch.list",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.branch.list",
+          "cwd": "fixture"
+        }
+      }
+    },
+    {
+      "type": "git.branch.action.preview",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.branch.action.preview",
+          "cwd": "fixture",
+          "action": {
+            "type": "create",
+            "name": "fixture",
+            "startPoint": null,
+            "checkout": false
+          }
+        }
+      }
+    },
+    {
+      "type": "git.branch.action.apply",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.branch.action.apply",
+          "cwd": "fixture",
+          "action": {
+            "type": "create",
+            "name": "fixture",
+            "startPoint": null,
+            "checkout": false
+          },
+          "token": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    },
+    {
+      "type": "git.remote.list",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.remote.list",
+          "cwd": "fixture"
+        }
+      }
+    },
+    {
+      "type": "git.remote.action.preview",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.remote.action.preview",
+          "cwd": "fixture",
+          "action": {
+            "type": "add",
+            "name": "fixture",
+            "fetchUrl": "fixture",
+            "pushUrl": null
+          }
+        }
+      }
+    },
+    {
+      "type": "git.remote.action.apply",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.remote.action.apply",
+          "cwd": "fixture",
+          "action": {
+            "type": "add",
+            "name": "fixture",
+            "fetchUrl": "fixture",
+            "pushUrl": null
+          },
+          "token": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    },
+    {
+      "type": "git.submodule.list",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.submodule.list",
+          "cwd": "fixture"
+        }
+      }
+    },
+    {
+      "type": "git.submodule.action.preview",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.submodule.action.preview",
+          "cwd": "fixture",
+          "action": {
+            "type": "initialize",
+            "path": null,
+            "recursive": false
+          }
+        }
+      }
+    },
+    {
+      "type": "git.submodule.action.apply",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.submodule.action.apply",
+          "cwd": "fixture",
+          "action": {
+            "type": "initialize",
+            "path": null,
+            "recursive": false
+          },
+          "token": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    },
+    {
+      "type": "git.lfs.status",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.lfs.status",
+          "cwd": "fixture",
+          "refreshLocks": false
+        }
+      }
+    },
+    {
+      "type": "git.lfs.action.preview",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.lfs.action.preview",
+          "cwd": "fixture",
+          "action": {
+            "type": "install"
+          }
+        }
+      }
+    },
+    {
+      "type": "git.lfs.action.apply",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.lfs.action.apply",
+          "cwd": "fixture",
+          "action": {
+            "type": "install"
+          },
+          "token": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    },
+    {
+      "type": "git.tag.list",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.tag.list",
+          "cwd": "fixture"
+        }
+      }
+    },
+    {
+      "type": "git.tag.get",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.tag.get",
+          "cwd": "fixture",
+          "name": "fixture"
+        }
+      }
+    },
+    {
+      "type": "git.tag.action.preview",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.tag.action.preview",
+          "cwd": "fixture",
+          "action": {
+            "type": "create",
+            "name": "fixture",
+            "target": null,
+            "annotated": false,
+            "message": null
+          }
+        }
+      }
+    },
+    {
+      "type": "git.tag.action.apply",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.tag.action.apply",
+          "cwd": "fixture",
+          "action": {
+            "type": "create",
+            "name": "fixture",
+            "target": null,
+            "annotated": false,
+            "message": null
+          },
+          "token": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    },
+    {
+      "type": "git.commit.action.preview",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.commit.action.preview",
+          "cwd": "fixture",
+          "action": {
+            "type": "cherryPick",
+            "selection": {
+              "type": "commits",
+              "revisions": [
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "git.commit.action.apply",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.commit.action.apply",
+          "cwd": "fixture",
+          "action": {
+            "type": "cherryPick",
+            "selection": {
+              "type": "commits",
+              "revisions": [
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              ]
+            }
+          },
+          "token": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    },
+    {
+      "type": "git.worktree.changes.preview",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.worktree.changes.preview",
+          "cwd": "fixture",
+          "sourceCwd": "fixture",
+          "request": {
+            "sourceWorktreeId": "fixture"
+          }
+        }
+      }
+    },
+    {
+      "type": "git.worktree.changes.apply",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.worktree.changes.apply",
+          "cwd": "fixture",
+          "sourceCwd": "fixture",
+          "request": {
+            "sourceWorktreeId": "fixture"
+          },
+          "token": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    },
+    {
+      "type": "git.operation.preview",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.operation.preview",
+          "cwd": "fixture",
+          "action": {
+            "type": "merge",
+            "sourceRef": "fixture"
+          }
+        }
+      }
+    },
+    {
+      "type": "git.operation.start",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.operation.start",
+          "cwd": "fixture",
+          "action": {
+            "type": "merge",
+            "sourceRef": "fixture"
+          },
+          "token": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    },
+    {
+      "type": "git.operation.inspect",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.operation.inspect",
+          "cwd": "fixture",
+          "context": {
+            "type": "merge",
+            "originalHead": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sourceRef": null,
+            "sourceRevision": null,
+            "targetRef": null,
+            "targetRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "pendingCommits": [],
+            "totalSteps": 1,
+            "checkpointRef": null
+          }
+        }
+      }
+    },
+    {
+      "type": "git.operation.control",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.operation.control",
+          "cwd": "fixture",
+          "context": {
+            "type": "merge",
+            "originalHead": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sourceRef": null,
+            "sourceRevision": null,
+            "targetRef": null,
+            "targetRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "pendingCommits": [],
+            "totalSteps": 1,
+            "checkpointRef": null
+          },
+          "action": "continue"
+        }
+      }
+    },
+    {
+      "type": "git.operation.amend",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.operation.amend",
+          "cwd": "fixture",
+          "context": {
+            "type": "merge",
+            "originalHead": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sourceRef": null,
+            "sourceRevision": null,
+            "targetRef": null,
+            "targetRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "pendingCommits": [],
+            "totalSteps": 1,
+            "checkpointRef": null
+          },
+          "message": null
+        }
+      }
+    },
+    {
+      "type": "git.conflicts.list",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.conflicts.list",
+          "cwd": "fixture"
+        }
+      }
+    },
+    {
+      "type": "git.conflicts.get",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.conflicts.get",
+          "cwd": "fixture",
+          "path": "fixture"
+        }
+      }
+    },
+    {
+      "type": "git.conflicts.preview",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.conflicts.preview",
+          "cwd": "fixture",
+          "request": {
+            "path": "fixture",
+            "strategy": "ours",
+            "content": null
+          }
+        }
+      }
+    },
+    {
+      "type": "git.conflicts.apply",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.conflicts.apply",
+          "cwd": "fixture",
+          "request": {
+            "path": "fixture",
+            "strategy": "ours",
+            "content": null
+          },
+          "token": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    },
+    {
+      "type": "git.action",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.action",
+          "cwd": "fixture",
+          "action": {
+            "type": "stage",
+            "paths": ["fixture"]
+          }
+        }
+      }
+    },
+    {
+      "type": "git.force-push.preview",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.force-push.preview",
+          "cwd": "fixture"
+        }
+      }
+    },
+    {
+      "type": "git.force-push.apply",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "git.force-push.apply",
+          "cwd": "fixture",
+          "token": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    },
+    {
+      "type": "repository.operation",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "repository.operation",
+          "serverId": "fixture",
+          "projectId": "fixture",
+          "worktreeId": "fixture",
+          "cwd": "fixture",
+          "sourcePath": "fixture",
+          "repository": null,
+          "agentRuntimes": [],
+          "mcpServers": [],
+          "routingPurpose": "repository",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "protectedRequest": {
+            "formatVersion": 1,
+            "keyRevision": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "00000000-0000-4000-8000-000000000001"
+            }
+          },
+          "access": "write",
+          "agent": false
+        }
+      }
+    },
+    {
+      "type": "file-document.operation",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "file-document.operation",
+          "documentId": "00000000-0000-4000-8000-000000000001",
+          "serverId": "fixture",
+          "projectId": "fixture",
+          "worktreeId": "fixture",
+          "workerId": "fixture",
+          "root": "fixture",
+          "stateProtection": {
+            "classification": {
+              "recordKind": "file-document-state"
+            },
+            "protectedState": {
+              "formatVersion": 1,
+              "keyRevision": 1,
+              "envelope": {
+                "version": 1,
+                "algorithm": "AES-256-GCM",
+                "keyRevision": 1,
+                "nonce": "AAAAAAAAAAAAAAAA",
+                "ciphertext": "00000000-0000-4000-8000-000000000001"
+              }
+            }
+          },
+          "operationId": "fixture",
+          "sequence": 0,
+          "protectedRequest": {
+            "formatVersion": 1,
+            "keyRevision": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "00000000-0000-4000-8000-000000000001"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "worktree.list",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "worktree.list",
+          "sourcePath": "fixture"
+        }
+      }
+    },
+    {
+      "type": "worktree.reconcile",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "worktree.reconcile",
+          "sourcePath": "fixture"
+        }
+      }
+    },
+    {
+      "type": "worktree.create",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "worktree.create",
+          "sourcePath": "fixture",
+          "worktreeId": "fixture",
+          "name": "fixture",
+          "mode": {
+            "type": "newBranch",
+            "branch": "fixture",
+            "startPoint": null
+          }
+        }
+      }
+    },
+    {
+      "type": "worktree.remove",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "worktree.remove",
+          "sourcePath": "fixture",
+          "worktreePath": "fixture",
+          "force": false,
+          "allowExternal": false
+        }
+      }
+    },
+    {
+      "type": "worktree.lock",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "worktree.lock",
+          "sourcePath": "fixture",
+          "worktreePath": "fixture",
+          "reason": null
+        }
+      }
+    },
+    {
+      "type": "worktree.unlock",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "worktree.unlock",
+          "sourcePath": "fixture",
+          "worktreePath": "fixture"
+        }
+      }
+    },
+    {
+      "type": "worktree.prune",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "worktree.prune",
+          "sourcePath": "fixture",
+          "allowExternal": false
+        }
+      }
+    },
+    {
+      "type": "worktree.status",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "worktree.status",
+          "sourcePath": "fixture",
+          "worktreePath": "fixture"
+        }
+      }
+    },
+    {
+      "type": "worktree.observation.configure",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "worktree.observation.configure",
+          "targets": []
+        }
+      }
+    },
+    {
+      "type": "codegraph.status",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "codegraph.status",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "worktreeId": "fixture"
+        }
+      }
+    },
+    {
+      "type": "codegraph.sync",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "codegraph.sync",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "worktreeId": "fixture"
+        }
+      }
+    },
+    {
+      "type": "codegraph.rebuild",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "codegraph.rebuild",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "worktreeId": "fixture"
+        }
+      }
+    },
+    {
+      "type": "codegraph.update.check",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "codegraph.update.check"
+        }
+      }
+    },
+    {
+      "type": "explorer.operation",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "explorer.operation",
+          "explorerId": "fixture",
+          "serverId": "fixture",
+          "root": "fixture",
+          "operationId": "fixture",
+          "sequence": 0,
+          "protectedRequest": {
+            "formatVersion": 1,
+            "keyRevision": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "00000000-0000-4000-8000-000000000001"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "skills.list",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "skills.list",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "serverId": "fixture",
+          "scope": {
+            "workerId": "fixture",
+            "projectId": null,
+            "chatId": null,
+            "providerId": null
+          },
+          "cwd": "fixture",
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          }
+        }
+      }
+    },
+    {
+      "type": "skills.settings.list",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "skills.settings.list",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "serverId": "fixture",
+          "scope": {
+            "workerId": "fixture",
+            "projectId": null,
+            "chatId": null,
+            "providerId": null
+          },
+          "cwd": null,
+          "providerId": "fixture",
+          "providerKind": "chatgpt"
+        }
+      }
+    },
+    {
+      "type": "skills.settings.read",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "skills.settings.read",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "serverId": "fixture",
+          "scope": {
+            "workerId": "fixture",
+            "projectId": null,
+            "chatId": null,
+            "providerId": null
+          },
+          "protectedRequest": {
+            "formatVersion": 1,
+            "domain": "run-content",
+            "keyRevision": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "00000000-0000-4000-8000-000000000001"
+            }
+          },
+          "cwd": null,
+          "providerId": "fixture",
+          "providerKind": "chatgpt"
+        }
+      }
+    },
+    {
+      "type": "skills.settings.write",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "skills.settings.write",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "serverId": "fixture",
+          "scope": {
+            "workerId": "fixture",
+            "projectId": null,
+            "chatId": null,
+            "providerId": null
+          },
+          "protectedRequest": {
+            "formatVersion": 1,
+            "domain": "run-content",
+            "keyRevision": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "00000000-0000-4000-8000-000000000001"
+            }
+          },
+          "cwd": null,
+          "providerId": "fixture",
+          "providerKind": "chatgpt"
+        }
+      }
+    },
+    {
+      "type": "skills.settings.delete",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "skills.settings.delete",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "serverId": "fixture",
+          "scope": {
+            "workerId": "fixture",
+            "projectId": null,
+            "chatId": null,
+            "providerId": null
+          },
+          "protectedRequest": {
+            "formatVersion": 1,
+            "domain": "run-content",
+            "keyRevision": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "00000000-0000-4000-8000-000000000001"
+            }
+          },
+          "cwd": null,
+          "providerId": "fixture",
+          "providerKind": "chatgpt"
+        }
+      }
+    },
+    {
+      "type": "skills.settings.configure",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "skills.settings.configure",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "serverId": "fixture",
+          "scope": {
+            "workerId": "fixture",
+            "projectId": null,
+            "chatId": null,
+            "providerId": null
+          },
+          "protectedRequest": {
+            "formatVersion": 1,
+            "domain": "run-content",
+            "keyRevision": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "00000000-0000-4000-8000-000000000001"
+            }
+          },
+          "cwd": null,
+          "providerId": "fixture",
+          "providerKind": "chatgpt",
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          }
+        }
+      }
+    },
+    {
+      "type": "customization.inventory.read",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "customization.inventory.read",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "serverId": "fixture",
+          "scope": {
+            "workerId": "fixture",
+            "projectId": null,
+            "chatId": null,
+            "providerId": null
+          },
+          "cwd": "fixture",
+          "threadId": null,
+          "forceReload": false,
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          }
+        }
+      }
+    },
+    {
+      "type": "customization.external.preview",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "customization.external.preview",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "serverId": "fixture",
+          "scope": {
+            "workerId": "fixture",
+            "projectId": null,
+            "chatId": null,
+            "providerId": null
+          },
+          "cwd": "fixture",
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          }
+        }
+      }
+    },
+    {
+      "type": "customization.mcp.resource.read",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "customization.mcp.resource.read",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "serverId": "fixture",
+          "scope": {
+            "workerId": "fixture",
+            "projectId": null,
+            "chatId": null,
+            "providerId": null
+          },
+          "protectedRequest": {
+            "formatVersion": 1,
+            "domain": "run-content",
+            "keyRevision": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "00000000-0000-4000-8000-000000000001"
+            }
+          },
+          "cwd": "fixture",
+          "threadId": null,
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          }
+        }
+      }
+    },
+    {
+      "type": "customization.skill.configure",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "customization.skill.configure",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "serverId": "fixture",
+          "scope": {
+            "workerId": "fixture",
+            "projectId": null,
+            "chatId": null,
+            "providerId": null
+          },
+          "protectedRequest": {
+            "formatVersion": 1,
+            "domain": "run-content",
+            "keyRevision": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "00000000-0000-4000-8000-000000000001"
+            }
+          },
+          "cwd": "fixture",
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          }
+        }
+      }
+    },
+    {
+      "type": "customization.skill-roots.set",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "customization.skill-roots.set",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "serverId": "fixture",
+          "scope": {
+            "workerId": "fixture",
+            "projectId": null,
+            "chatId": null,
+            "providerId": null
+          },
+          "protectedRequest": {
+            "formatVersion": 1,
+            "domain": "run-content",
+            "keyRevision": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "00000000-0000-4000-8000-000000000001"
+            }
+          },
+          "cwd": "fixture",
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          }
+        }
+      }
+    },
+    {
+      "type": "customization.mcp.oauth.start",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "customization.mcp.oauth.start",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "serverId": "fixture",
+          "scope": {
+            "workerId": "fixture",
+            "projectId": null,
+            "chatId": null,
+            "providerId": null
+          },
+          "protectedRequest": {
+            "formatVersion": 1,
+            "domain": "run-content",
+            "keyRevision": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "00000000-0000-4000-8000-000000000001"
+            }
+          },
+          "cwd": "fixture",
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          }
+        }
+      }
+    },
+    {
+      "type": "customization.mcp.oauth.status",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "customization.mcp.oauth.status",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "serverId": "fixture",
+          "scope": {
+            "workerId": "fixture",
+            "projectId": null,
+            "chatId": null,
+            "providerId": null
+          },
+          "protectedRequest": {
+            "formatVersion": 1,
+            "domain": "run-content",
+            "keyRevision": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "00000000-0000-4000-8000-000000000001"
+            }
+          },
+          "cwd": "fixture",
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          }
+        }
+      }
+    },
+    {
+      "type": "customization.mcp.reload",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "customization.mcp.reload",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "serverId": "fixture",
+          "scope": {
+            "workerId": "fixture",
+            "projectId": null,
+            "chatId": null,
+            "providerId": null
+          },
+          "protectedRequest": {
+            "formatVersion": 1,
+            "domain": "run-content",
+            "keyRevision": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "00000000-0000-4000-8000-000000000001"
+            }
+          },
+          "cwd": "fixture",
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          }
+        }
+      }
+    },
+    {
+      "type": "customization.external.apply",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "customization.external.apply",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "serverId": "fixture",
+          "scope": {
+            "workerId": "fixture",
+            "projectId": null,
+            "chatId": null,
+            "providerId": null
+          },
+          "protectedRequest": {
+            "formatVersion": 1,
+            "domain": "run-content",
+            "keyRevision": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "00000000-0000-4000-8000-000000000001"
+            }
+          },
+          "cwd": "fixture",
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          }
+        }
+      }
+    },
+    {
+      "type": "customization.external.status",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "customization.external.status",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "serverId": "fixture",
+          "scope": {
+            "workerId": "fixture",
+            "projectId": null,
+            "chatId": null,
+            "providerId": null
+          },
+          "protectedRequest": {
+            "formatVersion": 1,
+            "domain": "run-content",
+            "keyRevision": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "00000000-0000-4000-8000-000000000001"
+            }
+          },
+          "cwd": "fixture",
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          }
+        }
+      }
+    },
+    {
+      "type": "permission-profiles.list",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "permission-profiles.list",
+          "cwd": "fixture",
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          }
+        }
+      }
+    },
+    {
+      "type": "attachment.upload.begin",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "attachment.upload.begin",
+          "chatId": "fixture",
+          "attachmentId": "fixture",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "direction": "upload",
+          "protectedMetadata": {
+            "formatVersion": 1,
+            "keyRevision": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "00000000-0000-4000-8000-000000000001"
+            }
+          },
+          "sizeBytes": 0
+        }
+      }
+    },
+    {
+      "type": "attachment.upload.chunk",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "attachment.upload.chunk",
+          "chatId": "fixture",
+          "attachmentId": "fixture",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "direction": "upload",
+          "chunk": {
+            "sequence": 0,
+            "plaintextBytes": 0,
+            "eof": false,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "00000000-0000-4000-8000-000000000001"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "attachment.upload.complete",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "attachment.upload.complete",
+          "chatId": "fixture",
+          "attachmentId": "fixture",
+          "operationId": "00000000-0000-4000-8000-000000000001"
+        }
+      }
+    },
+    {
+      "type": "attachment.read",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "attachment.read",
+          "chatId": "fixture",
+          "attachmentId": "fixture",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "direction": "download",
+          "protectedMetadata": {
+            "formatVersion": 1,
+            "keyRevision": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "00000000-0000-4000-8000-000000000001"
+            }
+          },
+          "sequence": 0,
+          "offset": 0,
+          "limit": 1
+        }
+      }
+    },
+    {
+      "type": "attachment.delete",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "attachment.delete",
+          "chatId": "fixture",
+          "attachmentId": "fixture"
+        }
+      }
+    },
+    {
+      "type": "terminal.prepare-state",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "terminal.prepare-state",
+          "terminalId": "00000000-0000-4000-8000-000000000001",
+          "serverId": "fixture"
+        }
+      }
+    },
+    {
+      "type": "terminal.open",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "terminal.open",
+          "terminalId": "fixture",
+          "attachmentId": "fixture",
+          "operationId": "fixture",
+          "serverId": "fixture",
+          "worktreePath": "fixture",
+          "stateProtection": {
+            "classification": {
+              "recordKind": "terminal-state"
+            },
+            "protectedState": {
+              "formatVersion": 1,
+              "keyRevision": 1,
+              "envelope": {
+                "version": 1,
+                "algorithm": "AES-256-GCM",
+                "keyRevision": 1,
+                "nonce": "AAAAAAAAAAAAAAAA",
+                "ciphertext": "00000000-0000-4000-8000-000000000001"
+              }
+            }
+          },
+          "cols": 1,
+          "rows": 1,
+          "launch": {
+            "type": "shell"
+          }
+        }
+      }
+    },
+    {
+      "type": "terminal.detach",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "terminal.detach",
+          "terminalId": "fixture",
+          "attachmentId": "fixture"
+        }
+      }
+    },
+    {
+      "type": "terminal.input",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "terminal.input",
+          "terminalId": "fixture",
+          "serverId": "fixture",
+          "operationId": "fixture",
+          "sequence": 0,
+          "protectedData": {
+            "formatVersion": 1,
+            "keyRevision": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "00000000-0000-4000-8000-000000000001"
+            }
+          },
+          "complete": false
+        }
+      }
+    },
+    {
+      "type": "terminal.resize",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "terminal.resize",
+          "terminalId": "fixture",
+          "cols": 1,
+          "rows": 1
+        }
+      }
+    },
+    {
+      "type": "terminal.close",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "terminal.close",
+          "terminalId": "fixture"
+        }
+      }
+    },
+    {
+      "type": "terminal.snapshot",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "terminal.snapshot",
+          "terminalId": "fixture",
+          "serverId": "fixture",
+          "operationId": "fixture",
+          "sequence": 0,
+          "protectedRequest": {
+            "formatVersion": 1,
+            "keyRevision": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "00000000-0000-4000-8000-000000000001"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "terminal.services.reconcile",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "terminal.services.reconcile",
+          "services": []
+        }
+      }
+    },
+    {
+      "type": "terminal.service.restart",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "terminal.service.restart",
+          "terminalId": "fixture"
+        }
+      }
+    },
+    {
+      "type": "surface.attach",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "surface.attach",
+          "surfaceId": "fixture",
+          "attachmentId": "fixture",
+          "projectId": "fixture",
+          "serverId": "fixture",
+          "configuration": {
+            "kind": "browser",
+            "profileId": null
+          },
+          "stateResource": "browser-row",
+          "stateRevision": 1,
+          "stateProtection": {
+            "classification": {
+              "recordKind": "browser-state"
+            },
+            "protectedState": {
+              "formatVersion": 1,
+              "keyRevision": 1,
+              "envelope": {
+                "version": 1,
+                "algorithm": "AES-256-GCM",
+                "keyRevision": 1,
+                "nonce": "AAAAAAAAAAAAAAAA",
+                "ciphertext": "00000000-0000-4000-8000-000000000001"
+              }
+            }
+          },
+          "preferredTransport": "websocket",
+          "webrtc": null,
+          "viewport": {
+            "width": 1,
+            "height": 1,
+            "devicePixelRatio": 0.25
+          },
+          "desktopStream": null
+        }
+      }
+    },
+    {
+      "type": "surface.detach",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "surface.detach",
+          "surfaceId": "fixture",
+          "attachmentId": "fixture"
+        }
+      }
+    },
+    {
+      "type": "surface.configure",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "surface.configure",
+          "surfaceId": "fixture",
+          "serverId": "fixture",
+          "configuration": {
+            "kind": "browser",
+            "profileId": null
+          },
+          "stateResource": "browser-row",
+          "stateRevision": 1,
+          "stateProtection": {
+            "classification": {
+              "recordKind": "browser-state"
+            },
+            "protectedState": {
+              "formatVersion": 1,
+              "keyRevision": 1,
+              "envelope": {
+                "version": 1,
+                "algorithm": "AES-256-GCM",
+                "keyRevision": 1,
+                "nonce": "AAAAAAAAAAAAAAAA",
+                "ciphertext": "00000000-0000-4000-8000-000000000001"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "surface.suspend",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "surface.suspend",
+          "surfaceId": "fixture"
+        }
+      }
+    },
+    {
+      "type": "surface.resume",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "surface.resume",
+          "surfaceId": "fixture"
+        }
+      }
+    },
+    {
+      "type": "surface.close",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "surface.close",
+          "surfaceId": "fixture"
+        }
+      }
+    },
+    {
+      "type": "surface.desktop.probe",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "surface.desktop.probe"
+        }
+      }
+    },
+    {
+      "type": "surface.desktop.targets",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "surface.desktop.targets",
+          "serverId": "fixture",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "resourceId": "fixture",
+          "limit": 0
+        }
+      }
+    },
+    {
+      "type": "model.provider.test",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "model.provider.test",
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          }
+        }
+      }
+    },
+    {
+      "type": "chat.runtime.handoff",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.runtime.handoff",
+          "chatId": "fixture",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "intent": "continue"
+        }
+      }
+    },
+    {
+      "type": "chat.account-defaults",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.account-defaults",
+          "binding": {
+            "chatId": "fixture",
+            "workerId": "fixture",
+            "threadId": "fixture",
+            "contextKind": "project",
+            "projectId": null,
+            "placementId": "fixture",
+            "modelRouteId": null,
+            "providerAccountId": null,
+            "bindingId": "fixture",
+            "runtimeGeneration": "fixture",
+            "nativeEpoch": "fixture"
+          },
+          "request": {
+            "action": "read",
+            "bindingId": "fixture",
+            "operationId": "fixture"
+          }
+        }
+      }
+    },
+    {
+      "type": "chat.settings.update",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "operationId": "fixture",
+          "bindingId": "fixture",
+          "protectedPatch": {
+            "version": 1,
+            "algorithm": "AES-256-GCM",
+            "keyRevision": 1,
+            "nonce": "AAAAAAAAAAAAAAAA",
+            "ciphertext": "00000000-0000-4000-8000-000000000001"
+          },
+          "type": "chat.settings.update",
+          "binding": {
+            "chatId": "fixture",
+            "workerId": "fixture",
+            "threadId": "fixture",
+            "contextKind": "project",
+            "projectId": null,
+            "placementId": "fixture",
+            "modelRouteId": null,
+            "providerAccountId": null,
+            "bindingId": "fixture",
+            "runtimeGeneration": "fixture",
+            "nativeEpoch": "fixture"
+          }
+        }
+      }
+    },
+    {
+      "type": "chat.permissions.update",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.permissions.update",
+          "operationId": "fixture",
+          "binding": {
+            "chatId": "fixture",
+            "workerId": "fixture",
+            "threadId": "fixture",
+            "contextKind": "project",
+            "projectId": null,
+            "placementId": "fixture",
+            "modelRouteId": null,
+            "providerAccountId": null,
+            "bindingId": "fixture",
+            "runtimeGeneration": "fixture",
+            "nativeEpoch": "fixture"
+          },
+          "permissionTransition": {
+            "selectedId": null,
+            "resolvedSelectedId": "fixture",
+            "effectiveId": "fixture",
+            "expectedRevision": "1"
+          }
+        }
+      }
+    },
+    {
+      "type": "chat.settings.read",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.settings.read",
+          "scope": {
+            "chatId": "fixture",
+            "workerId": "fixture",
+            "threadId": "fixture",
+            "contextKind": "project",
+            "projectId": null,
+            "placementId": "fixture",
+            "modelRouteId": null,
+            "providerAccountId": null
+          }
+        }
+      }
+    },
+    {
+      "type": "chat.message.protect",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.message.protect",
+          "message": {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "fixture"
+              }
+            ],
+            "idempotencyKey": "fixture",
+            "id": "00000000-0000-4000-8000-000000000001"
+          },
+          "attachments": []
+        }
+      }
+    },
+    {
+      "type": "task.operation.prepare",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "operationKind": "direct",
+          "task": {
+            "state": "draft",
+            "stableStateBeforeFailure": null,
+            "activeOperationKind": null,
+            "planAuthorship": "agent",
+            "planningRound": 0,
+            "hasPlan": false,
+            "hasQuestions": false,
+            "hasFinalPlan": false,
+            "hasGoalPrompt": false,
+            "lastError": null,
+            "chatId": "fixture",
+            "planGoalEnabled": false,
+            "priority": 0,
+            "requestedTaskWorkerId": null,
+            "continuityFamily": null,
+            "lastTaskWorkerId": null,
+            "dispatch": null,
+            "activeOperationId": null,
+            "draftAttachmentIds": [],
+            "protectedContent": {
+              "formatVersion": 1,
+              "keyRevision": 1,
+              "envelope": {
+                "version": 1,
+                "algorithm": "AES-256-GCM",
+                "keyRevision": 1,
+                "nonce": "AAAAAAAAAAAAAAAA",
+                "ciphertext": "00000000-0000-4000-8000-000000000001"
+              }
+            },
+            "implementationStartedAt": null,
+            "completedAt": null,
+            "schedulerRevision": 1,
+            "rowVersion": 1,
+            "createdAt": "2026-10-26T00:00:00.000Z",
+            "updatedAt": "2026-10-26T00:00:00.000Z"
+          },
+          "type": "task.operation.prepare"
+        }
+      }
+    },
+    {
+      "type": "task.message.protect",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "task.message.protect",
+          "message": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "classification": {
+              "role": "user",
+              "mode": "default",
+              "attachmentIds": []
+            },
+            "protectedContent": {
+              "formatVersion": 1,
+              "keyRevision": 1,
+              "envelope": {
+                "version": 1,
+                "algorithm": "AES-256-GCM",
+                "keyRevision": 1,
+                "nonce": "AAAAAAAAAAAAAAAA",
+                "ciphertext": "00000000-0000-4000-8000-000000000001"
+              }
+            },
+            "reasoningEffort": null,
+            "idempotencyKey": "fixture"
+          }
+        }
+      }
+    },
+    {
+      "type": "chat.messages.protect",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.messages.protect",
+          "messages": [],
+          "attachments": []
+        }
+      }
+    },
+    {
+      "type": "chat.messages.reprotect",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.messages.reprotect",
+          "messages": []
+        }
+      }
+    },
+    {
+      "type": "chat.turn.protect",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.turn.protect",
+          "promptId": "00000000-0000-4000-8000-000000000001",
+          "messageId": "00000000-0000-4000-8000-000000000001",
+          "text": "fixture",
+          "mode": "default",
+          "modelId": "fixture",
+          "reasoningEffort": null,
+          "idempotencyKey": "fixture"
+        }
+      }
+    },
+    {
+      "type": "chat.turn",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.turn",
+          "executionProfile": "ide",
+          "contextKind": "project",
+          "chatId": "fixture",
+          "clientMessageId": "fixture",
+          "executionLaneId": "fixture",
+          "worktreeId": "fixture-worktree",
+          "scratchRootId": null,
+          "rootKind": "git-worktree",
+          "cwd": "fixture",
+          "isPrimary": false,
+          "worktreeMode": "agent-managed",
+          "worktreePolicy": "direct",
+          "policyProjectId": "fixture",
+          "policies": {
+            "policies": []
+          },
+          "standalonePolicies": {
+            "policies": []
+          },
+          "threadId": null,
+          "protectedHistory": [],
+          "protectedPlan": null,
+          "attachments": [],
+          "skillNames": [],
+          "chatSkillAudienceKeys": [],
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          },
+          "permissionProfileId": "fixture",
+          "planMode": "default",
+          "mcpServers": [],
+          "automationPaused": false,
+          "resultMode": {
+            "kind": "visible"
+          },
+          "prompt": "fixture"
+        }
+      }
+    },
+    {
+      "type": "chat.native-logical.complete",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.native-logical.complete",
+          "chatId": "fixture",
+          "rootOperationId": "fixture",
+          "rootOperationGeneration": "fixture"
+        }
+      }
+    },
+    {
+      "type": "chat.native-logical.cancel",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.native-logical.cancel",
+          "chatId": "fixture",
+          "rootOperationId": "fixture",
+          "rootOperationGeneration": "fixture"
+        }
+      }
+    },
+    {
+      "type": "chat.native-control",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.native-control",
+          "chatId": "fixture",
+          "threadId": null,
+          "nativeActivationGeneration": null,
+          "nativeRuntimeGeneration": null,
+          "modelRouteId": null,
+          "providerAccountId": null,
+          "control": {
+            "kind": "interrupt"
+          }
+        }
+      }
+    },
+    {
+      "type": "chat.pause.set",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.pause.set",
+          "chatId": "fixture",
+          "paused": false
+        }
+      }
+    },
+    {
+      "type": "chat.compact",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.compact",
+          "executionProfile": "ide",
+          "chatId": "fixture",
+          "cwd": "fixture",
+          "threadId": "fixture",
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          },
+          "permissionProfileId": "fixture"
+        }
+      }
+    },
+    {
+      "type": "chat.interrupt",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.interrupt",
+          "executionProfile": "ide",
+          "chatId": "fixture",
+          "threadId": null,
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          }
+        }
+      }
+    },
+    {
+      "type": "chat.turn.rollback",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.turn.rollback",
+          "executionProfile": "ide",
+          "chatId": "fixture",
+          "clientMessageId": "fixture",
+          "cwd": "fixture",
+          "threadId": "fixture",
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          },
+          "permissionProfileId": "fixture"
+        }
+      }
+    },
+    {
+      "type": "chat.queue.changed",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.queue.changed",
+          "chatId": "fixture",
+          "revision": 0
+        }
+      }
+    },
+    {
+      "type": "chat.queue.prepare",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.queue.prepare",
+          "chatId": "fixture",
+          "prompt": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "classification": {
+              "mode": "default",
+              "attachmentIds": []
+            },
+            "protectedContent": {
+              "formatVersion": 1,
+              "keyRevision": 1,
+              "envelope": {
+                "version": 1,
+                "algorithm": "AES-256-GCM",
+                "keyRevision": 1,
+                "nonce": "AAAAAAAAAAAAAAAA",
+                "ciphertext": "00000000-0000-4000-8000-000000000001"
+              }
+            },
+            "modelId": "fixture",
+            "reasoningEffort": null,
+            "customSubagentModel": false,
+            "subagentModelId": null,
+            "subagentReasoningEffort": null,
+            "worktreeId": null,
+            "frozen": false,
+            "idempotencyKey": "fixture",
+            "pendingMessage": {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "classification": {
+                "role": "user",
+                "mode": "default",
+                "attachmentIds": []
+              },
+              "protectedContent": {
+                "formatVersion": 1,
+                "keyRevision": 1,
+                "envelope": {
+                  "version": 1,
+                  "algorithm": "AES-256-GCM",
+                  "keyRevision": 1,
+                  "nonce": "AAAAAAAAAAAAAAAA",
+                  "ciphertext": "00000000-0000-4000-8000-000000000001"
+                }
+              },
+              "reasoningEffort": null,
+              "idempotencyKey": "fixture"
+            }
+          },
+          "attachments": []
+        }
+      }
+    },
+    {
+      "type": "chat.queue.execute",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.queue.execute",
+          "attachments": [],
+          "session": {
+            "chatId": "fixture",
+            "computerUseEnabled": false,
+            "contextKind": "project",
+            "projectId": "fixture",
+            "worktreeId": "fixture",
+            "rootKind": "git-worktree",
+            "scratchRootId": null
+          },
+          "subagentDefaults": null,
+          "mcpServers": [],
+          "planMode": "default",
+          "executionProfile": "ide",
+          "chatId": "fixture",
+          "cwd": "fixture",
+          "threadId": "fixture",
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          },
+          "permissionProfileId": "fixture",
+          "queueClaim": {
+            "id": "fixture",
+            "promptRevision": 0
+          },
+          "queuedPromptId": "fixture",
+          "protectedPrompt": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "classification": {
+              "role": "user",
+              "mode": "default",
+              "attachmentIds": []
+            },
+            "protectedContent": {
+              "formatVersion": 1,
+              "keyRevision": 1,
+              "envelope": {
+                "version": 1,
+                "algorithm": "AES-256-GCM",
+                "keyRevision": 1,
+                "nonce": "AAAAAAAAAAAAAAAA",
+                "ciphertext": "00000000-0000-4000-8000-000000000001"
+              }
+            },
+            "reasoningEffort": null,
+            "idempotencyKey": "fixture"
+          },
+          "executionMethod": "thread/goal/set"
+        }
+      }
+    },
+    {
+      "type": "chat.automation.resume",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.automation.resume",
+          "session": {
+            "chatId": "fixture",
+            "computerUseEnabled": false,
+            "contextKind": "project",
+            "projectId": "fixture",
+            "worktreeId": "fixture",
+            "rootKind": "git-worktree",
+            "scratchRootId": null
+          },
+          "subagentDefaults": null,
+          "mcpServers": [],
+          "planMode": "default",
+          "chatId": "fixture",
+          "cwd": "fixture",
+          "threadId": "fixture",
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          },
+          "permissionProfileId": "fixture"
+        }
+      }
+    },
+    {
+      "type": "chat.goal.get",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.goal.get",
+          "chatId": "fixture",
+          "cwd": "fixture",
+          "threadId": "fixture",
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          },
+          "permissionProfileId": "fixture"
+        }
+      }
+    },
+    {
+      "type": "chat.goal.create",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.goal.create",
+          "chatId": "fixture",
+          "cwd": "fixture",
+          "threadId": null,
+          "objective": "fixture",
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          },
+          "permissionProfileId": "fixture"
+        }
+      }
+    },
+    {
+      "type": "chat.goal.update",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.goal.update",
+          "chatId": "fixture",
+          "cwd": "fixture",
+          "threadId": "fixture",
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          },
+          "permissionProfileId": "fixture"
+        }
+      }
+    },
+    {
+      "type": "chat.goal.clear",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.goal.clear",
+          "chatId": "fixture",
+          "cwd": "fixture",
+          "threadId": "fixture",
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          },
+          "permissionProfileId": "fixture"
+        }
+      }
+    },
+    {
+      "type": "chat.thread.ensure",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.thread.ensure",
+          "cwd": "fixture",
+          "threadId": null,
+          "planMode": "default",
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          },
+          "permissionProfileId": "fixture",
+          "mcpServers": []
+        }
+      }
+    },
+    {
+      "type": "chat.relocation.hydration.begin",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.relocation.hydration.begin",
+          "chatId": "fixture",
+          "snapshotId": "00000000-0000-4000-8000-000000000001",
+          "transcriptSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "sizeBytes": 0,
+          "cwd": "fixture",
+          "requiredSkillNames": [],
+          "planMode": "default",
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          },
+          "permissionProfileId": "fixture",
+          "mcpServers": []
+        }
+      }
+    },
+    {
+      "type": "chat.relocation.hydration.chunk",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.relocation.hydration.chunk",
+          "snapshotId": "00000000-0000-4000-8000-000000000001",
+          "chunkIndex": 0,
+          "data": "fixture"
+        }
+      }
+    },
+    {
+      "type": "chat.relocation.hydration.complete",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.relocation.hydration.complete",
+          "snapshotId": "00000000-0000-4000-8000-000000000001"
+        }
+      }
+    },
+    {
+      "type": "chat.relocation.thread.release",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.relocation.thread.release",
+          "threadId": null,
+          "discard": false,
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          }
+        }
+      }
+    },
+    {
+      "type": "chat.plan.get",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.plan.get",
+          "cwd": "fixture",
+          "threadId": null,
+          "fallbackMode": "default",
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          },
+          "permissionProfileId": "fixture"
+        }
+      }
+    },
+    {
+      "type": "chat.plan.set",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.plan.set",
+          "cwd": "fixture",
+          "threadId": null,
+          "mode": "default",
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          },
+          "permissionProfileId": "fixture"
+        }
+      }
+    },
+    {
+      "type": "agent.interaction.respond",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "agent.interaction.respond",
+          "executionProfile": "ide",
+          "requestKey": "fixture",
+          "response": {
+            "kind": "commandExecution",
+            "decision": "accept",
+            "execpolicyAmendment": null,
+            "networkPolicyAmendment": null
+          },
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          }
+        }
+      }
+    },
+    {
+      "type": "agent.interaction.respond.protected",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "agent.interaction.respond.protected",
+          "executionProfile": "ide",
+          "requestKey": "fixture",
+          "response": {
+            "classification": {
+              "kind": "commandExecution"
+            },
+            "protectedResponse": {
+              "formatVersion": 1,
+              "keyRevision": 1,
+              "envelope": {
+                "version": 1,
+                "algorithm": "AES-256-GCM",
+                "keyRevision": 1,
+                "nonce": "AAAAAAAAAAAAAAAA",
+                "ciphertext": "00000000-0000-4000-8000-000000000001"
+              }
+            }
+          },
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          }
+        }
+      }
+    },
+    {
+      "type": "agent.interaction.cancel",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "agent.interaction.cancel",
+          "executionProfile": "ide",
+          "requestKey": "fixture",
+          "reason": "fixture",
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          }
+        }
+      }
+    },
+    {
+      "type": "chat.steer",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.steer",
+          "executionProfile": "ide",
+          "chatId": "fixture",
+          "threadId": null,
+          "attachments": [],
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          },
+          "prompt": "fixture"
+        }
+      }
+    },
+    {
+      "type": "chat.sync",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.sync",
+          "executionProfile": "ide",
+          "chatId": "fixture",
+          "cwd": "fixture",
+          "threadId": "fixture",
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          }
+        }
+      }
+    },
+    {
+      "type": "label.generate",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "label.generate",
+          "chatId": "00000000-0000-4000-8000-000000000001",
+          "labelKind": "task",
+          "input": {
+            "kind": "message",
+            "message": {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "classification": {
+                "role": "user",
+                "mode": "default",
+                "attachmentIds": []
+              },
+              "protectedContent": {
+                "formatVersion": 1,
+                "keyRevision": 1,
+                "envelope": {
+                  "version": 1,
+                  "algorithm": "AES-256-GCM",
+                  "keyRevision": 1,
+                  "nonce": "AAAAAAAAAAAAAAAA",
+                  "ciphertext": "00000000-0000-4000-8000-000000000001"
+                }
+              },
+              "reasoningEffort": null,
+              "idempotencyKey": "fixture"
+            }
+          },
+          "model": {
+            "id": "fixture",
+            "routeId": "fixture",
+            "name": "fixture",
+            "reasoningEffort": null
+          },
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "chatgpt",
+            "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          }
+        }
+      }
+    }
+  ]
+}

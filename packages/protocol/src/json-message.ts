@@ -16,10 +16,16 @@ export function decodeJsonMessage<T>(
     return { reason: "invalid-json", success: false };
   }
 
-  const parsed = schema.safeParse(value);
-  return parsed.success
-    ? { data: parsed.data, success: true }
-    : { reason: "invalid-message", success: false, value };
+  try {
+    const parsed = schema.safeParse(value);
+    return parsed.success
+      ? { data: parsed.data, success: true }
+      : { reason: "invalid-message", success: false, value };
+  } catch {
+    // Recursive schemas and custom validators can throw even through
+    // safeParse. An untrusted frame must remain a rejected message.
+    return { reason: "invalid-message", success: false, value };
+  }
 }
 
 export function encodeJsonMessage<T>(value: T, schema: ZodType<T>): string {

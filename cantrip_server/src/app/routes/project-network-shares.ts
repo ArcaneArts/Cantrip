@@ -17,6 +17,7 @@ import {
   type ProjectShareTunnelBroker,
 } from "../../project-shares/tunnel.js";
 import type { TunnelRuntimeManager } from "../../tunnels/runtime.js";
+import type { WorkerLinkService } from "../../worker-links/service.js";
 import {
   WorkerCommandError,
   WorkerUnavailableError,
@@ -39,6 +40,7 @@ export interface ProjectNetworkShareRouteDependencies {
     | "getWorker"
   >;
   tunnelRuntime: Pick<TunnelRuntimeManager, "revoke">;
+  workerLinks: Pick<WorkerLinkService, "revokeResource">;
 }
 
 export interface ProjectShareFailureDetails {
@@ -156,6 +158,7 @@ export function installProjectNetworkShareRoutes(
     projectShareTunnel,
     repository,
     tunnelRuntime,
+    workerLinks,
   }: ProjectNetworkShareRouteDependencies,
 ): void {
   app.post<{ Params: { projectId: string } }>(
@@ -206,6 +209,7 @@ export function installProjectNetworkShareRoutes(
               );
             }
             if (existing) {
+              await workerLinks.revokeResource(ownerId, "tunnel", existing.id);
               await Promise.all(
                 existing.attachments.map(({ id }) =>
                   tunnelRuntime.revoke(ownerId, id, {
@@ -291,6 +295,7 @@ export function installProjectNetworkShareRoutes(
               );
             }
             if (existing) {
+              await workerLinks.revokeResource(ownerId, "tunnel", existing.id);
               await Promise.all(
                 existing.attachments.map(({ id }) =>
                   tunnelRuntime.revoke(ownerId, id, {
@@ -353,6 +358,12 @@ export function installProjectNetworkShareRoutes(
           ) {
             return reply.code(404).send({ error: "Project share not found." });
           }
+          await workerLinks.revokeResource(
+            ownerId,
+            "tunnel",
+            tunnel.id,
+            "resource-deleted",
+          );
           await Promise.all(
             tunnel.attachments.map(({ id }) =>
               tunnelRuntime.revoke(ownerId, id, {

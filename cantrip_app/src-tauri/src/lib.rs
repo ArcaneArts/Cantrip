@@ -1065,6 +1065,7 @@ pub fn run() {
             installation_storage::inspect_native_installation_key,
             installation_storage::unwrap_native_account_master_key,
             local_logs::open_local_logs_directory,
+            local_logs::dump_local_logs,
             local_logs::read_local_service_logs,
             local_server_url,
             relay_client_log,

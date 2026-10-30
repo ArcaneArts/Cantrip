@@ -13,6 +13,7 @@ allowBuilds:
 engineStrict: true
 injectWorkspacePackages: true
 patchedDependencies:
+  "@zavora-ai/computer-use-mcp@7.0.0": patches/@zavora-ai__computer-use-mcp@7.0.0.patch
   webdav-server@2.6.3: patches/webdav-server@2.6.3.patch
   werift@0.24.3: patches/werift@0.24.3.patch
 saveWorkspaceProtocol: rolling

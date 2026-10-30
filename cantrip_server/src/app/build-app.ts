@@ -220,6 +220,13 @@ export async function buildApp({
     bridge,
     directAttachments,
     projectShareTunnel,
+    revokeShareWorkerLinks: (ownerId, tunnelId) =>
+      workerLinks.revokeResource(
+        ownerId,
+        "tunnel",
+        tunnelId,
+        "resource-deleted",
+      ),
     publishLiveInvalidation,
     relayQuotas,
     repository,
@@ -1290,7 +1297,7 @@ export async function buildApp({
     serverId,
   });
 
-  installInternalWorkerWebsocketRoute(app, {
+  const drainWorkerAuthentications = installInternalWorkerWebsocketRoute(app, {
     bridge,
     catalogWorkers,
     chatImportJobExecutor,
@@ -1337,6 +1344,10 @@ export async function buildApp({
   installPolicyRoutes(app, { applicationOwnerId, repository });
 
   app.addHook("onClose", async () => {
+    // Upgraded sockets can close while their credential/owner queries remain
+    // queued. Finish those handlers before ending the database pool; postgres-js
+    // can otherwise reopen connections for its queued transactions after end().
+    await drainWorkerAuthentications();
     nativeLogicalCompletionDelivery.stop();
     stopComputerUseAuthoritySubscription();
     liveInfrastructureRuntime.stopPublishing();
@@ -1375,6 +1386,9 @@ export async function buildApp({
     workerLinkRelay.close();
     await workerLinks.close();
     await bridge.close();
+    // A closed legacy socket can still be awaiting its activation transaction.
+    // Keep the database open through its exact-generation offline/expiry write.
+    await tunnelRuntime.drained();
     await accountUsageMeter.close();
     liveInfrastructureRuntime.closeAccountResourceUsageInvalidations();
     await coordinator?.close();

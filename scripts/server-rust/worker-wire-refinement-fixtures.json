@@ -1,0 +1,840 @@
+{
+  "scope": "Accepted complete enclosing worker messages reaching each of the 31 additional custom check identities. Expectations always execute the current protocol.",
+  "fixtures": [
+    {
+      "kind": "notification",
+      "notification": {
+        "type": "provider.auth.status.observed",
+        "observationId": "00000000-0000-4000-8000-000000000001",
+        "providerId": "fixture",
+        "providerAccountId": "fixture",
+        "providerKind": "chatgpt",
+        "sequence": 1,
+        "observedAt": "2026-10-26T00:00:00.000Z",
+        "expiresAt": "2026-10-26T00:00:00.000Z",
+        "status": {
+          "state": "pending",
+          "authMode": null,
+          "email": null,
+          "planType": null,
+          "weeklyUsage": null,
+          "failureCode": null
+        }
+      }
+    },
+    {
+      "kind": "notification",
+      "notification": {
+        "type": "project.run-configuration-runtime.observed",
+        "observation": {
+          "runtimeId": "00000000-0000-4000-8000-000000000001",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "configurationId": "00000000-0000-4000-8000-000000000001",
+          "worktreeId": "00000000-0000-4000-8000-000000000001",
+          "workerId": "fixture",
+          "definitionRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "codexEnvironmentRevision": null,
+          "generation": 0,
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "terminalId": null,
+          "state": "idle",
+          "startedAt": null,
+          "endedAt": "2026-10-26T00:00:00.000Z",
+          "exitCode": null,
+          "signal": null,
+          "failure": null
+        }
+      }
+    },
+    {
+      "kind": "notification",
+      "notification": {
+        "type": "git.operation.observed",
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "worktreeId": "fixture",
+        "operationId": "00000000-0000-4000-8000-000000000001",
+        "sourcePath": "fixture",
+        "worktreePath": "fixture",
+        "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "observedAt": "2026-10-26T00:00:00.000Z",
+        "state": {
+          "state": "queued",
+          "currentHead": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "currentStep": 0,
+          "totalSteps": 1,
+          "pendingCommitCount": 0,
+          "conflictedPathCount": 0,
+          "pausedAction": null
+        },
+        "conflicts": {
+          "files": [
+            {
+              "path": "fixture",
+              "code": "AA",
+              "kind": "both-modified",
+              "baseAvailable": false,
+              "oursAvailable": false,
+              "theirsAvailable": false
+            }
+          ],
+          "truncated": false
+        }
+      }
+    },
+    {
+      "kind": "notification",
+      "notification": {
+        "type": "chat.turn.outcome",
+        "chatId": "fixture",
+        "clientMessageId": "fixture",
+        "executionLaneId": "fixture",
+        "contextKind": "project",
+        "worktreeId": "fixture-worktree",
+        "scratchRootId": null,
+        "outcome": {
+          "ok": true,
+          "result": {
+            "threadId": "fixture",
+            "text": "fixture",
+            "status": "completed"
+          }
+        }
+      }
+    },
+    {
+      "kind": "notification",
+      "notification": {
+        "type": "worker-link.peer.candidates",
+        "advertisement": {
+          "peerSessionId": "00000000-0000-4000-8000-000000000001",
+          "sessionId": "00000000-0000-4000-8000-000000000001",
+          "routeGeneration": 1,
+          "route": "lan",
+          "advertisementSequence": 0,
+          "candidates": [],
+          "complete": true
+        }
+      }
+    },
+    {
+      "kind": "notification",
+      "notification": {
+        "type": "worker-link.peer.signal",
+        "envelope": {
+          "peerSessionId": "00000000-0000-4000-8000-000000000001",
+          "sessionId": "00000000-0000-4000-8000-000000000001",
+          "routeGeneration": 1,
+          "route": "lan",
+          "sender": "worker",
+          "signalSequence": 0,
+          "signal": {
+            "type": "offer",
+            "sdp": "fixture"
+          }
+        }
+      }
+    },
+    {
+      "kind": "notification",
+      "notification": {
+        "type": "computer-use.approval.terminal",
+        "chatId": "fixture",
+        "requestKey": "00000000-0000-4000-8000-000000000001",
+        "status": "expired"
+      }
+    },
+    {
+      "kind": "event",
+      "requestId": "fixture",
+      "event": {
+        "type": "agent.interaction.cleared",
+        "requestKey": "fixture",
+        "resolution": {
+          "idempotencyKey": "fixture",
+          "classification": {
+            "kind": "commandExecution"
+          },
+          "protectedResponse": {
+            "formatVersion": 1,
+            "keyRevision": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "00000000-0000-4000-8000-000000000001"
+            }
+          }
+        }
+      }
+    },
+    {
+      "kind": "event",
+      "requestId": "fixture",
+      "event": {
+        "type": "agent.interaction.cleared",
+        "requestKey": "fixture",
+        "resolution": {
+          "idempotencyKey": "fixture",
+          "response": {
+            "kind": "commandExecution",
+            "decision": "accept",
+            "execpolicyAmendment": null,
+            "networkPolicyAmendment": null
+          }
+        }
+      }
+    },
+    {
+      "kind": "event",
+      "requestId": "fixture",
+      "event": {
+        "type": "agent.interaction.requested.protected",
+        "request": {
+          "requestKey": "fixture",
+          "threadId": "fixture",
+          "turnId": null,
+          "itemId": null,
+          "classification": {
+            "kind": "commandExecution"
+          },
+          "protectedPayload": {
+            "formatVersion": 1,
+            "keyRevision": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "00000000-0000-4000-8000-000000000001"
+            }
+          },
+          "expiresAt": "2026-10-26T00:00:00.000Z"
+        }
+      }
+    },
+    {
+      "kind": "event",
+      "requestId": "fixture",
+      "event": {
+        "type": "agent.interaction.requested",
+        "request": {
+          "requestKey": "fixture",
+          "threadId": "fixture",
+          "turnId": null,
+          "itemId": null,
+          "payload": {
+            "kind": "permissions",
+            "startedAtMs": 0,
+            "environmentId": null,
+            "cwd": "/fixture",
+            "reason": null,
+            "requestedPermissions": "fixture"
+          },
+          "expiresAt": "2026-10-26T00:00:00.000Z"
+        }
+      }
+    },
+    {
+      "kind": "event",
+      "requestId": "fixture",
+      "event": {
+        "type": "agent.plan.protected",
+        "turnId": null,
+        "state": {
+          "classification": {
+            "hasQuestion": false
+          },
+          "protectedContent": {
+            "formatVersion": 1,
+            "keyRevision": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "00000000-0000-4000-8000-000000000001"
+            }
+          }
+        }
+      }
+    },
+    {
+      "kind": "event",
+      "requestId": "fixture",
+      "event": {
+        "type": "computer-use.activity",
+        "operationId": "00000000-0000-4000-8000-000000000001",
+        "event": {
+          "type": "agent.protected-task-message",
+          "message": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "classification": {
+              "role": "user",
+              "mode": "default",
+              "attachmentIds": []
+            },
+            "protectedContent": {
+              "formatVersion": 1,
+              "keyRevision": 1,
+              "envelope": {
+                "version": 1,
+                "algorithm": "AES-256-GCM",
+                "keyRevision": 1,
+                "nonce": "AAAAAAAAAAAAAAAA",
+                "ciphertext": "00000000-0000-4000-8000-000000000001"
+              }
+            },
+            "reasoningEffort": null,
+            "idempotencyKey": "fixture"
+          },
+          "telemetry": {
+            "kind": "activity",
+            "activityType": "computerUse",
+            "turnId": null
+          }
+        }
+      }
+    },
+    {
+      "kind": "event",
+      "requestId": "fixture",
+      "event": {
+        "type": "computer-use.activity",
+        "operationId": "00000000-0000-4000-8000-000000000001",
+        "event": {
+          "type": "agent.protected-message",
+          "message": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "classification": {
+              "role": "user",
+              "mode": "default",
+              "attachmentIds": []
+            },
+            "protectedContent": {
+              "formatVersion": 1,
+              "keyRevision": 1,
+              "envelope": {
+                "version": 1,
+                "algorithm": "AES-256-GCM",
+                "keyRevision": 1,
+                "nonce": "AAAAAAAAAAAAAAAA",
+                "ciphertext": "00000000-0000-4000-8000-000000000001"
+              }
+            },
+            "reasoningEffort": null,
+            "idempotencyKey": "fixture"
+          },
+          "telemetry": {
+            "kind": "activity",
+            "activityType": "computerUse",
+            "turnId": null
+          }
+        }
+      }
+    },
+    {
+      "kind": "event",
+      "requestId": "fixture",
+      "event": {
+        "type": "agent.inference-progress",
+        "progress": {
+          "kind": "progress",
+          "requestId": "fixture",
+          "cycle": 1,
+          "sequence": 0,
+          "phase": "queued",
+          "fractionComplete": 0,
+          "completedTokens": null,
+          "totalTokens": null,
+          "precision": "exact",
+          "source": "provider-stream",
+          "startedAt": "2026-10-26T00:00:00.000Z",
+          "observedAt": "2026-10-26T00:00:00.000Z"
+        }
+      }
+    },
+    {
+      "kind": "event",
+      "requestId": "fixture",
+      "event": {
+        "type": "agent.activity",
+        "activity": {
+          "id": "fixture",
+          "status": "running",
+          "type": "turnSummary",
+          "durationMs": null,
+          "startedAt": null,
+          "completedAt": null,
+          "raw": {
+            "schemaVersion": 1,
+            "request": null,
+            "response": null,
+            "metadata": {}
+          }
+        }
+      }
+    },
+    {
+      "kind": "event",
+      "requestId": "fixture",
+      "event": {
+        "type": "agent.activity",
+        "activity": {
+          "id": "fixture",
+          "status": "running",
+          "type": "turnSummary",
+          "durationMs": null,
+          "startedAt": null,
+          "completedAt": null,
+          "raw": {
+            "schemaVersion": 1,
+            "request": null,
+            "response": {
+              "mediaType": "fixture",
+              "originalBytes": 0,
+              "truncated": false,
+              "text": "fixture"
+            },
+            "metadata": {}
+          }
+        }
+      }
+    },
+    {
+      "kind": "event",
+      "requestId": "fixture",
+      "event": {
+        "type": "agent.activity",
+        "activity": {
+          "id": "fixture",
+          "status": "running",
+          "type": "turnSummary",
+          "durationMs": null,
+          "startedAt": null,
+          "completedAt": null,
+          "raw": {
+            "schemaVersion": 1,
+            "request": {
+              "mediaType": "fixture",
+              "originalBytes": 0,
+              "truncated": false,
+              "text": "fixture"
+            },
+            "response": null,
+            "metadata": {}
+          }
+        }
+      }
+    },
+    {
+      "kind": "event",
+      "requestId": "fixture",
+      "event": {
+        "type": "agent.activity",
+        "activity": {
+          "id": "fixture",
+          "status": "running",
+          "type": "command",
+          "command": "fixture",
+          "cwd": "fixture",
+          "exitCode": null,
+          "output": null,
+          "outputTail": "fixture"
+        }
+      }
+    },
+    {
+      "kind": "event",
+      "requestId": "fixture",
+      "event": {
+        "type": "agent.activity",
+        "activity": {
+          "id": "fixture",
+          "status": "completed",
+          "startedAtMs": 0,
+          "updatedAtMs": 0,
+          "completedAtMs": 0,
+          "type": "computerUse",
+          "source": "user-preview",
+          "operation": "capabilities.get",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "requestId": null,
+          "binding": {
+            "workerId": "fixture",
+            "chatId": "fixture",
+            "taskId": null,
+            "threadId": null,
+            "turnId": null,
+            "sessionId": null
+          },
+          "target": null,
+          "cursor": null,
+          "observation": null,
+          "outcome": "completed",
+          "errorCode": null,
+          "durationMs": 0
+        }
+      }
+    },
+    {
+      "kind": "event",
+      "requestId": "fixture",
+      "event": {
+        "type": "agent.activity",
+        "activity": {
+          "id": "fixture",
+          "status": "completed",
+          "startedAtMs": 0,
+          "updatedAtMs": 0,
+          "completedAtMs": 0,
+          "type": "computerUse",
+          "source": "user-preview",
+          "operation": "capabilities.get",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "requestId": null,
+          "binding": {
+            "workerId": "fixture",
+            "chatId": "fixture",
+            "taskId": null,
+            "threadId": null,
+            "turnId": null,
+            "sessionId": null
+          },
+          "target": null,
+          "cursor": null,
+          "observation": {
+            "revision": 1,
+            "image": {
+              "mediaType": "image/png",
+              "width": 1,
+              "height": 1,
+              "byteCount": 1,
+              "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "cursorIncluded": true
+            }
+          },
+          "outcome": "completed",
+          "errorCode": null,
+          "durationMs": 0
+        }
+      }
+    },
+    {
+      "kind": "event",
+      "requestId": "fixture",
+      "event": {
+        "type": "agent.activity",
+        "activity": {
+          "id": "fixture",
+          "status": "completed",
+          "startedAtMs": 0,
+          "updatedAtMs": 0,
+          "completedAtMs": 0,
+          "type": "computerUse",
+          "source": "user-preview",
+          "operation": "capabilities.get",
+          "operationId": "00000000-0000-4000-8000-000000000001",
+          "requestId": null,
+          "binding": {
+            "workerId": "fixture",
+            "chatId": "fixture",
+            "taskId": null,
+            "threadId": null,
+            "turnId": null,
+            "sessionId": null
+          },
+          "target": null,
+          "cursor": {
+            "appearance": {
+              "version": 1,
+              "style": "arrow",
+              "color": "#000000",
+              "size": 8,
+              "label": "fixture",
+              "trail": false,
+              "visible": false
+            },
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "trailPoints": [],
+            "updatedAtMs": 0,
+            "revision": 1
+          },
+          "observation": null,
+          "outcome": "completed",
+          "errorCode": null,
+          "durationMs": 0
+        }
+      }
+    },
+    {
+      "kind": "event",
+      "requestId": "fixture",
+      "event": {
+        "type": "workspace.repositories.discovery-progress",
+        "jobId": "00000000-0000-4000-8000-000000000001",
+        "attempt": 1,
+        "progress": {
+          "counts": {
+            "candidates": 0,
+            "collapsedRepositories": 0,
+            "rejectedRepositories": 0,
+            "scannedDirectories": 0,
+            "scannedEntries": 0,
+            "skippedSymlinks": 0,
+            "unreadableDirectories": 0
+          },
+          "diagnosticCode": null,
+          "truncated": false
+        }
+      }
+    },
+    {
+      "kind": "event",
+      "requestId": "fixture",
+      "event": {
+        "type": "computer-use.snapshot.chunk",
+        "operationId": "00000000-0000-4000-8000-000000000001",
+        "sequence": 0,
+        "protectedContent": {
+          "formatVersion": 1,
+          "domain": "client-control-content",
+          "keyRevision": 1,
+          "envelope": {
+            "version": 1,
+            "algorithm": "AES-256-GCM",
+            "keyRevision": 1,
+            "nonce": "AAAAAAAAAAAAAAAA",
+            "ciphertext": "00000000-0000-4000-8000-000000000001"
+          }
+        }
+      }
+    },
+    {
+      "kind": "event",
+      "requestId": "fixture",
+      "event": {
+        "type": "computer-use.approval.request",
+        "operationId": "00000000-0000-4000-8000-000000000001",
+        "request": {
+          "requestKey": "fixture",
+          "projectId": null,
+          "provenance": {
+            "chatId": null,
+            "threadId": "fixture-thread",
+            "turnId": null,
+            "itemId": null,
+            "executionLaneId": null,
+            "workerId": "fixture-worker"
+          },
+          "classification": {
+            "kind": "commandExecution"
+          },
+          "protectedPayload": {
+            "formatVersion": 1,
+            "keyRevision": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "00000000-0000-4000-8000-000000000001"
+            }
+          },
+          "expiresAt": null
+        }
+      }
+    }
+  ],
+  "cases": [
+    {
+      "check": 0,
+      "schemaPath": "workerServerEnvelopeSchema/options/2/notification/options/14",
+      "fixture": 0,
+      "path": ["notification"]
+    },
+    {
+      "check": 1,
+      "schemaPath": "workerServerEnvelopeSchema/options/2/notification/options/14/status",
+      "fixture": 0,
+      "path": ["notification", "status"]
+    },
+    {
+      "check": 2,
+      "schemaPath": "workerServerEnvelopeSchema/options/2/notification/options/12/observation",
+      "fixture": 1,
+      "path": ["notification", "observation"]
+    },
+    {
+      "check": 3,
+      "schemaPath": "workerServerEnvelopeSchema/options/2/notification/options/10/conflicts/files/element/path",
+      "fixture": 2,
+      "path": ["notification", "conflicts", "files", 0, "path"]
+    },
+    {
+      "check": 4,
+      "schemaPath": "workerServerEnvelopeSchema/options/2/notification/options/3",
+      "fixture": 3,
+      "path": ["notification"]
+    },
+    {
+      "check": 5,
+      "schemaPath": "workerServerEnvelopeSchema/options/2/notification/options/2/advertisement",
+      "fixture": 4,
+      "path": ["notification", "advertisement"]
+    },
+    {
+      "check": 6,
+      "schemaPath": "workerServerEnvelopeSchema/options/2/notification/options/1",
+      "fixture": 5,
+      "path": ["notification"]
+    },
+    {
+      "check": 7,
+      "schemaPath": "workerServerEnvelopeSchema/options/2/notification/options/0/chatId",
+      "fixture": 6,
+      "path": ["notification", "chatId"]
+    },
+    {
+      "check": 8,
+      "schemaPath": "workerServerEnvelopeSchema/options/2/notification/options/0/chatId",
+      "fixture": 6,
+      "path": ["notification", "chatId"]
+    },
+    {
+      "check": 9,
+      "schemaPath": "workerServerEnvelopeSchema/options/1/event/options/19/resolution/innerType/options/1",
+      "fixture": 7,
+      "path": ["event", "resolution"]
+    },
+    {
+      "check": 10,
+      "schemaPath": "workerServerEnvelopeSchema/options/1/event/options/19/resolution/innerType/options/1/protectedResponse",
+      "fixture": 7,
+      "path": ["event", "resolution", "protectedResponse"]
+    },
+    {
+      "check": 11,
+      "schemaPath": "workerServerEnvelopeSchema/options/1/event/options/19/resolution/innerType/options/0",
+      "fixture": 8,
+      "path": ["event", "resolution"]
+    },
+    {
+      "check": 12,
+      "schemaPath": "workerServerEnvelopeSchema/options/1/event/options/18/request/protectedPayload",
+      "fixture": 9,
+      "path": ["event", "request", "protectedPayload"]
+    },
+    {
+      "check": 13,
+      "schemaPath": "workerServerEnvelopeSchema/options/1/event/options/17/request/payload/options/2",
+      "fixture": 10,
+      "path": ["event", "request", "payload"]
+    },
+    {
+      "check": 14,
+      "schemaPath": "workerServerEnvelopeSchema/options/1/event/options/16/state/protectedContent",
+      "fixture": 11,
+      "path": ["event", "state", "protectedContent"]
+    },
+    {
+      "check": 15,
+      "schemaPath": "workerServerEnvelopeSchema/options/1/event/options/10/event/options/1/message/protectedContent",
+      "fixture": 12,
+      "path": ["event", "event", "message", "protectedContent"]
+    },
+    {
+      "check": 16,
+      "schemaPath": "workerServerEnvelopeSchema/options/1/event/options/10/event/options/1/message/classification/attachmentIds",
+      "fixture": 12,
+      "path": ["event", "event", "message", "classification", "attachmentIds"]
+    },
+    {
+      "check": 17,
+      "schemaPath": "workerServerEnvelopeSchema/options/1/event/options/10/event/options/0/message/protectedContent",
+      "fixture": 13,
+      "path": ["event", "event", "message", "protectedContent"]
+    },
+    {
+      "check": 18,
+      "schemaPath": "workerServerEnvelopeSchema/options/1/event/options/7/progress/options/0",
+      "fixture": 14,
+      "path": ["event", "progress"]
+    },
+    {
+      "check": 19,
+      "schemaPath": "workerServerEnvelopeSchema/options/1/event/options/5/activity/options/20/raw/innerType/metadata",
+      "fixture": 15,
+      "path": ["event", "activity", "raw", "metadata"]
+    },
+    {
+      "check": 20,
+      "schemaPath": "workerServerEnvelopeSchema/options/1/event/options/5/activity/options/20/raw/innerType/response/innerType/text/innerType",
+      "fixture": 16,
+      "path": ["event", "activity", "raw", "response", "text"]
+    },
+    {
+      "check": 21,
+      "schemaPath": "workerServerEnvelopeSchema/options/1/event/options/5/activity/options/20/raw/innerType/request/innerType/text/innerType",
+      "fixture": 17,
+      "path": ["event", "activity", "raw", "request", "text"]
+    },
+    {
+      "check": 22,
+      "schemaPath": "workerServerEnvelopeSchema/options/1/event/options/5/activity/options/2/outputTail/innerType/innerType",
+      "fixture": 18,
+      "path": ["event", "activity", "outputTail"]
+    },
+    {
+      "check": 23,
+      "schemaPath": "workerServerEnvelopeSchema/options/1/event/options/5/activity/options/0",
+      "fixture": 19,
+      "path": ["event", "activity"]
+    },
+    {
+      "check": 24,
+      "schemaPath": "workerServerEnvelopeSchema/options/1/event/options/5/activity/options/0/observation/innerType/image",
+      "fixture": 20,
+      "path": ["event", "activity", "observation", "image"]
+    },
+    {
+      "check": 25,
+      "schemaPath": "workerServerEnvelopeSchema/options/1/event/options/5/activity/options/0/cursor/innerType/appearance/label/innerType",
+      "fixture": 21,
+      "path": ["event", "activity", "cursor", "appearance", "label"]
+    },
+    {
+      "check": 26,
+      "schemaPath": "workerServerEnvelopeSchema/options/1/event/options/5/activity/options/0/cursor/innerType/appearance/label/innerType",
+      "fixture": 21,
+      "path": ["event", "activity", "cursor", "appearance", "label"]
+    },
+    {
+      "check": 27,
+      "schemaPath": "workerServerEnvelopeSchema/options/1/event/options/3/progress",
+      "fixture": 22,
+      "path": ["event", "progress"]
+    },
+    {
+      "check": 28,
+      "schemaPath": "workerServerEnvelopeSchema/options/1/event/options/2/protectedContent",
+      "fixture": 23,
+      "path": ["event", "protectedContent"]
+    },
+    {
+      "check": 29,
+      "schemaPath": "workerServerEnvelopeSchema/options/1/event/options/0/request",
+      "fixture": 24,
+      "path": ["event", "request"]
+    },
+    {
+      "check": 30,
+      "schemaPath": "workerServerEnvelopeSchema/options/1/event/options/0/request",
+      "fixture": 24,
+      "path": ["event", "request"]
+    }
+  ]
+}

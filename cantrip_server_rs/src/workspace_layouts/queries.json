@@ -1,0 +1,873 @@
+{
+  "columns": {
+    "workspaceLayouts": ["ownerId", "projectId", "workspaceId", "layout"],
+    "workspaceCommandReceipts": [
+      "ownerId",
+      "projectId",
+      "workspaceId",
+      "operationId",
+      "command",
+      "appliedRevision"
+    ],
+    "projects": [
+      "id",
+      "ownerId",
+      "protectedLabel",
+      "position",
+      "originKind",
+      "folderManagement",
+      "setupStatus",
+      "setupError",
+      "worktreePolicy",
+      "gitCapability",
+      "githubCapability",
+      "preferredWorkerId",
+      "tabLayoutRevision",
+      "centerLayoutRoot",
+      "taskSchedulingPaused",
+      "taskSchedulingPausedAt",
+      "taskSchedulingRevision",
+      "githubRepositoryBlindIndex",
+      "githubRepositoryId",
+      "githubRepositoryFullName",
+      "githubRepositoryUrl",
+      "createdAt",
+      "updatedAt"
+    ],
+    "tabGroups": [
+      "id",
+      "projectId",
+      "protectedLabel",
+      "region",
+      "position",
+      "anchorTabKey",
+      "createdAt",
+      "updatedAt"
+    ],
+    "tabGroupMembers": [
+      "tabKey",
+      "groupId",
+      "projectId",
+      "tabKind",
+      "tabId",
+      "position",
+      "createdAt",
+      "updatedAt"
+    ],
+    "chats": [
+      "id",
+      "ownerId",
+      "contextKind",
+      "projectId",
+      "protectedLabel",
+      "experience",
+      "autoTitlePending",
+      "autoTitleClaim",
+      "position",
+      "status",
+      "activeWorkerId",
+      "activeWorktreeId",
+      "activeScratchRootId",
+      "placementRevision",
+      "worktreeMode",
+      "modelId",
+      "reasoningEffort",
+      "customSubagentModel",
+      "subagentModelId",
+      "subagentReasoningEffort",
+      "permissionProfileId",
+      "computerUseAuthorityGeneration",
+      "automationPaused",
+      "managedAutonomyStopped",
+      "managedInputRevision",
+      "planMode",
+      "githubItemKind",
+      "githubItemNumber",
+      "githubAgentIntent",
+      "githubHeadSha",
+      "protectedComposerDraft",
+      "composerDraftUpdatedAt",
+      "protectedPlan",
+      "hasPendingPlanQuestion",
+      "hasUnreadCompletion",
+      "archivedAt",
+      "createdAt",
+      "updatedAt"
+    ],
+    "terminals": [
+      "id",
+      "projectId",
+      "kind",
+      "protectedLabel",
+      "protectedState",
+      "position",
+      "status",
+      "activeWorkerId",
+      "worktreeId",
+      "linkedChatId",
+      "runConfigurationId",
+      "runConfigurationRuntimeId",
+      "serviceEnabled",
+      "createdAt",
+      "updatedAt"
+    ],
+    "explorers": [
+      "id",
+      "projectId",
+      "protectedLabel",
+      "protectedState",
+      "position",
+      "activeWorkerId",
+      "worktreeId",
+      "fileMode",
+      "createdAt",
+      "updatedAt"
+    ],
+    "browsers": [
+      "id",
+      "projectId",
+      "protectedLabel",
+      "protectedState",
+      "stateRevision",
+      "position",
+      "createdAt",
+      "updatedAt"
+    ],
+    "codeTabs": [
+      "id",
+      "projectId",
+      "protectedLabel",
+      "position",
+      "activeWorkerId",
+      "worktreeId",
+      "createdAt",
+      "updatedAt"
+    ],
+    "projectViews": [
+      "id",
+      "projectId",
+      "protectedLabel",
+      "kind",
+      "worktreeId",
+      "position",
+      "createdAt",
+      "updatedAt"
+    ],
+    "projectBuiltInSurfaceStates": [
+      "projectId",
+      "definitionId",
+      "worktreeId",
+      "createdAt",
+      "updatedAt"
+    ],
+    "projectDockPresentationPreferences": [
+      "projectId",
+      "tabKey",
+      "region",
+      "preferredMode",
+      "splitFraction",
+      "restoreFraction",
+      "createdAt",
+      "updatedAt"
+    ]
+  },
+  "tableNames": {
+    "workspaceLayouts": "workspace_layouts",
+    "workspaceCommandReceipts": "workspace_command_receipts",
+    "projects": "projects",
+    "tabGroups": "tab_groups",
+    "tabGroupMembers": "tab_group_members",
+    "chats": "chats",
+    "terminals": "terminals",
+    "explorers": "explorers",
+    "browsers": "browsers",
+    "codeTabs": "code_tabs",
+    "projectViews": "project_views",
+    "projectBuiltInSurfaceStates": "project_builtin_surface_states",
+    "projectDockPresentationPreferences": "project_dock_presentation_preferences"
+  },
+  "surfaceDefinitions": [
+    {
+      "id": "project.agent",
+      "supportedPlacements": ["center", "right", "bottom"],
+      "tabKind": "chat"
+    },
+    {
+      "id": "project.terminal",
+      "supportedPlacements": ["center", "right", "bottom"],
+      "tabKind": "terminal"
+    },
+    {
+      "id": "project.explorer",
+      "supportedPlacements": ["center", "left", "right", "bottom"],
+      "tabKind": "explorer"
+    },
+    {
+      "id": "project.file",
+      "supportedPlacements": ["center", "right", "bottom"],
+      "tabKind": "explorer"
+    },
+    {
+      "id": "project.browser",
+      "supportedPlacements": ["center", "right", "bottom"],
+      "tabKind": "browser"
+    },
+    {
+      "id": "project.code",
+      "supportedPlacements": ["center", "right", "bottom"],
+      "tabKind": "code"
+    },
+    {
+      "id": "project.remote-desktop",
+      "supportedPlacements": ["center", "right", "bottom"],
+      "tabKind": "remote-desktop"
+    },
+    {
+      "id": "project.git-history",
+      "supportedPlacements": ["center", "right", "bottom"],
+      "tabKind": "history"
+    },
+    {
+      "id": "project.git-graph",
+      "supportedPlacements": ["center", "right", "bottom"],
+      "tabKind": "graph"
+    },
+    {
+      "id": "project.github-issues",
+      "supportedPlacements": ["center", "right", "bottom"],
+      "tabKind": "issues"
+    },
+    {
+      "id": "project.github-pull-requests",
+      "supportedPlacements": ["center", "right", "bottom"],
+      "tabKind": "prs"
+    },
+    {
+      "id": "project.github-actions",
+      "supportedPlacements": ["center", "right", "bottom"],
+      "tabKind": "actions"
+    },
+    {
+      "id": "project.tasks",
+      "supportedPlacements": ["center", "right", "bottom"],
+      "tabKind": null
+    },
+    {
+      "id": "git.history",
+      "supportedPlacements": ["center", "right", "bottom"],
+      "tabKind": null
+    },
+    {
+      "id": "git.graph",
+      "supportedPlacements": ["center", "right", "bottom"],
+      "tabKind": null
+    },
+    {
+      "id": "github.issues",
+      "supportedPlacements": ["center", "right", "bottom"],
+      "tabKind": null
+    },
+    {
+      "id": "github.pull-requests",
+      "supportedPlacements": ["center", "right", "bottom"],
+      "tabKind": null
+    },
+    {
+      "id": "github.actions",
+      "supportedPlacements": ["center", "right", "bottom"],
+      "tabKind": null
+    }
+  ],
+  "queries": {
+    "authority": {
+      "source": "select \"id\" from \"projects\" where (\"projects\".\"id\" = $1 and \"projects\".\"owner_id\" = $2) for share",
+      "bindings": [
+        {
+          "key": "project",
+          "kind": "text"
+        },
+        {
+          "key": "owner",
+          "kind": "text"
+        }
+      ]
+    },
+    "get": {
+      "source": "select \"owner_id\", \"project_id\", \"workspace_id\", \"layout\" from \"workspace_layouts\" where (\"workspace_layouts\".\"owner_id\" = $1 and \"workspace_layouts\".\"project_id\" = $2 and \"workspace_layouts\".\"workspace_id\" = $3)",
+      "bindings": [
+        {
+          "key": "owner",
+          "kind": "text"
+        },
+        {
+          "key": "project",
+          "kind": "text"
+        },
+        {
+          "key": "workspace",
+          "kind": "text"
+        }
+      ]
+    },
+    "legacy_project": {
+      "source": "select \"id\", \"tab_layout_revision\", \"center_layout_root\" from \"projects\" where (\"projects\".\"id\" = $1 and \"projects\".\"owner_id\" = $2) limit $3",
+      "bindings": [
+        {
+          "key": "project",
+          "kind": "text"
+        },
+        {
+          "key": "owner",
+          "kind": "text"
+        },
+        {
+          "constant": 1,
+          "kind": "bigint"
+        }
+      ]
+    },
+    "legacy_tabGroups": {
+      "source": "select \"id\", \"project_id\", \"protected_label\", \"region\", \"position\", \"anchor_tab_key\", \"created_at\", \"updated_at\" from \"tab_groups\" where \"tab_groups\".\"project_id\" = $1 order by CASE \"tab_groups\".\"region\"\n  WHEN 'center' THEN 0\n  WHEN 'right' THEN 1\n  WHEN 'bottom' THEN 2\n  WHEN 'left' THEN 3\n  ELSE 4\nEND, \"tab_groups\".\"position\" asc, \"tab_groups\".\"id\" asc",
+      "bindings": [
+        {
+          "key": "project",
+          "kind": "text"
+        }
+      ]
+    },
+    "legacy_tabGroupMembers": {
+      "source": "select \"tab_key\", \"group_id\", \"project_id\", \"tab_kind\", \"tab_id\", \"position\", \"created_at\", \"updated_at\" from \"tab_group_members\" where \"tab_group_members\".\"project_id\" = $1 order by \"tab_group_members\".\"position\" asc, \"tab_group_members\".\"tab_key\" asc",
+      "bindings": [
+        {
+          "key": "project",
+          "kind": "text"
+        }
+      ]
+    },
+    "legacy_chats": {
+      "source": "select \"id\", \"protected_label\" from \"chats\" where \"chats\".\"project_id\" = $1",
+      "bindings": [
+        {
+          "key": "project",
+          "kind": "text"
+        }
+      ]
+    },
+    "legacy_terminals": {
+      "source": "select \"id\", \"protected_label\" from \"terminals\" where \"terminals\".\"project_id\" = $1",
+      "bindings": [
+        {
+          "key": "project",
+          "kind": "text"
+        }
+      ]
+    },
+    "legacy_explorers": {
+      "source": "select \"id\", \"protected_label\" from \"explorers\" where \"explorers\".\"project_id\" = $1",
+      "bindings": [
+        {
+          "key": "project",
+          "kind": "text"
+        }
+      ]
+    },
+    "legacy_browsers": {
+      "source": "select \"id\", \"protected_label\" from \"browsers\" where \"browsers\".\"project_id\" = $1",
+      "bindings": [
+        {
+          "key": "project",
+          "kind": "text"
+        }
+      ]
+    },
+    "legacy_codeTabs": {
+      "source": "select \"id\", \"protected_label\" from \"code_tabs\" where \"code_tabs\".\"project_id\" = $1",
+      "bindings": [
+        {
+          "key": "project",
+          "kind": "text"
+        }
+      ]
+    },
+    "legacy_projectViews": {
+      "source": "select \"id\", \"protected_label\" from \"project_views\" where \"project_views\".\"project_id\" = $1",
+      "bindings": [
+        {
+          "key": "project",
+          "kind": "text"
+        }
+      ]
+    },
+    "legacy_projectBuiltInSurfaceStates": {
+      "source": "select \"project_id\", \"definition_id\", \"worktree_id\", \"created_at\", \"updated_at\" from \"project_builtin_surface_states\" where \"project_builtin_surface_states\".\"project_id\" = $1",
+      "bindings": [
+        {
+          "key": "project",
+          "kind": "text"
+        }
+      ]
+    },
+    "legacy_projectDockPresentationPreferences": {
+      "source": "select \"project_id\", \"tab_key\", \"region\", \"preferred_mode\", \"split_fraction\", \"restore_fraction\", \"created_at\", \"updated_at\" from \"project_dock_presentation_preferences\" where \"project_dock_presentation_preferences\".\"project_id\" = $1",
+      "bindings": [
+        {
+          "key": "project",
+          "kind": "text"
+        }
+      ]
+    },
+    "legacy_tabGroups_center": {
+      "source": "select \"id\" from \"tab_groups\" where (\"tab_groups\".\"project_id\" = $1 and \"tab_groups\".\"region\" = $2)",
+      "bindings": [
+        {
+          "key": "project",
+          "kind": "text"
+        },
+        {
+          "constant": "center",
+          "kind": "text"
+        }
+      ]
+    },
+    "insert": {
+      "source": "insert into \"workspace_layouts\" (\"owner_id\", \"project_id\", \"workspace_id\", \"layout\") values ($1, $2, $3, $4) on conflict do nothing",
+      "bindings": [
+        {
+          "key": "owner",
+          "kind": "text"
+        },
+        {
+          "key": "project",
+          "kind": "text"
+        },
+        {
+          "key": "workspace",
+          "kind": "text"
+        },
+        {
+          "key": "layout",
+          "kind": "jsonb"
+        }
+      ]
+    },
+    "locked": {
+      "source": "select \"owner_id\", \"project_id\", \"workspace_id\", \"layout\" from \"workspace_layouts\" where (\"workspace_layouts\".\"owner_id\" = $1 and \"workspace_layouts\".\"project_id\" = $2 and \"workspace_layouts\".\"workspace_id\" = $3) for update",
+      "bindings": [
+        {
+          "key": "owner",
+          "kind": "text"
+        },
+        {
+          "key": "project",
+          "kind": "text"
+        },
+        {
+          "key": "workspace",
+          "kind": "text"
+        }
+      ]
+    },
+    "receipt_get": {
+      "source": "select \"owner_id\", \"project_id\", \"workspace_id\", \"operation_id\", \"command\", \"applied_revision\" from \"workspace_command_receipts\" where (\"workspace_command_receipts\".\"owner_id\" = $1 and \"workspace_command_receipts\".\"project_id\" = $2 and \"workspace_command_receipts\".\"workspace_id\" = $3 and \"workspace_command_receipts\".\"operation_id\" = $4)",
+      "bindings": [
+        {
+          "key": "owner",
+          "kind": "text"
+        },
+        {
+          "key": "project",
+          "kind": "text"
+        },
+        {
+          "key": "workspace",
+          "kind": "text"
+        },
+        {
+          "key": "operation",
+          "kind": "text"
+        }
+      ]
+    },
+    "update": {
+      "source": "update \"workspace_layouts\" set \"layout\" = $1 where (\"workspace_layouts\".\"owner_id\" = $2 and \"workspace_layouts\".\"project_id\" = $3 and \"workspace_layouts\".\"workspace_id\" = $4)",
+      "bindings": [
+        {
+          "key": "layout",
+          "kind": "jsonb"
+        },
+        {
+          "key": "owner",
+          "kind": "text"
+        },
+        {
+          "key": "project",
+          "kind": "text"
+        },
+        {
+          "key": "workspace",
+          "kind": "text"
+        }
+      ]
+    },
+    "receipt_insert": {
+      "source": "insert into \"workspace_command_receipts\" (\"owner_id\", \"project_id\", \"workspace_id\", \"operation_id\", \"command\", \"applied_revision\") values ($1, $2, $3, $4, $5, $6)",
+      "bindings": [
+        {
+          "key": "owner",
+          "kind": "text"
+        },
+        {
+          "key": "project",
+          "kind": "text"
+        },
+        {
+          "key": "workspace",
+          "kind": "text"
+        },
+        {
+          "key": "operation",
+          "kind": "text"
+        },
+        {
+          "key": "command",
+          "kind": "jsonb"
+        },
+        {
+          "key": "appliedRevision",
+          "kind": "bigint"
+        }
+      ]
+    },
+    "resolve_chats": {
+      "source": "select \"id\", \"protected_label\" from \"chats\" where (\"chats\".\"id\" = $1 and \"chats\".\"project_id\" = $2 and \"chats\".\"archived_at\" is null) limit $3",
+      "bindings": [
+        {
+          "key": "resource",
+          "kind": "text"
+        },
+        {
+          "key": "project",
+          "kind": "text"
+        },
+        {
+          "constant": 1,
+          "kind": "bigint"
+        }
+      ]
+    },
+    "resolve_terminals": {
+      "source": "select \"id\", \"protected_label\" from \"terminals\" where (\"terminals\".\"id\" = $1 and \"terminals\".\"project_id\" = $2 and \"terminals\".\"linked_chat_id\" is null) limit $3",
+      "bindings": [
+        {
+          "key": "resource",
+          "kind": "text"
+        },
+        {
+          "key": "project",
+          "kind": "text"
+        },
+        {
+          "constant": 1,
+          "kind": "bigint"
+        }
+      ]
+    },
+    "resolve_explorers": {
+      "source": "select \"id\", \"protected_label\" from \"explorers\" where (\"explorers\".\"id\" = $1 and \"explorers\".\"project_id\" = $2) limit $3",
+      "bindings": [
+        {
+          "key": "resource",
+          "kind": "text"
+        },
+        {
+          "key": "project",
+          "kind": "text"
+        },
+        {
+          "constant": 1,
+          "kind": "bigint"
+        }
+      ]
+    },
+    "resolve_document": {
+      "source": "select \"id\" from \"file_documents\" where (\"file_documents\".\"id\" = $1 and \"file_documents\".\"project_id\" = $2) limit $3",
+      "bindings": [
+        {
+          "key": "resource",
+          "kind": "text"
+        },
+        {
+          "key": "project",
+          "kind": "text"
+        },
+        {
+          "constant": 1,
+          "kind": "bigint"
+        }
+      ]
+    },
+    "resolve_browsers": {
+      "source": "select \"id\", \"protected_label\" from \"browsers\" where (\"browsers\".\"id\" = $1 and \"browsers\".\"project_id\" = $2) limit $3",
+      "bindings": [
+        {
+          "key": "resource",
+          "kind": "text"
+        },
+        {
+          "key": "project",
+          "kind": "text"
+        },
+        {
+          "constant": 1,
+          "kind": "bigint"
+        }
+      ]
+    },
+    "resolve_codeTabs": {
+      "source": "select \"id\", \"protected_label\" from \"code_tabs\" where (\"code_tabs\".\"id\" = $1 and \"code_tabs\".\"project_id\" = $2) limit $3",
+      "bindings": [
+        {
+          "key": "resource",
+          "kind": "text"
+        },
+        {
+          "key": "project",
+          "kind": "text"
+        },
+        {
+          "constant": 1,
+          "kind": "bigint"
+        }
+      ]
+    },
+    "resolve_projectViews": {
+      "source": "select \"id\", \"protected_label\" from \"project_views\" where (\"project_views\".\"id\" = $1 and \"project_views\".\"project_id\" = $2 and \"project_views\".\"kind\" = $3) limit $4",
+      "bindings": [
+        {
+          "key": "resource",
+          "kind": "text"
+        },
+        {
+          "key": "project",
+          "kind": "text"
+        },
+        {
+          "key": "tabKind",
+          "kind": "text"
+        },
+        {
+          "constant": 1,
+          "kind": "bigint"
+        }
+      ]
+    },
+    "builtin_worktree": {
+      "source": "select \"project_worktrees\".\"id\" from \"project_worktrees\" inner join \"project_sources\" on \"project_sources\".\"id\" = \"project_worktrees\".\"project_source_id\" where (\"project_worktrees\".\"id\" = $1 and \"project_sources\".\"project_id\" = $2 and \"project_worktrees\".\"lifecycle_state\" = $3 and \"project_sources\".\"removed_at\" is null)",
+      "bindings": [
+        {
+          "key": "worktree",
+          "kind": "text"
+        },
+        {
+          "key": "project",
+          "kind": "text"
+        },
+        {
+          "constant": "ready",
+          "kind": "text"
+        }
+      ]
+    },
+    "import_document": {
+      "source": "select \"id\" from \"file_documents\" where (\"file_documents\".\"id\" = $1 and \"file_documents\".\"project_id\" = $2)",
+      "bindings": [
+        {
+          "document": 0,
+          "kind": "text"
+        },
+        {
+          "key": "project",
+          "kind": "text"
+        }
+      ]
+    },
+    "migration_codeTabs": {
+      "source": "select \"id\", \"project_id\", \"protected_label\", \"position\", \"active_worker_id\", \"worktree_id\", \"created_at\", \"updated_at\" from \"code_tabs\" where (\"code_tabs\".\"id\" = $1 and \"code_tabs\".\"project_id\" = $2) for share",
+      "bindings": [
+        {
+          "key": "resource",
+          "kind": "text"
+        },
+        {
+          "key": "project",
+          "kind": "text"
+        }
+      ]
+    },
+    "migration_documents_1": {
+      "source": "select \"file_documents\".\"id\", \"file_documents\".\"worker_id\", \"file_documents\".\"worktree_id\" from \"file_documents\" inner join \"project_worktrees\" on (\"project_worktrees\".\"id\" = \"file_documents\".\"worktree_id\" and \"project_worktrees\".\"worker_id\" = \"file_documents\".\"worker_id\" and \"project_worktrees\".\"lifecycle_state\" = $1) inner join \"project_sources\" on (\"project_sources\".\"id\" = \"project_worktrees\".\"project_source_id\" and \"project_sources\".\"project_id\" = $2 and \"project_sources\".\"removed_at\" is null) inner join \"workers\" on (\"workers\".\"id\" = \"file_documents\".\"worker_id\" and \"workers\".\"owner_id\" = $3 and \"workers\".\"unlinked_at\" is null) where (\"file_documents\".\"project_id\" = $4 and \"file_documents\".\"id\" in ($5)) for share",
+      "bindings": [
+        {
+          "constant": "ready",
+          "kind": "text"
+        },
+        {
+          "key": "project",
+          "kind": "text"
+        },
+        {
+          "key": "owner",
+          "kind": "text"
+        },
+        {
+          "key": "project",
+          "kind": "text"
+        },
+        {
+          "document": 0,
+          "kind": "text"
+        }
+      ]
+    },
+    "migration_documents_2": {
+      "source": "select \"file_documents\".\"id\", \"file_documents\".\"worker_id\", \"file_documents\".\"worktree_id\" from \"file_documents\" inner join \"project_worktrees\" on (\"project_worktrees\".\"id\" = \"file_documents\".\"worktree_id\" and \"project_worktrees\".\"worker_id\" = \"file_documents\".\"worker_id\" and \"project_worktrees\".\"lifecycle_state\" = $1) inner join \"project_sources\" on (\"project_sources\".\"id\" = \"project_worktrees\".\"project_source_id\" and \"project_sources\".\"project_id\" = $2 and \"project_sources\".\"removed_at\" is null) inner join \"workers\" on (\"workers\".\"id\" = \"file_documents\".\"worker_id\" and \"workers\".\"owner_id\" = $3 and \"workers\".\"unlinked_at\" is null) where (\"file_documents\".\"project_id\" = $4 and \"file_documents\".\"id\" in ($5, $6)) for share",
+      "bindings": [
+        {
+          "constant": "ready",
+          "kind": "text"
+        },
+        {
+          "key": "project",
+          "kind": "text"
+        },
+        {
+          "key": "owner",
+          "kind": "text"
+        },
+        {
+          "key": "project",
+          "kind": "text"
+        },
+        {
+          "document": 0,
+          "kind": "text"
+        },
+        {
+          "document": 1,
+          "kind": "text"
+        }
+      ]
+    },
+    "migration_documents_3": {
+      "source": "select \"file_documents\".\"id\", \"file_documents\".\"worker_id\", \"file_documents\".\"worktree_id\" from \"file_documents\" inner join \"project_worktrees\" on (\"project_worktrees\".\"id\" = \"file_documents\".\"worktree_id\" and \"project_worktrees\".\"worker_id\" = \"file_documents\".\"worker_id\" and \"project_worktrees\".\"lifecycle_state\" = $1) inner join \"project_sources\" on (\"project_sources\".\"id\" = \"project_worktrees\".\"project_source_id\" and \"project_sources\".\"project_id\" = $2 and \"project_sources\".\"removed_at\" is null) inner join \"workers\" on (\"workers\".\"id\" = \"file_documents\".\"worker_id\" and \"workers\".\"owner_id\" = $3 and \"workers\".\"unlinked_at\" is null) where (\"file_documents\".\"project_id\" = $4 and \"file_documents\".\"id\" in ($5, $6, $7)) for share",
+      "bindings": [
+        {
+          "constant": "ready",
+          "kind": "text"
+        },
+        {
+          "key": "project",
+          "kind": "text"
+        },
+        {
+          "key": "owner",
+          "kind": "text"
+        },
+        {
+          "key": "project",
+          "kind": "text"
+        },
+        {
+          "document": 0,
+          "kind": "text"
+        },
+        {
+          "document": 1,
+          "kind": "text"
+        },
+        {
+          "document": 2,
+          "kind": "text"
+        }
+      ]
+    },
+    "migration_documents_11": {
+      "source": "select \"file_documents\".\"id\", \"file_documents\".\"worker_id\", \"file_documents\".\"worktree_id\" from \"file_documents\" inner join \"project_worktrees\" on (\"project_worktrees\".\"id\" = \"file_documents\".\"worktree_id\" and \"project_worktrees\".\"worker_id\" = \"file_documents\".\"worker_id\" and \"project_worktrees\".\"lifecycle_state\" = $1) inner join \"project_sources\" on (\"project_sources\".\"id\" = \"project_worktrees\".\"project_source_id\" and \"project_sources\".\"project_id\" = $2 and \"project_sources\".\"removed_at\" is null) inner join \"workers\" on (\"workers\".\"id\" = \"file_documents\".\"worker_id\" and \"workers\".\"owner_id\" = $3 and \"workers\".\"unlinked_at\" is null) where (\"file_documents\".\"project_id\" = $4 and \"file_documents\".\"id\" in ($5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)) for share",
+      "bindings": [
+        {
+          "constant": "ready",
+          "kind": "text"
+        },
+        {
+          "key": "project",
+          "kind": "text"
+        },
+        {
+          "key": "owner",
+          "kind": "text"
+        },
+        {
+          "key": "project",
+          "kind": "text"
+        },
+        {
+          "document": 0,
+          "kind": "text"
+        },
+        {
+          "document": 1,
+          "kind": "text"
+        },
+        {
+          "document": 2,
+          "kind": "text"
+        },
+        {
+          "document": 3,
+          "kind": "text"
+        },
+        {
+          "document": 4,
+          "kind": "text"
+        },
+        {
+          "document": 5,
+          "kind": "text"
+        },
+        {
+          "document": 6,
+          "kind": "text"
+        },
+        {
+          "document": 7,
+          "kind": "text"
+        },
+        {
+          "document": 8,
+          "kind": "text"
+        },
+        {
+          "document": 9,
+          "kind": "text"
+        },
+        {
+          "document": 10,
+          "kind": "text"
+        }
+      ]
+    },
+    "migration_explorers": {
+      "source": "select \"id\", \"project_id\", \"protected_label\", \"protected_state\", \"position\", \"active_worker_id\", \"worktree_id\", \"file_mode\", \"created_at\", \"updated_at\" from \"explorers\" where (\"explorers\".\"id\" = $1 and \"explorers\".\"project_id\" = $2) for share",
+      "bindings": [
+        {
+          "key": "resource",
+          "kind": "text"
+        },
+        {
+          "key": "project",
+          "kind": "text"
+        }
+      ]
+    }
+  }
+}
