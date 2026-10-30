@@ -245,6 +245,12 @@ jobs:
         run: node --import tsx scripts/server-rust/project-surface-http-compatibility.mjs --database postgres --report .qa/rust-server/project-surface-http-compatibility-postgres.json
       - name: Project surface pin races, retarget fencing and admitted shutdown
         run: node --import tsx scripts/server-rust/project-surface-lifetimes.mjs --report .qa/rust-server/project-surface-lifetimes.json
+      - name: Removed plaintext GitHub catalog HTTP compatibility with native PGlite
+        run: node --import tsx scripts/server-rust/github-catalog-http-compatibility.mjs --database pglite --report .qa/rust-server/github-catalog-http-pglite.json
+      - name: Removed plaintext GitHub catalog HTTP compatibility with private PostgreSQL
+        run: node --import tsx scripts/server-rust/github-catalog-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/github-catalog-http-bundled.json
+      - name: Removed plaintext GitHub catalog HTTP compatibility with external PostgreSQL
+        run: node --import tsx scripts/server-rust/github-catalog-http-compatibility.mjs --database postgres --report .qa/rust-server/github-catalog-http-postgres.json
       - name: Git, worktree and Run wire validation contracts
         run: node scripts/server-rust/cargo.mjs test --test worktree_contracts -- --nocapture
       - name: Git, worktrees and Run admission, retirement and disconnect with native PGlite
