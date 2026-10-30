@@ -1003,6 +1003,29 @@ try {
             action,
           }),
         );
+        const awaitObservationPath = async () => {
+          // Inventory uses the canonical `path` handle, while observation
+          // configuration returns the field-scoped `worktreePath` handle.
+          // Wait for its actual persisted replacement before the next command;
+          // receipt of a configure command alone does not prove its reply applied.
+          await eventually(
+            async () => {
+              await fixture.observe(
+                "settled worktree routing",
+                "GET",
+                worktreeBase,
+              );
+              return fixture.records.get("settled worktree routing");
+            },
+            (rows) =>
+              assert.equal(
+                rows.find((row) => row.id === "github-alpha-main")?.path,
+                "ctrr_" + "w".repeat(43),
+                "the observation reply updated the stored Primary routing path",
+              ),
+          );
+        };
+        await awaitObservationPath();
         for (const [label, path, body] of [
           ["unlock", `${worktreeBase}/github-alpha-main/unlock`, undefined],
           [
@@ -1045,6 +1068,7 @@ try {
             assert.equal(value.origin, "user");
             assert.equal(value.name, "New worktree");
           }
+          await awaitObservationPath();
         }
         result.worktreeCommands = fixture.normalize(worker.worktreeCommands);
         assert.equal(result.worktreeCommands.length, 5);
