@@ -9,6 +9,8 @@ use clap::Parser;
 mod browsers;
 #[path = "support/chat_console.rs"]
 mod chat_console;
+#[path = "support/file_documents.rs"]
+mod file_documents;
 #[path = "support/tunnels.rs"]
 mod tunnels;
 use futures::FutureExt;
@@ -93,6 +95,11 @@ async fn main() -> Result<()> {
                 .is_some_and(|op| op.starts_with("browser-"))
             {
                 browsers::run(database.clone(), &request).await
+            } else if request["op"]
+                .as_str()
+                .is_some_and(|op| op.starts_with("document-"))
+            {
+                file_documents::run(database.clone(), &request).await
             } else if request["op"] == "sql" {
                 database
                     .execute(request["sql"].as_str().context("Fixture SQL")?)
@@ -436,10 +443,11 @@ async fn main() -> Result<()> {
             Ok(value) => reply["value"] = value,
             Err(error) => {
                 reply["diagnostic"] = Value::String(error.to_string().into());
-                if request["op"]
-                    .as_str()
-                    .is_some_and(|op| op.starts_with("tunnel-") || op.starts_with("browser-"))
-                {
+                if request["op"].as_str().is_some_and(|op| {
+                    op.starts_with("tunnel-")
+                        || op.starts_with("browser-")
+                        || op.starts_with("document-")
+                }) {
                     for cause in error.chain() {
                         if let Some(pg) = cause.downcast_ref::<tokio_postgres::Error>()
                             && let Some(code) = pg.code()

@@ -32,6 +32,10 @@ import { HttpFixture } from "./http-fixture.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
 import { password } from "./security-fixtures.mjs";
 import { actualTerminalServices } from "./actual-terminal-services.mjs";
+import {
+  actualWorkerFileDocuments,
+  retainedWorkerFileDocument,
+} from "./actual-worker-file-documents.mjs";
 import { actualNativeDirectProbe } from "./actual-native-direct-probe.mjs";
 import {
   prepareTunnelLink,
@@ -441,13 +445,23 @@ async function flow(
         directBrokerBinary,
       });
     // The preceding terminal offline case intentionally stops the worker.
-    // Browser creation now uses real placement through the public client API.
+    // Subsequent document/browser flows use the worker through the public API.
     if (
       (process.argv.includes("--surfaces") ||
-        process.argv.includes("--project-shares")) &&
+        process.argv.includes("--project-shares") ||
+        process.argv.includes("--file-documents")) &&
       !worker
     )
       await startWorker();
+    const fileDocuments = process.argv.includes("--file-documents")
+      ? await actualWorkerFileDocuments({
+          page,
+          projectId: created.id,
+          workerId,
+          directory: await filesystem(created.id),
+          result,
+        })
+      : undefined;
     const surface = process.argv.includes("--surfaces")
       ? await prepareBrowserSurface(
           page,
@@ -515,7 +529,7 @@ async function flow(
       : undefined;
     await page.evaluate(() => window.folderLive.stop());
     const retainedPort =
-      surface || tunnel || projectShares
+      surface || tunnel || projectShares || fileDocuments
         ? Number(new URL(fixture.server.origin).port)
         : 0;
     // Retain a generous diagnostic deadline for both implementations. Earlier
@@ -589,8 +603,15 @@ async function flow(
     );
     assert.deepEqual(retained.projects, wire);
     assert.deepEqual(retained.labels, names);
-    if (surface || tunnel || projectShares) {
+    if (surface || tunnel || projectShares || fileDocuments) {
       await startWorker();
+      if (fileDocuments)
+        await retainedWorkerFileDocument({
+          page,
+          workerId,
+          document: fileDocuments,
+          result,
+        });
       if (surface)
         await actualWorkerBrowserSurface({
           page,

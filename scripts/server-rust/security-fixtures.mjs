@@ -10,6 +10,7 @@ import { folderWireFixtures } from "./folder-wire-fixtures.mjs";
 import { terminalWireFixtures } from "./terminal-wire-fixtures.mjs";
 import { browserWireFixtures } from "./browser-wire-fixtures.mjs";
 import { projectShareWireFixtures } from "./project-share-wire-fixtures.mjs";
+import { fileDocumentWireFixtures } from "./file-document-wire-fixtures.mjs";
 import { tunnelWireFixtures } from "./tunnel-wire-fixtures.mjs";
 import { workspaceWireFixtures } from "./workspace-wire-fixtures.mjs";
 import { workerLinkWireFixtures } from "./worker-link-wire-fixtures.mjs";
@@ -659,6 +660,7 @@ export const securityFixtures = {
   ...terminalWireFixtures(projectLabel),
   ...browserWireFixtures(projectLabel),
   ...projectShareWireFixtures(),
+  ...fileDocumentWireFixtures(),
   ...tunnelWireFixtures,
   ...workspaceWireFixtures(),
   ...workerLinkWireFixtures,

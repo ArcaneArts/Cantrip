@@ -2,6 +2,69 @@
 
 Status: **implementation in progress; not a deployable replacement**.
 
+## Immutable file documents
+
+The four document catalog, creation, lookup and protected operation routes now
+execute in Rust. The repository uses the actual TypeScript statements and
+parameter order. Creation locks the current project, source, checkout and worker
+authority through insertion. Exact retries preserve the original binding and
+timestamp; reusing an identity with different ciphertext, checkout, worker or
+project returns the same conflict. Historical documents remain in their owner's
+catalog when their checkout becomes unavailable. Operations rejoin current
+ownership and availability before dispatching the opaque request to the worker.
+
+The operation route retains its explicit 4 MiB body limit, worker failure
+mapping and strict protected-response validation. File paths and contents stay
+encrypted. Admitted operations and creation own their lifetimes through caller
+disconnect and shutdown. Successful creation, including an exact retry, publishes
+the reference's project-scoped document invalidation after HTTP response
+completion. Failed requests and file operations do not mutate the catalog.
+
+Local real-repository comparisons pass 42 operations and four state snapshots on
+each storage mode, including immutable conflicts, tenant isolation, source and
+worker changes, insertion rollback, process restart and removed checkouts.
+External PostgreSQL additionally passes five actual lock races. Four hold the
+authority query while its records become unavailable; the fifth blocks the
+actual INSERT in a database trigger and proves source removal must wait for its
+transaction to commit. The committed document then remains recoverable while its
+operation context becomes unavailable. Query drift and 2,089 validation and
+rendered-error cases match the real protocol.
+
+A separate real-HTTP shutdown test blocks the actual document INSERT after its
+authority selection, aborts the caller and starts server shutdown. Both servers
+retain that same blocked query until the lock is released, commit the identical
+opaque binding, finish shutdown and serve the retained document after restart.
+No old snapshot or discarded write is used to make that test pass.
+
+Actual Node/Rust HTTP comparisons pass 34 anonymous and 36 account observations
+per runtime on all three stores. They compare complete worker commands, per-route
+Live invalidations and retained rows, including real database failure, malformed
+requests, both sides of the operation body limit, worker errors, invalid replies,
+caller disconnect and worker disconnect. PostgreSQL publication can complete
+after a Live ping, so the fixture waits for the actual expected committed event
+before asserting its exact scope and count.
+
+On all three stores, the unchanged browser API and full worker write 44,454 real
+file bytes, reject stale saves, wrong locations and repeated operations, resolve
+fresh-nonce retries through the existing client, and recover document access
+after server and worker restart. The combined existing
+terminal/browser/tunnel/share flow passes 32 steps per runtime with this document
+flow included on all three stores. Run the combined storage flows sequentially
+on one host to keep OS discovery away from another flow's strict TCP peer.
+
+The full native regression passes 127 tests across 57 result groups, with no
+failures or ignored tests. Strict all-target Clippy, Rustfmt, all 18 changed
+formatter files, the 20 source file-document tests and the application production
+build pass. The repository check passes 1,623 server and 3,899 app tests, then
+fails the same worker filesystem-notification case: 2,531 worker tests pass and
+one fails. Both the feature and clean Primary checkouts pass all ten tests in
+that file when run separately. All 932 compared worker/shared/dependency files
+are byte-identical. The broad check remains red; this intermittent failure is
+unresolved. Current-head supported-platform and packaged acceptance remain
+required. Complete workspace/editor behavior, shared
+coordination, packaging, existing-data conversion, full post-write rollback and
+the rest of the server replacement remain separate required work.
+
 ## Direct preparation acknowledgment and release comparison
 
 The terminal HTTP fixture now holds the actual worker preparation acknowledgment

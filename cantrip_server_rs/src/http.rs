@@ -18,6 +18,7 @@ mod browser_discovery;
 mod browsers;
 mod direct_attachments;
 mod encryption;
+mod file_documents;
 mod folders;
 mod live_socket;
 mod middleware;
@@ -136,6 +137,7 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(policies::routes())
         .merge(projects::routes())
         .merge(folders::routes())
+        .merge(file_documents::routes())
         .merge(repository_operations::routes())
         .merge(settings::routes())
         .merge(terminals::routes())
