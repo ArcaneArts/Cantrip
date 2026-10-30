@@ -27,7 +27,7 @@ vi.mock("@/components/sidebar/project-chat-list", () => ({
 }));
 
 vi.mock("@/components/sidebar/project-conversation-list", () => ({
-  ProjectConversationList: () => <div>Agent conversations</div>,
+  ProjectConversationList: () => <div>Agent chats</div>,
 }));
 
 vi.mock("@/components/servers/server-switcher", () => ({

@@ -60,7 +60,7 @@ it("keeps Task recovery in Settings and sends Agent archive navigation to Conver
     const buttons = [...host.querySelectorAll("button")];
     await act(async () =>
       buttons
-        .find((button) => button.textContent === "Open archived conversations")!
+        .find((button) => button.textContent === "Open archived chats")!
         .click(),
     );
     expect(navigate).toHaveBeenCalledOnce();
