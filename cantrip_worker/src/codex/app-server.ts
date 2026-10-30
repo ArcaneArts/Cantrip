@@ -2773,7 +2773,12 @@ export class CodexAppServer implements CodexRuntime {
       throw new Error("Could not start a Codex thread.");
     }
     options.onThreadLoaded?.(threadId);
-    if (this.methodAvailable("thread/goal/get")) {
+    // Managed executions already own goal continuation through native
+    // admissions. Optional goal metadata must not gate normal GUI input.
+    if (
+      !options.inheritThreadSettings &&
+      this.methodAvailable("thread/goal/get")
+    ) {
       await this.refreshGoal(threadId);
     }
     const collaborationMode =

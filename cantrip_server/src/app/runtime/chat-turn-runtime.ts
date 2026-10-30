@@ -84,6 +84,7 @@ import type {
 } from "./chat-turn-types.js";
 import { createTaskTurnBootstrapObserver } from "./task-turn-bootstrap-observer.js";
 import { acquireChatTurnExecution } from "./chat-turn-admission.js";
+import { boundManagedRuntime } from "../../terminals/bound-managed-runtime.js";
 import { settleChatTurnFailure } from "./chat-turn-failure.js";
 import { reconcileTaskTurnPlacement } from "./task-turn-placement.js";
 
@@ -183,13 +184,22 @@ export function createChatTurnRuntime({
     );
     const { requestedReasoningEffort, turnModelConfiguration } =
       chatTurnModelConfiguration(context, input, modelId);
+    // A managed turn inherits the native session's settings. Re-resolving its
+    // bootstrap model can choose another route/account, discard the canonical
+    // thread, and invalidate the admission issued for this very submission.
+    const boundRuntime =
+      context.threadId &&
+      context.modelRouteId &&
+      managedConsoleSessionContext(context)
+        ? await boundManagedRuntime(ownerId, context, repository)
+        : null;
     const routePairs = await observeTaskTurnBootstrapStage(
       "resolve-model-routes",
       () =>
         routePairsForConfiguration(
           context,
           turnModelConfiguration,
-          options.runtimes,
+          boundRuntime ? [boundRuntime] : options.runtimes,
         ),
     );
     const preparedRuntimes = routePairs.map(({ root }) => root);

@@ -167,6 +167,14 @@ server.on("connection", (socket) => {
       return;
     }
     if (message.method === "thread/goal/get") {
+      if (mode === "goal-read-hangs") return;
+      if (mode === "goal-read-fails") {
+        socket.send(JSON.stringify({
+          id: message.id,
+          error: { code: -32600, message: "thread not found: " + threadId }
+        }));
+        return;
+      }
       reply(socket, message.id, { goal });
       const complete = completeStream;
       completeStream = null;
@@ -351,7 +359,7 @@ server.on("connection", (socket) => {
           params: { threadId, turnId: actualTurnId, item: answer }
         }));
         goal = { ...goal, status: "complete", updatedAt: 4 };
-        socket.send(JSON.stringify({
+        if (!mode.startsWith("goal-read-")) socket.send(JSON.stringify({
           method: "thread/goal/updated",
           params: { threadId, goal }
         }));
@@ -413,7 +421,9 @@ type FixtureMode =
   | "stream-complete"
   | "stream-close"
   | "startup-exit"
-  | "stderr-endpoint";
+  | "stderr-endpoint"
+  | "goal-read-fails"
+  | "goal-read-hangs";
 
 function launcher(mode: FixtureMode): CodexProcessLauncher {
   return (binary, arguments_, options) =>
@@ -450,6 +460,46 @@ async function fixture(
 }
 
 describe("Codex goal streaming", () => {
+  it.each(["goal-read-fails", "goal-read-hangs"] as const)(
+    "delivers ordinary managed input when optional goal discovery %s",
+    async (mode) => {
+      const { root, runtime } = await fixture(mode);
+      let dispatched = 0;
+      try {
+        const result = await runtime.runTurn({
+          ...turnDefaults,
+          attachments: [],
+          chatId: "ordinary-chat",
+          clientMessageId: "ordinary-message",
+          cwd: root,
+          inheritThreadSettings: true,
+          isPrimary: true,
+          mcpServers: [],
+          model,
+          permissionProfileId: YOLO_PERMISSION_PROFILE_ID,
+          planMode: "default",
+          prompt: "What should we work on next?",
+          provider,
+          skillNames: [],
+          threadId: "goal-thread",
+          worktreeMode: "agent-managed",
+          worktreePolicy: "required-for-writes",
+          onBeforeNativeDispatch: async () => {
+            dispatched += 1;
+          },
+        });
+        expect(result).toMatchObject({
+          status: "completed",
+          threadId: "goal-thread",
+          text: "Goal work is visible.",
+        });
+        expect(dispatched).toBe(1);
+      } finally {
+        runtime.close();
+      }
+    },
+  );
+
   it("edits an existing goal without resuming it or resetting its budget and usage", async () => {
     const { root, runtime } = await fixture("edit-paused");
     try {
