@@ -9,6 +9,8 @@ export function ConversationRowMenu({
   title,
   pending,
   archive,
+  rename,
+  fork,
   place,
   restore,
   remove,
@@ -16,6 +18,8 @@ export function ConversationRowMenu({
   title: string;
   pending: boolean;
   archive?: () => void;
+  rename?: () => void;
+  fork?: () => void;
   place?: (region: "center" | "right" | "bottom") => void;
   restore?: () => void;
   remove?: () => void;
@@ -50,6 +54,16 @@ export function ConversationRowMenu({
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <StyledDropdownMenuContent align="end">
+          {rename ? (
+            <StyledDropdownMenuItem onSelect={rename}>
+              Rename
+            </StyledDropdownMenuItem>
+          ) : null}
+          {fork ? (
+            <StyledDropdownMenuItem onSelect={fork}>
+              Fork
+            </StyledDropdownMenuItem>
+          ) : null}
           {place
             ? (
                 [

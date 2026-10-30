@@ -260,11 +260,13 @@ export class ChatForkRepository {
         startingHead: target.head,
         runtimeSessionId,
       });
-      await attachProjectTab(transaction, {
-        projectId,
-        tabId: fork.id,
-        tabKind: "chat",
-      });
+      if (input.attachToTabLayout !== false) {
+        await attachProjectTab(transaction, {
+          projectId,
+          tabId: fork.id,
+          tabKind: "chat",
+        });
+      }
       if (sourceMessages.length > 0) {
         await transaction.insert(schema.chatMessages).values(
           sourceMessages.map((source, index) => {

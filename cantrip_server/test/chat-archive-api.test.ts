@@ -179,6 +179,33 @@ describe.sequential("chat archive API", () => {
     });
   });
 
+  it("forks a sidebar conversation without legacy placement", async () => {
+    const source = await createChat("Sidebar fork source");
+    const fields = protectedChatFields();
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/chats/${source.id}/fork`,
+      payload: { ...fields, attachToTabLayout: false },
+    });
+    expect(response.statusCode, response.body).toBe(201);
+    expect(chatWireSummarySchema.parse(response.json()).id).toBe(fields.id);
+    const layout = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/panes`,
+    });
+    expect(layout.statusCode).toBe(200);
+    expect(layout.body).not.toContain(fields.id);
+    const catalog = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/conversations?state=active&limit=100`,
+    });
+    expect(
+      conversationCatalogWirePageSchema
+        .parse(catalog.json())
+        .items.some((chat) => chat.id === fields.id),
+    ).toBe(true);
+  });
+
   it("rejects a source changed during worker reprotection without creating a fork", async () => {
     const source = await createChat("Concurrent fork");
     await database.repository.appendEncryptedMessage(LOCAL_USER_ID, source.id, {

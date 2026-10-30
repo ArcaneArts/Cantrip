@@ -205,13 +205,21 @@ async function openContextualChat(raw: unknown) {
 }
 
 export async function renameChat(chatId: string, title: string) {
+  const expectedIdentity = getClientSessionIdentitySnapshot();
+  if (!expectedIdentity)
+    throw new Error("Sign in before renaming a conversation.");
+  const titleProtection = await chatTitleEncryption.protect(chatId, title);
   return openContextualChat(
-    await request(`/api/chats/${encodeURIComponent(chatId)}`, {
-      method: "PATCH",
-      body: JSON.stringify({
-        titleProtection: await chatTitleEncryption.protect(chatId, title),
-      }),
-    }),
+    await request(
+      `/api/chats/${encodeURIComponent(chatId)}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({
+          titleProtection,
+        }),
+      },
+      { expectedIdentity },
+    ),
   );
 }
 
@@ -274,17 +282,31 @@ export async function forkChat(
   chatId: string,
   sourceTitle: string,
   messageId?: string,
+  options?: { attachToTabLayout?: boolean },
 ) {
+  const expectedIdentity = getClientSessionIdentitySnapshot();
+  if (!expectedIdentity)
+    throw new Error("Sign in before forking a conversation.");
   const id = crypto.randomUUID();
   return openContextualChat(
-    await post(`/api/chats/${encodeURIComponent(chatId)}/fork`, {
-      id,
-      titleProtection: await chatTitleEncryption.protect(
-        id,
-        `${sourceTitle} (fork)`,
-      ),
-      ...(messageId ? { messageId } : {}),
-    }),
+    await request(
+      `/api/chats/${encodeURIComponent(chatId)}/fork`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          id,
+          titleProtection: await chatTitleEncryption.protect(
+            id,
+            `${sourceTitle} (fork)`,
+          ),
+          ...(messageId ? { messageId } : {}),
+          ...(options?.attachToTabLayout !== undefined
+            ? { attachToTabLayout: options.attachToTabLayout }
+            : {}),
+        }),
+      },
+      { expectedIdentity },
+    ),
   );
 }
 

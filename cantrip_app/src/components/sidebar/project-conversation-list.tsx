@@ -1,3 +1,5 @@
+import { useConversationChatActions } from "./use-conversation-chat-actions";
+import { ConversationVirtualList } from "./conversation-virtual-list";
 import { ConversationRowButton } from "./conversation-row-button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { CantripApiError } from "@/lib/api-client";
@@ -60,6 +62,7 @@ export function ProjectConversationList({
   onOpened(): void;
   focusWindow(windowId: string): Promise<unknown> | void;
 }) {
+  const chatActions = useConversationChatActions(projectId);
   const queryClient = useQueryClient();
   const liveStatus = useAppLiveStatus();
   const lifecycle = useConversationLifecycle(projectId, controller);
@@ -313,83 +316,98 @@ export function ProjectConversationList({
             Create an Agent conversation with +.
           </p>
         ) : null}
-        {rows.map((chat) => (
-          <div key={chat.id} data-conversation-row="">
-            <div className="flex items-center">
-              <ConversationRowButton
-                projectId={projectId}
-                chatId={chat.id}
-                title={chat.title}
-                placementEnabled={Boolean(onPlace)}
-                type="button"
-                data-conversation-id={chat.id}
-                aria-current={selectedChatId === chat.id ? "true" : undefined}
-                className={cn(
-                  "flex min-h-8 min-w-0 flex-1 items-center gap-2 rounded px-2 py-1 text-left text-xs hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  selectedChatId === chat.id && "bg-muted",
-                )}
-                onMouseDown={preventMiddleMouseDefault}
-                onAuxClick={(event) => {
-                  if (event.button === 1) {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    requestArchive(chat);
+        <ConversationVirtualList
+          rows={rows}
+          estimate={32}
+          label="Active conversations"
+        >
+          {(chat) => (
+            <div key={chat.id} data-conversation-row="">
+              <div className="flex items-center">
+                <ConversationRowButton
+                  projectId={projectId}
+                  chatId={chat.id}
+                  title={chat.title}
+                  placementEnabled={Boolean(onPlace)}
+                  type="button"
+                  data-conversation-id={chat.id}
+                  aria-current={selectedChatId === chat.id ? "true" : undefined}
+                  className={cn(
+                    "flex min-h-8 min-w-0 flex-1 items-center gap-2 rounded px-2 py-1 text-left text-xs hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    selectedChatId === chat.id && "bg-muted",
+                  )}
+                  onMouseDown={preventMiddleMouseDefault}
+                  onAuxClick={(event) => {
+                    if (event.button === 1) {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      requestArchive(chat);
+                    }
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.shiftKey && event.key === "F10") {
+                      event.preventDefault();
+                      openConversationRowMenu(event.currentTarget);
+                    }
+                  }}
+                  onClick={() => {
+                    const action = captureAction();
+                    setError(null);
+                    void open(chat, action).catch((cause) => {
+                      if (action.current()) setError(cause);
+                    });
+                  }}
+                >
+                  {lifecycle.pending.has(chat.id) ? (
+                    <Loader2 className="size-3.5 shrink-0 animate-spin" />
+                  ) : (
+                    <Bot className="size-3.5 shrink-0" />
+                  )}
+                  <span className="min-w-0 flex-1 truncate">{chat.title}</span>
+                  {!workers.some(
+                    (w) => w.workerId === chat.activeWorkerId && w.online,
+                  ) ? (
+                    <WifiOff
+                      className="size-3 shrink-0 text-muted-foreground"
+                      aria-label="Worker unavailable"
+                    />
+                  ) : null}
+                  <ChatActivityStatus chat={chat} />
+                </ConversationRowButton>
+                <ConversationRowMenu
+                  title={chat.title}
+                  pending={
+                    lifecycle.pending.has(chat.id) ||
+                    chatActions.pending.has(chat.id)
                   }
-                }}
-                onKeyDown={(event) => {
-                  if (event.shiftKey && event.key === "F10") {
-                    event.preventDefault();
-                    openConversationRowMenu(event.currentTarget);
+                  rename={() => chatActions.rename(chat)}
+                  fork={() => chatActions.fork(chat)}
+                  place={
+                    onPlace
+                      ? (region) => {
+                          const action = captureAction();
+                          setError(null);
+                          void onPlace(chat.id, region).catch((cause) => {
+                            if (action.current()) setError(cause);
+                          });
+                        }
+                      : undefined
                   }
-                }}
-                onClick={() => {
-                  const action = captureAction();
-                  setError(null);
-                  void open(chat, action).catch((cause) => {
-                    if (action.current()) setError(cause);
-                  });
-                }}
-              >
-                {lifecycle.pending.has(chat.id) ? (
-                  <Loader2 className="size-3.5 shrink-0 animate-spin" />
-                ) : (
-                  <Bot className="size-3.5 shrink-0" />
-                )}
-                <span className="min-w-0 flex-1 truncate">{chat.title}</span>
-                {!workers.some(
-                  (w) => w.workerId === chat.activeWorkerId && w.online,
-                ) ? (
-                  <WifiOff
-                    className="size-3 shrink-0 text-muted-foreground"
-                    aria-label="Worker unavailable"
-                  />
-                ) : null}
-                <ChatActivityStatus chat={chat} />
-              </ConversationRowButton>
-              <ConversationRowMenu
-                title={chat.title}
-                pending={lifecycle.pending.has(chat.id)}
-                place={
-                  onPlace
-                    ? (region) => {
-                        const action = captureAction();
-                        setError(null);
-                        void onPlace(chat.id, region).catch((cause) => {
-                          if (action.current()) setError(cause);
-                        });
-                      }
-                    : undefined
-                }
-                archive={() => requestArchive(chat)}
-              />
+                  archive={() => requestArchive(chat)}
+                />
+              </div>
+              {lifecycle.errors.has(chat.id) ||
+              chatActions.errors.has(chat.id) ? (
+                <p role="alert" className="px-2 text-xs text-destructive">
+                  {errorMessage(
+                    lifecycle.errors.get(chat.id) ??
+                      chatActions.errors.get(chat.id),
+                  )}
+                </p>
+              ) : null}
             </div>
-            {lifecycle.errors.has(chat.id) ? (
-              <p role="alert" className="px-2 text-xs text-destructive">
-                {errorMessage(lifecycle.errors.get(chat.id))}
-              </p>
-            ) : null}
-          </div>
-        ))}
+          )}
+        </ConversationVirtualList>
         {query.hasNextPage ? (
           <Button
             className="w-full"
@@ -421,6 +439,7 @@ export function ProjectConversationList({
           ? `Conversation ${lifecycle.completed.action === "archive" ? "archived" : lifecycle.completed.action === "restore" ? "restored" : "permanently deleted"}.`
           : ""}
       </span>
+      {chatActions.dialog}
       <ConfirmDialog
         onCloseAutoFocus={finishDialogFocus}
         open={Boolean(stopTarget)}

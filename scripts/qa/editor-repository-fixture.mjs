@@ -69,6 +69,7 @@ import { createDesktopExplorerWindowBroker as qaCreateFileBroker } from '@/lib/d
 import { desktopExplorerFileSearch as qaFileSearch, desktopStandaloneChatFileSearch as qaChatFileSearch } from '@/lib/desktop-popout';
 import { createStandaloneChat as qaCreateChat } from '@/lib/api/chats';
 import { createChat as qaCreateProjectChat } from '@/lib/api/chats';
+import { prepareConversationCreation as qaPrepareConversation, archiveAgentConversation as qaArchiveConversation, recordConversationUsage as qaUseConversation } from '@/lib/api/conversations';
 import { clearClientSession as qaClearSession } from '@/lib/client-session';
 import { getClientSessionIdentitySnapshot as qaIdentity } from '@/lib/client-session';
 import { readWorkspaceDeviceIdentity as qaWorkspaceIdentity } from '@/lib/workspace-device-identity';
@@ -155,6 +156,32 @@ if (import.meta.env.VITE_CANTRIP_CODE_MIGRATION_QA === 'true') {
   void import('@tauri-apps/api/window').then(({getCurrentWindow}) => {if (getCurrentWindow().label === 'main') document.body.append(button);});
 }
 globalThis.__qaRepositoryFixture = {
+  async useConversation(id) { return qaUseConversation(id, {clientId: crypto.randomUUID(), operationId: crypto.randomUUID(), sequence: 1}); },
+  async seedConversations(active, archived) {
+    const result = {active: [], archived: []};
+    // Real resource creation and encryption, with bounded concurrency.
+    const jobs = Array.from({length: active + archived}, (_, index) => index);
+    await Promise.all(Array.from({length: 4}, async () => {
+      for (;;) {
+        const index = jobs.shift();
+        if (index === undefined) return;
+        const state = index < active ? 'active' : 'archived';
+        const create = await qaPrepareConversation(qaProjectId, 'Scale ' + state + ' ' + crypto.randomUUID(), false);
+        let chat;
+        const deadline = Date.now() + 30_000;
+        for (;;) {
+          try { chat = await create(); break; }
+          catch (error) {
+            if (Date.now() >= deadline || !String(error).includes('No online worker has a compatible chat placement')) throw error;
+            await new Promise(resolve => setTimeout(resolve, 250));
+          }
+        }
+        if (state === 'archived') await qaArchiveConversation(chat.id);
+        result[state].push(chat.id);
+      }
+    }));
+    return result;
+  },
   async workspace() { return qaIdentity() ? (await qaWorkspace()).layout : null; },
   async seedFileLinkChat(historical = null) {
     const chat = await qaCreateProjectChat(qaProjectId, 'File link QA');

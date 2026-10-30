@@ -10,6 +10,8 @@ const api = vi.hoisted(() => ({
   archive: vi.fn(),
   restore: vi.fn(),
   remove: vi.fn(),
+  rename: vi.fn(),
+  fork: vi.fn(),
 }));
 vi.mock("@/lib/api/conversations", () => ({
   getConversationCatalog: api.catalog,
@@ -17,6 +19,10 @@ vi.mock("@/lib/api/conversations", () => ({
   restoreAgentConversation: api.restore,
   permanentlyDeleteAgentConversation: api.remove,
   prepareConversationCreation: vi.fn(),
+}));
+vi.mock("@/lib/api/chats", () => ({
+  renameChat: api.rename,
+  forkChat: api.fork,
 }));
 vi.mock("@/lib/client-session", () => ({
   getClientSessionIdentitySnapshot: () => ({ userId: "owner" }),
@@ -287,4 +293,62 @@ it.each([
   expect(place).toHaveBeenCalledWith("one", region);
   expect(openConversation).not.toHaveBeenCalled();
   expect(api.archive).not.toHaveBeenCalled();
+});
+
+it("forks from the sidebar without creating or opening a rail tab", async () => {
+  api.fork.mockImplementation(async () => {
+    const fork = { ...chat, id: "fork", title: "Agent one (fork)" };
+    active.push(fork);
+    return fork;
+  });
+  await mount();
+  const row = host.querySelector<HTMLElement>('[data-conversation-id="one"]')!;
+  await act(async () =>
+    row.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "F10",
+        shiftKey: true,
+        bubbles: true,
+      }),
+    ),
+  );
+  await act(async () => item("Fork").click());
+  await flush();
+  expect(api.fork).toHaveBeenCalledWith("one", "Agent one", undefined, {
+    attachToTabLayout: false,
+  });
+  expect(host.querySelector('[data-conversation-id="fork"]')).not.toBeNull();
+  expect(openConversation).not.toHaveBeenCalled();
+});
+it("renames through the shared encrypted chat action and refreshes the catalog", async () => {
+  api.rename.mockImplementation(async (id: string, title: string) => {
+    active = active.map((chat) => (chat.id === id ? { ...chat, title } : chat));
+    return active.find((chat) => chat.id === id);
+  });
+  await mount();
+  const row = host.querySelector<HTMLElement>('[data-conversation-id="one"]')!;
+  await act(async () =>
+    row.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "F10",
+        shiftKey: true,
+        bubbles: true,
+      }),
+    ),
+  );
+  await act(async () => item("Rename").click());
+  const input = document.querySelector<HTMLInputElement>(
+    '[aria-label="Conversation name"]',
+  )!;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )!.set!.call(input, "Renamed agent");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await act(async () => button("Rename").click());
+  await flush();
+  expect(api.rename).toHaveBeenCalledWith("one", "Renamed agent");
+  expect(host.textContent).toContain("Renamed agent");
 });

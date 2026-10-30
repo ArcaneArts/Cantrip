@@ -1,3 +1,4 @@
+import { ConversationVirtualList } from "./conversation-virtual-list";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { Archive, Loader2 } from "lucide-react";
 import {
@@ -85,45 +86,53 @@ export function ConversationArchivedSection({
           No archived conversations.
         </p>
       ) : null}
-      {rows.map((chat) => (
-        <div key={chat.id} data-conversation-row="" className="px-1">
-          <div className="flex items-center">
-            <button
-              type="button"
-              data-archived-conversation-id={chat.id}
-              className="flex min-h-8 min-w-0 flex-1 items-center gap-2 rounded px-1 text-left text-xs hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring"
-              onClick={(event) => openConversationRowMenu(event.currentTarget)}
-              onKeyDown={(event) => {
-                if (event.shiftKey && event.key === "F10") {
-                  event.preventDefault();
-                  openConversationRowMenu(event.currentTarget);
+      <ConversationVirtualList
+        rows={rows}
+        estimate={50}
+        label="Archived conversation list"
+      >
+        {(chat) => (
+          <div key={chat.id} data-conversation-row="" className="px-1">
+            <div className="flex items-center">
+              <button
+                type="button"
+                data-archived-conversation-id={chat.id}
+                className="flex min-h-8 min-w-0 flex-1 items-center gap-2 rounded px-1 text-left text-xs hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={(event) =>
+                  openConversationRowMenu(event.currentTarget)
                 }
-              }}
-            >
-              {pending.has(chat.id) ? (
-                <Loader2 className="size-3.5 shrink-0 animate-spin" />
-              ) : (
-                <Archive className="size-3.5 shrink-0" />
-              )}
-              <span className="min-w-0 flex-1 truncate">{chat.title}</span>
-            </button>
-            <ConversationRowMenu
-              title={chat.title}
-              pending={pending.has(chat.id)}
-              restore={() => onRestore(chat)}
-              remove={() => onDelete(chat)}
-            />
-          </div>
-          <p className="px-1 pb-1 text-[10px] text-muted-foreground">
-            Deletes {new Date(chat.expiresAt).toLocaleDateString()}
-          </p>
-          {errors.has(chat.id) ? (
-            <p role="alert" className="px-1 text-xs text-destructive">
-              {errorMessage(errors.get(chat.id))}
+                onKeyDown={(event) => {
+                  if (event.shiftKey && event.key === "F10") {
+                    event.preventDefault();
+                    openConversationRowMenu(event.currentTarget);
+                  }
+                }}
+              >
+                {pending.has(chat.id) ? (
+                  <Loader2 className="size-3.5 shrink-0 animate-spin" />
+                ) : (
+                  <Archive className="size-3.5 shrink-0" />
+                )}
+                <span className="min-w-0 flex-1 truncate">{chat.title}</span>
+              </button>
+              <ConversationRowMenu
+                title={chat.title}
+                pending={pending.has(chat.id)}
+                restore={() => onRestore(chat)}
+                remove={() => onDelete(chat)}
+              />
+            </div>
+            <p className="px-1 pb-1 text-[10px] text-muted-foreground">
+              Deletes {new Date(chat.expiresAt).toLocaleDateString()}
             </p>
-          ) : null}
-        </div>
-      ))}
+            {errors.has(chat.id) ? (
+              <p role="alert" className="px-1 text-xs text-destructive">
+                {errorMessage(errors.get(chat.id))}
+              </p>
+            ) : null}
+          </div>
+        )}
+      </ConversationVirtualList>
       {query.hasNextPage ? (
         <Button
           variant="ghost"
