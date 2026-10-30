@@ -106,7 +106,7 @@ export function ProjectConversationList({
       root.querySelector<HTMLElement>(
         target.attribute === "data-archived-conversation-id"
           ? "[data-archive-heading]"
-          : '[aria-label="New agent conversation"]',
+          : '[aria-label="New agent chat"]',
       )
     )?.focus();
   }
@@ -174,7 +174,7 @@ export function ProjectConversationList({
       assert: () => {
         if (!current())
           throw new Error(
-            "The conversation workspace changed. Open it from the current sidebar.",
+            "The chat workspace changed. Open it from the current sidebar.",
           );
       },
     };
@@ -212,7 +212,7 @@ export function ProjectConversationList({
     action.assert();
     if (!controller)
       throw new Error(
-        "The workspace is still connecting. Try opening the conversation again.",
+        "The workspace is still connecting. Try opening the chat again.",
       );
     queryClient.setQueryData<ChatSummary[]>(["chats", projectId], (current) => {
       const existing = current ?? [];
@@ -271,14 +271,14 @@ export function ProjectConversationList({
   return (
     <section
       ref={listRoot}
-      aria-label="Agent conversations"
+      aria-label="Agent chats"
       className="flex min-h-0 flex-1 flex-col"
     >
       <div className="flex h-8 shrink-0 items-center justify-between px-2 text-xs text-muted-foreground">
-        <span>{query.data?.pages[0]?.total ?? ""} Conversations</span>
+        <span>{query.data?.pages[0]?.total ?? ""} Chats</span>
         <Button
-          aria-label="New agent conversation"
-          title="New agent conversation"
+          aria-label="New agent chat"
+          title="New agent chat"
           size="icon"
           variant="ghost"
           className="size-6"
@@ -312,18 +312,14 @@ export function ProjectConversationList({
       >
         {query.isPending ? (
           <p role="status" className="p-3 text-xs text-muted-foreground">
-            Loading conversations…
+            Loading chats…
           </p>
         ) : rows.length === 0 ? (
           <p className="p-3 text-xs text-muted-foreground">
-            Create an Agent conversation with +.
+            Create an agent chat with +.
           </p>
         ) : null}
-        <ConversationVirtualList
-          rows={rows}
-          estimate={32}
-          label="Active conversations"
-        >
+        <ConversationVirtualList rows={rows} estimate={32} label="Active chats">
           {(chat) => (
             <div key={chat.id} data-conversation-row="">
               <div className="flex items-center">
@@ -425,7 +421,7 @@ export function ProjectConversationList({
             disabled={query.isFetching}
             onClick={() => void query.fetchNextPage({ cancelRefetch: false })}
           >
-            Load more conversations
+            Load more chats
           </Button>
         ) : null}
         <ConversationArchivedSection
@@ -445,7 +441,7 @@ export function ProjectConversationList({
       </div>
       <span role="status" aria-live="polite" className="sr-only">
         {lifecycle.completed
-          ? `Conversation ${lifecycle.completed.action === "archive" ? "archived" : lifecycle.completed.action === "restore" ? "restored" : "permanently deleted"}.`
+          ? `Chat ${lifecycle.completed.action === "archive" ? "archived" : lifecycle.completed.action === "restore" ? "restored" : "permanently deleted"}.`
           : ""}
       </span>
       {chatActions.dialog}
@@ -455,8 +451,8 @@ export function ProjectConversationList({
         onOpenChange={(open) => {
           if (!open) setStopTarget(null);
         }}
-        title="Stop and archive conversation?"
-        description={`Stop the active work in ${stopTarget?.title ?? "this conversation"} and move it to Archived. Its history and draft will remain recoverable.`}
+        title="Stop and archive chat?"
+        description={`Stop the active work in ${stopTarget?.title ?? "this chat"} and move it to Archived. Its history and draft will remain recoverable.`}
         confirmLabel="Stop and Archive"
         confirmPendingLabel="Archiving…"
         pending={Boolean(stopTarget && lifecycle.pending.has(stopTarget.id))}
@@ -482,8 +478,8 @@ export function ProjectConversationList({
         onOpenChange={(open) => {
           if (!open) setDeleteTarget(null);
         }}
-        title="Permanently delete conversation?"
-        description={`${deleteTarget?.title ?? "This conversation"} and its history will be permanently deleted. This cannot be undone.`}
+        title="Permanently delete chat?"
+        description={`${deleteTarget?.title ?? "This chat"} and its history will be permanently deleted. This cannot be undone.`}
         confirmLabel="Permanently Delete"
         confirmPendingLabel="Deleting…"
         pending={Boolean(

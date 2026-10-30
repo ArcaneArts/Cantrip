@@ -83,8 +83,7 @@ export function ProjectArchiveSettings({
       {onOpenConversations ? (
         <div className="mb-5 rounded border p-3 text-sm">
           <p>
-            Archived Agents are now in the Conversations sidebar, including
-            empty conversations.
+            Archived Agents are now in the Chats sidebar, including empty chats.
           </p>
           <Button
             className="mt-2"
@@ -92,7 +91,7 @@ export function ProjectArchiveSettings({
             size="sm"
             onClick={onOpenConversations}
           >
-            Open archived conversations
+            Open archived chats
           </Button>
         </div>
       ) : null}

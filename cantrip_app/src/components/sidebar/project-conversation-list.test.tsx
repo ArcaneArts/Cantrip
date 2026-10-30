@@ -124,9 +124,7 @@ it("reuses a prepared creation after an uncertain reply and suppresses double cl
   const create = () =>
     renderer.root
       .findAllByType("button")
-      .find(
-        (button) => button.props["aria-label"] === "New agent conversation",
-      )!
+      .find((button) => button.props["aria-label"] === "New agent chat")!
       .props.onClick();
   await act(async () => {
     create();
@@ -151,9 +149,7 @@ it("does not open or focus after a pending request outlives its sidebar", async 
   await act(async () =>
     renderer.root
       .findAllByType("button")
-      .find(
-        (button) => button.props["aria-label"] === "New agent conversation",
-      )!
+      .find((button) => button.props["aria-label"] === "New agent chat")!
       .props.onClick(),
   );
   await act(async () => renderer.unmount());

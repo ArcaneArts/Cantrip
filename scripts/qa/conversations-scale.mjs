@@ -95,15 +95,15 @@ try {
     .click();
   const smallReads = requests.length;
   const smallOpenStarted = performance.now();
-  await page.getByRole("tab", { name: "Conversations", exact: true }).click();
-  await page.getByText("10 Conversations", { exact: true }).waitFor();
+  await page.getByRole("tab", { name: "Chats", exact: true }).click();
+  await page.getByText("10 Chats", { exact: true }).waitFor();
   const smallOpenMilliseconds = performance.now() - smallOpenStarted;
   const active = page.getByRole("list", {
-    name: "Active conversations",
+    name: "Active chats",
     exact: true,
   });
   const archived = page.getByRole("list", {
-    name: "Archived conversation list",
+    name: "Archived chat list",
     exact: true,
   });
   const measureKeyboard = async (list, size) => {
@@ -149,17 +149,17 @@ try {
   record("seeded-2000", { milliseconds: performance.now() - start });
   const beforeReads = requests.length;
   const largeOpenStarted = performance.now();
-  await page.getByRole("tab", { name: "Conversations", exact: true }).click();
+  await page.getByRole("tab", { name: "Chats", exact: true }).click();
   await page
-    .getByText("1000 Conversations", { exact: true })
+    .getByText("1000 Chats", { exact: true })
     .waitFor({ timeout: 90000 });
   await page
     .getByRole("heading", { name: "Archived 1000", exact: true })
     .waitFor();
   const largeOpenMilliseconds = performance.now() - largeOpenStarted;
   for (const [list, name] of [
-    [active, "Load more conversations"],
-    [archived, "Load more archived conversations"],
+    [active, "Load more chats"],
+    [archived, "Load more archived chats"],
   ]) {
     const more = page.getByRole("button", { name, exact: true });
     for (let index = 0; index < 19; index++) {
@@ -230,7 +230,7 @@ try {
     el.scrollTop = 16000;
   });
   await page.waitForFunction(() => {
-    const list = document.querySelector('[aria-label="Active conversations"]');
+    const list = document.querySelector('[aria-label="Active chats"]');
     const box = list.getBoundingClientRect();
     return [...list.querySelectorAll("[data-virtual-conversation]")].some(
       (row) =>

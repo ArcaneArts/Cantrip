@@ -339,7 +339,7 @@ it("renames through the shared encrypted chat action and refreshes the catalog",
   );
   await act(async () => item("Rename").click());
   const input = document.querySelector<HTMLInputElement>(
-    '[aria-label="Conversation name"]',
+    '[aria-label="Chat name"]',
   )!;
   await act(async () => {
     Object.getOwnPropertyDescriptor(
@@ -397,9 +397,7 @@ it.each(["active", "archived"])(
     await flush();
     await act(async () =>
       button(
-        state === "active"
-          ? "Load more conversations"
-          : "Load more archived conversations",
+        state === "active" ? "Load more chats" : "Load more archived chats",
       ).click(),
     );
     try {
@@ -413,9 +411,7 @@ it.each(["active", "archived"])(
     await flush();
     await act(async () =>
       button(
-        state === "active"
-          ? "Load more conversations"
-          : "Load more archived conversations",
+        state === "active" ? "Load more chats" : "Load more archived chats",
       ).click(),
     );
     await flush();

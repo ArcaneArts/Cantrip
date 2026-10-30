@@ -52,7 +52,7 @@ export function ConversationArchivedSection({
   ];
   return (
     <section
-      aria-label="Archived conversations"
+      aria-label="Archived chats"
       className="mt-3 border-t border-border/50 pt-2"
     >
       <h3
@@ -63,7 +63,7 @@ export function ConversationArchivedSection({
         Archived {query.data?.pages[0]?.total ?? ""}
       </h3>
       <p className="px-2 pb-2 text-[10px] text-muted-foreground">
-        Archived conversations are kept for 90 days.
+        Archived chats are kept for 90 days.
       </p>
       {query.error ? (
         <div role="alert" className="px-2 text-xs text-destructive">
@@ -82,14 +82,12 @@ export function ConversationArchivedSection({
           Loading archive…
         </p>
       ) : rows.length === 0 && !query.error ? (
-        <p className="px-2 text-xs text-muted-foreground">
-          No archived conversations.
-        </p>
+        <p className="px-2 text-xs text-muted-foreground">No archived chats.</p>
       ) : null}
       <ConversationVirtualList
         rows={rows}
         estimate={50}
-        label="Archived conversation list"
+        label="Archived chat list"
       >
         {(chat) => (
           <div key={chat.id} data-conversation-row="" className="px-1">
@@ -141,7 +139,7 @@ export function ConversationArchivedSection({
           disabled={query.isFetching}
           onClick={() => void query.fetchNextPage({ cancelRefetch: false })}
         >
-          Load more archived conversations
+          Load more archived chats
         </Button>
       ) : null}
     </section>

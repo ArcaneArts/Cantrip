@@ -76,10 +76,10 @@ try {
   await page
     .getByRole("textbox", { name: "Edit qa.txt", exact: true })
     .waitFor();
-  await page.getByRole("tab", { name: "Conversations", exact: true }).click();
+  await page.getByRole("tab", { name: "Chats", exact: true }).click();
   const previousRows = await page.locator("[data-conversation-id]").count();
   await page
-    .getByRole("button", { name: "New agent conversation", exact: true })
+    .getByRole("button", { name: "New agent chat", exact: true })
     .click();
   await page.waitForFunction(
     (count) =>

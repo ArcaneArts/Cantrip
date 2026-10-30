@@ -93,7 +93,7 @@ export function useConversationChatActions(projectId: string) {
         changed.contextKind === "standalone" ||
         changed.projectId !== projectId
       )
-        throw new Error("Conversation action returned another project.");
+        throw new Error("Chat action returned another project.");
       if (action === "fork") forks.current.delete(chat.id);
       await queryClient.invalidateQueries({ queryKey: ["chats", projectId] });
       if (current() && action === "rename") setTarget(null);
@@ -121,12 +121,12 @@ export function useConversationChatActions(projectId: string) {
         onOpenChange={(open) => {
           if (!open) setTarget(null);
         }}
-        title="Rename conversation"
+        title="Rename chat"
         description={
           <label className="block">
-            Conversation name
+            Chat name
             <Input
-              aria-label="Conversation name"
+              aria-label="Chat name"
               value={title}
               onChange={(event) => setTitle(event.target.value)}
             />

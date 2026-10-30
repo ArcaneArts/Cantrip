@@ -76,9 +76,9 @@ try {
   await page
     .getByRole("textbox", { name: "Edit qa.txt", exact: true })
     .waitFor();
-  await page.getByRole("tab", { name: "Conversations", exact: true }).click();
+  await page.getByRole("tab", { name: "Chats", exact: true }).click();
   const newConversation = page.getByRole("button", {
-    name: "New agent conversation",
+    name: "New agent chat",
     exact: true,
   });
   const creations = [];
@@ -94,7 +94,7 @@ try {
   });
   await newConversation.click();
   await page
-    .getByRole("region", { name: "Agent conversations", exact: true })
+    .getByRole("region", { name: "Agent chats", exact: true })
     .getByRole("alert")
     .waitFor();
   assert.equal(
@@ -194,7 +194,7 @@ try {
   });
   await page.reload();
   await page
-    .getByRole("region", { name: "Agent conversations", exact: true })
+    .getByRole("region", { name: "Agent chats", exact: true })
     .getByRole("button", { name: "Retry", exact: true })
     .waitFor({ timeout: 90000 });
   assert.ok(failedCatalog > 0);
@@ -205,7 +205,7 @@ try {
   );
   await page.unroute("**/api/projects/*/conversations?**");
   await page
-    .getByRole("region", { name: "Agent conversations", exact: true })
+    .getByRole("region", { name: "Agent chats", exact: true })
     .getByRole("button", { name: "Retry", exact: true })
     .click();
   await row.waitFor();
