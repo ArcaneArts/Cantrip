@@ -118,6 +118,60 @@ const context = () => f.repository.getChatExecutionContext(owner, f.chatId);
 // Real migrated storage and the existing native admission/dispatch paths. These
 // establish controller ownership, not a simulated claim of native file transfer.
 describe("durable native provider handoff", () => {
+  it.each(["completed", "early-reply", "transport-error"])(
+    "waits for durable destination selection before admitting input (%s)",
+    async (outcome) => {
+      const app = Fastify();
+      const coordinator = installChatRuntimeHandoffRoutes(app, {
+        applicationOwnerId: () => owner,
+        repository: f.repository,
+        bridge: {
+          request: async (_worker, command) => {
+            if (command.type !== "chat.runtime.handoff")
+              throw new Error("Unexpected command");
+            if (outcome === "transport-error")
+              throw new Error("Worker disconnected");
+            if (outcome === "completed") {
+              await markPrepared(command.operationId);
+              await operations().commit(owner, f.workerId, command.operationId);
+              await operations().finish(
+                owner,
+                f.workerId,
+                command.operationId,
+                "completed",
+              );
+            }
+          },
+        },
+        publishChatInvalidation() {},
+      });
+      try {
+        const input = request();
+        const operation = coordinator.beginAndWait(owner, f.chatId, input);
+        if (outcome === "completed")
+          await expect(operation).resolves.toMatchObject({
+            phase: "completed",
+          });
+        else {
+          await expect(operation).rejects.toMatchObject({
+            code:
+              outcome === "early-reply"
+                ? "handoff-not-completed"
+                : "handoff-worker-unavailable",
+          });
+          expect(await context()).toMatchObject({
+            modelRouteId: expect.not.stringMatching(targetRoute),
+          });
+          expect(
+            await operations().get(owner, f.chatId, input.operationId),
+          ).toMatchObject({ phase: "preparing" });
+        }
+      } finally {
+        await app.close();
+      }
+    },
+  );
+
   it("discovers owned transfer routes and the durable latest operation without dispatching", async () => {
     const app = Fastify();
     let currentOwner = owner;

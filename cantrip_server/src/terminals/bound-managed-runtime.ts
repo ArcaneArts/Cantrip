@@ -37,6 +37,7 @@ export async function boundManagedRuntime(
       ...runtime.provider,
       accountId: account.accountId,
       credentialHomeKey: account.credentialHomeKey,
+      credits: account.credits,
     },
   };
 }

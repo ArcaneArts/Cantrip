@@ -6,11 +6,16 @@ import { createManagedChatPreparation } from "./managed-chat-preparation.js";
 import { installManagedChatPreparationRoutes } from "../routes/managed-chat-preparation.js";
 import type { createModelRoutingRuntime } from "./model-routing-runtime.js";
 import type { FastifyInstance } from "fastify";
+import {
+  createManagedChatAccountFailover,
+  type ManagedChatAccountFailoverDependencies,
+} from "./managed-chat-account-failover.js";
 
 /** Production composition shares the same native preparation with first GUI
  * input. CLI boot has its own failure state and cannot strand a prepared turn. */
 export function createManagedChatTurnRuntime(
   deps: ChatTurnRuntimeDependencies &
+    Pick<ManagedChatAccountFailoverDependencies, "handoffRuntime"> &
     Pick<ReturnType<typeof createModelRoutingRuntime>, "runtimeForContext"> & {
       app: FastifyInstance;
       publishChatInvalidation(
@@ -28,6 +33,7 @@ export function createManagedChatTurnRuntime(
     },
   });
   installManagedChatPreparationRoutes(deps.app, { ...deps, preparation });
+  const failoverAccount = createManagedChatAccountFailover(deps);
   const runtime = createChatTurnRuntime(deps);
   const beginTurn: typeof runtime.beginTurn = async (
     context,
@@ -46,6 +52,14 @@ export function createManagedChatTurnRuntime(
       if (!prepared)
         throw new Error("The prepared chat is no longer available.");
       context = prepared;
+      // Queue claims already own their native input. A transfer must finish
+      // before admission, so never replace the account underneath a claim.
+      if (!options?.managedQueueClaim)
+        context = await failoverAccount(
+          ownerId,
+          context,
+          expectedInputRevision,
+        );
     }
     return runtime.beginTurn(context, input, {
       ...options,
@@ -55,6 +69,12 @@ export function createManagedChatTurnRuntime(
   return {
     ...runtime,
     beginTurn,
+    prepareQueuedAccount: (context: Parameters<typeof beginTurn>[0]) =>
+      failoverAccount(
+        deps.applicationOwnerId(),
+        context,
+        context.managedInputRevision,
+      ),
     managedChatPreparation: {
       ...preparation,
       afterWorkerRecovery:
