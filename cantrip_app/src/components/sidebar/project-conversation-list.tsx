@@ -1,3 +1,13 @@
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { CantripApiError } from "@/lib/api-client";
+import type { ArchivedAgentConversation } from "@/lib/api/conversations";
+import { preventMiddleMouseDefault } from "@/lib/tab-middle-click";
+import { useConversationLifecycle } from "./use-conversation-lifecycle";
+import { ConversationArchivedSection } from "./conversation-archived-section";
+import {
+  ConversationRowMenu,
+  openConversationRowMenu,
+} from "./conversation-row-menu";
 import { useAppLiveStatus } from "@/lib/app-live-react";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { Bot, Loader2, Plus, WifiOff } from "lucide-react";
@@ -21,6 +31,8 @@ import { cn } from "@/lib/utils";
 
 export function ProjectConversationList({
   projectId,
+  archiveFocusRequest,
+  onArchiveFocusHandled,
   randomAgentNames = false,
   existingTitles = [],
   visible,
@@ -31,6 +43,8 @@ export function ProjectConversationList({
   focusWindow,
 }: {
   projectId: string;
+  archiveFocusRequest?: string | null;
+  onArchiveFocusHandled?(): void;
   randomAgentNames?: boolean;
   existingTitles?: readonly string[];
   visible: boolean;
@@ -42,6 +56,89 @@ export function ProjectConversationList({
 }) {
   const queryClient = useQueryClient();
   const liveStatus = useAppLiveStatus();
+  const lifecycle = useConversationLifecycle(projectId, controller);
+  const listRoot = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!visible || !archiveFocusRequest) return;
+    const heading = listRoot.current?.querySelector<HTMLElement>(
+      "[data-archive-heading]",
+    );
+    if (!heading) return;
+    heading.focus();
+    heading.scrollIntoView?.({ block: "nearest" });
+    onArchiveFocusHandled?.();
+  }, [visible, archiveFocusRequest, onArchiveFocusHandled]);
+  const focusAfterDialogClose = useRef(false);
+  const desiredFocus = useRef<{ attribute: string; id?: string } | null>(null);
+  const [stopTarget, setStopTarget] = useState<ChatSummary | null>(null);
+  const [deleteTarget, setDeleteTarget] =
+    useState<ArchivedAgentConversation | null>(null);
+  function restoreRowFocus(fromDialog = false) {
+    if (!desiredFocus.current) return;
+    const root = listRoot.current;
+    const target = desiredFocus.current;
+    desiredFocus.current = null;
+    if (
+      !root ||
+      (!fromDialog &&
+        document.activeElement !== document.body &&
+        !root.contains(document.activeElement))
+    )
+      return;
+    const row = target.id
+      ? [...root.querySelectorAll<HTMLElement>(`[${target.attribute}]`)].find(
+          (element) => element.getAttribute(target.attribute) === target.id,
+        )
+      : null;
+    (
+      row ??
+      root.querySelector<HTMLElement>(
+        target.attribute === "data-archived-conversation-id"
+          ? "[data-archive-heading]"
+          : '[aria-label="New agent conversation"]',
+      )
+    )?.focus();
+  }
+  useEffect(() => {
+    if (
+      !lifecycle.completed ||
+      stopTarget ||
+      deleteTarget ||
+      focusAfterDialogClose.current
+    )
+      return;
+    restoreRowFocus();
+  }, [lifecycle.completed, stopTarget, deleteTarget]);
+  function finishDialogFocus(event: Event) {
+    if (!focusAfterDialogClose.current) return;
+    event.preventDefault();
+    focusAfterDialogClose.current = false;
+    restoreRowFocus(true);
+  }
+  function focusNeighbor(chatId: string, attribute: string) {
+    const ids = [
+      ...(listRoot.current?.querySelectorAll<HTMLElement>(`[${attribute}]`) ??
+        []),
+    ].map((element) => element.getAttribute(attribute)!);
+    const index = ids.indexOf(chatId);
+    desiredFocus.current = { attribute, id: ids[index + 1] ?? ids[index - 1] };
+  }
+  function requestArchive(chat: ChatSummary) {
+    const error = lifecycle.errors.get(chat.id);
+    if (
+      chat.status === "running" ||
+      chat.status === "waiting-for-approval" ||
+      (error instanceof CantripApiError &&
+        error.status === 409 &&
+        error.message === "Stop the running chat first.")
+    ) {
+      setStopTarget(chat);
+      return;
+    }
+    focusNeighbor(chat.id, "data-conversation-id");
+    void lifecycle.archive(chat.id);
+  }
+
   const mounted = useRef(false);
   const currentScope = useRef({ projectId, controller });
   currentScope.current = { projectId, controller };
@@ -161,6 +258,7 @@ export function ProjectConversationList({
   }
   return (
     <section
+      ref={listRoot}
       aria-label="Agent conversations"
       className="flex min-h-0 flex-1 flex-col"
     >
@@ -210,35 +308,66 @@ export function ProjectConversationList({
           </p>
         ) : null}
         {rows.map((chat) => (
-          <button
-            key={chat.id}
-            type="button"
-            data-conversation-id={chat.id}
-            aria-current={selectedChatId === chat.id ? "true" : undefined}
-            className={cn(
-              "flex min-h-8 w-full items-center gap-2 rounded px-2 py-1 text-left text-xs hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              selectedChatId === chat.id && "bg-muted",
-            )}
-            onClick={() => {
-              const action = captureAction();
-              setError(null);
-              void open(chat, action).catch((cause) => {
-                if (action.current()) setError(cause);
-              });
-            }}
-          >
-            <Bot className="size-3.5 shrink-0" />
-            <span className="min-w-0 flex-1 truncate">{chat.title}</span>
-            {!workers.some(
-              (w) => w.workerId === chat.activeWorkerId && w.online,
-            ) ? (
-              <WifiOff
-                className="size-3 shrink-0 text-muted-foreground"
-                aria-label="Worker unavailable"
+          <div key={chat.id} data-conversation-row="">
+            <div className="flex items-center">
+              <button
+                type="button"
+                data-conversation-id={chat.id}
+                aria-current={selectedChatId === chat.id ? "true" : undefined}
+                className={cn(
+                  "flex min-h-8 min-w-0 flex-1 items-center gap-2 rounded px-2 py-1 text-left text-xs hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  selectedChatId === chat.id && "bg-muted",
+                )}
+                onMouseDown={preventMiddleMouseDefault}
+                onAuxClick={(event) => {
+                  if (event.button === 1) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    requestArchive(chat);
+                  }
+                }}
+                onKeyDown={(event) => {
+                  if (event.shiftKey && event.key === "F10") {
+                    event.preventDefault();
+                    openConversationRowMenu(event.currentTarget);
+                  }
+                }}
+                onClick={() => {
+                  const action = captureAction();
+                  setError(null);
+                  void open(chat, action).catch((cause) => {
+                    if (action.current()) setError(cause);
+                  });
+                }}
+              >
+                {lifecycle.pending.has(chat.id) ? (
+                  <Loader2 className="size-3.5 shrink-0 animate-spin" />
+                ) : (
+                  <Bot className="size-3.5 shrink-0" />
+                )}
+                <span className="min-w-0 flex-1 truncate">{chat.title}</span>
+                {!workers.some(
+                  (w) => w.workerId === chat.activeWorkerId && w.online,
+                ) ? (
+                  <WifiOff
+                    className="size-3 shrink-0 text-muted-foreground"
+                    aria-label="Worker unavailable"
+                  />
+                ) : null}
+                <ChatActivityStatus chat={chat} />
+              </button>
+              <ConversationRowMenu
+                title={chat.title}
+                pending={lifecycle.pending.has(chat.id)}
+                archive={() => requestArchive(chat)}
               />
+            </div>
+            {lifecycle.errors.has(chat.id) ? (
+              <p role="alert" className="px-2 text-xs text-destructive">
+                {errorMessage(lifecycle.errors.get(chat.id))}
+              </p>
             ) : null}
-            <ChatActivityStatus chat={chat} />
-          </button>
+          </div>
         ))}
         {query.hasNextPage ? (
           <Button
@@ -251,7 +380,82 @@ export function ProjectConversationList({
             Load more conversations
           </Button>
         ) : null}
+        <ConversationArchivedSection
+          projectId={projectId}
+          visible={visible}
+          pending={lifecycle.pending}
+          errors={lifecycle.errors}
+          onRestore={(chat) => {
+            desiredFocus.current = {
+              attribute: "data-conversation-id",
+              id: chat.id,
+            };
+            void lifecycle.restore(chat.id);
+          }}
+          onDelete={setDeleteTarget}
+        />
       </div>
+      <span role="status" aria-live="polite" className="sr-only">
+        {lifecycle.completed
+          ? `Conversation ${lifecycle.completed.action === "archive" ? "archived" : lifecycle.completed.action === "restore" ? "restored" : "permanently deleted"}.`
+          : ""}
+      </span>
+      <ConfirmDialog
+        onCloseAutoFocus={finishDialogFocus}
+        open={Boolean(stopTarget)}
+        onOpenChange={(open) => {
+          if (!open) setStopTarget(null);
+        }}
+        title="Stop and archive conversation?"
+        description={`Stop the active work in ${stopTarget?.title ?? "this conversation"} and move it to Archived. Its history and draft will remain recoverable.`}
+        confirmLabel="Stop and Archive"
+        confirmPendingLabel="Archiving…"
+        pending={Boolean(stopTarget && lifecycle.pending.has(stopTarget.id))}
+        error={
+          stopTarget && lifecycle.errors.has(stopTarget.id)
+            ? errorMessage(lifecycle.errors.get(stopTarget.id))
+            : undefined
+        }
+        onConfirm={() => {
+          if (!stopTarget) return;
+          focusNeighbor(stopTarget.id, "data-conversation-id");
+          void lifecycle.archive(stopTarget.id, true).then((ok) => {
+            if (ok) {
+              focusAfterDialogClose.current = true;
+              setStopTarget(null);
+            }
+          });
+        }}
+      />
+      <ConfirmDialog
+        onCloseAutoFocus={finishDialogFocus}
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        title="Permanently delete conversation?"
+        description={`${deleteTarget?.title ?? "This conversation"} and its history will be permanently deleted. This cannot be undone.`}
+        confirmLabel="Permanently Delete"
+        confirmPendingLabel="Deleting…"
+        pending={Boolean(
+          deleteTarget && lifecycle.pending.has(deleteTarget.id),
+        )}
+        error={
+          deleteTarget && lifecycle.errors.has(deleteTarget.id)
+            ? errorMessage(lifecycle.errors.get(deleteTarget.id))
+            : undefined
+        }
+        onConfirm={() => {
+          if (!deleteTarget) return;
+          focusNeighbor(deleteTarget.id, "data-archived-conversation-id");
+          void lifecycle.remove(deleteTarget.id).then((ok) => {
+            if (ok) {
+              focusAfterDialogClose.current = true;
+              setDeleteTarget(null);
+            }
+          });
+        }}
+      />
     </section>
   );
 }

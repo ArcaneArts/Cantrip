@@ -85,7 +85,7 @@ placement interaction, Rust workspace parity, and real-interaction and scale
 acceptance remain outstanding. No feature acceptance item below is claimed
 complete by these partial changes.
 
-### Sidebar shell cycle (ready for PR)
+### Sidebar shell cycle (merged)
 
 The isolated `codex/conversations-sidebar` branch adds the app catalog client,
 Files/Conversations switcher, persisted page preference, visibility-aware file
@@ -121,6 +121,47 @@ converted to a pass by those isolated retries. No CUA source or limits changed.
 Inline archive, resource drag placement, list virtualization/scroll anchoring,
 and the complete real-interaction acceptance matrix remain subsequent milestones.
 No full-feature acceptance checkbox is marked complete by this cycle alone.
+
+PR [#2334](https://github.com/ArcaneArts/Cantrip/pull/2334) squash-merged as
+`cad9d5d81`. Clean Primary was synchronized and the sidebar worktree removed.
+Optional CI was still running at merge time. App API domains subsequently passed
+on Linux, macOS, and Windows. The Rust replacement workflow failed on all three:
+the workspace repository fixture aborted under `CANTRIP_FIXTURE_STACK_BYTES=1048576`
+(SIGABRT on Unix, stack-overflow exit status on Windows). The archive-cycle
+worktree reproduced the failure. The native repair subsequently merged separately
+in [#2335](https://github.com/ArcaneArts/Cantrip/pull/2335), and this cycle now
+includes that merge rather than its provisional local repair. Revalidation with
+`CANTRIP_FIXTURE_STACK_BYTES=1048576` passes all 66 cases and 11 snapshots on
+both PGlite and private PostgreSQL. This validates the local fixture, not the
+remaining multiwindow or physical-device interaction acceptance.
+
+### Inline archive cycle (in progress)
+
+The isolated `codex/conversations-archive` branch starts from the merged sidebar.
+It connects the explicit archive contract, protected draft checkpointing,
+Stop and Archive, inline recovery/deletion, and the Agent archive Settings
+transition. Current unmerged code adds archive/restore/delete clients with
+session fencing, shared bounded interruption settling, per-conversation pending
+state, protected draft checkpointing, inline menus and confirmations, and draft
+retry cancellation after confirmed deletion. Settings now retains Task archives
+and links to Conversations for archived Agents. DOM interaction tests cover
+middle-click archival, Shift+F10 menus, restore without opening, explicit Stop
+and Archive, delete confirmation, and focus recovery after dialog teardown.
+Uncertain mutation responses refresh authoritative catalogs and workspace state
+without claiming success or discarding an unconfirmed deletion's drafts.
+
+The full app suite passes 3,953 tests with three skipped across 565 files. A
+subsequent five-test DOM interaction run also covers the Settings archive focus
+request and inert middle-click on archived rows. The Settings test confirms that
+Task recovery remains functional and the Agent archive link only navigates.
+Production app build, app typechecking, decomposition budgets, and changed-file
+formatting pass. The broad repository check failed at the unchanged CUA tests
+`compact_score_supports_full_frame_budget_and_default_holds` and
+`live_help_and_large_generated_score_match_runtime_limits`, both with JavaScript
+execution limits. Each exact test passes individually; the broad check remains
+failed. These results do not complete feature acceptance or the archive cycle's
+PR delivery.
+The full feature and its acceptance matrix remain unfinished.
 
 ## Product outcome
 

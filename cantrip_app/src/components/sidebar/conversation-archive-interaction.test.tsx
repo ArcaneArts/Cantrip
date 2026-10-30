@@ -1,0 +1,262 @@
+// @vitest-environment jsdom
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { chatSummarySchema } from "@cantrip/protocol";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import type { WorkspaceCommandClient } from "@/lib/workspace-command-client";
+const api = vi.hoisted(() => ({
+  catalog: vi.fn(),
+  archive: vi.fn(),
+  restore: vi.fn(),
+  remove: vi.fn(),
+}));
+vi.mock("@/lib/api/conversations", () => ({
+  getConversationCatalog: api.catalog,
+  archiveAgentConversation: api.archive,
+  restoreAgentConversation: api.restore,
+  permanentlyDeleteAgentConversation: api.remove,
+  prepareConversationCreation: vi.fn(),
+}));
+vi.mock("@/lib/client-session", () => ({
+  getClientSessionIdentitySnapshot: () => ({ userId: "owner" }),
+  clientSessionIdentityMatches: () => true,
+}));
+vi.mock("@/components/chat/chat-transfer-lifecycle", () => ({
+  checkpointChatView: async () => () => {},
+}));
+import { ProjectConversationList } from "./project-conversation-list";
+(
+  globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
+const chat = chatSummarySchema.parse({
+  id: "one",
+  projectId: "project",
+  experience: "agent",
+  title: "Agent one",
+  position: 0,
+  status: "idle",
+  activeWorkerId: null,
+  activeWorktreeId: "tree",
+  placementRevision: 1,
+  worktreeMode: "agent-managed",
+  modelId: null,
+  reasoningEffort: null,
+  permissionProfileId: null,
+  planMode: "default",
+  hasPendingPlanQuestion: false,
+  hasUnreadCompletion: false,
+  automationPaused: false,
+  createdAt: "2026-10-30T00:00:00.000Z",
+  updatedAt: "2026-10-30T00:00:00.000Z",
+});
+let active: Array<typeof chat>;
+let archived: Array<Record<string, unknown>>;
+let root: Root;
+let host: HTMLDivElement;
+let client: QueryClient;
+const openConversation = vi.fn();
+const controller = {
+  openConversation,
+  getSnapshot: () => ({ projected: { windows: [] } }),
+  refresh: async () => {},
+} as unknown as WorkspaceCommandClient;
+async function flush() {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 30));
+  });
+}
+async function mount(
+  archiveFocusRequest?: string,
+  onArchiveFocusHandled?: () => void,
+) {
+  await act(async () =>
+    root.render(
+      <QueryClientProvider client={client}>
+        <ProjectConversationList
+          archiveFocusRequest={archiveFocusRequest}
+          onArchiveFocusHandled={onArchiveFocusHandled}
+          projectId="project"
+          visible
+          controller={controller}
+          selectedChatId={null}
+          workers={[]}
+          onOpened={() => {}}
+          focusWindow={() => {}}
+        />
+      </QueryClientProvider>,
+    ),
+  );
+  await flush();
+}
+function item(label: string) {
+  const element = [
+    ...document.querySelectorAll<HTMLElement>('[role="menuitem"]'),
+  ].find((el) => el.textContent === label);
+  expect(element).toBeDefined();
+  return element!;
+}
+function button(label: string) {
+  const element = [
+    ...document.querySelectorAll<HTMLButtonElement>("button"),
+  ].find((el) => el.textContent === label);
+  expect(element).toBeDefined();
+  return element!;
+}
+beforeEach(() => {
+  vi.clearAllMocks();
+  active = [chat, { ...chat, id: "two", title: "Agent two" }];
+  archived = [];
+  api.catalog.mockImplementation(
+    async (_: string, { state }: { state: string }) => ({
+      state,
+      items: state === "active" ? [...active] : [...archived],
+      total: state === "active" ? active.length : archived.length,
+      nextCursor: null,
+    }),
+  );
+  api.archive.mockImplementation(async (id: string) => {
+    const target = active.find((c) => c.id === id)!;
+    active = active.filter((c) => c.id !== id);
+    archived = [
+      ...archived,
+      {
+        ...target,
+        archivedAt: chat.createdAt,
+        expiresAt: "2027-01-28T00:00:00.000Z",
+        lastUsedAt: chat.createdAt,
+      },
+    ];
+  });
+  api.restore.mockImplementation(async (_: string, id: string) => {
+    archived = archived.filter((c) => c.id !== id);
+    active = [chat, ...active];
+    return chat;
+  });
+  api.remove.mockImplementation(async (id: string) => {
+    archived = archived.filter((c) => c.id !== id);
+  });
+  host = document.createElement("div");
+  document.body.append(host);
+  root = createRoot(host);
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+});
+afterEach(async () => {
+  await act(async () => root.unmount());
+  host.remove();
+  client.clear();
+});
+it("archives by middle-click, restores from the keyboard menu, and never opens a rail view", async () => {
+  await mount();
+  const row = host.querySelector<HTMLButtonElement>(
+    '[data-conversation-id="one"]',
+  )!;
+  row.focus();
+  await act(async () =>
+    row.dispatchEvent(new MouseEvent("auxclick", { button: 1, bubbles: true })),
+  );
+  await flush();
+  expect(api.archive).toHaveBeenCalledWith("one", false, { userId: "owner" });
+  expect(host.querySelector('[data-conversation-id="one"]')).toBeNull();
+  expect(document.activeElement?.getAttribute("data-conversation-id")).toBe(
+    "two",
+  );
+  const archivedRow = host.querySelector<HTMLButtonElement>(
+    '[data-archived-conversation-id="one"]',
+  )!;
+  archivedRow.focus();
+  await act(async () =>
+    archivedRow.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "F10",
+        shiftKey: true,
+        bubbles: true,
+      }),
+    ),
+  );
+  expect(item("Permanently Delete")).toBeDefined();
+  await act(async () => item("Restore").click());
+  await flush();
+  expect(api.restore).toHaveBeenCalledWith("project", "one", {
+    userId: "owner",
+  });
+  expect(openConversation).not.toHaveBeenCalled();
+  expect(
+    host.querySelector('[data-archived-conversation-id="one"]'),
+  ).toBeNull();
+  expect(document.activeElement?.getAttribute("data-conversation-id")).toBe(
+    "one",
+  );
+});
+it("requires explicit Stop and Archive for a running Agent", async () => {
+  active = [{ ...chat, status: "running" }];
+  await mount();
+  const row = host.querySelector<HTMLButtonElement>(
+    '[data-conversation-id="one"]',
+  )!;
+  await act(async () =>
+    row.dispatchEvent(new MouseEvent("auxclick", { button: 1, bubbles: true })),
+  );
+  expect(api.archive).not.toHaveBeenCalled();
+  expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+  await act(async () => button("Stop and Archive").click());
+  await flush();
+  expect(api.archive).toHaveBeenCalledWith("one", true, { userId: "owner" });
+});
+it("permanent deletion is confirmed and returns focus to the archive heading", async () => {
+  active = [];
+  archived = [
+    {
+      ...chat,
+      archivedAt: chat.createdAt,
+      expiresAt: "2027-01-28T00:00:00.000Z",
+    },
+  ];
+  await mount();
+  await act(async () =>
+    host
+      .querySelector<HTMLButtonElement>(
+        '[data-archived-conversation-id="one"]',
+      )!
+      .click(),
+  );
+  await act(async () => item("Permanently Delete").click());
+  expect(api.remove).not.toHaveBeenCalled();
+  await act(async () => button("Permanently Delete").click());
+  await flush();
+  expect(api.remove).toHaveBeenCalledTimes(1);
+  expect(document.activeElement?.hasAttribute("data-archive-heading")).toBe(
+    true,
+  );
+});
+
+it("focuses the inline archive heading for Settings navigation without opening a chat", async () => {
+  const handled = vi.fn();
+  await mount("settings-navigation", handled);
+  expect(document.activeElement).toBe(
+    host.querySelector("[data-archive-heading]"),
+  );
+  expect(handled).toHaveBeenCalledOnce();
+  expect(openConversation).not.toHaveBeenCalled();
+});
+it("does not restore or delete an archived row on middle click", async () => {
+  archived = [
+    {
+      ...chat,
+      archivedAt: "2026-10-30T00:00:00Z",
+      expiresAt: "2027-01-28T00:00:00Z",
+      messageCount: 0,
+    },
+  ];
+  active = [];
+  await mount();
+  const row = host.querySelector<HTMLButtonElement>(
+    "[data-archived-conversation-id]",
+  )!;
+  await act(async () => {
+    row.dispatchEvent(new MouseEvent("auxclick", { bubbles: true, button: 1 }));
+  });
+  expect(api.restore).not.toHaveBeenCalled();
+  expect(api.remove).not.toHaveBeenCalled();
+  expect(api.archive).not.toHaveBeenCalled();
+});

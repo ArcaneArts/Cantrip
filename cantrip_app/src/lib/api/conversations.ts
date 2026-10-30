@@ -1,5 +1,7 @@
+import { retryAfterChatInterruption } from "@/lib/retry-after-chat-interruption";
 import {
   encryptedChatCreateSchema,
+  chatInterruptAcceptedSchema,
   chatWireSummarySchema,
   conversationCatalogQuerySchema,
   conversationCatalogWirePageSchema,
@@ -149,4 +151,67 @@ export async function prepareConversationCreation(
     assertIdentity(captured);
     return chat;
   };
+}
+
+/** Explicit archive always preserves eligible empty/draft-only Agents. */
+export async function archiveAgentConversation(
+  chatId: string,
+  stopRunning = false,
+  captured: ClientSessionIdentitySnapshot = identity(),
+) {
+  const invoke = async (action: "archive" | "interrupt") => {
+    assertIdentity(captured);
+    const result = await request(
+      `/api/chats/${encodeURIComponent(chatId)}/${action}`,
+      { method: "POST", body: "{}" },
+      { expectedIdentity: captured, allowCsrfRecovery: false },
+    );
+    assertIdentity(captured);
+    return result;
+  };
+  await retryAfterChatInterruption(
+    () => invoke("archive"),
+    stopRunning
+      ? async () => chatInterruptAcceptedSchema.parse(await invoke("interrupt"))
+      : undefined,
+  );
+}
+
+export async function restoreAgentConversation(
+  projectId: string,
+  chatId: string,
+  captured: ClientSessionIdentitySnapshot = identity(),
+) {
+  assertIdentity(captured);
+  const wire = chatWireSummarySchema.parse(
+    await request(
+      `/api/chats/${encodeURIComponent(chatId)}/restore`,
+      { method: "POST", body: JSON.stringify({ attachToTabLayout: false }) },
+      { expectedIdentity: captured, allowCsrfRecovery: false },
+    ),
+  );
+  assertIdentity(captured);
+  if (
+    wire.projectId !== projectId ||
+    wire.id !== chatId ||
+    wire.experience !== "agent" ||
+    wire.contextKind !== "project"
+  )
+    throw new CantripApiError("Restored conversation scope mismatch.", 409);
+  const chat = await chatTitleEncryption.open(wire);
+  assertIdentity(captured);
+  return chat;
+}
+
+export async function permanentlyDeleteAgentConversation(
+  chatId: string,
+  captured: ClientSessionIdentitySnapshot = identity(),
+) {
+  assertIdentity(captured);
+  await request(
+    `/api/chats/${encodeURIComponent(chatId)}/permanent`,
+    { method: "DELETE" },
+    { expectedIdentity: captured, allowCsrfRecovery: false },
+  );
+  assertIdentity(captured);
 }

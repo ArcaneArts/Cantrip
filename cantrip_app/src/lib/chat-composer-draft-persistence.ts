@@ -11,6 +11,7 @@ function fingerprint(draft: ChatComposerDraft | null): string {
 }
 
 export class ChatComposerDraftPersistence {
+  private disposed = false;
   private desired: ChatComposerDraft | null | typeof unset = unset;
   private persistedFingerprint: string | null = null;
   private flushPromise: Promise<void> | null = null;
@@ -24,11 +25,21 @@ export class ChatComposerDraftPersistence {
     private readonly delayMs = 350,
   ) {}
 
+  dispose(): void {
+    this.disposed = true;
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
+    this.desired = unset;
+    this.persistedFingerprint = null;
+  }
+
   markPersisted(draft: ChatComposerDraft | null): void {
+    if (this.disposed) return;
     this.persistedFingerprint = fingerprint(draft);
   }
 
   schedule(draft: ChatComposerDraft | null): void {
+    if (this.disposed) return;
     this.desired = draft;
     this.retryDelayMs = 1_000;
     if (this.timer) clearTimeout(this.timer);
@@ -52,16 +63,18 @@ export class ChatComposerDraftPersistence {
   }
 
   private async drain(): Promise<void> {
-    while (this.desired !== unset) {
+    while (!this.disposed && this.desired !== unset) {
       const candidate = this.desired;
       this.desired = unset;
       const candidateFingerprint = fingerprint(candidate);
       if (candidateFingerprint === this.persistedFingerprint) continue;
       try {
         await this.save(candidate);
+        if (this.disposed) return;
         this.persistedFingerprint = candidateFingerprint;
         this.retryDelayMs = 1_000;
       } catch (error) {
+        if (this.disposed) return;
         if (this.desired === unset) this.desired = candidate;
         this.scheduleRetry();
         throw error;
@@ -95,4 +108,14 @@ export function scopedChatComposerDraftPersistence(
   const created = new ChatComposerDraftPersistence(save);
   drafts.set(chatId, created);
   return created;
+}
+
+/** Only after confirmed permanent deletion, never on archive or view close. */
+export function forgetChatComposerDraftPersistence(
+  scope: object,
+  chatId: string,
+): void {
+  const drafts = scopedPersistence.get(scope);
+  drafts?.get(chatId)?.dispose();
+  drafts?.delete(chatId);
 }
