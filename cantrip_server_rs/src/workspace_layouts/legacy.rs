@@ -4,7 +4,7 @@ use super::{
     queries::{self, Query},
 };
 use crate::{
-    database::{Row, Transaction},
+    database::{Executor, Row, Transaction},
     wire::{JsString, Value, value::json},
 };
 use anyhow::Result;
@@ -38,13 +38,16 @@ fn at(row: &Row, table: &str, key: &str) -> Result<String> {
         queries::column(table, key),
     )?))
 }
-async fn read(tx: &Transaction<'_>, key: &str, fields: &Value) -> Result<Vec<Row>> {
-    Query::new(key, fields)?.run(tx).await
+async fn read(executor: Executor<'_, '_>, key: &str, fields: &Value) -> Result<Vec<Row>> {
+    Query::new(key, fields)?.run_on(executor).await
 }
 
 pub(super) async fn get(tx: &Transaction<'_>, fields: &Value) -> Result<Option<Value>> {
+    get_on(Executor::Transaction(tx), fields).await
+}
+pub(super) async fn get_on(executor: Executor<'_, '_>, fields: &Value) -> Result<Option<Value>> {
     loop {
-        let projects = read(tx, "legacy_project", fields).await?;
+        let projects = read(executor, "legacy_project", fields).await?;
         let Some(project) = projects.first() else {
             return Ok(None);
         };
@@ -55,16 +58,20 @@ pub(super) async fn get(tx: &Transaction<'_>, fields: &Value) -> Result<Option<V
         let revision = project.get::<i32>(1)?;
         let (panes, members, chats, terminals, explorers, browsers, code, views, builtins, docks) =
             tokio::try_join!(
-                read(tx, "legacy_tabGroups", fields),
-                read(tx, "legacy_tabGroupMembers", fields),
-                read(tx, "legacy_chats", fields),
-                read(tx, "legacy_terminals", fields),
-                read(tx, "legacy_explorers", fields),
-                read(tx, "legacy_browsers", fields),
-                read(tx, "legacy_codeTabs", fields),
-                read(tx, "legacy_projectViews", fields),
-                read(tx, "legacy_projectBuiltInSurfaceStates", fields),
-                read(tx, "legacy_projectDockPresentationPreferences", fields)
+                read(executor, "legacy_tabGroups", fields),
+                read(executor, "legacy_tabGroupMembers", fields),
+                read(executor, "legacy_chats", fields),
+                read(executor, "legacy_terminals", fields),
+                read(executor, "legacy_explorers", fields),
+                read(executor, "legacy_browsers", fields),
+                read(executor, "legacy_codeTabs", fields),
+                read(executor, "legacy_projectViews", fields),
+                read(executor, "legacy_projectBuiltInSurfaceStates", fields),
+                read(
+                    executor,
+                    "legacy_projectDockPresentationPreferences",
+                    fields
+                )
             )?;
         for region in ["right", "bottom"] {
             if panes
@@ -87,7 +94,7 @@ pub(super) async fn get(tx: &Transaction<'_>, fields: &Value) -> Result<Option<V
             parse("projectCenterLayoutNodeSchema", &root)?
         };
         let leaves = crate::project_layout::leaf_ids(&root).map_err(|e| failure(&e.to_string()))?;
-        let selected = read(tx, "legacy_tabGroups_center", fields)
+        let selected = read(executor, "legacy_tabGroups_center", fields)
             .await?
             .iter()
             .map(|r| r.get::<String>(0).map(JsString::from))
@@ -161,7 +168,8 @@ pub(super) async fn get(tx: &Transaction<'_>, fields: &Value) -> Result<Option<V
             }
         }
         if !overview.is_empty() {
-            super::overview::retire(tx, fields["project"].as_str().unwrap(), &overview).await?;
+            super::overview::retire_on(executor, fields["project"].as_str().unwrap(), &overview)
+                .await?;
             continue;
         }
         let mut presentations = HashMap::new();

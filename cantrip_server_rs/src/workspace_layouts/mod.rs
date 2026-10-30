@@ -14,10 +14,26 @@ pub use error::ModelError;
 pub use legacy::Invariant as LegacyInvariant;
 pub use legacy_import::import_legacy_files;
 pub use repository::Repository;
+pub(crate) use repository::resolve_on;
+pub(crate) use seed::component;
 pub use seed::seed;
 
 use crate::wire::{self, Value};
 type Result<T> = std::result::Result<T, ModelError>;
+
+/// The legacy pane API reads outside a transaction and opens one only for its
+/// lazy Overview cleanup. Device seeding uses the same reader inside its lock.
+pub async fn legacy_layout(
+    database: &crate::database::Database,
+    owner: &str,
+    project: &str,
+) -> anyhow::Result<Option<Value>> {
+    legacy::get_on(
+        crate::database::Executor::Database(database),
+        &crate::wire::value::json!({"owner":owner,"project":project}),
+    )
+    .await
+}
 
 fn parse(name: &str, input: &Value) -> Result<Value> {
     wire::parse(name, Some(input)).map_err(ModelError::validation)

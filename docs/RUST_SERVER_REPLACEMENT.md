@@ -2,6 +2,86 @@
 
 Status: **implementation in progress; not a deployable replacement**.
 
+## Legacy panes, surface launchers and normal workspace bootstrap
+
+All 20 legacy pane, tab-group alias, surface-launcher and built-in worktree
+routes now execute natively. They preserve opaque titles, ordering, center-tree
+splits, dock preferences, member identity, revision conflicts, built-in resource
+resolution and lazy Overview cleanup. Standalone reads retain independent query
+connections; workspace seeding uses its caller-owned transaction. Mutations retain
+admitted work through caller disconnect and graceful shutdown.
+
+Local Node/Rust comparisons pass on native PGlite, private PostgreSQL and external
+PostgreSQL: 107 repository operations and ten durable snapshots per store, plus
+13,823 exact schema/error cases and 38 Source-generated SQL shapes. HTTP tests
+cover all three authentication modes on every store, with 59/62/64 observations
+per runtime. Pane mutations publish the ordered project and project-tab-layout
+notifications; launcher and built-in worktree changes preserve their absence.
+The reference fixture observes completion of the actual final response hook
+before checking Live delivery: a response body or unrelated pong alone does not
+prove completion of the earlier asynchronous audit hook.
+
+Actual PostgreSQL locks establish three revision races, both standalone and
+caller-transaction read boundaries, and cleanup committed before a later failed
+claim. A caller-aborted insert remains admitted through observed server shutdown,
+then commits and survives restart. Injected SQL failures verify rollback without
+replacing the real repository operations.
+
+The existing browser client now exercises normal workspace bootstrap rather than
+supplying a custom seed: workspace GET 404, legacy panes GET 200, then seed POST 200. The unchanged full worker and encrypted dirty-editor handoff/restart flow
+pass on all three stores, with 20 steps per runtime. These results do not establish
+native desktop window hosting or complete React UI acceptance.
+
+Workspace repository and HTTP regressions also pass on all three stores after
+the shared-reader refactor. The full native all-target run passes 131 tests across
+70 result groups, with no failures or ignored tests. Strict all-target Clippy,
+Rust formatting, changed-file
+formatting, the app build, 106 focused Source tests, 955 protocol tests and the
+full app suite (3,899 passed, three skipped) pass locally. The broad repository
+check is not green: a computer-use process test timed out, then passed unchanged
+in isolation. A separate broad Source run encountered migration/test timeouts; all seven
+affected files subsequently pass unchanged with one test worker (14 tests).
+the worker run retains its filesystem-change notification failure. The same
+focused worker failure reproduces on clean Primary, with identical relevant
+source/test hashes and 91 other tests passing in each checkout. Those failures
+are retained and must be investigated without weakening their assertions.
+
+A second full `pnpm check` passes all 1,623 Source server tests (57 skipped),
+3,899 app tests (three skipped), and the earlier computer-use process test. It
+ends with four worker failures: filesystem notifications, batch replay after
+process exit, browser keyboard input and browser-profile adoption (2,528 passed,
+133 skipped). The focused outbox/browser rerun passes the three timeout cases but
+fails a different initial-screenshot browser case (24 passed, one failed).
+All 842 compared worker, protocol, crypto and CLI source/test files match Primary;
+these observations do not establish the remaining browser failure's cause.
+The separate root format check reports 12 unchanged files; all 12 also fail the
+same formatter in clean Primary. Changed-file formatting passes. Broad repository
+and platform acceptance remain incomplete.
+
+The preceding workspace milestone's Windows CI artifact also records a browser
+surface failure in the Node reference, before Rust's private-PostgreSQL run:
+`surface.attach` rejects a protected URL as non-HTTP(S). Its PGlite flow completed
+35 steps for each runtime. The artifact SHA256 is
+`b2218c4c3b9d2d58f03a9784c8032c5a5ef0682fb5ec3d610e0a9f997cba3150`.
+The macOS run fails Rust's external-PostgreSQL catalog sync-state assertion.
+Neither partial result establishes full supported-platform acceptance.
+
+The pane suites are configured in the Linux/macOS/Windows workflow. Current-head
+platform results, broader regressions and merged delivery remain required. Normal
+app and standalone launchers still use Node; this milestone does not switch the
+default server or complete replacement.
+
+```sh
+node --import tsx scripts/server-rust/layout-query-manifest.mjs --check
+node scripts/server-rust/cargo.mjs test --test pane_contracts -- --nocapture
+node --import tsx scripts/server-rust/layout-repository-compatibility.mjs --database pglite --report .qa/rust-server/layout-repository-pglite.json
+node --import tsx scripts/server-rust/pane-http-compatibility.mjs --database pglite --report .qa/rust-server/pane-http-pglite.json
+node --import tsx scripts/server-rust/pane-http-lifetimes.mjs --report .qa/rust-server/pane-http-lifetimes.json
+```
+
+Repeat repository and HTTP comparisons with `--database bundled-postgres` and
+`--database postgres`.
+
 ## Device workspace ownership and editor handoff
 
 The four workspace-layout routes now execute natively: read, seed, commands and
@@ -76,7 +156,7 @@ Repeat the repository, HTTP and browser commands with `--database pglite`,
 comparisons on Linux, macOS and Windows; configured CI is not passing evidence.
 Native desktop window hosting, full editor/UI recovery, shared coordination and
 packaged acceptance remain required. These device-layout APIs do not complete
-project-workspace CRUD or the remaining legacy pane APIs. The production Node
+project-workspace CRUD or the remaining resource domains. The production Node
 entrypoints remain in place; migration/rollback, packaging, Winterhold rehearsal,
 performance and the remaining resource/execution domains remain in scope.
 

@@ -36,6 +36,7 @@ export class HttpFixture {
     workerIngress = false,
     providerAuthDrain = false,
     auditObservations = false,
+    responseObservations = false,
     observeHttpClocks = false,
     observeTunnelExpiry = false,
   }) {
@@ -47,6 +48,7 @@ export class HttpFixture {
       workerIngress,
       providerAuthDrain,
       auditObservations,
+      responseObservations,
       observeHttpClocks,
       observeTunnelExpiry,
     });
@@ -91,6 +93,7 @@ export class HttpFixture {
               ...(this.workerIngress ? ["--worker-ingress-fixture"] : []),
               ...(this.providerAuthDrain ? ["--drain-auth-notifications"] : []),
               ...(this.auditObservations ? ["--observe-audits"] : []),
+              ...(this.responseObservations ? ["--observe-responses"] : []),
               ...(this.observeHttpClocks ? ["--observe-http-clocks"] : []),
               ...(this.observeTunnelExpiry ? ["--observe-tunnel-expiry"] : []),
             ],

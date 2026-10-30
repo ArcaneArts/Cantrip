@@ -145,6 +145,27 @@ export const contractRoots = [
   "projectTabLayoutWireSummarySchema",
   "projectBuiltinSurfaceDefinitionIdSchema",
   "projectCenterLayoutNodeSchema",
+  "encryptedProjectPaneUpdateSchema",
+  "encryptedTabGroupUpdateSchema",
+  "projectPaneOrderSchema",
+  "projectPaneMemberOrderSchema",
+  "projectPaneMemberMoveSchema",
+  "projectPaneMemberSplitSchema",
+  "projectCenterSplitResizeSchema",
+  "projectDockPresentationUpdateSchema",
+  "projectSurfaceViewOpenSchema",
+  "projectSurfaceViewCloseSchema",
+  "projectSurfaceViewOpenResultSchema",
+  "projectSurfaceViewCloseResultSchema",
+  "legacyProjectSurfaceViewOpenResultSchema",
+  "legacyProjectSurfaceViewCloseResultSchema",
+  "legacyProjectTabLayoutWireSummarySchema",
+  "tabGroupOrderSchema",
+  "tabGroupMemberOrderSchema",
+  "tabGroupMemberMoveSchema",
+  "projectSurfaceLauncherListSchema",
+  "projectSurfaceLauncherPinSchema",
+  "projectSurfaceLauncherSchema",
   "terminalWireSummarySchema",
   "terminalWireListSchema",
   "encryptedBrowserCreateSchema",
@@ -387,6 +408,26 @@ registerChecks(protocol.projectTabLayoutWireSummarySchema, [
 ]);
 registerChecks(protocol.projectSurfaceResourceRefSchema, [
   "workspace-resource",
+]);
+registerChecks(protocol.encryptedProjectPaneUpdateSchema, ["pane-title"]);
+registerChecks(protocol.projectPaneOrderSchema.shape.paneIds, [
+  "pane-order-unique",
+]);
+registerChecks(protocol.projectPaneMemberOrderSchema.shape.tabKeys, [
+  "member-order-unique",
+]);
+registerChecks(protocol.tabGroupOrderSchema.shape.groupIds, [
+  "group-order-unique",
+]);
+registerChecks(protocol.projectPaneMemberMoveSchema, ["pane-move"]);
+registerChecks(protocol.tabGroupMemberMoveSchema, ["legacy-pane-move"]);
+registerChecks(protocol.projectSurfaceViewOpenSchema, ["surface-open-target"]);
+registerChecks(protocol.legacyProjectTabMemberWireSummarySchema, [
+  "project-tab-member",
+]);
+registerChecks(protocol.tabGroupWireSummarySchema, ["legacy-project-pane"]);
+registerChecks(protocol.legacyProjectTabLayoutWireSummarySchema, [
+  "legacy-project-layout",
 ]);
 const commandContracts = registerWorkerCommandContracts(registerCustom);
 const transforms = new Map([

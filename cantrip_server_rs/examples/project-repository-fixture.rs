@@ -11,6 +11,8 @@ mod browsers;
 mod chat_console;
 #[path = "support/file_documents.rs"]
 mod file_documents;
+#[path = "support/pane_layouts.rs"]
+mod pane_layouts;
 #[path = "support/tunnels.rs"]
 mod tunnels;
 #[path = "support/workspaces.rs"]
@@ -102,6 +104,11 @@ async fn main() -> Result<()> {
                 .is_some_and(|op| op.starts_with("document-"))
             {
                 file_documents::run(database.clone(), &request).await
+            } else if request["op"]
+                .as_str()
+                .is_some_and(|op| op.starts_with("layout-"))
+            {
+                pane_layouts::run(database.clone(), &request).await
             } else if request["op"]
                 .as_str()
                 .is_some_and(|op| op.starts_with("workspace-"))
@@ -455,6 +462,7 @@ async fn main() -> Result<()> {
                         || op.starts_with("browser-")
                         || op.starts_with("document-")
                         || op.starts_with("workspace-")
+                        || op.starts_with("layout-")
                 }) {
                     for cause in error.chain() {
                         if let Some(pg) = cause.downcast_ref::<tokio_postgres::Error>()
@@ -471,7 +479,7 @@ async fn main() -> Result<()> {
                 }
                 if request["op"]
                     .as_str()
-                    .is_some_and(|op| op.starts_with("workspace-"))
+                    .is_some_and(|op| op.starts_with("workspace-") || op.starts_with("layout-"))
                 {
                     reply["errorName"] = Value::String(
                         error
@@ -490,6 +498,9 @@ async fn main() -> Result<()> {
                         .is_some()
                     {
                         reply["statusCode"] = Value::Number(400.0);
+                    }
+                    if error.is::<cantrip_server::pane_layouts::Conflict>() {
+                        reply["statusCode"] = Value::Number(409.0);
                     }
                 }
                 if request["op"]

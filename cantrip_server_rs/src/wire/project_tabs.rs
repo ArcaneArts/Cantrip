@@ -20,6 +20,10 @@ pub(super) fn refine(
         "project-tab-member",
         "project-pane",
         "project-tab-layout",
+        "legacy-project-pane",
+        "legacy-project-layout",
+        "pane-move",
+        "legacy-pane-move",
     ]
     .contains(&tag)
     {
@@ -100,9 +104,14 @@ pub(super) fn refine(
                 );
             }
         }
-        "project-pane" => {
+        "project-pane" | "legacy-project-pane" => {
             for (index, member) in values(&value, "members").iter().enumerate() {
-                if member["paneId"] != value["id"] {
+                if member[if tag == "legacy-project-pane" {
+                    "groupId"
+                } else {
+                    "paneId"
+                }] != value["id"]
+                {
                     issue(
                         vec![json!("members"), json!(index), json!("paneId")],
                         "Pane members must reference their containing pane.",
@@ -144,9 +153,19 @@ pub(super) fn refine(
                 );
             }
         }
-        "project-tab-layout" => {
+        "project-tab-layout" | "legacy-project-layout" => {
             let mut tabs = HashSet::new();
-            for (pi, pane) in values(&value, "panes").iter().enumerate() {
+            for (pi, pane) in values(
+                &value,
+                if tag == "legacy-project-layout" {
+                    "groups"
+                } else {
+                    "panes"
+                },
+            )
+            .iter()
+            .enumerate()
+            {
                 if pane["projectId"] != value["projectId"] {
                     issue(
                         vec![json!("panes"), json!(pi), json!("projectId")],
@@ -243,6 +262,32 @@ pub(super) fn refine(
                         }
                     }
                 }
+            }
+        }
+        "pane-move" => {
+            if !value["targetPaneId"].is_null() && value.get("targetRegion").is_some() {
+                issue(
+                    vec![json!("targetRegion")],
+                    "Specify either a target pane or a target region, not both.",
+                );
+            }
+            if value["targetPaneId"].is_null()
+                && value.get("targetPanePosition").is_none()
+                && value["targetRegion"] != "right"
+                && value["targetRegion"] != "bottom"
+            {
+                issue(
+                    vec![json!("targetPanePosition")],
+                    "A pane position is required when splitting a tab into a new pane.",
+                );
+            }
+        }
+        "legacy-pane-move" => {
+            if value["targetGroupId"].is_null() && value.get("targetGroupPosition").is_none() {
+                issue(
+                    vec![json!("targetGroupPosition")],
+                    "A sidebar position is required when splitting a tab into a new group.",
+                );
             }
         }
         _ => unreachable!(),

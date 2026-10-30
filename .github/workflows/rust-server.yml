@@ -24,6 +24,7 @@ on:
       - cantrip_server/src/db/workspace-resource-removal.ts
       - cantrip_server/src/db/tab-layouts.ts
       - cantrip_server/src/app/routes/workspace-layouts.ts
+      - cantrip_server/src/app/routes/tab-layouts.ts
       - cantrip_server/src/app/routes/file-documents.ts
       - cantrip_server/src/app/routes/browser-management.ts
       - cantrip_server/src/app/routes/browser-service-discovery.ts
@@ -213,6 +214,24 @@ jobs:
         run: node --import tsx scripts/server-rust/workspace-http-compatibility.mjs --database postgres --report .qa/rust-server/workspace-http-external.json
       - name: Concurrent workspace seeds, command receipts and admitted shutdown
         run: node --import tsx scripts/server-rust/workspace-http-lifetimes.mjs --report .qa/rust-server/workspace-http-lifetimes.json
+      - name: Legacy pane query statements match the actual TypeScript repository
+        run: node --import tsx scripts/server-rust/layout-query-manifest.mjs --check
+      - name: Legacy pane protocol and exact validation errors
+        run: node scripts/server-rust/cargo.mjs test --test pane_contracts -- --nocapture
+      - name: Legacy pane repositories and durable layout state with native PGlite
+        run: node --import tsx scripts/server-rust/layout-repository-compatibility.mjs --report .qa/rust-server/layout-repository-compatibility-pglite.json
+      - name: Legacy pane HTTP, authentication and ordered Live notifications with native PGlite
+        run: node --import tsx scripts/server-rust/pane-http-compatibility.mjs --report .qa/rust-server/pane-http-compatibility-pglite.json
+      - name: Legacy pane repositories and durable layout state with private PostgreSQL
+        run: node --import tsx scripts/server-rust/layout-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/layout-repository-compatibility-bundled.json
+      - name: Legacy pane HTTP, authentication and ordered Live notifications with private PostgreSQL
+        run: node --import tsx scripts/server-rust/pane-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/pane-http-compatibility-bundled.json
+      - name: Legacy pane repositories and durable layout state with external PostgreSQL
+        run: node --import tsx scripts/server-rust/layout-repository-compatibility.mjs --database postgres --report .qa/rust-server/layout-repository-compatibility-external.json
+      - name: Legacy pane HTTP, authentication and ordered Live notifications with external PostgreSQL
+        run: node --import tsx scripts/server-rust/pane-http-compatibility.mjs --database postgres --report .qa/rust-server/pane-http-compatibility-external.json
+      - name: Legacy pane revision races, read boundaries and admitted shutdown
+        run: node --import tsx scripts/server-rust/pane-http-lifetimes.mjs --report .qa/rust-server/pane-http-lifetimes.json
       - name: Shared desktop verifier retains its owning crate's formatting
         run: rustfmt --edition 2021 --check cantrip_app/src-tauri/src/direct_probe_connection.rs
       - name: Terminal HTTP and ordered Live notifications with native PGlite

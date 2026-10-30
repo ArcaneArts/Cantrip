@@ -59,6 +59,31 @@ pub(super) fn apply(
     }
     let wrapper = &value["passwordWrappedMasterKey"];
     match tag {
+        "pane-title" => {
+            if value["titleProtection"]["classification"]["recordKind"] != "tab-group" {
+                custom(&[], "Tab-group title classification must be tab-group.");
+            }
+        }
+        "pane-order-unique" | "member-order-unique" | "group-order-unique" => {
+            let values = value.as_array().ok_or(ValidationError::Operation)?;
+            let mut seen = std::collections::HashSet::new();
+            if values
+                .iter()
+                .any(|v| v.as_js_string().is_some_and(|s| !seen.insert(s.clone())))
+            {
+                custom(&[], message.ok_or(ValidationError::Operation)?);
+            }
+        }
+        "surface-open-target" => {
+            if super::coercion::truthy(value.get("targetPaneId"))
+                && super::coercion::truthy(value.get("targetRegion"))
+            {
+                custom(
+                    &[],
+                    "Specify either a target pane or a target region, not both.",
+                );
+            }
+        }
         "workspace-receipt" => {
             if value["appliedRevision"].as_f64() > value["layout"]["revision"].as_f64() {
                 custom(&[], "Receipt is newer than its layout");

@@ -48,6 +48,22 @@ pub enum Transaction<'a> {
     Postgres(tokio_postgres::Transaction<'a>),
 }
 
+/// Preserve whether a shared repository read belongs to its caller's
+/// transaction or leases ordinary request connections.
+#[derive(Clone, Copy)]
+pub enum Executor<'a, 'db> {
+    Database(&'a Database),
+    Transaction(&'a Transaction<'db>),
+}
+impl Executor<'_, '_> {
+    pub async fn query(self, sql: &str, parameters: Parameters<'_>) -> Result<Vec<Row>> {
+        match self {
+            Self::Database(database) => database.query(sql, parameters).await,
+            Self::Transaction(transaction) => transaction.query(sql, parameters).await,
+        }
+    }
+}
+
 impl Transaction<'_> {
     pub async fn execute(&self, sql: &str) -> Result<()> {
         match self {
