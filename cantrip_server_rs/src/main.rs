@@ -187,6 +187,7 @@ async fn main() -> Result<()> {
         // disabling publications, or draining service/database owners.
         service.folder_setup.stop();
         service.project_replicas.stop();
+        service.github_conversion.stop();
         service.worker_maintenance.stop();
         service.tunnel_leases.stop();
         shutdown_step!(
@@ -194,15 +195,7 @@ async fn main() -> Result<()> {
             service.project_operations.drain().await
         );
         service.worktree_observations.stop();
-        shutdown_step!(
-            "worktree-observations",
-            service.worktree_observations.drained().await
-        );
         service.run_configuration_observations.stop();
-        shutdown_step!(
-            "run-observations",
-            service.run_configuration_observations.drained().await
-        );
         shutdown_step!("project-shares", service.project_shares.close().await);
         service.tunnel_runtime.close();
         service.live.close();
@@ -212,6 +205,18 @@ async fn main() -> Result<()> {
         );
         shutdown_step!("worker-links-close", service.worker_links.close().await);
         shutdown_step!("worker-bridge-close", service.workers.close());
+        // Observation commands are background work, and may still be awaiting
+        // a worker's normal reconnect grace after socket pre-close. As in the
+        // reference shutdown, close the bridge before waiting for those
+        // commands. Keep their owned persistence tasks and the database alive.
+        shutdown_step!(
+            "worktree-observations",
+            service.worktree_observations.drained().await
+        );
+        shutdown_step!(
+            "run-observations",
+            service.run_configuration_observations.drained().await
+        );
         shutdown_step!("live-transports", service.live.transports.drained().await);
         // A socket callback can admit an owned account task. Finish socket
         // handlers before the final account/catalog drain, then finish any
@@ -240,6 +245,10 @@ async fn main() -> Result<()> {
         shutdown_step!("tunnel-runtime", service.tunnel_runtime.drained().await);
         shutdown_step!("folder-jobs", service.folder_setup.drained().await);
         shutdown_step!("replica-jobs", service.project_replicas.drained().await);
+        shutdown_step!(
+            "github-conversion-jobs",
+            service.github_conversion.drained().await
+        );
         shutdown_step!(
             "worker-maintenance",
             service.worker_maintenance.drained().await

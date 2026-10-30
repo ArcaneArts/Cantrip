@@ -13,6 +13,7 @@ import { assertNativeRuntimeWritable } from "../../cantrip_server/src/db/reposit
 import { managedConsoleFixture } from "./managed-console-node-fixture.mjs";
 import { gitManagedOperationContext } from "../../cantrip_server/src/app/shared/git-managed-operations.ts";
 import { worktreeCoordinatorFixture } from "./worktree-coordinator-node-fixture.mjs";
+import { conversionFixture } from "./conversion-node-fixture.mjs";
 console.error(JSON.stringify({ event: "repository-fixture.database.opening" }));
 const database = await connectDatabase(readServerConfig());
 console.error(JSON.stringify({ event: "repository-fixture.database.ready" }));
@@ -38,6 +39,11 @@ try {
           consoleTrace,
         );
         value = { result: value, trace: consoleTrace };
+      } else if (request.op.startsWith("conversion-")) {
+        value = await conversionFixture(
+          database.repository.projectGithubConversionJobs,
+          request,
+        );
       } else if (request.op.startsWith("replica-")) {
         const repo = database.repository.projectReplicaJobs;
         const {
@@ -871,6 +877,9 @@ try {
               : (error.cause?.message ?? error.message),
           ...(request.op.startsWith("replica-")
             ? { replicaError: error.constructor.name }
+            : {}),
+          ...(request.op.startsWith("conversion-")
+            ? { conversionError: error.constructor.name }
             : {}),
           ...(request.op.startsWith("folder-")
             ? { folderError: error.constructor.name }

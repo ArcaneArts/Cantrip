@@ -9,6 +9,8 @@ use clap::Parser;
 mod browsers;
 #[path = "support/chat_console.rs"]
 mod chat_console;
+#[path = "support/conversions.rs"]
+mod conversions;
 #[path = "support/file_documents.rs"]
 mod file_documents;
 #[path = "support/pane_layouts.rs"]
@@ -114,6 +116,11 @@ async fn run() -> Result<()> {
                 ]))
             } else if request["op"]
                 .as_str()
+                .is_some_and(|op| op.starts_with("conversion-"))
+            {
+                conversions::run(database.clone(), &request).boxed().await
+            } else if request["op"]
+                .as_str()
                 .is_some_and(|op| op.starts_with("replica-"))
             {
                 replicas::run(database.clone(), &request).boxed().await
@@ -173,6 +180,23 @@ async fn run() -> Result<()> {
             Ok(value) => reply["value"] = value,
             Err(error) => {
                 reply["diagnostic"] = Value::String(error.to_string().into());
+                if let Some(error) = error
+                    .downcast_ref::<cantrip_server::projects::github_conversion::ConversionError>(
+                ) {
+                    use cantrip_server::projects::github_conversion::ConversionError;
+                    reply["conversionError"] = Value::String(
+                        match error {
+                            ConversionError::NotFound => "ProjectGithubConversionJobNotFoundError",
+                            ConversionError::Conflict(_) => {
+                                "ProjectGithubConversionJobConflictError"
+                            }
+                            ConversionError::Stale(_) => {
+                                "ProjectGithubConversionJobStaleAttemptError"
+                            }
+                        }
+                        .into(),
+                    );
+                }
                 if let Some(error) =
                     error.downcast_ref::<cantrip_server::projects::replicas::ReplicaError>()
                 {

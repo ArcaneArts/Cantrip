@@ -30,3 +30,4 @@ pub(crate) fn capabilities(origin: &str, git: bool, github: bool) -> Capabilitie
     }
 }
 pub mod folders;
+pub mod github_conversion;

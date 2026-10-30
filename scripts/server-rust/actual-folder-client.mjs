@@ -3,6 +3,7 @@ import {
   replicaProductJobEvents,
 } from "./actual-project-replicas.mjs";
 import { actualProjectWorktrees } from "./actual-project-worktrees.mjs";
+import { actualGithubConversion } from "./actual-github-conversion.mjs";
 import {
   actualWorkerProjectSurfaces,
   retainedWorkerProjectSurfaces,
@@ -93,7 +94,7 @@ const report = {
   databaseMode,
   completeReplacement: false,
   scope:
-    "Existing browser account encryption, project and protected repository APIs; full worker startup, real managed/existing folders, failure/retry, reconnect and retained server state. Optional --worktrees exercises actual local Git create/lock/unlock/reconcile/remove/prune, retained identity and real Run process retirement before deletion, with only disposable catalog classification seeded. Optional --replicas uses two full workers for direct local Git attachment, replay, restart and detach; --github-replicas adds real public gh clone/fetch and managed checkout deletion. Not whole UI, packaging or multi-instance acceptance.",
+    "Existing browser account encryption, project and protected repository APIs; full worker startup, real managed/existing folders, failure/retry, reconnect and retained server state. Optional --worktrees exercises actual local Git create/lock/unlock/reconcile/remove/prune, retained identity and real Run process retirement before deletion, with only disposable catalog classification seeded. Optional --replicas uses two full workers for direct local Git attachment, replay, restart and detach; --github-replicas adds real public gh clone/fetch and managed checkout deletion. Optional --github-conversion uses the existing encrypted APIs and full worker to link matching public history in a fresh managed folder, preserve dirty bytes and identities, and restart without SQL seeding or command substitutions. Not whole UI, packaging or multi-instance acceptance.",
   runtimes: [],
 };
 let vite, browser, postgres, failure, surfaceRepositoryBinary;
@@ -604,7 +605,8 @@ async function flow(
       fileDocuments ||
       projectSurfaces ||
       process.argv.includes("--worktrees") ||
-      process.argv.includes("--replicas")
+      process.argv.includes("--replicas") ||
+      process.argv.includes("--github-conversion")
         ? Number(new URL(fixture.server.origin).port)
         : 0;
     // Retain a generous diagnostic deadline for both implementations. Earlier
@@ -775,6 +777,16 @@ async function flow(
         stopWorker,
         result,
       });
+    if (process.argv.includes("--github-conversion"))
+      await actualGithubConversion({
+        page,
+        fixture,
+        dataDirectory,
+        workerId,
+        startWorker,
+        stopWorker,
+        result,
+      });
     result.requests = requests;
     result.events = await page.evaluate(() => window.folderEvents);
     assert.deepEqual(errors, []);
@@ -904,6 +916,11 @@ try {
   }
   assert.deepEqual(report.runtimes[1].steps, report.runtimes[0].steps);
   assert.deepEqual(report.runtimes[1].projects, report.runtimes[0].projects);
+  if (process.argv.includes("--github-conversion"))
+    assert.deepEqual(
+      report.runtimes[1].githubConversionSummary,
+      report.runtimes[0].githubConversionSummary,
+    );
   if (process.argv.includes("--github-replicas"))
     assert.deepEqual(
       report.runtimes[1].githubReplicaSummary,
