@@ -4,6 +4,7 @@ import type {
   LanguageId,
   SyntaxLine,
   SyntaxToken,
+  SyntaxState,
 } from "./types";
 
 export interface TextChange {
@@ -26,10 +27,23 @@ export interface HighlightedLine {
   number: number;
   text: string;
   tokens: SyntaxToken[];
+  /** Worker checkpoint for immediate, bounded recoloring of a visible edit. */
+  from?: number;
+  state?: SyntaxState;
 }
 
 export function textChange(previous: string, next: string): TextChange {
   let from = 0;
+  // Let the engine compare unchanged runs in native code. Walking a megabyte
+  // one JS character at a time for history, indexing and highlighting made
+  // every keystroke expensive even though only a few characters changed.
+  const chunk = 4096;
+  const commonLength = Math.min(previous.length, next.length);
+  while (
+    from + chunk <= commonLength &&
+    previous.slice(from, from + chunk) === next.slice(from, from + chunk)
+  )
+    from += chunk;
   while (
     from < previous.length &&
     from < next.length &&
@@ -38,6 +52,15 @@ export function textChange(previous: string, next: string): TextChange {
     from++;
   let oldEnd = previous.length,
     newEnd = next.length;
+  while (
+    oldEnd - from >= chunk &&
+    newEnd - from >= chunk &&
+    previous.slice(oldEnd - chunk, oldEnd) ===
+      next.slice(newEnd - chunk, newEnd)
+  ) {
+    oldEnd -= chunk;
+    newEnd -= chunk;
+  }
   while (
     oldEnd > from &&
     newEnd > from &&
@@ -141,6 +164,11 @@ export class SyntaxDocument {
       number: first + offset + 1,
       text,
       tokens: this.results[first + offset]?.tokens ?? [],
+      from: this.offsets[first + offset],
+      state:
+        first + offset === 0
+          ? initialSyntaxState(this.language)
+          : this.results[first + offset - 1]?.state,
     }));
   }
 }
