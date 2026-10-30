@@ -11,6 +11,22 @@ pub fn run<'a>(
         let owner = request["owner"].as_str().context("Runtime owner")?;
         let project = request["project"].as_str().context("Runtime project")?;
         match request["op"].as_str() {
+            Some("run-secret-race") => Ok(Value::Array(
+                futures::future::try_join_all(
+                    request["inputs"]
+                        .as_array()
+                        .context("Secret inputs")?
+                        .iter()
+                        .map(|input| repo.set_secret(owner, project, input)),
+                )
+                .await?,
+            )),
+            Some("run-secret-set") => {
+                repo.set_secret(owner, project, &request["input"])
+                    .boxed()
+                    .await
+            }
+            Some("run-secret-list") => repo.list_secret_summaries(owner, project).boxed().await,
             Some("run-runtime-observation-race") => {
                 let inputs = request["inputs"]
                     .as_array()

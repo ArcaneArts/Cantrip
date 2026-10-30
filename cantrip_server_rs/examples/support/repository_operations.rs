@@ -13,7 +13,7 @@ pub fn run<'a>(
 ) -> futures::future::BoxFuture<'a, Result<Value>> {
     if request["op"]
         .as_str()
-        .is_some_and(|op| op.starts_with("run-runtime-"))
+        .is_some_and(|op| op.starts_with("run-runtime-") || op.starts_with("run-secret-"))
     {
         return super::run_configurations::run(database, request);
     }

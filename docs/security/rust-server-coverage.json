@@ -2318,6 +2318,32 @@
         "remaining": [
           "Additional failure boundaries, definition/secret administration and supported-platform/package acceptance. Actual local browser/full-worker start and deletion retirement pass all three stores."
         ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/run-configuration-secrets",
+        "implementation": "cantrip_server_rs/src/http/run_secrets.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/run-secret-http-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Supported-platform and packaged acceptance; Run definition administration remains separate and incomplete."
+        ]
+      },
+      {
+        "method": "PUT",
+        "path": "/api/projects/:projectId/run-configuration-secrets",
+        "implementation": "cantrip_server_rs/src/http/run_secrets.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/run-secret-http-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Supported-platform and packaged acceptance; Run definition administration remains separate and incomplete."
+        ]
       }
     ]
   },
@@ -3482,6 +3508,30 @@
         ],
         "remaining": [
           "Actual worker process stop/retirement integration, remaining HTTP lifecycle and supported-platform/package verification. Local three-store duplicate start, competing stop and duplicate observation contention checks pass; controlled-worker retirement and reconnect pass across all nine storage/authentication combinations."
+        ]
+      },
+      {
+        "method": "listRunConfigurationSecretSummaries",
+        "implementation": "cantrip_server_rs/src/run_configurations/secret_writes.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/run-secret-repository-cases.mjs",
+          "scripts/server-rust/run-secret-http-cases.mjs"
+        ],
+        "remaining": [
+          "Supported-platform and packaged acceptance; Run definition administration remains separate and incomplete."
+        ]
+      },
+      {
+        "method": "setRunConfigurationSecret",
+        "implementation": "cantrip_server_rs/src/run_configurations/secret_writes.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/run-secret-repository-cases.mjs",
+          "scripts/server-rust/run-secret-http-cases.mjs"
+        ],
+        "remaining": [
+          "Supported-platform and packaged acceptance; Run definition administration remains separate and incomplete."
         ]
       }
     ]

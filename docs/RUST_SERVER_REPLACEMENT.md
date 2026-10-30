@@ -12,6 +12,21 @@ feature set.
 
 Status: **implementation in progress; not a deployable replacement**.
 
+## Run secret administration
+
+Native GET/PUT project secret routes preserve validation-before-lookup, tenant
+ownership, opaque envelope persistence, JavaScript-compatible digest receipts,
+revision increments, replay of the original revision/timestamp, and 201/200/502
+behavior. Successful writes and replays preserve both ordered invalidations
+(route publication and response-completion publication) and the owned audit row.
+All nine local database/authentication HTTP combinations pass, with audit rows
+read back after server shutdown. Concurrent identical repository writes produce
+one revision and one receipt on all three stores under the 1 MiB fixture stack.
+Evidence: `run-admin-secret-http-*-final.json` and
+`run-admin-repository-*-v5.json` in `.qa/rust-server/`.
+Supported-platform/package verification and Run definition administration remain
+incomplete. The default server is still Node.
+
 ## Protected Git operations and worker observations (in progress)
 
 Native Run lifecycle admission now includes owner-scoped receipt replay, Primary
