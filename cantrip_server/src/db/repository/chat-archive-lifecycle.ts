@@ -1,6 +1,7 @@
 import type {
   ArchivedStandaloneChatWireSummary,
   ChatWireSummary,
+  ConversationRestore,
   StandaloneChatWireSummary,
 } from "@cantrip/protocol";
 import { and, eq, inArray, isNotNull, isNull, lte, sql } from "drizzle-orm";
@@ -37,6 +38,69 @@ export class ChatArchiveLifecycleRepository {
     private readonly database: RepositoryDatabase,
     private readonly collaborators: ChatArchiveLifecycleRepositoryCollaborators,
   ) {}
+
+  /** Explicit archive retains empty Agents; legacy DELETE keeps its semantics. */
+  async archiveAgentConversation(
+    ownerId: string,
+    chatId: string,
+  ): Promise<false | "archived" | "running"> {
+    return this.database.transaction(async (tx) => {
+      // Match workspace removal's project -> chat/layout lock order. The chat
+      // is read again under lock so a raced start/delete is not overwritten.
+      const [project] = await tx
+        .select({ id: schema.projects.id })
+        .from(schema.projects)
+        .where(
+          and(
+            eq(schema.projects.ownerId, ownerId),
+            inArray(
+              schema.projects.id,
+              tx
+                .select({ projectId: schema.chats.projectId })
+                .from(schema.chats)
+                .where(eq(schema.chats.id, chatId)),
+            ),
+          ),
+        )
+        .for("update");
+      if (!project) return false;
+      const [chat] = await tx
+        .select()
+        .from(schema.chats)
+        .where(
+          and(
+            eq(schema.chats.id, chatId),
+            eq(schema.chats.projectId, project.id),
+            eq(schema.chats.contextKind, "project"),
+            eq(schema.chats.experience, "agent"),
+          ),
+        )
+        .for("update");
+      if (!chat) return false;
+      if (chat.archivedAt) return "archived";
+      if (chatIsExecuting(chat.status as ChatWireSummary["status"]))
+        return "running";
+      await removeResourceWorkspaceViews(
+        tx,
+        ownerId,
+        project.id,
+        "project.agent",
+        chatId,
+      );
+      await detachProjectTab(tx, project.id, projectTabKey("chat", chatId));
+      const now = new Date();
+      await tx
+        .update(schema.chats)
+        .set({
+          archivedAt: now,
+          automationPaused: true,
+          status: "idle",
+          updatedAt: now,
+        })
+        .where(eq(schema.chats.id, chatId));
+      return "archived";
+    });
+  }
 
   async deleteChat(
     ownerId: string,
@@ -256,39 +320,79 @@ export class ChatArchiveLifecycleRepository {
   async restoreArchivedChat(
     ownerId: string,
     chatId: string,
+    options: ConversationRestore = {},
   ): Promise<ChatWireSummary | null> {
-    const rows = await this.database
-      .select({ chat: schema.chats })
-      .from(schema.chats)
-      .innerJoin(
-        schema.projects,
-        and(
-          eq(schema.projects.id, schema.chats.projectId),
-          eq(schema.projects.ownerId, ownerId),
-        ),
-      )
-      .where(
-        and(eq(schema.chats.id, chatId), isNotNull(schema.chats.archivedAt)),
-      )
-      .limit(1);
-    const chat = rows[0]?.chat;
-    if (!chat) return null;
-    const projectId = requiredProjectChatProjectId(chat.projectId);
-    const position = await this.collaborators.nextProjectTabPosition(projectId);
-    return this.database.transaction(async (transaction) => {
-      const restored = await transaction
+    // Legacy resource ordering is separate from owned placement. Resolve this
+    // collaborator before entering the transaction (PGlite has one connection).
+    const [placement] =
+      options.attachToTabLayout === false
+        ? []
+        : await this.database
+            .select({ projectId: schema.chats.projectId })
+            .from(schema.chats)
+            .where(
+              and(
+                eq(schema.chats.id, chatId),
+                eq(schema.chats.ownerId, ownerId),
+              ),
+            );
+    const position = placement?.projectId
+      ? await this.collaborators.nextProjectTabPosition(placement.projectId)
+      : undefined;
+    return this.database.transaction(async (tx) => {
+      const [project] = await tx
+        .select({ id: schema.projects.id })
+        .from(schema.projects)
+        .where(
+          and(
+            eq(schema.projects.ownerId, ownerId),
+            inArray(
+              schema.projects.id,
+              tx
+                .select({ projectId: schema.chats.projectId })
+                .from(schema.chats)
+                .where(eq(schema.chats.id, chatId)),
+            ),
+          ),
+        )
+        .for("update");
+      if (!project) return null;
+      const [chat] = await tx
+        .select()
+        .from(schema.chats)
+        .where(
+          and(
+            eq(schema.chats.id, chatId),
+            eq(schema.chats.projectId, project.id),
+          ),
+        )
+        .for("update");
+      if (!chat) return null;
+      if (!chat.archivedAt) {
+        return options.attachToTabLayout === false &&
+          chat.experience === "agent"
+          ? toChatWireSummary(chat)
+          : null;
+      }
+      const now = new Date();
+      const [restored] = await tx
         .update(schema.chats)
-        .set({ archivedAt: null, position, updatedAt: new Date() })
+        .set({
+          archivedAt: null,
+          updatedAt: now,
+          lastUsedAt: now,
+          ...(position === undefined ? {} : { position }),
+        })
         .where(eq(schema.chats.id, chatId))
         .returning();
-      if (chat.experience !== "task") {
-        await attachProjectTab(transaction, {
-          projectId,
+      if (chat.experience !== "task" && options.attachToTabLayout !== false) {
+        await attachProjectTab(tx, {
+          projectId: project.id,
           tabId: chatId,
           tabKind: "chat",
         });
       }
-      return toChatWireSummary(firstOrThrow(restored, "restoring a chat"));
+      return toChatWireSummary(restored!);
     });
   }
 

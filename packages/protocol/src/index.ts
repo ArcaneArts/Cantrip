@@ -1,4 +1,5 @@
 export * from "./native-settings-state.js";
+export * from "./conversations.js";
 export * from "./file-documents.js";
 export * from "./workspace-ownership.js";
 export * from "./workspace-legacy-file-import.js";

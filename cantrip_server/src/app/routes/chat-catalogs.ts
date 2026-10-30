@@ -18,6 +18,8 @@ import {
   type ServerRepository,
 } from "../../db/repository.js";
 import { errorMessage, invalidBody } from "../../http/request-helpers.js";
+import { installConversationCatalogRoutes } from "./conversation-catalog.js";
+import { ConversationCreationConflictError } from "../../db/repository/conversation-creation.js";
 import type {
   StandaloneChatRootJobExecutor,
   StandaloneChatRootJobLiveChange,
@@ -136,6 +138,11 @@ export function installProjectChatCatalogRoutes(
     prepareManagedChat,
   }: ProjectChatCatalogRouteDependencies,
 ): void {
+  installConversationCatalogRoutes(
+    app,
+    applicationOwnerId,
+    repository.conversations,
+  );
   app.get<{ Params: { projectId: string } }>(
     "/api/projects/:projectId/chats",
     async (request, reply) => {
@@ -201,6 +208,8 @@ export function installProjectChatCatalogRoutes(
         await prepareManagedChat?.(applicationOwnerId(), chat.id);
         return reply.code(201).send(chatWireSummarySchema.parse(chat));
       } catch (error) {
+        if (error instanceof ConversationCreationConflictError)
+          return reply.code(409).send({ error: error.message });
         if (error instanceof ExecutionPlacementUnavailableError) {
           if (error.code === "project-not-found") {
             return reply.code(404).send({ error: "Project source not found" });
