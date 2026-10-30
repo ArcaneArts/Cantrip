@@ -23,8 +23,9 @@ async function blocked(observer, pid, pattern) {
     const matches = rows.filter((r) => pattern.test(r.query));
     if (matches.length) {
       assert.equal(matches.length, 1);
-      assert.equal(matches[0].wait_event_type, "Lock");
-      return matches[0];
+      // pg_blocking_pids and the activity wait event are sampled separately.
+      // Require both observations before releasing the held transaction.
+      if (matches[0].wait_event_type === "Lock") return matches[0];
     }
     assert.ok(
       Date.now() < end,

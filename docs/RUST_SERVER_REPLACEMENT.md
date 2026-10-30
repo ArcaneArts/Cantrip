@@ -2,6 +2,76 @@
 
 Status: **implementation in progress; not a deployable replacement**.
 
+## Explorer, Code tabs and project views
+
+All 18 project-surface routes now execute natively, preserving their distinct
+validation, placement, ownership, encrypted state, capability errors and ordered
+Live invalidations. The implementation reuses native pane placement and workspace
+cleanup, retains Explorer pin idempotency, and fences Code checkout updates using
+the prior worker and worktree binding. Explorer operations use the unchanged worker
+command transport and preserve the separate 4 MiB request limit.
+
+Local comparisons pass on PGlite, bundled PostgreSQL and external PostgreSQL:
+133 repository operations and 68 durable snapshots per store, plus all nine
+storage/authentication HTTP combinations (88/94/98 observations per runtime).
+Populated main/detached workspace layouts cover all view definitions and legacy
+Explorer `project.file` aliases. Another owner's layout remains unchanged.
+An actual SQL trigger failure at the final resource DELETE rolls back workspace,
+legacy-pane, layout-revision and remote-surface cleanup on every store.
+
+Project-view deletion revokes two active WorkerLink grants before sending
+`surface.close`; foreign deletion cannot revoke them, and deleted grants cannot
+renew or be reissued. These cases pass inside the existing terminal/relay suite
+on all three stores for local and account authentication. Repeated deletion does
+not send another close command. Controlled workers use the unchanged decoder and
+transport; this is not full remote-desktop UI acceptance.
+
+Existing browser APIs and the full production worker pass Explorer reads/writes,
+stale-save and stale-binding denial, Code/Explorer metadata, pin retries and
+restart retention. A real local Git checkout is discovered through folder setup;
+encrypted History/Graph creation, rename, deletion and restart retention pass on
+all stores (14 steps per runtime). The source correctly rejects worktree switching
+for these managed-folder projects even when Git is available. Actual GitHub-backed
+Issues/PR/Actions flows and wider worktree lifecycle acceptance remain required.
+
+The 16 schema roots pass 8,396 exact cases; the full wire regression passes
+260,456 cases. PostgreSQL lock tests establish pin/CAS races and admitted work
+surviving caller abort and graceful shutdown. The focused Source suite passes
+37 tests, and the app build passes. Strict all-target Clippy and changed-file formatting pass. Route-template dispatch
+also preserves validation for resource IDs that resemble action names. Current-head
+supported-platform results and merged delivery are still pending. The native
+all-target run passed before the subsequent fixture stack correction; that run
+does not verify the final fixture source. Normal builds
+continue to select the Node server; this milestone does not perform the cutover.
+
+The preceding pane milestone's run `41026486096` has now reported Windows and
+macOS failures. Windows exits during native workspace seeding with a confirmed
+main-thread stack overflow. Its artifact `12963648256` has SHA256
+`b66115ee2ab2a10d83a2f6be1f168041ed95c23a4d33817e3bc1572d7df837d9`.
+macOS caught a lock-observation race: a blocker was visible while the separately
+sampled wait type was null. The observer now waits for both actual signals before
+releasing the transaction, retaining the bounded deadline and assertions; the
+external PostgreSQL workspace repository suite passes locally after this fix.
+A local 1 MiB-stack reproduction isolated excessive debug stack use in the
+shared repository fixture dispatcher: its poll frame alone reserved about
+660 KiB. Extracting unrelated operations into a separately boxed dispatcher
+passes all 66 workspace cases and 11 snapshots on each of native PGlite,
+private PostgreSQL and external PostgreSQL at 1 MiB,
+with production repository code unchanged. The CI workspace repository matrix
+now uses the same explicit stack size. Windows platform revalidation remains
+required; a local pass does not establish that the Windows failure is fixed.
+
+The current focused worker check reports 92 passes and one filesystem-notification
+failure. An isolated repeat fails later in that same test. Clean Primary passes
+the full focused group once, then times out on the isolated test; all 842 compared
+worker/protocol/crypto/CLI source and test files are identical. These results
+establish baseline instability, not its cause or a green worker check.
+The broad current milestone check passes 1,623 Source server tests (57 skipped),
+955 protocol tests and 3,899 app tests (three skipped), but fails four worker
+tests: filesystem notifications, browser-profile adoption, abrupt-process outbox
+replay and large-image encoding. An unchanged isolated rerun of the last three
+files passes all 53 tests. The broad check remains failed.
+
 ## Legacy panes, surface launchers and normal workspace bootstrap
 
 All 20 legacy pane, tab-group alias, surface-launcher and built-in worktree

@@ -1,3 +1,4 @@
+import { projectSurfaceWireFixtures } from "./project-surface-wire-fixtures.mjs";
 import * as p from "../../packages/protocol/dist/index.js";
 import { workerIngressFixtures } from "./worker-wire-fixtures.mjs";
 import workerCommands from "./worker-command-fixtures.json" with { type: "json" };
@@ -661,6 +662,7 @@ export const securityFixtures = {
   ...folderWireFixtures(projectLabel),
   ...terminalWireFixtures(projectLabel),
   ...browserWireFixtures(projectLabel),
+  ...projectSurfaceWireFixtures(projectLabel),
   ...projectShareWireFixtures(),
   ...fileDocumentWireFixtures(),
   ...tunnelWireFixtures,

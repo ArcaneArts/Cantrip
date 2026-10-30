@@ -320,6 +320,90 @@ export async function remoteSurfaceWorkerLinkCases({
       })),
     ).flat(),
   );
+  const desktopGrants = [];
+  for (let index = 0; index < 2; index++)
+    desktopGrants.push(
+      await transition(
+        `desktop grant before view deletion ${index}`,
+        "desktop",
+        201,
+      ),
+    );
+  if (profile === "accounts") {
+    const at = result.commands.length;
+    await visit(
+      "foreign view deletion preserves grants",
+      "DELETE",
+      "/api/project-views/desktop",
+      {
+        client: "other",
+        status: 404,
+      },
+    );
+    assert.deepEqual(result.commands.slice(at), []);
+    await visit(
+      "desktop grant survives foreign deletion",
+      "POST",
+      `${base}/grants/${desktopGrants[0].binding.grantId}/renew`,
+    );
+  }
+  const deletionStart = result.commands.length;
+  await visit(
+    "delete view with active desktop grants",
+    "DELETE",
+    "/api/project-views/desktop",
+    {
+      status: 204,
+    },
+  );
+  await until(
+    () =>
+      result.commands
+        .slice(deletionStart)
+        .some((command) => command.type === "surface.close"),
+    "view deletion reaches surface close",
+  );
+  const deletionCommands = result.commands.slice(deletionStart);
+  assert.deepEqual(
+    deletionCommands.map((command) => command.type),
+    ["worker-link.grant.revoke", "worker-link.grant.revoke", "surface.close"],
+  );
+  assert.deepEqual(
+    deletionCommands.slice(0, 2).map((command) => ({
+      grantId: command.grantId,
+      reason: command.revocation.reason,
+    })),
+    desktopGrants.map((grant) => ({
+      grantId: grant.binding.grantId,
+      reason: "resource-deleted",
+    })),
+  );
+  assert.equal(deletionCommands[2].surfaceId, "desktop");
+  for (const [index, grant] of desktopGrants.entries())
+    await visit(
+      `deleted view grant cannot renew ${index}`,
+      "POST",
+      `${base}/grants/${grant.binding.grantId}/renew`,
+      { status: 409 },
+    );
+  await visit(
+    "deleted view cannot issue desktop grant",
+    "POST",
+    route("desktop"),
+    {
+      json: body,
+      status: 404,
+    },
+  );
+  await visit(
+    "repeat active-grant view deletion",
+    "DELETE",
+    "/api/project-views/desktop",
+    {
+      status: 404,
+    },
+  );
+  assert.equal(result.commands.length, deletionStart + 3);
   await visit("release surface WorkerLink session", "DELETE", base, {
     status: 204,
   });

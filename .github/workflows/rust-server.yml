@@ -201,19 +201,43 @@ jobs:
       - name: Workspace commands, imports and resource deletion match the actual shared models
         run: node scripts/server-rust/cargo.mjs test --test workspace_models -- --nocapture
       - name: Workspace repositories and legacy layout cleanup with native PGlite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
         run: node --import tsx scripts/server-rust/workspace-repository-compatibility.mjs --report .qa/rust-server/workspace-repository-pglite.json
       - name: Workspace HTTP, authentication and Live with native PGlite
         run: node --import tsx scripts/server-rust/workspace-http-compatibility.mjs --report .qa/rust-server/workspace-http-pglite.json
       - name: Workspace repositories and legacy layout cleanup with private PostgreSQL
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
         run: node --import tsx scripts/server-rust/workspace-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/workspace-repository-bundled.json
       - name: Workspace HTTP, authentication and Live with private PostgreSQL
         run: node --import tsx scripts/server-rust/workspace-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/workspace-http-bundled.json
       - name: Workspace repositories, document authority and commit lock races with external PostgreSQL
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
         run: node --import tsx scripts/server-rust/workspace-repository-compatibility.mjs --database postgres --report .qa/rust-server/workspace-repository-external.json
       - name: Workspace HTTP, authentication and Live with external PostgreSQL
         run: node --import tsx scripts/server-rust/workspace-http-compatibility.mjs --database postgres --report .qa/rust-server/workspace-http-external.json
       - name: Concurrent workspace seeds, command receipts and admitted shutdown
         run: node --import tsx scripts/server-rust/workspace-http-lifetimes.mjs --report .qa/rust-server/workspace-http-lifetimes.json
+      - name: Project surface SQL matches the actual TypeScript repositories
+        run: node --import tsx scripts/server-rust/project-surface-query-manifest.mjs --check
+      - name: Project surface protocol and exact validation errors
+        run: node scripts/server-rust/cargo.mjs test --test project_surface_contracts -- --nocapture
+      - name: Project surface repository state and placement with native PGlite
+        run: node --import tsx scripts/server-rust/project-surfaces-repository-compatibility.mjs --database pglite --report .qa/rust-server/project-surfaces-repository-compatibility-pglite.json
+      - name: Project surface HTTP, worker routing and ordered Live with native PGlite
+        run: node --import tsx scripts/server-rust/project-surface-http-compatibility.mjs --database pglite --report .qa/rust-server/project-surface-http-compatibility-pglite.json
+      - name: Project surface repository state and placement with private PostgreSQL
+        run: node --import tsx scripts/server-rust/project-surfaces-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/project-surfaces-repository-compatibility-bundled-postgres.json
+      - name: Project surface HTTP, worker routing and ordered Live with private PostgreSQL
+        run: node --import tsx scripts/server-rust/project-surface-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/project-surface-http-compatibility-bundled-postgres.json
+      - name: Project surface repository state and placement with external PostgreSQL
+        run: node --import tsx scripts/server-rust/project-surfaces-repository-compatibility.mjs --database postgres --report .qa/rust-server/project-surfaces-repository-compatibility-postgres.json
+      - name: Project surface HTTP, worker routing and ordered Live with external PostgreSQL
+        run: node --import tsx scripts/server-rust/project-surface-http-compatibility.mjs --database postgres --report .qa/rust-server/project-surface-http-compatibility-postgres.json
+      - name: Project surface pin races, retarget fencing and admitted shutdown
+        run: node --import tsx scripts/server-rust/project-surface-lifetimes.mjs --report .qa/rust-server/project-surface-lifetimes.json
       - name: Legacy pane query statements match the actual TypeScript repository
         run: node --import tsx scripts/server-rust/layout-query-manifest.mjs --check
       - name: Legacy pane protocol and exact validation errors
@@ -265,6 +289,12 @@ jobs:
       - name: Allow the downloaded Chromium to use its namespace sandbox on Ubuntu
         if: runner.os == 'Linux'
         run: node scripts/server-rust/linux-chromium-sandbox.mjs
+      - name: Existing Explorer and Code clients, full worker files and restart with native PGlite
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --database pglite --project-surfaces --report .qa/rust-server/actual-project-surfaces-pglite.json
+      - name: Existing Explorer and Code clients, full worker files and restart with private PostgreSQL
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --database bundled-postgres --project-surfaces --report .qa/rust-server/actual-project-surfaces-bundled-postgres.json
+      - name: Existing Explorer and Code clients, full worker files and restart with external PostgreSQL
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --database postgres --project-surfaces --report .qa/rust-server/actual-project-surfaces-postgres.json
       - name: Actual browser, server and full worker catalog flow with PGlite
         run: node --import tsx scripts/server-rust/actual-worker-client.mjs --report .qa/rust-server/actual-worker-client-pglite.json
       - name: Actual browser, server and full worker catalog flow with private PostgreSQL

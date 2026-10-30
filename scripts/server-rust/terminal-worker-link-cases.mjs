@@ -204,7 +204,7 @@ export function terminalGrantWorker({ serverId, owner, commands }) {
         });
       return { accepted: true, transport: "websocket" };
     }
-    if (command.type === "surface.detach") return null;
+    if (["surface.detach", "surface.close"].includes(command.type)) return null;
     if (command.type === "terminal.close") {
       if (state.mode === "close-error")
         throw new Error("Controlled terminal close failure");

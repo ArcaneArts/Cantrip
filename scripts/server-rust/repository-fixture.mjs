@@ -16,6 +16,9 @@ export async function repositoryFixture({
   const environment = {
     ...fixtureEnvironment(path.join(root, kind)),
     ...(databaseUrl ? { DATABASE_URL: databaseUrl } : {}),
+    ...(kind === "rust" && process.env.CANTRIP_FIXTURE_STACK_BYTES
+      ? { CANTRIP_FIXTURE_STACK_BYTES: process.env.CANTRIP_FIXTURE_STACK_BYTES }
+      : {}),
   };
   if (databaseMode === "bundled-postgres" && kind === "rust")
     environment.CANTRIP_POSTGRES_BIN_DIR =
