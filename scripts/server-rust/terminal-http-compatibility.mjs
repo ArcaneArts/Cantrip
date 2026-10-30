@@ -853,6 +853,7 @@ try {
       "terminalDeleteEvents",
       "deletedOwnership",
       "terminalDirectCommands",
+      "directPreparationBoundary",
       "terminalDirectEvents",
       "terminalRelaySockets",
       "terminalRelayCommands",

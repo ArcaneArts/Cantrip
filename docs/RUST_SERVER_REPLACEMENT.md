@@ -2,6 +2,35 @@
 
 Status: **implementation in progress; not a deployable replacement**.
 
+## Direct preparation acknowledgment and release comparison
+
+The terminal HTTP fixture now holds the actual worker preparation acknowledgment
+after its HTTP caller disconnects. Both servers acknowledge an early release
+with 204 while telemetry returns 404 and no worker revoke is sent. After the
+worker acknowledgment, the fixture attempts the real authenticated telemetry
+operation until it observes the published, inactive capability's exact 409
+response. The final release must then send exactly one worker revoke. Final
+telemetry and its duplicate both return 204, matching the reference's deduplicated
+accounting. The original complete command, HTTP, state and Live comparisons remain.
+
+Receiving the worker request alone did not prove that the server had processed
+its acknowledgment and published the grant. The earlier fixture could release
+too soon and snapshot commands before the final revoke existed. This repair
+changes the compatibility fixture; no production timing or grant behavior changes.
+Publication attempts are retained separately because their count depends on
+scheduling; every response must match either the exact unpublished 404 or final
+inactive 409 contract.
+
+The full terminal comparisons pass locally on all three storage modes. Each
+Node/Rust runtime passes 191 anonymous and 202 account HTTP observations with
+PGlite, 189 and 202 with private PostgreSQL, and 205 and 218 with external
+PostgreSQL. All twelve runtime/profile combinations match the acknowledgment
+boundary. CI runs these existing three comparisons after shared dependency
+setup, before full browser integration, so a later browser failure cannot hide
+this independent evidence. The full browser and worker checks remain enabled.
+These local results do not establish supported-platform, packaged desktop or
+complete replacement acceptance.
+
 ## Protected project and standalone-chat shares
 
 The Rust server now implements the three project/standalone-chat share creation
