@@ -5338,14 +5338,18 @@
       "status": "implemented-pending-platform-acceptance",
       "evidence": [
         "scripts/server-rust/actual-worker-client.mjs",
-        ".github/workflows/rust-server.yml"
+        ".github/workflows/rust-server.yml",
+        "scripts/server-rust/actual-run-retirement.mjs",
+        "scripts/server-rust/actual-worker-browser-discovery.mjs",
+        "scripts/server-rust/discovery-http-listener.mjs"
       ],
       "validatedLocally": "macOS: eight product steps per runtime on native PGlite, private PostgreSQL and external PostgreSQL. Real Chromium imports the existing account/provider APIs and AppLiveClient; each actual server routes Ollama discovery through the unchanged built worker index. Native CLI startup dependency is actually built. Checks cover account/session setup, enrollment and command readiness, committed worker Live event, catalog capabilities/availability, retained model identity while stopped, persisted-credential restart, actual HTTP 503 producing stable stale-catalog state, and recovery. All 12 worker processes exit cleanly. Codex is actually probed and advertised incompatible locally; inference and execution are outside this test.",
       "remaining": [
         "Observe current Linux/macOS/Windows CI and retain actual artifacts; configured jobs are not acceptance.",
         "Whole UI, encrypted execution/resource flows, multi-instance recovery and packaging/deployment matrix.",
         "Windows graceful process supervision; TerminateProcess does not deliver Node Unix signal handlers."
-      ]
+      ],
+      "observationFollowup": "Actual Run product25steps per Node/Rust runtime passes all3stores locally. Linux controller reproduction proves shell exit can precede child witness; observe real witness/ESRCH while preserving PID/directory/secret/runtime assertions. Browser discovery uses an independently supervised realHTTP listener; actual worker probe under1100ms driver stall preserves its750msdeadline and discovers only the isolated listener. Full product still uses OS inventory and exact HTTP/placement/payload assertions. Run host-wide OS discovery product cases serially to avoid cross-fixture probes contaminating exact TCP-byte peers. Platform/package acceptance remains open, including separate Windows nativePGlite startup timeout in run41141260086. Full encrypted resource product35steps per Node/Rust runtime passes all3stores locally; failed parallel externalPG attempt and successful serial rerun both retained."
     },
     "workerProcessSignals": {
       "status": "implemented-pending-platform-acceptance",
