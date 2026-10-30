@@ -35,12 +35,28 @@ export async function exportLegacyPglite({ source, output }) {
       pg: database,
       args: ["--no-owner", "--no-privileges"],
     });
-    const bytes = Buffer.from(await file.arrayBuffer());
+    // pg_dump 18 emits this session setting, which PostgreSQL 16 actually
+    // rejects with 42704. Adapt only the generated leading prelude: never
+    // search/replace inside functions or exported multiline row values.
+    const prelude =
+      /^((?:--[^\n]*\n|\n)*SET statement_timeout = 0;\nSET lock_timeout = 0;\nSET idle_in_transaction_session_timeout = 0;\n)SET transaction_timeout = 0;\n/;
+    let portableTransactionTimeout = false;
+    const sql = (await file.text()).replace(prelude, (_match, prefix) => {
+      portableTransactionTimeout = true;
+      // Try the actual setting. Only an absent setting is harmless on older
+      // PostgreSQL; permission failures and every other error still propagate.
+      return (
+        prefix +
+        "DO $cantrip_dump_settings$ BEGIN PERFORM pg_catalog.set_config('transaction_timeout', '0', false); EXCEPTION WHEN undefined_object THEN NULL; END $cantrip_dump_settings$;\n"
+      );
+    });
+    const bytes = Buffer.from(sql);
     await writeFile(output, bytes, { flag: "wx", mode: 0o600 });
     return {
       format: "postgresql-sql",
       sourceRuntime: "@electric-sql/pglite@0.5.4",
       dumpRuntime: "@electric-sql/pglite-tools@0.4.4",
+      portableTransactionTimeout,
       version,
       bytes: bytes.length,
       sha256: createHash("sha256").update(bytes).digest("hex"),

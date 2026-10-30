@@ -156,7 +156,12 @@ try {
     values_array text[], computed text GENERATED ALWAYS AS (content || '!') STORED);
     INSERT INTO public.migration_probe(content,metadata,raw,large_number,precise_number,happened_at,values_array)
     VALUES ('private 😺 '' quote; newline
-payload', '{"null":null,"unicode":"é🦀","integer":9007199254740993}',
+payload
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
+', '{"null":null,"unicode":"é🦀","integer":9007199254740993}',
     decode('000102ff','hex'),9007199254740993,123456789012345678901234567890.12345,
     '2026-10-30T12:34:56.123456Z',ARRAY['NULL',NULL,'quoted"value']);
     SELECT setval('public.migration_probe_id_seq',101,false);`);
@@ -169,6 +174,7 @@ payload', '{"null":null,"unicode":"é🦀","integer":9007199254740993}',
     source: path.join(source, "server-db"),
     output: dump,
   });
+  assert.equal(report.export.portableTransactionTimeout, true);
   const after = await files(source);
   assert.deepEqual(
     after,
@@ -187,7 +193,9 @@ payload', '{"null":null,"unicode":"é🦀","integer":9007199254740993}',
   }
   const executable = await buildRustServer();
   const probe = await buildRustExample("database-transfer-fixture");
-  postgres = await postgresFixture(path.join(root, "postgres"));
+  postgres = await postgresFixture(path.join(root, "postgres"), {
+    url: option("--postgres-url"),
+  });
   report.runtimes = [];
   for (const mode of ["pglite", "bundled-postgres", "postgres"]) {
     const data = path.join(root, mode);

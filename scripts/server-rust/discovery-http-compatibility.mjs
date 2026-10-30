@@ -821,6 +821,7 @@ try {
         result.diagnostics = fixture.server?.diagnostics();
         throw error;
       } finally {
+        result.recoverySnapshots = fixture.discoveryRecoverySnapshots;
         releaseScan();
         releaseImport();
         worker?.close();

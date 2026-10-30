@@ -523,6 +523,18 @@ try {
           () => result.connections,
           (n) => assert.equal(n, 1),
         );
+        // A connected transport does not mean its background reconciliation
+        // has read the database yet. Observe the actual empty startup command
+        // before creating/enabling a service, so its delayed invalidation cannot
+        // leak into a later HTTP transition's exact event boundary.
+        const initialReconciliation = await eventually(
+          () =>
+            result.commands.find(
+              (c) => c.type === "terminal.services.reconcile",
+            ),
+          (command) => assert.deepEqual(command?.services, []),
+        );
+        result.initialReconciliation = fixture.normalize(initialReconciliation);
         const transition = async (
           label,
           method,
@@ -720,6 +732,7 @@ try {
             "other owner receives no terminal/layout mutations",
           );
         }
+        result.liveTrace = fixture.normalize(live.history);
         await live.close();
         live = undefined;
         await foreignLive?.close();
@@ -807,7 +820,11 @@ try {
           // The direct mutation case also creates and deletes one terminal.
           databaseMode === "postgres" ? 5 : 4,
         );
+      } catch (error) {
+        result.diagnostics = fixture.server?.diagnostics();
+        throw error;
       } finally {
+        if (live) result.liveTrace = fixture.normalize(live.history);
         worker?.close();
         await live?.close();
         await foreignLive?.close();
@@ -841,6 +858,7 @@ try {
       profile + " canonical console binding",
     );
     for (const key of [
+      "initialReconciliation",
       "surfaceGrantCommands",
       "surfaceGrantTransitions",
       "surfaceState",
@@ -872,7 +890,8 @@ try {
   report.failure = { message: error.message, stack: error.stack };
 } finally {
   await pg?.close();
-  await rm(root, { recursive: true, force: true });
+  if (failure) report.retainedRoot = root;
+  else await rm(root, { recursive: true, force: true });
   if (reportPath) {
     await mkdir(path.dirname(path.resolve(reportPath)), { recursive: true });
     await writeFile(reportPath, JSON.stringify(report, null, 2) + "\n");
