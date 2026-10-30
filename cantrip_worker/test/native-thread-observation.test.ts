@@ -381,6 +381,17 @@ describe.skipIf(!binary)("pinned native thread observation", () => {
             }),
         ),
       ).toMatchObject({ threadId, status: "idle", turns: [] });
+      // A managed owner can outlive display/routing metadata refresh. A sync
+      // must read that transport without re-running startup profile checks.
+      expect(
+        await worker.syncThread({
+          cwd: workspace,
+          model: { ...model, routeId: "refreshed-route" },
+          provider: { ...runtimeProvider, name: "Refreshed provider label" },
+          threadId,
+          executionProfile: "ide",
+        }),
+      ).toMatchObject({ threadId, status: "idle", turns: [] });
       // Exercise the real native transport only to inspect loaded identities.
       const native = worker as unknown as {
         request(method: string, params: JsonObject): Promise<JsonObject>;

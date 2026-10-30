@@ -809,7 +809,10 @@ export function useChatTranscriptController({
     queryKey: ["chat-sync", chat.id],
     // A live socket can remain healthy while a turn's lifecycle publication
     // was lost. Observe the actual runtime even when there are no new messages.
-    refetchInterval: 5_000,
+    // Retry actual observation failures at a slower cadence. Sending a message
+    // remains independent and a successful read restores the normal interval.
+    refetchInterval: (query) =>
+      query.state.status === "error" ? 30_000 : 5_000,
     retry: false,
   });
   const queuedPromptState = useQuery({
