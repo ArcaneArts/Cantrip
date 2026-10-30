@@ -353,7 +353,10 @@ export function createRunConfigurationRuntime({
               target.workerId,
               workerResult.observation,
             );
-          if (!applied?.applied || applied.reason === "invalid-transition") {
+          // A worker notification can commit the same stopped observation before
+          // its command reply arrives. "unchanged" still proves matching identity,
+          // generation and operation; stale observations must remain rejected.
+          if (!applied || !["applied", "unchanged"].includes(applied.reason)) {
             throw new ExecutionLaneConflictError(
               "The stopped Run configuration instance could not be reconciled before deletion.",
             );

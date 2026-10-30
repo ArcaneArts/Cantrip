@@ -86,6 +86,9 @@ const listeners = new Set<WorkerNotificationListener>();
 const commands: WorkerCommand[] = [];
 let connected = true;
 let runtimeCommandFailure: Error | null = null;
+let observeStopBeforeReply = false;
+let stopReplyFence: "matching" | "stale-generation" | "stale-operation" =
+  "matching";
 let reconcileRuntime = (identities: RunConfigurationRuntimeWorkerIdentity[]) =>
   runConfigurationRuntimeWorkerReconciliationSchema.parse({
     runtimes: identities.map((identity) => ({ found: false, identity })),
@@ -188,19 +191,45 @@ const bridge: WorkerCommandBus = {
             failure: null,
           },
         });
-      case "project.run-configuration-runtime.stop":
-        return runConfigurationRuntimeWorkerOperationResultSchema.parse({
-          outcome: "accepted",
-          observation: {
-            ...command.identity,
-            state: "idle",
-            startedAt: new Date().toISOString(),
-            endedAt: new Date().toISOString(),
-            exitCode: null,
-            signal: null,
-            failure: null,
+      case "project.run-configuration-runtime.stop": {
+        const result = runConfigurationRuntimeWorkerOperationResultSchema.parse(
+          {
+            outcome: "accepted",
+            observation: {
+              ...command.identity,
+              state: "idle",
+              startedAt: new Date().toISOString(),
+              endedAt: new Date().toISOString(),
+              exitCode: null,
+              signal: null,
+              failure: null,
+            },
           },
-        });
+        );
+        if (observeStopBeforeReply && result.observation) {
+          await emitNotification({
+            type: "project.run-configuration-runtime.observed",
+            observation: result.observation,
+          });
+          expect(
+            await database.repository.getRunConfigurationRuntime(
+              LOCAL_USER_ID,
+              command.identity.projectId,
+              command.identity.configurationId,
+              command.identity.worktreeId,
+            ),
+          ).toMatchObject({
+            state: "idle",
+            requestedOperationId: command.identity.operationId,
+          });
+        }
+        if (result.observation && stopReplyFence === "stale-generation") {
+          result.observation.generation -= 1;
+        } else if (result.observation && stopReplyFence === "stale-operation") {
+          result.observation.operationId = randomUUID();
+        }
+        return result;
+      }
       case "project.run-configuration-runtime.output":
         return {
           requestOperationId: command.requestOperationId,
@@ -2020,7 +2049,7 @@ script = ""
     emptyReconnect.terminate();
   });
 
-  it("stops and retires active Run instances before unlinking a project", async () => {
+  it("retires stopped Run instances when their notifications commit before stop replies", async () => {
     const worktrees = await database.repository.listProjectWorktrees(
       LOCAL_USER_ID,
       projectId,
@@ -2066,6 +2095,55 @@ script = ""
     ).not.toBeNull();
 
     connected = true;
+    observeStopBeforeReply = true;
+    for (const fence of ["stale-generation", "stale-operation"] as const) {
+      stopReplyFence = fence;
+      const beforeRejectedDelete = commands.length;
+      const rejected = await app.inject({
+        method: "DELETE",
+        url: `/api/projects/${projectId}`,
+        payload: { deleteLocalFiles: false },
+      });
+      expect(rejected.statusCode, rejected.body).toBe(502);
+      expect(rejected.json().error).toContain(
+        "could not be reconciled before deletion",
+      );
+      expect(
+        commands
+          .slice(beforeRejectedDelete)
+          .some(({ type }) => type === "terminal.close"),
+      ).toBe(false);
+      expect(
+        await database.repository.getProject(LOCAL_USER_ID, projectId),
+      ).not.toBeNull();
+      for (const runtime of activeRuntimes) {
+        const requested =
+          await database.repository.requestRunConfigurationRuntimeOperation(
+            LOCAL_USER_ID,
+            {
+              operation: "start",
+              operationId: randomUUID(),
+              projectId,
+              configurationId: runtime.configurationId,
+              worktreeId: runtime.worktreeId,
+              workerId,
+              definitionRevision: "e".repeat(64),
+              codexEnvironmentRevision: null,
+            },
+          );
+        if (!requested.runtime)
+          throw new Error(
+            "Expected retained runtime after rejected retirement.",
+          );
+        expect(requested.runtime.terminalId).toBe(runtime.terminalId);
+        await database.repository.applyRunConfigurationRuntimeObservation(
+          LOCAL_USER_ID,
+          workerId,
+          runtimeObservation(requested.runtime, "running"),
+        );
+      }
+    }
+    stopReplyFence = "matching";
     const commandsBeforeDelete = commands.length;
     const deleted = await app.inject({
       method: "DELETE",
