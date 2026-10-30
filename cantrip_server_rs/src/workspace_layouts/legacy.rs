@@ -8,6 +8,7 @@ use crate::{
     wire::{JsString, Value, value::json},
 };
 use anyhow::Result;
+use futures::future::BoxFuture;
 use std::{
     collections::{HashMap, HashSet},
     fmt,
@@ -38,8 +39,14 @@ fn at(row: &Row, table: &str, key: &str) -> Result<String> {
         queries::column(table, key),
     )?))
 }
-async fn read(executor: Executor<'_, '_>, key: &str, fields: &Value) -> Result<Vec<Row>> {
-    Query::new(key, fields)?.run_on(executor).await
+fn read<'a, 'db: 'a>(
+    executor: Executor<'a, 'db>,
+    key: &'a str,
+    fields: &'a Value,
+) -> BoxFuture<'a, Result<Vec<Row>>> {
+    // Ten reads are joined below. Keep their database state on the heap so
+    // constructing and polling the join does not multiply the native stack.
+    Box::pin(async move { Query::new(key, fields)?.run_on(executor).await })
 }
 
 pub(super) async fn get(tx: &Transaction<'_>, fields: &Value) -> Result<Option<Value>> {
