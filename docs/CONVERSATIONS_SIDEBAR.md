@@ -378,6 +378,9 @@ The final acceptance audit continues in `codex/conversations-final-audit`.
 
 ### Final acceptance audit
 
+Delivery: [PR #2346](https://github.com/ArcaneArts/Cantrip/pull/2346),
+branch `codex/conversations-final-audit`.
+
 The reconnect fixture in `terminal-managed-session.test.ts` lacked the bound
 route repository lookup and assigned an account to an OpenAI-compatible route,
 which does not support account binding. The fixture now supplies the lookup and
