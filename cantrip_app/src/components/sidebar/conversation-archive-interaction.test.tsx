@@ -69,11 +69,16 @@ async function flush() {
 async function mount(
   archiveFocusRequest?: string,
   onArchiveFocusHandled?: () => void,
+  onPlace?: (
+    chatId: string,
+    region: "center" | "right" | "bottom",
+  ) => Promise<unknown>,
 ) {
   await act(async () =>
     root.render(
       <QueryClientProvider client={client}>
         <ProjectConversationList
+          onPlace={onPlace}
           archiveFocusRequest={archiveFocusRequest}
           onArchiveFocusHandled={onArchiveFocusHandled}
           projectId="project"
@@ -258,5 +263,28 @@ it("does not restore or delete an archived row on middle click", async () => {
   });
   expect(api.restore).not.toHaveBeenCalled();
   expect(api.remove).not.toHaveBeenCalled();
+  expect(api.archive).not.toHaveBeenCalled();
+});
+
+it.each([
+  ["Place in top rail", "center"],
+  ["Place in right rail", "right"],
+  ["Place in bottom rail", "bottom"],
+] as const)("offers keyboard placement: %s", async (label, region) => {
+  const place = vi.fn(async () => {});
+  await mount(undefined, undefined, place);
+  const row = host.querySelector<HTMLButtonElement>("[data-conversation-id]")!;
+  await act(async () =>
+    row.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        bubbles: true,
+        key: "F10",
+        shiftKey: true,
+      }),
+    ),
+  );
+  await act(async () => item(label).click());
+  expect(place).toHaveBeenCalledWith("one", region);
+  expect(openConversation).not.toHaveBeenCalled();
   expect(api.archive).not.toHaveBeenCalled();
 });

@@ -75,18 +75,18 @@ export async function getConversationCatalog(
       ? {
           ...page,
           items: await Promise.all(
-            page.items.map(async (chat) => ({
+            page.items.map(async ({ lastUsedAt, ...chat }) => ({
               ...(await chatTitleEncryption.open(chat)),
-              lastUsedAt: chat.lastUsedAt,
+              lastUsedAt,
             })),
           ),
         }
       : {
           ...page,
           items: await Promise.all(
-            page.items.map(async (chat) => ({
+            page.items.map(async ({ lastUsedAt, ...chat }) => ({
               ...(await chatTitleEncryption.openArchived(chat)),
-              lastUsedAt: chat.lastUsedAt,
+              lastUsedAt,
             })),
           ),
         };

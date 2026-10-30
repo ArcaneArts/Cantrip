@@ -1,3 +1,4 @@
+import { ConversationRowButton } from "./conversation-row-button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { CantripApiError } from "@/lib/api-client";
 import type { ArchivedAgentConversation } from "@/lib/api/conversations";
@@ -31,6 +32,7 @@ import { cn } from "@/lib/utils";
 
 export function ProjectConversationList({
   projectId,
+  onPlace,
   archiveFocusRequest,
   onArchiveFocusHandled,
   randomAgentNames = false,
@@ -43,6 +45,10 @@ export function ProjectConversationList({
   focusWindow,
 }: {
   projectId: string;
+  onPlace?: (
+    chatId: string,
+    region: "center" | "right" | "bottom",
+  ) => Promise<unknown>;
   archiveFocusRequest?: string | null;
   onArchiveFocusHandled?(): void;
   randomAgentNames?: boolean;
@@ -310,7 +316,11 @@ export function ProjectConversationList({
         {rows.map((chat) => (
           <div key={chat.id} data-conversation-row="">
             <div className="flex items-center">
-              <button
+              <ConversationRowButton
+                projectId={projectId}
+                chatId={chat.id}
+                title={chat.title}
+                placementEnabled={Boolean(onPlace)}
                 type="button"
                 data-conversation-id={chat.id}
                 aria-current={selectedChatId === chat.id ? "true" : undefined}
@@ -355,10 +365,21 @@ export function ProjectConversationList({
                   />
                 ) : null}
                 <ChatActivityStatus chat={chat} />
-              </button>
+              </ConversationRowButton>
               <ConversationRowMenu
                 title={chat.title}
                 pending={lifecycle.pending.has(chat.id)}
+                place={
+                  onPlace
+                    ? (region) => {
+                        const action = captureAction();
+                        setError(null);
+                        void onPlace(chat.id, region).catch((cause) => {
+                          if (action.current()) setError(cause);
+                        });
+                      }
+                    : undefined
+                }
                 archive={() => requestArchive(chat)}
               />
             </div>

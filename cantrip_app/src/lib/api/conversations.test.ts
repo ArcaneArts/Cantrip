@@ -1,3 +1,7 @@
+import {
+  chatSummarySchema,
+  archivedChatSummarySchema,
+} from "@cantrip/protocol";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   request: vi.fn(),
@@ -81,10 +85,15 @@ function chat(id: string) {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.matches.mockReturnValue(true);
-  mocks.open.mockImplementation(async ({ titleProtection: _, ...item }) => ({
-    ...item,
-    title: "Decrypted",
-  }));
+  mocks.open.mockImplementation(async ({ titleProtection: _, ...item }) =>
+    chatSummarySchema.parse({
+      ...item,
+      title: "Decrypted",
+    }),
+  );
+  mocks.archived.mockImplementation(async ({ titleProtection: _, ...item }) =>
+    archivedChatSummarySchema.parse({ ...item, title: "Decrypted" }),
+  );
 });
 it("fetches only a bounded page and preserves server order, precision, and continuation", async () => {
   mocks.request.mockResolvedValue({
@@ -242,4 +251,35 @@ it("does not continue from interruption into archival after an account switch", 
   ).rejects.toMatchObject({ code: "client-identity-changed" });
   expect(mocks.request).toHaveBeenCalledTimes(1);
   expect(mocks.request.mock.calls[0]![0]).toBe("/api/chats/running/interrupt");
+});
+it("decrypts archived rows through the strict archive schema without passing recency metadata", async () => {
+  mocks.request.mockResolvedValue({
+    state: "archived",
+    items: [
+      {
+        id: "archived",
+        projectId: "project/id",
+        contextKind: "project",
+        experience: "agent",
+        titleProtection: chat("archived").titleProtection,
+        createdAt: at,
+        updatedAt: at,
+        lastUsedAt: at,
+        archivedAt: at,
+        expiresAt: "2027-01-28T00:00:00.000Z",
+        messageCount: 0,
+      },
+    ],
+    total: 1,
+    nextCursor: null,
+  });
+  const page = await getConversationCatalog("project/id", {
+    state: "archived",
+  });
+  expect(page.items[0]).toMatchObject({
+    id: "archived",
+    title: "Decrypted",
+    lastUsedAt: at,
+  });
+  expect(mocks.archived.mock.calls[0]![0]).not.toHaveProperty("lastUsedAt");
 });

@@ -66,6 +66,8 @@ export const workspaceActionSchema = z.discriminatedUnion("type", [
       type: z.literal("prepare-return"),
       transferId: id,
       paneId: id,
+      tabId: id.optional(),
+      destinationPaneId: id.optional(),
       splitId: id,
     })
     .strict(),

@@ -429,3 +429,68 @@ it("imports a legacy editor after conversation ownership was enabled", () => {
     "conversation",
   );
 });
+
+it("returns only the requested direct conversation while leaving sibling views in their window", () => {
+  let layout = open(fixture());
+  layout = command(layout, {
+    type: "prepare-detach",
+    transferId: "detach",
+    paneId: "pane",
+    destinationWindowId: "popout",
+    destinationPaneId: "pane",
+  }).layout;
+  layout = commitPrepared(layout, "detach");
+  layout = command(
+    layout,
+    {
+      type: "prepare-return",
+      transferId: "return-one",
+      paneId: "pane",
+      tabId: "conversation",
+      destinationPaneId: "returned-chat",
+      splitId: "return-split",
+    },
+    "popout",
+  ).layout;
+  expect(layout.pendingTransfers![0]).toMatchObject({
+    wholePane: false,
+    tabIds: ["conversation"],
+    sourcePlacement: { viewKind: "conversation" },
+  });
+  layout = commitPrepared(layout, "return-one", "popout", "main");
+  expect(
+    layout.windows
+      .find((window) => window.id === "popout")!
+      .panes[0]!.tabs.map((tab) => tab.id),
+  ).toEqual(["file"]);
+  expect(
+    layout.windows.find((window) => window.id === "main")!.panes[0]!
+      .conversationView?.id,
+  ).toBe("conversation");
+  workspaceOwnershipSchema.parse(layout);
+});
+it("rejects returning a single view into an already-owned pane identity", () => {
+  let layout = open(fixture());
+  layout = command(layout, {
+    type: "prepare-detach",
+    transferId: "detach",
+    paneId: "pane",
+    destinationWindowId: "popout",
+    destinationPaneId: "pane",
+  }).layout;
+  layout = commitPrepared(layout, "detach");
+  expect(() =>
+    command(
+      layout,
+      {
+        type: "prepare-return",
+        transferId: "return-one",
+        paneId: "pane",
+        tabId: "conversation",
+        destinationPaneId: "pane",
+        splitId: "return-split",
+      },
+      "popout",
+    ),
+  ).toThrow("new pane identity");
+});

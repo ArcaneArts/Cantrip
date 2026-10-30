@@ -495,3 +495,100 @@ describe("workspace pane drag legality", () => {
     ).toBeNull();
   });
 });
+
+const conversationDrag = {
+  type: "conversation" as const,
+  projectId: "project-1",
+  chatId: "catalog-chat",
+  label: "Catalog conversation",
+  visualKind: "chat" as const,
+  identity: {
+    accountId: "account",
+    connectionId: "connection",
+    generation: 2,
+    incarnationId: "session",
+    serverId: "server",
+    serverUrl: "https://server.test",
+    userId: "owner",
+  },
+};
+it.each(["center", "right", "bottom"] as const)(
+  "accepts a catalog conversation into an empty %s rail without a source pane",
+  (region) => {
+    const decision = decideWorkspaceDrop(null, conversationDrag, {
+      type: "region",
+      projectId: "project-1",
+      region,
+      paneId: null,
+    });
+    expect(decision).toEqual({
+      status: "valid",
+      operation: {
+        type: "place-conversation",
+        projectId: "project-1",
+        chatId: "catalog-chat",
+        identity: conversationDrag.identity,
+        destination: { region },
+      },
+    });
+  },
+);
+it("preserves the displayed insertion index and session scope for a conversation drop", () => {
+  const drop = {
+    type: "pane-tab" as const,
+    projectId: "project-1",
+    paneId: "pane-right",
+    tabKey: "browser:reference",
+    memberPosition: 0,
+  };
+  const decision = decideWorkspaceDrop(layout, conversationDrag, drop);
+  expect(decision).toMatchObject({
+    status: "valid",
+    operation: {
+      destination: { paneId: "pane-right", region: "right", position: 0 },
+      identity: conversationDrag.identity,
+    },
+  });
+  expect(
+    workspaceSurfaceDropPreview({
+      decision,
+      drag: conversationDrag,
+      drop,
+      memberCount: 1,
+      paneId: "pane-right",
+      region: "right",
+    }),
+  ).toMatchObject({
+    memberPosition: 0,
+    tabKey: "conversation:catalog-chat",
+    visualKind: "chat",
+  });
+});
+it("does not treat a missing source or stale destination snapshot as proof that placement is invalid", () => {
+  expect(
+    decideWorkspaceDrop(layout, conversationDrag, {
+      type: "pane-strip",
+      projectId: "project-1",
+      paneId: "new-pane-not-yet-observed",
+      memberPosition: 2,
+    }),
+  ).toMatchObject({
+    status: "valid",
+    operation: {
+      destination: { paneId: "new-pane-not-yet-observed", position: 2 },
+    },
+  });
+});
+it("rejects cross-project drops and leaves canceled conversation drags without an operation", () => {
+  expect(
+    decideWorkspaceDrop(layout, conversationDrag, {
+      type: "region",
+      projectId: "other",
+      region: "bottom",
+      paneId: null,
+    }).status,
+  ).toBe("invalid");
+  expect(decideWorkspaceDrop(layout, conversationDrag, null).status).toBe(
+    "invalid",
+  );
+});

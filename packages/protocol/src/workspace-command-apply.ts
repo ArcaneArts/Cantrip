@@ -485,6 +485,28 @@ export function applyWorkspaceCommand(
           "The main window cannot return to itself.",
         );
       const pane = paneById(action.paneId);
+      const views = action.tabId
+        ? [
+            required(
+              workspacePaneViews(pane).find((view) => view.id === action.tabId),
+              "Tab does not belong to the source pane.",
+            ),
+          ]
+        : workspacePaneViews(pane);
+      if (
+        action.tabId
+          ? !action.destinationPaneId ||
+            layout.windows.some((owner) =>
+              owner.panes.some((pane) => pane.id === action.destinationPaneId),
+            )
+          : Boolean(
+              action.destinationPaneId && action.destinationPaneId !== pane.id,
+            )
+      )
+        throw new WorkspaceCommandError(
+          "invalid",
+          "A pane transfer preserves its identity; a tab transfer requires a new pane identity.",
+        );
       const destination = required(
         layout.windows.find(({ id }) => id === layout.mainWindowId),
         "Main window is unavailable.",
@@ -494,9 +516,7 @@ export function applyWorkspaceCommand(
         pending.some(
           (transfer) =>
             transfer.id === action.transferId ||
-            transfer.tabIds.some((id) =>
-              workspacePaneViews(pane).some((tab) => tab.id === id),
-            ),
+            transfer.tabIds.some((id) => views.some((tab) => tab.id === id)),
         )
       )
         throw new WorkspaceCommandError(
@@ -512,15 +532,18 @@ export function applyWorkspaceCommand(
           sourcePaneId: pane.id,
           sourcePlacement: {
             panePosition: window.panes.indexOf(pane),
-            tabPosition: 0,
+            tabPosition: workspacePaneViews(pane).indexOf(views[0]!),
+            ...(action.tabId && pane.conversationView?.id === action.tabId
+              ? { viewKind: "conversation" as const }
+              : {}),
             region: pane.region,
             centerRoot: structuredClone(window.centerRoot),
           },
-          tabIds: workspacePaneViews(pane).map(({ id }) => id),
-          wholePane: true,
+          tabIds: views.map(({ id }) => id),
+          wholePane: !action.tabId,
           destinationWindowId: destination.id,
           destinationGeneration: destination.attachmentGeneration,
-          destinationPaneId: pane.id,
+          destinationPaneId: action.tabId ? action.destinationPaneId! : pane.id,
           returnSplitId: action.splitId,
           phase: "preparing",
         },
