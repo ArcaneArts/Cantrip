@@ -1,3 +1,4 @@
+import { projectPaneViews } from "@cantrip/protocol";
 import {
   PROJECT_SURFACE_DEFINITIONS,
   archivedChatSummarySchema,
@@ -175,28 +176,34 @@ export class ChatTitleEncryptionAdapter {
       ...layout,
       panes: await Promise.all(
         layout.panes.map(async ({ titleProtection, ...pane }) => {
-          const members = await Promise.all(
-            pane.members.map(async ({ titleProtection, ...member }) => ({
-              ...member,
-              title: titleProtection
-                ? await decodePrivateDisplayLabelForClient({
-                    identity: this.identity(),
-                    opaque: titleProtection,
-                    recordKind: titleProtection.classification.recordKind,
-                    rowId: member.tabId,
-                    service: this.service,
-                  })
-                : member.tabKind === "builtin"
-                  ? (builtInSurfaceLabelById.get(member.tabId) ??
-                    (() => {
-                      throw new Error(
-                        `Unknown built-in surface definition ${member.tabId}.`,
-                      );
-                    })())
-                  : "Run configuration",
-            })),
+          const views = await Promise.all(
+            projectPaneViews(pane).map(
+              async ({ titleProtection, ...member }) => ({
+                ...member,
+                title: titleProtection
+                  ? await decodePrivateDisplayLabelForClient({
+                      identity: this.identity(),
+                      opaque: titleProtection,
+                      recordKind: titleProtection.classification.recordKind,
+                      rowId: member.tabId,
+                      service: this.service,
+                    })
+                  : member.tabKind === "builtin"
+                    ? (builtInSurfaceLabelById.get(member.tabId) ??
+                      (() => {
+                        throw new Error(
+                          `Unknown built-in surface definition ${member.tabId}.`,
+                        );
+                      })())
+                    : "Run configuration",
+              }),
+            ),
           );
-          const anchor = members.find(
+          const members = views.slice(0, pane.members.length);
+          const conversationView = pane.conversationView
+            ? views.at(-1)!
+            : undefined;
+          const anchor = views.find(
             ({ tabKey }) => tabKey === pane.anchorTabKey,
           );
           if (!anchor) {
@@ -214,6 +221,7 @@ export class ChatTitleEncryptionAdapter {
                 })
               : anchor.title,
             members,
+            ...(conversationView ? { conversationView } : {}),
           };
         }),
       ),

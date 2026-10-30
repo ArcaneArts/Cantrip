@@ -1,3 +1,4 @@
+import { projectPaneViews } from "@cantrip/protocol";
 import type {
   ProjectTabLayoutSummary,
   WorkspaceOwnership,
@@ -86,7 +87,7 @@ export class WorkspacePresentationStore {
       key("pane", pane.id, pane.titleProtection),
     );
     const memberKeys = wire.panes.map((pane) =>
-      pane.members.map((member) =>
+      projectPaneViews(pane).map((member) =>
         key(member.tabKind, member.tabId, member.titleProtection),
       ),
     );
@@ -95,16 +96,28 @@ export class WorkspacePresentationStore {
       if (!keys.has(cached)) this.labels.delete(cached);
     const layout: ProjectTabLayoutSummary = {
       ...wire,
-      panes: wire.panes.map(({ titleProtection: _title, ...pane }, pi) => ({
-        ...pane,
-        title: this.labels.get(paneKeys[pi]!) ?? "Loading…",
-        members: pane.members.map(
-          ({ titleProtection: _memberTitle, ...member }, mi) => ({
-            ...member,
-            title: this.labels.get(memberKeys[pi]![mi]!) ?? "Loading…",
-          }),
-        ),
-      })),
+      panes: wire.panes.map(
+        ({ titleProtection: _title, conversationView, ...pane }, pi) => ({
+          ...pane,
+          title: this.labels.get(paneKeys[pi]!) ?? "Loading…",
+          ...(conversationView
+            ? {
+                conversationView: {
+                  ...conversationView,
+                  title:
+                    this.labels.get(memberKeys[pi]![pane.members.length]!) ??
+                    "Loading…",
+                },
+              }
+            : {}),
+          members: pane.members.map(
+            ({ titleProtection: _memberTitle, ...member }, mi) => ({
+              ...member,
+              title: this.labels.get(memberKeys[pi]![mi]!) ?? "Loading…",
+            }),
+          ),
+        }),
+      ),
     };
     this.publish({
       presentation: { layout, selection },
@@ -118,7 +131,7 @@ export class WorkspacePresentationStore {
           if (this.disposed || generation !== this.generation) return;
           presentation.layout.panes.forEach((pane, pi) => {
             this.labels.set(paneKeys[pi]!, pane.title);
-            pane.members.forEach((member, mi) =>
+            projectPaneViews(pane).forEach((member, mi) =>
               this.labels.set(memberKeys[pi]![mi]!, member.title),
             );
           });

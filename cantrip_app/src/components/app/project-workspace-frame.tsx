@@ -964,7 +964,9 @@ export function ProjectWorkspaceFrame({
           paneRegion={presentation.pane.region}
           placement={bindings.selectedPlacementContext}
           projectId={presentation.pane.projectId}
-          surfaces={presentation.surfaces}
+          surfaces={presentation.surfaces.filter(
+            (surface) => !surface.conversation,
+          )}
         />
       </div>
     );

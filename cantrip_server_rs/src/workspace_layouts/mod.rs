@@ -14,7 +14,7 @@ pub use error::ModelError;
 pub use legacy::Invariant as LegacyInvariant;
 pub use legacy_import::import_legacy_files;
 pub use repository::Repository;
-pub(crate) use repository::resolve_on;
+pub(crate) use repository::{assert_version, resolve_on};
 pub(crate) use seed::component;
 pub use seed::seed;
 

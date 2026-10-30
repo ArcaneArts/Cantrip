@@ -1,3 +1,4 @@
+import { workspacePaneViews } from "@cantrip/protocol";
 import type {
   AppDestinationUpdate,
   AppMode,
@@ -118,7 +119,7 @@ export async function openOrFocusProjectSurface({
     const locate = () =>
       receipt.layout.windows.flatMap((window) =>
         window.panes.flatMap((pane) =>
-          pane.tabs
+          workspacePaneViews(pane)
             .filter(
               (tab) =>
                 tab.resource.kind === surfaceRef.kind &&

@@ -20,7 +20,14 @@ pub(super) fn refine(
     result: &mut Parsed,
     path: &[Value],
 ) -> Result<bool, ValidationError> {
-    if !["workspace-ownership", "workspace-tab", "workspace-resource"].contains(&tag) {
+    if ![
+        "workspace-ownership",
+        "workspace-tab",
+        "workspace-resource",
+        "workspace-conversation-view",
+    ]
+    .contains(&tag)
+    {
         return Ok(false);
     }
     let value = result
@@ -33,6 +40,18 @@ pub(super) fn refine(
         at.extend(suffix);
         result.issue(json!({"code":"custom"}), &at, message, false);
     };
+    if tag == "workspace-conversation-view" {
+        if value["resource"]["kind"] != "entity"
+            || value["resource"]["definitionId"] != "project.agent"
+            || value["preview"] != false
+        {
+            issue(
+                vec![],
+                "A conversation view must be a permanent Agent view.".into(),
+            );
+        }
+        return Ok(true);
+    }
     if tag == "workspace-resource" {
         if value["kind"] == "entity"
             && ![
@@ -142,7 +161,12 @@ pub(super) fn refine(
         }
         let local_tabs = panes
             .iter()
-            .flat_map(|p| array(p, "tabs").iter().map(|t| field(t, "id")))
+            .flat_map(|p| {
+                array(p, "tabs")
+                    .iter()
+                    .chain(p.get("conversationView").filter(|v| !v.is_null()))
+                    .map(|t| field(t, "id"))
+            })
             .collect::<HashSet<_>>();
         let mut recent_tabs = HashSet::new();
         for (ri, id) in array(window, "recentTabIds").iter().enumerate() {
@@ -179,13 +203,69 @@ pub(super) fn refine(
                     "A pane must have exactly one window owner.".into(),
                 );
             }
-            if !array(pane, "tabs")
-                .iter()
-                .any(|t| t["id"] == pane["activeTabId"])
+            if value["version"] == json!(1)
+                && (pane.get("conversationView").is_some() || pane.get("selection").is_some())
             {
+                issue(
+                    at_pane(vec![]),
+                    "Conversation content requires workspace version 2.".into(),
+                );
+            }
+            if value["version"] == json!(2)
+                && (pane.get("conversationView").is_none() || pane.get("selection").is_none())
+            {
+                issue(
+                    at_pane(vec![]),
+                    "Version 2 panes require conversation content and selection.".into(),
+                );
+            }
+            let direct = pane.get("conversationView").filter(|v| !v.is_null());
+            let tabs = array(pane, "tabs");
+            let active_owned = tabs.iter().any(|t| t["id"] == pane["activeTabId"]);
+            if tabs.is_empty() && direct.is_none() {
+                issue(
+                    at_pane(vec![json!("tabs")]),
+                    "A pane must own at least one view.".into(),
+                );
+            }
+            if if pane["activeTabId"].is_null() {
+                !tabs.is_empty()
+            } else {
+                !active_owned
+            } {
                 issue(
                     at_pane(vec![json!("activeTabId")]),
                     "The active tab must belong to this pane.".into(),
+                );
+            }
+            if direct.is_some() && pane["region"] != "center" {
+                issue(
+                    at_pane(vec![json!("conversationView")]),
+                    "Direct conversations require a center pane.".into(),
+                );
+            }
+            if pane["selection"]["kind"] == "tab"
+                && (pane["selection"]["tabId"] != pane["activeTabId"] || !active_owned)
+            {
+                issue(
+                    at_pane(vec![json!("selection")]),
+                    "Selected tab must belong to this pane.".into(),
+                );
+            }
+            if pane["selection"]["kind"] == "conversation"
+                && direct.is_none_or(|v| v["id"] != pane["selection"]["viewId"])
+            {
+                issue(
+                    at_pane(vec![json!("selection")]),
+                    "Selected conversation must belong to this pane.".into(),
+                );
+            }
+            if let Some(view) = direct
+                && !tab_ids.insert(field(view, "id"))
+            {
+                issue(
+                    at_pane(vec![json!("conversationView"), json!("id")]),
+                    "A view must have exactly one pane owner.".into(),
                 );
             }
             for (ti, tab) in array(pane, "tabs").iter().enumerate() {

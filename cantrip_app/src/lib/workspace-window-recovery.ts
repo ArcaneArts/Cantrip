@@ -1,3 +1,4 @@
+import { workspacePaneViews, workspaceSelectedViewId } from "@cantrip/protocol";
 import type { WorkspaceOwnership } from "@cantrip/protocol";
 import type { DesktopPopoutPaneTarget } from "./desktop-popout";
 
@@ -15,15 +16,15 @@ export function workspaceWindowRecoveryTargets(layout: WorkspaceOwnership) {
       return [];
     const pane =
       window.panes.find((pane) => pane.id === window.focusedPaneId) ??
-      window.panes.find((pane) => pane.tabs.length > 0);
-    if (!pane?.tabs.length) return [];
+      window.panes.find((pane) => workspacePaneViews(pane).length > 0);
+    if (!pane || !workspaceSelectedViewId(pane)) return [];
     return [
       {
         windowId: window.id,
         target: {
           projectId: layout.projectId,
           paneId: pane.id,
-          activeTabKey: pane.activeTabId ?? pane.tabs[0]!.id,
+          activeTabKey: workspaceSelectedViewId(pane)!,
         } satisfies DesktopPopoutPaneTarget,
       },
     ];

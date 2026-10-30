@@ -6,7 +6,7 @@ import {
   workspaceLegacyFileImportRequestSchema,
   workspaceLegacyFileImportReceiptSchema,
 } from "@cantrip/protocol";
-import type { FastifyInstance, FastifyReply } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { TabLayoutRouteDependencies } from "./tab-layouts.js";
 import { invalidBody } from "../../http/request-helpers.js";
 
@@ -15,11 +15,27 @@ const base = "/api/projects/:projectId/workspace-layouts/:workspaceId";
 
 function failure(error: unknown, reply: FastifyReply) {
   if (error instanceof WorkspaceCommandError) {
-    return reply
-      .code(error.code === "invalid" ? 400 : 409)
-      .send({ error: error.message, code: error.code });
+    return reply.code(error.code === "invalid" ? 400 : 409).send({
+      error: error.message,
+      code: error.code,
+      ...(error.code === "version"
+        ? { supportedVersions: [1, 2], requiredVersion: 2 }
+        : {}),
+    });
   }
   throw error;
+}
+
+function supportedVersion(request: FastifyRequest) {
+  return request.headers["x-cantrip-workspace-version"] === "2" ? 2 : 1;
+}
+function readable(layout: { version: number }, request: FastifyRequest) {
+  if (layout.version > supportedVersion(request))
+    throw new WorkspaceCommandError(
+      "version",
+      "Update Cantrip to open this workspace with conversation views.",
+    );
+  return layout;
 }
 
 export function installWorkspaceLayoutRoutes(
@@ -32,9 +48,13 @@ export function installWorkspaceLayoutRoutes(
       request.params.projectId,
       request.params.workspaceId,
     );
-    return layout
-      ? reply.send(layout)
-      : reply.code(404).send({ error: "Workspace not found." });
+    try {
+      return layout
+        ? reply.send(readable(layout, request))
+        : reply.code(404).send({ error: "Workspace not found." });
+    } catch (error) {
+      return failure(error, reply);
+    }
   });
   app.post<{ Params: Params; Body: { mainWindowId?: unknown } }>(
     `${base}/seed`,
@@ -52,7 +72,7 @@ export function installWorkspaceLayoutRoutes(
           input.data,
         );
         return layout
-          ? reply.send(layout)
+          ? reply.send(readable(layout, request))
           : reply.code(404).send({ error: "Project not found." });
       } catch (error) {
         return failure(error, reply);
@@ -75,6 +95,7 @@ export function installWorkspaceLayoutRoutes(
       const result = await repository.workspaceLayouts.execute(
         applicationOwnerId(),
         input.data,
+        supportedVersion(request),
       );
       return result
         ? reply.send(workspaceReceiptSchema.parse(result))
@@ -97,6 +118,7 @@ export function installWorkspaceLayoutRoutes(
           request.params.projectId,
           request.params.workspaceId,
           input.data,
+          supportedVersion(request),
         );
         return result
           ? reply.send(workspaceLegacyFileImportReceiptSchema.parse(result))

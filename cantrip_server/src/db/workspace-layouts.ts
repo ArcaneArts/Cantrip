@@ -6,6 +6,7 @@ import {
   WorkspaceCommandError,
   workspaceCommandSchema,
   workspaceOwnershipSchema,
+  workspacePaneViews,
   workspaceSeedRequestSchema,
   workspaceLegacyFileImportRequestSchema,
   importWorkspaceLegacyFiles,
@@ -57,7 +58,7 @@ async function ownedProject(
 function validatePlacements(layout: WorkspaceOwnership) {
   for (const window of layout.windows)
     for (const pane of window.panes)
-      for (const tab of pane.tabs) {
+      for (const tab of workspacePaneViews(pane)) {
         const definition = PROJECT_SURFACE_DEFINITIONS.find(
           (d) => d.id === tab.resource.definitionId,
         );
@@ -71,6 +72,14 @@ function validatePlacements(layout: WorkspaceOwnership) {
           );
         }
       }
+}
+
+function assertWorkspaceVersion(version: number, supportedVersion: number) {
+  if (version > supportedVersion)
+    throw new WorkspaceCommandError(
+      "version",
+      "Update Cantrip to open this workspace with conversation views.",
+    );
 }
 
 /** Durable device-workspace state. Legacy APIs never write these records. */
@@ -149,6 +158,7 @@ export class WorkspaceLayoutRepository {
     projectId: string,
     workspaceId: string,
     input: WorkspaceLegacyFileImportRequest,
+    supportedVersion = 2,
   ) {
     const { expectedRevision, ...request } =
       workspaceLegacyFileImportRequestSchema.parse(input);
@@ -161,6 +171,7 @@ export class WorkspaceLayoutRepository {
         .for("update");
       if (!row) return null;
       const layout = workspaceOwnershipSchema.parse(row.layout);
+      assertWorkspaceVersion(layout.version, supportedVersion);
       const replay = layout.legacyFileImports?.some(
         ({ windowId }) => windowId === request.windowId,
       );
@@ -204,7 +215,11 @@ export class WorkspaceLayoutRepository {
     });
   }
 
-  async execute(ownerId: string, input: WorkspaceCommand) {
+  async execute(
+    ownerId: string,
+    input: WorkspaceCommand,
+    supportedVersion = 2,
+  ) {
     const command = workspaceCommandSchema.parse(input);
     const { projectId, workspaceId, operationId } = command;
     return this.database.transaction(async (tx) => {
@@ -216,6 +231,10 @@ export class WorkspaceLayoutRepository {
         .for("update");
       if (!row) return null;
       const layout = workspaceOwnershipSchema.parse(row.layout);
+      assertWorkspaceVersion(
+        command.action.type === "open-conversation" ? 2 : layout.version,
+        supportedVersion,
+      );
       const window = layout.windows.find((w) => w.id === command.windowId);
       if (
         !window ||
@@ -265,6 +284,39 @@ export class WorkspaceLayoutRepository {
           projectId,
           command.action,
         );
+      if (command.action.type === "open-conversation") {
+        const view = command.action.view;
+        if (view.resource.kind !== "entity")
+          throw new WorkspaceCommandError(
+            "invalid",
+            "Conversation requires an Agent resource.",
+          );
+        const [chat] = await tx
+          .select({ titleProtection: schema.chats.protectedLabel })
+          .from(schema.chats)
+          .where(
+            and(
+              eq(schema.chats.id, view.resource.resourceId),
+              eq(schema.chats.projectId, projectId),
+              eq(schema.chats.ownerId, ownerId),
+              eq(schema.chats.contextKind, "project"),
+              eq(schema.chats.experience, "agent"),
+              isNull(schema.chats.archivedAt),
+            ),
+          );
+        if (!chat)
+          throw new WorkspaceCommandError(
+            "missing",
+            "The Agent conversation is unavailable in this project.",
+          );
+        effectiveCommand = {
+          ...command,
+          action: {
+            ...command.action,
+            view: { ...view, titleProtection: chat.titleProtection },
+          },
+        };
+      }
       if (command.action.type === "open") {
         const resource = command.action.tab.resource;
         if (resource.kind === "entity") {

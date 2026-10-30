@@ -101,6 +101,12 @@ export function importWorkspaceLegacyFiles(
         titleProtection: null,
         tabs,
         activeTabId: tabs[0]!.id,
+        ...(layout.version === 2
+          ? {
+              conversationView: null,
+              selection: { kind: "tab" as const, tabId: tabs[0]!.id },
+            }
+          : {}),
       },
     ],
     centerRoot: { kind: "pane", paneId: request.paneId },

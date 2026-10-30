@@ -11,6 +11,8 @@ import { projectLabel } from "./security-fixtures.mjs";
 import { workspaceLegacyLayout } from "./workspace-layout-wire-fixtures.mjs";
 import { workspaceState, workspaceTab } from "./workspace-wire-fixtures.mjs";
 
+import { workspaceConversationModelCases } from "./workspace-conversation-model-cases.mjs";
+
 const cases = [];
 function add(name, operation, data) {
   const before = structuredClone(data);
@@ -238,4 +240,5 @@ for (const [left, right] of [
 ])
   add("strict JSON " + left + " / " + right, "strict", { left, right });
 workspaceCommandModelCases(add);
+workspaceConversationModelCases(add);
 console.log(JSON.stringify({ cases }));
