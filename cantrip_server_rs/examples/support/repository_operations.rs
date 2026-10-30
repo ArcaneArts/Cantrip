@@ -1,6 +1,7 @@
 use super::*;
 
-// Keep unrelated repository operations out of the caller's async poll frame.
+// Keep child futures on the heap: this dispatcher combines many independent
+// repositories and must also run on platforms with a 1 MiB thread stack.
 pub fn run<'a>(
     database: &'a Arc<Database>,
     request: &'a Value,
@@ -10,101 +11,21 @@ pub fn run<'a>(
     live: &'a cantrip_server::live::repository::LiveRepository,
     chats: &'a cantrip_server::chats::Repository,
 ) -> futures::future::BoxFuture<'a, Result<Value>> {
+    if request["op"]
+        .as_str()
+        .is_some_and(|op| op.starts_with("run-runtime-"))
+    {
+        return super::run_configurations::run(database, request);
+    }
     Box::pin(async move {
-        if request["op"]
-            .as_str()
-            .is_some_and(|op| op.starts_with("run-runtime-"))
-        {
-            let repo = cantrip_server::run_configurations::Repository::new(database.clone());
-            let owner = request["owner"].as_str().context("Runtime owner")?;
-            let project = request["project"].as_str().context("Runtime project")?;
-            match request["op"].as_str() {
-                Some("run-runtime-observation-race") => {
-                    let inputs = request["inputs"]
-                        .as_array()
-                        .context("Runtime observations")?;
-                    let worker = request["worker"].as_str().context("Runtime worker")?;
-                    let values = futures::future::try_join_all(
-                        inputs
-                            .iter()
-                            .map(|input| repo.observe(owner, worker, input)),
-                    )
-                    .await?;
-                    Ok(Value::Array(
-                        values
-                            .into_iter()
-                            .map(|value| value.unwrap_or(Value::Null))
-                            .collect(),
-                    ))
-                }
-                Some("run-runtime-race") => {
-                    let inputs = request["inputs"].as_array().context("Runtime inputs")?;
-                    Ok(Value::Array(
-                        futures::future::try_join_all(
-                            inputs
-                                .iter()
-                                .map(|input| repo.request_operation(owner, input)),
-                        )
-                        .await?,
-                    ))
-                }
-                Some("run-runtime-request") => {
-                    repo.request_operation(owner, &request["input"]).await
-                }
-                Some("run-runtime-get") => Ok(repo
-                    .get(
-                        owner,
-                        project,
-                        request["configuration"]
-                            .as_str()
-                            .context("Runtime configuration")?,
-                        request["worktree"].as_str().context("Runtime worktree")?,
-                    )
-                    .await?
-                    .unwrap_or(Value::Null)),
-                Some("run-runtime-list") => Ok(Value::Array(
-                    repo.list(
-                        owner,
-                        project,
-                        request["configuration"].as_str(),
-                        request["worktree"].as_str(),
-                        request["limit"].as_f64().unwrap_or(256.0) as i64,
-                    )
-                    .await?,
-                )),
-                Some("run-runtime-identities") => Ok(Value::Array(
-                    repo.active_identities(
-                        owner,
-                        request["worker"].as_str().context("Runtime worker")?,
-                    )
-                    .await?,
-                )),
-                Some("run-runtime-observe") => Ok(repo
-                    .observe(
-                        owner,
-                        request["worker"].as_str().context("Runtime worker")?,
-                        &request["observation"],
-                    )
-                    .await?
-                    .unwrap_or(Value::Null)),
-                Some("run-runtime-delete") => {
-                    let ids = request["ids"]
-                        .as_array()
-                        .context("Runtime ids")?
-                        .iter()
-                        .map(|id| id.as_str().map(str::to_owned).context("Runtime id"))
-                        .collect::<Result<Vec<_>>>()?;
-                    Ok(Value::Number(
-                        repo.delete(owner, project, &ids).await? as f64,
-                    ))
-                }
-                _ => anyhow::bail!("Unknown runtime operation"),
-            }
-        } else if request["op"] == "worktree-coordinator" {
-            super::worktree_coordinator::run(database.clone(), request).await
+        if request["op"] == "worktree-coordinator" {
+            super::worktree_coordinator::run(database.clone(), request)
+                .boxed()
+                .await
         } else if request["op"] == "sql" {
             database
                 .execute(request["sql"].as_str().context("Fixture SQL")?)
+                .boxed()
                 .await?;
             Ok(Value::Null)
         } else if request["op"] == "query-json" {
@@ -117,6 +38,7 @@ pub fn run<'a>(
                     &format!("SELECT result::text FROM ({query}) observation"),
                     &[],
                 )
+                .boxed()
                 .await?;
             rows.first()
                 .map(|row| Ok(serde_json::from_str::<Value>(&row.get::<String>(0)?)?))
@@ -132,6 +54,7 @@ pub fn run<'a>(
                             .context("Surface ID")?
                             .lossy(),
                     )
+                    .boxed()
                     .await?
                     .unwrap_or(Value::Null),
             )
@@ -149,16 +72,19 @@ pub fn run<'a>(
                 .map(|v| v.lossy().into_owned());
             cantrip_server::remote_surfaces::Repository::new(database.clone())
                 .set_status(&id, &status, error.as_deref())
+                .boxed()
                 .await?;
             Ok(Value::Null)
         } else if request["op"] == "surface-reset" {
             cantrip_server::remote_surfaces::Repository::new(database.clone())
                 .reset_transient()
+                .boxed()
                 .await?;
             Ok(Value::Null)
         } else if request["op"] == "surface-ensure-browsers" {
             cantrip_server::remote_surfaces::Repository::new(database.clone())
                 .ensure_browsers(request["owner"].as_str().context("Surface owner")?)
+                .boxed()
                 .await?;
             Ok(Value::Null)
         } else if request["op"] == "chat-context" {
@@ -168,6 +94,7 @@ pub fn run<'a>(
                 .lossy();
             Ok(chats
                 .execution_context(request["owner"].as_str().context("Chat owner")?, &chat)
+                .boxed()
                 .await?
                 .unwrap_or(Value::Null))
         } else if request["op"] == "mcp-effective" {
@@ -182,6 +109,7 @@ pub fn run<'a>(
                             .and_then(Value::as_str)
                             .unwrap_or("ide"),
                     )
+                    .boxed()
                     .await?,
             ))
         } else if request["op"] == "terminal-services" {
@@ -193,6 +121,7 @@ pub fn run<'a>(
                         request["worker"].as_str().context("Service worker")?,
                         request["server"].as_str().context("Service server")?,
                     )
+                    .boxed()
                     .await?,
             ))
         } else if request["op"] == "terminal-status" {
@@ -203,6 +132,7 @@ pub fn run<'a>(
                     request["terminal"].as_str().context("Terminal identity")?,
                     request["status"].as_str().context("Terminal status")?,
                 )
+                .boxed()
                 .await?;
             Ok(Value::Null)
         } else if request["op"]
@@ -221,24 +151,32 @@ pub fn run<'a>(
                         owner,
                         request["project"].as_str().context("Terminal project")?,
                     )
+                    .boxed()
                     .await?,
                 )),
-                "terminal-context" => {
-                    Ok(repo.context(owner, &terminal).await?.unwrap_or(Value::Null))
-                }
+                "terminal-context" => Ok(repo
+                    .context(owner, &terminal)
+                    .boxed()
+                    .await?
+                    .unwrap_or(Value::Null)),
                 "terminal-update" => Ok(repo
                     .update(owner, &terminal, &request["input"])
+                    .boxed()
                     .await?
                     .unwrap_or(Value::Null)),
                 "terminal-worktree" => Ok(repo
                     .update_worktree(owner, &terminal, &request["input"])
+                    .boxed()
                     .await?
                     .unwrap_or(Value::Null)),
-                "terminal-delete" => {
-                    Ok(repo.delete(owner, &terminal).await?.unwrap_or(Value::Null))
-                }
+                "terminal-delete" => Ok(repo
+                    .delete(owner, &terminal)
+                    .boxed()
+                    .await?
+                    .unwrap_or(Value::Null)),
                 "terminal-service" => Ok(repo
                     .configure_service(owner, &terminal, &request["input"])
+                    .boxed()
                     .await?
                     .unwrap_or(Value::Null)),
                 "terminal-create" => {
@@ -254,6 +192,7 @@ pub fn run<'a>(
                             &request["input"],
                             Some(&connected),
                         )
+                        .boxed()
                         .await?
                         .unwrap_or(Value::Null))
                 }
@@ -263,7 +202,7 @@ pub fn run<'a>(
             .as_str()
             .is_some_and(|s| s.starts_with("folder-"))
         {
-            folder_operation(folders, request).boxed().await
+            folder_operation(folders, request).boxed().boxed().await
         } else if request["op"] == "transaction" {
             let statements = request["statements"]
                 .as_array()
@@ -280,11 +219,12 @@ pub fn run<'a>(
                 .transaction(|transaction| {
                     Box::pin(async move {
                         for statement in statements {
-                            transaction.execute(&statement).await?;
+                            transaction.execute(&statement).boxed().await?;
                         }
                         Ok(())
                     })
                 })
+                .boxed()
                 .await?;
             Ok(Value::Null)
         } else if matches!(
@@ -307,6 +247,7 @@ pub fn run<'a>(
                         request["worker"].as_str().context("Worktree worker")?,
                         &request["created"],
                     )
+                    .boxed()
                     .await?,
                 ));
             }
@@ -319,14 +260,17 @@ pub fn run<'a>(
                         worktree,
                         request["state"].as_str().context("Worktree state")?,
                     )
+                    .boxed()
                     .await?
                 }
                 Some("worktree-observe") => {
                     repo.observe_worktree(owner, project, worktree, &request["observed"])
+                        .boxed()
                         .await?
                 }
                 _ => {
                     repo.worktree_removal_blockers(owner, project, worktree)
+                        .boxed()
                         .await?
                 }
             }
@@ -341,6 +285,7 @@ pub fn run<'a>(
                     &request["inventory"],
                     request.get("created"),
                 )
+                .boxed()
                 .await?
                 .map(Value::Array)
                 .unwrap_or(Value::Null))
@@ -355,6 +300,7 @@ pub fn run<'a>(
                         .as_str()
                         .context("Observation worktree path")?,
                 )
+                .boxed()
                 .await?
                 .unwrap_or(Value::Null))
         } else if request["op"] == "observation-operation" {
@@ -367,6 +313,7 @@ pub fn run<'a>(
                         .as_str()
                         .context("Observation worktree")?,
                 )
+                .boxed()
                 .await?
                 .unwrap_or(Value::Null))
         } else if request["op"] == "observation-source" {
@@ -380,6 +327,7 @@ pub fn run<'a>(
                     request["project"].as_str().context("Observation project")?,
                     &|worker| connected.iter().any(|value| value == worker),
                 )
+                .boxed()
                 .await?
                 .unwrap_or(Value::Null))
         } else if request["op"] == "observation-targets" || request["op"] == "observation-paths" {
@@ -394,6 +342,7 @@ pub fn run<'a>(
                         request["gitOnly"] == true,
                         request.get("limit").and_then(Value::as_i64).unwrap_or(128),
                     )
+                    .boxed()
                     .await?,
                 ))
             } else {
@@ -404,6 +353,7 @@ pub fn run<'a>(
                             worker,
                             request["paths"].as_array().context("Observation paths")?,
                         )
+                        .boxed()
                         .await?,
                 ))
             }
@@ -421,6 +371,7 @@ pub fn run<'a>(
                     execution: &request["execution"],
                     server_version: "fixture-version",
                 })
+                .boxed()
                 .await?;
             Ok(Value::Null)
         } else if request["op"] == "worktree-context" || request["op"] == "github-context" {
@@ -433,6 +384,7 @@ pub fn run<'a>(
                     project,
                     request["worktree"].as_str().context("Context worktree")?,
                 )
+                .boxed()
                 .await?
             } else {
                 repo.github_context(
@@ -440,6 +392,7 @@ pub fn run<'a>(
                     project,
                     request.get("worker").and_then(Value::as_str),
                 )
+                .boxed()
                 .await?
             }
             .unwrap_or(Value::Null))
@@ -459,6 +412,7 @@ pub fn run<'a>(
                         .map(|_| &connected as &(dyn Fn(&str) -> bool + Send + Sync)),
                     request["allowUnavailable"].as_bool().unwrap_or(false),
                 )
+                .boxed()
                 .await
         } else if request["op"] == "catalog-repository" {
             let connected = |worker: &str| {
@@ -475,6 +429,7 @@ pub fn run<'a>(
                             .as_array()
                             .map(|_| &connected as &(dyn Fn(&str) -> bool + Send + Sync)),
                     )
+                    .boxed()
                     .await?
                     .unwrap_or(Value::Null),
             )
@@ -487,6 +442,7 @@ pub fn run<'a>(
                     request["model"].as_str().context("Model identity")?,
                     reasoning,
                 )
+                .boxed()
                 .await?
                 .unwrap_or(Value::Null))
         } else if request["op"] == "chat-runtime" {
@@ -508,6 +464,7 @@ pub fn run<'a>(
                         .map(|v| v.as_str().map(str::to_owned)),
                     scratch_root: nullable("scratchRoot"),
                 })
+                .boxed()
                 .await?;
             Ok(Value::Null)
         } else if request["op"] == "chat-guard" {
@@ -522,6 +479,7 @@ pub fn run<'a>(
                             request["owner"].as_str().context("Guard owner")?,
                             chat,
                         )
+                        .boxed()
                         .await?;
                         guard::assert_runtime_writable(
                             tx,
@@ -534,10 +492,12 @@ pub fn run<'a>(
                                 Access::Write
                             },
                         )
+                        .boxed()
                         .await?;
                         Ok(Value::Null)
                     })
                 })
+                .boxed()
                 .await
         } else if request["op"] == "target-catalog" {
             let connected = |worker: &str| {
@@ -568,6 +528,7 @@ pub fn run<'a>(
                         .map(|_| &connected as &(dyn Fn(&str) -> bool + Send + Sync)),
                     request["allowOffline"].as_bool().unwrap_or(false),
                 )
+                .boxed()
                 .await
         } else if request["op"] == "scope" {
             Ok(Value::Bool(
@@ -575,6 +536,7 @@ pub fn run<'a>(
                     request["owner"].as_str().context("Scope owner")?,
                     &request["scope"],
                 )
+                .boxed()
                 .await?,
             ))
         } else if request["op"] == "session-active" {
@@ -583,12 +545,14 @@ pub fn run<'a>(
                     request["session"].as_str().context("Session identity")?,
                     request["owner"].as_str().context("Session owner")?,
                 )
+                .boxed()
                 .await?,
             ))
         } else {
             Ok(Value::Array(
                 repository
                     .list(request["owner"].as_str().context("Fixture owner")?)
+                    .boxed()
                     .await?,
             ))
         }
