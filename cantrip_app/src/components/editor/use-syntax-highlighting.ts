@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { textChange, type HighlightedLine } from "./syntax/document";
+import { SyntaxPaintCache, sameTokens } from "./syntax/paint-cache";
+import { languageForFile, loadLanguage } from "./syntax/languages";
+import type { LanguageCatalog } from "./syntax/types";
 import {
   isCurrentHighlight,
   type SyntaxRequest,
@@ -21,16 +24,38 @@ export function useSyntaxHighlighting(
   const [, redraw] = useState(0);
   const current = useRef({ documentId, revision, first, last });
   current.current = { documentId, revision, first, last };
+  const language = languageForFile(path, text);
+  const grammar = useRef<{ language: string; catalog: LanguageCatalog } | null>(
+    null,
+  );
   const cache = useRef({
     documentId,
-    revision,
-    lines: new Map<number, HighlightedLine>(),
+    path,
+    paint: new SyntaxPaintCache(text, revision),
   });
-  if (
-    cache.current.documentId !== documentId ||
-    cache.current.revision !== revision
-  )
-    cache.current = { documentId, revision, lines: new Map() };
+  if (cache.current.documentId !== documentId || cache.current.path !== path)
+    cache.current = {
+      documentId,
+      path,
+      paint: new SyntaxPaintCache(text, revision),
+    };
+  const paint = cache.current.paint;
+  paint.edit(
+    text,
+    revision,
+    grammar.current?.language === language ? grammar.current.catalog : null,
+  );
+  useEffect(() => {
+    let cancelled = false;
+    void loadLanguage(language)
+      .then((catalog) => {
+        if (!cancelled) grammar.current = { language, catalog };
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [language]);
   // Prefetch on both sides in stable blocks. Scrolling within a block reuses
   // existing tokens without sending work or waiting for a viewport-exact reply.
   const requestFirst = Math.max(
@@ -42,6 +67,7 @@ export function useSyntaxHighlighting(
   const transport = useRef<{
     worker: Worker;
     documentId: string;
+    path: string;
     text: string;
     revision: number;
   } | null>(null);
@@ -56,17 +82,33 @@ export function useSyntaxHighlighting(
     } catch {
       return;
     }
-    transport.current = { worker, documentId: "", text: "", revision: -1 };
+    transport.current = {
+      worker,
+      documentId: "",
+      path: "",
+      text: "",
+      revision: -1,
+    };
     worker.onmessage = (event: MessageEvent<SyntaxResponse>) => {
       const latest = current.current;
       if (!isCurrentHighlight(event.data, latest.documentId, latest.revision))
         return;
-      const lines = cache.current.lines;
+      const lines = cache.current.paint.lines;
       let visibleChanged = false;
       for (const line of event.data.lines) {
-        if (lines.has(line.number)) continue;
-        lines.set(line.number, line);
-        if (line.number > latest.first && line.number <= latest.last)
+        const previous = lines.get(line.number);
+        const unchanged =
+          previous?.text === line.text &&
+          sameTokens(previous.tokens, line.tokens);
+        lines.set(
+          line.number,
+          unchanged ? { ...line, tokens: previous.tokens } : line,
+        );
+        if (
+          !unchanged &&
+          line.number > latest.first &&
+          line.number <= latest.last
+        )
           visibleChanged = true;
       }
       // Keep memory bounded without evicting the currently painted lines.
@@ -87,7 +129,7 @@ export function useSyntaxHighlighting(
     const target = transport.current;
     if (!target) return;
     let message: SyntaxRequest;
-    if (target.documentId !== documentId)
+    if (target.documentId !== documentId || target.path !== path)
       message = {
         type: "open",
         documentId,
@@ -103,7 +145,10 @@ export function useSyntaxHighlighting(
         documentId,
         revision,
         baseRevision: target.revision,
-        change: textChange(target.text, text),
+        change:
+          paint.previousText === target.text && paint.change
+            ? paint.change
+            : textChange(target.text, text),
         first: requestFirst,
         last: requestLast,
       };
@@ -117,8 +162,9 @@ export function useSyntaxHighlighting(
       };
     target.worker.postMessage(message);
     target.documentId = documentId;
+    target.path = path;
     target.text = text;
     target.revision = revision;
   }, [active, documentId, path, text, revision, requestFirst, requestLast]);
-  return cache.current.lines;
+  return paint.lines;
 }

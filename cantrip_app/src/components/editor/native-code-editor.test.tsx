@@ -34,6 +34,59 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+it("leaves the paint DOM untouched when an idle parent rerenders", async () => {
+  const container = document.createElement("div");
+  const root = createRoot(container);
+  const session = new EditorDocumentSession("file", "const value = 1;", "v1");
+  const colors = new Map([
+    [
+      1,
+      {
+        number: 1,
+        text: session.text,
+        tokens: [
+          { from: 0, to: 5, kind: "keyword" as const },
+          { from: 5, to: session.text.length, kind: "text" as const },
+        ],
+      },
+    ],
+  ]);
+  vi.mocked(useSyntaxHighlighting).mockReturnValue(colors);
+  const mutations: MutationRecord[] = [];
+  const observer = new MutationObserver((records) =>
+    mutations.push(...records),
+  );
+  try {
+    await act(async () =>
+      root.render(<NativeCodeEditor session={session} path="file.ts" />),
+    );
+    const span = container.querySelector(".syntax-keyword");
+    observer.observe(container, {
+      subtree: true,
+      childList: true,
+      characterData: true,
+      attributes: true,
+    });
+    for (let i = 0; i < 5; i++)
+      await act(async () =>
+        root.render(
+          <NativeCodeEditor
+            session={session}
+            path="file.ts"
+            onSave={() => {}}
+          />,
+        ),
+      );
+    expect([...mutations, ...observer.takeRecords()]).toEqual([]);
+    expect(container.querySelector(".syntax-keyword")).toBe(span);
+    expect(container.querySelector("textarea")!.defaultValue).toBe("");
+  } finally {
+    observer.disconnect();
+    await act(async () => root.unmount());
+    vi.mocked(useSyntaxHighlighting).mockImplementation(() => new Map());
+  }
+});
+
 it("reports readiness after installing the document into its inert DOM input", async () => {
   vi.stubGlobal(
     "ResizeObserver",

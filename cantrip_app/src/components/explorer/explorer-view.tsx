@@ -13,12 +13,7 @@ import {
   type ExplorerSummary,
   type GitStatus,
 } from "@cantrip/protocol";
-import {
-  useIsFetching,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import {
   lazy,
@@ -465,23 +460,7 @@ export function ExplorerView({
     fileMode: explorer.fileMode,
   });
   const viewStateQueueRef = useRef<Promise<boolean>>(Promise.resolve(true));
-  const directoryFetches = useIsFetching({
-    queryKey: [
-      "explorer-directory",
-      explorer.projectId,
-      explorer.worktreeId,
-      explorer.id,
-    ],
-  });
-
-  const commitFetches = useIsFetching({
-    queryKey: [
-      "explorer-directory-commits",
-      explorer.projectId,
-      explorer.worktreeId,
-      explorer.id,
-    ],
-  });
+  const [refreshPending, setRefreshPending] = useState(false);
   const fileBinding = useMemo(
     () => ({
       workerId: explorer.activeWorkerId,
@@ -720,6 +699,7 @@ export function ExplorerView({
     setGraphRootPath(graphRequest.rootPath);
   }, [explorer.id, graphRequest]);
 
+  const recoveryFetching = documentRecovery ? file.isFetching : false;
   useEffect(() => {
     if (
       transferSuspended ||
@@ -733,7 +713,7 @@ export function ExplorerView({
           nativeDocument.dirty ||
           nativeDocument.saving ||
           !file.isFetchedAfterMount ||
-          file.isFetching ||
+          recoveryFetching ||
           nativeDocument.version === file.data.version))
     ) {
       return;
@@ -754,7 +734,7 @@ export function ExplorerView({
     draftVersion,
     file.data,
     file.isFetchedAfterMount,
-    file.isFetching,
+    recoveryFetching,
     documentRecovery,
     selectedPath,
     displayedSelectedPath,
@@ -1182,31 +1162,40 @@ export function ExplorerView({
     ) {
       return;
     }
-    await Promise.all([
-      queryClient.invalidateQueries({
-        queryKey: [
-          "explorer-directory",
-          explorer.projectId,
-          explorer.worktreeId,
-          explorer.id,
-        ],
-      }),
-      queryClient.invalidateQueries({
-        queryKey: [
-          "explorer-directory-commits",
-          explorer.projectId,
-          explorer.worktreeId,
-          explorer.id,
-        ],
-      }),
-      queryClient.invalidateQueries({
-        exact: true,
-        queryKey: ["worktree-status", explorer.projectId, explorer.worktreeId],
-      }),
-      selectedPathRef.current
-        ? loadFile(selectedPathRef.current, true)
-        : Promise.resolve(),
-    ]);
+    setRefreshPending(true);
+    try {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: [
+            "explorer-directory",
+            explorer.projectId,
+            explorer.worktreeId,
+            explorer.id,
+          ],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: [
+            "explorer-directory-commits",
+            explorer.projectId,
+            explorer.worktreeId,
+            explorer.id,
+          ],
+        }),
+        queryClient.invalidateQueries({
+          exact: true,
+          queryKey: [
+            "worktree-status",
+            explorer.projectId,
+            explorer.worktreeId,
+          ],
+        }),
+        selectedPathRef.current
+          ? loadFile(selectedPathRef.current, true)
+          : Promise.resolve(),
+      ]);
+    } finally {
+      setRefreshPending(false);
+    }
   }, [
     confirmCurrentDocumentDiscard,
     explorer.id,
@@ -1286,9 +1275,7 @@ export function ExplorerView({
       fileMode: graphVisible ? "preview" : fileMode,
       isFetching: graphVisible
         ? (graphStatus?.isFetching ?? false)
-        : directoryFetches + commitFetches > 0 ||
-          file.isFetching ||
-          viewStatePending > 0,
+        : refreshPending,
       isSaving: saveFilePending,
       refresh: graphVisible
         ? () => setGraphRefreshEpoch((epoch) => epoch + 1)
@@ -1313,14 +1300,12 @@ export function ExplorerView({
       active,
       back,
       changeFileMode,
-      commitFetches,
-      directoryFetches,
       dirty,
       editableLanguage,
       explorer.projectId,
       explorer.selectedPath,
       explorer.worktreeId,
-      file.isFetching,
+      refreshPending,
       fileMode,
       graphRootPath,
       graphStatus?.isFetching,
@@ -1331,7 +1316,6 @@ export function ExplorerView({
       selectedPath,
       structuredFormat,
       transientFilePath,
-      viewStatePending,
       mediaType,
     ],
   );
