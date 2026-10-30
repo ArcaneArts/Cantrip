@@ -560,7 +560,7 @@ export function TaskImplementationDashboard({
           }
           visible={visible}
         />
-        {dashboard.data?.goalUnavailableReason ? (
+        {task.state !== "complete" && dashboard.data?.goalUnavailableReason ? (
           <p className="border-b py-3 text-xs text-muted-foreground">
             {dashboard.data.goalUnavailableReason}
           </p>
