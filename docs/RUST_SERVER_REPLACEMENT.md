@@ -12,6 +12,21 @@ feature set.
 
 Status: **implementation in progress; not a deployable replacement**.
 
+## Ordered worktree observation comparison
+
+Linux run `41068582355` exposed an unordered test boundary: inventory mutation
+writes the canonical `path` routing handle and the scheduled observation reply
+replaces it with the field-scoped `worktreePath` handle. The next HTTP command
+could race that persisted replacement, producing different reconcile source
+handles despite equivalent source-selection queries. The test now reads the
+actual worktree catalog until the observation path is stored between mutations.
+It retains the exact command/body/Live comparisons and asserts the observed
+path; it does not substitute a delay or remove the differing field. External
+PostgreSQL, private PostgreSQL and native PGlite pass all nine local
+storage/authentication combinations with unchanged 116/120/127 recorded
+observations per runtime. Reports: `observation-order-http-*-v1.json`. Platform
+verification remains pending for this adjustment.
+
 ## Actual Run product acceptance
 
 The browser/worker probe now uses the existing app API to store an opaque Run
