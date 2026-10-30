@@ -1,4 +1,4 @@
-import { beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   request: vi.fn(),
   open: vi.fn(),
@@ -32,6 +32,9 @@ vi.mock("@/lib/chat-title-encryption", () => ({
 }));
 import {
   prepareConversationCreation,
+  archiveAgentConversation,
+  restoreAgentConversation,
+  permanentlyDeleteAgentConversation,
   getConversationCatalog,
   recordConversationUsage,
 } from "./conversations";
@@ -193,4 +196,50 @@ it("retries creation with the same encrypted identity and never requests placeme
     code: "client-identity-changed",
   });
   expect(mocks.request).toHaveBeenCalledTimes(2);
+});
+
+afterEach(() => vi.useRealTimers());
+it("archives empty Agents explicitly without using legacy DELETE", async () => {
+  mocks.request.mockResolvedValue(undefined);
+  await archiveAgentConversation("empty/id");
+  expect(mocks.request).toHaveBeenCalledExactlyOnceWith(
+    "/api/chats/empty%2Fid/archive",
+    { method: "POST", body: "{}" },
+    { expectedIdentity: identity, allowCsrfRecovery: false },
+  );
+});
+it("restores the same Agent without requesting a rail placement", async () => {
+  const { lastUsedAt: _, ...wire } = chat("restore/id");
+  mocks.request.mockResolvedValue(wire);
+  await expect(
+    restoreAgentConversation("project/id", "restore/id"),
+  ).resolves.toMatchObject({ id: "restore/id" });
+  expect(JSON.parse(mocks.request.mock.calls[0]![1].body)).toEqual({
+    attachToTabLayout: false,
+  });
+  expect(mocks.request.mock.calls[0]![2]).toMatchObject({
+    expectedIdentity: identity,
+  });
+});
+it("fences a delayed archive callback and permanent deletion against the captured session", async () => {
+  mocks.matches.mockReturnValue(false);
+  await expect(
+    archiveAgentConversation("one", true, identity),
+  ).rejects.toMatchObject({ code: "client-identity-changed" });
+  await expect(
+    permanentlyDeleteAgentConversation("one", identity),
+  ).rejects.toMatchObject({ code: "client-identity-changed" });
+  expect(mocks.request).not.toHaveBeenCalled();
+});
+
+it("does not continue from interruption into archival after an account switch", async () => {
+  mocks.request.mockImplementationOnce(async () => {
+    mocks.matches.mockReturnValue(false);
+    return { interrupted: true };
+  });
+  await expect(
+    archiveAgentConversation("running", true, identity),
+  ).rejects.toMatchObject({ code: "client-identity-changed" });
+  expect(mocks.request).toHaveBeenCalledTimes(1);
+  expect(mocks.request.mock.calls[0]![0]).toBe("/api/chats/running/interrupt");
 });

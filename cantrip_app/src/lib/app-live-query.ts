@@ -230,7 +230,10 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
     }
     case "chat":
       return projectId
-        ? [["chats", projectId]]
+        ? [
+            ["chats", projectId],
+            ["archived-chats", projectId],
+          ]
         : event.scope.kind === "chat"
           ? [
               ["standalone-chats"],

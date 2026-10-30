@@ -272,6 +272,10 @@ export function App() {
     seedWorkspaceSelection,
   );
   const workspaceSelection = workspaceConnection.workspaceSelection;
+  const [conversationArchiveRequest, setConversationArchiveRequest] = useState<{
+    projectId: string;
+    id: string;
+  } | null>(null);
   const { page: projectSidebarPage, setPage: setProjectSidebarPage } =
     useProjectSidebarPage(
       selectedProjectId,
@@ -2212,7 +2216,7 @@ export function App() {
     standaloneChatCreationAvailable, standaloneChatCreationUnavailableReason, standaloneChatWorkerAvailable, standaloneChats, standaloneFilePath,
     standaloneFilesOpen, stopAndDeleteRunTerminalMutation, surfaceCreationFailure, switchToChat, switchToIde,
     tabLayout, tabLayoutMutation, terminals, terminalCommandPaletteTerminalId, terminalServiceTerminalId, updateBrowserMutation, updateCodeTabMutation,
-    sidebarFileReveal, projectSidebarPage, setProjectSidebarPage,
+    conversationArchiveRequest, setConversationArchiveRequest, sidebarFileReveal, projectSidebarPage, setProjectSidebarPage,
     visibleProjects, workers, workspaceConnection, legacyDocumentMigration, workspaceDragError, workspaceSelection, worktreeActionError,
     worktreeCreateTarget, worktreeStatuses, worktrees,
   };

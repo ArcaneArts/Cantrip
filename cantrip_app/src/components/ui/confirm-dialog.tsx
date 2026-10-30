@@ -29,6 +29,7 @@ export function ConfirmDialog({
   error,
   onConfirm,
   onOpenChange,
+  onCloseAutoFocus,
   open,
   pending = false,
   title,
@@ -43,6 +44,7 @@ export function ConfirmDialog({
   error?: ReactNode;
   onConfirm(): void;
   onOpenChange(open: boolean): void;
+  onCloseAutoFocus?(event: Event): void;
   open: boolean;
   pending?: boolean;
   title: ReactNode;
@@ -55,7 +57,11 @@ export function ConfirmDialog({
 
   return (
     <Dialog open={open} onOpenChange={requestOpenChange}>
-      <DialogContent className={contentClassName} showClose={!pending}>
+      <DialogContent
+        className={contentClassName}
+        showClose={!pending}
+        onCloseAutoFocus={onCloseAutoFocus}
+      >
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>

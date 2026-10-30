@@ -3,10 +3,7 @@ import {
   UnresolvedProjectSurface,
   unresolvedSurfaceCollection,
 } from "./unresolved-project-surface";
-import type {
-  WorkerSummary,
-  ProjectViewSummary,
-} from "@cantrip/protocol";
+import type { WorkerSummary, ProjectViewSummary } from "@cantrip/protocol";
 import type { QueryClient } from "@tanstack/react-query";
 import {
   CircleAlert,
@@ -20,9 +17,7 @@ import {
 } from "lucide-react";
 import { Suspense, type ReactNode } from "react";
 import { EmptyWorkspace } from "./empty-workspace";
-import {
-  RunTerminalView,
-} from "@/components/app/application-shell-surfaces";
+import { RunTerminalView } from "@/components/app/application-shell-surfaces";
 import { ArchivedStandaloneChatsPage } from "@/components/chat/archived-standalone-chats-page";
 import {
   GitHistoryView,
@@ -400,6 +395,16 @@ export function GlobalContentHost({
         </StandaloneChatHost>
       ) : showProjectSettings && selectedProject ? (
         <ProjectSettingsPage
+          onOpenConversations={() => {
+            setShowProjectSettings(false);
+            bindings.setProjectSidebarPage("conversations");
+            bindings.setSidebarCollapsed(false);
+            bindings.setDesktopSidebarDrawerOpen(true);
+            bindings.setConversationArchiveRequest({
+              projectId: selectedProject.id,
+              id: crypto.randomUUID(),
+            });
+          }}
           desktopRuntime={desktopRuntime && projectRevealLabel !== null}
           initialSection={projectSettingsSection}
           mobileSectionOpen={mobileSettingsSectionOpen}

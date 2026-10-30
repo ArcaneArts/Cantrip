@@ -682,7 +682,10 @@ describe("application live query bridge", () => {
           scope: { kind: "project", projectId: "project-one" },
         }),
       ),
-    ).toEqual([["chats", "project-one"]]);
+    ).toEqual([
+      ["chats", "project-one"],
+      ["archived-chats", "project-one"],
+    ]);
     expect(
       appLiveEventQueryKeys(
         event({

@@ -406,6 +406,15 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                         <ProjectConversationList
                           key={selectedProjectId}
                           projectId={selectedProjectId}
+                          archiveFocusRequest={
+                            bindings.conversationArchiveRequest?.projectId ===
+                            selectedProjectId
+                              ? bindings.conversationArchiveRequest.id
+                              : null
+                          }
+                          onArchiveFocusHandled={() =>
+                            bindings.setConversationArchiveRequest(null)
+                          }
                           randomAgentNames={
                             bindings.settings?.data?.preferences
                               .randomAgentNames ?? false
