@@ -136,6 +136,14 @@ export const contractRoots = [
   "worktreeSelectionSchema",
   "workspaceOwnershipSchema",
   "workspaceTabSchema",
+  "workspaceCommandSchema",
+  "workspaceReceiptSchema",
+  "workspaceSeedRequestSchema",
+  "workspaceLegacyFileImportSchema",
+  "workspaceLegacyFileImportRequestSchema",
+  "workspaceLegacyFileImportReceiptSchema",
+  "projectTabLayoutWireSummarySchema",
+  "projectBuiltinSurfaceDefinitionIdSchema",
   "projectCenterLayoutNodeSchema",
   "terminalWireSummarySchema",
   "terminalWireListSchema",
@@ -360,6 +368,23 @@ registerChecks(protocol.tunnelUserWireCreateSchema, [
 ]);
 registerChecks(protocol.workspaceOwnershipSchema, ["workspace-ownership"]);
 registerChecks(protocol.workspaceTabSchema, ["workspace-tab"]);
+registerChecks(protocol.workspaceReceiptSchema, ["workspace-receipt"]);
+registerChecks(protocol.explorerPrivateStateOpaqueSchema, [
+  "worker-command-surface-kind:explorer-state",
+]);
+registerChecks(
+  protocol.workspaceActionSchema.options
+    .find((action) => action.shape.type.value === "rename-pane")
+    .shape.titleProtection.unwrap(),
+  ["workspace-pane-title"],
+);
+registerChecks(protocol.projectTabMemberWireSummarySchema, [
+  "project-tab-member",
+]);
+registerChecks(protocol.projectPaneWireSummarySchema, ["project-pane"]);
+registerChecks(protocol.projectTabLayoutWireSummarySchema, [
+  "project-tab-layout",
+]);
 registerChecks(protocol.projectSurfaceResourceRefSchema, [
   "workspace-resource",
 ]);

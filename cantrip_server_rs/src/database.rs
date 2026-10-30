@@ -41,14 +41,17 @@ impl Row {
 }
 
 pub enum Transaction<'a> {
-    Pglite(pglite::Transaction<'a>),
+    // The driver parses/describes and binds/executes in separate exchanges using
+    // the same unnamed statement. Serialize each complete operation, including
+    // when callers join several queries inside the already-exclusive session.
+    Pglite(Mutex<pglite::Transaction<'a>>),
     Postgres(tokio_postgres::Transaction<'a>),
 }
 
 impl Transaction<'_> {
     pub async fn execute(&self, sql: &str) -> Result<()> {
         match self {
-            Self::Pglite(transaction) => transaction.exec(sql).await?,
+            Self::Pglite(transaction) => transaction.lock().await.exec(sql).await?,
             Self::Postgres(transaction) => transaction.batch_execute(sql).await?,
         }
         Ok(())
@@ -57,6 +60,8 @@ impl Transaction<'_> {
     pub async fn query(&self, sql: &str, parameters: Parameters<'_>) -> Result<Vec<Row>> {
         Ok(match self {
             Self::Pglite(transaction) => transaction
+                .lock()
+                .await
                 .query(sql, parameters)
                 .await?
                 .into_iter()
@@ -73,7 +78,7 @@ impl Transaction<'_> {
 
     async fn commit(self) -> Result<()> {
         match self {
-            Self::Pglite(transaction) => transaction.commit().await?,
+            Self::Pglite(transaction) => transaction.into_inner().commit().await?,
             Self::Postgres(transaction) => transaction.commit().await?,
         }
         Ok(())
@@ -81,7 +86,7 @@ impl Transaction<'_> {
 
     async fn rollback(self) -> Result<()> {
         match self {
-            Self::Pglite(transaction) => transaction.rollback().await?,
+            Self::Pglite(transaction) => transaction.into_inner().rollback().await?,
             Self::Postgres(transaction) => transaction.rollback().await?,
         }
         Ok(())
@@ -229,13 +234,13 @@ impl Database {
             Backend::Postgres(database) => return database.transaction(operation).await,
         };
         let mut database = database.lock().await;
-        let transaction = Transaction::Pglite(
+        let transaction = Transaction::Pglite(Mutex::new(
             database
                 .as_mut()
                 .context("database is closed")?
                 .transaction()
                 .await?,
-        );
+        ));
         match operation(&transaction).await {
             Ok(result) => {
                 transaction.commit().await?;

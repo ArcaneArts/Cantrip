@@ -36,6 +36,10 @@ import {
   actualWorkerFileDocuments,
   retainedWorkerFileDocument,
 } from "./actual-worker-file-documents.mjs";
+import {
+  actualWorkspaceClient,
+  retainedWorkspaceClient,
+} from "./actual-workspace-client.mjs";
 import { actualNativeDirectProbe } from "./actual-native-direct-probe.mjs";
 import {
   prepareTunnelLink,
@@ -449,18 +453,24 @@ async function flow(
     if (
       (process.argv.includes("--surfaces") ||
         process.argv.includes("--project-shares") ||
-        process.argv.includes("--file-documents")) &&
+        process.argv.includes("--file-documents") ||
+        process.argv.includes("--workspaces")) &&
       !worker
     )
       await startWorker();
-    const fileDocuments = process.argv.includes("--file-documents")
-      ? await actualWorkerFileDocuments({
-          page,
-          projectId: created.id,
-          workerId,
-          directory: await filesystem(created.id),
-          result,
-        })
+    const fileDocuments =
+      process.argv.includes("--file-documents") ||
+      process.argv.includes("--workspaces")
+        ? await actualWorkerFileDocuments({
+            page,
+            projectId: created.id,
+            workerId,
+            directory: await filesystem(created.id),
+            result,
+          })
+        : undefined;
+    const workspace = process.argv.includes("--workspaces")
+      ? await actualWorkspaceClient({ page, document: fileDocuments, result })
       : undefined;
     const surface = process.argv.includes("--surfaces")
       ? await prepareBrowserSurface(
@@ -603,6 +613,7 @@ async function flow(
     );
     assert.deepEqual(retained.projects, wire);
     assert.deepEqual(retained.labels, names);
+    if (workspace) await retainedWorkspaceClient({ page, workspace, result });
     if (surface || tunnel || projectShares || fileDocuments) {
       await startWorker();
       if (fileDocuments)

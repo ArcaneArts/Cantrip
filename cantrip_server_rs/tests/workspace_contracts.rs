@@ -8,6 +8,14 @@ fn workspace_ownership_matches_actual_protocol_and_error_messages() -> Result<()
         "workspaceOwnershipSchema",
         "workspaceTabSchema",
         "projectCenterLayoutNodeSchema",
+        "workspaceCommandSchema",
+        "workspaceReceiptSchema",
+        "workspaceSeedRequestSchema",
+        "workspaceLegacyFileImportSchema",
+        "workspaceLegacyFileImportRequestSchema",
+        "workspaceLegacyFileImportReceiptSchema",
+        "projectTabLayoutWireSummarySchema",
+        "projectBuiltinSurfaceDefinitionIdSchema",
     ] {
         let output = Command::new("node")
             .args(["scripts/server-rust/workspace-contract-oracle.mjs", name])

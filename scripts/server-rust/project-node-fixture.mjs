@@ -68,6 +68,36 @@ try {
           default:
             throw new Error("Unknown browser operation");
         }
+      } else if (request.op.startsWith("workspace-")) {
+        const repo = database.repository.workspaceLayouts;
+        const input =
+          request.inputRaw === undefined
+            ? request.input
+            : JSON.parse(request.inputRaw);
+        if (request.op === "workspace-get")
+          value = await repo.get(
+            request.owner,
+            request.project,
+            request.workspace,
+          );
+        else if (request.op === "workspace-seed")
+          value = await repo.seed(
+            request.owner,
+            request.project,
+            request.workspace,
+            input.mainWindowId,
+            input,
+          );
+        else if (request.op === "workspace-execute")
+          value = await repo.execute(request.owner, input);
+        else if (request.op === "workspace-import")
+          value = await repo.importLegacyFiles(
+            request.owner,
+            request.project,
+            request.workspace,
+            input,
+          );
+        else throw new Error("Unknown workspace operation");
       } else if (request.op.startsWith("document-")) {
         const repo = database.repository.fileDocuments;
         switch (request.op) {
@@ -372,7 +402,8 @@ try {
           rejected: true,
           ...((request.op.startsWith("tunnel-") ||
             request.op.startsWith("browser-") ||
-            request.op.startsWith("document-")) &&
+            request.op.startsWith("document-") ||
+            request.op.startsWith("workspace-")) &&
           error.cause?.code
             ? { databaseCode: error.cause.code }
             : {}),
@@ -383,10 +414,18 @@ try {
                 ...(error.code ? { code: error.code } : {}),
               }
             : {}),
+          ...(request.op.startsWith("workspace-")
+            ? {
+                errorName: error.name,
+                ...(error.code ? { code: error.code } : {}),
+                ...(error.statusCode ? { statusCode: error.statusCode } : {}),
+              }
+            : {}),
           diagnostic:
             request.op.startsWith("terminal-") ||
             request.op.startsWith("browser-") ||
-            request.op.startsWith("document-")
+            request.op.startsWith("document-") ||
+            request.op.startsWith("workspace-")
               ? error.message
               : (error.cause?.message ?? error.message),
           ...(request.op.startsWith("folder-")

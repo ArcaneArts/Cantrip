@@ -1397,6 +1397,90 @@
         "remaining": [
           "Current-head supported-platform and packaged acceptance; shared multi-instance coordination."
         ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/workspace-layouts/:workspaceId",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/workspace_layouts.rs",
+          "cantrip_server_rs/src/workspace_layouts/"
+        ],
+        "evidence": [
+          "cantrip_server_rs/tests/workspace_contracts.rs",
+          "cantrip_server_rs/tests/workspace_models.rs",
+          "scripts/server-rust/workspace-query-manifest.mjs",
+          "scripts/server-rust/workspace-repository-compatibility.mjs",
+          "scripts/server-rust/workspace-http-compatibility.mjs",
+          "scripts/server-rust/workspace-http-lifetimes.mjs",
+          "scripts/server-rust/actual-workspace-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance; full native window/UI recovery and shared coordination."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/workspace-layouts/:workspaceId/seed",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/workspace_layouts.rs",
+          "cantrip_server_rs/src/workspace_layouts/"
+        ],
+        "evidence": [
+          "cantrip_server_rs/tests/workspace_contracts.rs",
+          "cantrip_server_rs/tests/workspace_models.rs",
+          "scripts/server-rust/workspace-query-manifest.mjs",
+          "scripts/server-rust/workspace-repository-compatibility.mjs",
+          "scripts/server-rust/workspace-http-compatibility.mjs",
+          "scripts/server-rust/workspace-http-lifetimes.mjs",
+          "scripts/server-rust/actual-workspace-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance; full native window/UI recovery and shared coordination."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/workspace-layouts/:workspaceId/commands",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/workspace_layouts.rs",
+          "cantrip_server_rs/src/workspace_layouts/"
+        ],
+        "evidence": [
+          "cantrip_server_rs/tests/workspace_contracts.rs",
+          "cantrip_server_rs/tests/workspace_models.rs",
+          "scripts/server-rust/workspace-query-manifest.mjs",
+          "scripts/server-rust/workspace-repository-compatibility.mjs",
+          "scripts/server-rust/workspace-http-compatibility.mjs",
+          "scripts/server-rust/workspace-http-lifetimes.mjs",
+          "scripts/server-rust/actual-workspace-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance; full native window/UI recovery and shared coordination."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/workspace-layouts/:workspaceId/import-legacy-files",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/workspace_layouts.rs",
+          "cantrip_server_rs/src/workspace_layouts/"
+        ],
+        "evidence": [
+          "cantrip_server_rs/tests/workspace_contracts.rs",
+          "cantrip_server_rs/tests/workspace_models.rs",
+          "scripts/server-rust/workspace-query-manifest.mjs",
+          "scripts/server-rust/workspace-repository-compatibility.mjs",
+          "scripts/server-rust/workspace-http-compatibility.mjs",
+          "scripts/server-rust/workspace-http-lifetimes.mjs",
+          "scripts/server-rust/actual-workspace-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance; full native window/UI recovery and shared coordination."
+        ]
       }
     ]
   },
@@ -1570,6 +1654,48 @@
         ],
         "remaining": [
           "Remaining project-removal and workspace/editor consumers belong to their separate unported domains; current-head supported-platform/packaged acceptance."
+        ]
+      },
+      {
+        "tableName": "workspace_layouts",
+        "exportName": "workspaceLayouts",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/workspace_layouts/",
+          "cantrip_server_rs/src/workspaces/"
+        ],
+        "evidence": [
+          "cantrip_server_rs/tests/workspace_contracts.rs",
+          "cantrip_server_rs/tests/workspace_models.rs",
+          "scripts/server-rust/workspace-query-manifest.mjs",
+          "scripts/server-rust/workspace-repository-compatibility.mjs",
+          "scripts/server-rust/workspace-http-compatibility.mjs",
+          "scripts/server-rust/workspace-http-lifetimes.mjs",
+          "scripts/server-rust/actual-workspace-client.mjs"
+        ],
+        "remaining": [
+          "Remaining archive/deletion consumers belong to their unported resource domains; full native window/UI, shared coordination, current-head platform and packaged acceptance."
+        ]
+      },
+      {
+        "tableName": "workspace_command_receipts",
+        "exportName": "workspaceCommandReceipts",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/workspace_layouts/",
+          "cantrip_server_rs/src/workspaces/"
+        ],
+        "evidence": [
+          "cantrip_server_rs/tests/workspace_contracts.rs",
+          "cantrip_server_rs/tests/workspace_models.rs",
+          "scripts/server-rust/workspace-query-manifest.mjs",
+          "scripts/server-rust/workspace-repository-compatibility.mjs",
+          "scripts/server-rust/workspace-http-compatibility.mjs",
+          "scripts/server-rust/workspace-http-lifetimes.mjs",
+          "scripts/server-rust/actual-workspace-client.mjs"
+        ],
+        "remaining": [
+          "Remaining archive/deletion consumers belong to their unported resource domains; full native window/UI, shared coordination, current-head platform and packaged acceptance."
         ]
       }
     ]
@@ -3228,6 +3354,29 @@
         "Redis/multi-instance routing and publication, packaged desktop, existing-data conversion and full post-write rollback remain unfinished."
       ],
       "nestedRepositoryInventoryNote": "These four nested repository methods are tracked here; no unrelated facade-method inventory rows are marked ported."
+    },
+    "deviceWorkspaceOwnership": {
+      "status": "implemented-pending-platform-acceptance",
+      "implementation": [
+        "cantrip_server_rs/src/workspace_layouts/",
+        "cantrip_server_rs/src/http/workspace_layouts.rs",
+        "cantrip_server_rs/src/workspaces/"
+      ],
+      "evidence": [
+        "cantrip_server_rs/tests/workspace_contracts.rs",
+        "cantrip_server_rs/tests/workspace_models.rs",
+        "scripts/server-rust/workspace-query-manifest.mjs",
+        "scripts/server-rust/workspace-repository-compatibility.mjs",
+        "scripts/server-rust/workspace-http-compatibility.mjs",
+        "scripts/server-rust/workspace-http-lifetimes.mjs",
+        "scripts/server-rust/actual-workspace-client.mjs"
+      ],
+      "validatedSubset": "Native read/seed/execute/import repository methods and four HTTP routes; all24command variants, exact receipt identity/current attachment fencing, canonical opaque titles, Code/Explorer document authority, legacy resource/dock seeding and transactional Overview cleanup. Actual three-store repository and anonymous/password/account HTTP comparisons; observed PostgreSQL row locks through receipt commit, concurrent seeds/commands and admitted caller-disconnect/shutdown. Existing browser API/queue and full worker retain an unsaved editor model via encrypted BroadcastChannel transfer and ownership across server restart on all three stores. Deletion uses the same native command reducer. Source mutationLiveResources deliberately emits no broad project invalidations for these routes. External PostgreSQL also passes Node/Rust/Node read/write/receipt roundtrip on retained databases; full-server conversion and rollback remain required.",
+      "remaining": [
+        "Current-head supported-platform acceptance, native desktop window hosting and complete editor/UI recovery.",
+        "Shared coordination and remaining project-workspace CRUD/resource lifecycle consumers.",
+        "All migration/post-write rollback, packaging/Winterhold rehearsal/performance/default cutover and Node removal requirements."
+      ]
     }
   },
   "remainingAcceptance": [

@@ -2,6 +2,84 @@
 
 Status: **implementation in progress; not a deployable replacement**.
 
+## Device workspace ownership and editor handoff
+
+The four workspace-layout routes now execute natively: read, seed, commands and
+legacy immutable-file import. All 24 command variants preserve attachment
+generations, revisions, exact command receipts, canonical encrypted resource
+labels, preview ownership, pane topology and detach/return handshakes. Receipt
+replay checks the current renderer attachment first, returns the current layout
+with the original applied revision, and does not repeat native window effects.
+Legacy import receipts survive closed views and missing source documents.
+
+Seeding reads the server's real legacy panes, resources, built-in state and dock
+preferences. It preserves their invariant errors and lazily retires Overview
+inside its nested transaction. A failing cleanup rolls back its revision and
+members. Concurrent seeds converge on the first committed main-window identity.
+Code/Explorer conversion locks the source editor and current document, worker,
+source and checkout authority through layout/receipt commit. The existing
+terminal/browser deletion helper now shares this command model instead of
+maintaining another close-tab reducer.
+
+The real legacy reads exposed native PGlite's unnamed-statement interference
+between concurrent queries inside one transaction. A regression executes ten
+distinct statements concurrently; it returns the last statement's identity for
+the first query before the fix. PGlite transaction operations now serialize each
+complete parse/describe/bind/execute exchange. The database contract passes with
+PGlite process restart and real PostgreSQL. PostgreSQL pooling remains independent.
+
+Local evidence includes 21,432 exact validation/error comparisons, 687 shared
+model cases, 147 actual deletion-helper outcomes and 34 Source-generated query
+statements. Real repository comparisons pass on all three stores, including
+negative-zero receipt identity, eleven-document SQL bindings, legacy cleanup,
+authority rejection, injected receipt rollback and retained restart state.
+External PostgreSQL additionally observes six authority-change races and locks
+on all six authority rows through receipt insertion. A Node/Rust/Node roundtrip
+also retains workspace writes and receipts across runtime cutover and return.
+Full-server data conversion and post-write rollback remain unfinished. Real concurrent HTTP tests
+cover identical and competing commands, generation fencing, seed convergence,
+and a caller-aborted receipt insertion that commits before shutdown completes.
+
+The HTTP suite passes anonymous, password and account modes on all three stores,
+with 45/48/50 observations per runtime. It checks exact bodies, headers, cookies,
+CSRF, errors, scope, body limits and restart. Per-request Live barriers preserve
+the current Source mapping: workspace-layout mutations publish no broad project
+invalidations. The existing browser API/queue, renderer lifetime and unchanged
+full worker also run on all three stores. An actual encrypted BroadcastChannel
+transfers an unsaved editor model, undo history, selection and scroll state before
+the server commits ownership. The endpoint draft and detached ownership survive
+server restart; workspace HTTP contains no private path or document text.
+
+The full native `--all-targets` run reports 130 passes across 69 result groups,
+with no failures or ignored tests. Strict Clippy, the application build, 106
+focused Source server tests and 138 focused application tests pass. The broad
+`pnpm check` passes 1,623 server and 3,899 app tests, then fails the unchanged
+worker filesystem-notification debounce test (2,531 worker tests pass). The
+focused worker run also fails watcher checks; the clean Primary passes that file
+alone. All 815 compared worker/test/protocol/CLI source files are byte-identical.
+The cause remains unresolved; the broad repository check is not green.
+The separate formatting check reports 12 unchanged files; all 12 also fail the
+same formatting check in clean Primary. Changed files pass their scoped check.
+
+```sh
+node --import tsx scripts/server-rust/workspace-query-manifest.mjs --check
+node scripts/server-rust/cargo.mjs test --test workspace_contracts --test workspace_models -- --nocapture
+node --import tsx scripts/server-rust/workspace-repository-compatibility.mjs --database postgres --report .qa/rust-server/workspace-repository-external.json
+node --import tsx scripts/server-rust/workspace-http-compatibility.mjs --database pglite --report .qa/rust-server/workspace-http-pglite.json
+node --import tsx scripts/server-rust/workspace-http-lifetimes.mjs --report .qa/rust-server/workspace-http-lifetimes.json
+pnpm --filter @cantrip/worker build
+node --import tsx scripts/server-rust/actual-folder-client.mjs --database pglite --terminals --file-documents --workspaces --report .qa/rust-server/workspace-client-pglite.json
+```
+
+Repeat the repository, HTTP and browser commands with `--database pglite`,
+`--database bundled-postgres` and `--database postgres`. CI includes these
+comparisons on Linux, macOS and Windows; configured CI is not passing evidence.
+Native desktop window hosting, full editor/UI recovery, shared coordination and
+packaged acceptance remain required. These device-layout APIs do not complete
+project-workspace CRUD or the remaining legacy pane APIs. The production Node
+entrypoints remain in place; migration/rollback, packaging, Winterhold rehearsal,
+performance and the remaining resource/execution domains remain in scope.
+
 ## Oversized document upload response observation
 
 PR 2313's Windows run passes the complete PGlite document HTTP comparisons and
@@ -746,8 +824,9 @@ snapshots per store. They include multiple device/window views, untouched foreig
 layouts, running interactive terminals, all four active Run states, revision
 overflow, invalid ownership, project scope mismatch, missing topology and exact
 transaction rollback. The source's pending-transfer behavior is retained. Native
-ownership/tab/recursive-center validation matches 7,131 actual protocol cases and
-their error messages; this is not a complete workspace command executor.
+ownership/tab/recursive-center validation matched 7,131 actual protocol cases and
+their error messages. The device-workspace milestone above extends this to the
+complete command model and shares that reducer with deletion.
 
 The actual TypeScript cleanup helpers now generate 18 embedded SQL shapes and
 their projected column positions. Native reads execute those exact selections;

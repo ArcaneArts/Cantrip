@@ -40,6 +40,24 @@ async fn exercise(database: &Database) -> Result<()> {
         .await?;
     assert_eq!(rows[0].get::<serde_json::Value>(0)?, payload);
     assert_eq!(rows[0].get::<String>(1)?, "42");
+    database
+        .transaction(|transaction| {
+            Box::pin(async move {
+                futures::future::try_join_all((0..10_i32).map(|id| async move {
+                    let label = format!("query-{id}");
+                    let sql = format!("SELECT $1::integer, $2::text, {id}::integer");
+                    let rows = transaction.query(&sql, &[&id, &label]).await?;
+                    assert_eq!(rows.len(), 1);
+                    assert_eq!(rows[0].get::<i32>(0)?, id);
+                    assert_eq!(rows[0].get::<String>(1)?, label);
+                    assert_eq!(rows[0].get::<i32>(2)?, id, "query identity");
+                    Ok::<_, anyhow::Error>(())
+                }))
+                .await?;
+                Ok(())
+            })
+        })
+        .await?;
     let rollback: Result<()> = database
         .transaction(|transaction| {
             Box::pin(async move {

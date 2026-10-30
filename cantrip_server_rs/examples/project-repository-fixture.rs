@@ -13,6 +13,8 @@ mod chat_console;
 mod file_documents;
 #[path = "support/tunnels.rs"]
 mod tunnels;
+#[path = "support/workspaces.rs"]
+mod workspaces;
 use futures::FutureExt;
 use std::{
     io::{self, BufRead, Write},
@@ -100,6 +102,11 @@ async fn main() -> Result<()> {
                 .is_some_and(|op| op.starts_with("document-"))
             {
                 file_documents::run(database.clone(), &request).await
+            } else if request["op"]
+                .as_str()
+                .is_some_and(|op| op.starts_with("workspace-"))
+            {
+                workspaces::run(database.clone(), &request).await
             } else if request["op"] == "sql" {
                 database
                     .execute(request["sql"].as_str().context("Fixture SQL")?)
@@ -447,6 +454,7 @@ async fn main() -> Result<()> {
                     op.starts_with("tunnel-")
                         || op.starts_with("browser-")
                         || op.starts_with("document-")
+                        || op.starts_with("workspace-")
                 }) {
                     for cause in error.chain() {
                         if let Some(pg) = cause.downcast_ref::<tokio_postgres::Error>()
@@ -459,6 +467,29 @@ async fn main() -> Result<()> {
                         {
                             reply["databaseCode"] = Value::String(sqlstate.as_str().into());
                         }
+                    }
+                }
+                if request["op"]
+                    .as_str()
+                    .is_some_and(|op| op.starts_with("workspace-"))
+                {
+                    reply["errorName"] = Value::String(
+                        error
+                            .downcast_ref::<cantrip_server::workspace_layouts::ModelError>()
+                            .map_or("Error", |e| e.name)
+                            .into(),
+                    );
+                    if let Some(code) = error
+                        .downcast_ref::<cantrip_server::workspace_layouts::ModelError>()
+                        .and_then(|e| e.code)
+                    {
+                        reply["code"] = Value::String(code.into());
+                    }
+                    if error
+                        .downcast_ref::<cantrip_server::workspace_layouts::LegacyInvariant>()
+                        .is_some()
+                    {
+                        reply["statusCode"] = Value::Number(400.0);
                     }
                 }
                 if request["op"]

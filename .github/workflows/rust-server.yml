@@ -19,6 +19,11 @@ on:
       - cantrip_server/src/db/repository.ts
       - cantrip_server/src/db/repository/browsers.ts
       - cantrip_server/src/db/repository/file-documents.ts
+      - cantrip_server/src/db/workspace-layouts.ts
+      - cantrip_server/src/db/workspace-document-migration.ts
+      - cantrip_server/src/db/workspace-resource-removal.ts
+      - cantrip_server/src/db/tab-layouts.ts
+      - cantrip_server/src/app/routes/workspace-layouts.ts
       - cantrip_server/src/app/routes/file-documents.ts
       - cantrip_server/src/app/routes/browser-management.ts
       - cantrip_server/src/app/routes/browser-service-discovery.ts
@@ -90,6 +95,9 @@ on:
       - cantrip_app/src/lib/api/models.ts
       - cantrip_app/src/lib/protected-secrets.ts
       - cantrip_app/src/lib/api-client.ts
+      - cantrip_app/src/lib/api/workspace-layouts.ts
+      - cantrip_app/src/lib/workspace-*.ts
+      - cantrip_app/src/components/editor/document-session.ts
       - cantrip_app/src/lib/app-live-client.ts
       - cantrip_app/src/lib/worker-link*.ts
       - cantrip_app/src/lib/worker-observation-client.ts
@@ -185,6 +193,26 @@ jobs:
         run: node --test scripts/server-rust/streaming-http-request.test.mjs
       - name: File-document and surface-stream protocol compatibility
         run: node scripts/server-rust/cargo.mjs test --test file_document_contracts -- --nocapture
+      - name: Workspace query statements match the actual TypeScript repositories
+        run: node --import tsx scripts/server-rust/workspace-query-manifest.mjs --check
+      - name: Workspace protocol and exact validation errors
+        run: node scripts/server-rust/cargo.mjs test --test workspace_contracts -- --nocapture
+      - name: Workspace commands, imports and resource deletion match the actual shared models
+        run: node scripts/server-rust/cargo.mjs test --test workspace_models -- --nocapture
+      - name: Workspace repositories and legacy layout cleanup with native PGlite
+        run: node --import tsx scripts/server-rust/workspace-repository-compatibility.mjs --report .qa/rust-server/workspace-repository-pglite.json
+      - name: Workspace HTTP, authentication and Live with native PGlite
+        run: node --import tsx scripts/server-rust/workspace-http-compatibility.mjs --report .qa/rust-server/workspace-http-pglite.json
+      - name: Workspace repositories and legacy layout cleanup with private PostgreSQL
+        run: node --import tsx scripts/server-rust/workspace-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/workspace-repository-bundled.json
+      - name: Workspace HTTP, authentication and Live with private PostgreSQL
+        run: node --import tsx scripts/server-rust/workspace-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/workspace-http-bundled.json
+      - name: Workspace repositories, document authority and commit lock races with external PostgreSQL
+        run: node --import tsx scripts/server-rust/workspace-repository-compatibility.mjs --database postgres --report .qa/rust-server/workspace-repository-external.json
+      - name: Workspace HTTP, authentication and Live with external PostgreSQL
+        run: node --import tsx scripts/server-rust/workspace-http-compatibility.mjs --database postgres --report .qa/rust-server/workspace-http-external.json
+      - name: Concurrent workspace seeds, command receipts and admitted shutdown
+        run: node --import tsx scripts/server-rust/workspace-http-lifetimes.mjs --report .qa/rust-server/workspace-http-lifetimes.json
       - name: Shared desktop verifier retains its owning crate's formatting
         run: rustfmt --edition 2021 --check cantrip_app/src-tauri/src/direct_probe_connection.rs
       - name: Terminal HTTP and ordered Live notifications with native PGlite
@@ -287,11 +315,11 @@ jobs:
       - name: Admitted share registration survives caller disconnect and shutdown
         run: node --import tsx scripts/server-rust/project-share-shutdown.mjs --report .qa/rust-server/project-share-shutdown.json
       - name: Actual browser folders, encrypted PTYs and WorkerLink observations with native PGlite
-        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --terminals --worker-links --terminal-direct --surfaces --tunnels --project-shares --file-documents --report .qa/rust-server/actual-folder-client-pglite.json
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --terminals --worker-links --terminal-direct --surfaces --tunnels --project-shares --file-documents --workspaces --report .qa/rust-server/actual-folder-client-pglite.json
       - name: Actual browser folders, encrypted PTYs and WorkerLink observations with private PostgreSQL
-        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --terminals --worker-links --terminal-direct --surfaces --tunnels --database bundled-postgres --project-shares --file-documents --report .qa/rust-server/actual-folder-client-bundled.json
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --terminals --worker-links --terminal-direct --surfaces --tunnels --database bundled-postgres --project-shares --file-documents --workspaces --report .qa/rust-server/actual-folder-client-bundled.json
       - name: Actual browser folders, encrypted PTYs and WorkerLink observations with external PostgreSQL
-        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --terminals --worker-links --terminal-direct --surfaces --tunnels --database postgres --project-shares --file-documents --report .qa/rust-server/actual-folder-client-external.json
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --terminals --worker-links --terminal-direct --surfaces --tunnels --database postgres --project-shares --file-documents --workspaces --report .qa/rust-server/actual-folder-client-external.json
       - name: Terminal-service repository compatibility with native PGlite
         run: node --import tsx scripts/server-rust/maintenance-repository-compatibility.mjs --report .qa/rust-server/maintenance-repository-pglite.json
       - name: Terminal-service repository compatibility with private PostgreSQL

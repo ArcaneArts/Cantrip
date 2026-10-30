@@ -17,8 +17,13 @@ run natively. Actual SQL authority locks, idempotent bindings, strict wire
 contracts and response-completion Live invalidations are compared against the
 reference on all three stores. The existing browser API and full worker read and
 write real file bytes, reject stale writes, wrong paths and replay, and retain
-access after restart. Workspace/editor ownership, shared coordination,
-supported-platform packaging and full server replacement remain unfinished.
+access after restart. Device workspace reads, seeding, all 24 commands/receipts
+and immutable legacy-file imports now execute natively. Actual repository and
+HTTP comparisons cover all three stores. The existing browser workspace client
+also transfers an unsaved editor model over the encrypted endpoint channel,
+commits detached ownership and retains the draft across server restart. Full
+native window/UI recovery, shared coordination, supported-platform packaging
+and full server replacement remain unfinished.
 
 Managed-folder provisioning now owns durable setup jobs, worker dispatch,
 retry/recovery and shutdown drains. The worker-scoped encrypted repository route
