@@ -1,4 +1,9 @@
 import type { CuaEffectConfiguration } from "@cantrip/protocol/computer-use-effects";
+export {
+  conversationUsageClients,
+  conversationUsageReceipts,
+  conversationCreationRequests,
+} from "./schema-conversation-usage.js";
 import type { TaskRetryRecord } from "../tasks/automatic-retry.js";
 import type {
   AgentInteractionRequestPayload,
@@ -3292,6 +3297,9 @@ export const chats = pgTable(
       .notNull()
       .default(false),
     archivedAt: timestamp("archived_at", { withTimezone: true }),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true, precision: 3 })
+      .notNull()
+      .defaultNow(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -3305,6 +3313,16 @@ export const chats = pgTable(
       .on(table.activeScratchRootId)
       .where(sql`${table.activeScratchRootId} IS NOT NULL`),
     index("chats_project_archived_index").on(table.projectId, table.archivedAt),
+    index("chats_conversation_recent_index")
+      .on(table.projectId, table.lastUsedAt, table.createdAt, table.id)
+      .where(
+        sql`${table.contextKind} = 'project' AND ${table.experience} = 'agent' AND ${table.archivedAt} IS NULL`,
+      ),
+    index("chats_conversation_archive_index")
+      .on(table.projectId, table.archivedAt, table.id)
+      .where(
+        sql`${table.contextKind} = 'project' AND ${table.experience} = 'agent' AND ${table.archivedAt} IS NOT NULL`,
+      ),
     index("chats_owner_context_archived_position_index").on(
       table.ownerId,
       table.contextKind,

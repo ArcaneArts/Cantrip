@@ -2,10 +2,12 @@ import { randomUUID } from "node:crypto";
 
 import {
   chatWireSummarySchema,
+  conversationRestoreSchema,
   standaloneChatScratchArchiveResultSchema,
   standaloneChatWireSummarySchema,
 } from "@cantrip/protocol";
 import type { FastifyInstance } from "fastify";
+import { invalidBody } from "../../http/request-helpers.js";
 
 import type { ServerRepository } from "../../db/repository.js";
 import type { WorkerCommandBus } from "../../workers/bridge.js";
@@ -18,6 +20,7 @@ export interface ChatArchiveLifecycleRouteDependencies {
   repository: Pick<
     ServerRepository,
     | "archiveStandaloneChat"
+    | "archiveAgentConversation"
     | "deleteChat"
     | "getChatExecutionContext"
     | "getStandaloneChatRootForDeletion"
@@ -48,6 +51,20 @@ export function installChatArchiveLifecycleRoutes(
     revokeManagedFileShare,
   }: ChatArchiveLifecycleRouteDependencies,
 ): void {
+  app.post<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId/archive",
+    async (request, reply) => {
+      const result = await repository.archiveAgentConversation(
+        applicationOwnerId(),
+        request.params.chatId,
+      );
+      if (result === "running")
+        return reply.code(409).send({ error: "Stop the running chat first." });
+      return result
+        ? reply.code(204).send()
+        : reply.code(404).send({ error: "Agent conversation not found." });
+    },
+  );
   app.delete<{ Params: { chatId: string } }>(
     "/api/chats/:chatId",
     async (request, reply) => {
@@ -114,6 +131,9 @@ export function installChatArchiveLifecycleRoutes(
   app.post<{ Params: { chatId: string } }>(
     "/api/chats/:chatId/restore",
     async (request, reply) => {
+      const input = conversationRestoreSchema.safeParse(request.body ?? {});
+      if (!input.success)
+        return reply.code(400).send(invalidBody(input.error.issues));
       const standalone = await repository.restoreStandaloneChat(
         applicationOwnerId(),
         request.params.chatId,
@@ -143,6 +163,7 @@ export function installChatArchiveLifecycleRoutes(
       const chat = await repository.restoreArchivedChat(
         applicationOwnerId(),
         request.params.chatId,
+        input.data,
       );
       return chat
         ? reply.send(chatWireSummarySchema.parse(chat))

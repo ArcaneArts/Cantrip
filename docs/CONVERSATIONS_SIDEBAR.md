@@ -1,6 +1,6 @@
 # Conversations sidebar implementation plan
 
-Status: **planned; this document does not implement the feature**.
+Status: **implementation in progress; the complete feature is not yet delivered**.
 
 Prepared on 2026-10-30 against `64bbf0148` on `main`. In the current workspace
 ownership model, rail middle-click already closes a view without archiving its
@@ -12,6 +12,29 @@ Related contracts: [tabs and workspace ownership](TABS.md),
 [workspace implementation record](WORKSPACE_OWNERSHIP.md),
 [standalone Chat](CHAT.md), [Tasks](TASKS.md), and [encryption](ENCRYPTION.md).
 Implementation milestones follow the [manual change protocol](agents/MANUAL_CHANGE_PROTOCOL.md).
+
+## Implementation record
+
+### Catalog cycle (in progress)
+
+The `codex/conversations-catalog` worktree adds bounded Agent catalog pages,
+server-issued usage tracking with retry receipts and per-client sequencing,
+explicit empty-chat archival, and resource-only creation/restoration. Creation
+retries retain the original encrypted request identity. Existing legacy deletion
+behavior remains available for its existing callers.
+
+Validation so far: 32 focused server tests across archive, migration, composer
+drafts, workspace layouts, and standalone lifecycle suites passed. A subsequent
+archive API run passed 11 tests, including simultaneous creation retries that
+produce exactly one Agent. All 961 protocol tests passed, including bounded
+query, usage identity, and cursor precision validation. Server typechecking,
+changed-file formatting, the content-boundary audit, and `git diff --check`
+passed. The repository-wide `pnpm check` and PR delivery remain pending.
+
+Owned conversation slots, sidebar rendering, client usage signals, inline
+archive interaction, rail placement, Rust workspace parity, and real-interaction
+and scale acceptance remain unimplemented. No feature acceptance item below is
+claimed complete by these server contracts alone.
 
 ## Product outcome
 

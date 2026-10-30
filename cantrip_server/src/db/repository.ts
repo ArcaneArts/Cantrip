@@ -267,6 +267,8 @@ function toExplorerWireSummary(
   };
 }
 
+import { ConversationCatalogRepository } from "./repository/conversation-catalog.js";
+
 export class ServerRepository extends ProjectExecutionRepositoryFacade {
   private readonly computerUseAuthorityChanges =
     new ComputerUseAuthorityChanges();
@@ -308,6 +310,7 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
   readonly nativeHistoryIngestion: NativeHistoryIngestionRepository;
   readonly nativeHistoryPublications: NativeHistoryPublicationRepository;
   readonly chatCatalog: ChatCatalogRepository;
+  readonly conversations: ConversationCatalogRepository;
   readonly chatState: ChatStateRepository;
   readonly chatArchiveLifecycle: ChatArchiveLifecycleRepository;
   readonly chatForks: ChatForkRepository;
@@ -478,6 +481,7 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
       getProjectWorktreeContext: (ownerId, projectId, worktreeId) =>
         this.getProjectWorktreeContext(ownerId, projectId, worktreeId),
     });
+    this.conversations = new ConversationCatalogRepository(database);
     this.chatArchiveLifecycle = new ChatArchiveLifecycleRepository(database, {
       nextProjectTabPosition: (projectId) =>
         this.tabLayouts.nextProjectTabPosition(projectId),
@@ -764,6 +768,10 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
     return this.chatArchiveLifecycle.archiveStandaloneChat(ownerId, chatId);
   }
 
+  async archiveAgentConversation(ownerId: string, chatId: string) {
+    return this.chatArchiveLifecycle.archiveAgentConversation(ownerId, chatId);
+  }
+
   async restoreStandaloneChat(
     ownerId: string,
     chatId: string,
@@ -793,8 +801,13 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
   async restoreArchivedChat(
     ownerId: string,
     chatId: string,
+    options: import("@cantrip/protocol").ConversationRestore = {},
   ): Promise<ChatWireSummary | null> {
-    return this.chatArchiveLifecycle.restoreArchivedChat(ownerId, chatId);
+    return this.chatArchiveLifecycle.restoreArchivedChat(
+      ownerId,
+      chatId,
+      options,
+    );
   }
 
   async permanentlyDeleteArchivedChat(

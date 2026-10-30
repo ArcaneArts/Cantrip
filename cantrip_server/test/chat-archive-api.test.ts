@@ -5,6 +5,7 @@ import path from "node:path";
 
 import {
   archivedChatWireListSchema,
+  conversationCatalogWirePageSchema,
   chatWireListSchema,
   chatWireSummarySchema,
   unprobedCodexRuntimeReport,
@@ -312,6 +313,252 @@ describe.sequential("chat archive API", () => {
     await database.repository.setChatStatus(running.id, "idle");
   });
 
+  it("reconciles concurrent resource creation retries to one Agent", async () => {
+    const fields = protectedChatFields();
+    const responses = await Promise.all(
+      Array.from({ length: 3 }, () =>
+        app.inject({
+          method: "POST",
+          url: `/api/projects/${projectId}/chats`,
+          payload: { ...fields, attachToTabLayout: false },
+        }),
+      ),
+    );
+    for (const response of responses) {
+      expect(response.statusCode, response.body).toBe(201);
+      expect(chatWireSummarySchema.parse(response.json()).id).toBe(fields.id);
+    }
+    const catalog = await database.repository.conversations.list(
+      LOCAL_USER_ID,
+      projectId,
+      { state: "active", limit: 100 },
+    );
+    expect(catalog?.items.filter(({ id }) => id === fields.id)).toHaveLength(1);
+  });
+
+  it("explicitly archives an empty Agent and restores it without a tab", async () => {
+    const fields = protectedChatFields();
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/chats`,
+      payload: { ...fields, attachToTabLayout: false },
+    });
+    expect(response.statusCode, response.body).toBe(201);
+    const chat = chatWireSummarySchema.parse(response.json());
+    const retried = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/chats`,
+      payload: { ...fields, attachToTabLayout: false },
+    });
+    expect(retried.statusCode, retried.body).toBe(201);
+    expect(chatWireSummarySchema.parse(retried.json()).id).toBe(chat.id);
+    const conflicting = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/chats`,
+      payload: {
+        ...fields,
+        titleProtection: protectedChatFields().titleProtection,
+        attachToTabLayout: false,
+      },
+    });
+    expect(conflicting.statusCode, conflicting.body).toBe(409);
+    const layout = async () => {
+      const response = await app.inject({
+        method: "GET",
+        url: `/api/projects/${projectId}/panes`,
+      });
+      expect(response.statusCode, response.body).toBe(200);
+      return response.body;
+    };
+    expect(await layout()).not.toContain(chat.id);
+    const draft = {
+      protectedContent: {
+        formatVersion: 1 as const,
+        keyRevision: 1,
+        envelope: settingsEnvelope,
+      },
+    };
+    await database.repository.updateChatComposerDraft(
+      LOCAL_USER_ID,
+      chat.id,
+      draft,
+    );
+    const archive = () =>
+      app.inject({ method: "POST", url: `/api/chats/${chat.id}/archive` });
+    expect((await archive()).statusCode).toBe(204);
+    const readArchive = () =>
+      database.repository.listArchivedChats(LOCAL_USER_ID, projectId);
+    const original = (await readArchive()).find(({ id }) => id === chat.id);
+    expect(original).toMatchObject({
+      id: chat.id,
+      messageCount: 0,
+      titleProtection: fields.titleProtection,
+    });
+    expect((await archive()).statusCode).toBe(204);
+    expect((await readArchive()).find(({ id }) => id === chat.id)).toEqual(
+      original,
+    );
+    const restored = await app.inject({
+      method: "POST",
+      url: `/api/chats/${chat.id}/restore`,
+      payload: { attachToTabLayout: false },
+    });
+    expect(restored.statusCode, restored.body).toBe(200);
+    expect(chatWireSummarySchema.parse(restored.json())).toMatchObject({
+      id: chat.id,
+      automationPaused: true,
+    });
+    expect(await layout()).not.toContain(chat.id);
+    // A stale permanent-delete action must not remove a restored active chat.
+    const draftResponse = await app.inject({
+      method: "GET",
+      url: `/api/chats/${chat.id}/composer-draft`,
+    });
+    expect(draftResponse.statusCode, draftResponse.body).toBe(200);
+    expect(draftResponse.json().state).toEqual(draft);
+    const repeatRestore = await app.inject({
+      method: "POST",
+      url: `/api/chats/${chat.id}/restore`,
+      payload: { attachToTabLayout: false },
+    });
+    expect(repeatRestore.statusCode, repeatRestore.body).toBe(200);
+    expect(
+      (
+        await app.inject({
+          method: "DELETE",
+          url: `/api/chats/${chat.id}/permanent`,
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect(
+      await database.repository.getChatExecutionContext(LOCAL_USER_ID, chat.id),
+    ).not.toBeNull();
+  });
+
+  it("rejects foreign and executing Agent archive requests", async () => {
+    const chat = await createChat("Protected archive");
+    expect(
+      await database.repository.archiveAgentConversation(
+        "other-owner",
+        chat.id,
+      ),
+    ).toBe(false);
+    for (const status of ["running", "waiting-for-approval"] as const) {
+      await database.repository.setChatStatus(chat.id, status);
+      const response = await app.inject({
+        method: "POST",
+        url: `/api/chats/${chat.id}/archive`,
+      });
+      expect(response.statusCode).toBe(409);
+      expect(
+        await database.repository.getChatExecutionContext(
+          LOCAL_USER_ID,
+          chat.id,
+        ),
+      ).not.toBeNull();
+    }
+    await database.repository.setChatStatus(chat.id, "idle");
+  });
+
+  it("pages the complete recent Agent catalog and ignores stale usage retries", async () => {
+    const first = await createChat("First conversation");
+    const second = await createChat("Second conversation");
+    const clientId = randomUUID();
+    const operation = { clientId, operationId: randomUUID(), sequence: 2 };
+    const use = (id: string, payload: typeof operation) =>
+      app.inject({ method: "POST", url: `/api/chats/${id}/usage`, payload });
+    const used = await use(first.id, operation);
+    expect(used.statusCode, used.body).toBe(200);
+    const replay = await use(first.id, operation);
+    expect(replay.json()).toEqual(used.json());
+    const stale = await use(second.id, {
+      ...operation,
+      operationId: randomUUID(),
+      sequence: 1,
+    });
+    expect(stale.json()).toMatchObject({ applied: false });
+    expect((await use(second.id, operation)).statusCode).toBe(409);
+    expect(
+      await database.repository.conversations.recordUsage(
+        "foreign-owner",
+        first.id,
+        operation,
+      ),
+    ).toBeNull();
+    // Ordinary status/title writes must not manufacture last usage.
+    await database.repository.setChatStatus(second.id, "running");
+    await database.repository.setChatStatus(second.id, "idle");
+    const page = async (cursor?: string) => {
+      const result = await app.inject({
+        method: "GET",
+        url: `/api/projects/${projectId}/conversations?limit=2${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
+      });
+      expect(result.statusCode, result.body).toBe(200);
+      return conversationCatalogWirePageSchema.parse(result.json());
+    };
+    let current = await page();
+    expect(current.items[0]?.id).toBe(first.id);
+    const total = current.total;
+    const ids = current.items.map(({ id }) => id);
+    const firstCursor = current.nextCursor;
+    while (current.nextCursor) {
+      current = await page(current.nextCursor);
+      ids.push(...current.items.map(({ id }) => id));
+    }
+    expect(new Set(ids).size).toBe(total);
+    expect(ids).toHaveLength(total);
+    expect(ids).toContain(second.id);
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/conversations?state=archived&cursor=${firstCursor}`,
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/conversations?cursor=invalid`,
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(
+      await database.repository.conversations.list("foreign-owner", projectId, {
+        state: "active",
+        limit: 2,
+      }),
+    ).toBeNull();
+    await app.inject({ method: "POST", url: `/api/chats/${first.id}/archive` });
+    const archived = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/conversations?state=archived`,
+    });
+    expect(archived.statusCode, archived.body).toBe(200);
+    expect(
+      conversationCatalogWirePageSchema.parse(archived.json()).items,
+    ).toContainEqual(
+      expect.objectContaining({ id: first.id, messageCount: 0 }),
+    );
+    expect(
+      (
+        await use(first.id, {
+          ...operation,
+          operationId: randomUUID(),
+          sequence: 3,
+        })
+      ).statusCode,
+    ).toBe(404);
+    const restored = await app.inject({
+      method: "POST",
+      url: `/api/chats/${first.id}/restore`,
+      payload: { attachToTabLayout: false },
+    });
+    expect(restored.statusCode, restored.body).toBe(200);
+    expect((await page()).items[0]?.id).toBe(first.id);
+  });
+
   it("persists completed turns until one client acknowledges them", async () => {
     const chat = await createChat("Unread completion");
     expect(chat.hasUnreadCompletion).toBe(false);
@@ -343,6 +590,86 @@ describe.sequential("chat archive API", () => {
       hasUnreadCompletion: false,
       id: chat.id,
     });
+  });
+
+  it("keeps Task conversations out of both Agent catalogs and explicit archive", async () => {
+    const fields = protectedChatFields();
+    const created = await database.repository.createTask(
+      LOCAL_USER_ID,
+      projectId,
+      {
+        chatId: fields.id,
+        titleProtection: fields.titleProtection,
+        worktreeMode: "agent-managed",
+        planGoalEnabled: false,
+        priority: 0,
+        requestedTaskWorkerId: null,
+        task: {
+          classification: {
+            state: "draft",
+            stableStateBeforeFailure: null,
+            activeOperationKind: null,
+            planAuthorship: "agent",
+            planningRound: 0,
+            hasPlan: false,
+            hasQuestions: false,
+            hasFinalPlan: false,
+            hasGoalPrompt: false,
+            lastError: null,
+          },
+          protectedContent: {
+            formatVersion: 1,
+            keyRevision: 1,
+            envelope: settingsEnvelope,
+          },
+        },
+      },
+    );
+    expect(created).not.toBeNull();
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/api/chats/${fields.id}/archive`,
+        })
+      ).statusCode,
+    ).toBe(404);
+    const active = await database.repository.conversations.list(
+      LOCAL_USER_ID,
+      projectId,
+      { state: "active", limit: 100 },
+    );
+    expect(active?.items.map(({ id }) => id)).not.toContain(fields.id);
+    const message = await database.repository.appendTaskMessage(
+      LOCAL_USER_ID,
+      fields.id,
+      {
+        id: randomUUID(),
+        classification: { role: "user", mode: "default", attachmentIds: [] },
+        protectedContent: {
+          formatVersion: 1,
+          keyRevision: 1,
+          envelope: settingsEnvelope,
+        },
+        reasoningEffort: null,
+        idempotencyKey: "catalog-task-message",
+      },
+    );
+    expect(message).not.toBeNull();
+    expect(await database.repository.deleteChat(LOCAL_USER_ID, fields.id)).toBe(
+      "archived",
+    );
+    const archived = await database.repository.conversations.list(
+      LOCAL_USER_ID,
+      projectId,
+      { state: "archived", limit: 100 },
+    );
+    expect(archived?.items.map(({ id }) => id)).not.toContain(fields.id);
+    expect(
+      await database.repository.listArchivedChats(LOCAL_USER_ID, projectId),
+    ).toContainEqual(
+      expect.objectContaining({ id: fields.id, experience: "task" }),
+    );
   });
 
   it("permanently removes archived chats after explicit deletion or expiry", async () => {
