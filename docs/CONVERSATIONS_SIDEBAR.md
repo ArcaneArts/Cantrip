@@ -169,7 +169,7 @@ Optional platform CI was still running at merge observation; those jobs are not
 recorded as passing. The next isolated cycle, `codex/conversations-placement`,
 implements resource dragging and accessible placement into all three rails.
 
-### Rail placement cycle (in progress)
+### Rail placement cycle (merged)
 
 The isolated `codex/conversations-placement` worktree started from `bea74e541`
 and includes merged baseline updates through `b8a6b8947`. Placement resolves
@@ -225,6 +225,77 @@ Validation so far:
   `terminal-managed-session.test.ts:140`; the broad check is recorded as failed.
   Further acceptance coverage and PR delivery remain outstanding.
   No full-feature completion is claimed.
+
+### Acceptance and scale cycle (in progress)
+
+PR [#2341](https://github.com/ArcaneArts/Cantrip/pull/2341) squash-merged the
+placement cycle as `dbc18e0a1`. Primary was synchronized and the placement
+worktree removed. The new isolated `codex/conversations-acceptance` branch
+starts from that merge.
+
+Inspection found that both catalogs mounted every loaded summary and shared
+one unbounded scrolling area. The current implementation adds bounded active
+and archived viewports, measured virtual rows, resource-ID scroll anchoring,
+retained focused rows, and Arrow/Home/End navigation through loaded results.
+The first 11 focused component tests pass, including 1,000-row reachability,
+bounded mounted rows, recency changes above the viewport, focus across virtual
+boundaries, and existing archive/restore interactions. This does not yet prove
+the required real 1,000-active/1,000-archived network and interaction fixture.
+Active menus now reuse encrypted Rename and Fork actions. An additive fork
+placement option preserves legacy callers while sidebar forks create a catalog
+resource without a rail tab. The focused server archive/fork suite passes all
+12 tests; the combined virtual-list and sidebar interaction suite passes all
+13 tests, including Rename and placement-free Fork.
+
+The final real Chromium scale run created 1,000 active and 1,000 archived
+conversations through normal encrypted APIs. It reached every ID using 40
+catalog pages (at most 50 items per response), mounted 28 rows, and fetched no
+transcripts while browsing. The small-list baseline mounted 20 rows; the large
+browse needed 43 total requests, including 40 catalog pages. Seeding 1,980
+additional records took 109.8 seconds; this measures fixture API setup, not
+interactive rendering. Home/End reached the first and thousandth loaded items
+in both lists. A Live usage update preserved the visible resource at its prior
+pixel offset. The rendered screenshot was inspected: active and archived
+sections remain separately scrollable with visible menus and archive copy.
+
+The first run's final anchor assertion read before the scroll render; the
+harness now waits for that render and the completed Live page refresh. An
+intervening repeat received an actual worker-placement-unavailable response
+during startup; setup retries the same prepared creation only for that response,
+with a deadline. Both failed attempts remain failures; the subsequent complete
+run passed and shut down its owned processes. All 979 protocol tests, app
+typechecking, and decomposition budgets pass. The complete app suite also
+passes 3,994 tests with three skipped. The mobile fixture initially tapped the
+switcher before the fresh installation had selected a project; temporary
+diagnostics confirmed a null project scope and were removed. The fixture now
+selects the project through the drawer and reopens the drawer after navigation.
+Those incomplete mobile runs are not acceptance evidence. The subsequent full
+390×844 touch-browser run passed direct creation with zero rail tabs, protected
+draft persistence after drawer navigation and reload, placement through the
+right/bottom/top menus with exactly one view, archive/restore with no placement
+on restore, deletion cancellation, and confirmed deletion. Its independent
+mobile workspace had a different ID and left the desktop workspace's windows
+unchanged. The final screenshot was inspected: the switcher, active section,
+Archived section, and creation control fit the drawer. Its owned worker and
+server exited with no survivors.
+
+A real recovery browser run dropped successful create, archive, and restore
+responses after the server committed. Creation retried the identical ID and
+encrypted payload and opened exactly one view; archive/restore reconciled both
+catalogs and ownership while retaining the protected draft, with no placement
+on restore. After reload, injected catalog 503 responses exposed Retry while
+the direct view and draft remained usable; lifting the fault restored the row.
+The fixture completed and shut down its owned processes without survivors.
+
+`pnpm check` completed with 1,635 server tests passing, 57 skipped, and the two
+previously baseline-reproduced failures in `local-foundation.test.ts:7218` and
+`terminal-managed-session.test.ts:140`. This broad check remains failed; the
+separate full app pass does not override it. The app production build,
+changed-file formatting, and `git diff --check` pass. PR delivery and the final
+requirement-by-requirement audit remain outstanding. The audit must still
+address uncertain Fork outcomes and placement pending state, and assess the
+remaining Live/concurrent-update and failure cases against their actual tests.
+No full-feature acceptance checkbox is marked complete.
 
 ## Product outcome
 

@@ -137,6 +137,7 @@ export const encryptedChatUpdateSchema = z
   );
 
 export const chatForkSchema = z.object({
+  attachToTabLayout: z.boolean().optional(),
   messageId: z.string().min(1).optional(),
   worktreeId: z.string().min(1).optional(),
   worktreeMode: z.enum(["agent-managed", "pinned"]).optional(),
