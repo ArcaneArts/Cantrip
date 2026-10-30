@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { renderToStaticMarkup } from "react-dom/server";
 import type { VisibleProjectPane } from "./project-workspace-frame-model";
 import { genericPaneBody } from "./project-workspace-frame";
 
@@ -44,8 +45,16 @@ describe("generic pane body alongside persistent surfaces", () => {
     expect(genericPaneBody({}, presentation("history"), true)).not.toBeNull();
   });
 
-  it("retains the empty-pane state", () => {
-    expect(genericPaneBody({}, presentation(), true)).not.toBeNull();
+  it("identifies the project in the empty-pane state", () => {
+    const markup = renderToStaticMarkup(
+      genericPaneBody(
+        { selectedProject: { name: "Obelisk" } },
+        presentation(),
+        true,
+      ),
+    );
+    expect(markup).toContain('aria-label="Empty workspace"');
+    expect(markup).toContain("Obelisk");
   });
 
   it("retains legacy detached ownership handling", () => {
