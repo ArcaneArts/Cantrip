@@ -21,13 +21,23 @@ WebSocket.prototype.emit = function (event, ...args) {
     } catch {}
     if (
       value?.kind === "request" &&
-      value.command?.type === "file-document.operation"
+      [
+        "file-document.operation",
+        "explorer.operation",
+        "surface.close",
+      ].includes(value.command?.type)
     )
       frames.push({ socket: this, ...value, claimed: false });
   }
   return Reflect.apply(emit, this, [event, ...args]);
 };
-export async function fileDocumentHttpWorker({ fixture, root, visit, result }) {
+export async function fileDocumentHttpWorker({
+  fixture,
+  root,
+  visit,
+  result,
+  operationType = "file-document.operation",
+}) {
   await visit(
     "document worker enrollment code",
     "POST",
@@ -64,11 +74,21 @@ export async function fileDocumentHttpWorker({ fixture, root, visit, result }) {
     workerId: "alpha",
   });
   let connected = false;
-  const state = { mode: "ok", pending: [], socket: null };
+  const state = { mode: "ok", pending: [], socket: null, surfaceCommands: [] };
   const connection = new WorkerConnection(
     config,
     async (command) => {
-      if (command.type !== "file-document.operation") return null;
+      if (command.type === "surface.close") {
+        const frame = frames.find(
+          (f) => !f.claimed && isDeepStrictEqual(f.command, command),
+        );
+        assert.ok(frame, "surface close reaches unchanged worker decoder");
+        frame.claimed = true;
+        state.socket = frame.socket;
+        state.surfaceCommands.push(command);
+        return null;
+      }
+      if (command.type !== operationType) return null;
       const frame = frames.find(
         (f) => !f.claimed && isDeepStrictEqual(f.command, command),
       );

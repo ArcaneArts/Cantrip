@@ -10,6 +10,7 @@ use crate::{
 use anyhow::{Context, Result};
 use queries::run;
 use std::{collections::HashSet, fmt, sync::Arc};
+pub(crate) use surfaces::attach_entity;
 
 pub use crate::workspace_layouts::LegacyInvariant;
 #[derive(Debug)]

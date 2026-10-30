@@ -68,6 +68,49 @@ try {
           default:
             throw new Error("Unknown browser operation");
         }
+      } else if (request.op.startsWith("project-surface-")) {
+        const repo = database.repository;
+        const { owner, project, subject, input, kind } = request;
+        const suffix = {
+          explorer: "Explorer",
+          code: "CodeTab",
+          view: "ProjectView",
+        }[kind];
+        switch (request.op) {
+          case "project-surface-list":
+            value = await repo[`list${suffix}s`](owner, project);
+            break;
+          case "project-surface-context":
+            value = await repo[`get${suffix}ExecutionContext`](owner, subject);
+            break;
+          case "project-surface-project":
+            value = await repo.getProjectViewProjectId(owner, subject);
+            break;
+          case "project-surface-update":
+            value = await repo[`update${suffix}`](owner, subject, input);
+            break;
+          case "project-surface-worktree":
+            value = await repo[`update${suffix}Worktree`](
+              owner,
+              subject,
+              input,
+            );
+            break;
+          case "project-surface-state":
+            value = await repo.updateExplorerViewState(owner, subject, input);
+            break;
+          case "project-surface-pin":
+            value = await repo.pinExplorer(owner, subject, input);
+            break;
+          case "project-surface-create":
+            value = await repo[`create${suffix}`](owner, project, input);
+            break;
+          case "project-surface-delete":
+            value = await repo[`delete${suffix}`](owner, subject);
+            break;
+          default:
+            throw new Error("Unknown surface fixture operation");
+        }
       } else if (request.op.startsWith("layout-")) {
         const repo = database.repository.tabLayouts;
         const { owner, project, subject, input } = request;
@@ -273,7 +316,10 @@ try {
           request.status,
         );
         value = null;
-      } else if (request.op.startsWith("tunnel-")) {
+      } else if (
+        request.op.startsWith("project-surface-") ||
+        request.op.startsWith("tunnel-")
+      ) {
         value = await (
           await import("./tunnel-node-fixture.mjs")
         ).tunnelOperation(database.repository, request);
@@ -459,7 +505,8 @@ try {
         JSON.stringify({
           id: request.id,
           rejected: true,
-          ...((request.op.startsWith("tunnel-") ||
+          ...((request.op.startsWith("project-surface-") ||
+            request.op.startsWith("tunnel-") ||
             request.op.startsWith("browser-") ||
             request.op.startsWith("document-") ||
             request.op.startsWith("workspace-") ||
@@ -474,7 +521,8 @@ try {
                 ...(error.code ? { code: error.code } : {}),
               }
             : {}),
-          ...(request.op.startsWith("workspace-") ||
+          ...(request.op.startsWith("project-surface-") ||
+          request.op.startsWith("workspace-") ||
           request.op.startsWith("layout-")
             ? {
                 errorName: error.name,
@@ -483,6 +531,7 @@ try {
               }
             : {}),
           diagnostic:
+            request.op.startsWith("project-surface-") ||
             request.op.startsWith("terminal-") ||
             request.op.startsWith("browser-") ||
             request.op.startsWith("document-") ||

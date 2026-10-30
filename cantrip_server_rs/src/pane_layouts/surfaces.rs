@@ -81,6 +81,39 @@ async fn last_member_position(executor: Executor<'_, '_>, pane: &Value) -> Resul
             .map_or(0, |p| i64::from(p) + 1),
     )
 }
+/// Resource creation/pinning shares the legacy placement policy without claiming
+/// a client revision. The caller owns the transaction and any resource locks.
+pub(crate) async fn attach_entity(
+    tx: &crate::database::Transaction<'_>,
+    project: &str,
+    id: &Value,
+    definition_id: &str,
+    input: &Value,
+) -> Result<()> {
+    let at = crate::auth::now();
+    tx.query(
+        "UPDATE projects SET tab_layout_revision=tab_layout_revision+1,updated_at=$1 WHERE id=$2",
+        &[&at, &project],
+    )
+    .await?;
+    let resource = json!({"kind":"entity","definitionId":definition_id,"resourceId":id});
+    let mut placement = json!({"surfaceRef":resource});
+    if let Some(pane) = input
+        .get("paneId")
+        .filter(|v| !v.is_null())
+        .or_else(|| input.get("tabGroupId"))
+        .filter(|v| crate::wire::coercion::truthy(Some(v)))
+    {
+        placement["targetPaneId"] = pane.clone();
+    }
+    if let Some(region) = input.get("targetRegion") {
+        placement["targetRegion"] = region.clone();
+    }
+    let view = view_id(project, &resource)?;
+    attach(Executor::Transaction(tx), project, &placement, &view).await?;
+    Ok(())
+}
+
 async fn attach(
     executor: Executor<'_, '_>,
     project: &str,

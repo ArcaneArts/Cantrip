@@ -1,0 +1,194 @@
+{
+  "columns": {
+    "explorers": [
+      "id",
+      "projectId",
+      "protectedLabel",
+      "protectedState",
+      "position",
+      "activeWorkerId",
+      "worktreeId",
+      "fileMode",
+      "createdAt",
+      "updatedAt"
+    ],
+    "codeTabs": [
+      "id",
+      "projectId",
+      "protectedLabel",
+      "position",
+      "activeWorkerId",
+      "worktreeId",
+      "createdAt",
+      "updatedAt"
+    ],
+    "projectViews": [
+      "id",
+      "projectId",
+      "protectedLabel",
+      "kind",
+      "worktreeId",
+      "position",
+      "createdAt",
+      "updatedAt"
+    ],
+    "projectWorktrees": [
+      "id",
+      "projectSourceId",
+      "workerId",
+      "rootKind",
+      "name",
+      "absolutePath",
+      "displayPath",
+      "isPrimary",
+      "isDefault",
+      "origin",
+      "lifecycleState",
+      "branch",
+      "head",
+      "detached",
+      "locked",
+      "lockReason",
+      "statusSnapshot",
+      "statusObservedAt",
+      "lastScannedAt",
+      "createdAt",
+      "updatedAt"
+    ]
+  },
+  "queries": {
+    "explorer_list": {
+      "source": "select \"explorers\".\"id\", \"explorers\".\"project_id\", \"explorers\".\"protected_label\", \"explorers\".\"protected_state\", \"explorers\".\"position\", \"explorers\".\"active_worker_id\", \"explorers\".\"worktree_id\", \"explorers\".\"file_mode\", \"explorers\".\"created_at\", \"explorers\".\"updated_at\" from \"explorers\" inner join \"projects\" on (\"projects\".\"id\" = \"explorers\".\"project_id\" and \"projects\".\"owner_id\" = $1) where \"explorers\".\"project_id\" = $2 order by \"explorers\".\"position\" asc, \"explorers\".\"created_at\" asc",
+      "types": ["text", "text"]
+    },
+    "explorer_create": {
+      "source": "insert into \"explorers\" (\"id\", \"project_id\", \"protected_label\", \"protected_state\", \"position\", \"active_worker_id\", \"worktree_id\", \"file_mode\", \"created_at\", \"updated_at\") values ($1, $2, $3, $4, $5, $6, $7, $8, default, default) returning \"id\", \"project_id\", \"protected_label\", \"protected_state\", \"position\", \"active_worker_id\", \"worktree_id\", \"file_mode\", \"created_at\", \"updated_at\"",
+      "types": [
+        "text",
+        "text",
+        "jsonb",
+        "jsonb",
+        "integer",
+        "text",
+        "text",
+        "text"
+      ]
+    },
+    "explorer_update": {
+      "source": "update \"explorers\" set \"protected_label\" = $1, \"updated_at\" = $2 where \"explorers\".\"id\" = $3 returning \"id\", \"project_id\", \"protected_label\", \"protected_state\", \"position\", \"active_worker_id\", \"worktree_id\", \"file_mode\", \"created_at\", \"updated_at\"",
+      "types": ["jsonb", "timestamptz", "text"]
+    },
+    "explorer_selected": {
+      "source": "select \"explorers\".\"id\", \"explorers\".\"project_id\", \"explorers\".\"protected_label\", \"explorers\".\"protected_state\", \"explorers\".\"position\", \"explorers\".\"active_worker_id\", \"explorers\".\"worktree_id\", \"explorers\".\"file_mode\", \"explorers\".\"created_at\", \"explorers\".\"updated_at\" from \"explorers\" inner join \"projects\" on (\"projects\".\"id\" = \"explorers\".\"project_id\" and \"projects\".\"owner_id\" = $1) where \"explorers\".\"id\" = $2 limit $3",
+      "types": ["text", "text", "integer"]
+    },
+    "explorer_worktree": {
+      "source": "update \"explorers\" set \"protected_state\" = $1, \"active_worker_id\" = $2, \"worktree_id\" = $3, \"file_mode\" = $4, \"updated_at\" = $5 where \"explorers\".\"id\" = $6 returning \"id\", \"project_id\", \"protected_label\", \"protected_state\", \"position\", \"active_worker_id\", \"worktree_id\", \"file_mode\", \"created_at\", \"updated_at\"",
+      "types": ["jsonb", "text", "text", "text", "timestamptz", "text"]
+    },
+    "code_list": {
+      "source": "select \"code_tabs\".\"id\", \"code_tabs\".\"project_id\", \"code_tabs\".\"protected_label\", \"code_tabs\".\"position\", \"code_tabs\".\"active_worker_id\", \"code_tabs\".\"worktree_id\", \"code_tabs\".\"created_at\", \"code_tabs\".\"updated_at\" from \"code_tabs\" inner join \"projects\" on (\"projects\".\"id\" = \"code_tabs\".\"project_id\" and \"projects\".\"owner_id\" = $1) where \"code_tabs\".\"project_id\" = $2 order by \"code_tabs\".\"position\" asc, \"code_tabs\".\"created_at\" asc",
+      "types": ["text", "text"]
+    },
+    "code_create": {
+      "source": "insert into \"code_tabs\" (\"id\", \"project_id\", \"protected_label\", \"position\", \"active_worker_id\", \"worktree_id\", \"created_at\", \"updated_at\") values ($1, $2, $3, $4, $5, $6, default, default) returning \"id\", \"project_id\", \"protected_label\", \"position\", \"active_worker_id\", \"worktree_id\", \"created_at\", \"updated_at\"",
+      "types": ["text", "text", "jsonb", "integer", "text", "text"]
+    },
+    "code_update": {
+      "source": "update \"code_tabs\" set \"protected_label\" = $1, \"updated_at\" = $2 where \"code_tabs\".\"id\" = $3 returning \"id\", \"project_id\", \"protected_label\", \"position\", \"active_worker_id\", \"worktree_id\", \"created_at\", \"updated_at\"",
+      "types": ["jsonb", "timestamptz", "text"]
+    },
+    "code_worktree": {
+      "source": "update \"code_tabs\" set \"active_worker_id\" = $1, \"worktree_id\" = $2, \"updated_at\" = $3 where (\"code_tabs\".\"id\" = $4 and \"code_tabs\".\"active_worker_id\" = $5 and \"code_tabs\".\"worktree_id\" = $6) returning \"id\", \"project_id\", \"protected_label\", \"position\", \"active_worker_id\", \"worktree_id\", \"created_at\", \"updated_at\"",
+      "types": ["text", "text", "timestamptz", "text", "text", "text"]
+    },
+    "view_list": {
+      "source": "select \"project_views\".\"id\", \"project_views\".\"project_id\", \"project_views\".\"protected_label\", \"project_views\".\"kind\", \"project_views\".\"worktree_id\", \"project_views\".\"position\", \"project_views\".\"created_at\", \"project_views\".\"updated_at\" from \"project_views\" inner join \"projects\" on (\"projects\".\"id\" = \"project_views\".\"project_id\" and \"projects\".\"owner_id\" = $1) where \"project_views\".\"project_id\" = $2 order by \"project_views\".\"position\" asc, \"project_views\".\"created_at\" asc",
+      "types": ["text", "text"]
+    },
+    "view_create": {
+      "source": "insert into \"project_views\" (\"id\", \"project_id\", \"protected_label\", \"kind\", \"worktree_id\", \"position\", \"created_at\", \"updated_at\") values ($1, $2, $3, $4, $5, $6, default, default) returning \"id\", \"project_id\", \"protected_label\", \"kind\", \"worktree_id\", \"position\", \"created_at\", \"updated_at\"",
+      "types": ["text", "text", "jsonb", "text", "text", "integer"]
+    },
+    "view_owned": {
+      "source": "select \"project_views\".\"id\" from \"project_views\" inner join \"projects\" on (\"projects\".\"id\" = \"project_views\".\"project_id\" and \"projects\".\"owner_id\" = $1) where \"project_views\".\"id\" = $2 limit $3",
+      "types": ["text", "text", "integer"]
+    },
+    "view_update": {
+      "source": "update \"project_views\" set \"protected_label\" = $1, \"updated_at\" = $2 where \"project_views\".\"id\" = $3 returning \"id\", \"project_id\", \"protected_label\", \"kind\", \"worktree_id\", \"position\", \"created_at\", \"updated_at\"",
+      "types": ["jsonb", "timestamptz", "text"]
+    },
+    "view_selected": {
+      "source": "select \"project_views\".\"id\", \"project_views\".\"project_id\", \"project_views\".\"protected_label\", \"project_views\".\"kind\", \"project_views\".\"worktree_id\", \"project_views\".\"position\", \"project_views\".\"created_at\", \"project_views\".\"updated_at\" from \"project_views\" inner join \"projects\" on (\"projects\".\"id\" = \"project_views\".\"project_id\" and \"projects\".\"owner_id\" = $1) where \"project_views\".\"id\" = $2 limit $3",
+      "types": ["text", "text", "integer"]
+    },
+    "view_worktree": {
+      "source": "update \"project_views\" set \"worktree_id\" = $1, \"updated_at\" = $2 where \"project_views\".\"id\" = $3 returning \"id\", \"project_id\", \"protected_label\", \"kind\", \"worktree_id\", \"position\", \"created_at\", \"updated_at\"",
+      "types": ["text", "timestamptz", "text"]
+    },
+    "code_update_empty": {
+      "source": "update \"code_tabs\" set \"updated_at\" = $1 where \"code_tabs\".\"id\" = $2 returning \"id\", \"project_id\", \"protected_label\", \"position\", \"active_worker_id\", \"worktree_id\", \"created_at\", \"updated_at\"",
+      "types": ["timestamptz", "text"]
+    },
+    "explorer_context": {
+      "source": "select \"explorers\".\"id\", \"explorers\".\"project_id\", \"explorers\".\"protected_label\", \"explorers\".\"protected_state\", \"explorers\".\"position\", \"explorers\".\"active_worker_id\", \"explorers\".\"worktree_id\", \"explorers\".\"file_mode\", \"explorers\".\"created_at\", \"explorers\".\"updated_at\", \"project_worktrees\".\"id\", \"project_worktrees\".\"project_source_id\", \"project_worktrees\".\"worker_id\", \"project_worktrees\".\"root_kind\", \"project_worktrees\".\"name\", \"project_worktrees\".\"absolute_path\", \"project_worktrees\".\"display_path\", \"project_worktrees\".\"is_primary\", \"project_worktrees\".\"is_default\", \"project_worktrees\".\"origin\", \"project_worktrees\".\"lifecycle_state\", \"project_worktrees\".\"branch\", \"project_worktrees\".\"head\", \"project_worktrees\".\"detached\", \"project_worktrees\".\"locked\", \"project_worktrees\".\"lock_reason\", \"project_worktrees\".\"status_snapshot\", \"project_worktrees\".\"status_observed_at\", \"project_worktrees\".\"last_scanned_at\", \"project_worktrees\".\"created_at\", \"project_worktrees\".\"updated_at\" from \"explorers\" inner join \"projects\" on (\"projects\".\"id\" = \"explorers\".\"project_id\" and \"projects\".\"owner_id\" = $1) inner join \"project_worktrees\" on \"project_worktrees\".\"id\" = \"explorers\".\"worktree_id\" where \"explorers\".\"id\" = $2 limit $3",
+      "types": ["text", "text", "integer"]
+    },
+    "code_context": {
+      "source": "select \"code_tabs\".\"id\", \"code_tabs\".\"project_id\", \"code_tabs\".\"protected_label\", \"code_tabs\".\"position\", \"code_tabs\".\"active_worker_id\", \"code_tabs\".\"worktree_id\", \"code_tabs\".\"created_at\", \"code_tabs\".\"updated_at\", \"project_worktrees\".\"id\", \"project_worktrees\".\"project_source_id\", \"project_worktrees\".\"worker_id\", \"project_worktrees\".\"root_kind\", \"project_worktrees\".\"name\", \"project_worktrees\".\"absolute_path\", \"project_worktrees\".\"display_path\", \"project_worktrees\".\"is_primary\", \"project_worktrees\".\"is_default\", \"project_worktrees\".\"origin\", \"project_worktrees\".\"lifecycle_state\", \"project_worktrees\".\"branch\", \"project_worktrees\".\"head\", \"project_worktrees\".\"detached\", \"project_worktrees\".\"locked\", \"project_worktrees\".\"lock_reason\", \"project_worktrees\".\"status_snapshot\", \"project_worktrees\".\"status_observed_at\", \"project_worktrees\".\"last_scanned_at\", \"project_worktrees\".\"created_at\", \"project_worktrees\".\"updated_at\" from \"code_tabs\" inner join \"projects\" on (\"projects\".\"id\" = \"code_tabs\".\"project_id\" and \"projects\".\"owner_id\" = $1) inner join \"project_worktrees\" on \"project_worktrees\".\"id\" = \"code_tabs\".\"worktree_id\" inner join \"workers\" on \"workers\".\"id\" = \"code_tabs\".\"active_worker_id\" where \"code_tabs\".\"id\" = $2 limit $3",
+      "types": ["text", "text", "integer"]
+    },
+    "view_project": {
+      "source": "select \"project_views\".\"project_id\" from \"project_views\" inner join \"projects\" on (\"projects\".\"id\" = \"project_views\".\"project_id\" and \"projects\".\"owner_id\" = $1) where \"project_views\".\"id\" = $2 limit $3",
+      "types": ["text", "text", "integer"]
+    },
+    "explorer_state": {
+      "source": "update \"explorers\" set \"protected_state\" = $1, \"file_mode\" = $2, \"updated_at\" = $3 where \"explorers\".\"id\" = $4 returning \"id\", \"project_id\", \"protected_label\", \"protected_state\", \"position\", \"active_worker_id\", \"worktree_id\", \"file_mode\", \"created_at\", \"updated_at\"",
+      "types": ["jsonb", "text", "timestamptz", "text"]
+    },
+    "explorer_pin_select": {
+      "source": "select \"explorers\".\"id\", \"explorers\".\"project_id\", \"explorers\".\"protected_label\", \"explorers\".\"protected_state\", \"explorers\".\"position\", \"explorers\".\"active_worker_id\", \"explorers\".\"worktree_id\", \"explorers\".\"file_mode\", \"explorers\".\"created_at\", \"explorers\".\"updated_at\" from \"explorers\" inner join \"projects\" on (\"projects\".\"id\" = \"explorers\".\"project_id\" and \"projects\".\"owner_id\" = $1) where \"explorers\".\"id\" = $2 limit $3 for update",
+      "types": ["text", "text", "integer"]
+    },
+    "explorer_members": {
+      "source": "select \"tab_key\" from \"tab_group_members\" where (\"tab_group_members\".\"project_id\" = $1 and \"tab_group_members\".\"tab_key\" = $2) limit $3",
+      "types": ["text", "text", "integer"]
+    },
+    "explorer_pin": {
+      "source": "update \"explorers\" set \"protected_label\" = $1, \"protected_state\" = $2, \"file_mode\" = $3, \"updated_at\" = $4 where \"explorers\".\"id\" = $5 returning \"id\", \"project_id\", \"protected_label\", \"protected_state\", \"position\", \"active_worker_id\", \"worktree_id\", \"file_mode\", \"created_at\", \"updated_at\"",
+      "types": ["jsonb", "jsonb", "text", "timestamptz", "text"]
+    },
+    "cleanup_project": {
+      "source": "select \"id\" from \"projects\" where (\"projects\".\"id\" = $1 and \"projects\".\"owner_id\" = $2) for update",
+      "types": ["text", "text"]
+    },
+    "detach_project": {
+      "source": "select \"id\" from \"projects\" where \"projects\".\"id\" = $1 limit $2 for update",
+      "types": ["text", "integer"]
+    },
+    "detach_member": {
+      "source": "select \"tab_group_members\".\"tab_key\", \"tab_group_members\".\"group_id\", \"tab_group_members\".\"project_id\", \"tab_group_members\".\"tab_kind\", \"tab_group_members\".\"tab_id\", \"tab_group_members\".\"position\", \"tab_group_members\".\"created_at\", \"tab_group_members\".\"updated_at\", \"tab_groups\".\"id\", \"tab_groups\".\"project_id\", \"tab_groups\".\"protected_label\", \"tab_groups\".\"region\", \"tab_groups\".\"position\", \"tab_groups\".\"anchor_tab_key\", \"tab_groups\".\"created_at\", \"tab_groups\".\"updated_at\" from \"tab_group_members\" inner join \"tab_groups\" on \"tab_groups\".\"id\" = \"tab_group_members\".\"group_id\" where (\"tab_group_members\".\"project_id\" = $1 and \"tab_group_members\".\"tab_key\" = $2) limit $3",
+      "types": ["text", "text", "integer"]
+    },
+    "explorer_delete": {
+      "source": "delete from \"explorers\" where \"explorers\".\"id\" = $1 returning \"id\"",
+      "types": ["text"]
+    },
+    "code_delete": {
+      "source": "delete from \"code_tabs\" where \"code_tabs\".\"id\" = $1",
+      "types": ["text"]
+    },
+    "view_surface_delete": {
+      "source": "delete from \"remote_surfaces\" where \"remote_surfaces\".\"id\" = $1",
+      "types": ["text"]
+    },
+    "view_delete": {
+      "source": "delete from \"project_views\" where \"project_views\".\"id\" = $1 returning \"id\"",
+      "types": ["text"]
+    },
+    "view_source": {
+      "source": "select \"project_sources\".\"id\", \"project_worktrees\".\"worker_id\", \"project_worktrees\".\"absolute_path\", \"project_worktrees\".\"id\" from \"projects\" inner join \"project_sources\" on \"project_sources\".\"project_id\" = \"projects\".\"id\" inner join \"project_worktrees\" on (\"project_worktrees\".\"project_source_id\" = \"project_sources\".\"id\" and \"project_worktrees\".\"is_primary\" = $1) left join \"user_settings\" on \"user_settings\".\"user_id\" = \"projects\".\"owner_id\" where (\"projects\".\"id\" = $2 and \"projects\".\"owner_id\" = $3 and \"project_sources\".\"removed_at\" is null and \"project_worktrees\".\"lifecycle_state\" = $4) order by coalesce(\"project_sources\".\"worker_id\" = \"projects\".\"preferred_worker_id\", false) desc, coalesce(\"project_sources\".\"worker_id\" = \"user_settings\".\"default_worker_id\", false) desc, \"project_sources\".\"created_at\" asc, \"project_sources\".\"id\" asc",
+      "types": ["boolean", "text", "text", "text"]
+    }
+  }
+}

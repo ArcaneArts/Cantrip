@@ -168,6 +168,22 @@ export const contractRoots = [
   "projectSurfaceLauncherSchema",
   "terminalWireSummarySchema",
   "terminalWireListSchema",
+  "encryptedExplorerCreateSchema",
+  "encryptedExplorerUpdateSchema",
+  "encryptedExplorerPinSchema",
+  "encryptedExplorerViewStateUpdateSchema",
+  "encryptedExplorerWorktreeUpdateSchema",
+  "explorerWireSummarySchema",
+  "explorerWireListSchema",
+  "explorerOperationWireRequestSchema",
+  "encryptedCodeTabCreateSchema",
+  "encryptedCodeTabUpdateSchema",
+  "codeTabWireSummarySchema",
+  "codeTabWireListSchema",
+  "encryptedProjectViewCreateSchema",
+  "encryptedProjectViewUpdateSchema",
+  "projectViewWireSummarySchema",
+  "projectViewWireListSchema",
   "encryptedBrowserCreateSchema",
   "encryptedBrowserUpdateSchema",
   "browserWireSummarySchema",
@@ -371,6 +387,34 @@ registerChecks(protocol.encryptedTerminalCreateSchema, [
 ]);
 registerChecks(protocol.encryptedTerminalUpdateSchema, ["terminal-title"]);
 registerChecks(protocol.terminalWireSummarySchema, ["terminal-wire"]);
+registerChecks(protocol.encryptedExplorerCreateSchema, [
+  "terminal-placement",
+  "surface-title:explorer",
+]);
+registerChecks(protocol.encryptedExplorerUpdateSchema, [
+  "surface-title:explorer",
+]);
+registerChecks(protocol.encryptedExplorerPinSchema, [
+  "browser-placement",
+  "surface-title:explorer",
+]);
+registerChecks(protocol.explorerWireSummarySchema, ["surface-title:explorer"]);
+registerChecks(protocol.encryptedCodeTabCreateSchema, [
+  "terminal-placement",
+  "surface-title:code-tab",
+]);
+registerChecks(protocol.encryptedCodeTabUpdateSchema, ["surface-code-update"]);
+registerChecks(protocol.codeTabWireSummarySchema, ["surface-title:code-tab"]);
+registerChecks(protocol.encryptedProjectViewCreateSchema, [
+  "browser-placement",
+  "surface-title:project-view",
+]);
+registerChecks(protocol.encryptedProjectViewUpdateSchema, [
+  "surface-title:project-view",
+]);
+registerChecks(protocol.projectViewWireSummarySchema, [
+  "surface-title:project-view",
+]);
 registerChecks(protocol.encryptedBrowserCreateSchema, [
   "browser-placement",
   "browser-title",

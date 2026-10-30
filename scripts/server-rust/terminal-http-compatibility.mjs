@@ -481,6 +481,7 @@ try {
                   "chat.thread.ensure",
                   "surface.attach",
                   "surface.detach",
+                  "surface.close",
                 ].includes(command.type)
               ) {
                 result.commands.push(command);
