@@ -3,7 +3,7 @@
   "completeReplacement": false,
   "inventory": {
     "path": "docs/security/server-route-inventory.json",
-    "sha256": "66b1c0800a16dc6739f633fe99d96523abadb8915e15b41c6a797e0dfa96cde7",
+    "sha256": "01e5d3b9a31f7df789b1b1ed9d31f1fdae2b823659578ef9acd289109d03e33f",
     "baselineCommit": "899defa8bce147a196a7fad83cab130af7b55415",
     "counts": {
       "routes": 520,
@@ -12,7 +12,7 @@
       "repositoryMethods": 363,
       "liveResources": 45
     },
-    "workingTreeNote": "Source file inventory refreshed for the idle-HTTP shutdown helper; baseline route/command/table/method/resource counts are unchanged."
+    "workingTreeNote": "Source file inventory refreshed for project-share WorkerLink revocation; baseline route/command/table/method/resource counts are unchanged."
   },
   "interpretation": "Every row in the referenced inventory inherits its category default unless explicitly overridden. Schema creation is not domain behavior. Test commands and configured CI are not passing evidence.",
   "routes": {
@@ -1289,6 +1289,54 @@
         "remaining": [
           "Supported-platform and packaged acceptance; current local all3store HTTP and actual-client/full-worker matrices pass."
         ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/network-shares",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/http/project_shares.rs",
+        "evidence": [
+          "scripts/server-rust/project-share-http-compatibility.mjs",
+          "scripts/server-rust/project-share-shutdown.mjs",
+          "scripts/server-rust/actual-worker-project-shares.mjs",
+          "scripts/server-rust/project-share-webdav.mjs",
+          "cantrip_server_rs/tests/project_share_contracts.rs"
+        ],
+        "remaining": [
+          "Supported-platform and packaged acceptance; owning project/chat archive, deletion and relocation routes remain separate unported domains."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/chats/:chatId/network-shares",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/http/project_shares.rs",
+        "evidence": [
+          "scripts/server-rust/project-share-http-compatibility.mjs",
+          "scripts/server-rust/project-share-shutdown.mjs",
+          "scripts/server-rust/actual-worker-project-shares.mjs",
+          "scripts/server-rust/project-share-webdav.mjs",
+          "cantrip_server_rs/tests/project_share_contracts.rs"
+        ],
+        "remaining": [
+          "Supported-platform and packaged acceptance; owning project/chat archive, deletion and relocation routes remain separate unported domains."
+        ]
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/project-shares/:attachmentId",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/http/project_shares.rs",
+        "evidence": [
+          "scripts/server-rust/project-share-http-compatibility.mjs",
+          "scripts/server-rust/project-share-shutdown.mjs",
+          "scripts/server-rust/actual-worker-project-shares.mjs",
+          "scripts/server-rust/project-share-webdav.mjs",
+          "cantrip_server_rs/tests/project_share_contracts.rs"
+        ],
+        "remaining": [
+          "Supported-platform and packaged acceptance; owning project/chat archive, deletion and relocation routes remain separate unported domains."
+        ]
       }
     ]
   },
@@ -1393,6 +1441,36 @@
         ],
         "remaining": [
           "Supported-platform and packaged acceptance. The worker remains Node by design."
+        ]
+      },
+      {
+        "command": "project.share.open",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/project_shares/mod.rs",
+        "evidence": [
+          "scripts/server-rust/project-share-http-compatibility.mjs",
+          "scripts/server-rust/project-share-shutdown.mjs",
+          "scripts/server-rust/actual-worker-project-shares.mjs",
+          "scripts/server-rust/project-share-webdav.mjs",
+          "cantrip_server_rs/tests/project_share_contracts.rs"
+        ],
+        "remaining": [
+          "Supported-platform and packaged acceptance; owning project/chat archive, deletion and relocation routes remain separate unported domains."
+        ]
+      },
+      {
+        "command": "project.share.close",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/project_shares/mod.rs",
+        "evidence": [
+          "scripts/server-rust/project-share-http-compatibility.mjs",
+          "scripts/server-rust/project-share-shutdown.mjs",
+          "scripts/server-rust/actual-worker-project-shares.mjs",
+          "scripts/server-rust/project-share-webdav.mjs",
+          "cantrip_server_rs/tests/project_share_contracts.rs"
+        ],
+        "remaining": [
+          "Supported-platform and packaged acceptance; owning project/chat archive, deletion and relocation routes remain separate unported domains."
         ]
       }
     ]
@@ -2982,8 +3060,28 @@
       ],
       "scope": "Two native GET routes. Actual Node/Rust comparisons pass60 anonymous/61account HTTP observations per runtime/store and37 exact worker selections, ten concurrent admitted commands, real20-second deadlines, malformed discovery results and disconnects. All3stores preserve browser/surface state. Combined browser protocol9113cases pass. Existing-client/full-worker25step flows on all3stores discover and probe an actual HTTP listener through both unchanged client APIs. Final-source122native tests/66groups and strictClippy pass; current TCP diagnostic reruns retain all25steps on all3stores.",
       "remaining": [
-        "New supported-platform execution of Ubuntu per-executable AppArmor policy and all database/client flows; old2308 Linux/macOS failures remain unwaived.",
+        "Run40969628794 Ubuntu actual full-worker25step flows pass per runtime on all3stores, including the per-executable sandbox policy. Current macOS reference discovery and Windows native browser surface failures remain unresolved; no full platform/package acceptance.",
         "Complete owning CLI/agent consumers, remaining durable domains/execution, migration, rollback, artifacts, desktop/Winterhold readiness, performance and Node removal."
+      ]
+    },
+    "protectedProjectShares": {
+      "status": "implemented-pending-platform-acceptance",
+      "implementation": [
+        "cantrip_server_rs/src/http/project_shares.rs",
+        "cantrip_server_rs/src/project_shares/mod.rs",
+        "cantrip_server_rs/src/project_shares/repository.rs"
+      ],
+      "evidence": [
+        "scripts/server-rust/project-share-http-compatibility.mjs",
+        "scripts/server-rust/project-share-shutdown.mjs",
+        "scripts/server-rust/actual-worker-project-shares.mjs",
+        "scripts/server-rust/project-share-webdav.mjs",
+        "cantrip_server_rs/tests/project_share_contracts.rs"
+      ],
+      "scope": "Three native project/standalone-chat create/delete routes, opaque broker, exact source selection queries, revision and identity fences,30s open/5s best-effort close, typed redacted diagnostics with actual worker request correlation and ordered tunnel Live invalidations. Node/native comparisons pass55 anonymous and62 account HTTP observations per runtime on all3stores.1490 protocol/error cases pass. Real worker flows exercise40,026-byte Digest WebDAV PUT/GET/PROPFIND through WorkerLink and legacy, failed credentials, grant closure, ephemeral restart reset and retained file bytes, plus pre-existing standalone scratch roots. A real post-ACK blocked INSERT survives caller abort and shutdown. A reproduced Source defect allowed an already deleted share to return its file through an old WorkerLink grant; both implementations now explicitly revoke scoped grants. Final native125tests/67groups and strict Clippy pass. Exact-CI actual-client/full-worker28step flow passes for each runtime on all3stores. Rootcheck passes1623server/3899app tests; one worker filesystem watcher failure reproduces on cleanmain with849compared files byte-identical. Standalone-style server restart also keeps the same full-worker PID alive, retires the old channel and reads40,031 retainedbytes through a fresh share onall3stores. Only explicitoffline reconnect outcomes are retried.",
+      "remaining": [
+        "Supported-platform and packaged acceptance; owning project/chat archive, deletion and relocation routes remain separate unported domains.",
+        "Current supported-platform results; legacy data migration, post-write rollback, artifacts, desktop/Winterhold readiness, performance and Node removal remain required."
       ]
     }
   },

@@ -201,6 +201,7 @@ impl CommandDelegate for CatalogDelegate {
                     code: None,
                     unavailable: false,
                     encoding_error: None,
+                    request_id: None,
                 });
             }
             Ok(response.get("inventory").cloned())

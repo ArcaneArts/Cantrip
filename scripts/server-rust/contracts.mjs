@@ -147,6 +147,10 @@ export const contractRoots = [
   "browserServiceSchema",
   "browserServiceListSchema",
   "browserServiceFleetDiscoverySchema",
+  "projectShareTunnelCreateSchema",
+  "projectShareAttachmentWireSchema",
+  "standaloneChatShareAttachmentWireSchema",
+  "workerProjectShareOpenResultSchema",
   "tunnelUserWireCreateSchema",
   "tunnelUserWireUpdateSchema",
   "tunnelWireSummarySchema",
@@ -338,6 +342,9 @@ registerChecks(protocol.encryptedBrowserCreateSchema, [
   "browser-title",
 ]);
 registerChecks(protocol.encryptedBrowserUpdateSchema, ["browser-update"]);
+registerChecks(protocol.projectShareTunnelCreateSchema, [
+  "project-share-tunnel-identity",
+]);
 registerChecks(protocol.browserWireSummarySchema, ["browser-title"]);
 registerChecks(protocol.browserServiceSchema.shape.url, [
   "browser-service-http-url",

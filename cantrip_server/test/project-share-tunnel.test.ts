@@ -33,6 +33,64 @@ const protectedRecord: ProtectedTunnelContentRecord = {
 };
 
 describe("protected project share control plane", () => {
+  it("revokes scoped WorkerLink authority before closing and removing an owned share", async () => {
+    const order: string[] = [];
+    const tunnel = {
+      id: tunnelId,
+      origin: "project-share",
+      managedBy: { kind: "project-share", id: "project-1" },
+      destination: { workerId: "worker-1" },
+    };
+    const repository = {
+      getTunnel: vi.fn(async (owner: string) =>
+        owner === "owner-1" ? tunnel : null,
+      ),
+      getManagedTunnel: vi.fn(async () => tunnel),
+      removeManagedTunnel: vi.fn(async () => {
+        order.push("remove");
+        return true;
+      }),
+    } as unknown as ServerRepository;
+    const bridge = {
+      isConnected: () => true,
+      request: vi.fn(async () => {
+        order.push("close");
+        return { accepted: true };
+      }),
+    } as unknown as WorkerCommandBus;
+    const streamBroker = new TunnelStreamBroker();
+    const broker = new ProjectShareTunnelBroker(bridge);
+    const revoke = vi.fn(async () => {
+      order.push("revoke");
+    });
+    broker.configureControlPlane(
+      repository,
+      streamBroker,
+      () => undefined,
+      revoke,
+    );
+    expect(await broker.revokeAttachment(tunnelId, "foreign-owner")).toBe(
+      false,
+    );
+    expect(revoke).not.toHaveBeenCalled();
+    expect(await broker.revokeAttachment(tunnelId, "owner-1")).toBe(true);
+    expect(await broker.revokeProject("project-1", "owner-1")).toBe(true);
+    expect(revoke.mock.calls).toEqual([
+      ["owner-1", tunnelId],
+      ["owner-1", tunnelId],
+    ]);
+    expect(order).toEqual([
+      "revoke",
+      "close",
+      "remove",
+      "revoke",
+      "close",
+      "remove",
+    ]);
+    await broker.close();
+    streamBroker.close();
+  });
+
   it("passes only opaque setup content through the server", async () => {
     const request = vi.fn().mockResolvedValue({
       accepted: true,
@@ -49,7 +107,12 @@ describe("protected project share control plane", () => {
     } as unknown as ServerRepository;
     const streamBroker = new TunnelStreamBroker();
     const broker = new ProjectShareTunnelBroker(bridge);
-    broker.configureControlPlane(repository, streamBroker, () => undefined);
+    broker.configureControlPlane(
+      repository,
+      streamBroker,
+      () => undefined,
+      async () => undefined,
+    );
 
     const attachment = await broker.open({
       ownerId: "owner-1",
@@ -110,7 +173,12 @@ describe("protected project share control plane", () => {
     } as unknown as ServerRepository;
     const streamBroker = new TunnelStreamBroker();
     const broker = new ProjectShareTunnelBroker(bridge);
-    broker.configureControlPlane(repository, streamBroker, () => undefined);
+    broker.configureControlPlane(
+      repository,
+      streamBroker,
+      () => undefined,
+      async () => undefined,
+    );
 
     const attachment = await broker.open({
       ownerId: "owner-1",
@@ -171,7 +239,12 @@ describe("protected project share control plane", () => {
     } as unknown as ServerRepository;
     const streamBroker = new TunnelStreamBroker();
     const broker = new ProjectShareTunnelBroker(bridge);
-    broker.configureControlPlane(repository, streamBroker, () => undefined);
+    broker.configureControlPlane(
+      repository,
+      streamBroker,
+      () => undefined,
+      async () => undefined,
+    );
 
     await expect(
       broker.open({
@@ -225,7 +298,12 @@ describe("protected project share control plane", () => {
     } as unknown as ServerRepository;
     const broker = new ProjectShareTunnelBroker(bridge);
     const streamBroker = new TunnelStreamBroker();
-    broker.configureControlPlane(repository, streamBroker, () => undefined);
+    broker.configureControlPlane(
+      repository,
+      streamBroker,
+      () => undefined,
+      async () => undefined,
+    );
 
     await expect(
       broker.open({

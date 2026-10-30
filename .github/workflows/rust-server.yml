@@ -20,6 +20,10 @@ on:
       - cantrip_server/src/db/repository/browsers.ts
       - cantrip_server/src/app/routes/browser-management.ts
       - cantrip_server/src/app/routes/browser-service-discovery.ts
+      - cantrip_server/src/app/routes/project-network-shares.ts
+      - cantrip_server/src/project-shares/**
+      - cantrip_server/src/app/runtime/tunnel-control-plane-runtime.ts
+      - cantrip_server/test/project-share-tunnel.test.ts
       - cantrip_server/src/projects/worker-affinity.ts
       - cantrip_server/src/app/shared/constants.ts
       - cantrip_server/src/app/runtime/interactive-surface-runtime.ts
@@ -242,12 +246,24 @@ jobs:
         run: node --import tsx scripts/server-rust/browser-discovery-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/browser-discovery-http-bundled.json
       - name: Browser service discovery, worker deadlines and fleet bounds with external PostgreSQL
         run: node --import tsx scripts/server-rust/browser-discovery-http-compatibility.mjs --database postgres --report .qa/rust-server/browser-discovery-http-external.json
+      - name: Project-share repository query drift
+        run: node --import tsx scripts/server-rust/project-share-query-manifest.mjs --check
+      - name: Project-share reference broker and grant revocation
+        run: pnpm --filter @cantrip/server exec vitest run test/project-share-tunnel.test.ts
+      - name: Protected project and chat shares with native PGlite
+        run: node --import tsx scripts/server-rust/project-share-http-compatibility.mjs --report .qa/rust-server/project-share-http-pglite.json
+      - name: Protected project and chat shares with private PostgreSQL
+        run: node --import tsx scripts/server-rust/project-share-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/project-share-http-bundled.json
+      - name: Protected project and chat shares with external PostgreSQL
+        run: node --import tsx scripts/server-rust/project-share-http-compatibility.mjs --database postgres --report .qa/rust-server/project-share-http-external.json
+      - name: Admitted share registration survives caller disconnect and shutdown
+        run: node --import tsx scripts/server-rust/project-share-shutdown.mjs --report .qa/rust-server/project-share-shutdown.json
       - name: Actual browser folders, encrypted PTYs and WorkerLink observations with native PGlite
-        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --terminals --worker-links --terminal-direct --surfaces --tunnels --report .qa/rust-server/actual-folder-client-pglite.json
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --terminals --worker-links --terminal-direct --surfaces --tunnels --project-shares --report .qa/rust-server/actual-folder-client-pglite.json
       - name: Actual browser folders, encrypted PTYs and WorkerLink observations with private PostgreSQL
-        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --terminals --worker-links --terminal-direct --surfaces --tunnels --database bundled-postgres --report .qa/rust-server/actual-folder-client-bundled.json
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --terminals --worker-links --terminal-direct --surfaces --tunnels --database bundled-postgres --project-shares --report .qa/rust-server/actual-folder-client-bundled.json
       - name: Actual browser folders, encrypted PTYs and WorkerLink observations with external PostgreSQL
-        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --terminals --worker-links --terminal-direct --surfaces --tunnels --database postgres --report .qa/rust-server/actual-folder-client-external.json
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --terminals --worker-links --terminal-direct --surfaces --tunnels --database postgres --project-shares --report .qa/rust-server/actual-folder-client-external.json
       - name: Terminal-service repository compatibility with native PGlite
         run: node --import tsx scripts/server-rust/maintenance-repository-compatibility.mjs --report .qa/rust-server/maintenance-repository-pglite.json
       - name: Terminal-service repository compatibility with private PostgreSQL

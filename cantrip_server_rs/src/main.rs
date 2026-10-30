@@ -176,6 +176,7 @@ async fn main() -> Result<()> {
         service.folder_setup.stop();
         service.worker_maintenance.stop();
         service.tunnel_leases.stop();
+        service.project_shares.close().await;
         service.tunnel_runtime.close();
         service.live.close();
         service.direct_attachments.close().await;

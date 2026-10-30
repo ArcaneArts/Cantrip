@@ -23,6 +23,7 @@ mod live_socket;
 mod middleware;
 mod on_response;
 mod policies;
+mod project_shares;
 mod projects;
 mod provider_accounts;
 mod provider_catalogs;
@@ -37,6 +38,7 @@ mod terminal_direct;
 mod terminal_socket;
 mod terminals;
 mod tunnel_attachments;
+mod tunnel_cleanup;
 mod tunnel_direct;
 mod tunnel_socket;
 mod tunnels;
@@ -139,6 +141,7 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(terminals::routes())
         .merge(browsers::routes())
         .merge(browser_discovery::routes())
+        .merge(project_shares::routes())
         .merge(tunnels::routes())
         .merge(tunnel_attachments::routes())
         .merge(tunnel_socket::routes())

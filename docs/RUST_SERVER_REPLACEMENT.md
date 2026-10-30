@@ -2,6 +2,83 @@
 
 Status: **implementation in progress; not a deployable replacement**.
 
+## Protected project and standalone-chat shares
+
+The Rust server now implements the three project/standalone-chat share creation
+and deletion routes and their protected WebDAV broker. Project and worktree
+selection use the reference repository's exported SQL and bindings. Ownership,
+worker placement, scratch capability, tunnel identity and protected revision
+checks retain their ordering. Existing attachments stop before the protected
+revision check, including a stale replacement request. Worker open and close
+use the actual 30-second and best-effort 5-second deadlines. Failure responses
+retain safe codes, stages and the actual dispatched worker request identity;
+private worker errors, filesystem paths and credentials stay out of responses.
+
+Actual Node/Rust HTTP comparisons pass 55 anonymous and 62 account observations
+per runtime on each database mode, including real database-trigger rollback,
+held concurrent operations, worker errors, exact Live scope/order and a real
+caller disconnect. The generated share contracts match 1,490 validation and
+rendered-error cases. A separate PostgreSQL test blocks the actual tunnel INSERT
+after the worker's successful reply, aborts its caller, starts shutdown, witnesses
+the same database waiter and verifies identical committed protected rows after
+releasing the lock.
+
+The existing client and full unchanged worker pass the share flow on all three
+stores. HTTP Digest authenticates actual WebDAV PUT, GET and PROPFIND operations
+with 40,026-byte file contents over encrypted WorkerLink and legacy carriers;
+incorrect credentials fail. The worker's real filesystem contains the written
+bytes. The server catalog and captured control requests contain no private root,
+public share path or credentials. Startup deliberately removes transient share
+records, matching the reference: the client creates a new share identity and
+reads the retained file. An existing standalone-chat scratch fixture is
+provisioned with the production scratch manager while its worker is stopped,
+then opened and served by the full worker. This does not claim native chat
+creation or scratch provisioning routes are complete.
+
+The real-worker test reproduced a reference revocation defect: a share was absent
+from the catalog after deletion, but its old WorkerLink grant still returned the
+original 40,026 bytes with HTTP 200. Both implementations now revoke the scoped
+WorkerLink authority before refresh/deletion and managed-resource removal.
+Regression assertions require the old channel to close; the original failing
+reproduction and source are retained.
+
+An additional restart keeps the actual worker process alive while the server
+restarts on its retained address. Both implementations retire the old share
+channel, reconnect that same worker PID, create a fresh share identity and read
+the retained 40,031-byte file. The test attempts the existing client operation
+through reconnect, retrying only its explicit offline outcomes; other failures
+propagate immediately. This flow passes on all three stores.
+
+The final native regression passes 125 tests across 67 result groups, with no
+failures or ignored tests. Strict all-target Clippy, query drift, source
+typechecking and five broker tests pass. The exact CI product flow passes 28
+steps per Node/Rust runtime on all three stores, including the original direct
+terminal, browser and tunnel assertions. Run these product flows sequentially on
+one host: another test worker's OS-wide discovery can probe the strict TCP peer.
+The original exact-byte failure is retained; its assertions remain intact.
+
+The repository check passes 1,623 server and 3,899 app tests, then fails the worker
+filesystem-notification test. Both the feature checkout and clean main reproduce
+the same `observed.txt` notification failure, each with nine passing tests in
+that file. All 849 compared worker/shared source, test and dependency files are
+byte-identical. This is a retained baseline failure; the repository check remains
+red. Supported-platform and packaged acceptance remain separate work.
+The whole-tree formatter also reports 12 unchanged tracked files; clean main
+reports those same files, plus its ignored build outputs. The changed files pass
+their focused formatting check. Neither baseline result is reported as green.
+The latest merged CI run, 40969628794, failed on all three platforms: Ubuntu's
+private-PostgreSQL terminal command comparison missed a final revoke observation;
+macOS's Node reference fleet discovery missed the fixture listener; Windows's
+Node product flow passed 25 steps before the Rust browser-surface flow failed.
+Raw job logs are retained. The discovery fixture now retains both actual replies
+before asserting their identity. No platform failure is waived.
+The three uploaded ZIP archives were SHA256-verified before reading their actual
+reports. Ubuntu's full-worker reports pass 25 steps per runtime on all three
+stores, proving the per-executable sandbox policy through real browser operation.
+Windows's worker diagnostic reports a rejected protected browser URL during
+`surface.attach`; the existing draft PR 2132 concerns startup blank-page behavior
+and remains separate from this server milestone.
+
 ## Browser service discovery in progress
 
 Native project-fleet and existing-browser discovery now use the unchanged worker
@@ -38,7 +115,8 @@ reference full-worker flow. The retained Linux Chromium stderr identifies an
 actual namespace-sandbox abort. The next CI run installs Chromium's documented
 per-executable AppArmor policy for that runner's downloaded binary; production
 worker launch arguments and the Chromium sandbox remain unchanged. This policy
-has not yet been exercised on the new CI head. The macOS failure is specifically
+passes the real browser flows on all three stores in run 40969628794. That run's
+later terminal comparison still fails. The older macOS failure is specifically
 the legacy CTTN reply poll; its WorkerLink tunnel already passed. The legacy poll
 now checks complete length before the original full-byte assertion, and the TCP
 peer retains bounded connection/data/half-close/reply-write timestamps. This does

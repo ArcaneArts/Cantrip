@@ -35,6 +35,9 @@ export async function actualWorkerBrowserDiscovery({
       },
       { id: surface.id, projectId: surface.projectId },
     );
+    // Retain both actual replies even if the subsequent identity assertion fails.
+    result.browserServiceDiscovery.services = values.services;
+    result.browserServiceDiscovery.fleet = values.fleet;
     const found = values.services.find(
       (s) => s.port === port && s.title === title,
     );

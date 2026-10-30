@@ -1872,7 +1872,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/project-network-shares.ts",
-      "line": 239,
+      "line": 243,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/network-shares",
@@ -3367,7 +3367,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/project-network-shares.ts",
-      "line": 336,
+      "line": 341,
       "method": "DELETE",
       "ownerEvidence": "request-principal",
       "path": "/api/project-shares/:attachmentId",
@@ -3991,7 +3991,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/project-network-shares.ts",
-      "line": 161,
+      "line": 164,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/network-shares",

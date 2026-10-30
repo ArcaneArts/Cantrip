@@ -3,6 +3,7 @@ use super::{
     middleware::{self, Context},
     on_response,
     settings::{error, output, parse},
+    tunnel_cleanup::revoke_attachments,
 };
 use crate::{
     auth::service::AuthService,
@@ -22,46 +23,6 @@ use axum::{
 use futures::FutureExt;
 use std::{collections::HashMap, sync::Arc};
 
-async fn revoke_attachments(
-    service: &Arc<AuthService>,
-    owner: &str,
-    tunnel: &Value,
-    preserve: bool,
-) -> Result<()> {
-    // Source's Promise.all receives an already invoked map of async operations.
-    // Admit every child in the caller before observing any failure;
-    // try_join_all alone may stop before some large-list futures ever start.
-    let operations = tunnel["attachments"]
-        .as_array()
-        .context("Managed tunnel attachments")?
-        .iter()
-        .map(|attachment| {
-            let runtime = service.tunnel_runtime.clone();
-            let owner = owner.to_owned();
-            let id = attachment["id"]
-                .as_str()
-                .context("Managed attachment identity")
-                .map(str::to_owned);
-            let (send, receive) = tokio::sync::oneshot::channel();
-            service.worker_maintenance.spawn_child(async move {
-                let result: Result<()> = async {
-                    runtime.revoke(&owner, &id?, preserve, None).await?;
-                    Ok(())
-                }
-                .await;
-                let _ = send.send(result);
-                Ok(())
-            });
-            async move {
-                receive
-                    .await
-                    .context("Browser attachment cleanup task ended")?
-            }
-        })
-        .collect::<Vec<_>>();
-    futures::future::try_join_all(operations).await?;
-    Ok(())
-}
 pub(super) fn allows(project: &Value, worker: &Value) -> bool {
     if project["originKind"] != "managed-folder" {
         return true;

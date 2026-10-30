@@ -423,6 +423,7 @@ impl LimitedCommandBus {
                             message: limit.message.into(),
                             code: None,
                             unavailable: false,
+                            request_id: None,
                             encoding_error: None,
                         });
                     }
@@ -452,6 +453,7 @@ impl LimitedCommandBus {
                 message: worker.message(" is offline."),
                 code: None,
                 unavailable: true,
+                request_id: None,
                 encoding_error: None,
             })
         };

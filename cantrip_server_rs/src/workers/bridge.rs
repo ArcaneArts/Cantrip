@@ -44,6 +44,8 @@ pub struct CommandError {
     pub message: JsString,
     pub code: Option<String>,
     pub unavailable: bool,
+    /// Source worker-command failures carry the dispatched correlation ID.
+    pub request_id: Option<String>,
     /// Preserve schema failures separately from worker/callback failures for
     /// the HTTP/domain layer. Application HTTP errors redact internal details.
     pub encoding_error: Option<Arc<wire::ValidationError>>,
@@ -54,14 +56,16 @@ impl CommandError {
             message: message.into(),
             code: None,
             unavailable: true,
+            request_id: None,
             encoding_error: None,
         }
     }
-    fn command(message: String, code: &str) -> Self {
+    fn command(message: String, code: &str, request: &str) -> Self {
         Self {
             message: message.into(),
             code: Some(code.into()),
             unavailable: false,
+            request_id: Some(request.to_owned()),
             encoding_error: None,
         }
     }
@@ -444,6 +448,7 @@ impl WorkerBridge {
                     .and_then(Value::as_str)
                     .map(String::from),
                 unavailable: false,
+                request_id: Some(id.to_owned()),
                 encoding_error: None,
             })
         };
@@ -551,6 +556,7 @@ impl WorkerBridge {
                         message: "Worker request encoding failed.".into(),
                         code: None,
                         unavailable: false,
+                        request_id: None,
                         encoding_error: Some(Arc::new(error)),
                     }
                 })?;
@@ -590,6 +596,7 @@ impl WorkerBridge {
                                     Err(CommandError::command(
                                         format!("Worker command {} timed out.", target.command),
                                         "worker-command-timeout",
+                                        &key,
                                     )),
                                 );
                             }
@@ -607,6 +614,7 @@ impl WorkerBridge {
                         Err(CommandError::command(
                             format!("Worker command {kind} could not be dispatched."),
                             "worker-command-dispatch-failed",
+                            &id,
                         )),
                     );
                 } else if let Some(record) = &self.record_usage {

@@ -8,6 +8,7 @@ mod json_contract;
 mod json_text;
 pub use json_text::parse_json_text;
 pub(crate) mod live;
+mod project_shares;
 mod projects;
 mod refinements;
 mod terminals;

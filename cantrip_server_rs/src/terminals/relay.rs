@@ -224,7 +224,7 @@ impl Relay {
                     let result = relay.event(&event).await;
                     result.map_err(|cause| match cause.downcast_ref::<CommandFailure>() {
                         Some(CommandFailure::Bridge(error)) => error.clone(),
-                        _ => CommandError { message:crate::settings::operation_error_message(&cause), code:None, unavailable:false, encoding_error:None },
+                        _ => CommandError { message:crate::settings::operation_error_message(&cause), code:None, unavailable:false, request_id: None, encoding_error:None },
                     })
                 })
             });

@@ -92,6 +92,7 @@ impl Control {
                     .filter(|s| !s.is_empty())
                     .map(str::to_owned),
                 unavailable: spec["unavailable"] == true,
+                request_id: None,
                 encoding_error: None,
             }
             .into());
