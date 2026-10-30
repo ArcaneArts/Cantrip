@@ -33,8 +33,8 @@ function runtime(id: string): ModelRuntime {
       kind: "openai-compatible",
       baseUrl: "https://models.example.test/v1",
       protectedApiKey: null,
-      accountId: "account-1",
-      credentialHomeKey: "credential-home-1",
+      accountId: null,
+      credentialHomeKey: null,
       weeklyUsageReservePercent: 5,
     },
   };
@@ -91,6 +91,9 @@ function fixture() {
     },
   ];
   const repository = {
+    getModelRuntimeByRoute: vi.fn(async (_ownerId, routeId) =>
+      routeId === root.routeId ? root : null,
+    ),
     listEffectiveMcpServers: vi.fn().mockResolvedValue(mcpServers),
     setChatModel: vi.fn().mockResolvedValue(undefined),
     updateChatRuntime: vi.fn().mockResolvedValue(undefined),
@@ -125,11 +128,12 @@ describe("managed console preparation", () => {
       status: "idle",
       turns: [],
     });
+    const runtimeForContext = vi.fn(async () => root);
     const sync = createChatThreadSyncRuntime({
       applicationOwnerId: () => f.ownerId,
       bridge: { ...f.bridge, isConnected: () => true },
       repository: f.repository,
-      runtimeForContext: async () => root,
+      runtimeForContext,
       continuePendingWorktreeTransition: vi.fn(),
       dispatchNextQueuedPrompt: vi.fn(),
       publishChatInvalidation: vi.fn(),
@@ -148,6 +152,11 @@ describe("managed console preparation", () => {
       provider: launch.provider,
     });
     expect(f.routePairsForConfiguration).toHaveBeenCalledTimes(1);
+    expect(f.repository.getModelRuntimeByRoute).toHaveBeenCalledExactlyOnceWith(
+      f.ownerId,
+      existing.modelRouteId,
+    );
+    expect(runtimeForContext).not.toHaveBeenCalled();
     expect(f.repository.updateChatRuntime).not.toHaveBeenCalled();
   });
 
@@ -201,7 +210,7 @@ describe("managed console preparation", () => {
       "native-thread",
       root.routeId,
       "ready",
-      "account-1",
+      null,
     );
   });
 

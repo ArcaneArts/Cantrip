@@ -93,8 +93,11 @@ try {
     .locator('[data-slot="project-switcher-project"]')
     .filter({ hasText: fixture.repositorySeed.name })
     .click();
+  const smallReads = requests.length;
+  const smallOpenStarted = performance.now();
   await page.getByRole("tab", { name: "Conversations", exact: true }).click();
   await page.getByText("10 Conversations", { exact: true }).waitFor();
+  const smallOpenMilliseconds = performance.now() - smallOpenStarted;
   const active = page.getByRole("list", {
     name: "Active conversations",
     exact: true,
@@ -103,7 +106,37 @@ try {
     name: "Archived conversation list",
     exact: true,
   });
+  const measureKeyboard = async (list, size) => {
+    await list.locator("button").first().focus();
+    const samples = [];
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const started = performance.now();
+      for (const [key, position] of [
+        ["End", size],
+        ["Home", 1],
+      ]) {
+        await page.keyboard.press(key);
+        await page.waitForFunction(
+          (expected) =>
+            document.activeElement
+              ?.closest('[role="listitem"]')
+              ?.getAttribute("aria-posinset") === String(expected),
+          position,
+        );
+      }
+      samples.push(performance.now() - started);
+    }
+    return {
+      endHomeMilliseconds: samples,
+      medianMilliseconds: [...samples].sort((a, b) => a - b)[2],
+    };
+  };
   const small = {
+    openMilliseconds: smallOpenMilliseconds,
+    keyboard: await measureKeyboard(active, 10),
+    catalogRequests: requests
+      .slice(smallReads)
+      .filter((url) => url.endsWith("/conversations")).length,
     mounted: await page.locator("[data-virtual-conversation]").count(),
     requests: requests.length,
   };
@@ -115,6 +148,7 @@ try {
   );
   record("seeded-2000", { milliseconds: performance.now() - start });
   const beforeReads = requests.length;
+  const largeOpenStarted = performance.now();
   await page.getByRole("tab", { name: "Conversations", exact: true }).click();
   await page
     .getByText("1000 Conversations", { exact: true })
@@ -122,6 +156,7 @@ try {
   await page
     .getByRole("heading", { name: "Archived 1000", exact: true })
     .waitFor();
+  const largeOpenMilliseconds = performance.now() - largeOpenStarted;
   for (const [list, name] of [
     [active, "Load more conversations"],
     [archived, "Load more archived conversations"],
@@ -180,6 +215,11 @@ try {
     .filter((url) => /\/chats\/[^/]+\/messages/.test(url));
   assert.equal(transcriptRequests.length, 0);
   record("large-list", {
+    openMilliseconds: largeOpenMilliseconds,
+    keyboard: await measureKeyboard(active, 1000),
+    catalogRequests: requests
+      .slice(beforeReads)
+      .filter((url) => url.endsWith("/conversations")).length,
     mounted: await page.locator("[data-virtual-conversation]").count(),
     catalogPages: catalog.length,
     transcriptRequests: transcriptRequests.length,

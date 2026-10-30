@@ -296,6 +296,86 @@ try {
     "recovery.multiple-direct",
     "Two direct conversations retain independent protected drafts across replacement and reload while file rail views remain unchanged",
   );
+  // Exercise the real mounted composer and protected write through the same
+  // coordinator native quit invokes. Native IPC/window exit is covered separately.
+  let releaseDraft;
+  let draftEntered;
+  const entered = new Promise((resolve) => {
+    draftEntered = resolve;
+  });
+  const held = new Promise((resolve) => {
+    releaseDraft = resolve;
+  });
+  const draftUrl = "**/api/chats/" + chatId + "/composer-draft";
+  await page.route(draftUrl, async (route) => {
+    if (route.request().method() === "GET") return route.continue();
+    draftEntered();
+    await held;
+    await route.continue();
+  });
+  const quitDraft = "Protect the last edit before desktop quit";
+  await composer.fill(quitDraft);
+  await page.evaluate(() => {
+    window.__qaQuitResult = "pending";
+    void window.__qaRepositoryFixture.prepareQuit(91).then(
+      () => {
+        window.__qaQuitResult = "ready";
+      },
+      () => {
+        window.__qaQuitResult = "failed";
+      },
+    );
+  });
+  await entered;
+  assert.equal(await page.evaluate(() => window.__qaQuitResult), "pending");
+  releaseDraft();
+  await page.waitForFunction(() => window.__qaQuitResult === "ready");
+  await page.evaluate(() => window.__qaRepositoryFixture.cancelQuit(91));
+  await page.unroute(draftUrl);
+  await page.reload();
+  await page.waitForFunction(
+    (draft) =>
+      document.querySelector('textarea[aria-autocomplete="list"]')?.value ===
+      draft,
+    quitDraft,
+    { timeout: 90000 },
+  );
+  await page.route(draftUrl, async (route) => {
+    if (route.request().method() === "GET") return route.continue();
+    await route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ error: "Fixture draft write unavailable" }),
+    });
+  });
+  const failedDraft = "Keep this edit after a failed quit checkpoint";
+  await composer.fill(failedDraft);
+  const quitFailed = await page.evaluate(async () => {
+    try {
+      await window.__qaRepositoryFixture.prepareQuit(92);
+      return false;
+    } catch {
+      return true;
+    }
+  });
+  assert.equal(quitFailed, true);
+  assert.equal(await composer.inputValue(), failedDraft);
+  assert.equal(await composer.isEditable(), true);
+  await page.unroute(draftUrl);
+  await page.evaluate(() => window.__qaRepositoryFixture.prepareQuit(93));
+  await page.evaluate(() => window.__qaRepositoryFixture.cancelQuit(93));
+  await page.reload();
+  await page.waitForFunction(
+    (draft) =>
+      document.querySelector('textarea[aria-autocomplete="list"]')?.value ===
+      draft,
+    failedDraft,
+    { timeout: 90000 },
+  );
+  record(
+    "recovery.quit-checkpoint",
+    "Mounted direct composer blocks quit on a pending encrypted write, resumes after a failed write, and restores the final draft after retry and reload",
+  );
   await page.screenshot({
     path: path.join(fixture.directory, "conversations-recovery.png"),
     fullPage: true,
