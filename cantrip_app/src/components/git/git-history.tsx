@@ -117,6 +117,7 @@ import type { ProjectOverviewSection } from "@/lib/project-overview-section";
 import { GitChangesPanel } from "./git-changes-panel";
 import { GitBranchPanel } from "./git-branch-panel";
 import { GitCommitInspector } from "./git-commit-inspector";
+import { GitPanelSummary } from "./git-panel-summary";
 import {
   eligibleCommitActionWorktrees,
   GitCommitActionDialog,
@@ -1721,6 +1722,7 @@ export function GitHistoryView({
             </TooltipButton>
           )}
         </div>
+        <GitPanelSummary header={panelHeader} project={project} />
       </PanelToolbar>
       {gitAction.error ? (
         <p className="shrink-0 bg-destructive/10 px-4 py-2 text-xs text-destructive">
