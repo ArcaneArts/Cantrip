@@ -180,6 +180,68 @@ describe("Task implementation dashboard presentation", () => {
       }
     },
   );
+  it.each([
+    ["complete", "Encrypted Goal status is unavailable.", false],
+    ["complete", "The project worker is offline.", false],
+    [
+      "complete",
+      "No Goal is attached to this session. Completion has not been confirmed.",
+      false,
+    ],
+    ["implementing", "Encrypted Goal status is unavailable.", true],
+    ["failed", "The project worker is offline.", true],
+  ] as const)(
+    "shows Goal availability for state=%s only when unfinished (%s)",
+    (state, reason, showReason) => {
+      const client = new QueryClient();
+      const currentTask = {
+        ...task,
+        state,
+        implementationStartedAt: "2026-10-22T00:00:00Z",
+        completedAt: state === "complete" ? "2026-10-22T01:00:00Z" : null,
+        createdAt: "2026-10-22T00:00:00Z",
+        updatedAt: "2026-10-22T01:00:00Z",
+        finalPlanMarkdown: "Retained implementation plan",
+      } as TaskDetail;
+      const chat = {
+        id: "goal-availability",
+        projectId: "project",
+        status: "idle",
+        automationPaused: false,
+      } as ChatSummary;
+      client.setQueryData(["task-dashboard", chat.id], {
+        task: currentTask,
+        goal: null,
+        goalUnavailableReason: reason,
+        warnings: [],
+        pullRequests: [],
+      });
+      client.setQueryData(["agent-requests", chat.id, "pending"], []);
+      try {
+        const markup = renderToStaticMarkup(
+          createElement(
+            QueryClientProvider,
+            { client },
+            createElement(TaskImplementationDashboard, {
+              chat,
+              initialTask: task,
+              visible: false,
+            }),
+          ),
+        );
+        expect(markup.includes(reason)).toBe(showReason);
+        expect(markup).toContain("Retained implementation plan");
+        if (state === "complete") {
+          expect(markup).toContain(">Complete<");
+          expect(markup).toContain("Implementation completed.");
+          expect(markup).not.toContain("Retry</button>");
+        }
+      } finally {
+        client.clear();
+      }
+    },
+  );
+
   it("offers recovery even when the failed Task has lost its Goal view", () => {
     const retained = {
       ...task,
