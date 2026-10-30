@@ -130,7 +130,7 @@ if (drainAuthNotifications) {
 const app = await buildApp({
   config,
   database,
-  logger: false,
+  logger: process.env.CANTRIP_FIXTURE_LOGGING === "true",
   ...(ingressBridge ? { workerBridge: ingressBridge } : {}),
 });
 if (process.argv.includes("--observe-http-clocks")) {

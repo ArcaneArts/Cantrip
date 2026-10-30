@@ -7,6 +7,9 @@ pub(super) fn apply(
     path: &[Value],
     message: Option<&str>,
 ) -> Result<(), ValidationError> {
+    if super::run_configurations::refine(tag, result, path)? {
+        return Ok(());
+    }
     if super::project_shares::refine(tag, result, path, message)? {
         return Ok(());
     }
@@ -47,6 +50,27 @@ pub(super) fn apply(
         at.extend(suffix.iter().map(|v| json!(v)));
         result.issue(json!({"code":"custom"}), &at, message.into(), false);
     };
+    if tag == "worktree-create-mutation-failure" {
+        let outcome = value["mutation"]["outcome"].as_str().unwrap_or_default();
+        let suffix = match outcome {
+            "notStarted" => "not-started",
+            "rolledBack" => "rolled-back",
+            other => other,
+        };
+        if value["code"] != format!("worktree-create-{suffix}").as_str() {
+            custom(
+                &["code"],
+                "Worktree mutation failure code must match its outcome.",
+            );
+        }
+        if (outcome == "notStarted") != value["mutation"]["target"].is_null() {
+            custom(
+                &["mutation", "target"],
+                "Only a worktree mutation that did not start may omit its recovery target.",
+            );
+        }
+        return Ok(());
+    }
     if tag == "worker-link-signal-bytes" || tag == "worker-link-mailbox-bytes" {
         if value.stringify().len() > 4 * 1024 * 1024 {
             if tag == "worker-link-signal-bytes" {

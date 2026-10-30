@@ -21,6 +21,8 @@ mod repository_operations;
 mod tunnels;
 #[path = "support/workspaces.rs"]
 mod workspaces;
+#[path = "support/worktree_coordinator.rs"]
+mod worktree_coordinator;
 use futures::FutureExt;
 use std::{
     io::{self, BufRead, Write},

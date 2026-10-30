@@ -11,7 +11,98 @@ pub fn run<'a>(
     chats: &'a cantrip_server::chats::Repository,
 ) -> futures::future::BoxFuture<'a, Result<Value>> {
     Box::pin(async move {
-        if request["op"] == "sql" {
+        if request["op"]
+            .as_str()
+            .is_some_and(|op| op.starts_with("run-runtime-"))
+        {
+            let repo = cantrip_server::run_configurations::Repository::new(database.clone());
+            let owner = request["owner"].as_str().context("Runtime owner")?;
+            let project = request["project"].as_str().context("Runtime project")?;
+            match request["op"].as_str() {
+                Some("run-runtime-observation-race") => {
+                    let inputs = request["inputs"]
+                        .as_array()
+                        .context("Runtime observations")?;
+                    let worker = request["worker"].as_str().context("Runtime worker")?;
+                    let values = futures::future::try_join_all(
+                        inputs
+                            .iter()
+                            .map(|input| repo.observe(owner, worker, input)),
+                    )
+                    .await?;
+                    Ok(Value::Array(
+                        values
+                            .into_iter()
+                            .map(|value| value.unwrap_or(Value::Null))
+                            .collect(),
+                    ))
+                }
+                Some("run-runtime-race") => {
+                    let inputs = request["inputs"].as_array().context("Runtime inputs")?;
+                    Ok(Value::Array(
+                        futures::future::try_join_all(
+                            inputs
+                                .iter()
+                                .map(|input| repo.request_operation(owner, input)),
+                        )
+                        .await?,
+                    ))
+                }
+                Some("run-runtime-request") => {
+                    repo.request_operation(owner, &request["input"]).await
+                }
+                Some("run-runtime-get") => Ok(repo
+                    .get(
+                        owner,
+                        project,
+                        request["configuration"]
+                            .as_str()
+                            .context("Runtime configuration")?,
+                        request["worktree"].as_str().context("Runtime worktree")?,
+                    )
+                    .await?
+                    .unwrap_or(Value::Null)),
+                Some("run-runtime-list") => Ok(Value::Array(
+                    repo.list(
+                        owner,
+                        project,
+                        request["configuration"].as_str(),
+                        request["worktree"].as_str(),
+                        request["limit"].as_f64().unwrap_or(256.0) as i64,
+                    )
+                    .await?,
+                )),
+                Some("run-runtime-identities") => Ok(Value::Array(
+                    repo.active_identities(
+                        owner,
+                        request["worker"].as_str().context("Runtime worker")?,
+                    )
+                    .await?,
+                )),
+                Some("run-runtime-observe") => Ok(repo
+                    .observe(
+                        owner,
+                        request["worker"].as_str().context("Runtime worker")?,
+                        &request["observation"],
+                    )
+                    .await?
+                    .unwrap_or(Value::Null)),
+                Some("run-runtime-delete") => {
+                    let ids = request["ids"]
+                        .as_array()
+                        .context("Runtime ids")?
+                        .iter()
+                        .map(|id| id.as_str().map(str::to_owned).context("Runtime id"))
+                        .collect::<Result<Vec<_>>>()?;
+                    Ok(Value::Number(
+                        repo.delete(owner, project, &ids).await? as f64,
+                    ))
+                }
+                _ => anyhow::bail!("Unknown runtime operation"),
+            }
+        } else if request["op"] == "worktree-coordinator" {
+            super::worktree_coordinator::run(database.clone(), request).await
+        } else if request["op"] == "sql" {
             database
                 .execute(request["sql"].as_str().context("Fixture SQL")?)
                 .await?;
@@ -196,6 +287,162 @@ pub fn run<'a>(
                 })
                 .await?;
             Ok(Value::Null)
+        } else if matches!(
+            request["op"].as_str(),
+            Some(
+                "worktree-rollback"
+                    | "worktree-set-lifecycle"
+                    | "worktree-observe"
+                    | "worktree-removal-blockers"
+            )
+        ) {
+            let repo = cantrip_server::projects::targets::TargetRepository::new(database.clone());
+            let owner = request["owner"].as_str().context("Worktree owner")?;
+            let project = request["project"].as_str().context("Worktree project")?;
+            if request["op"] == "worktree-rollback" {
+                return Ok(Value::Bool(
+                    repo.rollback_worktree_creation(
+                        owner,
+                        project,
+                        request["worker"].as_str().context("Worktree worker")?,
+                        &request["created"],
+                    )
+                    .await?,
+                ));
+            }
+            let worktree = request["worktree"].as_str().context("Worktree id")?;
+            Ok(match request["op"].as_str() {
+                Some("worktree-set-lifecycle") => {
+                    repo.set_worktree_lifecycle(
+                        owner,
+                        project,
+                        worktree,
+                        request["state"].as_str().context("Worktree state")?,
+                    )
+                    .await?
+                }
+                Some("worktree-observe") => {
+                    repo.observe_worktree(owner, project, worktree, &request["observed"])
+                        .await?
+                }
+                _ => {
+                    repo.worktree_removal_blockers(owner, project, worktree)
+                        .await?
+                }
+            }
+            .unwrap_or(Value::Null))
+        } else if request["op"] == "inventory-reconcile" {
+            let repo = cantrip_server::projects::targets::TargetRepository::new(database.clone());
+            Ok(repo
+                .reconcile_worktrees(
+                    request["owner"].as_str().context("Inventory owner")?,
+                    request["project"].as_str().context("Inventory project")?,
+                    request["worker"].as_str().context("Inventory worker")?,
+                    &request["inventory"],
+                    request.get("created"),
+                )
+                .await?
+                .map(Value::Array)
+                .unwrap_or(Value::Null))
+        } else if request["op"] == "observation-context" {
+            let repo = cantrip_server::projects::targets::TargetRepository::new(database.clone());
+            Ok(repo
+                .observation_context(
+                    request["owner"].as_str().context("Observation owner")?,
+                    request["worker"].as_str().context("Observation worker")?,
+                    request["source"].as_str().context("Observation source")?,
+                    request["worktreePath"]
+                        .as_str()
+                        .context("Observation worktree path")?,
+                )
+                .await?
+                .unwrap_or(Value::Null))
+        } else if request["op"] == "observation-operation" {
+            let repo = cantrip_server::projects::targets::TargetRepository::new(database.clone());
+            Ok(repo
+                .active_observation_operation(
+                    request["owner"].as_str().context("Observation owner")?,
+                    request["project"].as_str().context("Observation project")?,
+                    request["worktree"]
+                        .as_str()
+                        .context("Observation worktree")?,
+                )
+                .await?
+                .unwrap_or(Value::Null))
+        } else if request["op"] == "observation-source" {
+            let repo = cantrip_server::projects::targets::TargetRepository::new(database.clone());
+            let connected = request["connected"]
+                .as_array()
+                .context("Connected workers")?;
+            Ok(repo
+                .observation_source(
+                    request["owner"].as_str().context("Observation owner")?,
+                    request["project"].as_str().context("Observation project")?,
+                    &|worker| connected.iter().any(|value| value == worker),
+                )
+                .await?
+                .unwrap_or(Value::Null))
+        } else if request["op"] == "observation-targets" || request["op"] == "observation-paths" {
+            let repo = cantrip_server::projects::targets::TargetRepository::new(database.clone());
+            let owner = request["owner"].as_str().context("Observation owner")?;
+            let worker = request["worker"].as_str().context("Observation worker")?;
+            if request["op"] == "observation-targets" {
+                Ok(Value::Array(
+                    repo.observation_targets(
+                        owner,
+                        worker,
+                        request["gitOnly"] == true,
+                        request.get("limit").and_then(Value::as_i64).unwrap_or(128),
+                    )
+                    .await?,
+                ))
+            } else {
+                Ok(Value::from_serialize(
+                    &repo
+                        .reconcile_observation_paths(
+                            owner,
+                            worker,
+                            request["paths"].as_array().context("Observation paths")?,
+                        )
+                        .await?,
+                ))
+            }
+        } else if request["op"] == "git-agent-usage" {
+            use cantrip_server::settings::{
+                repository::SettingsRepository, telemetry::repository_agent::RepositoryAgentUsage,
+            };
+            SettingsRepository::new(database.clone())
+                .record_repository_agent_usage(RepositoryAgentUsage {
+                    owner: request["owner"].as_str().context("Usage owner")?,
+                    project: request["project"].as_str().context("Usage project")?,
+                    worker: request["worker"].as_str().context("Usage worker")?,
+                    operation: request["operation"].as_str().context("Usage operation")?,
+                    runtime: &request["runtime"],
+                    execution: &request["execution"],
+                    server_version: "fixture-version",
+                })
+                .await?;
+            Ok(Value::Null)
+        } else if request["op"] == "worktree-context" || request["op"] == "github-context" {
+            let repo = cantrip_server::projects::targets::TargetRepository::new(database.clone());
+            let owner = request["owner"].as_str().context("Context owner")?;
+            let project = request["project"].as_str().context("Context project")?;
+            Ok(if request["op"] == "worktree-context" {
+                repo.worktree_context(
+                    owner,
+                    project,
+                    request["worktree"].as_str().context("Context worktree")?,
+                )
+                .await?
+            } else {
+                repo.github_context(
+                    owner,
+                    project,
+                    request.get("worker").and_then(Value::as_str),
+                )
+                .await?
+            }
+            .unwrap_or(Value::Null))
         } else if request["op"] == "target-resolve" {
             let connected = |worker: &str| {
                 request["connected"]

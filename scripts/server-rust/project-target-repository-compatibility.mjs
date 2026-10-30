@@ -54,7 +54,7 @@ const negativeSeed = async (name, sql) => {
   );
   return !expected.rejected;
 };
-const observe = async (name, operation, code = null) => {
+const observe = async (name, operation, code = null, updatedWindow = null) => {
   const input = {
     owner,
     project: "github",
@@ -71,6 +71,16 @@ const observe = async (name, operation, code = null) => {
   );
   if (code !== null && code !== "generic")
     assert.equal(expected.code, code, "Actual source code: " + name);
+  if (updatedWindow)
+    for (const result of [expected, actual]) {
+      const timestamp = Date.parse(result.value.worktree.updatedAt);
+      assert.ok(
+        Number.isFinite(timestamp) &&
+          timestamp >= updatedWindow[0] &&
+          timestamp <= updatedWindow[1],
+        name + " actual update clock",
+      );
+    }
   const normalize = (r) =>
     r.rejected
       ? {
@@ -79,7 +89,18 @@ const observe = async (name, operation, code = null) => {
             ? { code: r.code, diagnostic: r.diagnostic }
             : {}),
         }
-      : { rejected: false, value: r.value };
+      : {
+          rejected: false,
+          value: updatedWindow
+            ? {
+                ...r.value,
+                worktree: {
+                  ...r.value.worktree,
+                  updatedAt: "verified-update-clock",
+                },
+              }
+            : r.value,
+        };
   assert.deepEqual(normalize(actual), normalize(expected), name);
   return expected.value;
 };
@@ -99,6 +120,144 @@ try {
     pair.push(await open(kind, i));
   }
   for (const sql of targetStateSql()) await seed(sql);
+  for (const project of ["github", "folder", "local-git", "other", "missing"]) {
+    await observe("worktree execution context " + project, {
+      op: "worktree-context",
+      project,
+      worktree: project + "-alpha-main",
+    });
+    await observe("GitHub execution context absent metadata " + project, {
+      op: "github-context",
+      project,
+    });
+  }
+  await observe("foreign worktree context", {
+    op: "worktree-context",
+    owner: other,
+    worktree: "github-alpha-main",
+  });
+  await seed(
+    "UPDATE projects SET github_repository_full_name='owner/repo',github_repository_url='https://github.com/owner/repo' WHERE id='github'",
+  );
+  for (const worker of [undefined, "", "alpha", "beta", "missing"])
+    await observe("GitHub execution context worker " + worker, {
+      op: "github-context",
+      worker,
+    });
+  await observe("foreign GitHub context", {
+    op: "github-context",
+    owner: other,
+  });
+  await seed(
+    `INSERT INTO project_replica_jobs(id,owner_id,project_id,project_replica_id,worker_id,kind,state,idempotency_key,payload_fingerprint,repository,progress,completed_at) VALUES ('context-provision',${literal(owner)},'github','github-alpha','alpha','provision','succeeded','context-provision','fingerprint','provisioned/repository','{"stage":"succeeded"}','2025-01-01T00:00:00Z')`,
+  );
+  const provisioned = await observe(
+    "successful provision overrides GitHub name",
+    { op: "github-context", worker: "alpha" },
+  );
+  assert.equal(provisioned.nameWithOwner, "provisioned/repository");
+  await seed(
+    "UPDATE project_replica_jobs SET state='failed' WHERE id='context-provision'",
+  );
+  const fallback = await observe(
+    "failed provision does not override GitHub name",
+    { op: "github-context", worker: "alpha" },
+  );
+  assert.equal(fallback.nameWithOwner, "owner/repo");
+  await seed("DELETE FROM project_replica_jobs WHERE id='context-provision'");
+  await seed(
+    "UPDATE project_worktrees SET lifecycle_state='removing' WHERE id='github-alpha-main'",
+  );
+  assert.equal(
+    await observe("removing worktree context is absent", {
+      op: "worktree-context",
+      worktree: "github-alpha-main",
+    }),
+    null,
+  );
+  await seed(
+    "UPDATE project_worktrees SET lifecycle_state='ready' WHERE id='github-alpha-main'",
+  );
+  await seed(
+    `UPDATE project_sources SET removed_at=${literal(stamp)} WHERE id='github-alpha'`,
+  );
+  assert.equal(
+    await observe("removed source worktree context is absent", {
+      op: "worktree-context",
+      worktree: "github-alpha-main",
+    }),
+    null,
+  );
+  assert.equal(
+    await observe("removed source GitHub context is absent", {
+      op: "github-context",
+      worker: "alpha",
+    }),
+    null,
+  );
+  await seed(
+    "UPDATE project_sources SET removed_at=NULL WHERE id='github-alpha'",
+  );
+  await seed(
+    "UPDATE projects SET github_repository_full_name=NULL,github_repository_url=NULL WHERE id='github'",
+  );
+  const usageRequest = {
+    op: "git-agent-usage",
+    operation: "operation",
+    worker: "alpha",
+    runtime: {
+      routeId: "unknown-route",
+      provider: {},
+      model: { reasoningEffort: "high" },
+    },
+    execution: {
+      turnId: "git-turn",
+      measuredUsage: {
+        inputTokens: 12.6,
+        outputTokens: 7.2,
+        totalTokens: 20,
+        cachedInputTokens: 2,
+      },
+    },
+  };
+  const usageSnapshot = async (label) =>
+    observe(label, {
+      op: "query-json",
+      sql: "SELECT coalesce(jsonb_agg(to_jsonb(t)-'id'-'created_at'-'updated_at'-'started_at'-'completed_at'-'finalized_at' ORDER BY source_key),'[]') result FROM token_usage_records t",
+    });
+  await observe("Git agent usage insert", usageRequest);
+  let records = await usageSnapshot("Git agent usage initial persistence");
+  assert.equal(records.length, 1);
+  assert.equal(records[0].input_tokens, 13);
+  assert.equal(records[0].output_tokens, 7);
+  await observe("Git agent usage repeat", usageRequest);
+  records = await usageSnapshot("Git agent repeat does not duplicate usage");
+  assert.equal(records.length, 1);
+  await observe("Git agent missing usage retains counts", {
+    ...usageRequest,
+    execution: { turnId: "git-turn" },
+  });
+  records = await usageSnapshot("Git agent retained usage counters");
+  assert.equal(records[0].input_tokens, 13);
+  await observe(
+    "Git agent different turn is rejected",
+    {
+      ...usageRequest,
+      execution: { ...usageRequest.execution, turnId: "other-turn" },
+    },
+    "generic",
+  );
+  await seed(
+    "UPDATE token_usage_records SET source_aliases='[\"git-agent:alias:unknown-route\"]'::jsonb",
+  );
+  await observe("Git agent existing source alias resolves", {
+    ...usageRequest,
+    operation: "alias",
+  });
+  records = await usageSnapshot("Git agent alias preserves one source record");
+  assert.equal(records.length, 1);
+  assert.equal(records[0].source_key, "git-agent:operation:unknown-route");
+  await seed("DELETE FROM token_usage_records");
   const base = await catalog("complete protected resource graph");
   assert.deepEqual(
     new Set(base.targets.map((t) => t.resourceKind)),
@@ -416,6 +575,206 @@ try {
       surfaceKind,
       surfaceId,
     });
+  for (const connected of [
+    [],
+    ["alpha"],
+    ["beta"],
+    ["missing"],
+    ["alpha", "beta"],
+  ])
+    await observe(`observation source selection ${connected}`, {
+      op: "observation-source",
+      connected,
+    });
+  for (const input of [{ owner: other }, { project: "missing" }])
+    assert.equal(
+      await observe(`observation source isolation ${JSON.stringify(input)}`, {
+        op: "observation-source",
+        ...input,
+      }),
+      null,
+    );
+  for (const input of [
+    {},
+    { owner: other },
+    { worker: "foreign" },
+    { source: "/stale" },
+    { worktreePath: "/stale" },
+  ]) {
+    const context = await observe(
+      `filesystem observation context ${JSON.stringify(input)}`,
+      {
+        op: "observation-context",
+        worker: "alpha",
+        source: "/fixture/github-alpha",
+        worktreePath: "/fixture/github-alpha",
+        ...input,
+      },
+    );
+    assert.equal(context !== null, Object.keys(input).length === 0);
+  }
+  const activeOperation = (name, input = {}) =>
+    observe(name, {
+      op: "observation-operation",
+      worktree: "github-alpha-main",
+      ...input,
+    });
+  assert.equal(await activeOperation("no active Git observation"), null);
+  await seed(
+    `INSERT INTO git_operations(id,owner_id,project_id,worktree_id,worker_id,type,state,original_head,current_head,target_revision,pending_commits,total_steps,created_at,updated_at) VALUES('observed-operation',${literal(owner)},'github','github-alpha-main','alpha','rebase','queued','original','current','target','["one","two"]',2,${literal(stamp)},${literal(stamp)})`,
+  );
+  for (const state of [
+    "queued",
+    "running",
+    "conflicted",
+    "awaiting-user-action",
+    "completed",
+    "failed",
+    "aborted",
+  ]) {
+    await seed(
+      `UPDATE git_operations SET state=${literal(state)} WHERE id='observed-operation'`,
+    );
+    const active = await activeOperation(`Git observation state ${state}`);
+    assert.equal(
+      active !== null,
+      ["queued", "running", "conflicted", "awaiting-user-action"].includes(
+        state,
+      ),
+    );
+  }
+  await seed(
+    "UPDATE git_operations SET state='running',source_ref='source',source_revision='source-revision',target_ref='target-ref',checkpoint_ref='checkpoint' WHERE id='observed-operation'",
+  );
+  await activeOperation("Git observation non-null context");
+  for (const input of [
+    { owner: other },
+    { project: "missing" },
+    { worktree: "missing" },
+  ])
+    assert.equal(
+      await activeOperation(
+        `Git observation isolation ${JSON.stringify(input)}`,
+        input,
+      ),
+      null,
+    );
+  await seed("DELETE FROM git_operations WHERE id='observed-operation'");
+  for (const gitOnly of [true, false]) {
+    for (const worker of ["alpha", "beta", "foreign", "missing"])
+      await observe(`observation targets ${gitOnly} ${worker}`, {
+        op: "observation-targets",
+        worker,
+        gitOnly,
+      });
+    for (const limit of [0, 1, 256])
+      await observe(`observation bounded targets ${gitOnly} ${limit}`, {
+        op: "observation-targets",
+        worker: "alpha",
+        gitOnly,
+        limit,
+      });
+  }
+  const observationStarted = Date.now();
+  const paths = [
+    {
+      projectId: "github",
+      worktreeId: "github-alpha-main",
+      expectedSourcePath: "/fixture/github-alpha",
+      expectedWorktreePath: "/fixture/github-alpha",
+      sourcePath: "/resolved/source",
+      worktreePath: "/resolved/worktree",
+    },
+  ];
+  const reconcile = (name, values = paths, extra = {}) =>
+    observe(name, {
+      op: "observation-paths",
+      worker: "alpha",
+      paths: values,
+      ...extra,
+    });
+  assert.equal(await reconcile("empty observation paths", []), 0);
+  assert.equal(
+    await reconcile("foreign owner observation paths", paths, { owner: other }),
+    0,
+  );
+  assert.equal(
+    await reconcile("foreign worker observation paths", paths, {
+      worker: "foreign",
+    }),
+    0,
+  );
+  assert.equal(
+    await reconcile("stale observation expected path", [
+      { ...paths[0], expectedWorktreePath: "stale" },
+    ]),
+    0,
+  );
+  assert.equal(
+    await reconcile("observation source and worktree paths update"),
+    2,
+  );
+  assert.equal(await reconcile("observation stale retry cannot overwrite"), 0);
+  await observe(
+    "resolved observation context",
+    {
+      op: "worktree-context",
+      worktree: "github-alpha-main",
+    },
+    null,
+    [observationStarted, Date.now()],
+  );
+  const restore = {
+    ...paths[0],
+    expectedSourcePath: "/resolved/source",
+    expectedWorktreePath: "/resolved/worktree",
+    sourcePath: "/fixture/github-alpha",
+    worktreePath: "/fixture/github-alpha",
+  };
+  assert.equal(await reconcile("observation restore", [restore]), 2);
+  await seed(
+    `INSERT INTO project_worktrees(id,project_source_id,worker_id,name,absolute_path,display_path,is_primary,origin,lifecycle_state,created_at,updated_at) VALUES('observation-peer','github-alpha','alpha','peer','/peer','/peer',false,'cantrip','ready',${literal(stamp)},${literal(stamp)})`,
+  );
+  const peer = {
+    ...paths[0],
+    worktreeId: "observation-peer",
+    expectedWorktreePath: "/peer",
+    sourcePath: "/different/source",
+    worktreePath: "/resolved/peer",
+  };
+  assert.equal(
+    await reconcile(
+      "inconsistent source retains source but updates worktrees",
+      [paths[0], peer],
+    ),
+    2,
+  );
+  const observed = await observe(
+    "conflicting source context",
+    {
+      op: "worktree-context",
+      worktree: "github-alpha-main",
+    },
+    null,
+    [observationStarted, Date.now()],
+  );
+  assert.equal(observed.sourcePath, "/fixture/github-alpha");
+  assert.equal(observed.worktree.path, "/resolved/worktree");
+  await (
+    await import("./worktree-inventory-cases.mjs")
+  ).inventoryCases({ pair, seed, report, owner, other, stamp });
+  await (
+    await import("./worktree-state-cases.mjs")
+  ).worktreeStateCases({ pair, seed, report, owner, other, stamp });
+  await (
+    await import("./worktree-coordinator-cases.mjs")
+  ).worktreeCoordinatorCases({ pair, seed, report, owner, other, stamp });
+  await (
+    await import("./run-runtime-cases.mjs")
+  ).runRuntimeCases({ pair, seed, report, owner, other, stamp });
+  await (
+    await import("./run-runtime-contention-cases.mjs")
+  ).runRuntimeContentionCases({ pair, seed, report, owner });
 } catch (e) {
   failure = e;
   report.failure = { message: e.message, stack: e.stack };

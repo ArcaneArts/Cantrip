@@ -19,6 +19,7 @@ pub mod project_shares;
 pub mod projects;
 pub mod relay;
 pub mod remote_surfaces;
+pub mod run_configurations;
 pub mod settings;
 pub mod terminals;
 mod text;

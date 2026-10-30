@@ -63,6 +63,13 @@ on:
       - cantrip_server/src/operations/metrics.ts
       - cantrip_server/src/db/repository/workers.ts
       - cantrip_server/src/db/repository/projects.ts
+      - cantrip_server/src/db/repository/run-configuration-state.ts
+      - cantrip_server/src/db/repository/worktree-*.ts
+      - cantrip_server/src/worktrees/**
+      - cantrip_server/src/app/runtime/run-configuration-runtime.ts
+      - cantrip_server/src/app/shared/run-configuration-secrets.ts
+      - cantrip_server/src/app/routes/project-worktree*.ts
+      - cantrip_server/src/app/routes/repository-operations.ts
       - cantrip_server/src/db/repository/placement.ts
       - cantrip_server/src/db/repository/execution-targets.ts
       - cantrip_server/src/execution-targets/**
@@ -238,6 +245,14 @@ jobs:
         run: node --import tsx scripts/server-rust/project-surface-http-compatibility.mjs --database postgres --report .qa/rust-server/project-surface-http-compatibility-postgres.json
       - name: Project surface pin races, retarget fencing and admitted shutdown
         run: node --import tsx scripts/server-rust/project-surface-lifetimes.mjs --report .qa/rust-server/project-surface-lifetimes.json
+      - name: Git, worktree and Run wire validation contracts
+        run: node scripts/server-rust/cargo.mjs test --test worktree_contracts -- --nocapture
+      - name: Git, worktrees and Run admission, retirement and disconnect with native PGlite
+        run: node --import tsx scripts/server-rust/project-git-http-compatibility.mjs --database pglite --report .qa/rust-server/project-git-http-pglite.json
+      - name: Git, worktrees and Run admission, retirement and disconnect with private PostgreSQL
+        run: node --import tsx scripts/server-rust/project-git-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/project-git-http-bundled.json
+      - name: Git, worktrees and Run admission, retirement and disconnect with external PostgreSQL
+        run: node --import tsx scripts/server-rust/project-git-http-compatibility.mjs --database postgres --report .qa/rust-server/project-git-http-external.json
       - name: Legacy pane query statements match the actual TypeScript repository
         run: node --import tsx scripts/server-rust/layout-query-manifest.mjs --check
       - name: Legacy pane protocol and exact validation errors
