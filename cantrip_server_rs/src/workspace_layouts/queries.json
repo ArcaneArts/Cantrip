@@ -91,6 +91,7 @@
       "hasPendingPlanQuestion",
       "hasUnreadCompletion",
       "archivedAt",
+      "lastUsedAt",
       "createdAt",
       "updatedAt"
     ],
