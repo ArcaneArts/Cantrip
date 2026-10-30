@@ -12,6 +12,30 @@ feature set.
 
 Status: **implementation in progress; not a deployable replacement**.
 
+## Execution-target catalog stack usage (verification in progress)
+
+Windows CI run `41065255700` overflowed the 1 MiB repository probe during the
+execution-target suite. The catalog joined eleven inline database-read futures;
+its future measured 62,088 bytes on local macOS. Boxing those component futures
+reduces the same measured catalog future to 600 bytes while retaining concurrent
+reads, mapper errors and result semantics. The unchanged local baseline passed
+at 1 MiB, so that measurement is not a Windows reproduction or readiness claim.
+
+The target repository harness now retains the last submitted operation for each
+runtime, preserves the original failure when shutdown also fails, and saves the
+report and disposable database root on failure. Previously a cleanup exception
+prevented the Windows failure report from being written. The 1 MiB probe remains
+unchanged; supported-platform verification is still required.
+
+All 431 repository cases pass locally on each of native PGlite, private
+PostgreSQL and external PostgreSQL at 1 MiB (`target-stack-repository-*-v1.json`).
+Strict all-target Clippy and Rust formatting pass. An injected SIGKILL during a
+real catalog request verifies that the original process error, last operation,
+shutdown error, 31 prior cases and database root remain available in the saved
+report (`target-stack-report-fault-v1.json` and
+`target-stack-report-fault-verified.json`). That intentional failure verifies
+report retention; it is not counted as a passing compatibility run.
+
 ## Ordered worktree observation comparison
 
 Linux run `41068582355` exposed an unordered test boundary: inventory mutation

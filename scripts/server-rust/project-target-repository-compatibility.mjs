@@ -31,18 +31,28 @@ const pair = [],
     cases: [],
   };
 let executable, pg, failure;
-const open = (kind, i) =>
-  repositoryFixture({
+const open = async (kind, i) => {
+  const repo = await repositoryFixture({
     kind,
     executable,
     root,
     databaseMode,
     databaseUrl: urls[i],
   });
+  const request = repo.request.bind(repo);
+  repo.request = (operation) => {
+    report.lastOperations ??= {};
+    report.lastOperations[kind] = operation;
+    return request(operation);
+  };
+  return repo;
+};
 const seed = async (sql) => {
+  report.lastOperation = { name: "seed", input: { op: "sql", sql } };
   for (const repo of pair) await repo.seed(sql);
 };
 const negativeSeed = async (name, sql) => {
+  report.lastOperation = { name, input: { op: "sql", sql } };
   const expected = await pair[0].request({ op: "sql", sql }),
     actual = await pair[1].request({ op: "sql", sql });
   report.databaseCases ??= [];
@@ -61,6 +71,7 @@ const observe = async (name, operation, code = null, updatedWindow = null) => {
     connected: ["alpha", "beta", "�"],
     ...operation,
   };
+  report.lastOperation = { name, input };
   const expected = await pair[0].request(input),
     actual = await pair[1].request(input);
   report.cases.push({ label: name, input, expected, actual });
@@ -782,9 +793,31 @@ try {
   failure = e;
   report.failure = { message: e.message, stack: e.stack };
 } finally {
-  for (const repo of pair) await repo.close();
-  await pg?.close();
-  await rm(root, { recursive: true, force: true });
+  for (const [index, repo] of pair.entries()) {
+    try {
+      await repo.close();
+    } catch (error) {
+      report.cleanupFailures ??= [];
+      report.cleanupFailures.push({
+        runtime: index === 0 ? "node" : "rust",
+        message: error.message,
+        diagnostics: repo.diagnostics(),
+      });
+      failure ??= error;
+    }
+  }
+  try {
+    await pg?.close();
+  } catch (error) {
+    report.cleanupFailures ??= [];
+    report.cleanupFailures.push({
+      runtime: "postgres",
+      message: error.message,
+    });
+    failure ??= error;
+  }
+  if (failure) report.retainedRoot = root;
+  else await rm(root, { recursive: true, force: true });
   if (reportPath) {
     await mkdir(path.dirname(path.resolve(reportPath)), { recursive: true });
     await writeFile(reportPath, JSON.stringify(report, null, 2) + "\n");
