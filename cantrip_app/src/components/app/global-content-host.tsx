@@ -988,7 +988,7 @@ export function GlobalContentHost({
                   ) : null}
                 </div>
               ) : (
-                <EmptyWorkspace />
+                <EmptyWorkspace projectName={selectedProject?.name} />
               )}
             </ProjectOverviewHost>
           ) : (

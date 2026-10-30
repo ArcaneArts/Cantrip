@@ -549,7 +549,7 @@ export function genericPaneBody(
         style={nested ? undefined : { gridArea: presentation.gridArea }}
       >
         {presentation.surfaces.length === 0 ? (
-          <EmptyWorkspace />
+          <EmptyWorkspace projectName={bindings.selectedProject?.name} />
         ) : (
           "Loading pane…"
         )}
@@ -1195,7 +1195,7 @@ export function ProjectWorkspaceFrame({
               projectId={bindings.selectedProject.id}
               surfaces={[]}
             />
-            <EmptyWorkspace />
+            <EmptyWorkspace projectName={bindings.selectedProject?.name} />
           </div>
         ) : null}
         {docked && centerRoot && !fullRegion ? (
