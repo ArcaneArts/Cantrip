@@ -4,7 +4,7 @@ use super::{
     strict_equal, values,
 };
 use crate::{
-    database::{Database, Row, Transaction},
+    database::{Database, Executor, Row, Transaction},
     wire::{Value, coercion::truthy, value::json},
 };
 use anyhow::Result;
@@ -234,6 +234,13 @@ async fn resolve(
     fields: &mut Value,
     resource: &Value,
 ) -> Result<Option<Value>> {
+    resolve_on(Executor::Transaction(tx), fields, resource).await
+}
+pub(crate) async fn resolve_on(
+    executor: Executor<'_, '_>,
+    fields: &mut Value,
+    resource: &Value,
+) -> Result<Option<Value>> {
     let Some(kind) =
         queries::definition(&resource["definitionId"]).and_then(|d| d.tab_kind.as_deref())
     else {
@@ -242,7 +249,7 @@ async fn resolve(
     fields["resource"] = resource["resourceId"].clone();
     if resource["definitionId"] == "project.file"
         && !Query::new("resolve_document", fields)?
-            .run(tx)
+            .run_on(executor)
             .await?
             .is_empty()
     {
@@ -258,7 +265,7 @@ async fn resolve(
     };
     fields["tabKind"] = json!(kind);
     Query::new(query, fields)?
-        .run(tx)
+        .run_on(executor)
         .await?
         .first()
         .map(|row| {

@@ -1481,6 +1481,326 @@
         "remaining": [
           "Current-head supported-platform and packaged acceptance; full native window/UI recovery and shared coordination."
         ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/projects/:projectId/builtin-surfaces/:definitionId/worktree",
+        "implementation": "cantrip_server_rs/src/http/pane_layouts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "scripts/server-rust/pane-http-compatibility.mjs",
+          "scripts/server-rust/pane-http-lifetimes.mjs",
+          "cantrip_server_rs/tests/pane_contracts.rs",
+          "scripts/server-rust/actual-workspace-client.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform compatibility and packaged desktop acceptance."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/panes",
+        "implementation": "cantrip_server_rs/src/http/pane_layouts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "scripts/server-rust/pane-http-compatibility.mjs",
+          "scripts/server-rust/pane-http-lifetimes.mjs",
+          "cantrip_server_rs/tests/pane_contracts.rs",
+          "scripts/server-rust/actual-workspace-client.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform compatibility and packaged desktop acceptance."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/projects/:projectId/panes/:paneId",
+        "implementation": "cantrip_server_rs/src/http/pane_layouts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "scripts/server-rust/pane-http-compatibility.mjs",
+          "scripts/server-rust/pane-http-lifetimes.mjs",
+          "cantrip_server_rs/tests/pane_contracts.rs",
+          "scripts/server-rust/actual-workspace-client.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform compatibility and packaged desktop acceptance."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/projects/:projectId/panes/:paneId/members/order",
+        "implementation": "cantrip_server_rs/src/http/pane_layouts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "scripts/server-rust/pane-http-compatibility.mjs",
+          "scripts/server-rust/pane-http-lifetimes.mjs",
+          "cantrip_server_rs/tests/pane_contracts.rs",
+          "scripts/server-rust/actual-workspace-client.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform compatibility and packaged desktop acceptance."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/projects/:projectId/panes/member",
+        "implementation": "cantrip_server_rs/src/http/pane_layouts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "scripts/server-rust/pane-http-compatibility.mjs",
+          "scripts/server-rust/pane-http-lifetimes.mjs",
+          "cantrip_server_rs/tests/pane_contracts.rs",
+          "scripts/server-rust/actual-workspace-client.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform compatibility and packaged desktop acceptance."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/panes/member/close",
+        "implementation": "cantrip_server_rs/src/http/pane_layouts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "scripts/server-rust/pane-http-compatibility.mjs",
+          "scripts/server-rust/pane-http-lifetimes.mjs",
+          "cantrip_server_rs/tests/pane_contracts.rs",
+          "scripts/server-rust/actual-workspace-client.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform compatibility and packaged desktop acceptance."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/panes/member/open",
+        "implementation": "cantrip_server_rs/src/http/pane_layouts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "scripts/server-rust/pane-http-compatibility.mjs",
+          "scripts/server-rust/pane-http-lifetimes.mjs",
+          "cantrip_server_rs/tests/pane_contracts.rs",
+          "scripts/server-rust/actual-workspace-client.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform compatibility and packaged desktop acceptance."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/projects/:projectId/panes/member/presentation",
+        "implementation": "cantrip_server_rs/src/http/pane_layouts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "scripts/server-rust/pane-http-compatibility.mjs",
+          "scripts/server-rust/pane-http-lifetimes.mjs",
+          "cantrip_server_rs/tests/pane_contracts.rs",
+          "scripts/server-rust/actual-workspace-client.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform compatibility and packaged desktop acceptance."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/projects/:projectId/panes/member/split",
+        "implementation": "cantrip_server_rs/src/http/pane_layouts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "scripts/server-rust/pane-http-compatibility.mjs",
+          "scripts/server-rust/pane-http-lifetimes.mjs",
+          "cantrip_server_rs/tests/pane_contracts.rs",
+          "scripts/server-rust/actual-workspace-client.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform compatibility and packaged desktop acceptance."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/projects/:projectId/panes/order",
+        "implementation": "cantrip_server_rs/src/http/pane_layouts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "scripts/server-rust/pane-http-compatibility.mjs",
+          "scripts/server-rust/pane-http-lifetimes.mjs",
+          "cantrip_server_rs/tests/pane_contracts.rs",
+          "scripts/server-rust/actual-workspace-client.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform compatibility and packaged desktop acceptance."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/projects/:projectId/panes/splits/:splitId",
+        "implementation": "cantrip_server_rs/src/http/pane_layouts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "scripts/server-rust/pane-http-compatibility.mjs",
+          "scripts/server-rust/pane-http-lifetimes.mjs",
+          "cantrip_server_rs/tests/pane_contracts.rs",
+          "scripts/server-rust/actual-workspace-client.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform compatibility and packaged desktop acceptance."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/surface-launchers",
+        "implementation": "cantrip_server_rs/src/http/pane_layouts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "scripts/server-rust/pane-http-compatibility.mjs",
+          "scripts/server-rust/pane-http-lifetimes.mjs",
+          "cantrip_server_rs/tests/pane_contracts.rs",
+          "scripts/server-rust/actual-workspace-client.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform compatibility and packaged desktop acceptance."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/projects/:projectId/surface-launchers",
+        "implementation": "cantrip_server_rs/src/http/pane_layouts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "scripts/server-rust/pane-http-compatibility.mjs",
+          "scripts/server-rust/pane-http-lifetimes.mjs",
+          "cantrip_server_rs/tests/pane_contracts.rs",
+          "scripts/server-rust/actual-workspace-client.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform compatibility and packaged desktop acceptance."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/tab-groups",
+        "implementation": "cantrip_server_rs/src/http/pane_layouts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "scripts/server-rust/pane-http-compatibility.mjs",
+          "scripts/server-rust/pane-http-lifetimes.mjs",
+          "cantrip_server_rs/tests/pane_contracts.rs",
+          "scripts/server-rust/actual-workspace-client.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform compatibility and packaged desktop acceptance."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/projects/:projectId/tab-groups/:groupId",
+        "implementation": "cantrip_server_rs/src/http/pane_layouts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "scripts/server-rust/pane-http-compatibility.mjs",
+          "scripts/server-rust/pane-http-lifetimes.mjs",
+          "cantrip_server_rs/tests/pane_contracts.rs",
+          "scripts/server-rust/actual-workspace-client.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform compatibility and packaged desktop acceptance."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/projects/:projectId/tab-groups/:groupId/members/order",
+        "implementation": "cantrip_server_rs/src/http/pane_layouts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "scripts/server-rust/pane-http-compatibility.mjs",
+          "scripts/server-rust/pane-http-lifetimes.mjs",
+          "cantrip_server_rs/tests/pane_contracts.rs",
+          "scripts/server-rust/actual-workspace-client.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform compatibility and packaged desktop acceptance."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/projects/:projectId/tab-groups/member",
+        "implementation": "cantrip_server_rs/src/http/pane_layouts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "scripts/server-rust/pane-http-compatibility.mjs",
+          "scripts/server-rust/pane-http-lifetimes.mjs",
+          "cantrip_server_rs/tests/pane_contracts.rs",
+          "scripts/server-rust/actual-workspace-client.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform compatibility and packaged desktop acceptance."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/tab-groups/member/close",
+        "implementation": "cantrip_server_rs/src/http/pane_layouts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "scripts/server-rust/pane-http-compatibility.mjs",
+          "scripts/server-rust/pane-http-lifetimes.mjs",
+          "cantrip_server_rs/tests/pane_contracts.rs",
+          "scripts/server-rust/actual-workspace-client.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform compatibility and packaged desktop acceptance."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/tab-groups/member/open",
+        "implementation": "cantrip_server_rs/src/http/pane_layouts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "scripts/server-rust/pane-http-compatibility.mjs",
+          "scripts/server-rust/pane-http-lifetimes.mjs",
+          "cantrip_server_rs/tests/pane_contracts.rs",
+          "scripts/server-rust/actual-workspace-client.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform compatibility and packaged desktop acceptance."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/projects/:projectId/tab-groups/order",
+        "implementation": "cantrip_server_rs/src/http/pane_layouts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "scripts/server-rust/pane-http-compatibility.mjs",
+          "scripts/server-rust/pane-http-lifetimes.mjs",
+          "cantrip_server_rs/tests/pane_contracts.rs",
+          "scripts/server-rust/actual-workspace-client.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform compatibility and packaged desktop acceptance."
+        ]
       }
     ]
   },
@@ -3376,6 +3696,22 @@
         "Current-head supported-platform acceptance, native desktop window hosting and complete editor/UI recovery.",
         "Shared coordination and remaining project-workspace CRUD/resource lifecycle consumers.",
         "All migration/post-write rollback, packaging/Winterhold rehearsal/performance/default cutover and Node removal requirements."
+      ]
+    },
+    "legacyPaneLayouts": {
+      "status": "implemented-pending-platform-acceptance",
+      "implementation": "cantrip_server_rs/src/pane_layouts/",
+      "evidence": [
+        "scripts/server-rust/layout-repository-compatibility.mjs",
+        "scripts/server-rust/pane-http-compatibility.mjs",
+        "scripts/server-rust/pane-http-lifetimes.mjs",
+        "cantrip_server_rs/tests/pane_contracts.rs",
+        "scripts/server-rust/actual-workspace-client.mjs"
+      ],
+      "validatedSubset": "Local macOS: all three stores pass 107 repository comparisons and ten durable snapshots; all nine authentication/storage HTTP profiles pass with 59/62/64 observations per runtime; 13,823 exact schema/error cases. Actual PostgreSQL locks prove three revision races, standalone versus caller-transaction read boundaries, cleanup before failed claim and caller-aborted insert completion through shutdown. Existing browser normal workspace bootstrap and full worker encrypted editor handoff/restart pass all three stores, 20 steps per runtime.",
+      "remaining": [
+        "Current-head Linux/macOS/Windows results and packaged native window/UI acceptance.",
+        "Full project/workspace CRUD and remaining resource/execution domains remain outside this completed API domain."
       ]
     }
   },

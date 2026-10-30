@@ -68,6 +68,65 @@ try {
           default:
             throw new Error("Unknown browser operation");
         }
+      } else if (request.op.startsWith("layout-")) {
+        const repo = database.repository.tabLayouts;
+        const { owner, project, subject, input } = request;
+        switch (request.op) {
+          case "layout-get":
+            value = await repo.get(owner, project);
+            break;
+          case "layout-title":
+            value = await repo.updatePane(owner, project, subject, input);
+            break;
+          case "layout-pane-order":
+            value = await repo.reorderPanes(owner, project, input);
+            break;
+          case "layout-legacy-order":
+            value = await repo.reorderLegacyPanes(owner, project, input);
+            break;
+          case "layout-member-order":
+            value = await repo.reorderMembers(owner, project, subject, input);
+            break;
+          case "layout-dock":
+            value = await repo.updateDockPresentation(owner, project, input);
+            break;
+          case "layout-resize":
+            value = await repo.resizeCenterSplit(
+              owner,
+              project,
+              subject,
+              input,
+            );
+            break;
+          case "layout-move":
+            value = await repo.moveMember(owner, project, input);
+            break;
+          case "layout-split":
+            value = await repo.splitMember(owner, project, input);
+            break;
+          case "layout-launchers":
+            value = await repo.listSurfaceLaunchers(owner, project);
+            break;
+          case "layout-pin":
+            value = await repo.setSurfaceLauncherPin(owner, project, input);
+            break;
+          case "layout-open":
+            value = await repo.openSurfaceView(owner, project, input);
+            break;
+          case "layout-close":
+            value = await repo.closeSurfaceView(owner, project, input);
+            break;
+          case "layout-builtin-worktree":
+            value = await repo.updateBuiltInSurfaceWorktree(
+              owner,
+              project,
+              subject,
+              input.worktreeId,
+            );
+            break;
+          default:
+            throw new Error("Unknown pane fixture operation");
+        }
       } else if (request.op.startsWith("workspace-")) {
         const repo = database.repository.workspaceLayouts;
         const input =
@@ -403,7 +462,8 @@ try {
           ...((request.op.startsWith("tunnel-") ||
             request.op.startsWith("browser-") ||
             request.op.startsWith("document-") ||
-            request.op.startsWith("workspace-")) &&
+            request.op.startsWith("workspace-") ||
+            request.op.startsWith("layout-")) &&
           error.cause?.code
             ? { databaseCode: error.cause.code }
             : {}),
@@ -414,7 +474,8 @@ try {
                 ...(error.code ? { code: error.code } : {}),
               }
             : {}),
-          ...(request.op.startsWith("workspace-")
+          ...(request.op.startsWith("workspace-") ||
+          request.op.startsWith("layout-")
             ? {
                 errorName: error.name,
                 ...(error.code ? { code: error.code } : {}),
@@ -425,7 +486,8 @@ try {
             request.op.startsWith("terminal-") ||
             request.op.startsWith("browser-") ||
             request.op.startsWith("document-") ||
-            request.op.startsWith("workspace-")
+            request.op.startsWith("workspace-") ||
+            request.op.startsWith("layout-")
               ? error.message
               : (error.cause?.message ?? error.message),
           ...(request.op.startsWith("folder-")

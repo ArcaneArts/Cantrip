@@ -23,6 +23,7 @@ mod folders;
 mod live_socket;
 mod middleware;
 mod on_response;
+mod pane_layouts;
 mod policies;
 mod project_shares;
 mod projects;
@@ -139,6 +140,7 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(projects::routes())
         .merge(folders::routes())
         .merge(file_documents::routes())
+        .merge(pane_layouts::routes())
         .merge(workspace_layouts::routes())
         .merge(repository_operations::routes())
         .merge(settings::routes())

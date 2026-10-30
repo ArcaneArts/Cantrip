@@ -1,6 +1,6 @@
 //! Actual Source statements, positional bindings and diagnostic identities.
 use crate::{
-    database::{Row, Transaction, query_error},
+    database::{Executor, Row, Transaction, query_error},
     wire::Value,
 };
 use anyhow::{Context, Result};
@@ -135,13 +135,16 @@ impl Query {
         })
     }
     pub async fn run(&self, tx: &Transaction<'_>) -> Result<Vec<Row>> {
+        self.run_on(Executor::Transaction(tx)).await
+    }
+    pub async fn run_on(&self, executor: Executor<'_, '_>) -> Result<Vec<Row>> {
         let parameters = self
             .parameters
             .iter()
             .map(|v| v as &(dyn postgres_types::ToSql + Sync))
             .collect::<Vec<_>>();
         query_error::context(
-            tx.query(&self.sql, &parameters).await,
+            executor.query(&self.sql, &parameters).await,
             &self.source,
             &self.diagnostic,
         )

@@ -4,18 +4,33 @@ import assert from "node:assert/strict";
 
 export async function actualWorkspaceClient({ page, document, result }) {
   const requests = [];
+  const capturedRequests = new Map();
   const capture = (request) => {
-    if (new URL(request.url()).pathname.includes("/workspace-layouts/"))
-      requests.push({
-        path: new URL(request.url()).pathname,
+    const path = new URL(request.url()).pathname;
+    if (path.includes("/workspace-layouts/") || path.endsWith("/panes")) {
+      const value = {
+        path,
+        method: request.method(),
         body: request.postData(),
-      });
+      };
+      requests.push(value);
+      capturedRequests.set(request, value);
+    }
+  };
+  const captureResponse = (response) => {
+    const value = capturedRequests.get(response.request());
+    if (value) value.status = response.status();
   };
   page.on("request", capture);
+  page.on("response", captureResponse);
   try {
     const outcome = await page.evaluate(async (document) => {
       const { connectWorkspaceCommands } =
         await import("/src/lib/api/workspace-layouts.ts");
+      const { bootstrapWorkspace } =
+        await import("/src/lib/workspace-bootstrap.ts");
+      const { emptyWorkspaceSelection } =
+        await import("/src/lib/workspace-selection.ts");
       const { getClientSessionIdentitySnapshot } =
         await import("/src/lib/client-session.ts");
       const { workspaceRendererLifetime } =
@@ -27,21 +42,19 @@ export async function actualWorkspaceClient({ page, document, result }) {
       const { EditorDocumentSession, editorDocumentId } =
         await import("/src/components/editor/document-session.ts");
       const docs = await import("/src/lib/api/file-documents.ts");
-      const identity = getClientSessionIdentitySnapshot(),
-        workspaceId = "actual-device-" + crypto.randomUUID(),
-        mainWindowId = "main";
+      const identity = getClientSessionIdentitySnapshot();
+      // Use the shell's complete path and its real durable installation,
+      // legacy pane read, popout discovery and renderer lifetime defaults.
+      const main = await bootstrapWorkspace(
+        document.projectId,
+        emptyWorkspaceSelection(document.projectId),
+      );
+      const { workspaceId, mainWindowId } = main;
       const scope = {
         serverId: identity.serverId,
         ownerId: identity.userId,
         workspaceId,
       };
-      const main = await connectWorkspaceCommands(
-        document.projectId,
-        workspaceId,
-        mainWindowId,
-        async () => ({ mainWindowId }),
-        await workspaceRendererLifetime({ ...scope, windowId: mainWindowId }),
-      );
       let destination, sourceChannel, destinationChannel;
       try {
         await main.controller.openResource(
@@ -248,6 +261,34 @@ export async function actualWorkspaceClient({ page, document, result }) {
         main.dispose();
       }
     }, document);
+    assert.match(outcome.workspaceId, /^workspace:v1:[a-f0-9]{64}$/u);
+    assert.equal(outcome.mainWindowId, "main:" + outcome.workspaceId);
+    const legacyPath = `/api/projects/${encodeURIComponent(document.projectId)}/panes`;
+    const firstRead = requests.findIndex(
+      (r) => r.method === "GET" && r.path.includes("/workspace-layouts/"),
+    );
+    const legacyRead = requests.findIndex(
+      (r) => r.method === "GET" && r.path === legacyPath,
+    );
+    const seed = requests.findIndex(
+      (r) => r.method === "POST" && r.path.endsWith("/seed"),
+    );
+    assert.ok(firstRead >= 0 && legacyRead > firstRead && seed > legacyRead);
+    assert.equal(
+      requests[firstRead].status,
+      404,
+      "normal bootstrap discovers a missing device workspace",
+    );
+    assert.equal(
+      requests[legacyRead].status,
+      200,
+      "normal bootstrap reads real server-owned panes",
+    );
+    assert.equal(
+      requests[seed].status,
+      200,
+      "normal bootstrap seeds the durable device identity",
+    );
     const pending = requests.map((request) =>
       request.body ? JSON.parse(request.body) : request.path,
     );
@@ -276,29 +317,37 @@ export async function actualWorkspaceClient({ page, document, result }) {
     );
     assert.equal(outcome.restoreCount, 1);
     result.workspaceClient = {
+      normalBootstrap: true,
+      bootstrapRequests: [firstRead, legacyRead, seed].map((i) => ({
+        method: requests[i].method,
+        status: requests[i].status,
+      })),
       requestCount: requests.length,
       draftBytes: outcome.draftBytes,
       queuedCommands: outcome.queuedCommands,
       restoreCount: outcome.restoreCount,
     };
     result.steps.push(
-      "existing workspace client seeds server-owned state, attaches renderer lifetime, serializes commands and pins the dirty file preview",
+      "normal shell bootstrap uses durable installation identity, reads legacy panes, discovers existing popouts and seeds ownership before attaching the renderer; client serializes commands and pins the dirty file preview",
       "actual encrypted BroadcastChannel transfers editor text, undo history, selection and scroll before server ownership commits; HTTP contains no document path or draft",
     );
     return outcome;
   } finally {
     page.off("request", capture);
+    page.off("response", captureResponse);
   }
 }
 
 export async function retainedWorkspaceClient({ page, workspace, result }) {
   const retained = await page.evaluate(async (workspace) => {
-    const { workspaceLayoutTransport, connectWorkspaceCommands } =
+    const { workspaceLayoutTransport } =
       await import("/src/lib/api/workspace-layouts.ts");
+    const { bootstrapWorkspace } =
+      await import("/src/lib/workspace-bootstrap.ts");
+    const { emptyWorkspaceSelection } =
+      await import("/src/lib/workspace-selection.ts");
     const { getClientSessionIdentitySnapshot } =
       await import("/src/lib/client-session.ts");
-    const { workspaceRendererLifetime } =
-      await import("/src/lib/workspace-renderer-lifetime.ts");
     const identity = getClientSessionIdentitySnapshot(),
       transport = workspaceLayoutTransport(
         workspace.projectId,
@@ -312,19 +361,16 @@ export async function retainedWorkspaceClient({ page, workspace, result }) {
     )
       throw new Error("Server restart lost the endpoint's unsaved draft");
     const previous = layout.windows.find((w) => w.id === workspace.windowId);
-    const connection = await connectWorkspaceCommands(
+    const connection = await bootstrapWorkspace(
       workspace.projectId,
-      workspace.workspaceId,
+      emptyWorkspaceSelection(workspace.projectId),
       workspace.windowId,
-      undefined,
-      await workspaceRendererLifetime({
-        serverId: identity.serverId,
-        ownerId: identity.userId,
-        workspaceId: workspace.workspaceId,
-        windowId: workspace.windowId,
-      }),
     );
     try {
+      if (connection.workspaceId !== workspace.workspaceId)
+        throw new Error(
+          "Normal restart bootstrap changed the durable device identity",
+        );
       const current = connection.controller
         .getSnapshot()
         .authoritative.windows.find((w) => w.id === workspace.windowId);
