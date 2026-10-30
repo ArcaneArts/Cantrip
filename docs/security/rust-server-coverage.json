@@ -2143,6 +2143,181 @@
           "Current-head supported-platform and packaged desktop acceptance.",
           "Actual GitHub-backed Issues/PR/Actions UI flows and broader project worktree lifecycle remain required."
         ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/worktrees",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/worktrees.rs",
+          "cantrip_server_rs/src/projects/worktrees.rs"
+        ],
+        "evidence": [
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/worktree-coordinator-cases.mjs",
+          "scripts/server-rust/actual-project-worktrees.mjs",
+          "scripts/server-rust/actual-folder-client.mjs --worktrees",
+          "scripts/server-rust/actual-run-retirement.mjs"
+        ],
+        "remaining": [
+          "Batched/concurrent retirement, additional mutation-failure/disconnect recovery, supported-platform and packaged acceptance. Local real-browser/full-worker lifecycle including actual process retirement passes on all three stores."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/worktrees.rs",
+          "cantrip_server_rs/src/projects/worktrees.rs"
+        ],
+        "evidence": [
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/worktree-coordinator-cases.mjs",
+          "scripts/server-rust/actual-project-worktrees.mjs",
+          "scripts/server-rust/actual-folder-client.mjs --worktrees",
+          "scripts/server-rust/actual-run-retirement.mjs"
+        ],
+        "remaining": [
+          "Batched/concurrent retirement, additional mutation-failure/disconnect recovery, supported-platform and packaged acceptance. Local real-browser/full-worker lifecycle including actual process retirement passes on all three stores."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees/reconcile",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/worktrees.rs",
+          "cantrip_server_rs/src/projects/worktrees.rs"
+        ],
+        "evidence": [
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/worktree-coordinator-cases.mjs",
+          "scripts/server-rust/actual-project-worktrees.mjs",
+          "scripts/server-rust/actual-folder-client.mjs --worktrees",
+          "scripts/server-rust/actual-run-retirement.mjs"
+        ],
+        "remaining": [
+          "Batched/concurrent retirement, additional mutation-failure/disconnect recovery, supported-platform and packaged acceptance. Local real-browser/full-worker lifecycle including actual process retirement passes on all three stores."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees/prune",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/worktrees.rs",
+          "cantrip_server_rs/src/projects/worktrees.rs"
+        ],
+        "evidence": [
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/worktree-coordinator-cases.mjs",
+          "scripts/server-rust/actual-project-worktrees.mjs",
+          "scripts/server-rust/actual-folder-client.mjs --worktrees",
+          "scripts/server-rust/actual-run-retirement.mjs"
+        ],
+        "remaining": [
+          "Batched/concurrent retirement, additional mutation-failure/disconnect recovery, supported-platform and packaged acceptance. Local real-browser/full-worker lifecycle including actual process retirement passes on all three stores."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/lock",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/worktrees.rs",
+          "cantrip_server_rs/src/projects/worktrees.rs"
+        ],
+        "evidence": [
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/worktree-coordinator-cases.mjs",
+          "scripts/server-rust/actual-project-worktrees.mjs",
+          "scripts/server-rust/actual-folder-client.mjs --worktrees",
+          "scripts/server-rust/actual-run-retirement.mjs"
+        ],
+        "remaining": [
+          "Batched/concurrent retirement, additional mutation-failure/disconnect recovery, supported-platform and packaged acceptance. Local real-browser/full-worker lifecycle including actual process retirement passes on all three stores."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/unlock",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/worktrees.rs",
+          "cantrip_server_rs/src/projects/worktrees.rs"
+        ],
+        "evidence": [
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/worktree-coordinator-cases.mjs",
+          "scripts/server-rust/actual-project-worktrees.mjs",
+          "scripts/server-rust/actual-folder-client.mjs --worktrees",
+          "scripts/server-rust/actual-run-retirement.mjs"
+        ],
+        "remaining": [
+          "Batched/concurrent retirement, additional mutation-failure/disconnect recovery, supported-platform and packaged acceptance. Local real-browser/full-worker lifecycle including actual process retirement passes on all three stores."
+        ]
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/worktrees.rs",
+          "cantrip_server_rs/src/projects/worktrees/removal.rs",
+          "cantrip_server_rs/src/run_configurations/retirement.rs"
+        ],
+        "evidence": [
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-runtime-cases.mjs",
+          "scripts/server-rust/run-runtime-admission-cases.mjs",
+          "scripts/server-rust/run-runtime-contention-cases.mjs",
+          "scripts/server-rust/actual-project-worktrees.mjs",
+          "scripts/server-rust/actual-folder-client.mjs --worktrees",
+          "scripts/server-rust/actual-run-retirement.mjs"
+        ],
+        "remaining": [
+          "Batched/concurrent retirement, additional mutation-failure/disconnect recovery, supported-platform and packaged acceptance. Local real-browser/full-worker lifecycle including actual process retirement passes on all three stores."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/run-configuration-runtimes/status",
+        "implementation": "cantrip_server_rs/src/http/run_configurations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": ["scripts/server-rust/project-git-http-compatibility.mjs"],
+        "remaining": [
+          "Full client/worker Run lifecycle and supported-platform acceptance remain required."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/run-configuration-runtimes/output",
+        "implementation": "cantrip_server_rs/src/http/run_configurations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": ["scripts/server-rust/project-git-http-compatibility.mjs"],
+        "remaining": [
+          "Full client/worker Run lifecycle and supported-platform acceptance remain required."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/run-configuration-runtimes/operations",
+        "implementation": [
+          "cantrip_server_rs/src/http/run_configurations.rs",
+          "cantrip_server_rs/src/run_configurations/lifecycle.rs"
+        ],
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-lifecycle-http-cases.mjs",
+          "scripts/server-rust/run-definition-contract-oracle.mjs",
+          "scripts/server-rust/actual-run-retirement.mjs",
+          "scripts/server-rust/run-disconnect-http-case.mjs"
+        ],
+        "remaining": [
+          "Additional failure boundaries, definition/secret administration and supported-platform/package acceptance. Actual local browser/full-worker start and deletion retirement pass all three stores."
+        ]
       }
     ]
   },
@@ -2311,6 +2486,66 @@
         ],
         "remaining": [
           "Shared multi-instance routing and supported-platform/packaged acceptance."
+        ]
+      },
+      {
+        "command": "project.run-configuration-runtime.stop",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/run_configurations/retirement.rs",
+        "evidence": [
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-runtime-contract-oracle.mjs"
+        ],
+        "remaining": [
+          "Additional reconciliation identity mismatch and contention cases; actual worker runtime, platform and packaged acceptance."
+        ]
+      },
+      {
+        "command": "project.run-configuration-runtime.reconcile",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/run_configurations/observations.rs",
+        "evidence": [
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-runtime-contract-oracle.mjs"
+        ],
+        "remaining": [
+          "Additional reconciliation identity mismatch and contention cases; actual worker runtime, platform and packaged acceptance."
+        ]
+      },
+      {
+        "command": "project.run-configuration-runtime.start",
+        "implementation": "cantrip_server_rs/src/run_configurations/lifecycle.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-lifecycle-http-cases.mjs"
+        ],
+        "remaining": [
+          "Full definition administration, failure-boundary and platform acceptance."
+        ]
+      },
+      {
+        "command": "project.run-configuration-runtime.restart",
+        "implementation": "cantrip_server_rs/src/run_configurations/lifecycle.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-lifecycle-http-cases.mjs"
+        ],
+        "remaining": [
+          "Full definition administration, failure-boundary and platform acceptance."
+        ]
+      },
+      {
+        "command": "project.run-configuration-definitions.get",
+        "implementation": "cantrip_server_rs/src/run_configurations/lifecycle.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-lifecycle-http-cases.mjs"
+        ],
+        "remaining": [
+          "Full definition administration, failure-boundary and platform acceptance."
         ]
       }
     ]
@@ -3092,6 +3327,161 @@
           "scripts/server-rust/actual-worker-project-surfaces.mjs",
           "scripts/server-rust/actual-project-git-views.mjs",
           "cantrip_server_rs/tests/project_surface_contracts.rs"
+        ]
+      },
+      {
+        "method": "reconcileProjectWorktrees",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/projects/targets/lifecycle.rs",
+        "evidence": [
+          "scripts/server-rust/project-target-repository-compatibility.mjs",
+          "scripts/server-rust/worktree-inventory-cases.mjs",
+          "scripts/server-rust/worktree-state-cases.mjs"
+        ],
+        "remaining": [
+          "Complete worktree coordinator and HTTP integration, managed Git recovery, supported-platform and packaged acceptance."
+        ]
+      },
+      {
+        "method": "rollbackProjectWorktreeCreation",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/projects/targets/worktree_state.rs",
+        "evidence": [
+          "scripts/server-rust/project-target-repository-compatibility.mjs",
+          "scripts/server-rust/worktree-inventory-cases.mjs",
+          "scripts/server-rust/worktree-state-cases.mjs"
+        ],
+        "remaining": [
+          "Complete worktree coordinator and HTTP integration, managed Git recovery, supported-platform and packaged acceptance."
+        ]
+      },
+      {
+        "method": "setProjectWorktreeLifecycle",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/projects/targets/worktree_state.rs",
+        "evidence": [
+          "scripts/server-rust/project-target-repository-compatibility.mjs",
+          "scripts/server-rust/worktree-inventory-cases.mjs",
+          "scripts/server-rust/worktree-state-cases.mjs"
+        ],
+        "remaining": [
+          "Complete worktree coordinator and HTTP integration, managed Git recovery, supported-platform and packaged acceptance."
+        ]
+      },
+      {
+        "method": "observeProjectWorktree",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/projects/targets/worktree_state.rs",
+        "evidence": [
+          "scripts/server-rust/project-target-repository-compatibility.mjs",
+          "scripts/server-rust/worktree-inventory-cases.mjs",
+          "scripts/server-rust/worktree-state-cases.mjs"
+        ],
+        "remaining": [
+          "Complete worktree coordinator and HTTP integration, managed Git recovery, supported-platform and packaged acceptance."
+        ]
+      },
+      {
+        "method": "getWorktreeRemovalBlockers",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/projects/targets/worktree_state.rs",
+        "evidence": [
+          "scripts/server-rust/project-target-repository-compatibility.mjs",
+          "scripts/server-rust/worktree-inventory-cases.mjs",
+          "scripts/server-rust/worktree-state-cases.mjs"
+        ],
+        "remaining": [
+          "Complete worktree coordinator and HTTP integration, managed Git recovery, supported-platform and packaged acceptance."
+        ]
+      },
+      {
+        "method": "getRunConfigurationRuntime",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/run_configurations/mod.rs",
+        "evidence": [
+          "scripts/server-rust/project-target-repository-compatibility.mjs",
+          "scripts/server-rust/run-runtime-cases.mjs",
+          "scripts/server-rust/run-runtime-admission-cases.mjs",
+          "scripts/server-rust/run-runtime-contention-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Actual worker process stop/retirement integration, remaining HTTP lifecycle and supported-platform/package verification. Local three-store duplicate start, competing stop and duplicate observation contention checks pass; controlled-worker retirement and reconnect pass across all nine storage/authentication combinations."
+        ]
+      },
+      {
+        "method": "listRunConfigurationRuntimes",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/run_configurations/mod.rs",
+        "evidence": [
+          "scripts/server-rust/project-target-repository-compatibility.mjs",
+          "scripts/server-rust/run-runtime-cases.mjs",
+          "scripts/server-rust/run-runtime-admission-cases.mjs",
+          "scripts/server-rust/run-runtime-contention-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Actual worker process stop/retirement integration, remaining HTTP lifecycle and supported-platform/package verification. Local three-store duplicate start, competing stop and duplicate observation contention checks pass; controlled-worker retirement and reconnect pass across all nine storage/authentication combinations."
+        ]
+      },
+      {
+        "method": "listActiveRunConfigurationRuntimeIdentitiesForWorker",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/run_configurations/mod.rs",
+        "evidence": [
+          "scripts/server-rust/project-target-repository-compatibility.mjs",
+          "scripts/server-rust/run-runtime-cases.mjs",
+          "scripts/server-rust/run-runtime-admission-cases.mjs",
+          "scripts/server-rust/run-runtime-contention-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Actual worker process stop/retirement integration, remaining HTTP lifecycle and supported-platform/package verification. Local three-store duplicate start, competing stop and duplicate observation contention checks pass; controlled-worker retirement and reconnect pass across all nine storage/authentication combinations."
+        ]
+      },
+      {
+        "method": "deleteRunConfigurationRuntimes",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/run_configurations/mod.rs",
+        "evidence": [
+          "scripts/server-rust/project-target-repository-compatibility.mjs",
+          "scripts/server-rust/run-runtime-cases.mjs",
+          "scripts/server-rust/run-runtime-admission-cases.mjs",
+          "scripts/server-rust/run-runtime-contention-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Actual worker process stop/retirement integration, remaining HTTP lifecycle and supported-platform/package verification. Local three-store duplicate start, competing stop and duplicate observation contention checks pass; controlled-worker retirement and reconnect pass across all nine storage/authentication combinations."
+        ]
+      },
+      {
+        "method": "applyRunConfigurationRuntimeObservation",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/run_configurations/mod.rs",
+        "evidence": [
+          "scripts/server-rust/project-target-repository-compatibility.mjs",
+          "scripts/server-rust/run-runtime-cases.mjs",
+          "scripts/server-rust/run-runtime-admission-cases.mjs",
+          "scripts/server-rust/run-runtime-contention-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Actual worker process stop/retirement integration, remaining HTTP lifecycle and supported-platform/package verification. Local three-store duplicate start, competing stop and duplicate observation contention checks pass; controlled-worker retirement and reconnect pass across all nine storage/authentication combinations."
+        ]
+      },
+      {
+        "method": "requestRunConfigurationRuntimeOperation",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/run_configurations/operations.rs",
+        "evidence": [
+          "scripts/server-rust/project-target-repository-compatibility.mjs",
+          "scripts/server-rust/run-runtime-cases.mjs",
+          "scripts/server-rust/run-runtime-admission-cases.mjs",
+          "scripts/server-rust/run-runtime-contention-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Actual worker process stop/retirement integration, remaining HTTP lifecycle and supported-platform/package verification. Local three-store duplicate start, competing stop and duplicate observation contention checks pass; controlled-worker retirement and reconnect pass across all nine storage/authentication combinations."
         ]
       }
     ]

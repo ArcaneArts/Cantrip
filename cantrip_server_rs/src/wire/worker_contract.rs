@@ -90,6 +90,20 @@ pub(super) fn refine(
                 );
             }
         }
+        "worker-wire-runtime-result" => {
+            if value["outcome"] == "not-found" && !value["observation"].is_null() {
+                custom(
+                    &["observation"],
+                    "A missing runtime cannot include an observation.",
+                );
+            }
+            if value["outcome"] != "not-found" && value["observation"].is_null() {
+                custom(
+                    &["observation"],
+                    "A runtime operation result requires an observation.",
+                );
+            }
+        }
         "worker-wire-runtime-observation" => {
             let terminal = ["idle", "exited", "failed", "lost"]
                 .iter()

@@ -4,6 +4,7 @@ pub mod changes;
 mod exports;
 pub mod quota;
 mod repository;
+pub mod repository_agent;
 pub mod statistics;
 use crate::wire::Value;
 use anyhow::{Context, Result};

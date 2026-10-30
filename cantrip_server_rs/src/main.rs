@@ -176,6 +176,11 @@ async fn main() -> Result<()> {
         service.folder_setup.stop();
         service.worker_maintenance.stop();
         service.tunnel_leases.stop();
+        service.project_operations.drain().await;
+        service.worktree_observations.stop();
+        service.worktree_observations.drained().await;
+        service.run_configuration_observations.stop();
+        service.run_configuration_observations.drained().await;
         service.project_shares.close().await;
         service.tunnel_runtime.close();
         service.live.close();

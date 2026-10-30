@@ -262,6 +262,8 @@ async fn run(
     // Owner lookup awaited database IO after the first revocation check. Fence
     // the final cache check and synchronous attach together: a revoker either
     // rejects this attach or disconnects the already attached peer afterward.
+    service.worktree_observations.subscribe(&worker);
+    service.run_configuration_observations.subscribe(&worker);
     let accepted = {
         let revoked = state.revoked.read().unwrap();
         if !authenticated.development && revoked.contains(&peer.identity.credential) {
@@ -277,6 +279,12 @@ async fn run(
         return;
     }
     state.invalidate(&owner, "worker-availability", &worker);
+    service
+        .run_configuration_observations
+        .worker_connected(owner.clone(), worker.clone());
+    service
+        .worktree_observations
+        .schedule_worker(owner.clone(), worker.clone());
     service.folder_setup.worker_connected(worker.clone());
     service.worker_maintenance.worker_connected(
         ctx.principal.user.as_ref().map(|user| user.id.clone()),

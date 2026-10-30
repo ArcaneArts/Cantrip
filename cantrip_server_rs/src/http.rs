@@ -35,6 +35,7 @@ mod provider_management;
 mod provider_quota;
 mod provider_telemetry;
 mod repository_operations;
+mod run_configurations;
 mod sessions;
 mod settings;
 mod terminal_direct;
@@ -59,6 +60,7 @@ mod worker_maintenance;
 mod worker_socket;
 mod workers;
 mod workspace_layouts;
+mod worktrees;
 
 fn timestamp() -> String {
     Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
@@ -145,6 +147,8 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(project_surfaces::routes())
         .merge(workspace_layouts::routes())
         .merge(repository_operations::routes())
+        .merge(worktrees::routes())
+        .merge(run_configurations::routes())
         .merge(settings::routes())
         .merge(terminals::routes())
         .merge(browsers::routes())

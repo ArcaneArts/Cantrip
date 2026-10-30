@@ -11,6 +11,8 @@ import { buildExecutionTargetCatalog } from "../../cantrip_server/src/execution-
 import { lockNativeCommandChat } from "../../cantrip_server/src/db/repository/native-command-lock.ts";
 import { assertNativeRuntimeWritable } from "../../cantrip_server/src/db/repository/native-runtime-handoff-guard.ts";
 import { managedConsoleFixture } from "./managed-console-node-fixture.mjs";
+import { gitManagedOperationContext } from "../../cantrip_server/src/app/shared/git-managed-operations.ts";
+import { worktreeCoordinatorFixture } from "./worktree-coordinator-node-fixture.mjs";
 console.error(JSON.stringify({ event: "repository-fixture.database.opening" }));
 const database = await connectDatabase(readServerConfig());
 console.error(JSON.stringify({ event: "repository-fixture.database.ready" }));
@@ -441,6 +443,193 @@ try {
         value = await database.repository.isUserSessionActive(
           request.session,
           request.owner,
+        );
+      else if (request.op === "git-agent-usage") {
+        const { runtime, execution } = request;
+        const attempt = request.operation + ":" + runtime.routeId;
+        await database.repository.recordTokenUsage(request.owner, {
+          sourceKey: "git-agent:" + attempt,
+          projectId: request.project,
+          chatId: null,
+          modelRouteId: runtime.routeId,
+          providerAccountId: runtime.provider.accountId,
+          workerId: request.worker,
+          turnId: execution.turnId,
+          executionAttemptId: attempt,
+          attemptKind: "git-agent",
+          attemptStatus: "completed",
+          reasoningEffort: runtime.model.reasoningEffort,
+          workerVersion: null,
+          serverVersion: "fixture-version",
+          usage: execution.measuredUsage,
+        });
+        value = null;
+      } else if (request.op.startsWith("run-runtime-")) {
+        switch (request.op) {
+          case "run-runtime-observation-race":
+            value = await Promise.all(
+              request.inputs.map((observation) =>
+                database.repository.applyRunConfigurationRuntimeObservation(
+                  request.owner,
+                  request.worker,
+                  observation,
+                ),
+              ),
+            );
+            break;
+          case "run-runtime-race":
+            value = await Promise.all(
+              request.inputs.map((input) =>
+                database.repository.requestRunConfigurationRuntimeOperation(
+                  request.owner,
+                  input,
+                ),
+              ),
+            );
+            break;
+          case "run-runtime-request":
+            value =
+              await database.repository.requestRunConfigurationRuntimeOperation(
+                request.owner,
+                request.input,
+              );
+            break;
+          case "run-runtime-get":
+            value = await database.repository.getRunConfigurationRuntime(
+              request.owner,
+              request.project,
+              request.configuration,
+              request.worktree,
+            );
+            break;
+          case "run-runtime-list":
+            value = await database.repository.listRunConfigurationRuntimes(
+              request.owner,
+              request.project,
+              {
+                configurationId: request.configuration,
+                worktreeId: request.worktree,
+                limit: request.limit,
+              },
+            );
+            break;
+          case "run-runtime-identities":
+            value =
+              await database.repository.listActiveRunConfigurationRuntimeIdentitiesForWorker(
+                request.owner,
+                request.worker,
+              );
+            break;
+          case "run-runtime-delete":
+            value = await database.repository.deleteRunConfigurationRuntimes(
+              request.owner,
+              request.project,
+              request.ids,
+            );
+            break;
+          case "run-runtime-observe":
+            value =
+              await database.repository.applyRunConfigurationRuntimeObservation(
+                request.owner,
+                request.worker,
+                request.observation,
+              );
+            break;
+          default:
+            throw new Error("Unknown runtime operation");
+        }
+      } else if (request.op === "worktree-coordinator") {
+        value = await worktreeCoordinatorFixture(
+          database,
+          request,
+          (statement) =>
+            database.repository.projects.database.execute(sql.raw(statement)),
+        );
+      } else if (request.op === "worktree-rollback") {
+        value = await database.repository.rollbackProjectWorktreeCreation(
+          request.owner,
+          request.project,
+          request.worker,
+          request.created,
+        );
+      } else if (request.op === "worktree-set-lifecycle") {
+        value = await database.repository.setProjectWorktreeLifecycle(
+          request.owner,
+          request.project,
+          request.worktree,
+          request.state,
+        );
+      } else if (request.op === "worktree-observe") {
+        value = await database.repository.observeProjectWorktree(
+          request.owner,
+          request.project,
+          request.worktree,
+          request.observed,
+        );
+      } else if (request.op === "worktree-removal-blockers") {
+        value = await database.repository.getWorktreeRemovalBlockers(
+          request.owner,
+          request.project,
+          request.worktree,
+        );
+      } else if (request.op === "inventory-reconcile") {
+        value = await database.repository.reconcileProjectWorktrees(
+          request.owner,
+          request.project,
+          request.worker,
+          request.inventory,
+          request.created,
+        );
+      } else if (request.op === "observation-context") {
+        value = await database.repository.getProjectWorktreeObservationContext(
+          request.owner,
+          request.worker,
+          request.source,
+          request.worktreePath,
+        );
+      } else if (request.op === "observation-operation") {
+        const active = await database.repository.getActiveGitOperation(
+          request.owner,
+          request.project,
+          request.worktree,
+        );
+        value = active
+          ? {
+              id: active.id,
+              workerId: active.workerId,
+              context: gitManagedOperationContext(active),
+            }
+          : null;
+      } else if (request.op === "observation-source")
+        value = await database.repository.getProjectSource(
+          request.owner,
+          request.project,
+          { isWorkerAvailable: (worker) => request.connected.includes(worker) },
+        );
+      else if (request.op === "observation-targets")
+        value = await database.repository[
+          request.gitOnly
+            ? "listWorkerWorktreeObservationTargets"
+            : "listWorkerExecutionRootContexts"
+        ](request.owner, request.worker, request.limit);
+      else if (request.op === "observation-paths")
+        value =
+          await database.repository.reconcileWorkerProjectObservationPaths(
+            request.owner,
+            request.worker,
+            request.paths,
+          );
+      else if (request.op === "worktree-context")
+        value = await database.repository.getProjectWorktreeContext(
+          request.owner,
+          request.project,
+          request.worktree,
+        );
+      else if (request.op === "github-context")
+        value = await database.repository.getGithubProjectExecutionContext(
+          request.owner,
+          request.project,
+          request.worker,
         );
       else if (request.op === "target-resolve")
         value = await database.repository.resolveExecutionTarget(

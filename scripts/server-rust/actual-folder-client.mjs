@@ -1,3 +1,4 @@
+import { actualProjectWorktrees } from "./actual-project-worktrees.mjs";
 import {
   actualWorkerProjectSurfaces,
   retainedWorkerProjectSurfaces,
@@ -88,7 +89,7 @@ const report = {
   databaseMode,
   completeReplacement: false,
   scope:
-    "Existing browser account encryption, project and protected repository APIs; full worker startup, real managed/existing folders, failure/retry, reconnect and retained server state. Not whole UI, packaging, project worktree routes or multi-instance acceptance.",
+    "Existing browser account encryption, project and protected repository APIs; full worker startup, real managed/existing folders, failure/retry, reconnect and retained server state. Optional --worktrees exercises actual local Git create/lock/unlock/reconcile/remove/prune, retained identity and real Run process retirement before deletion, with only disposable catalog classification seeded. Not whole UI, packaging or multi-instance acceptance.",
   runtimes: [],
 };
 let vite, browser, postgres, failure, surfaceRepositoryBinary;
@@ -203,7 +204,10 @@ async function flow(
       path.join(existingPath, "retained.txt"),
       "Existing user file remains intact.\n",
     );
-    if (process.argv.includes("--project-surfaces")) {
+    if (
+      process.argv.includes("--project-surfaces") ||
+      process.argv.includes("--worktrees")
+    ) {
       execFileSync("git", ["init", "--initial-branch=main", existingPath]);
       execFileSync("git", ["-C", existingPath, "add", "retained.txt"]);
       execFileSync("git", [
@@ -379,7 +383,10 @@ async function flow(
       attached.id,
       names[1],
       normalizeProjectSourcePath(await realpath(existingPath)),
-      process.argv.includes("--project-surfaces") ? "git" : "folder",
+      process.argv.includes("--project-surfaces") ||
+        process.argv.includes("--worktrees")
+        ? "git"
+        : "folder",
     );
     assert.equal(opened.folderManagement, "external");
     // Source summaries retain the existing source-row ownership default;
@@ -579,7 +586,12 @@ async function flow(
       : undefined;
     await page.evaluate(() => window.folderLive.stop());
     const retainedPort =
-      surface || tunnel || projectShares || fileDocuments || projectSurfaces
+      surface ||
+      tunnel ||
+      projectShares ||
+      fileDocuments ||
+      projectSurfaces ||
+      process.argv.includes("--worktrees")
         ? Number(new URL(fixture.server.origin).port)
         : 0;
     // Retain a generous diagnostic deadline for both implementations. Earlier
@@ -725,6 +737,18 @@ async function flow(
       ownershipKind: project.source.ownershipKind,
       capabilities: project.capabilities,
     }));
+    if (process.argv.includes("--worktrees"))
+      await actualProjectWorktrees({
+        page,
+        fixture,
+        root,
+        executable: surfaceRepositoryBinary,
+        projectId: attached.id,
+        directory: normalizeProjectSourcePath(await realpath(existingPath)),
+        startWorker,
+        stopWorker,
+        result,
+      });
     result.requests = requests;
     result.events = await page.evaluate(() => window.folderEvents);
     assert.deepEqual(errors, []);
@@ -740,7 +764,8 @@ try {
   if (
     process.argv.includes("--surfaces") ||
     process.argv.includes("--tunnels") ||
-    process.argv.includes("--project-shares")
+    process.argv.includes("--project-shares") ||
+    process.argv.includes("--worktrees")
   )
     surfaceRepositoryBinary = await buildRustExample(
       "project-repository-fixture",

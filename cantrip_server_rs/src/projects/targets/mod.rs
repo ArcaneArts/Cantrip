@@ -1,7 +1,11 @@
 pub mod catalog;
 mod context;
+mod lifecycle;
+mod observations;
 mod reads;
 mod resolve;
+mod worktree_context;
+mod worktree_state;
 
 use crate::{
     database::Database,
@@ -17,6 +21,11 @@ pub struct TargetRepository {
     database: Arc<Database>,
 }
 impl TargetRepository {
+    pub async fn worktrees(&self, owner: &str, project: &str) -> Result<Vec<Value>> {
+        Reads::new(self.database.clone())
+            .worktrees(owner, project)
+            .await
+    }
     pub async fn ready_worktree(
         &self,
         owner: &str,

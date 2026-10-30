@@ -1,6 +1,10 @@
 // Development-time export of the real protocol definitions. The native server
 // embeds this data and implements every registered operation in Rust.
 import * as protocol from "../../packages/protocol/dist/index.js";
+import * as runDefinitions from "../../packages/protocol/dist/run-configuration-definitions.js";
+import * as runSecrets from "../../packages/protocol/dist/run-configuration-secrets.js";
+import * as runConfigurationOperations from "../../packages/protocol/dist/run-configuration-operations.js";
+import * as runConfigurationRuntime from "../../packages/protocol/dist/run-configuration-runtime.js";
 import { cuaCursorPreferenceRecordSchema } from "../../packages/protocol/dist/computer-use-preferences.js";
 import { mkdir, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -126,6 +130,36 @@ export const contractRoots = [
   "projectFolderSetupRetrySchema",
   "managedFolderMaterializeReadySchema",
   "projectWorkspaceStorageContextSchema",
+  "worktreeObservationConfigurationResultSchema",
+  "worktreeInventorySchema",
+  "projectWorktreeCreateSchema",
+  "projectWorktreeListSchema",
+  "projectWorktreeSummarySchema",
+  "projectWorktreeLockSchema",
+  "projectWorktreePruneSchema",
+  "projectWorktreeRemoveSchema",
+  "runConfigurationRuntimeLifecycleRequestSchema",
+  "runConfigurationRuntimeOperationResultSchema",
+  "runConfigurationGetResponseSchema",
+  "runConfigurationProtectedSecretListSchema",
+  "runConfigurationSecretSummaryListSchema",
+  "runConfigurationRuntimeStatusQuerySchema",
+  "runConfigurationRuntimeStatusResultSchema",
+  "runConfigurationRuntimeOutputQuerySchema",
+  "protectedRunConfigurationRuntimeWorkerOutputSchema",
+  "protectedRunConfigurationRuntimeOutputResultSchema",
+  "runConfigurationRuntimeWorkerOperationResultSchema",
+  "runConfigurationRuntimeWorkerObservationSchema",
+  "runConfigurationRuntimeWorkerReconciliationSchema",
+  "worktreeMutationResultSchema",
+  "worktreePruneResultSchema",
+  "worktreeCreateResultSchema",
+  "worktreeRemoveResultSchema",
+  "worktreeCreateMutationFailureSchema",
+  "githubPullRequestCheckoutPreparedSchema",
+  "githubPullRequestCheckoutResultSchema",
+  "codeGraphProjectStatusSchema",
+  "repositoryOperationWireRequestSchema",
   "repositoryWorkerOperationWireRequestSchema",
   "repositoryOperationWireResponseSchema",
   "workerEncryptionRefreshRequestSchema",
@@ -249,6 +283,24 @@ export const contractRoots = [
 ];
 
 const refinements = new Map([
+  [
+    runDefinitions.runConfigurationRepositoryEntrySchema,
+    "run-repository-entry",
+  ],
+  [
+    runDefinitions.runConfigurationCodexEnvironmentSourceStatusSchema,
+    "run-codex-source",
+  ],
+  [runSecrets.runConfigurationSecretSummarySchema, "run-secret-summary"],
+  [runSecrets.runConfigurationSecretSummaryListSchema, "run-secret-summaries"],
+  [
+    runConfigurationRuntime.runConfigurationRuntimeWorkerOperationResultSchema,
+    "worker-wire-runtime-result",
+  ],
+  [
+    protocol.worktreeCreateMutationFailureSchema,
+    "worktree-create-mutation-failure",
+  ],
   [protocol.accountEncryptionProfileSchema, "password-wrapper-pair"],
   [
     protocol.accountEncryptionProfileInitializeSchema.shape.profile,
@@ -289,6 +341,9 @@ function registerChecks(schema, tags) {
     );
   tags.forEach((tag, index) => registerCustom(schema, index, tag));
 }
+registerChecks(protocol.repositoryOperationWireRequestSchema, [
+  "repository-agent-model",
+]);
 registerChecks(protocol.repositoryWorkerOperationWireRequestSchema, [
   "repository-agent-model",
 ]);
@@ -691,7 +746,15 @@ export function buildContractManifest() {
   return {
     schemaVersion: 1,
     roots: Object.fromEntries(
-      contractRoots.map((name) => [name, visit(protocol[name], name)]),
+      contractRoots.map((name) => [
+        name,
+        visit(
+          protocol[name] ??
+            runConfigurationRuntime[name] ??
+            runConfigurationOperations[name],
+          name,
+        ),
+      ]),
     ),
     nodes,
   };

@@ -117,126 +117,156 @@
     "projectFolderSetupRetrySchema": 6478,
     "managedFolderMaterializeReadySchema": 6480,
     "projectWorkspaceStorageContextSchema": 2811,
-    "repositoryWorkerOperationWireRequestSchema": 6492,
-    "repositoryOperationWireResponseSchema": 6495,
-    "workerEncryptionRefreshRequestSchema": 6522,
-    "workerEncryptionRefreshResultSchema": 6523,
-    "encryptedTerminalCreateSchema": 6525,
-    "encryptedTerminalUpdateSchema": 6537,
-    "encryptedTerminalServiceConfigurationSchema": 6539,
-    "worktreeSelectionSchema": 6542,
-    "workspaceOwnershipSchema": 6544,
-    "workspaceTabSchema": 6558,
-    "workspaceCommandSchema": 6648,
-    "workspaceReceiptSchema": 6755,
-    "workspaceSeedRequestSchema": 6764,
-    "workspaceLegacyFileImportSchema": 6637,
-    "workspaceLegacyFileImportRequestSchema": 6780,
-    "workspaceLegacyFileImportReceiptSchema": 6782,
-    "projectTabLayoutWireSummarySchema": 6785,
-    "projectBuiltinSurfaceDefinitionIdSchema": 6567,
-    "projectCenterLayoutNodeSchema": 6598,
-    "encryptedProjectPaneUpdateSchema": 6816,
-    "encryptedTabGroupUpdateSchema": 6816,
-    "projectPaneOrderSchema": 6819,
-    "projectPaneMemberOrderSchema": 6823,
-    "projectPaneMemberMoveSchema": 6827,
-    "projectPaneMemberSplitSchema": 6836,
-    "projectCenterSplitResizeSchema": 6842,
-    "projectDockPresentationUpdateSchema": 6845,
-    "projectSurfaceViewOpenSchema": 6848,
-    "projectSurfaceViewCloseSchema": 6854,
-    "projectSurfaceViewOpenResultSchema": 6858,
-    "projectSurfaceViewCloseResultSchema": 6863,
-    "legacyProjectSurfaceViewOpenResultSchema": 6867,
-    "legacyProjectSurfaceViewCloseResultSchema": 6878,
-    "legacyProjectTabLayoutWireSummarySchema": 6868,
-    "tabGroupOrderSchema": 6879,
-    "tabGroupMemberOrderSchema": 6823,
-    "tabGroupMemberMoveSchema": 6883,
-    "projectSurfaceLauncherListSchema": 6891,
-    "projectSurfaceLauncherPinSchema": 6905,
-    "projectSurfaceLauncherSchema": 6892,
-    "terminalWireSummarySchema": 6908,
-    "terminalWireListSchema": 6928,
-    "encryptedExplorerCreateSchema": 6929,
-    "encryptedExplorerUpdateSchema": 6938,
-    "encryptedExplorerPinSchema": 6940,
-    "encryptedExplorerViewStateUpdateSchema": 6942,
-    "encryptedExplorerWorktreeUpdateSchema": 6944,
-    "explorerWireSummarySchema": 6947,
-    "explorerWireListSchema": 6956,
-    "explorerOperationWireRequestSchema": 6957,
-    "encryptedCodeTabCreateSchema": 6965,
-    "encryptedCodeTabUpdateSchema": 6970,
-    "codeTabWireSummarySchema": 6973,
-    "codeTabWireListSchema": 6981,
-    "encryptedProjectViewCreateSchema": 6982,
-    "encryptedProjectViewUpdateSchema": 6988,
-    "projectViewWireSummarySchema": 6990,
-    "projectViewWireListSchema": 6999,
-    "encryptedBrowserCreateSchema": 7000,
-    "encryptedBrowserUpdateSchema": 7004,
-    "browserWireSummarySchema": 7010,
-    "browserWireListSchema": 7020,
-    "browserTunnelWireRequestSchema": 7021,
-    "browserServiceSchema": 7028,
-    "browserServiceListSchema": 7039,
-    "browserServiceFleetDiscoverySchema": 7040,
-    "projectShareTunnelCreateSchema": 7060,
-    "projectShareAttachmentWireSchema": 7066,
-    "standaloneChatShareAttachmentWireSchema": 7071,
-    "workerProjectShareOpenResultSchema": 7077,
-    "fileDocumentCreateSchema": 7081,
-    "fileDocumentWireSummarySchema": 7085,
-    "fileDocumentWireListSchema": 7090,
-    "surfaceStreamWireRequestSchema": 7091,
-    "surfaceStreamWireResponseSchema": 7093,
-    "tunnelUserWireCreateSchema": 7095,
-    "tunnelUserWireUpdateSchema": 7114,
-    "tunnelWireSummarySchema": 7124,
-    "tunnelWireListSchema": 7174,
-    "tunnelDataPlaneFrameHeaderSchema": 7175,
-    "workerLinkIdentityResolveResultSchema": 7211,
-    "workerLinkSessionOpenRequestSchema": 7213,
+    "worktreeObservationConfigurationResultSchema": 6492,
+    "worktreeInventorySchema": 1831,
+    "projectWorktreeCreateSchema": 6499,
+    "projectWorktreeListSchema": 6503,
+    "projectWorktreeSummarySchema": 6504,
+    "projectWorktreeLockSchema": 6529,
+    "projectWorktreePruneSchema": 6533,
+    "projectWorktreeRemoveSchema": 6536,
+    "runConfigurationRuntimeLifecycleRequestSchema": 6541,
+    "runConfigurationRuntimeOperationResultSchema": 6552,
+    "runConfigurationGetResponseSchema": 6578,
+    "runConfigurationProtectedSecretListSchema": 3400,
+    "runConfigurationSecretSummaryListSchema": 6614,
+    "runConfigurationRuntimeStatusQuerySchema": 6623,
+    "runConfigurationRuntimeStatusResultSchema": 6629,
+    "runConfigurationRuntimeOutputQuerySchema": 6632,
+    "protectedRunConfigurationRuntimeWorkerOutputSchema": 6636,
+    "protectedRunConfigurationRuntimeOutputResultSchema": 6638,
+    "runConfigurationRuntimeWorkerOperationResultSchema": 6640,
+    "runConfigurationRuntimeWorkerObservationSchema": 1955,
+    "runConfigurationRuntimeWorkerReconciliationSchema": 6644,
+    "worktreeMutationResultSchema": 6656,
+    "worktreePruneResultSchema": 6657,
+    "worktreeCreateResultSchema": 6660,
+    "worktreeRemoveResultSchema": 6662,
+    "worktreeCreateMutationFailureSchema": 6664,
+    "githubPullRequestCheckoutPreparedSchema": 6678,
+    "githubPullRequestCheckoutResultSchema": 6719,
+    "codeGraphProjectStatusSchema": 1925,
+    "repositoryOperationWireRequestSchema": 6721,
+    "repositoryWorkerOperationWireRequestSchema": 6723,
+    "repositoryOperationWireResponseSchema": 6726,
+    "workerEncryptionRefreshRequestSchema": 6753,
+    "workerEncryptionRefreshResultSchema": 6754,
+    "encryptedTerminalCreateSchema": 6756,
+    "encryptedTerminalUpdateSchema": 6768,
+    "encryptedTerminalServiceConfigurationSchema": 6770,
+    "worktreeSelectionSchema": 6773,
+    "workspaceOwnershipSchema": 6775,
+    "workspaceTabSchema": 6789,
+    "workspaceCommandSchema": 6879,
+    "workspaceReceiptSchema": 6986,
+    "workspaceSeedRequestSchema": 6995,
+    "workspaceLegacyFileImportSchema": 6868,
+    "workspaceLegacyFileImportRequestSchema": 7011,
+    "workspaceLegacyFileImportReceiptSchema": 7013,
+    "projectTabLayoutWireSummarySchema": 7016,
+    "projectBuiltinSurfaceDefinitionIdSchema": 6798,
+    "projectCenterLayoutNodeSchema": 6829,
+    "encryptedProjectPaneUpdateSchema": 7047,
+    "encryptedTabGroupUpdateSchema": 7047,
+    "projectPaneOrderSchema": 7050,
+    "projectPaneMemberOrderSchema": 7054,
+    "projectPaneMemberMoveSchema": 7058,
+    "projectPaneMemberSplitSchema": 7067,
+    "projectCenterSplitResizeSchema": 7073,
+    "projectDockPresentationUpdateSchema": 7076,
+    "projectSurfaceViewOpenSchema": 7079,
+    "projectSurfaceViewCloseSchema": 7085,
+    "projectSurfaceViewOpenResultSchema": 7089,
+    "projectSurfaceViewCloseResultSchema": 7094,
+    "legacyProjectSurfaceViewOpenResultSchema": 7098,
+    "legacyProjectSurfaceViewCloseResultSchema": 7109,
+    "legacyProjectTabLayoutWireSummarySchema": 7099,
+    "tabGroupOrderSchema": 7110,
+    "tabGroupMemberOrderSchema": 7054,
+    "tabGroupMemberMoveSchema": 7114,
+    "projectSurfaceLauncherListSchema": 7122,
+    "projectSurfaceLauncherPinSchema": 7136,
+    "projectSurfaceLauncherSchema": 7123,
+    "terminalWireSummarySchema": 7139,
+    "terminalWireListSchema": 7159,
+    "encryptedExplorerCreateSchema": 7160,
+    "encryptedExplorerUpdateSchema": 7169,
+    "encryptedExplorerPinSchema": 7171,
+    "encryptedExplorerViewStateUpdateSchema": 7173,
+    "encryptedExplorerWorktreeUpdateSchema": 7175,
+    "explorerWireSummarySchema": 7178,
+    "explorerWireListSchema": 7187,
+    "explorerOperationWireRequestSchema": 7188,
+    "encryptedCodeTabCreateSchema": 7196,
+    "encryptedCodeTabUpdateSchema": 7201,
+    "codeTabWireSummarySchema": 7204,
+    "codeTabWireListSchema": 7212,
+    "encryptedProjectViewCreateSchema": 7213,
+    "encryptedProjectViewUpdateSchema": 7219,
+    "projectViewWireSummarySchema": 7221,
+    "projectViewWireListSchema": 7230,
+    "encryptedBrowserCreateSchema": 7231,
+    "encryptedBrowserUpdateSchema": 7235,
+    "browserWireSummarySchema": 7241,
+    "browserWireListSchema": 7251,
+    "browserTunnelWireRequestSchema": 7252,
+    "browserServiceSchema": 7259,
+    "browserServiceListSchema": 7270,
+    "browserServiceFleetDiscoverySchema": 7271,
+    "projectShareTunnelCreateSchema": 7291,
+    "projectShareAttachmentWireSchema": 7297,
+    "standaloneChatShareAttachmentWireSchema": 7302,
+    "workerProjectShareOpenResultSchema": 7308,
+    "fileDocumentCreateSchema": 7312,
+    "fileDocumentWireSummarySchema": 7316,
+    "fileDocumentWireListSchema": 7321,
+    "surfaceStreamWireRequestSchema": 7322,
+    "surfaceStreamWireResponseSchema": 7324,
+    "tunnelUserWireCreateSchema": 7326,
+    "tunnelUserWireUpdateSchema": 7345,
+    "tunnelWireSummarySchema": 7355,
+    "tunnelWireListSchema": 7405,
+    "tunnelDataPlaneFrameHeaderSchema": 7406,
+    "workerLinkIdentityResolveResultSchema": 7442,
+    "workerLinkSessionOpenRequestSchema": 7444,
     "workerLinkSessionSchema": 2186,
     "workerLinkLeaseSchema": 2191,
     "workerLinkGrantBindingSchema": 2225,
     "installedWorkerLinkGrantSchema": 2224,
-    "workerLinkResourceGrantSchema": 7215,
-    "workerLinkTunnelGrantRequestSchema": 7218,
-    "workerLinkTunnelGrantSchema": 7223,
-    "workerLinkObservationGrantRequestSchema": 7227,
-    "workerLinkTerminalGrantRequestSchema": 7229,
-    "workerLinkRemoteSurfaceGrantRequestSchema": 7232,
-    "remoteSurfaceAttachResultSchema": 7239,
-    "terminalOpenResultSchema": 7241,
-    "terminalClientMessageSchema": 7249,
-    "terminalServerMessageSchema": 7256,
+    "workerLinkResourceGrantSchema": 7446,
+    "workerLinkTunnelGrantRequestSchema": 7449,
+    "workerLinkTunnelGrantSchema": 7454,
+    "workerLinkObservationGrantRequestSchema": 7458,
+    "workerLinkTerminalGrantRequestSchema": 7460,
+    "workerLinkRemoteSurfaceGrantRequestSchema": 7463,
+    "remoteSurfaceAttachResultSchema": 7470,
+    "terminalOpenResultSchema": 7472,
+    "terminalClientMessageSchema": 7480,
+    "terminalServerMessageSchema": 7487,
     "workerLinkPeerConfigurationSchema": 2266,
-    "workerLinkPeerSessionOpenRequestSchema": 7310,
+    "workerLinkPeerSessionOpenRequestSchema": 7541,
     "workerLinkPeerSessionSchema": 2262,
-    "workerLinkPeerSessionDescriptorSchema": 7312,
+    "workerLinkPeerSessionDescriptorSchema": 7543,
     "workerLinkPeerSignalEnvelopeSchema": 1702,
-    "workerLinkPeerSignalBatchSchema": 7314,
-    "workerLinkPeerMailboxReadRequestSchema": 7317,
-    "workerLinkPeerMailboxSchema": 7323,
-    "workerLinkRouteUpdateRequestSchema": 7329,
-    "workerLinkDirectActivationSchema": 7331,
-    "workerLinkTelemetryBatchSchema": 7334,
-    "workerLinkFrameHeaderSchema": 7346,
-    "directAttachmentTicketSchema": 7378,
-    "projectShareDirectCreateSchema": 7379,
-    "directTunnelTicketSchema": 7381,
-    "directTunnelPrepareRequestSchema": 7388,
-    "tunnelAttachmentCreateSchema": 7393,
-    "tunnelAttachmentCreateResultSchema": 7395,
-    "tunnelAttachmentInitializeSchema": 7401,
-    "tunnelAttachmentReadySchema": 7406,
-    "tunnelDirectActivationSchema": 7410,
-    "directCapabilityPrepareResultSchema": 7413,
-    "directCapabilityRenewResultSchema": 7415,
-    "directTransportTelemetrySchema": 7418
+    "workerLinkPeerSignalBatchSchema": 7545,
+    "workerLinkPeerMailboxReadRequestSchema": 7548,
+    "workerLinkPeerMailboxSchema": 7554,
+    "workerLinkRouteUpdateRequestSchema": 7560,
+    "workerLinkDirectActivationSchema": 7562,
+    "workerLinkTelemetryBatchSchema": 7565,
+    "workerLinkFrameHeaderSchema": 7577,
+    "directAttachmentTicketSchema": 7609,
+    "projectShareDirectCreateSchema": 7610,
+    "directTunnelTicketSchema": 7612,
+    "directTunnelPrepareRequestSchema": 7619,
+    "tunnelAttachmentCreateSchema": 7624,
+    "tunnelAttachmentCreateResultSchema": 7626,
+    "tunnelAttachmentInitializeSchema": 7632,
+    "tunnelAttachmentReadySchema": 7637,
+    "tunnelDirectActivationSchema": 7641,
+    "directCapabilityPrepareResultSchema": 7644,
+    "directCapabilityRenewResultSchema": 7646,
+    "directTransportTelemetrySchema": 7649
   },
   "nodes": [
     {
@@ -37497,6 +37527,1256 @@
     { "type": "nullable", "innerType": 700, "checks": [] },
     {
       "type": "object",
+      "name": "worktreeObservationConfigurationResultSchema",
+      "shape": { "accepted": 6493, "paths": 6494 },
+      "checks": []
+    },
+    { "type": "literal", "values": [true], "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 6495,
+      "defaultValue": [],
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 6496,
+      "checks": [{ "check": "max_length", "maximum": 256, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "worktreeObservationPathReconciliationSchema",
+      "shape": {
+        "projectId": 6497,
+        "worktreeId": 6498,
+        "sourcePath": 706,
+        "worktreePath": 706
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "projectWorktreeCreateSchema",
+      "shape": { "name": 6500, "mode": 4144, "sourceWorktreeId": 6501 },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 6502,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "array",
+      "name": "projectWorktreeListSchema",
+      "element": 6504,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "projectWorktreeSummarySchema",
+      "shape": {
+        "id": 6505,
+        "projectSourceId": 6506,
+        "projectId": 6507,
+        "rootKind": 6508,
+        "workerId": 6509,
+        "name": 6510,
+        "path": 6511,
+        "displayPath": 6512,
+        "isPrimary": 6513,
+        "isDefault": 6514,
+        "origin": 6515,
+        "lifecycleState": 6516,
+        "branch": 6517,
+        "head": 6519,
+        "detached": 6521,
+        "locked": 6522,
+        "lockReason": 6523,
+        "lastScannedAt": 6525,
+        "createdAt": 6527,
+        "updatedAt": 6528
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 4199,
+      "defaultValue": "git-worktree",
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "enum",
+      "name": "worktreeOriginSchema",
+      "values": ["cantrip", "agent", "user", "external"],
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "worktreeLifecycleStateSchema",
+      "values": ["creating", "ready", "missing", "prunable", "removing"],
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 6518, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 6520, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "nullable", "innerType": 6524, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 6526, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "projectWorktreeLockSchema",
+      "shape": { "reason": 6530 },
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 6531,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 6532, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 1000, "when": "length" }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "projectWorktreePruneSchema",
+      "shape": { "allowExternal": 6534 },
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 6535,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "object",
+      "name": "projectWorktreeRemoveSchema",
+      "shape": { "force": 6537, "allowExternal": 6539 },
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 6538,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 6540,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "union",
+      "options": [6542, 6546, 6549],
+      "discriminator": "operation",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "operation": 6543,
+        "operationId": 1964,
+        "projectId": 1957,
+        "configurationId": 1958,
+        "targetWorktreeId": 6544
+      },
+      "catchall": 6545,
+      "checks": []
+    },
+    { "type": "literal", "values": ["start"], "checks": [] },
+    { "type": "nullable", "innerType": 1959, "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "operation": 6547,
+        "operationId": 1964,
+        "projectId": 1957,
+        "configurationId": 1958,
+        "targetWorktreeId": 6544
+      },
+      "catchall": 6548,
+      "checks": []
+    },
+    { "type": "literal", "values": ["restart"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "operation": 6550,
+        "operationId": 1964,
+        "projectId": 1957,
+        "configurationId": 1958,
+        "targetWorktreeId": 6544
+      },
+      "catchall": 6551,
+      "checks": []
+    },
+    { "type": "literal", "values": ["stop"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "operation": 6553, "replayed": 6561, "runtime": 6562 },
+      "catchall": 6577,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "id": 1964,
+        "projectId": 1957,
+        "configurationId": 1958,
+        "worktreeId": 1959,
+        "runtimeId": 6554,
+        "workerId": 1960,
+        "operation": 6555,
+        "outcome": 6556,
+        "generation": 1963,
+        "definitionRevision": 6557,
+        "codexEnvironmentRevision": 6558,
+        "createdAt": 6559
+      },
+      "catchall": 6560,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 1956, "checks": [] },
+    { "type": "enum", "values": ["start", "restart", "stop"], "checks": [] },
+    {
+      "type": "enum",
+      "values": [
+        "accepted",
+        "already-active",
+        "already-stopping",
+        "not-active"
+      ],
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 1961, "checks": [] },
+    { "type": "nullable", "innerType": 1961, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "nullable", "innerType": 6563, "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "id": 1956,
+        "projectId": 1957,
+        "configurationId": 1958,
+        "worktreeId": 1959,
+        "workerId": 1960,
+        "terminalId": 1965,
+        "definitionRevision": 1961,
+        "codexEnvironmentRevision": 6564,
+        "generation": 1963,
+        "requestedOperationId": 1964,
+        "state": 1967,
+        "startedAt": 6565,
+        "endedAt": 6567,
+        "exitCode": 6569,
+        "signal": 6571,
+        "failure": 6573,
+        "createdAt": 6574,
+        "updatedAt": 6575
+      },
+      "catchall": 6576,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 1961, "checks": [] },
+    { "type": "nullable", "innerType": 6566, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 6568, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 6570, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false }
+      ]
+    },
+    { "type": "nullable", "innerType": 6572, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 1977, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "operation": 6579,
+        "operationId": 1964,
+        "projectId": 2943,
+        "result": 6580,
+        "codexEnvironment": 6606,
+        "secretReferences": 6614
+      },
+      "catchall": 6622,
+      "checks": []
+    },
+    { "type": "literal", "values": ["get"], "checks": [] },
+    {
+      "type": "union",
+      "options": [6581, 6584],
+      "discriminator": "found",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "found": 6582, "id": 1958 },
+      "catchall": 6583,
+      "checks": []
+    },
+    { "type": "literal", "values": [false], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "found": 6585, "entry": 6586 },
+      "catchall": 6605,
+      "checks": []
+    },
+    { "type": "literal", "values": [true], "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "relativePath": 6587,
+        "revision": 6588,
+        "id": 6589,
+        "status": 6590,
+        "document": 6591,
+        "diagnostics": 6592
+      },
+      "catchall": 6604,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "run-repository-entry",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 512, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 1961, "checks": [] },
+    { "type": "nullable", "innerType": 1958, "checks": [] },
+    {
+      "type": "enum",
+      "values": ["ready", "invalid", "unsupported"],
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 3085, "checks": [] },
+    {
+      "type": "array",
+      "element": 6593,
+      "checks": [{ "check": "max_length", "maximum": 200, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "severity": 6594,
+        "code": 6595,
+        "message": 6596,
+        "relativePath": 6597,
+        "field": 6600
+      },
+      "catchall": 6603,
+      "checks": []
+    },
+    { "type": "enum", "values": ["error", "warning"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 2000, "when": "length" }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 6598,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 6599, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 512, "when": "length" }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 6601,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 6602, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 512, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "enabled": 6607,
+        "configured": 6608,
+        "valid": 6609,
+        "revision": 6610,
+        "hasSetup": 6611,
+        "diagnostics": 6612
+      },
+      "catchall": 6613,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "run-codex-source",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "nullable", "innerType": 1961, "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "array",
+      "element": 6593,
+      "checks": [{ "check": "max_length", "maximum": 200, "when": "length" }]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "array",
+      "name": "runConfigurationSecretSummaryListSchema",
+      "element": 6615,
+      "checks": [
+        { "check": "max_length", "maximum": 256, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "run-secret-summaries",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "runConfigurationSecretSummarySchema",
+      "shape": {
+        "reference": 3000,
+        "available": 6616,
+        "revision": 6617,
+        "updatedAt": 6619
+      },
+      "catchall": 6621,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "run-secret-summary",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "nullable", "innerType": 6618, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    { "type": "nullable", "innerType": 6620, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "operationId": 1964,
+        "projectId": 1957,
+        "configurationId": 6624,
+        "targetWorktreeId": 6625,
+        "limit": 6626
+      },
+      "catchall": 6628,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 1958, "checks": [] },
+    { "type": "nullable", "innerType": 1959, "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 6627,
+      "defaultValue": 256,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false },
+        { "check": "less_than", "value": 256, "inclusive": true }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "operationId": 1964, "projectId": 1957, "runtimes": 6630 },
+      "catchall": 6631,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 6563,
+      "checks": [{ "check": "max_length", "maximum": 256, "when": "length" }]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "operationId": 1964,
+        "projectId": 1957,
+        "configurationId": 1958,
+        "worktreeId": 1959,
+        "tail": 6633
+      },
+      "catchall": 6635,
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 6634,
+      "defaultValue": 10000,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false },
+        { "check": "less_than", "value": 100000, "inclusive": true }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "requestOperationId": 1964,
+        "identity": 3414,
+        "protectedOutput": 2165
+      },
+      "catchall": 6637,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "operationId": 1964,
+        "projectId": 1957,
+        "configurationId": 1958,
+        "worktreeId": 1959,
+        "generation": 1963,
+        "protectedOutput": 2165
+      },
+      "catchall": 6639,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "outcome": 6641, "observation": 6642 },
+      "catchall": 6643,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-wire-runtime-result",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "values": ["accepted", "replayed", "stale", "not-found"],
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 1955, "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "runtimes": 6645, "orphanedRuntimeIds": 6653 },
+      "catchall": 6655,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 6646,
+      "checks": [{ "check": "max_length", "maximum": 256, "when": "length" }]
+    },
+    {
+      "type": "union",
+      "options": [6647, 6650],
+      "discriminator": "found",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "found": 6648, "observation": 1955 },
+      "catchall": 6649,
+      "checks": []
+    },
+    { "type": "literal", "values": [true], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "found": 6651, "identity": 3414 },
+      "catchall": 6652,
+      "checks": []
+    },
+    { "type": "literal", "values": [false], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "array",
+      "element": 6654,
+      "checks": [{ "check": "max_length", "maximum": 256, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "worktreeMutationResultSchema",
+      "shape": { "worktree": 1838, "inventory": 1831 },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "worktreePruneResultSchema",
+      "shape": { "prunedPaths": 6658, "inventory": 1831 },
+      "checks": []
+    },
+    { "type": "array", "element": 6659, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "worktreeCreateResultSchema",
+      "shape": { "created": 6661, "worktree": 1838, "inventory": 1831 },
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "object",
+      "name": "worktreeRemoveResultSchema",
+      "shape": { "removedPath": 6663, "inventory": 1831 },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "worktreeCreateMutationFailureSchema",
+      "shape": { "code": 6665, "error": 6666, "mutation": 6667 },
+      "catchall": 6677,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worktree-create-mutation-failure",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "values": [
+        "worktree-create-not-started",
+        "worktree-create-committed",
+        "worktree-create-rolled-back",
+        "worktree-create-partial"
+      ],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 2000, "when": "length" }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": { "outcome": 6668, "retryable": 6669, "target": 6670 },
+      "catchall": 6676,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "worktreeCreateMutationOutcomeSchema",
+      "values": ["notStarted", "committed", "rolledBack", "partial"],
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "nullable", "innerType": 6671, "checks": [] },
+    {
+      "type": "object",
+      "shape": { "kind": 6672, "projectId": 6673, "worktreeId": 6674 },
+      "catchall": 6675,
+      "checks": []
+    },
+    { "type": "literal", "values": ["worktree"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "githubPullRequestCheckoutPreparedSchema",
+      "shape": {
+        "pullRequest": 6679,
+        "branch": 6715,
+        "name": 6716,
+        "headSha": 6717,
+        "remote": 6718
+      },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "githubPullRequestSummarySchema",
+      "shape": {
+        "number": 6680,
+        "title": 6681,
+        "state": 2540,
+        "url": 6682,
+        "author": 6683,
+        "commentCount": 6684,
+        "labels": 6685,
+        "assignees": 6689,
+        "milestone": 6692,
+        "createdAt": 6695,
+        "updatedAt": 6696,
+        "closedAt": 6697,
+        "body": 6699,
+        "draft": 6701,
+        "merged": 6702,
+        "headRef": 6703,
+        "headSha": 6704,
+        "baseRef": 6705,
+        "baseSha": 6706,
+        "mergeable": 6707,
+        "reviewDecision": 6710,
+        "checksState": 6713
+      },
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "string_format", "format": "url", "abort": false }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "array", "element": 6686, "checks": [] },
+    {
+      "type": "object",
+      "name": "githubIssueLabelSchema",
+      "shape": { "name": 6687, "color": 6688 },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[0-9a-fA-F]{6}$",
+          "flags": "",
+          "displayPattern": "/^[0-9a-fA-F]{6}$/"
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 6690,
+      "defaultValue": [],
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 6691,
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 6693,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 6694, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 1000, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 6698, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 6700, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[0-9a-f]{40}$",
+          "flags": "u",
+          "displayPattern": "/^[0-9a-f]{40}$/u"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[0-9a-f]{40}$",
+          "flags": "u",
+          "displayPattern": "/^[0-9a-f]{40}$/u"
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 6708,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 6709, "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 6711,
+      "defaultValue": "none",
+      "checks": []
+    },
+    { "type": "union", "options": [2566, 6712], "checks": [] },
+    { "type": "literal", "values": ["reviewed"], "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 6714,
+      "defaultValue": "unknown",
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "githubPullRequestChecksStateSchema",
+      "values": ["success", "failure", "pending", "neutral", "none", "unknown"],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 255, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[0-9a-f]{40}$",
+          "flags": "u",
+          "displayPattern": "/^[0-9a-f]{40}$/u"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 255, "when": "length" }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "githubPullRequestCheckoutResultSchema",
+      "shape": { "pullRequest": 6679, "worktree": 6504, "reused": 6720 },
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "object",
+      "name": "repositoryOperationWireRequestSchema",
+      "shape": {
+        "operationId": 4110,
+        "protectedRequest": 4111,
+        "access": 4114,
+        "agent": 4116,
+        "modelId": 4118,
+        "peerWorktreeId": 4120
+      },
+      "catchall": 6722,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "repository-agent-model",
+          "messageAfterPath": true,
+          "message": "Repository model selection is only valid for agent operations.",
+          "path": ["modelId"]
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
       "name": "repositoryWorkerOperationWireRequestSchema",
       "shape": {
         "operationId": 4110,
@@ -37505,9 +38785,9 @@
         "agent": 4116,
         "modelId": 4118,
         "peerWorktreeId": 4120,
-        "scopeId": 6493
+        "scopeId": 6724
       },
-      "catchall": 6494,
+      "catchall": 6725,
       "checks": [
         {
           "check": "refinement",
@@ -37532,25 +38812,25 @@
       "shape": {
         "operationId": 4110,
         "protectedResponse": 4111,
-        "agentExecution": 6496,
-        "workspaceRootAttachment": 6518
+        "agentExecution": 6727,
+        "workspaceRootAttachment": 6749
       },
-      "catchall": 6521,
+      "catchall": 6752,
       "checks": []
     },
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 6497,
+      "innerType": 6728,
       "defaultValue": null,
       "checks": []
     },
-    { "type": "nullable", "innerType": 6498, "checks": [] },
+    { "type": "nullable", "innerType": 6729, "checks": [] },
     {
       "type": "object",
       "name": "repositoryOperationAgentExecutionSchema",
-      "shape": { "routeId": 6499, "turnId": 6500, "measuredUsage": 6501 },
-      "catchall": 6517,
+      "shape": { "routeId": 6730, "turnId": 6731, "measuredUsage": 6732 },
+      "catchall": 6748,
       "checks": []
     },
     {
@@ -37570,20 +38850,20 @@
     {
       "type": "object",
       "shape": {
-        "inputTokens": 6502,
-        "outputTokens": 6504,
-        "cachedInputTokens": 6506,
-        "totalTokens": 6508,
-        "durationMs": 6510,
-        "estimatedCostUsd": 6512,
-        "costAvailable": 6515
+        "inputTokens": 6733,
+        "outputTokens": 6735,
+        "cachedInputTokens": 6737,
+        "totalTokens": 6739,
+        "durationMs": 6741,
+        "estimatedCostUsd": 6743,
+        "costAvailable": 6746
       },
       "checks": []
     },
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 6503,
+      "innerType": 6734,
       "defaultValue": 0,
       "checks": []
     },
@@ -37597,7 +38877,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 6505,
+      "innerType": 6736,
       "defaultValue": 0,
       "checks": []
     },
@@ -37611,7 +38891,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 6507,
+      "innerType": 6738,
       "defaultValue": 0,
       "checks": []
     },
@@ -37625,7 +38905,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 6509,
+      "innerType": 6740,
       "defaultValue": 0,
       "checks": []
     },
@@ -37639,7 +38919,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 6511,
+      "innerType": 6742,
       "defaultValue": 0,
       "checks": []
     },
@@ -37653,11 +38933,11 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 6513,
+      "innerType": 6744,
       "defaultValue": null,
       "checks": []
     },
-    { "type": "nullable", "innerType": 6514, "checks": [] },
+    { "type": "nullable", "innerType": 6745, "checks": [] },
     {
       "type": "number",
       "checks": [{ "check": "greater_than", "value": 0, "inclusive": true }]
@@ -37665,7 +38945,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 6516,
+      "innerType": 6747,
       "defaultValue": false,
       "checks": []
     },
@@ -37675,14 +38955,14 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 6519,
+      "innerType": 6750,
       "checks": []
     },
     {
       "type": "object",
       "name": "workspaceRootAttachmentSchema",
       "shape": { "rootPathHandle": 706, "displayHandle": 706 },
-      "catchall": 6520,
+      "catchall": 6751,
       "checks": []
     },
     { "type": "never", "checks": [] },
@@ -37698,7 +38978,7 @@
       "type": "object",
       "name": "workerEncryptionRefreshResultSchema",
       "shape": { "component": 105, "keyRevision": 23, "status": 360 },
-      "catchall": 6524,
+      "catchall": 6755,
       "checks": []
     },
     { "type": "never", "checks": [] },
@@ -37706,16 +38986,16 @@
       "type": "object",
       "name": "encryptedTerminalCreateSchema",
       "shape": {
-        "worktreeId": 6526,
-        "paneId": 6528,
-        "tabGroupId": 6530,
-        "targetRegion": 6532,
-        "target": 6534,
-        "id": 6535,
+        "worktreeId": 6757,
+        "paneId": 6759,
+        "tabGroupId": 6761,
+        "targetRegion": 6763,
+        "target": 6765,
+        "id": 6766,
         "titleProtection": 689,
         "stateProtection": 2922
       },
-      "catchall": 6536,
+      "catchall": 6767,
       "checks": [
         {
           "check": "refinement",
@@ -37735,7 +39015,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 6527,
+      "innerType": 6758,
       "checks": []
     },
     {
@@ -37746,7 +39026,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 6529,
+      "innerType": 6760,
       "checks": []
     },
     {
@@ -37757,7 +39037,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 6531,
+      "innerType": 6762,
       "checks": []
     },
     {
@@ -37768,7 +39048,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 6533,
+      "innerType": 6764,
       "checks": []
     },
     {
@@ -37802,7 +39082,7 @@
       "type": "object",
       "name": "encryptedTerminalUpdateSchema",
       "shape": { "titleProtection": 689 },
-      "catchall": 6538,
+      "catchall": 6769,
       "checks": [
         {
           "check": "refinement",
@@ -37817,8 +39097,8 @@
     {
       "type": "object",
       "name": "encryptedTerminalServiceConfigurationSchema",
-      "shape": { "enabled": 6540, "stateProtection": 2922 },
-      "catchall": 6541,
+      "shape": { "enabled": 6771, "stateProtection": 2922 },
+      "catchall": 6772,
       "checks": []
     },
     { "type": "boolean", "checks": [] },
@@ -37826,7 +39106,7 @@
     {
       "type": "object",
       "name": "worktreeSelectionSchema",
-      "shape": { "worktreeId": 6543 },
+      "shape": { "worktreeId": 6774 },
       "checks": []
     },
     {
@@ -37837,17 +39117,17 @@
       "type": "object",
       "name": "workspaceOwnershipSchema",
       "shape": {
-        "version": 6545,
-        "id": 6548,
-        "projectId": 6548,
-        "revision": 6549,
-        "mainWindowId": 6548,
-        "windows": 6550,
-        "pendingTransfers": 6627,
-        "legacyFileImports": 6635,
-        "legacyCodeImports": 6643
+        "version": 6776,
+        "id": 6779,
+        "projectId": 6779,
+        "revision": 6780,
+        "mainWindowId": 6779,
+        "windows": 6781,
+        "pendingTransfers": 6858,
+        "legacyFileImports": 6866,
+        "legacyCodeImports": 6874
       },
-      "catchall": 6647,
+      "catchall": 6878,
       "checks": [
         {
           "check": "refinement",
@@ -37856,7 +39136,7 @@
         }
       ]
     },
-    { "type": "union", "options": [6546, 6547], "checks": [] },
+    { "type": "union", "options": [6777, 6778], "checks": [] },
     { "type": "literal", "values": [1], "checks": [] },
     { "type": "literal", "values": [2], "checks": [] },
     {
@@ -37872,24 +39152,24 @@
     },
     {
       "type": "array",
-      "element": 6551,
+      "element": 6782,
       "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
     },
     {
       "type": "object",
       "name": "workspaceWindowSchema",
       "shape": {
-        "id": 6548,
-        "attachmentGeneration": 6552,
-        "rendererId": 6553,
-        "panes": 6554,
-        "centerRoot": 6597,
-        "focusedPaneId": 6610,
-        "recentPaneIds": 6611,
-        "recentTabIds": 6612,
-        "returnPlacement": 6614
+        "id": 6779,
+        "attachmentGeneration": 6783,
+        "rendererId": 6784,
+        "panes": 6785,
+        "centerRoot": 6828,
+        "focusedPaneId": 6841,
+        "recentPaneIds": 6842,
+        "recentTabIds": 6843,
+        "returnPlacement": 6845
       },
-      "catchall": 6626,
+      "catchall": 6857,
       "checks": []
     },
     {
@@ -37903,40 +39183,40 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 6548,
+      "innerType": 6779,
       "checks": []
     },
-    { "type": "array", "element": 6555, "checks": [] },
+    { "type": "array", "element": 6786, "checks": [] },
     {
       "type": "object",
       "name": "workspacePaneSchema",
       "shape": {
-        "id": 6548,
-        "region": 6533,
-        "titleProtection": 6556,
-        "tabs": 6557,
-        "activeTabId": 6584,
-        "conversationView": 6585,
-        "selection": 6588
+        "id": 6779,
+        "region": 6764,
+        "titleProtection": 6787,
+        "tabs": 6788,
+        "activeTabId": 6815,
+        "conversationView": 6816,
+        "selection": 6819
       },
-      "catchall": 6596,
+      "catchall": 6827,
       "checks": []
     },
     { "type": "nullable", "innerType": 689, "checks": [] },
-    { "type": "array", "element": 6558, "checks": [] },
+    { "type": "array", "element": 6789, "checks": [] },
     {
       "type": "object",
       "name": "workspaceTabSchema",
       "shape": {
-        "id": 6548,
-        "resource": 6559,
-        "preview": 6569,
-        "fileMode": 6570,
-        "titleProtection": 6572,
-        "builtInState": 6573,
-        "dockPresentation": 6578
+        "id": 6779,
+        "resource": 6790,
+        "preview": 6800,
+        "fileMode": 6801,
+        "titleProtection": 6803,
+        "builtInState": 6804,
+        "dockPresentation": 6809
       },
-      "catchall": 6583,
+      "catchall": 6814,
       "checks": [
         {
           "check": "refinement",
@@ -37948,7 +39228,7 @@
     {
       "type": "union",
       "name": "projectSurfaceResourceRefSchema",
-      "options": [6560, 6565],
+      "options": [6791, 6796],
       "discriminator": "kind",
       "checks": [
         {
@@ -37960,8 +39240,8 @@
     },
     {
       "type": "object",
-      "shape": { "kind": 6561, "definitionId": 6562, "resourceId": 6563 },
-      "catchall": 6564,
+      "shape": { "kind": 6792, "definitionId": 6793, "resourceId": 6794 },
+      "catchall": 6795,
       "checks": []
     },
     { "type": "literal", "values": ["entity"], "checks": [] },
@@ -37998,8 +39278,8 @@
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "kind": 6566, "definitionId": 6567 },
-      "catchall": 6568,
+      "shape": { "kind": 6797, "definitionId": 6798 },
+      "catchall": 6799,
       "checks": []
     },
     { "type": "literal", "values": ["builtin"], "checks": [] },
@@ -38023,7 +39303,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 6571,
+      "innerType": 6802,
       "checks": []
     },
     {
@@ -38033,30 +39313,30 @@
       "checks": []
     },
     { "type": "nullable", "innerType": 689, "checks": [] },
-    { "type": "nullable", "innerType": 6574, "checks": [] },
+    { "type": "nullable", "innerType": 6805, "checks": [] },
     {
       "type": "object",
       "name": "projectBuiltInSurfaceStateSchema",
-      "shape": { "definitionId": 6567, "worktreeId": 6575 },
-      "catchall": 6577,
+      "shape": { "definitionId": 6798, "worktreeId": 6806 },
+      "catchall": 6808,
       "checks": []
     },
-    { "type": "nullable", "innerType": 6576, "checks": [] },
+    { "type": "nullable", "innerType": 6807, "checks": [] },
     {
       "type": "string",
       "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
     },
     { "type": "never", "checks": [] },
-    { "type": "nullable", "innerType": 6579, "checks": [] },
+    { "type": "nullable", "innerType": 6810, "checks": [] },
     {
       "type": "object",
       "name": "projectDockPresentationPreferenceSchema",
       "shape": {
-        "preferredMode": 6580,
-        "splitFraction": 6581,
-        "restoreFraction": 6581
+        "preferredMode": 6811,
+        "splitFraction": 6812,
+        "restoreFraction": 6812
       },
-      "catchall": 6582,
+      "catchall": 6813,
       "checks": []
     },
     {
@@ -38075,28 +39355,28 @@
     },
     { "type": "never", "checks": [] },
     { "type": "never", "checks": [] },
-    { "type": "nullable", "innerType": 6548, "checks": [] },
+    { "type": "nullable", "innerType": 6779, "checks": [] },
     {
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 6586,
+      "innerType": 6817,
       "checks": []
     },
-    { "type": "nullable", "innerType": 6587, "checks": [] },
+    { "type": "nullable", "innerType": 6818, "checks": [] },
     {
       "type": "object",
       "name": "workspaceConversationViewSchema",
       "shape": {
-        "id": 6548,
-        "resource": 6559,
-        "preview": 6569,
-        "fileMode": 6570,
-        "titleProtection": 6572,
-        "builtInState": 6573,
-        "dockPresentation": 6578
+        "id": 6779,
+        "resource": 6790,
+        "preview": 6800,
+        "fileMode": 6801,
+        "titleProtection": 6803,
+        "builtInState": 6804,
+        "dockPresentation": 6809
       },
-      "catchall": 6583,
+      "catchall": 6814,
       "checks": [
         {
           "check": "refinement",
@@ -38115,45 +39395,45 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 6589,
+      "innerType": 6820,
       "checks": []
     },
     {
       "type": "union",
       "name": "workspaceContentSelectionSchema",
-      "options": [6590, 6593],
+      "options": [6821, 6824],
       "discriminator": "kind",
       "checks": []
     },
     {
       "type": "object",
-      "shape": { "kind": 6591, "tabId": 6548 },
-      "catchall": 6592,
+      "shape": { "kind": 6822, "tabId": 6779 },
+      "catchall": 6823,
       "checks": []
     },
     { "type": "literal", "values": ["tab"], "checks": [] },
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "kind": 6594, "viewId": 6548 },
-      "catchall": 6595,
+      "shape": { "kind": 6825, "viewId": 6779 },
+      "catchall": 6826,
       "checks": []
     },
     { "type": "literal", "values": ["conversation"], "checks": [] },
     { "type": "never", "checks": [] },
     { "type": "never", "checks": [] },
-    { "type": "nullable", "innerType": 6598, "checks": [] },
-    { "type": "forward", "innerType": 6599, "checks": [] },
+    { "type": "nullable", "innerType": 6829, "checks": [] },
+    { "type": "forward", "innerType": 6830, "checks": [] },
     {
       "type": "union",
-      "options": [6600, 6604],
+      "options": [6831, 6835],
       "discriminator": "kind",
       "checks": []
     },
     {
       "type": "object",
-      "shape": { "kind": 6601, "paneId": 6602 },
-      "catchall": 6603,
+      "shape": { "kind": 6832, "paneId": 6833 },
+      "catchall": 6834,
       "checks": []
     },
     { "type": "literal", "values": ["pane"], "checks": [] },
@@ -38165,14 +39445,14 @@
     {
       "type": "object",
       "shape": {
-        "kind": 6605,
-        "id": 6606,
-        "direction": 6607,
-        "fraction": 6608,
-        "first": 6598,
-        "second": 6598
+        "kind": 6836,
+        "id": 6837,
+        "direction": 6838,
+        "fraction": 6839,
+        "first": 6829,
+        "second": 6829
       },
-      "catchall": 6609,
+      "catchall": 6840,
       "checks": []
     },
     { "type": "literal", "values": ["split"], "checks": [] },
@@ -38195,45 +39475,45 @@
       ]
     },
     { "type": "never", "checks": [] },
-    { "type": "nullable", "innerType": 6548, "checks": [] },
-    { "type": "array", "element": 6548, "checks": [] },
+    { "type": "nullable", "innerType": 6779, "checks": [] },
+    { "type": "array", "element": 6779, "checks": [] },
     {
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 6613,
+      "innerType": 6844,
       "checks": []
     },
-    { "type": "array", "element": 6548, "checks": [] },
+    { "type": "array", "element": 6779, "checks": [] },
     {
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 6615,
+      "innerType": 6846,
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "sourceWindowId": 6548,
-        "sourcePaneId": 6548,
-        "sourcePlacement": 6616,
-        "wholePane": 6623,
-        "detachedPaneId": 6624
+        "sourceWindowId": 6779,
+        "sourcePaneId": 6779,
+        "sourcePlacement": 6847,
+        "wholePane": 6854,
+        "detachedPaneId": 6855
       },
-      "catchall": 6625,
+      "catchall": 6856,
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "panePosition": 6617,
-        "tabPosition": 6618,
-        "viewKind": 6619,
-        "region": 6533,
-        "centerRoot": 6621
+        "panePosition": 6848,
+        "tabPosition": 6849,
+        "viewKind": 6850,
+        "region": 6764,
+        "centerRoot": 6852
       },
-      "catchall": 6622,
+      "catchall": 6853,
       "checks": []
     },
     {
@@ -38254,18 +39534,18 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 6620,
+      "innerType": 6851,
       "checks": []
     },
     { "type": "enum", "values": ["tab", "conversation"], "checks": [] },
-    { "type": "nullable", "innerType": 6598, "checks": [] },
+    { "type": "nullable", "innerType": 6829, "checks": [] },
     { "type": "never", "checks": [] },
     { "type": "boolean", "checks": [] },
     {
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 6548,
+      "innerType": 6779,
       "checks": []
     },
     { "type": "never", "checks": [] },
@@ -38274,31 +39554,31 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 6628,
+      "innerType": 6859,
       "checks": []
     },
     {
       "type": "array",
-      "element": 6629,
+      "element": 6860,
       "checks": [{ "check": "max_length", "maximum": 128, "when": "length" }]
     },
     {
       "type": "object",
       "shape": {
-        "id": 6548,
-        "sourceWindowId": 6548,
-        "sourceGeneration": 6630,
-        "sourcePaneId": 6548,
-        "sourcePlacement": 6616,
-        "tabIds": 6631,
-        "wholePane": 6623,
-        "destinationWindowId": 6548,
-        "destinationGeneration": 6632,
-        "destinationPaneId": 6548,
-        "returnSplitId": 6633,
-        "phase": 6634
+        "id": 6779,
+        "sourceWindowId": 6779,
+        "sourceGeneration": 6861,
+        "sourcePaneId": 6779,
+        "sourcePlacement": 6847,
+        "tabIds": 6862,
+        "wholePane": 6854,
+        "destinationWindowId": 6779,
+        "destinationGeneration": 6863,
+        "destinationPaneId": 6779,
+        "returnSplitId": 6864,
+        "phase": 6865
       },
-      "catchall": 6625,
+      "catchall": 6856,
       "checks": []
     },
     {
@@ -38310,7 +39590,7 @@
     },
     {
       "type": "array",
-      "element": 6548,
+      "element": 6779,
       "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
     },
     {
@@ -38324,7 +39604,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 6548,
+      "innerType": 6779,
       "checks": []
     },
     {
@@ -38336,15 +39616,15 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 6636,
+      "innerType": 6867,
       "checks": []
     },
-    { "type": "array", "element": 6637, "checks": [] },
+    { "type": "array", "element": 6868, "checks": [] },
     {
       "type": "object",
       "name": "workspaceLegacyFileImportSchema",
-      "shape": { "windowId": 6638, "paneId": 6548, "views": 6639 },
-      "catchall": 6642,
+      "shape": { "windowId": 6869, "paneId": 6779, "views": 6870 },
+      "catchall": 6873,
       "checks": []
     },
     {
@@ -38361,13 +39641,13 @@
     },
     {
       "type": "array",
-      "element": 6640,
+      "element": 6871,
       "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
     },
     {
       "type": "object",
-      "shape": { "tabId": 6548, "documentId": 6548, "mode": 6571 },
-      "catchall": 6641,
+      "shape": { "tabId": 6779, "documentId": 6779, "mode": 6802 },
+      "catchall": 6872,
       "checks": []
     },
     { "type": "never", "checks": [] },
@@ -38376,14 +39656,14 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 6644,
+      "innerType": 6875,
       "checks": []
     },
-    { "type": "array", "element": 6645, "checks": [] },
+    { "type": "array", "element": 6876, "checks": [] },
     {
       "type": "object",
-      "shape": { "tabId": 6548, "codeId": 6548, "views": 6639 },
-      "catchall": 6646,
+      "shape": { "tabId": 6779, "codeId": 6779, "views": 6870 },
+      "catchall": 6877,
       "checks": []
     },
     { "type": "never", "checks": [] },
@@ -38392,15 +39672,15 @@
       "type": "object",
       "name": "workspaceCommandSchema",
       "shape": {
-        "operationId": 6649,
-        "workspaceId": 6649,
-        "projectId": 6649,
-        "windowId": 6649,
-        "attachmentGeneration": 6650,
-        "expectedRevision": 6651,
-        "action": 6652
+        "operationId": 6880,
+        "workspaceId": 6880,
+        "projectId": 6880,
+        "windowId": 6880,
+        "attachmentGeneration": 6881,
+        "expectedRevision": 6882,
+        "action": 6883
       },
-      "catchall": 6754,
+      "catchall": 6985,
       "checks": []
     },
     {
@@ -38425,9 +39705,9 @@
       "type": "union",
       "name": "workspaceActionSchema",
       "options": [
-        6653, 6659, 6662, 6665, 6672, 6675, 6678, 6681, 6684, 6688, 6691, 6694,
-        6697, 6700, 6703, 6706, 6709, 6712, 6717, 6720, 6724, 6728, 6732, 6736,
-        6740, 6743
+        6884, 6890, 6893, 6896, 6903, 6906, 6909, 6912, 6915, 6919, 6922, 6925,
+        6928, 6931, 6934, 6937, 6940, 6943, 6948, 6951, 6955, 6959, 6963, 6967,
+        6971, 6974
       ],
       "discriminator": "type",
       "checks": []
@@ -38435,14 +39715,14 @@
     {
       "type": "object",
       "shape": {
-        "type": 6654,
-        "expectedConversationViewId": 6655,
-        "view": 6587,
-        "paneId": 6657,
-        "newPaneId": 6649,
-        "splitId": 6649
+        "type": 6885,
+        "expectedConversationViewId": 6886,
+        "view": 6818,
+        "paneId": 6888,
+        "newPaneId": 6880,
+        "splitId": 6880
       },
-      "catchall": 6658,
+      "catchall": 6889,
       "checks": []
     },
     { "type": "literal", "values": ["open-conversation"], "checks": [] },
@@ -38450,22 +39730,22 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 6656,
+      "innerType": 6887,
       "checks": []
     },
-    { "type": "nullable", "innerType": 6649, "checks": [] },
+    { "type": "nullable", "innerType": 6880, "checks": [] },
     {
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 6649,
+      "innerType": 6880,
       "checks": []
     },
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "type": 6660, "viewId": 6649 },
-      "catchall": 6661,
+      "shape": { "type": 6891, "viewId": 6880 },
+      "catchall": 6892,
       "checks": []
     },
     { "type": "literal", "values": ["close-conversation"], "checks": [] },
@@ -38473,14 +39753,14 @@
     {
       "type": "object",
       "shape": {
-        "type": 6663,
-        "tabId": 6649,
-        "codeId": 6649,
-        "expectedWorkerId": 6649,
-        "expectedWorktreeId": 6649,
-        "views": 6639
+        "type": 6894,
+        "tabId": 6880,
+        "codeId": 6880,
+        "expectedWorkerId": 6880,
+        "expectedWorktreeId": 6880,
+        "views": 6870
       },
-      "catchall": 6664,
+      "catchall": 6895,
       "checks": []
     },
     { "type": "literal", "values": ["migrate-code-files"], "checks": [] },
@@ -38488,17 +39768,17 @@
     {
       "type": "object",
       "shape": {
-        "type": 6666,
-        "tabId": 6649,
-        "explorerId": 6649,
-        "expectedWorkerId": 6649,
-        "expectedWorktreeId": 6649,
-        "expectedStateProtection": 6667,
-        "documentId": 6649,
-        "mode": 6571,
-        "retainedViews": 6668
+        "type": 6897,
+        "tabId": 6880,
+        "explorerId": 6880,
+        "expectedWorkerId": 6880,
+        "expectedWorktreeId": 6880,
+        "expectedStateProtection": 6898,
+        "documentId": 6880,
+        "mode": 6802,
+        "retainedViews": 6899
       },
-      "catchall": 6671,
+      "catchall": 6902,
       "checks": []
     },
     { "type": "literal", "values": ["migrate-explorer-file"], "checks": [] },
@@ -38517,19 +39797,19 @@
         }
       ]
     },
-    { "type": "array", "element": 6669, "checks": [] },
+    { "type": "array", "element": 6900, "checks": [] },
     {
       "type": "object",
-      "shape": { "tabId": 6649, "documentId": 6649, "mode": 6571 },
-      "catchall": 6670,
+      "shape": { "tabId": 6880, "documentId": 6880, "mode": 6802 },
+      "catchall": 6901,
       "checks": []
     },
     { "type": "never", "checks": [] },
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "type": 6673, "rendererId": 6649 },
-      "catchall": 6674,
+      "shape": { "type": 6904, "rendererId": 6880 },
+      "catchall": 6905,
       "checks": []
     },
     { "type": "literal", "values": ["replace-attachment"], "checks": [] },
@@ -38537,28 +39817,28 @@
     {
       "type": "object",
       "shape": {
-        "type": 6676,
-        "transferId": 6649,
-        "paneId": 6649,
-        "splitId": 6649
+        "type": 6907,
+        "transferId": 6880,
+        "paneId": 6880,
+        "splitId": 6880
       },
-      "catchall": 6677,
+      "catchall": 6908,
       "checks": []
     },
     { "type": "literal", "values": ["prepare-return"], "checks": [] },
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "type": 6679, "transferId": 6649 },
-      "catchall": 6680,
+      "shape": { "type": 6910, "transferId": 6880 },
+      "catchall": 6911,
       "checks": []
     },
     { "type": "literal", "values": ["transfer-state-ready"], "checks": [] },
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "type": 6682, "transferId": 6649 },
-      "catchall": 6683,
+      "shape": { "type": 6913, "transferId": 6880 },
+      "catchall": 6914,
       "checks": []
     },
     { "type": "literal", "values": ["commit-transfer"], "checks": [] },
@@ -38566,14 +39846,14 @@
     {
       "type": "object",
       "shape": {
-        "type": 6685,
-        "transferId": 6649,
-        "paneId": 6649,
-        "tabId": 6686,
-        "destinationWindowId": 6649,
-        "destinationPaneId": 6649
+        "type": 6916,
+        "transferId": 6880,
+        "paneId": 6880,
+        "tabId": 6917,
+        "destinationWindowId": 6880,
+        "destinationPaneId": 6880
       },
-      "catchall": 6687,
+      "catchall": 6918,
       "checks": []
     },
     { "type": "literal", "values": ["prepare-detach"], "checks": [] },
@@ -38581,82 +39861,82 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 6649,
+      "innerType": 6880,
       "checks": []
     },
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "type": 6689, "transferId": 6649 },
-      "catchall": 6690,
+      "shape": { "type": 6920, "transferId": 6880 },
+      "catchall": 6921,
       "checks": []
     },
     { "type": "literal", "values": ["transfer-ready"], "checks": [] },
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "type": 6692, "transferId": 6649 },
-      "catchall": 6693,
+      "shape": { "type": 6923, "transferId": 6880 },
+      "catchall": 6924,
       "checks": []
     },
     { "type": "literal", "values": ["cancel-transfer"], "checks": [] },
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "type": 6695, "tabId": 6649 },
-      "catchall": 6696,
+      "shape": { "type": 6926, "tabId": 6880 },
+      "catchall": 6927,
       "checks": []
     },
     { "type": "literal", "values": ["select"], "checks": [] },
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "type": 6698 },
-      "catchall": 6699,
+      "shape": { "type": 6929 },
+      "catchall": 6930,
       "checks": []
     },
     { "type": "literal", "values": ["home"], "checks": [] },
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "type": 6701, "tabId": 6649 },
-      "catchall": 6702,
+      "shape": { "type": 6932, "tabId": 6880 },
+      "catchall": 6933,
       "checks": []
     },
     { "type": "literal", "values": ["close-tab"], "checks": [] },
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "type": 6704, "paneId": 6649 },
-      "catchall": 6705,
+      "shape": { "type": 6935, "paneId": 6880 },
+      "catchall": 6936,
       "checks": []
     },
     { "type": "literal", "values": ["close-pane"], "checks": [] },
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "type": 6707, "tabId": 6649 },
-      "catchall": 6708,
+      "shape": { "type": 6938, "tabId": 6880 },
+      "catchall": 6939,
       "checks": []
     },
     { "type": "literal", "values": ["pin"], "checks": [] },
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "type": 6710, "tabId": 6649, "mode": 6571 },
-      "catchall": 6711,
+      "shape": { "type": 6941, "tabId": 6880, "mode": 6802 },
+      "catchall": 6942,
       "checks": []
     },
     { "type": "literal", "values": ["file-mode"], "checks": [] },
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "type": 6713, "paneId": 6649, "titleProtection": 6714 },
-      "catchall": 6716,
+      "shape": { "type": 6944, "paneId": 6880, "titleProtection": 6945 },
+      "catchall": 6947,
       "checks": []
     },
     { "type": "literal", "values": ["rename-pane"], "checks": [] },
-    { "type": "nullable", "innerType": 6715, "checks": [] },
+    { "type": "nullable", "innerType": 6946, "checks": [] },
     {
       "type": "object",
       "shape": { "classification": 690, "protectedLabel": 693 },
@@ -38673,32 +39953,32 @@
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "type": 6718, "tabId": 6649, "presentation": 6579 },
-      "catchall": 6719,
+      "shape": { "type": 6949, "tabId": 6880, "presentation": 6810 },
+      "catchall": 6950,
       "checks": []
     },
     { "type": "literal", "values": ["dock-presentation"], "checks": [] },
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "type": 6721, "region": 6533, "paneIds": 6722 },
-      "catchall": 6723,
+      "shape": { "type": 6952, "region": 6764, "paneIds": 6953 },
+      "catchall": 6954,
       "checks": []
     },
     { "type": "literal", "values": ["reorder-panes"], "checks": [] },
-    { "type": "array", "element": 6649, "checks": [] },
+    { "type": "array", "element": 6880, "checks": [] },
     { "type": "never", "checks": [] },
     {
       "type": "object",
       "shape": {
-        "type": 6725,
-        "tabId": 6649,
-        "paneId": 6649,
-        "region": 6533,
-        "position": 6726,
-        "splitId": 6649
+        "type": 6956,
+        "tabId": 6880,
+        "paneId": 6880,
+        "region": 6764,
+        "position": 6957,
+        "splitId": 6880
       },
-      "catchall": 6727,
+      "catchall": 6958,
       "checks": []
     },
     { "type": "literal", "values": ["move-new-pane"], "checks": [] },
@@ -38712,26 +39992,26 @@
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "type": 6729, "paneId": 6649, "tabIds": 6730 },
-      "catchall": 6731,
+      "shape": { "type": 6960, "paneId": 6880, "tabIds": 6961 },
+      "catchall": 6962,
       "checks": []
     },
     { "type": "literal", "values": ["reorder"], "checks": [] },
     {
       "type": "array",
-      "element": 6649,
+      "element": 6880,
       "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
     },
     { "type": "never", "checks": [] },
     {
       "type": "object",
       "shape": {
-        "type": 6733,
-        "tabId": 6649,
-        "targetPaneId": 6649,
-        "position": 6734
+        "type": 6964,
+        "tabId": 6880,
+        "targetPaneId": 6880,
+        "position": 6965
       },
-      "catchall": 6735,
+      "catchall": 6966,
       "checks": []
     },
     { "type": "literal", "values": ["move"], "checks": [] },
@@ -38746,15 +40026,15 @@
     {
       "type": "object",
       "shape": {
-        "type": 6737,
-        "tabId": 6649,
-        "targetPaneId": 6649,
-        "paneId": 6649,
-        "splitId": 6649,
-        "edge": 6738,
-        "fraction": 6608
+        "type": 6968,
+        "tabId": 6880,
+        "targetPaneId": 6880,
+        "paneId": 6880,
+        "splitId": 6880,
+        "edge": 6969,
+        "fraction": 6839
       },
-      "catchall": 6739,
+      "catchall": 6970,
       "checks": []
     },
     { "type": "literal", "values": ["split"], "checks": [] },
@@ -38767,8 +40047,8 @@
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "type": 6741, "splitId": 6649, "fraction": 6608 },
-      "catchall": 6742,
+      "shape": { "type": 6972, "splitId": 6880, "fraction": 6839 },
+      "catchall": 6973,
       "checks": []
     },
     { "type": "literal", "values": ["resize"], "checks": [] },
@@ -38776,12 +40056,12 @@
     {
       "type": "object",
       "shape": {
-        "type": 6744,
-        "tab": 6558,
-        "replacePreviewTabId": 6745,
-        "target": 6746
+        "type": 6975,
+        "tab": 6789,
+        "replacePreviewTabId": 6976,
+        "target": 6977
       },
-      "catchall": 6753,
+      "catchall": 6984,
       "checks": []
     },
     { "type": "literal", "values": ["open"], "checks": [] },
@@ -38789,19 +40069,19 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 6649,
+      "innerType": 6880,
       "checks": []
     },
     {
       "type": "union",
-      "options": [6747, 6750],
+      "options": [6978, 6981],
       "discriminator": "kind",
       "checks": []
     },
     {
       "type": "object",
-      "shape": { "kind": 6748, "paneId": 6649 },
-      "catchall": 6749,
+      "shape": { "kind": 6979, "paneId": 6880 },
+      "catchall": 6980,
       "checks": []
     },
     { "type": "literal", "values": ["pane"], "checks": [] },
@@ -38809,12 +40089,12 @@
     {
       "type": "object",
       "shape": {
-        "kind": 6751,
-        "paneId": 6649,
-        "region": 6533,
-        "splitId": 6649
+        "kind": 6982,
+        "paneId": 6880,
+        "region": 6764,
+        "splitId": 6880
       },
-      "catchall": 6752,
+      "catchall": 6983,
       "checks": []
     },
     { "type": "literal", "values": ["new-pane"], "checks": [] },
@@ -38825,14 +40105,14 @@
       "type": "object",
       "name": "workspaceReceiptSchema",
       "shape": {
-        "layout": 6544,
-        "operationId": 6756,
-        "appliedRevision": 6757,
-        "replayed": 6758,
-        "focusWindowId": 6759,
-        "emptyWindowIds": 6761
+        "layout": 6775,
+        "operationId": 6987,
+        "appliedRevision": 6988,
+        "replayed": 6989,
+        "focusWindowId": 6990,
+        "emptyWindowIds": 6992
       },
-      "catchall": 6763,
+      "catchall": 6994,
       "checks": [
         {
           "check": "refinement",
@@ -38854,12 +40134,12 @@
       ]
     },
     { "type": "boolean", "checks": [] },
-    { "type": "nullable", "innerType": 6760, "checks": [] },
+    { "type": "nullable", "innerType": 6991, "checks": [] },
     {
       "type": "string",
       "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
     },
-    { "type": "array", "element": 6762, "checks": [] },
+    { "type": "array", "element": 6993, "checks": [] },
     {
       "type": "string",
       "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
@@ -38869,12 +40149,12 @@
       "type": "object",
       "name": "workspaceSeedRequestSchema",
       "shape": {
-        "mainWindowId": 6765,
-        "activeTabByPane": 6766,
-        "focusedPaneId": 6770,
-        "detachedPanes": 6773
+        "mainWindowId": 6996,
+        "activeTabByPane": 6997,
+        "focusedPaneId": 7001,
+        "detachedPanes": 7004
       },
-      "catchall": 6779,
+      "catchall": 7010,
       "checks": []
     },
     {
@@ -38885,10 +40165,10 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 6767,
+      "innerType": 6998,
       "checks": []
     },
-    { "type": "record", "keyType": 6768, "valueType": 6769, "checks": [] },
+    { "type": "record", "keyType": 6999, "valueType": 7000, "checks": [] },
     {
       "type": "string",
       "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
@@ -38901,10 +40181,10 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 6771,
+      "innerType": 7002,
       "checks": []
     },
-    { "type": "nullable", "innerType": 6772, "checks": [] },
+    { "type": "nullable", "innerType": 7003, "checks": [] },
     {
       "type": "string",
       "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
@@ -38913,18 +40193,18 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 6774,
+      "innerType": 7005,
       "checks": []
     },
     {
       "type": "array",
-      "element": 6775,
+      "element": 7006,
       "checks": [{ "check": "max_length", "maximum": 128, "when": "length" }]
     },
     {
       "type": "object",
-      "shape": { "paneId": 6776, "windowId": 6777 },
-      "catchall": 6778,
+      "shape": { "paneId": 7007, "windowId": 7008 },
+      "catchall": 7009,
       "checks": []
     },
     {
@@ -38941,12 +40221,12 @@
       "type": "object",
       "name": "workspaceLegacyFileImportRequestSchema",
       "shape": {
-        "windowId": 6638,
-        "paneId": 6548,
-        "views": 6639,
-        "expectedRevision": 6781
+        "windowId": 6869,
+        "paneId": 6779,
+        "views": 6870,
+        "expectedRevision": 7012
       },
-      "catchall": 6642,
+      "catchall": 6873,
       "checks": []
     },
     {
@@ -38959,8 +40239,8 @@
     {
       "type": "object",
       "name": "workspaceLegacyFileImportReceiptSchema",
-      "shape": { "layout": 6544, "replayed": 6783 },
-      "catchall": 6784,
+      "shape": { "layout": 6775, "replayed": 7014 },
+      "catchall": 7015,
       "checks": []
     },
     { "type": "boolean", "checks": [] },
@@ -38969,10 +40249,10 @@
       "type": "object",
       "name": "projectTabLayoutWireSummarySchema",
       "shape": {
-        "projectId": 6786,
-        "revision": 6787,
-        "panes": 6788,
-        "centerRoot": 6814
+        "projectId": 7017,
+        "revision": 7018,
+        "panes": 7019,
+        "centerRoot": 7045
       },
       "checks": [
         {
@@ -38993,21 +40273,21 @@
         { "check": "greater_than", "value": 0, "inclusive": true }
       ]
     },
-    { "type": "array", "element": 6789, "checks": [] },
+    { "type": "array", "element": 7020, "checks": [] },
     {
       "type": "object",
       "name": "projectPaneWireSummarySchema",
       "shape": {
-        "id": 6790,
-        "projectId": 6791,
-        "region": 6533,
-        "position": 6792,
-        "anchorTabKey": 6793,
-        "createdAt": 6794,
-        "updatedAt": 6795,
-        "titleProtection": 6796,
-        "members": 6797,
-        "conversationView": 6812
+        "id": 7021,
+        "projectId": 7022,
+        "region": 6764,
+        "position": 7023,
+        "anchorTabKey": 7024,
+        "createdAt": 7025,
+        "updatedAt": 7026,
+        "titleProtection": 7027,
+        "members": 7028,
+        "conversationView": 7043
       },
       "checks": [
         {
@@ -39061,22 +40341,22 @@
       ]
     },
     { "type": "nullable", "innerType": 689, "checks": [] },
-    { "type": "array", "element": 6798, "checks": [] },
+    { "type": "array", "element": 7029, "checks": [] },
     {
       "type": "object",
       "name": "projectTabMemberWireSummarySchema",
       "shape": {
-        "tabKey": 6799,
-        "paneId": 6800,
-        "projectId": 6801,
-        "tabKind": 6802,
-        "tabId": 6803,
-        "builtInState": 6804,
-        "dockPresentation": 6806,
-        "position": 6808,
-        "createdAt": 6809,
-        "updatedAt": 6810,
-        "titleProtection": 6811
+        "tabKey": 7030,
+        "paneId": 7031,
+        "projectId": 7032,
+        "tabKind": 7033,
+        "tabId": 7034,
+        "builtInState": 7035,
+        "dockPresentation": 7037,
+        "position": 7039,
+        "createdAt": 7040,
+        "updatedAt": 7041,
+        "titleProtection": 7042
       },
       "checks": [
         {
@@ -39125,18 +40405,18 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 6805,
+      "innerType": 7036,
       "checks": []
     },
-    { "type": "nullable", "innerType": 6574, "checks": [] },
+    { "type": "nullable", "innerType": 6805, "checks": [] },
     {
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 6807,
+      "innerType": 7038,
       "checks": []
     },
-    { "type": "nullable", "innerType": 6579, "checks": [] },
+    { "type": "nullable", "innerType": 6810, "checks": [] },
     {
       "type": "number",
       "checks": [
@@ -39173,23 +40453,23 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 6813,
+      "innerType": 7044,
       "checks": []
     },
-    { "type": "nullable", "innerType": 6798, "checks": [] },
+    { "type": "nullable", "innerType": 7029, "checks": [] },
     {
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 6815,
+      "innerType": 7046,
       "checks": []
     },
-    { "type": "nullable", "innerType": 6598, "checks": [] },
+    { "type": "nullable", "innerType": 6829, "checks": [] },
     {
       "type": "object",
       "name": "encryptedTabGroupUpdateSchema",
-      "shape": { "revision": 6817, "titleProtection": 689 },
-      "catchall": 6818,
+      "shape": { "revision": 7048, "titleProtection": 689 },
+      "catchall": 7049,
       "checks": [
         {
           "check": "refinement",
@@ -39211,7 +40491,7 @@
     {
       "type": "object",
       "name": "projectPaneOrderSchema",
-      "shape": { "revision": 6820, "region": 6533, "paneIds": 6821 },
+      "shape": { "revision": 7051, "region": 6764, "paneIds": 7052 },
       "checks": []
     },
     {
@@ -39223,7 +40503,7 @@
     },
     {
       "type": "array",
-      "element": 6822,
+      "element": 7053,
       "checks": [
         { "check": "min_length", "minimum": 1, "when": "length" },
         {
@@ -39241,7 +40521,7 @@
     {
       "type": "object",
       "name": "tabGroupMemberOrderSchema",
-      "shape": { "revision": 6824, "tabKeys": 6825 },
+      "shape": { "revision": 7055, "tabKeys": 7056 },
       "checks": []
     },
     {
@@ -39253,7 +40533,7 @@
     },
     {
       "type": "array",
-      "element": 6826,
+      "element": 7057,
       "checks": [
         { "check": "min_length", "minimum": 1, "when": "length" },
         {
@@ -39272,12 +40552,12 @@
       "type": "object",
       "name": "projectPaneMemberMoveSchema",
       "shape": {
-        "revision": 6828,
-        "tabKey": 6829,
-        "targetPaneId": 6830,
-        "targetRegion": 6832,
-        "targetMemberPosition": 6833,
-        "targetPanePosition": 6834
+        "revision": 7059,
+        "tabKey": 7060,
+        "targetPaneId": 7061,
+        "targetRegion": 7063,
+        "targetMemberPosition": 7064,
+        "targetPanePosition": 7065
       },
       "checks": [
         { "check": "refinement", "tag": "pane-move", "messageAfterPath": false }
@@ -39294,7 +40574,7 @@
       "type": "string",
       "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
     },
-    { "type": "nullable", "innerType": 6831, "checks": [] },
+    { "type": "nullable", "innerType": 7062, "checks": [] },
     {
       "type": "string",
       "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
@@ -39303,7 +40583,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 6533,
+      "innerType": 6764,
       "checks": []
     },
     {
@@ -39317,7 +40597,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 6835,
+      "innerType": 7066,
       "checks": []
     },
     {
@@ -39331,13 +40611,13 @@
       "type": "object",
       "name": "projectPaneMemberSplitSchema",
       "shape": {
-        "revision": 6837,
-        "tabKey": 6838,
-        "targetPaneId": 6839,
-        "edge": 6738,
-        "fraction": 6840
+        "revision": 7068,
+        "tabKey": 7069,
+        "targetPaneId": 7070,
+        "edge": 6969,
+        "fraction": 7071
       },
-      "catchall": 6841,
+      "catchall": 7072,
       "checks": []
     },
     {
@@ -39358,7 +40638,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 6608,
+      "innerType": 6839,
       "defaultValue": 0.5,
       "checks": []
     },
@@ -39366,8 +40646,8 @@
     {
       "type": "object",
       "name": "projectCenterSplitResizeSchema",
-      "shape": { "revision": 6843, "fraction": 6608 },
-      "catchall": 6844,
+      "shape": { "revision": 7074, "fraction": 6839 },
+      "catchall": 7075,
       "checks": []
     },
     {
@@ -39382,13 +40662,13 @@
       "type": "object",
       "name": "projectDockPresentationUpdateSchema",
       "shape": {
-        "preferredMode": 6580,
-        "splitFraction": 6581,
-        "restoreFraction": 6581,
-        "revision": 6846,
-        "tabKey": 6847
+        "preferredMode": 6811,
+        "splitFraction": 6812,
+        "restoreFraction": 6812,
+        "revision": 7077,
+        "tabKey": 7078
       },
-      "catchall": 6582,
+      "catchall": 6813,
       "checks": []
     },
     {
@@ -39406,12 +40686,12 @@
       "type": "object",
       "name": "projectSurfaceViewOpenSchema",
       "shape": {
-        "revision": 6849,
-        "surfaceRef": 6559,
-        "targetPaneId": 6850,
-        "targetRegion": 6852
+        "revision": 7080,
+        "surfaceRef": 6790,
+        "targetPaneId": 7081,
+        "targetRegion": 7083
       },
-      "catchall": 6853,
+      "catchall": 7084,
       "checks": [
         {
           "check": "refinement",
@@ -39433,7 +40713,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 6851,
+      "innerType": 7082,
       "checks": []
     },
     {
@@ -39444,15 +40724,15 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 6533,
+      "innerType": 6764,
       "checks": []
     },
     { "type": "never", "checks": [] },
     {
       "type": "object",
       "name": "projectSurfaceViewCloseSchema",
-      "shape": { "revision": 6855, "viewId": 6856 },
-      "catchall": 6857,
+      "shape": { "revision": 7086, "viewId": 7087 },
+      "catchall": 7088,
       "checks": []
     },
     {
@@ -39471,12 +40751,12 @@
       "type": "object",
       "name": "projectSurfaceViewOpenResultSchema",
       "shape": {
-        "disposition": 6859,
-        "viewId": 6860,
-        "paneId": 6861,
-        "layout": 6785
+        "disposition": 7090,
+        "viewId": 7091,
+        "paneId": 7092,
+        "layout": 7016
       },
-      "catchall": 6862,
+      "catchall": 7093,
       "checks": []
     },
     { "type": "enum", "values": ["opened", "focused"], "checks": [] },
@@ -39492,8 +40772,8 @@
     {
       "type": "object",
       "name": "projectSurfaceViewCloseResultSchema",
-      "shape": { "disposition": 6864, "viewId": 6865, "layout": 6785 },
-      "catchall": 6866,
+      "shape": { "disposition": 7095, "viewId": 7096, "layout": 7016 },
+      "catchall": 7097,
       "checks": []
     },
     { "type": "enum", "values": ["closed", "already-closed"], "checks": [] },
@@ -39506,18 +40786,18 @@
       "type": "object",
       "name": "legacyProjectSurfaceViewOpenResultSchema",
       "shape": {
-        "disposition": 6859,
-        "viewId": 6860,
-        "paneId": 6861,
-        "layout": 6868
+        "disposition": 7090,
+        "viewId": 7091,
+        "paneId": 7092,
+        "layout": 7099
       },
-      "catchall": 6862,
+      "catchall": 7093,
       "checks": []
     },
     {
       "type": "object",
       "name": "legacyProjectTabLayoutWireSummarySchema",
-      "shape": { "projectId": 6869, "revision": 6870, "groups": 6871 },
+      "shape": { "projectId": 7100, "revision": 7101, "groups": 7102 },
       "checks": [
         {
           "check": "refinement",
@@ -39537,19 +40817,19 @@
         { "check": "greater_than", "value": 0, "inclusive": true }
       ]
     },
-    { "type": "array", "element": 6872, "checks": [] },
+    { "type": "array", "element": 7103, "checks": [] },
     {
       "type": "object",
       "name": "tabGroupWireSummarySchema",
       "shape": {
-        "id": 6790,
-        "projectId": 6791,
-        "position": 6792,
-        "anchorTabKey": 6793,
-        "createdAt": 6794,
-        "updatedAt": 6795,
-        "titleProtection": 6873,
-        "members": 6874
+        "id": 7021,
+        "projectId": 7022,
+        "position": 7023,
+        "anchorTabKey": 7024,
+        "createdAt": 7025,
+        "updatedAt": 7026,
+        "titleProtection": 7104,
+        "members": 7105
       },
       "checks": [
         {
@@ -39562,24 +40842,24 @@
     { "type": "nullable", "innerType": 689, "checks": [] },
     {
       "type": "array",
-      "element": 6875,
+      "element": 7106,
       "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
     },
     {
       "type": "object",
       "name": "legacyProjectTabMemberWireSummarySchema",
       "shape": {
-        "tabKey": 6799,
-        "projectId": 6801,
-        "tabKind": 6802,
-        "tabId": 6803,
-        "builtInState": 6804,
-        "dockPresentation": 6806,
-        "position": 6808,
-        "createdAt": 6809,
-        "updatedAt": 6810,
-        "groupId": 6876,
-        "titleProtection": 6877
+        "tabKey": 7030,
+        "projectId": 7032,
+        "tabKind": 7033,
+        "tabId": 7034,
+        "builtInState": 7035,
+        "dockPresentation": 7037,
+        "position": 7039,
+        "createdAt": 7040,
+        "updatedAt": 7041,
+        "groupId": 7107,
+        "titleProtection": 7108
       },
       "checks": [
         {
@@ -39597,14 +40877,14 @@
     {
       "type": "object",
       "name": "legacyProjectSurfaceViewCloseResultSchema",
-      "shape": { "disposition": 6864, "viewId": 6865, "layout": 6868 },
-      "catchall": 6866,
+      "shape": { "disposition": 7095, "viewId": 7096, "layout": 7099 },
+      "catchall": 7097,
       "checks": []
     },
     {
       "type": "object",
       "name": "tabGroupOrderSchema",
-      "shape": { "revision": 6880, "groupIds": 6881 },
+      "shape": { "revision": 7111, "groupIds": 7112 },
       "checks": []
     },
     {
@@ -39616,7 +40896,7 @@
     },
     {
       "type": "array",
-      "element": 6882,
+      "element": 7113,
       "checks": [
         { "check": "min_length", "minimum": 1, "when": "length" },
         {
@@ -39635,11 +40915,11 @@
       "type": "object",
       "name": "tabGroupMemberMoveSchema",
       "shape": {
-        "revision": 6884,
-        "tabKey": 6885,
-        "targetGroupId": 6886,
-        "targetMemberPosition": 6888,
-        "targetGroupPosition": 6889
+        "revision": 7115,
+        "tabKey": 7116,
+        "targetGroupId": 7117,
+        "targetMemberPosition": 7119,
+        "targetGroupPosition": 7120
       },
       "checks": [
         {
@@ -39660,7 +40940,7 @@
       "type": "string",
       "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
     },
-    { "type": "nullable", "innerType": 6887, "checks": [] },
+    { "type": "nullable", "innerType": 7118, "checks": [] },
     {
       "type": "string",
       "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
@@ -39676,7 +40956,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 6890,
+      "innerType": 7121,
       "checks": []
     },
     {
@@ -39689,20 +40969,20 @@
     {
       "type": "array",
       "name": "projectSurfaceLauncherListSchema",
-      "element": 6892,
+      "element": 7123,
       "checks": []
     },
     {
       "type": "object",
       "name": "projectSurfaceLauncherSchema",
       "shape": {
-        "id": 6893,
-        "projectId": 6894,
-        "location": 6895,
-        "target": 6896,
-        "pinned": 6903
+        "id": 7124,
+        "projectId": 7125,
+        "location": 7126,
+        "target": 7127,
+        "pinned": 7134
       },
-      "catchall": 6904,
+      "catchall": 7135,
       "checks": []
     },
     {
@@ -39728,22 +41008,22 @@
     {
       "type": "union",
       "name": "projectSurfaceLauncherTargetSchema",
-      "options": [6897, 6900],
+      "options": [7128, 7131],
       "discriminator": "kind",
       "checks": []
     },
     {
       "type": "object",
-      "shape": { "kind": 6898, "definitionId": 6562 },
-      "catchall": 6899,
+      "shape": { "kind": 7129, "definitionId": 6793 },
+      "catchall": 7130,
       "checks": []
     },
     { "type": "literal", "values": ["definition"], "checks": [] },
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "kind": 6901, "surfaceRef": 6559 },
-      "catchall": 6902,
+      "shape": { "kind": 7132, "surfaceRef": 6790 },
+      "catchall": 7133,
       "checks": []
     },
     { "type": "literal", "values": ["surface"], "checks": [] },
@@ -39753,8 +41033,8 @@
     {
       "type": "object",
       "name": "projectSurfaceLauncherPinSchema",
-      "shape": { "definitionId": 6567, "location": 6895, "pinned": 6906 },
-      "catchall": 6907,
+      "shape": { "definitionId": 6798, "location": 7126, "pinned": 7137 },
+      "catchall": 7138,
       "checks": []
     },
     { "type": "boolean", "checks": [] },
@@ -39763,23 +41043,23 @@
       "type": "object",
       "name": "terminalWireSummarySchema",
       "shape": {
-        "id": 6909,
-        "projectId": 6910,
-        "kind": 6911,
-        "position": 6912,
-        "status": 6913,
-        "activeWorkerId": 6914,
-        "worktreeId": 6915,
-        "linkedChatId": 6916,
-        "runConfigurationId": 6918,
-        "runConfigurationRuntimeId": 6920,
-        "createdAt": 6922,
-        "updatedAt": 6923,
-        "titleProtection": 6924,
-        "stateProtection": 6925,
-        "serviceEnabled": 6926
+        "id": 7140,
+        "projectId": 7141,
+        "kind": 7142,
+        "position": 7143,
+        "status": 7144,
+        "activeWorkerId": 7145,
+        "worktreeId": 7146,
+        "linkedChatId": 7147,
+        "runConfigurationId": 7149,
+        "runConfigurationRuntimeId": 7151,
+        "createdAt": 7153,
+        "updatedAt": 7154,
+        "titleProtection": 7155,
+        "stateProtection": 7156,
+        "serviceEnabled": 7157
       },
-      "catchall": 6927,
+      "catchall": 7158,
       "checks": [
         {
           "check": "refinement",
@@ -39822,12 +41102,12 @@
       "type": "string",
       "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
     },
-    { "type": "nullable", "innerType": 6917, "checks": [] },
+    { "type": "nullable", "innerType": 7148, "checks": [] },
     {
       "type": "string",
       "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
     },
-    { "type": "nullable", "innerType": 6919, "checks": [] },
+    { "type": "nullable", "innerType": 7150, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -39841,7 +41121,7 @@
         }
       ]
     },
-    { "type": "nullable", "innerType": 6921, "checks": [] },
+    { "type": "nullable", "innerType": 7152, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -39886,25 +41166,25 @@
     {
       "type": "array",
       "name": "terminalWireListSchema",
-      "element": 6908,
+      "element": 7139,
       "checks": []
     },
     {
       "type": "object",
       "name": "encryptedExplorerCreateSchema",
       "shape": {
-        "worktreeId": 6930,
-        "paneId": 6528,
-        "tabGroupId": 6530,
-        "targetRegion": 6532,
-        "target": 6932,
-        "attachToTabLayout": 6933,
-        "fileMode": 6935,
-        "id": 6936,
+        "worktreeId": 7161,
+        "paneId": 6759,
+        "tabGroupId": 6761,
+        "targetRegion": 6763,
+        "target": 7163,
+        "attachToTabLayout": 7164,
+        "fileMode": 7166,
+        "id": 7167,
         "titleProtection": 689,
-        "stateProtection": 6667
+        "stateProtection": 6898
       },
-      "catchall": 6937,
+      "catchall": 7168,
       "checks": [
         {
           "check": "refinement",
@@ -39924,7 +41204,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 6931,
+      "innerType": 7162,
       "checks": []
     },
     {
@@ -39942,7 +41222,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 6934,
+      "innerType": 7165,
       "checks": []
     },
     { "type": "boolean", "checks": [] },
@@ -39950,7 +41230,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 6571,
+      "innerType": 6802,
       "checks": []
     },
     {
@@ -39971,7 +41251,7 @@
       "type": "object",
       "name": "encryptedExplorerUpdateSchema",
       "shape": { "titleProtection": 689 },
-      "catchall": 6939,
+      "catchall": 7170,
       "checks": [
         {
           "check": "refinement",
@@ -39987,14 +41267,14 @@
       "type": "object",
       "name": "encryptedExplorerPinSchema",
       "shape": {
-        "paneId": 6528,
-        "tabGroupId": 6530,
-        "targetRegion": 6532,
+        "paneId": 6759,
+        "tabGroupId": 6761,
+        "targetRegion": 6763,
         "titleProtection": 689,
-        "stateProtection": 6667,
-        "fileMode": 6571
+        "stateProtection": 6898,
+        "fileMode": 6802
       },
-      "catchall": 6941,
+      "catchall": 7172,
       "checks": [
         {
           "check": "refinement",
@@ -40016,16 +41296,16 @@
     {
       "type": "object",
       "name": "encryptedExplorerViewStateUpdateSchema",
-      "shape": { "stateProtection": 6667, "fileMode": 6571 },
-      "catchall": 6943,
+      "shape": { "stateProtection": 6898, "fileMode": 6802 },
+      "catchall": 7174,
       "checks": []
     },
     { "type": "never", "checks": [] },
     {
       "type": "object",
       "name": "encryptedExplorerWorktreeUpdateSchema",
-      "shape": { "worktreeId": 6945, "stateProtection": 6667 },
-      "catchall": 6946,
+      "shape": { "worktreeId": 7176, "stateProtection": 6898 },
+      "catchall": 7177,
       "checks": []
     },
     {
@@ -40037,18 +41317,18 @@
       "type": "object",
       "name": "explorerWireSummarySchema",
       "shape": {
-        "id": 6948,
-        "projectId": 6949,
-        "position": 6950,
-        "activeWorkerId": 6951,
-        "worktreeId": 6952,
-        "fileMode": 6571,
-        "createdAt": 6953,
-        "updatedAt": 6954,
+        "id": 7179,
+        "projectId": 7180,
+        "position": 7181,
+        "activeWorkerId": 7182,
+        "worktreeId": 7183,
+        "fileMode": 6802,
+        "createdAt": 7184,
+        "updatedAt": 7185,
         "titleProtection": 689,
-        "stateProtection": 6667
+        "stateProtection": 6898
       },
-      "catchall": 6955,
+      "catchall": 7186,
       "checks": [
         {
           "check": "refinement",
@@ -40110,7 +41390,7 @@
     {
       "type": "array",
       "name": "explorerWireListSchema",
-      "element": 6947,
+      "element": 7178,
       "checks": []
     },
     {
@@ -40120,23 +41400,23 @@
         "operationId": 1691,
         "sequence": 1692,
         "protectedRequest": 1693,
-        "binding": 6958
+        "binding": 7189
       },
-      "catchall": 6964,
+      "catchall": 7195,
       "checks": []
     },
     {
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 6959,
+      "innerType": 7190,
       "checks": []
     },
     {
       "type": "object",
       "name": "explorerFileBindingSchema",
-      "shape": { "workerId": 6960, "projectId": 6961, "worktreeId": 6962 },
-      "catchall": 6963,
+      "shape": { "workerId": 7191, "projectId": 7192, "worktreeId": 7193 },
+      "catchall": 7194,
       "checks": []
     },
     {
@@ -40175,12 +41455,12 @@
       "type": "object",
       "name": "encryptedCodeTabCreateSchema",
       "shape": {
-        "worktreeId": 6966,
-        "paneId": 6528,
-        "tabGroupId": 6530,
-        "targetRegion": 6532,
-        "target": 6968,
-        "id": 6969,
+        "worktreeId": 7197,
+        "paneId": 6759,
+        "tabGroupId": 6761,
+        "targetRegion": 6763,
+        "target": 7199,
+        "id": 7200,
         "titleProtection": 689
       },
       "checks": [
@@ -40202,7 +41482,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 6967,
+      "innerType": 7198,
       "checks": []
     },
     {
@@ -40232,8 +41512,8 @@
     {
       "type": "object",
       "name": "encryptedCodeTabUpdateSchema",
-      "shape": { "titleProtection": 6971 },
-      "catchall": 6972,
+      "shape": { "titleProtection": 7202 },
+      "catchall": 7203,
       "checks": [
         {
           "check": "refinement",
@@ -40254,13 +41534,13 @@
       "type": "object",
       "name": "codeTabWireSummarySchema",
       "shape": {
-        "id": 6974,
-        "projectId": 6975,
-        "position": 6976,
-        "activeWorkerId": 6977,
-        "worktreeId": 6978,
-        "createdAt": 6979,
-        "updatedAt": 6980,
+        "id": 7205,
+        "projectId": 7206,
+        "position": 7207,
+        "activeWorkerId": 7208,
+        "worktreeId": 7209,
+        "createdAt": 7210,
+        "updatedAt": 7211,
         "titleProtection": 689
       },
       "checks": [
@@ -40323,22 +41603,22 @@
     {
       "type": "array",
       "name": "codeTabWireListSchema",
-      "element": 6973,
+      "element": 7204,
       "checks": []
     },
     {
       "type": "object",
       "name": "encryptedProjectViewCreateSchema",
       "shape": {
-        "kind": 6983,
-        "worktreeId": 6984,
-        "paneId": 6528,
-        "tabGroupId": 6530,
-        "targetRegion": 6532,
-        "id": 6986,
+        "kind": 7214,
+        "worktreeId": 7215,
+        "paneId": 6759,
+        "tabGroupId": 6761,
+        "targetRegion": 6763,
+        "id": 7217,
         "titleProtection": 689
       },
-      "catchall": 6987,
+      "catchall": 7218,
       "checks": [
         {
           "check": "refinement",
@@ -40366,7 +41646,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 6985,
+      "innerType": 7216,
       "checks": []
     },
     {
@@ -40391,7 +41671,7 @@
       "type": "object",
       "name": "encryptedProjectViewUpdateSchema",
       "shape": { "titleProtection": 689 },
-      "catchall": 6989,
+      "catchall": 7220,
       "checks": [
         {
           "check": "refinement",
@@ -40407,13 +41687,13 @@
       "type": "object",
       "name": "projectViewWireSummarySchema",
       "shape": {
-        "id": 6991,
-        "projectId": 6992,
-        "kind": 6993,
-        "worktreeId": 6994,
-        "position": 6996,
-        "createdAt": 6997,
-        "updatedAt": 6998,
+        "id": 7222,
+        "projectId": 7223,
+        "kind": 7224,
+        "worktreeId": 7225,
+        "position": 7227,
+        "createdAt": 7228,
+        "updatedAt": 7229,
         "titleProtection": 689
       },
       "checks": [
@@ -40447,7 +41727,7 @@
       ],
       "checks": []
     },
-    { "type": "nullable", "innerType": 6995, "checks": [] },
+    { "type": "nullable", "innerType": 7226, "checks": [] },
     {
       "type": "string",
       "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
@@ -40486,22 +41766,22 @@
     {
       "type": "array",
       "name": "projectViewWireListSchema",
-      "element": 6990,
+      "element": 7221,
       "checks": []
     },
     {
       "type": "object",
       "name": "encryptedBrowserCreateSchema",
       "shape": {
-        "paneId": 6528,
-        "tabGroupId": 6530,
-        "targetRegion": 6532,
-        "target": 7001,
-        "id": 7002,
+        "paneId": 6759,
+        "tabGroupId": 6761,
+        "targetRegion": 6763,
+        "target": 7232,
+        "id": 7233,
         "titleProtection": 689,
         "stateProtection": 4468
       },
-      "catchall": 7003,
+      "catchall": 7234,
       "checks": [
         {
           "check": "refinement",
@@ -40544,11 +41824,11 @@
       "type": "object",
       "name": "encryptedBrowserUpdateSchema",
       "shape": {
-        "titleProtection": 7005,
-        "expectedStateRevision": 7006,
-        "stateProtection": 7008
+        "titleProtection": 7236,
+        "expectedStateRevision": 7237,
+        "stateProtection": 7239
       },
-      "catchall": 7009,
+      "catchall": 7240,
       "checks": [
         {
           "check": "refinement",
@@ -40568,7 +41848,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 7007,
+      "innerType": 7238,
       "checks": []
     },
     {
@@ -40591,13 +41871,13 @@
       "type": "object",
       "name": "browserWireSummarySchema",
       "shape": {
-        "id": 7011,
-        "projectId": 7012,
-        "position": 7013,
-        "stateRevision": 7014,
-        "workerId": 7015,
-        "createdAt": 7018,
-        "updatedAt": 7019,
+        "id": 7242,
+        "projectId": 7243,
+        "position": 7244,
+        "stateRevision": 7245,
+        "workerId": 7246,
+        "createdAt": 7249,
+        "updatedAt": 7250,
         "titleProtection": 689,
         "stateProtection": 4468
       },
@@ -40638,10 +41918,10 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 7016,
+      "innerType": 7247,
       "checks": []
     },
-    { "type": "nullable", "innerType": 7017, "checks": [] },
+    { "type": "nullable", "innerType": 7248, "checks": [] },
     {
       "type": "string",
       "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
@@ -40673,20 +41953,20 @@
     {
       "type": "array",
       "name": "browserWireListSchema",
-      "element": 7010,
+      "element": 7241,
       "checks": []
     },
     {
       "type": "object",
       "name": "browserTunnelWireRequestSchema",
       "shape": {
-        "tunnelId": 7022,
-        "protocolHint": 7023,
-        "workerId": 7024,
-        "resetAttachments": 7025,
+        "tunnelId": 7253,
+        "protocolHint": 7254,
+        "workerId": 7255,
+        "resetAttachments": 7256,
         "protectedRecord": 2162
       },
-      "catchall": 7027,
+      "catchall": 7258,
       "checks": []
     },
     {
@@ -40717,7 +41997,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 7026,
+      "innerType": 7257,
       "defaultValue": false,
       "checks": []
     },
@@ -40727,14 +42007,14 @@
       "type": "object",
       "name": "browserServiceSchema",
       "shape": {
-        "workerId": 7029,
-        "host": 7030,
-        "port": 7031,
-        "protocol": 7032,
-        "url": 7033,
-        "title": 7034,
-        "processName": 7036,
-        "statusCode": 7038
+        "workerId": 7260,
+        "host": 7261,
+        "port": 7262,
+        "protocol": 7263,
+        "url": 7264,
+        "title": 7265,
+        "processName": 7267,
+        "statusCode": 7269
       },
       "checks": []
     },
@@ -40780,7 +42060,7 @@
         }
       ]
     },
-    { "type": "nullable", "innerType": 7035, "checks": [] },
+    { "type": "nullable", "innerType": 7266, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -40789,7 +42069,7 @@
         { "check": "max_length", "maximum": 200, "when": "length" }
       ]
     },
-    { "type": "nullable", "innerType": 7037, "checks": [] },
+    { "type": "nullable", "innerType": 7268, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -40809,18 +42089,18 @@
     {
       "type": "array",
       "name": "browserServiceListSchema",
-      "element": 7028,
+      "element": 7259,
       "checks": [{ "check": "max_length", "maximum": 128, "when": "length" }]
     },
     {
       "type": "object",
       "name": "browserServiceFleetDiscoverySchema",
       "shape": {
-        "projectId": 7041,
-        "observedAt": 7042,
-        "partial": 7043,
-        "truncated": 7044,
-        "workers": 7046
+        "projectId": 7272,
+        "observedAt": 7273,
+        "partial": 7274,
+        "truncated": 7275,
+        "workers": 7277
       },
       "checks": []
     },
@@ -40844,26 +42124,26 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 7045,
+      "innerType": 7276,
       "defaultValue": false,
       "checks": []
     },
     { "type": "boolean", "checks": [] },
     {
       "type": "array",
-      "element": 7047,
+      "element": 7278,
       "checks": [{ "check": "max_length", "maximum": 64, "when": "length" }]
     },
     {
       "type": "object",
       "name": "browserServiceDiscoveryWorkerResultSchema",
       "shape": {
-        "workerId": 7048,
-        "workerName": 7049,
-        "status": 7050,
-        "services": 7051,
-        "error": 7054,
-        "truncated": 7058
+        "workerId": 7279,
+        "workerName": 7280,
+        "status": 7281,
+        "services": 7282,
+        "error": 7285,
+        "truncated": 7289
       },
       "checks": []
     },
@@ -40889,22 +42169,22 @@
     },
     {
       "type": "array",
-      "element": 7052,
+      "element": 7283,
       "checks": [{ "check": "max_length", "maximum": 128, "when": "length" }]
     },
     {
       "type": "object",
       "name": "browserFleetServiceSchema",
       "shape": {
-        "workerId": 7029,
-        "host": 7030,
-        "port": 7031,
-        "protocol": 7032,
-        "url": 7033,
-        "title": 7034,
-        "processName": 7036,
-        "statusCode": 7038,
-        "workerName": 7053,
+        "workerId": 7260,
+        "host": 7261,
+        "port": 7262,
+        "protocol": 7263,
+        "url": 7264,
+        "title": 7265,
+        "processName": 7267,
+        "statusCode": 7269,
+        "workerName": 7284,
         "placement": 710
       },
       "checks": []
@@ -40916,11 +42196,11 @@
         { "check": "max_length", "maximum": 200, "when": "length" }
       ]
     },
-    { "type": "nullable", "innerType": 7055, "checks": [] },
+    { "type": "nullable", "innerType": 7286, "checks": [] },
     {
       "type": "object",
       "name": "browserServiceDiscoveryErrorSchema",
-      "shape": { "code": 7056, "message": 7057 },
+      "shape": { "code": 7287, "message": 7288 },
       "checks": []
     },
     {
@@ -40938,7 +42218,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 7059,
+      "innerType": 7290,
       "defaultValue": false,
       "checks": []
     },
@@ -40947,12 +42227,12 @@
       "type": "object",
       "name": "projectShareTunnelCreateSchema",
       "shape": {
-        "tunnelId": 7061,
-        "workerId": 7062,
-        "worktreeId": 7063,
+        "tunnelId": 7292,
+        "workerId": 7293,
+        "worktreeId": 7294,
         "protectedRecord": 2162
       },
-      "catchall": 7065,
+      "catchall": 7296,
       "checks": [
         {
           "check": "refinement",
@@ -40988,7 +42268,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 7064,
+      "innerType": 7295,
       "checks": []
     },
     {
@@ -41000,14 +42280,14 @@
       "type": "object",
       "name": "projectShareAttachmentWireSchema",
       "shape": {
-        "attachmentId": 7062,
-        "projectId": 7062,
-        "protocol": 7067,
-        "tunnelId": 7062,
-        "expiresAt": 7068,
-        "mountLeaseMs": 7069
+        "attachmentId": 7293,
+        "projectId": 7293,
+        "protocol": 7298,
+        "tunnelId": 7293,
+        "expiresAt": 7299,
+        "mountLeaseMs": 7300
       },
-      "catchall": 7070,
+      "catchall": 7301,
       "checks": []
     },
     { "type": "literal", "values": ["webdav"], "checks": [] },
@@ -41036,14 +42316,14 @@
       "type": "object",
       "name": "standaloneChatShareAttachmentWireSchema",
       "shape": {
-        "attachmentId": 7062,
-        "chatId": 7072,
-        "protocol": 7073,
-        "tunnelId": 7062,
-        "expiresAt": 7074,
-        "mountLeaseMs": 7075
+        "attachmentId": 7293,
+        "chatId": 7303,
+        "protocol": 7304,
+        "tunnelId": 7293,
+        "expiresAt": 7305,
+        "mountLeaseMs": 7306
       },
-      "catchall": 7076,
+      "catchall": 7307,
       "checks": []
     },
     {
@@ -41084,8 +42364,8 @@
     {
       "type": "object",
       "name": "workerProjectShareOpenResultSchema",
-      "shape": { "accepted": 7078, "shareId": 7079 },
-      "catchall": 7080,
+      "shape": { "accepted": 7309, "shareId": 7310 },
+      "catchall": 7311,
       "checks": []
     },
     { "type": "literal", "values": [true], "checks": [] },
@@ -41100,8 +42380,8 @@
     {
       "type": "object",
       "name": "fileDocumentCreateSchema",
-      "shape": { "id": 7082, "worktreeId": 7083, "stateProtection": 4131 },
-      "catchall": 7084,
+      "shape": { "id": 7313, "worktreeId": 7314, "stateProtection": 4131 },
+      "catchall": 7315,
       "checks": []
     },
     {
@@ -41126,14 +42406,14 @@
       "type": "object",
       "name": "fileDocumentWireSummarySchema",
       "shape": {
-        "id": 7082,
-        "worktreeId": 7083,
+        "id": 7313,
+        "worktreeId": 7314,
         "stateProtection": 4131,
-        "projectId": 7086,
-        "workerId": 7087,
-        "createdAt": 7088
+        "projectId": 7317,
+        "workerId": 7318,
+        "createdAt": 7319
       },
-      "catchall": 7089,
+      "catchall": 7320,
       "checks": []
     },
     {
@@ -41160,7 +42440,7 @@
     {
       "type": "array",
       "name": "fileDocumentWireListSchema",
-      "element": 7085,
+      "element": 7316,
       "checks": []
     },
     {
@@ -41171,7 +42451,7 @@
         "sequence": 1692,
         "protectedRequest": 1693
       },
-      "catchall": 7092,
+      "catchall": 7323,
       "checks": []
     },
     { "type": "never", "checks": [] },
@@ -41183,7 +42463,7 @@
         "sequence": 1692,
         "protectedResponse": 1693
       },
-      "catchall": 7094,
+      "catchall": 7325,
       "checks": []
     },
     { "type": "never", "checks": [] },
@@ -41191,13 +42471,13 @@
       "type": "object",
       "name": "tunnelUserWireCreateSchema",
       "shape": {
-        "id": 7096,
-        "projectId": 7097,
-        "protocolHint": 7099,
-        "destination": 7100,
+        "id": 7327,
+        "projectId": 7328,
+        "protocolHint": 7330,
+        "destination": 7331,
         "protectedRecord": 2162
       },
-      "catchall": 7113,
+      "catchall": 7344,
       "checks": [
         {
           "check": "refinement",
@@ -41231,11 +42511,11 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 7098,
+      "innerType": 7329,
       "defaultValue": null,
       "checks": []
     },
-    { "type": "nullable", "innerType": 7062, "checks": [] },
+    { "type": "nullable", "innerType": 7293, "checks": [] },
     {
       "type": "enum",
       "name": "tunnelProtocolHintSchema",
@@ -41249,18 +42529,18 @@
       ],
       "checks": []
     },
-    { "type": "intersection", "left": 7101, "right": 7110, "checks": [] },
+    { "type": "intersection", "left": 7332, "right": 7341, "checks": [] },
     {
       "type": "union",
       "name": "tunnelPublicDestinationEndpointSchema",
-      "options": [7102, 7106],
+      "options": [7333, 7337],
       "discriminator": "kind",
       "checks": []
     },
     {
       "type": "object",
-      "shape": { "kind": 7103, "workerId": 7104 },
-      "catchall": 7105,
+      "shape": { "kind": 7334, "workerId": 7335 },
+      "catchall": 7336,
       "checks": []
     },
     { "type": "literal", "values": ["worker-tcp"], "checks": [] },
@@ -41276,12 +42556,12 @@
     {
       "type": "object",
       "shape": {
-        "kind": 7107,
-        "workerId": 7104,
-        "adapter": 7108,
-        "resourceId": 7104
+        "kind": 7338,
+        "workerId": 7335,
+        "adapter": 7339,
+        "resourceId": 7335
       },
-      "catchall": 7109,
+      "catchall": 7340,
       "checks": []
     },
     { "type": "literal", "values": ["worker-adapter"], "checks": [] },
@@ -41289,8 +42569,8 @@
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "kind": 7111 },
-      "catchall": 7112,
+      "shape": { "kind": 7342 },
+      "catchall": 7343,
       "checks": []
     },
     { "type": "literal", "values": ["worker-tcp"], "checks": [] },
@@ -41300,41 +42580,41 @@
       "type": "object",
       "name": "tunnelUserWireUpdateSchema",
       "shape": {
-        "projectId": 7115,
-        "protocolHint": 7117,
-        "destination": 7118,
+        "projectId": 7346,
+        "protocolHint": 7348,
+        "destination": 7349,
         "protectedRecord": 2162
       },
-      "catchall": 7123,
+      "catchall": 7354,
       "checks": []
     },
     {
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 7116,
+      "innerType": 7347,
       "checks": []
     },
-    { "type": "nullable", "innerType": 7062, "checks": [] },
+    { "type": "nullable", "innerType": 7293, "checks": [] },
     {
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 7099,
+      "innerType": 7330,
       "checks": []
     },
     {
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 7119,
+      "innerType": 7350,
       "checks": []
     },
-    { "type": "intersection", "left": 7101, "right": 7120, "checks": [] },
+    { "type": "intersection", "left": 7332, "right": 7351, "checks": [] },
     {
       "type": "object",
-      "shape": { "kind": 7121 },
-      "catchall": 7122,
+      "shape": { "kind": 7352 },
+      "catchall": 7353,
       "checks": []
     },
     { "type": "literal", "values": ["worker-tcp"], "checks": [] },
@@ -41344,31 +42624,31 @@
       "type": "object",
       "name": "tunnelWireSummarySchema",
       "shape": {
-        "id": 7062,
-        "projectId": 7125,
-        "position": 7126,
-        "origin": 7127,
-        "management": 7128,
-        "protocolHint": 7099,
-        "source": 7129,
-        "destination": 7101,
-        "managedBy": 7136,
-        "desiredState": 7140,
-        "status": 7141,
-        "errorCode": 7142,
-        "activeConnectionCount": 7144,
-        "bytesFromSource": 7145,
-        "bytesToSource": 7146,
-        "attachments": 7147,
-        "capabilities": 7162,
-        "protectedRecord": 7170,
-        "createdAt": 7171,
-        "updatedAt": 7172
+        "id": 7293,
+        "projectId": 7356,
+        "position": 7357,
+        "origin": 7358,
+        "management": 7359,
+        "protocolHint": 7330,
+        "source": 7360,
+        "destination": 7332,
+        "managedBy": 7367,
+        "desiredState": 7371,
+        "status": 7372,
+        "errorCode": 7373,
+        "activeConnectionCount": 7375,
+        "bytesFromSource": 7376,
+        "bytesToSource": 7377,
+        "attachments": 7378,
+        "capabilities": 7393,
+        "protectedRecord": 7401,
+        "createdAt": 7402,
+        "updatedAt": 7403
       },
-      "catchall": 7173,
+      "catchall": 7404,
       "checks": []
     },
-    { "type": "nullable", "innerType": 7062, "checks": [] },
+    { "type": "nullable", "innerType": 7293, "checks": [] },
     {
       "type": "number",
       "checks": [
@@ -41391,32 +42671,32 @@
     {
       "type": "union",
       "name": "tunnelPublicSourceEndpointSchema",
-      "options": [7130, 7133],
+      "options": [7361, 7364],
       "discriminator": "kind",
       "checks": []
     },
     {
       "type": "object",
-      "shape": { "kind": 7131 },
-      "catchall": 7132,
+      "shape": { "kind": 7362 },
+      "catchall": 7363,
       "checks": []
     },
     { "type": "literal", "values": ["desktop-loopback"], "checks": [] },
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "kind": 7134, "workerId": 7104 },
-      "catchall": 7135,
+      "shape": { "kind": 7365, "workerId": 7335 },
+      "catchall": 7366,
       "checks": []
     },
     { "type": "literal", "values": ["worker-listener"], "checks": [] },
     { "type": "never", "checks": [] },
-    { "type": "nullable", "innerType": 7137, "checks": [] },
+    { "type": "nullable", "innerType": 7368, "checks": [] },
     {
       "type": "object",
       "name": "tunnelManagedResourceSchema",
-      "shape": { "kind": 7138, "id": 7062 },
-      "catchall": 7139,
+      "shape": { "kind": 7369, "id": 7293 },
+      "catchall": 7370,
       "checks": []
     },
     {
@@ -41445,7 +42725,7 @@
       ],
       "checks": []
     },
-    { "type": "nullable", "innerType": 7143, "checks": [] },
+    { "type": "nullable", "innerType": 7374, "checks": [] },
     {
       "type": "enum",
       "name": "tunnelContentErrorCodeSchema",
@@ -41484,28 +42764,28 @@
     },
     {
       "type": "array",
-      "element": 7148,
+      "element": 7379,
       "checks": [{ "check": "max_length", "maximum": 128, "when": "length" }]
     },
     {
       "type": "object",
       "name": "tunnelAttachmentWireSummarySchema",
       "shape": {
-        "id": 7062,
-        "tunnelId": 7062,
-        "kind": 7149,
-        "clientId": 7150,
-        "status": 7141,
-        "errorCode": 7151,
-        "activeConnectionCount": 7152,
-        "bytesFromSource": 7153,
-        "bytesToSource": 7154,
-        "expiresAt": 7155,
-        "lastSeenAt": 7157,
-        "createdAt": 7159,
-        "updatedAt": 7160
+        "id": 7293,
+        "tunnelId": 7293,
+        "kind": 7380,
+        "clientId": 7381,
+        "status": 7372,
+        "errorCode": 7382,
+        "activeConnectionCount": 7383,
+        "bytesFromSource": 7384,
+        "bytesToSource": 7385,
+        "expiresAt": 7386,
+        "lastSeenAt": 7388,
+        "createdAt": 7390,
+        "updatedAt": 7391
       },
-      "catchall": 7161,
+      "catchall": 7392,
       "checks": []
     },
     {
@@ -41514,8 +42794,8 @@
       "values": ["desktop-loopback"],
       "checks": []
     },
-    { "type": "nullable", "innerType": 7062, "checks": [] },
-    { "type": "nullable", "innerType": 7143, "checks": [] },
+    { "type": "nullable", "innerType": 7293, "checks": [] },
+    { "type": "nullable", "innerType": 7374, "checks": [] },
     {
       "type": "number",
       "checks": [
@@ -41539,7 +42819,7 @@
         { "check": "number_format", "format": "safeint", "abort": false }
       ]
     },
-    { "type": "nullable", "innerType": 7156, "checks": [] },
+    { "type": "nullable", "innerType": 7387, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -41552,7 +42832,7 @@
         }
       ]
     },
-    { "type": "nullable", "innerType": 7158, "checks": [] },
+    { "type": "nullable", "innerType": 7389, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -41594,14 +42874,14 @@
       "type": "object",
       "name": "tunnelActionCapabilitiesSchema",
       "shape": {
-        "canEdit": 7163,
-        "canDelete": 7164,
-        "canStart": 7165,
-        "canStop": 7166,
-        "canAttach": 7167,
-        "canOpenOwner": 7168
+        "canEdit": 7394,
+        "canDelete": 7395,
+        "canStart": 7396,
+        "canStop": 7397,
+        "canAttach": 7398,
+        "canOpenOwner": 7399
       },
-      "catchall": 7169,
+      "catchall": 7400,
       "checks": []
     },
     { "type": "boolean", "checks": [] },
@@ -41640,30 +42920,30 @@
     {
       "type": "array",
       "name": "tunnelWireListSchema",
-      "element": 7124,
+      "element": 7355,
       "checks": [{ "check": "max_length", "maximum": 10000, "when": "length" }]
     },
     {
       "type": "union",
       "name": "tunnelDataPlaneFrameHeaderSchema",
-      "options": [7176, 7182, 7186, 7188, 7191, 7201, 7203, 7205, 7208],
+      "options": [7407, 7413, 7417, 7419, 7422, 7432, 7434, 7436, 7439],
       "discriminator": "kind",
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "protocolVersion": 7177,
+        "protocolVersion": 7408,
         "tunnelId": 2161,
         "attachmentId": 2161,
         "sourceEndpointId": 2161,
         "destinationEndpointId": 2161,
         "connectionId": 2161,
-        "sequence": 7178,
-        "kind": 7179,
-        "initialCreditBytes": 7180
+        "sequence": 7409,
+        "kind": 7410,
+        "initialCreditBytes": 7411
       },
-      "catchall": 7181,
+      "catchall": 7412,
       "checks": []
     },
     { "type": "literal", "values": [1], "checks": [] },
@@ -41688,19 +42968,19 @@
     {
       "type": "object",
       "shape": {
-        "protocolVersion": 7177,
+        "protocolVersion": 7408,
         "tunnelId": 2161,
         "attachmentId": 2161,
         "sourceEndpointId": 2161,
         "destinationEndpointId": 2161,
         "connectionId": 2161,
-        "sequence": 7178,
-        "kind": 7183,
+        "sequence": 7409,
+        "kind": 7414,
         "target": 2157,
-        "initialCreditBytes": 7180,
-        "diagnosticTraceId": 7184
+        "initialCreditBytes": 7411,
+        "diagnosticTraceId": 7415
       },
-      "catchall": 7181,
+      "catchall": 7412,
       "checks": []
     },
     { "type": "literal", "values": ["connect"], "checks": [] },
@@ -41708,7 +42988,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 7185,
+      "innerType": 7416,
       "checks": []
     },
     {
@@ -41727,34 +43007,34 @@
     {
       "type": "object",
       "shape": {
-        "protocolVersion": 7177,
+        "protocolVersion": 7408,
         "tunnelId": 2161,
         "attachmentId": 2161,
         "sourceEndpointId": 2161,
         "destinationEndpointId": 2161,
         "connectionId": 2161,
-        "sequence": 7178,
-        "kind": 7187,
-        "initialCreditBytes": 7180
+        "sequence": 7409,
+        "kind": 7418,
+        "initialCreditBytes": 7411
       },
-      "catchall": 7181,
+      "catchall": 7412,
       "checks": []
     },
     { "type": "literal", "values": ["accepted"], "checks": [] },
     {
       "type": "object",
       "shape": {
-        "protocolVersion": 7177,
+        "protocolVersion": 7408,
         "tunnelId": 2161,
         "attachmentId": 2161,
         "sourceEndpointId": 2161,
         "destinationEndpointId": 2161,
         "connectionId": 2161,
-        "sequence": 7178,
-        "kind": 7189,
-        "code": 7190
+        "sequence": 7409,
+        "kind": 7420,
+        "code": 7421
       },
-      "catchall": 7181,
+      "catchall": 7412,
       "checks": []
     },
     { "type": "literal", "values": ["rejected"], "checks": [] },
@@ -41777,18 +43057,18 @@
     {
       "type": "object",
       "shape": {
-        "protocolVersion": 7177,
+        "protocolVersion": 7408,
         "tunnelId": 2161,
         "attachmentId": 2161,
         "sourceEndpointId": 2161,
         "destinationEndpointId": 2161,
         "connectionId": 2161,
-        "sequence": 7178,
-        "kind": 7192,
-        "direction": 7193,
-        "protection": 7194
+        "sequence": 7409,
+        "kind": 7423,
+        "direction": 7424,
+        "protection": 7425
       },
-      "catchall": 7181,
+      "catchall": 7412,
       "checks": []
     },
     { "type": "literal", "values": ["data"], "checks": [] },
@@ -41802,19 +43082,19 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 7195,
+      "innerType": 7426,
       "checks": []
     },
     {
       "type": "object",
       "name": "tunnelDataFrameProtectionSchema",
       "shape": {
-        "formatVersion": 7196,
-        "algorithm": 7197,
-        "keyRevision": 7198,
-        "nonce": 7199
+        "formatVersion": 7427,
+        "algorithm": 7428,
+        "keyRevision": 7429,
+        "nonce": 7430
       },
-      "catchall": 7200,
+      "catchall": 7431,
       "checks": []
     },
     { "type": "literal", "values": [1], "checks": [] },
@@ -41844,52 +43124,52 @@
     {
       "type": "object",
       "shape": {
-        "protocolVersion": 7177,
+        "protocolVersion": 7408,
         "tunnelId": 2161,
         "attachmentId": 2161,
         "sourceEndpointId": 2161,
         "destinationEndpointId": 2161,
         "connectionId": 2161,
-        "sequence": 7178,
-        "kind": 7202,
-        "direction": 7193,
-        "bytes": 7180
+        "sequence": 7409,
+        "kind": 7433,
+        "direction": 7424,
+        "bytes": 7411
       },
-      "catchall": 7181,
+      "catchall": 7412,
       "checks": []
     },
     { "type": "literal", "values": ["credit"], "checks": [] },
     {
       "type": "object",
       "shape": {
-        "protocolVersion": 7177,
+        "protocolVersion": 7408,
         "tunnelId": 2161,
         "attachmentId": 2161,
         "sourceEndpointId": 2161,
         "destinationEndpointId": 2161,
         "connectionId": 2161,
-        "sequence": 7178,
-        "kind": 7204,
-        "direction": 7193
+        "sequence": 7409,
+        "kind": 7435,
+        "direction": 7424
       },
-      "catchall": 7181,
+      "catchall": 7412,
       "checks": []
     },
     { "type": "literal", "values": ["half-close"], "checks": [] },
     {
       "type": "object",
       "shape": {
-        "protocolVersion": 7177,
+        "protocolVersion": 7408,
         "tunnelId": 2161,
         "attachmentId": 2161,
         "sourceEndpointId": 2161,
         "destinationEndpointId": 2161,
         "connectionId": 2161,
-        "sequence": 7178,
-        "kind": 7206,
-        "code": 7207
+        "sequence": 7409,
+        "kind": 7437,
+        "code": 7438
       },
-      "catchall": 7181,
+      "catchall": 7412,
       "checks": []
     },
     { "type": "literal", "values": ["close"], "checks": [] },
@@ -41911,17 +43191,17 @@
     {
       "type": "object",
       "shape": {
-        "protocolVersion": 7177,
+        "protocolVersion": 7408,
         "tunnelId": 2161,
         "attachmentId": 2161,
         "sourceEndpointId": 2161,
         "destinationEndpointId": 2161,
         "connectionId": 2161,
-        "sequence": 7178,
-        "kind": 7209,
-        "code": 7210
+        "sequence": 7409,
+        "kind": 7440,
+        "code": 7441
       },
-      "catchall": 7181,
+      "catchall": 7412,
       "checks": []
     },
     { "type": "literal", "values": ["error"], "checks": [] },
@@ -41939,7 +43219,7 @@
         "workerId": 2189,
         "workerProcessGeneration": 2189
       },
-      "catchall": 7212,
+      "catchall": 7443,
       "checks": []
     },
     { "type": "never", "checks": [] },
@@ -41947,15 +43227,15 @@
       "type": "object",
       "name": "workerLinkSessionOpenRequestSchema",
       "shape": { "clientInstanceId": 2189 },
-      "catchall": 7214,
+      "catchall": 7445,
       "checks": []
     },
     { "type": "never", "checks": [] },
     {
       "type": "object",
       "name": "workerLinkResourceGrantSchema",
-      "shape": { "binding": 2225, "token": 7216 },
-      "catchall": 7217,
+      "shape": { "binding": 2225, "token": 7447 },
+      "catchall": 7448,
       "checks": []
     },
     {
@@ -41978,21 +43258,21 @@
       "type": "default",
       "optionalIn": true,
       "name": "workerLinkTunnelGrantRequestSchema",
-      "innerType": 7219,
+      "innerType": 7450,
       "defaultValue": {},
       "checks": []
     },
     {
       "type": "object",
-      "shape": { "diagnosticTraceId": 7220 },
-      "catchall": 7222,
+      "shape": { "diagnosticTraceId": 7451 },
+      "catchall": 7453,
       "checks": []
     },
     {
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 7221,
+      "innerType": 7452,
       "checks": []
     },
     {
@@ -42012,8 +43292,8 @@
     {
       "type": "object",
       "name": "workerLinkTunnelGrantSchema",
-      "shape": { "grant": 7215, "route": 7224 },
-      "catchall": 7226,
+      "shape": { "grant": 7446, "route": 7455 },
+      "catchall": 7457,
       "checks": []
     },
     {
@@ -42026,7 +43306,7 @@
         "destinationEndpointId": 2189,
         "target": 2157
       },
-      "catchall": 7225,
+      "catchall": 7456,
       "checks": []
     },
     { "type": "never", "checks": [] },
@@ -42035,15 +43315,15 @@
       "type": "object",
       "name": "workerLinkObservationGrantRequestSchema",
       "shape": { "topics": 2241 },
-      "catchall": 7228,
+      "catchall": 7459,
       "checks": []
     },
     { "type": "never", "checks": [] },
     {
       "type": "object",
       "name": "workerLinkTerminalGrantRequestSchema",
-      "shape": { "operationId": 7230 },
-      "catchall": 7231,
+      "shape": { "operationId": 7461 },
+      "catchall": 7462,
       "checks": []
     },
     {
@@ -42063,14 +43343,14 @@
     {
       "type": "object",
       "name": "workerLinkRemoteSurfaceGrantRequestSchema",
-      "shape": { "viewport": 7233 },
-      "catchall": 7238,
+      "shape": { "viewport": 7464 },
+      "catchall": 7469,
       "checks": []
     },
     {
       "type": "object",
-      "shape": { "width": 7234, "height": 7235, "devicePixelRatio": 7236 },
-      "catchall": 7237,
+      "shape": { "width": 7465, "height": 7466, "devicePixelRatio": 7467 },
+      "catchall": 7468,
       "checks": []
     },
     {
@@ -42101,22 +43381,22 @@
     {
       "type": "object",
       "name": "remoteSurfaceAttachResultSchema",
-      "shape": { "accepted": 7240, "transport": 225 },
+      "shape": { "accepted": 7471, "transport": 225 },
       "checks": []
     },
     { "type": "literal", "values": [true], "checks": [] },
     {
       "type": "union",
       "name": "terminalOpenResultSchema",
-      "options": [7242, 7244],
+      "options": [7473, 7475],
       "discriminator": "status",
       "checks": []
     },
-    { "type": "object", "shape": { "status": 7243 }, "checks": [] },
+    { "type": "object", "shape": { "status": 7474 }, "checks": [] },
     { "type": "literal", "values": ["detached"], "checks": [] },
     {
       "type": "object",
-      "shape": { "status": 7245, "exitCode": 7246, "signal": 7247 },
+      "shape": { "status": 7476, "exitCode": 7477, "signal": 7478 },
       "checks": []
     },
     { "type": "literal", "values": ["exited"], "checks": [] },
@@ -42126,7 +43406,7 @@
         { "check": "number_format", "format": "safeint", "abort": false }
       ]
     },
-    { "type": "nullable", "innerType": 7248, "checks": [] },
+    { "type": "nullable", "innerType": 7479, "checks": [] },
     {
       "type": "number",
       "checks": [
@@ -42136,14 +43416,14 @@
     {
       "type": "union",
       "name": "terminalClientMessageSchema",
-      "options": [7250, 7252],
+      "options": [7481, 7483],
       "discriminator": "type",
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "type": 7251,
+        "type": 7482,
         "operationId": 1691,
         "sequence": 1692,
         "protectedData": 1693
@@ -42153,7 +43433,7 @@
     { "type": "literal", "values": ["input"], "checks": [] },
     {
       "type": "object",
-      "shape": { "type": 7253, "cols": 7254, "rows": 7255 },
+      "shape": { "type": 7484, "cols": 7485, "rows": 7486 },
       "checks": []
     },
     { "type": "literal", "values": ["resize"], "checks": [] },
@@ -42176,20 +43456,20 @@
     {
       "type": "union",
       "name": "terminalServerMessageSchema",
-      "options": [7257, 7259, 7302, 7307],
+      "options": [7488, 7490, 7533, 7538],
       "discriminator": "type",
       "checks": []
     },
-    { "type": "object", "shape": { "type": 7258 }, "checks": [] },
+    { "type": "object", "shape": { "type": 7489 }, "checks": [] },
     { "type": "literal", "values": ["ready"], "checks": [] },
     {
       "type": "object",
       "shape": {
-        "type": 7260,
+        "type": 7491,
         "operationId": 1691,
         "sequence": 1692,
         "protectedData": 1693,
-        "hydration": 7261
+        "hydration": 7492
       },
       "checks": []
     },
@@ -42198,32 +43478,32 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 7262,
+      "innerType": 7493,
       "checks": []
     },
     {
       "type": "union",
       "name": "terminalHydrationMetadataSchema",
-      "options": [7263, 7291],
+      "options": [7494, 7522],
       "discriminator": "format",
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "cols": 7264,
-        "rows": 7265,
-        "outputBoundary": 7266,
-        "processGeneration": 7268,
-        "format": 7270,
-        "version": 7271,
-        "generation": 7272,
-        "activeBuffer": 7273,
-        "cursor": 7274,
-        "modes": 7277,
-        "scrollbackRows": 7288,
-        "snapshotCharacters": 7289,
-        "snapshotChunks": 7290
+        "cols": 7495,
+        "rows": 7496,
+        "outputBoundary": 7497,
+        "processGeneration": 7499,
+        "format": 7501,
+        "version": 7502,
+        "generation": 7503,
+        "activeBuffer": 7504,
+        "cursor": 7505,
+        "modes": 7508,
+        "scrollbackRows": 7519,
+        "snapshotCharacters": 7520,
+        "snapshotChunks": 7521
       },
       "checks": []
     },
@@ -42247,7 +43527,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 7267,
+      "innerType": 7498,
       "checks": []
     },
     {
@@ -42262,7 +43542,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 7269,
+      "innerType": 7500,
       "checks": []
     },
     {
@@ -42284,7 +43564,7 @@
       ]
     },
     { "type": "enum", "values": ["normal", "alternate"], "checks": [] },
-    { "type": "object", "shape": { "x": 7275, "y": 7276 }, "checks": [] },
+    { "type": "object", "shape": { "x": 7506, "y": 7507 }, "checks": [] },
     {
       "type": "number",
       "checks": [
@@ -42304,16 +43584,16 @@
     {
       "type": "object",
       "shape": {
-        "applicationCursorKeysMode": 7278,
-        "applicationKeypadMode": 7279,
-        "bracketedPasteMode": 7280,
-        "insertMode": 7281,
-        "mouseTrackingMode": 7282,
-        "originMode": 7283,
-        "reverseWraparoundMode": 7284,
-        "sendFocusMode": 7285,
-        "synchronizedOutputMode": 7286,
-        "wraparoundMode": 7287
+        "applicationCursorKeysMode": 7509,
+        "applicationKeypadMode": 7510,
+        "bracketedPasteMode": 7511,
+        "insertMode": 7512,
+        "mouseTrackingMode": 7513,
+        "originMode": 7514,
+        "reverseWraparoundMode": 7515,
+        "sendFocusMode": 7516,
+        "synchronizedOutputMode": 7517,
+        "wraparoundMode": 7518
       },
       "checks": []
     },
@@ -42358,18 +43638,18 @@
     {
       "type": "object",
       "shape": {
-        "cols": 7264,
-        "rows": 7265,
-        "outputBoundary": 7266,
-        "processGeneration": 7268,
-        "format": 7292,
-        "version": 7293,
-        "generation": 7294,
-        "truncated": 7295,
-        "recovery": 7296,
-        "recoveryReason": 7298,
-        "snapshotCharacters": 7300,
-        "snapshotChunks": 7301
+        "cols": 7495,
+        "rows": 7496,
+        "outputBoundary": 7497,
+        "processGeneration": 7499,
+        "format": 7523,
+        "version": 7524,
+        "generation": 7525,
+        "truncated": 7526,
+        "recovery": 7527,
+        "recoveryReason": 7529,
+        "snapshotCharacters": 7531,
+        "snapshotChunks": 7532
       },
       "checks": []
     },
@@ -42388,7 +43668,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 7297,
+      "innerType": 7528,
       "checks": []
     },
     {
@@ -42400,7 +43680,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 7299,
+      "innerType": 7530,
       "checks": []
     },
     {
@@ -42426,7 +43706,7 @@
     },
     {
       "type": "object",
-      "shape": { "type": 7303, "exitCode": 7304, "signal": 7305 },
+      "shape": { "type": 7534, "exitCode": 7535, "signal": 7536 },
       "checks": []
     },
     { "type": "literal", "values": ["exit"], "checks": [] },
@@ -42436,7 +43716,7 @@
         { "check": "number_format", "format": "safeint", "abort": false }
       ]
     },
-    { "type": "nullable", "innerType": 7306, "checks": [] },
+    { "type": "nullable", "innerType": 7537, "checks": [] },
     {
       "type": "number",
       "checks": [
@@ -42445,7 +43725,7 @@
     },
     {
       "type": "object",
-      "shape": { "type": 7308, "message": 7309 },
+      "shape": { "type": 7539, "message": 7540 },
       "checks": []
     },
     { "type": "literal", "values": ["error"], "checks": [] },
@@ -42457,7 +43737,7 @@
       "type": "object",
       "name": "workerLinkPeerSessionOpenRequestSchema",
       "shape": { "routeGeneration": 1705, "route": 1706 },
-      "catchall": 7311,
+      "catchall": 7542,
       "checks": []
     },
     { "type": "never", "checks": [] },
@@ -42465,15 +43745,15 @@
       "type": "object",
       "name": "workerLinkPeerSessionDescriptorSchema",
       "shape": { "peerSession": 2262, "configuration": 2266 },
-      "catchall": 7313,
+      "catchall": 7544,
       "checks": []
     },
     { "type": "never", "checks": [] },
     {
       "type": "object",
       "name": "workerLinkPeerSignalBatchSchema",
-      "shape": { "signals": 7315 },
-      "catchall": 7316,
+      "shape": { "signals": 7546 },
+      "catchall": 7547,
       "checks": [
         {
           "check": "refinement",
@@ -42495,16 +43775,16 @@
       "type": "object",
       "name": "workerLinkPeerMailboxReadRequestSchema",
       "shape": {
-        "afterSignalSequence": 7318,
-        "afterAdvertisementSequence": 7320
+        "afterSignalSequence": 7549,
+        "afterAdvertisementSequence": 7551
       },
-      "catchall": 7322,
+      "catchall": 7553,
       "checks": []
     },
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 7319,
+      "innerType": 7550,
       "defaultValue": null,
       "checks": []
     },
@@ -42512,7 +43792,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 7321,
+      "innerType": 7552,
       "defaultValue": null,
       "checks": []
     },
@@ -42522,14 +43802,14 @@
       "type": "object",
       "name": "workerLinkPeerMailboxSchema",
       "shape": {
-        "peerSessionId": 7324,
-        "sessionId": 7325,
+        "peerSessionId": 7555,
+        "sessionId": 7556,
         "routeGeneration": 1705,
         "route": 1706,
-        "signals": 7326,
-        "candidateAdvertisements": 7327
+        "signals": 7557,
+        "candidateAdvertisements": 7558
       },
-      "catchall": 7328,
+      "catchall": 7559,
       "checks": [
         {
           "check": "refinement",
@@ -42579,15 +43859,15 @@
       "type": "object",
       "name": "workerLinkRouteUpdateRequestSchema",
       "shape": { "preferredRoute": 2202 },
-      "catchall": 7330,
+      "catchall": 7561,
       "checks": []
     },
     { "type": "never", "checks": [] },
     {
       "type": "object",
       "name": "workerLinkDirectActivationSchema",
-      "shape": { "capabilityId": 7332 },
-      "catchall": 7333,
+      "shape": { "capabilityId": 7563 },
+      "catchall": 7564,
       "checks": []
     },
     {
@@ -42607,13 +43887,13 @@
     {
       "type": "object",
       "name": "workerLinkTelemetryBatchSchema",
-      "shape": { "routeGeneration": 1705, "samples": 7335 },
-      "catchall": 7345,
+      "shape": { "routeGeneration": 1705, "samples": 7566 },
+      "catchall": 7576,
       "checks": []
     },
     {
       "type": "array",
-      "element": 7336,
+      "element": 7567,
       "checks": [
         { "check": "min_length", "minimum": 1, "when": "length" },
         { "check": "max_length", "maximum": 128, "when": "length" }
@@ -42624,14 +43904,14 @@
       "name": "workerLinkTelemetrySampleSchema",
       "shape": {
         "occurredAt": 2192,
-        "event": 7337,
-        "route": 7338,
-        "lane": 7339,
-        "value": 7340,
-        "latencyMs": 7341,
-        "reason": 7343
+        "event": 7568,
+        "route": 7569,
+        "lane": 7570,
+        "value": 7571,
+        "latencyMs": 7572,
+        "reason": 7574
       },
-      "catchall": 7344,
+      "catchall": 7575,
       "checks": []
     },
     {
@@ -42670,7 +43950,7 @@
         { "check": "number_format", "format": "safeint", "abort": false }
       ]
     },
-    { "type": "nullable", "innerType": 7342, "checks": [] },
+    { "type": "nullable", "innerType": 7573, "checks": [] },
     {
       "type": "number",
       "checks": [
@@ -42726,27 +44006,27 @@
     {
       "type": "union",
       "name": "workerLinkFrameHeaderSchema",
-      "options": [7347, 7359, 7361, 7364, 7368, 7370, 7372, 7375],
+      "options": [7578, 7590, 7592, 7595, 7599, 7601, 7603, 7606],
       "discriminator": "kind",
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "protocolVersion": 7348,
-        "sessionId": 7349,
+        "protocolVersion": 7579,
+        "sessionId": 7580,
         "routeGeneration": 1705,
         "effectiveRoute": 2202,
-        "channel": 7350,
+        "channel": 7581,
         "lane": 2233,
         "sequence": 1708,
-        "kind": 7354,
-        "openNonce": 7355,
-        "channelKind": 7356,
-        "grant": 7215,
-        "initialCreditBytes": 7357
+        "kind": 7585,
+        "openNonce": 7586,
+        "channelKind": 7587,
+        "grant": 7446,
+        "initialCreditBytes": 7588
       },
-      "catchall": 7358,
+      "catchall": 7589,
       "checks": []
     },
     { "type": "literal", "values": [1], "checks": [] },
@@ -42766,8 +44046,8 @@
     {
       "type": "object",
       "name": "workerLinkChannelIdentitySchema",
-      "shape": { "channelId": 7351, "connectionId": 7352 },
-      "catchall": 7353,
+      "shape": { "channelId": 7582, "connectionId": 7583 },
+      "catchall": 7584,
       "checks": []
     },
     {
@@ -42829,34 +44109,34 @@
     {
       "type": "object",
       "shape": {
-        "protocolVersion": 7348,
-        "sessionId": 7349,
+        "protocolVersion": 7579,
+        "sessionId": 7580,
         "routeGeneration": 1705,
         "effectiveRoute": 2202,
-        "channel": 7350,
+        "channel": 7581,
         "lane": 2233,
         "sequence": 1708,
-        "kind": 7360,
-        "initialCreditBytes": 7357
+        "kind": 7591,
+        "initialCreditBytes": 7588
       },
-      "catchall": 7358,
+      "catchall": 7589,
       "checks": []
     },
     { "type": "literal", "values": ["accept"], "checks": [] },
     {
       "type": "object",
       "shape": {
-        "protocolVersion": 7348,
-        "sessionId": 7349,
+        "protocolVersion": 7579,
+        "sessionId": 7580,
         "routeGeneration": 1705,
         "effectiveRoute": 2202,
-        "channel": 7350,
+        "channel": 7581,
         "lane": 2233,
         "sequence": 1708,
-        "kind": 7362,
-        "code": 7363
+        "kind": 7593,
+        "code": 7594
       },
-      "catchall": 7358,
+      "catchall": 7589,
       "checks": []
     },
     { "type": "literal", "values": ["reject"], "checks": [] },
@@ -42882,18 +44162,18 @@
     {
       "type": "object",
       "shape": {
-        "protocolVersion": 7348,
-        "sessionId": 7349,
+        "protocolVersion": 7579,
+        "sessionId": 7580,
         "routeGeneration": 1705,
         "effectiveRoute": 2202,
-        "channel": 7350,
+        "channel": 7581,
         "lane": 2233,
         "sequence": 1708,
-        "kind": 7365,
-        "direction": 7366,
-        "payloadFormat": 7367
+        "kind": 7596,
+        "direction": 7597,
+        "payloadFormat": 7598
       },
-      "catchall": 7358,
+      "catchall": 7589,
       "checks": []
     },
     { "type": "literal", "values": ["data"], "checks": [] },
@@ -42912,52 +44192,52 @@
     {
       "type": "object",
       "shape": {
-        "protocolVersion": 7348,
-        "sessionId": 7349,
+        "protocolVersion": 7579,
+        "sessionId": 7580,
         "routeGeneration": 1705,
         "effectiveRoute": 2202,
-        "channel": 7350,
+        "channel": 7581,
         "lane": 2233,
         "sequence": 1708,
-        "kind": 7369,
-        "direction": 7366,
-        "bytes": 7357
+        "kind": 7600,
+        "direction": 7597,
+        "bytes": 7588
       },
-      "catchall": 7358,
+      "catchall": 7589,
       "checks": []
     },
     { "type": "literal", "values": ["credit"], "checks": [] },
     {
       "type": "object",
       "shape": {
-        "protocolVersion": 7348,
-        "sessionId": 7349,
+        "protocolVersion": 7579,
+        "sessionId": 7580,
         "routeGeneration": 1705,
         "effectiveRoute": 2202,
-        "channel": 7350,
+        "channel": 7581,
         "lane": 2233,
         "sequence": 1708,
-        "kind": 7371,
-        "direction": 7366
+        "kind": 7602,
+        "direction": 7597
       },
-      "catchall": 7358,
+      "catchall": 7589,
       "checks": []
     },
     { "type": "literal", "values": ["half-close"], "checks": [] },
     {
       "type": "object",
       "shape": {
-        "protocolVersion": 7348,
-        "sessionId": 7349,
+        "protocolVersion": 7579,
+        "sessionId": 7580,
         "routeGeneration": 1705,
         "effectiveRoute": 2202,
-        "channel": 7350,
+        "channel": 7581,
         "lane": 2233,
         "sequence": 1708,
-        "kind": 7373,
-        "code": 7374
+        "kind": 7604,
+        "code": 7605
       },
-      "catchall": 7358,
+      "catchall": 7589,
       "checks": []
     },
     { "type": "literal", "values": ["close"], "checks": [] },
@@ -42979,17 +44259,17 @@
     {
       "type": "object",
       "shape": {
-        "protocolVersion": 7348,
-        "sessionId": 7349,
+        "protocolVersion": 7579,
+        "sessionId": 7580,
         "routeGeneration": 1705,
         "effectiveRoute": 2202,
-        "channel": 7350,
+        "channel": 7581,
         "lane": 2233,
         "sequence": 1708,
-        "kind": 7376,
-        "code": 7377
+        "kind": 7607,
+        "code": 7608
       },
-      "catchall": 7358,
+      "catchall": 7589,
       "checks": []
     },
     { "type": "literal", "values": ["error"], "checks": [] },
@@ -43015,8 +44295,8 @@
     {
       "type": "object",
       "name": "projectShareDirectCreateSchema",
-      "shape": { "clientId": 7062 },
-      "catchall": 7380,
+      "shape": { "clientId": 7293 },
+      "catchall": 7611,
       "checks": []
     },
     { "type": "never", "checks": [] },
@@ -43027,19 +44307,19 @@
         "broker": 234,
         "binding": 2137,
         "secret": 2149,
-        "route": 7382
+        "route": 7613
       },
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "tunnelId": 7383,
-        "attachmentId": 7384,
-        "sourceEndpointId": 7385,
-        "destinationEndpointId": 7386
+        "tunnelId": 7614,
+        "attachmentId": 7615,
+        "sourceEndpointId": 7616,
+        "destinationEndpointId": 7617
       },
-      "catchall": 7387,
+      "catchall": 7618,
       "checks": []
     },
     {
@@ -43075,21 +44355,21 @@
       "type": "default",
       "optionalIn": true,
       "name": "directTunnelPrepareRequestSchema",
-      "innerType": 7389,
+      "innerType": 7620,
       "defaultValue": {},
       "checks": []
     },
     {
       "type": "object",
-      "shape": { "diagnosticTraceId": 7390 },
-      "catchall": 7392,
+      "shape": { "diagnosticTraceId": 7621 },
+      "catchall": 7623,
       "checks": []
     },
     {
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 7391,
+      "innerType": 7622,
       "checks": []
     },
     {
@@ -43109,8 +44389,8 @@
     {
       "type": "object",
       "name": "tunnelAttachmentCreateSchema",
-      "shape": { "clientId": 7062 },
-      "catchall": 7394,
+      "shape": { "clientId": 7293 },
+      "catchall": 7625,
       "checks": []
     },
     { "type": "never", "checks": [] },
@@ -43118,14 +44398,14 @@
       "type": "object",
       "name": "tunnelAttachmentCreateResultSchema",
       "shape": {
-        "attachmentId": 7062,
-        "tunnelId": 7062,
-        "secret": 7396,
-        "connectPath": 7397,
-        "secretExpiresAt": 7398,
-        "expiresAt": 7399
+        "attachmentId": 7293,
+        "tunnelId": 7293,
+        "secret": 7627,
+        "connectPath": 7628,
+        "secretExpiresAt": 7629,
+        "expiresAt": 7630
       },
-      "catchall": 7400,
+      "catchall": 7631,
       "checks": []
     },
     {
@@ -43176,8 +44456,8 @@
     {
       "type": "object",
       "name": "tunnelAttachmentInitializeSchema",
-      "shape": { "type": 7402, "clientId": 7062, "diagnosticTraceId": 7403 },
-      "catchall": 7405,
+      "shape": { "type": 7633, "clientId": 7293, "diagnosticTraceId": 7634 },
+      "catchall": 7636,
       "checks": []
     },
     { "type": "literal", "values": ["initialize"], "checks": [] },
@@ -43185,7 +44465,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 7404,
+      "innerType": 7635,
       "checks": []
     },
     {
@@ -43206,14 +44486,14 @@
       "type": "object",
       "name": "tunnelAttachmentReadySchema",
       "shape": {
-        "type": 7407,
-        "attachmentId": 7062,
-        "tunnelId": 7062,
-        "sourceEndpointId": 7062,
-        "destinationEndpointId": 7062,
-        "expiresAt": 7408
+        "type": 7638,
+        "attachmentId": 7293,
+        "tunnelId": 7293,
+        "sourceEndpointId": 7293,
+        "destinationEndpointId": 7293,
+        "expiresAt": 7639
       },
-      "catchall": 7409,
+      "catchall": 7640,
       "checks": []
     },
     { "type": "literal", "values": ["ready"], "checks": [] },
@@ -43233,8 +44513,8 @@
     {
       "type": "object",
       "name": "tunnelDirectActivationSchema",
-      "shape": { "capabilityId": 7411 },
-      "catchall": 7412,
+      "shape": { "capabilityId": 7642 },
+      "catchall": 7643,
       "checks": []
     },
     {
@@ -43254,14 +44534,14 @@
     {
       "type": "object",
       "name": "directCapabilityPrepareResultSchema",
-      "shape": { "capabilityId": 2138, "accepted": 7414 },
+      "shape": { "capabilityId": 2138, "accepted": 7645 },
       "checks": []
     },
     { "type": "literal", "values": [true], "checks": [] },
     {
       "type": "object",
       "name": "directCapabilityRenewResultSchema",
-      "shape": { "renewed": 7416, "leaseExpiresAt": 7417 },
+      "shape": { "renewed": 7647, "leaseExpiresAt": 7648 },
       "checks": []
     },
     { "type": "boolean", "checks": [] },
@@ -43276,13 +44556,13 @@
       "type": "object",
       "name": "directTransportTelemetrySchema",
       "shape": {
-        "bytesFromLocal": 7419,
-        "bytesToLocal": 7419,
-        "connectionsClosed": 7419,
-        "connectionsOpened": 7419,
-        "lastDestinationRejectionCode": 7420
+        "bytesFromLocal": 7650,
+        "bytesToLocal": 7650,
+        "connectionsClosed": 7650,
+        "connectionsOpened": 7650,
+        "lastDestinationRejectionCode": 7651
       },
-      "catchall": 7421,
+      "catchall": 7652,
       "checks": []
     },
     {
@@ -43297,7 +44577,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 7190,
+      "innerType": 7421,
       "checks": []
     },
     { "type": "never", "checks": [] }

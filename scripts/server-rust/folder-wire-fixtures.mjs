@@ -9,6 +9,16 @@ export function folderWireFixtures(label) {
     envelope: label.protectedLabel.envelope,
   };
   return {
+    repositoryOperationWireRequestSchema: [
+      { operationId: jobId, protectedRequest: opaque },
+      {
+        operationId: jobId,
+        protectedRequest: opaque,
+        agent: true,
+        modelId: "model",
+        peerWorktreeId: "peer",
+      },
+    ],
     repositoryWorkerOperationWireRequestSchema: [
       { scopeId: projectId, operationId: jobId, protectedRequest: opaque },
       {

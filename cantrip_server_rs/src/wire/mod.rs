@@ -13,6 +13,7 @@ mod project_surfaces;
 mod project_tabs;
 mod projects;
 mod refinements;
+mod run_configurations;
 mod terminals;
 pub mod value;
 mod worker_command;
