@@ -17,6 +17,8 @@ mod pane_layouts;
 mod project_surfaces;
 #[path = "support/repository_operations.rs"]
 mod repository_operations;
+#[path = "support/run_configurations.rs"]
+mod run_configurations;
 #[path = "support/tunnels.rs"]
 mod tunnels;
 #[path = "support/workspaces.rs"]

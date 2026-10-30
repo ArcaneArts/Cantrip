@@ -325,10 +325,16 @@ jobs:
       - name: Project placement selection with external PostgreSQL
         run: node scripts/server-rust/project-placement-compatibility.mjs --database postgres --report .qa/rust-server/project-placement-external.json
       - name: Protected execution target repositories with native PGlite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
         run: node scripts/server-rust/project-target-repository-compatibility.mjs --report .qa/rust-server/project-target-repository-pglite.json
       - name: Protected execution target repositories with private PostgreSQL
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
         run: node scripts/server-rust/project-target-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/project-target-repository-bundled.json
       - name: Protected execution target repositories with external PostgreSQL
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
         run: node scripts/server-rust/project-target-repository-compatibility.mjs --database postgres --report .qa/rust-server/project-target-repository-external.json
       - name: Project HTTP contracts and actual worker presence with native PGlite
         run: node --import tsx scripts/server-rust/project-http-compatibility.mjs --report .qa/rust-server/project-http-pglite.json
