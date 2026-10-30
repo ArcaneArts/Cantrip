@@ -2,6 +2,44 @@
 
 Status: **implementation in progress; not a deployable replacement**.
 
+## Oversized document upload response observation
+
+PR 2313's Windows run passes the complete PGlite document HTTP comparisons and
+both anonymous private-PostgreSQL runtimes. Its account-mode Node reference then
+fails with `ECONNRESET` while the test uploads a body above the 4 MiB route limit,
+before recording a response or starting the corresponding Rust account run.
+The uploaded seven-file ZIP and raw job log are retained; the ZIP's SHA256 is
+`dc3fa4753565bc89f29c5f88e102515e740f38d9314ec67e4707cb4389ec3b63`.
+
+The reset also reproduces locally against Node when the client advertises the
+entire oversized length before uploading. The oversized-body fixture now sends
+the same JSON payload with actual chunked framing, yields to socket responses,
+and stops uploading when response headers arrive. Separate headers-only requests
+advertise the oversized length without sending body bytes. A completed reply
+still has its exact status, JSON, headers, request identity and cookies checked.
+A reset without a response or a truncated body fails; there is no retry or
+inferred 413. Other fixture operations keep their existing fetch transport.
+Five real socket tests cover early replies and cookies, a complete chunked
+upload, headers without body bytes, absent replies and incomplete replies.
+
+The actual headers-only comparison exposes a native parsing defect independently
+of that reference-client reset: Node immediately returns 413 for JSON, text and
+its registered binary parser, and 415 for unsupported or missing content types.
+Rust waits for body bytes and fails the caller deadline. Rust now checks an
+actually supplied oversized Content-Length before buffering, preserving that
+parser-dependent error priority. The existing byte-bound read still limits
+chunked uploads. The original failing reports are retained. Current-head Windows
+and complete supported-platform acceptance remain required.
+
+The repaired document comparisons pass locally on all three stores with 39
+anonymous and 41 account observations and six worker commands per runtime,
+retaining exact per-request Live and durable-state comparisons. The general
+HTTP/WebSocket JSON comparisons also pass on all three stores. All five actual
+socket tests, 19 native library tests, strict all-target Clippy and Rustfmt pass.
+The earlier full-suite worker notification failure remains unresolved; this
+focused parser repair does not establish a green repository check or packaging
+readiness and adds no routes to the coverage count.
+
 ## Immutable file documents
 
 The four document catalog, creation, lookup and protected operation routes now

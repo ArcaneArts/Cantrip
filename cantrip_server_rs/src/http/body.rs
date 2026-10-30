@@ -39,6 +39,40 @@ fn poisoned(value: &JsValue) -> bool {
 
 pub(super) async fn parse_js(request: Request, limit: u64) -> Result<Option<JsValue>, Response> {
     let content_type = value(request.headers(), "content-type");
+    let kind = content_type
+        .as_deref()
+        .unwrap_or("")
+        .split(';')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_lowercase();
+    if value(request.headers(), "content-length")
+        .and_then(|length| length.trim().parse::<u64>().ok())
+        .is_some_and(|length| length > limit)
+    {
+        // Fastify selects its registered parser before rejecting the advertised
+        // length, without waiting for any body bytes. The actual streamed body
+        // remains bounded below when no oversized length was advertised.
+        return Err(
+            if matches!(
+                kind.as_str(),
+                "application/json" | "text/plain" | "application/octet-stream"
+            ) {
+                parser_error(
+                    413,
+                    "FST_ERR_CTP_BODY_TOO_LARGE",
+                    "Request body is too large",
+                )
+            } else {
+                parser_error(
+                    415,
+                    "FST_ERR_CTP_INVALID_MEDIA_TYPE",
+                    "Unsupported Media Type",
+                )
+            },
+        );
+    }
     let bytes = to_bytes(request.into_body(), limit as usize)
         .await
         .map_err(|_| {
@@ -48,14 +82,6 @@ pub(super) async fn parse_js(request: Request, limit: u64) -> Result<Option<JsVa
                 "Request body is too large",
             )
         })?;
-    let kind = content_type
-        .as_deref()
-        .unwrap_or("")
-        .split(';')
-        .next()
-        .unwrap_or("")
-        .trim()
-        .to_lowercase();
     if kind == "application/json" {
         if bytes.is_empty() {
             return Err(parser_error(
