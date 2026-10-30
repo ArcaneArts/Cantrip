@@ -11,6 +11,8 @@ mod browsers;
 mod chat_console;
 #[path = "support/conversions.rs"]
 mod conversions;
+#[path = "support/discovery.rs"]
+mod discovery;
 #[path = "support/file_documents.rs"]
 mod file_documents;
 #[path = "support/pane_layouts.rs"]
@@ -116,6 +118,11 @@ async fn run() -> Result<()> {
                 ]))
             } else if request["op"]
                 .as_str()
+                .is_some_and(|op| op.starts_with("discovery-"))
+            {
+                discovery::run(database.clone(), &request).boxed().await
+            } else if request["op"]
+                .as_str()
                 .is_some_and(|op| op.starts_with("conversion-"))
             {
                 conversions::run(database.clone(), &request).boxed().await
@@ -180,6 +187,29 @@ async fn run() -> Result<()> {
             Ok(value) => reply["value"] = value,
             Err(error) => {
                 reply["diagnostic"] = Value::String(error.to_string().into());
+                if error.is::<cantrip_server::projects::workspaces::WorkspaceInvariant>() {
+                    reply["discoveryError"] =
+                        Value::String("ProjectWorkspaceInvariantError".into());
+                }
+                if let Some(error) = error
+                    .downcast_ref::<cantrip_server::projects::workspace_discovery::DiscoveryError>(
+                ) {
+                    use cantrip_server::projects::workspace_discovery::DiscoveryError;
+                    reply["discoveryError"] = Value::String(
+                        match error {
+                            DiscoveryError::Invariant(_) => {
+                                "WorkspaceRepositoryDiscoveryInvariantError"
+                            }
+                            DiscoveryError::Stale(_) => {
+                                "WorkspaceRepositoryDiscoveryStaleAttemptError"
+                            }
+                            DiscoveryError::ImportStale(_) => {
+                                "WorkspaceRepositoryImportStaleAttemptError"
+                            }
+                        }
+                        .into(),
+                    );
+                }
                 if let Some(error) = error
                     .downcast_ref::<cantrip_server::projects::github_conversion::ConversionError>(
                 ) {
@@ -212,7 +242,9 @@ async fn run() -> Result<()> {
                 }
 
                 if request["op"].as_str().is_some_and(|op| {
-                    op.starts_with("project-surface-")
+                    op == "sql"
+                        || op.starts_with("project-surface-")
+                        || op.starts_with("discovery-")
                         || op.starts_with("tunnel-")
                         || op.starts_with("browser-")
                         || op.starts_with("document-")

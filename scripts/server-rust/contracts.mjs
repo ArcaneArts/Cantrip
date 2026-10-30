@@ -5,6 +5,7 @@ import * as runDefinitions from "../../packages/protocol/dist/run-configuration-
 import * as runSecrets from "../../packages/protocol/dist/run-configuration-secrets.js";
 import * as runConfigurationOperations from "../../packages/protocol/dist/run-configuration-operations.js";
 import * as runConfigurationRuntime from "../../packages/protocol/dist/run-configuration-runtime.js";
+import { repositoryRoutingHandleSchema } from "../../packages/protocol/dist/repository-operation.js";
 import { cuaCursorPreferenceRecordSchema } from "../../packages/protocol/dist/computer-use-preferences.js";
 import { mkdir, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -320,7 +321,39 @@ export const contractRoots = [
   "projectGithubConversionPreflightResultSchema",
   "projectGithubConversionExecutionResultSchema",
   "projectGithubConversionJobSummarySchema",
+  "workspaceRepositoryDiscoveryJobSummarySchema",
+  "repositoryRoutingHandleSchema",
+  "workspaceRepositoryDiscoveryCountsSchema",
+  "workspaceRepositoryDiscoveryProgressSchema",
+  "workspaceRepositoryCandidateSummarySchema",
+  "workspaceRepositoryCandidateClassificationSchema",
+  "workspaceRepositoryCandidateDiagnosticCodeSchema",
+  "workspaceRepositoryDiscoverySnapshotSchema",
+  "workspaceRepositoryDiscoveryStartSchema",
+  "workspaceRepositoryImportStartSchema",
+  "workspaceRepositoryDiscoveryWorkerResultSchema",
+  "workspaceRepositoryImportValidationResultSchema",
+  "encryptedProjectWorkspaceCreateSchema",
+  "encryptedAttachedProjectWorkspaceCreateSchema",
+  "encryptedAttachedProjectWorkspaceCreateResultSchema",
+  "encryptedProjectWorkspaceUpdateSchema",
+  "projectWorkspaceWireSummarySchema",
+  "projectWorkspaceWireListSchema",
 ];
+
+// Resolve the actual source schemas, including their separate protocol modules.
+// Compatibility oracles use this registry, never the generated native manifest.
+export function sourceContractSchema(name) {
+  return (
+    protocol[name] ??
+    runConfigurationRuntime[name] ??
+    runConfigurationOperations[name] ??
+    runDefinitions[name] ??
+    (name === "repositoryRoutingHandleSchema"
+      ? repositoryRoutingHandleSchema
+      : undefined)
+  );
+}
 
 const refinements = new Map([
   [
@@ -393,6 +426,34 @@ function registerChecks(schema, tags) {
     );
   tags.forEach((tag, index) => registerCustom(schema, index, tag));
 }
+for (const schema of [
+  protocol.workspaceRepositoryDiscoveryJobSummarySchema,
+  protocol.workspaceRepositoryDiscoveryWorkerResultSchema,
+])
+  registerChecks(schema, ["discovery-truncation"]);
+registerChecks(protocol.workspaceRepositoryCandidateSummarySchema, [
+  "discovery-candidate-summary",
+]);
+registerChecks(protocol.workspaceRepositoryImportValidationResultSchema, [
+  "discovery-import-classification",
+]);
+registerChecks(
+  protocol.workspaceRepositoryDiscoveryWorkerResultSchema.shape.candidates
+    .element,
+  ["discovery-worker-classification"],
+);
+registerChecks(protocol.workspaceRepositoryImportStartSchema.shape.candidates, [
+  "discovery-import-unique",
+]);
+registerChecks(protocol.encryptedProjectWorkspaceNameSchema, [
+  "project-workspace-name",
+]);
+registerChecks(protocol.encryptedProjectWorkspaceNameSchema.shape.envelope, [
+  "project-workspace-name-bytes",
+]);
+registerChecks(protocol.encryptedProjectWorkspaceUpdateSchema, [
+  "project-workspace-update",
+]);
 registerChecks(protocol.repositoryOperationWireRequestSchema, [
   "repository-agent-model",
 ]);
@@ -819,13 +880,7 @@ export function buildContractManifest() {
     roots: Object.fromEntries(
       contractRoots.map((name) => [
         name,
-        visit(
-          protocol[name] ??
-            runConfigurationRuntime[name] ??
-            runConfigurationOperations[name] ??
-            runDefinitions[name],
-          name,
-        ),
+        visit(sourceContractSchema(name), name),
       ]),
     ),
     nodes,

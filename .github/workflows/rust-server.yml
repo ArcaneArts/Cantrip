@@ -63,6 +63,14 @@ on:
       - cantrip_server/src/operations/metrics.ts
       - cantrip_server/src/db/repository/workers.ts
       - cantrip_server/src/db/repository/projects.ts
+      - cantrip_server/src/db/workspace-repository-discovery-jobs.ts
+      - cantrip_server/src/workspace-repository-discovery/**
+      - cantrip_server/src/app/routes/project-workspaces.ts
+      - cantrip_server/src/app/routes/project-preserving-removal.ts
+      - cantrip_app/src/lib/workspace-encryption.ts
+      - cantrip_app/src/lib/project-encryption.ts
+      - cantrip_app/src/lib/api/workspaces.ts
+      - cantrip_app/src/lib/api/discovery.ts
       - cantrip_server/src/db/repository/run-configuration-state.ts
       - cantrip_server/src/db/repository/worktree-*.ts
       - cantrip_server/src/worktrees/**
@@ -935,4 +943,111 @@ jobs:
         if: always()
         with:
           name: rust-server-conversions-${{ matrix.os }}
+          path: .qa/rust-server/
+
+  discovery:
+    # Exercise attached roots, imports, lease renewal and real user-owned Git.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.93.0
+          components: rustfmt, clippy
+      - name: Windows native PGlite toolchain
+        if: runner.os == 'Windows'
+        id: mingw
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-zlib mingw-w64-x86_64-openssl
+      - name: Windows Rust target and PostgreSQL
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          CANTRIP_MINGW_BIN: ${{ steps.mingw.outputs.msys2-location }}\mingw64\bin
+        run: |
+          rustup target add x86_64-pc-windows-gnu
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "CARGO_BUILD_TARGET=x86_64-pc-windows-gnu" >> $env:GITHUB_ENV
+          "$env:CANTRIP_MINGW_BIN" >> $env:GITHUB_PATH
+          "CANTRIP_TEST_POSTGRES_BIN_DIR=$env:PGBIN" >> $env:GITHUB_ENV
+      - name: Linux PostgreSQL
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql libssl-dev
+          echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(pg_config --bindir)" >> "$GITHUB_ENV"
+      - name: macOS PostgreSQL
+        if: runner.os == 'macOS'
+        run: |
+          brew install postgresql@18
+          echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(brew --prefix postgresql@18)/bin" >> "$GITHUB_ENV"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol --filter @cantrip/crypto --filter @cantrip/glitch -r build
+      - name: Create discovery evidence directory
+        run: |
+          node -e "require('node:fs').mkdirSync('.qa/rust-server', { recursive: true })"
+      - name: Build the production worker used by workspace discovery integration
+        run: pnpm --filter @cantrip/worker build
+      - name: Browser for actual encrypted workspace discovery clients
+        run: node node_modules/playwright-core/cli.js install --with-deps chromium
+      - name: Allow the downloaded Chromium to use its namespace sandbox on Ubuntu
+        if: runner.os == 'Linux'
+        run: node scripts/server-rust/linux-chromium-sandbox.mjs
+      - name: Workspace catalog and discovery protocol compatibility
+        run: node scripts/server-rust/cargo.mjs test --test discovery_contracts
+      - name: Workspace catalog SQL matches the actual TypeScript repository
+        run: node --import tsx scripts/server-rust/workspace-catalog-query-manifest.mjs --check
+      - name: Workspace catalog, discovery and import transactions with pglite
+        run: node --import tsx scripts/server-rust/discovery-repository-compatibility.mjs --database pglite --report .qa/rust-server/discovery-repository-pglite.json
+      - name: Workspace discovery HTTP, authentication, worker and Live with pglite
+        run: node --import tsx scripts/server-rust/discovery-http-compatibility.mjs --database pglite --lifecycle --report .qa/rust-server/discovery-http-pglite.json
+      - name: Workspace scan renewal, stale completion and real lease expiry with pglite
+        run: node --import tsx scripts/server-rust/discovery-http-compatibility.mjs --database pglite --profile none --leases --expiry --report .qa/rust-server/discovery-real-leases-pglite.json
+      - name: Workspace caller disconnect and admitted shutdown with pglite
+        run: node --import tsx scripts/server-rust/discovery-http-compatibility.mjs --database pglite --profile none --lifetimes --report .qa/rust-server/discovery-lifetimes-pglite.json
+      - name: Actual encrypted browser and full worker discover, import, convert and preserve user files with pglite
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --workspace-discovery --database pglite --report .qa/rust-server/actual-workspace-discovery-pglite.json
+      - name: Workspace catalog, discovery and import transactions with bundled-postgres
+        run: node --import tsx scripts/server-rust/discovery-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/discovery-repository-bundled-postgres.json
+      - name: Workspace discovery HTTP, authentication, worker and Live with bundled-postgres
+        run: node --import tsx scripts/server-rust/discovery-http-compatibility.mjs --database bundled-postgres --lifecycle --report .qa/rust-server/discovery-http-bundled-postgres.json
+      - name: Workspace scan renewal, stale completion and real lease expiry with bundled-postgres
+        run: node --import tsx scripts/server-rust/discovery-http-compatibility.mjs --database bundled-postgres --profile none --leases --expiry --report .qa/rust-server/discovery-real-leases-bundled-postgres.json
+      - name: Workspace caller disconnect and admitted shutdown with bundled-postgres
+        run: node --import tsx scripts/server-rust/discovery-http-compatibility.mjs --database bundled-postgres --profile none --lifetimes --report .qa/rust-server/discovery-lifetimes-bundled-postgres.json
+      - name: Actual encrypted browser and full worker discover, import, convert and preserve user files with bundled-postgres
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --workspace-discovery --database bundled-postgres --report .qa/rust-server/actual-workspace-discovery-bundled-postgres.json
+      - name: Workspace catalog, discovery and import transactions with postgres
+        run: node --import tsx scripts/server-rust/discovery-repository-compatibility.mjs --database postgres --report .qa/rust-server/discovery-repository-postgres.json
+      - name: Workspace discovery HTTP, authentication, worker and Live with postgres
+        run: node --import tsx scripts/server-rust/discovery-http-compatibility.mjs --database postgres --lifecycle --report .qa/rust-server/discovery-http-postgres.json
+      - name: Workspace scan renewal, stale completion and real lease expiry with postgres
+        run: node --import tsx scripts/server-rust/discovery-http-compatibility.mjs --database postgres --profile none --leases --expiry --report .qa/rust-server/discovery-real-leases-postgres.json
+      - name: Workspace caller disconnect and admitted shutdown with postgres
+        run: node --import tsx scripts/server-rust/discovery-http-compatibility.mjs --database postgres --lifetimes --report .qa/rust-server/discovery-lifetimes-postgres.json
+      - name: Actual encrypted browser and full worker discover, import, convert and preserve user files with postgres
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --workspace-discovery --database postgres --report .qa/rust-server/actual-workspace-discovery-postgres.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rust-server-discovery-${{ matrix.os }}
           path: .qa/rust-server/

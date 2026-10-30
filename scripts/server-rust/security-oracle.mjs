@@ -1,7 +1,7 @@
 // Only development tests invoke this process. Expectations execute the actual
 // exported protocol schemas, not the native manifest or its interpreter.
 import * as protocol from "../../packages/protocol/dist/index.js";
-import { buildContractManifest } from "./contracts.mjs";
+import { buildContractManifest, sourceContractSchema } from "./contracts.mjs";
 import { securityFixtures } from "./security-fixtures.mjs";
 import { usageQueryCases } from "./usage-wire-fixtures.mjs";
 import { settingsWireCases } from "./settings-wire-fixtures.mjs";
@@ -39,7 +39,7 @@ function mutate(input, path, value, remove = false) {
   return result;
 }
 export function* vectorCases(name, samples = securityFixtures[name]) {
-  const schema = protocol[name];
+  const schema = sourceContractSchema(name);
   if (!schema || !samples) throw new Error(`Missing oracle fixture ${name}`);
   function prepare(input, present = true) {
     const canonical = present ? JSON.parse(JSON.stringify(input)) : undefined;

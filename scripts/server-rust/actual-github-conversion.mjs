@@ -17,6 +17,7 @@ export async function actualGithubConversion({
   startWorker,
   stopWorker,
   result,
+  externalSource,
 }) {
   const remote = JSON.parse(
     execFileSync("gh", ["api", "repos/octocat/Hello-World"], {
@@ -59,23 +60,28 @@ export async function actualGithubConversion({
           true,
         ),
     );
-    const project = await page.evaluate(
-      (workerId) =>
-        window.folderCrypto.createManagedFolderProject({
-          name: "Private conversion acceptance 🌌",
-          workerId,
-        }),
-      workerId,
-    );
-    await eventually(
-      () => call("getProjectFolderSetupJob", [project.id]),
-      (job) => assert.equal(job.state, "succeeded", JSON.stringify(job)),
-    );
-    const directory = normalizeProjectSourcePath(
-      await realpath(
-        deriveManagedFolderLocation(dataDirectory, project.id).target,
-      ),
-    );
+    const project =
+      externalSource?.project ??
+      (await page.evaluate(
+        (workerId) =>
+          window.folderCrypto.createManagedFolderProject({
+            name: "Private conversion acceptance 🌌",
+            workerId,
+          }),
+        workerId,
+      ));
+    if (!externalSource)
+      await eventually(
+        () => call("getProjectFolderSetupJob", [project.id]),
+        (job) => assert.equal(job.state, "succeeded", JSON.stringify(job)),
+      );
+    const directory =
+      externalSource?.directory ??
+      normalizeProjectSourcePath(
+        await realpath(
+          deriveManagedFolderLocation(dataDirectory, project.id).target,
+        ),
+      );
     const relative = path.relative(
       await realpath(dataDirectory),
       await realpath(directory),
@@ -84,10 +90,13 @@ export async function actualGithubConversion({
       relative && !relative.startsWith("..") && !path.isAbsolute(relative),
       "checkout belongs to disposable worker data",
     );
-    git(directory, "init", "--initial-branch=" + remote.default_branch);
+    if (!externalSource)
+      git(directory, "init", "--initial-branch=" + remote.default_branch);
     git(directory, "remote", "add", "origin", repository.url + ".git");
-    git(directory, "fetch", "--depth=1", "origin", remote.default_branch);
-    git(directory, "reset", "--hard", "FETCH_HEAD");
+    if (!externalSource) {
+      git(directory, "fetch", "--depth=1", "origin", remote.default_branch);
+      git(directory, "reset", "--hard", "FETCH_HEAD");
+    }
     const revision = git(directory, "rev-parse", "HEAD");
     const remoteBefore = git(
       directory,
@@ -101,8 +110,11 @@ export async function actualGithubConversion({
     await writeFile(sentinel, contents);
     const before = (await projects()).find((p) => p.id === project.id);
     const wireBefore = (await wireProjects()).find((p) => p.id === project.id);
-    assert.equal(before.source.sourceKind, "folder");
-    assert.equal(before.source.ownershipKind, "cantrip");
+    assert.equal(before.source.sourceKind, externalSource ? "git" : "folder");
+    assert.equal(
+      before.source.ownershipKind,
+      externalSource ? "user" : "cantrip",
+    );
     await page.evaluate((projectId) => {
       window.folderLive.retainScope({ kind: "project", projectId });
       window.folderLive.start();
@@ -116,7 +128,12 @@ export async function actualGithubConversion({
     );
     const preflight = await call("preflightProjectGithubConversion", [
       project.id,
-      { repository },
+      {
+        repository,
+        ...(externalSource
+          ? { projectSourceId: before.source.id, workerId }
+          : {}),
+      },
     ]);
     assert.equal(preflight.status, "ready", JSON.stringify(preflight));
     assert.equal(preflight.remoteAction, "link");
@@ -127,7 +144,9 @@ export async function actualGithubConversion({
     assert.equal(preflight.projectSourceId, before.source.id);
     assert.equal(preflight.workerId, workerId);
     result.steps.push(
-      "existing encrypted browser preflights a real managed folder with matching public GitHub history and selects link",
+      externalSource
+        ? "existing encrypted browser preflights a discovery-imported user-owned checkout against public GitHub history and selects link"
+        : "existing encrypted browser preflights a real managed folder with matching public GitHub history and selects link",
     );
     const admitted = await call("startProjectGithubConversion", [
       project.id,

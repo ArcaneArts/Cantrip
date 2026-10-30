@@ -4,6 +4,7 @@ import {
 } from "./actual-project-replicas.mjs";
 import { actualProjectWorktrees } from "./actual-project-worktrees.mjs";
 import { actualGithubConversion } from "./actual-github-conversion.mjs";
+import { actualWorkspaceDiscovery } from "./actual-workspace-discovery.mjs";
 import {
   actualWorkerProjectSurfaces,
   retainedWorkerProjectSurfaces,
@@ -109,6 +110,7 @@ async function flow(
   const page = await context.newPage();
   const errors = [],
     requests = [];
+  result.requests = requests;
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("request", (request) => {
     const pathname = new URL(request.url()).pathname;
@@ -606,7 +608,8 @@ async function flow(
       projectSurfaces ||
       process.argv.includes("--worktrees") ||
       process.argv.includes("--replicas") ||
-      process.argv.includes("--github-conversion")
+      process.argv.includes("--github-conversion") ||
+      process.argv.includes("--workspace-discovery")
         ? Number(new URL(fixture.server.origin).port)
         : 0;
     // Retain a generous diagnostic deadline for both implementations. Earlier
@@ -777,6 +780,16 @@ async function flow(
         stopWorker,
         result,
       });
+    if (process.argv.includes("--workspace-discovery"))
+      await actualWorkspaceDiscovery({
+        page,
+        fixture,
+        dataDirectory,
+        workerId,
+        startWorker,
+        stopWorker,
+        result,
+      });
     if (process.argv.includes("--github-conversion"))
       await actualGithubConversion({
         page,
@@ -916,10 +929,18 @@ try {
   }
   assert.deepEqual(report.runtimes[1].steps, report.runtimes[0].steps);
   assert.deepEqual(report.runtimes[1].projects, report.runtimes[0].projects);
-  if (process.argv.includes("--github-conversion"))
+  if (
+    process.argv.includes("--github-conversion") ||
+    process.argv.includes("--workspace-discovery")
+  )
     assert.deepEqual(
       report.runtimes[1].githubConversionSummary,
       report.runtimes[0].githubConversionSummary,
+    );
+  if (process.argv.includes("--workspace-discovery"))
+    assert.deepEqual(
+      report.runtimes[1].workspaceDiscoverySummary,
+      report.runtimes[0].workspaceDiscoverySummary,
     );
   if (process.argv.includes("--github-replicas"))
     assert.deepEqual(
