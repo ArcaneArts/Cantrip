@@ -485,6 +485,15 @@ pub(super) async fn guard(
         })
         .collect::<Vec<_>>()
         .join("/");
+    // The reference rejects this entire legacy prefix in onRequest, after
+    // authentication/CSRF but before rate limiting, payload parsing or dispatch.
+    // This includes unknown routes and unsupported methods under the prefix.
+    if rejection.is_none() && route.starts_with("/api/github/") {
+        rejection = Some(json_response(
+            StatusCode::GONE,
+            json!({"error":"This plaintext repository route was removed. Use the protected repository operation endpoint."}),
+        ));
+    }
     let upgrade =
         value(request.headers(), "upgrade").is_some_and(|s| s.eq_ignore_ascii_case("websocket"));
     if rejection.is_none()

@@ -2490,6 +2490,61 @@
         "remaining": [
           "Additional interruption/serialization boundaries, supported-platform and packaging acceptance remain pending. Actual browser/worker CRUD and active deletion run locally on macOS."
         ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/github/status",
+        "implementation": "cantrip_server_rs/src/http/middleware.rs",
+        "status": "implemented",
+        "evidence": [
+          "scripts/server-rust/github-catalog-http-compatibility.mjs"
+        ],
+        "remaining": [],
+        "note": "The production Node root request policy tombstones this plaintext endpoint. Preserve HTTP 410 after authentication/CSRF and before payload parsing, rate limiting or worker dispatch; do not restore its latent handler."
+      },
+      {
+        "method": "GET",
+        "path": "/api/github/repositories/cache",
+        "implementation": "cantrip_server_rs/src/http/middleware.rs",
+        "status": "implemented",
+        "evidence": [
+          "scripts/server-rust/github-catalog-http-compatibility.mjs"
+        ],
+        "remaining": [],
+        "note": "The production Node root request policy tombstones this plaintext endpoint. Preserve HTTP 410 after authentication/CSRF and before payload parsing, rate limiting or worker dispatch; do not restore its latent handler."
+      },
+      {
+        "method": "GET",
+        "path": "/api/github/repository-owners",
+        "implementation": "cantrip_server_rs/src/http/middleware.rs",
+        "status": "implemented",
+        "evidence": [
+          "scripts/server-rust/github-catalog-http-compatibility.mjs"
+        ],
+        "remaining": [],
+        "note": "The production Node root request policy tombstones this plaintext endpoint. Preserve HTTP 410 after authentication/CSRF and before payload parsing, rate limiting or worker dispatch; do not restore its latent handler."
+      },
+      {
+        "method": "GET",
+        "path": "/api/github/repositories",
+        "implementation": "cantrip_server_rs/src/http/middleware.rs",
+        "status": "implemented",
+        "evidence": [
+          "scripts/server-rust/github-catalog-http-compatibility.mjs"
+        ],
+        "remaining": [],
+        "note": "The production Node root request policy tombstones this plaintext endpoint. Preserve HTTP 410 after authentication/CSRF and before payload parsing, rate limiting or worker dispatch; do not restore its latent handler."
+      },
+      {
+        "method": "POST",
+        "path": "/api/github/repositories",
+        "implementation": "cantrip_server_rs/src/http/middleware.rs",
+        "status": "implemented",
+        "evidence": [
+          "scripts/server-rust/github-catalog-http-compatibility.mjs"
+        ],
+        "remaining": [],
+        "note": "The production Node root request policy tombstones this plaintext endpoint. Preserve HTTP 410 after authentication/CSRF and before payload parsing, rate limiting or worker dispatch; do not restore its latent handler."
       }
     ]
   },

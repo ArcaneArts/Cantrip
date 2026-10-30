@@ -12,6 +12,26 @@ feature set.
 
 Status: **implementation in progress; not a deployable replacement**.
 
+## Removed plaintext GitHub catalog
+
+The root Node request policy disables every `/api/github/` route, including the
+five catalog handlers still present in TypeScript source. Rust now preserves
+that HTTP 410 contract after authentication and CSRF and before payload parsing,
+request limits or worker dispatch. This does not reactivate plaintext repository
+access or implement the separate protected GitHub provisioning domain.
+
+The real-socket `github-catalog-http-compatibility.mjs` suite compares status,
+body, cookies and security/CORS headers for local, password and account modes.
+It includes unknown paths, unsupported methods, duplicate query parameters,
+malformed JSON, unsupported payload types, rejected origins and preflight.
+Local macOS comparisons pass in all three storage modes: 34 local-mode, 38
+password-mode and 38 account-mode observations per implementation per backend.
+Strict all-target Clippy and Rust formatting pass. Evidence is retained in
+`github-catalog-http-{pglite,postgres,bundled}-v1.json`.
+
+Supported-platform CI runs this suite on all three database modes; configuring
+those jobs is not evidence that Windows/Linux have passed.
+
 ## Execution-target catalog stack usage (verification in progress)
 
 Windows CI run `41065255700` overflowed the 1 MiB repository probe during the
