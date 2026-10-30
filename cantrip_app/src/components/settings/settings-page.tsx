@@ -3,6 +3,7 @@ import { LabelingSettings } from "./labeling-settings";
 import { Monitor } from "lucide-react";
 import { FileChangeSettings } from "./file-change-settings";
 import { TabDisplaySettings } from "./tab-display-settings";
+import { CodeEditorSettings } from "./code-editor-settings";
 import type {
   CodeAppearance,
   CodexDeviceLogin,
@@ -31,6 +32,7 @@ import {
   ChevronUp,
   Copy,
   Cpu,
+  Code2,
   Gauge,
   KeyRound,
   Layers3,
@@ -186,6 +188,7 @@ export type SettingsSection =
   | "computer-use"
   | "remote-desktop"
   | "appearance"
+  | "code-editor"
   | "usage"
   | "elite"
   | "models"
@@ -319,6 +322,20 @@ export const settingsNavigationSections: readonly SettingsNavigationSection<Sett
           id: "file-change",
           label: "File change shimmer",
           keywords: ["animation highlight added modified deleted"],
+        },
+      ],
+    },
+    {
+      id: "code-editor",
+      label: "Code Editor",
+      description: "Code editing and viewing preferences",
+      icon: Code2,
+      searchItems: [
+        {
+          id: "code-editor-line-numbers",
+          label: "Show line numbers",
+          description: "Show or hide line numbers in code editors and viewers.",
+          keywords: ["gutter margin numbering"],
         },
       ],
     },
@@ -2247,6 +2264,10 @@ export function SettingsPage({
               ) : null}
               {section === "workers" ? <WorkerSettings /> : null}
               {section === "tasks" ? <TaskSettings /> : null}
+              {section === "code-editor" &&
+              matchesSetting("code-editor-line-numbers") ? (
+                <CodeEditorSettings />
+              ) : null}
               {section === "usage" ? <AccountUsageSettings /> : null}
               {section === "elite" ? (
                 <EliteSettings
