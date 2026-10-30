@@ -252,7 +252,7 @@ describe("dock rail tabs", () => {
       });
       try {
         for (const [label, callback] of [
-          ["Move Tab to New Window", onPopOut],
+          ["Pop Out", onPopOut],
           ["Move Pane to New Window", onPopOutPane],
         ] as const) {
           const action = renderer.root

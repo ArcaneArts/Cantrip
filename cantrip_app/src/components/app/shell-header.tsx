@@ -10,10 +10,6 @@ import {
   projectOverviewSectionLabel,
   type WorktreeBindingTarget,
 } from "@/components/app/application-shell-model";
-import {
-  ContentHeaderActions,
-  type ContentHeaderActionsProps,
-} from "@/components/workspace/content-header-actions";
 import { MobileAppModeSwitch } from "@/components/mobile/mobile-app-mode-switch";
 import { MobileProjectHeader } from "@/components/mobile/mobile-project-header";
 import { ProjectCreateMenu } from "@/components/projects/project-create-menu";
@@ -54,7 +50,6 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
     codeHeader,
     compactManagedHeader,
     compactShell,
-    contentHeaderActions,
     contentScrolled,
     desktopSidebarDrawer,
     displayedGitProject,
@@ -537,9 +532,6 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
             selectedProject
               ? renderProjectRunConfigurationControl(true)
               : null}
-            {appMode === "ide" ? (
-              <ContentHeaderActions {...contentHeaderActions} compact />
-            ) : null}
             {compactShell && switchAppMode ? (
               <MobileAppModeSwitch
                 currentMode={appMode}
@@ -590,9 +582,6 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
                 <FolderOpen className="size-4" />
                 Files
               </TooltipButton>
-            ) : null}
-            {appMode === "ide" ? (
-              <ContentHeaderActions {...contentHeaderActions} />
             ) : null}
             {appMode === "ide" &&
             !narrowViewport &&

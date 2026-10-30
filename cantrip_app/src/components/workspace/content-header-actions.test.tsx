@@ -69,7 +69,6 @@ describe("ContentHeaderActions", () => {
         explorer={explorerHeader()}
         code={{ header: codeHeader() }}
         terminalService={{ active: true, open: vi.fn() }}
-        popout={{ error: null, pending: false, open: vi.fn() }}
         chat={{
           consoleActive: false,
           consolePending: false,
@@ -100,7 +99,7 @@ describe("ContentHeaderActions", () => {
     expect(markup).toContain('aria-label="Save file"');
     expect(markup).toContain('aria-pressed="true"');
     expect(markup).toContain('aria-label="Configure terminal service"');
-    expect(markup).toContain('aria-label="Open this tab in a new window"');
+    expect(markup).not.toContain('aria-label="Open this tab in a new window"');
     expect(markup).not.toContain('aria-label="Show Task"');
     expect(markup).not.toContain('aria-label="Show Task chat"');
     expect(markup).not.toContain('aria-label="Task view"');
