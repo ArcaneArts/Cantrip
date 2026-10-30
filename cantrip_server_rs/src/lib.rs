@@ -6,6 +6,7 @@ pub mod database;
 pub mod direct_attachments;
 pub mod encryption;
 mod environment;
+pub mod file_documents;
 pub mod http;
 pub mod live;
 pub mod managed_postgres;

@@ -1,0 +1,122 @@
+{
+  "columns": [
+    "id",
+    "projectId",
+    "workerId",
+    "worktreeId",
+    "protectedState",
+    "createdAt"
+  ],
+  "queries": {
+    "list": {
+      "source": "select \"file_documents\".\"id\", \"file_documents\".\"project_id\", \"file_documents\".\"worker_id\", \"file_documents\".\"worktree_id\", \"file_documents\".\"protected_state\", \"file_documents\".\"created_at\" from \"file_documents\" inner join \"projects\" on (\"projects\".\"id\" = \"file_documents\".\"project_id\" and \"projects\".\"owner_id\" = $1) where \"file_documents\".\"project_id\" = $2 order by \"file_documents\".\"created_at\" asc, \"file_documents\".\"id\" asc",
+      "bindings": [
+        {
+          "key": "owner",
+          "kind": "text"
+        },
+        {
+          "key": "project",
+          "kind": "text"
+        }
+      ]
+    },
+    "get": {
+      "source": "select \"file_documents\".\"id\", \"file_documents\".\"project_id\", \"file_documents\".\"worker_id\", \"file_documents\".\"worktree_id\", \"file_documents\".\"protected_state\", \"file_documents\".\"created_at\" from \"file_documents\" inner join \"projects\" on (\"projects\".\"id\" = \"file_documents\".\"project_id\" and \"projects\".\"owner_id\" = $1) where \"file_documents\".\"id\" = $2",
+      "bindings": [
+        {
+          "key": "owner",
+          "kind": "text"
+        },
+        {
+          "key": "id",
+          "kind": "text"
+        }
+      ]
+    },
+    "target": {
+      "source": "select \"project_worktrees\".\"worker_id\" from \"project_worktrees\" inner join \"project_sources\" on \"project_sources\".\"id\" = \"project_worktrees\".\"project_source_id\" inner join \"projects\" on \"projects\".\"id\" = \"project_sources\".\"project_id\" inner join \"workers\" on \"workers\".\"id\" = \"project_worktrees\".\"worker_id\" where (\"projects\".\"owner_id\" = $1 and \"workers\".\"owner_id\" = $2 and \"workers\".\"unlinked_at\" is null and \"projects\".\"id\" = $3 and \"project_worktrees\".\"id\" = $4 and \"project_worktrees\".\"lifecycle_state\" = $5 and \"project_sources\".\"removed_at\" is null) for update",
+      "bindings": [
+        {
+          "key": "owner",
+          "kind": "text"
+        },
+        {
+          "key": "owner",
+          "kind": "text"
+        },
+        {
+          "key": "project",
+          "kind": "text"
+        },
+        {
+          "key": "worktree",
+          "kind": "text"
+        },
+        {
+          "constant": "ready",
+          "kind": "text"
+        }
+      ]
+    },
+    "insert": {
+      "source": "insert into \"file_documents\" (\"id\", \"project_id\", \"worker_id\", \"worktree_id\", \"protected_state\", \"created_at\") values ($1, $2, $3, $4, $5, default) on conflict do nothing returning \"id\", \"project_id\", \"worker_id\", \"worktree_id\", \"protected_state\", \"created_at\"",
+      "bindings": [
+        {
+          "key": "id",
+          "kind": "text"
+        },
+        {
+          "key": "project",
+          "kind": "text"
+        },
+        {
+          "key": "worker",
+          "kind": "text"
+        },
+        {
+          "key": "worktree",
+          "kind": "text"
+        },
+        {
+          "key": "state",
+          "kind": "jsonb"
+        }
+      ]
+    },
+    "existing": {
+      "source": "select \"id\", \"project_id\", \"worker_id\", \"worktree_id\", \"protected_state\", \"created_at\" from \"file_documents\" where (\"file_documents\".\"id\" = $1 and \"file_documents\".\"project_id\" = $2)",
+      "bindings": [
+        {
+          "key": "id",
+          "kind": "text"
+        },
+        {
+          "key": "project",
+          "kind": "text"
+        }
+      ]
+    },
+    "context": {
+      "source": "select \"file_documents\".\"id\", \"file_documents\".\"project_id\", \"file_documents\".\"worker_id\", \"file_documents\".\"worktree_id\", \"file_documents\".\"protected_state\", \"file_documents\".\"created_at\", \"project_worktrees\".\"absolute_path\" from \"file_documents\" inner join \"projects\" on (\"projects\".\"id\" = \"file_documents\".\"project_id\" and \"projects\".\"owner_id\" = $1) inner join \"project_worktrees\" on (\"project_worktrees\".\"id\" = \"file_documents\".\"worktree_id\" and \"project_worktrees\".\"worker_id\" = \"file_documents\".\"worker_id\" and \"project_worktrees\".\"lifecycle_state\" = $2) inner join \"project_sources\" on (\"project_sources\".\"id\" = \"project_worktrees\".\"project_source_id\" and \"project_sources\".\"project_id\" = \"file_documents\".\"project_id\" and \"project_sources\".\"removed_at\" is null) inner join \"workers\" on (\"workers\".\"id\" = \"file_documents\".\"worker_id\" and \"workers\".\"owner_id\" = $3 and \"workers\".\"unlinked_at\" is null) where \"file_documents\".\"id\" = $4",
+      "bindings": [
+        {
+          "key": "owner",
+          "kind": "text"
+        },
+        {
+          "constant": "ready",
+          "kind": "text"
+        },
+        {
+          "key": "owner",
+          "kind": "text"
+        },
+        {
+          "key": "id",
+          "kind": "text"
+        }
+      ]
+    }
+  }
+}

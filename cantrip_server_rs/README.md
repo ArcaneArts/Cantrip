@@ -12,6 +12,14 @@ worker pairing, credentials, heartbeat storage and foundational control sockets.
 Storage supports native PGlite, private managed PostgreSQL and external
 PostgreSQL. The worker remains Node.
 
+Immutable file-document catalog, creation and encrypted worker operations now
+run natively. Actual SQL authority locks, idempotent bindings, strict wire
+contracts and response-completion Live invalidations are compared against the
+reference on all three stores. The existing browser API and full worker read and
+write real file bytes, reject stale writes, wrong paths and replay, and retain
+access after restart. Workspace/editor ownership, shared coordination,
+supported-platform packaging and full server replacement remain unfinished.
+
 Managed-folder provisioning now owns durable setup jobs, worker dispatch,
 retry/recovery and shutdown drains. The worker-scoped encrypted repository route
 supports private path registration and resolution through the existing client

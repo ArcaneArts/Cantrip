@@ -18,6 +18,8 @@ on:
       - cantrip_server/src/db/repository/settings.ts
       - cantrip_server/src/db/repository.ts
       - cantrip_server/src/db/repository/browsers.ts
+      - cantrip_server/src/db/repository/file-documents.ts
+      - cantrip_server/src/app/routes/file-documents.ts
       - cantrip_server/src/app/routes/browser-management.ts
       - cantrip_server/src/app/routes/browser-service-discovery.ts
       - cantrip_server/src/app/routes/project-network-shares.ts
@@ -177,6 +179,10 @@ jobs:
         run: node --import tsx scripts/server-rust/resource-layout-query-manifest.mjs --check
       - name: Browser query statements match the actual TypeScript repository
         run: node --import tsx scripts/server-rust/browser-query-manifest.mjs --check
+      - name: File-document query statements match the actual TypeScript repository
+        run: node --import tsx scripts/server-rust/file-document-query-manifest.mjs --check
+      - name: File-document and surface-stream protocol compatibility
+        run: node scripts/server-rust/cargo.mjs test --test file_document_contracts -- --nocapture
       - name: Shared desktop verifier retains its owning crate's formatting
         run: rustfmt --edition 2021 --check cantrip_app/src-tauri/src/direct_probe_connection.rs
       - name: Terminal HTTP and ordered Live notifications with native PGlite
@@ -185,6 +191,20 @@ jobs:
         run: node --import tsx scripts/server-rust/terminal-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/terminal-http-bundled.json
       - name: Terminal HTTP and disconnected creation through shutdown with external PostgreSQL
         run: node --import tsx scripts/server-rust/terminal-http-compatibility.mjs --database postgres --report .qa/rust-server/terminal-http-external.json
+      - name: Immutable document repository authority and restart with native PGlite
+        run: node --import tsx scripts/server-rust/file-document-repository-compatibility.mjs --report .qa/rust-server/file-document-repository-pglite.json
+      - name: File-document HTTP, opaque operations and Live with native PGlite
+        run: node --import tsx scripts/server-rust/file-document-http-compatibility.mjs --report .qa/rust-server/file-document-http-pglite.json
+      - name: Immutable document repository authority and restart with private PostgreSQL
+        run: node --import tsx scripts/server-rust/file-document-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/file-document-repository-bundled.json
+      - name: File-document HTTP, opaque operations and Live with private PostgreSQL
+        run: node --import tsx scripts/server-rust/file-document-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/file-document-http-bundled.json
+      - name: Immutable document repository authority and restart with external PostgreSQL
+        run: node --import tsx scripts/server-rust/file-document-repository-compatibility.mjs --database postgres --report .qa/rust-server/file-document-repository-external.json
+      - name: File-document HTTP, opaque operations and Live with external PostgreSQL
+        run: node --import tsx scripts/server-rust/file-document-http-compatibility.mjs --database postgres --report .qa/rust-server/file-document-http-external.json
+      - name: Admitted document creation survives caller disconnect and shutdown
+        run: node --import tsx scripts/server-rust/file-document-shutdown.mjs --report .qa/rust-server/file-document-shutdown.json
       - name: Build the production worker used by browser integration
         run: pnpm --filter @cantrip/worker build
       - name: Browser state refresh retains concurrent updates and attachment recipients
@@ -265,11 +285,11 @@ jobs:
       - name: Admitted share registration survives caller disconnect and shutdown
         run: node --import tsx scripts/server-rust/project-share-shutdown.mjs --report .qa/rust-server/project-share-shutdown.json
       - name: Actual browser folders, encrypted PTYs and WorkerLink observations with native PGlite
-        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --terminals --worker-links --terminal-direct --surfaces --tunnels --project-shares --report .qa/rust-server/actual-folder-client-pglite.json
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --terminals --worker-links --terminal-direct --surfaces --tunnels --project-shares --file-documents --report .qa/rust-server/actual-folder-client-pglite.json
       - name: Actual browser folders, encrypted PTYs and WorkerLink observations with private PostgreSQL
-        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --terminals --worker-links --terminal-direct --surfaces --tunnels --database bundled-postgres --project-shares --report .qa/rust-server/actual-folder-client-bundled.json
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --terminals --worker-links --terminal-direct --surfaces --tunnels --database bundled-postgres --project-shares --file-documents --report .qa/rust-server/actual-folder-client-bundled.json
       - name: Actual browser folders, encrypted PTYs and WorkerLink observations with external PostgreSQL
-        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --terminals --worker-links --terminal-direct --surfaces --tunnels --database postgres --project-shares --report .qa/rust-server/actual-folder-client-external.json
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --terminals --worker-links --terminal-direct --surfaces --tunnels --database postgres --project-shares --file-documents --report .qa/rust-server/actual-folder-client-external.json
       - name: Terminal-service repository compatibility with native PGlite
         run: node --import tsx scripts/server-rust/maintenance-repository-compatibility.mjs --report .qa/rust-server/maintenance-repository-pglite.json
       - name: Terminal-service repository compatibility with private PostgreSQL

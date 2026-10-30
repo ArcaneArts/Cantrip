@@ -68,6 +68,31 @@ try {
           default:
             throw new Error("Unknown browser operation");
         }
+      } else if (request.op.startsWith("document-")) {
+        const repo = database.repository.fileDocuments;
+        switch (request.op) {
+          case "document-list":
+            value = await repo.list(request.owner, request.project);
+            break;
+          case "document-get":
+            value = await repo.get(request.owner, request.document);
+            break;
+          case "document-context":
+            value = await repo.executionContext(
+              request.owner,
+              request.document,
+            );
+            break;
+          case "document-create":
+            value = await repo.create(
+              request.owner,
+              request.project,
+              request.input,
+            );
+            break;
+          default:
+            throw new Error("Unknown document operation");
+        }
       } else if (request.op === "sql") {
         await database.repository.projects.database.execute(
           sql.raw(request.sql),
@@ -346,7 +371,8 @@ try {
           id: request.id,
           rejected: true,
           ...((request.op.startsWith("tunnel-") ||
-            request.op.startsWith("browser-")) &&
+            request.op.startsWith("browser-") ||
+            request.op.startsWith("document-")) &&
           error.cause?.code
             ? { databaseCode: error.cause.code }
             : {}),
@@ -359,7 +385,8 @@ try {
             : {}),
           diagnostic:
             request.op.startsWith("terminal-") ||
-            request.op.startsWith("browser-")
+            request.op.startsWith("browser-") ||
+            request.op.startsWith("document-")
               ? error.message
               : (error.cause?.message ?? error.message),
           ...(request.op.startsWith("folder-")

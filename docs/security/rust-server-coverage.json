@@ -1337,6 +1337,66 @@
         "remaining": [
           "Supported-platform and packaged acceptance; owning project/chat archive, deletion and relocation routes remain separate unported domains."
         ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/file-documents",
+        "implementation": "cantrip_server_rs/src/http/file_documents.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/file-document-repository-compatibility.mjs",
+          "scripts/server-rust/file-document-http-compatibility.mjs",
+          "scripts/server-rust/actual-worker-file-documents.mjs",
+          "cantrip_server_rs/tests/file_document_contracts.rs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance; shared multi-instance coordination."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/file-documents",
+        "implementation": "cantrip_server_rs/src/http/file_documents.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/file-document-repository-compatibility.mjs",
+          "scripts/server-rust/file-document-http-compatibility.mjs",
+          "scripts/server-rust/actual-worker-file-documents.mjs",
+          "cantrip_server_rs/tests/file_document_contracts.rs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance; shared multi-instance coordination."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/file-documents/:documentId",
+        "implementation": "cantrip_server_rs/src/http/file_documents.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/file-document-repository-compatibility.mjs",
+          "scripts/server-rust/file-document-http-compatibility.mjs",
+          "scripts/server-rust/actual-worker-file-documents.mjs",
+          "cantrip_server_rs/tests/file_document_contracts.rs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance; shared multi-instance coordination."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/file-documents/:documentId/operation",
+        "implementation": "cantrip_server_rs/src/http/file_documents.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/file-document-repository-compatibility.mjs",
+          "scripts/server-rust/file-document-http-compatibility.mjs",
+          "scripts/server-rust/actual-worker-file-documents.mjs",
+          "cantrip_server_rs/tests/file_document_contracts.rs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance; shared multi-instance coordination."
+        ]
       }
     ]
   },
@@ -1472,13 +1532,47 @@
         "remaining": [
           "Supported-platform and packaged acceptance; owning project/chat archive, deletion and relocation routes remain separate unported domains."
         ]
+      },
+      {
+        "command": "file-document.operation",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/file_documents.rs",
+          "cantrip_server_rs/src/file_documents/"
+        ],
+        "evidence": [
+          "scripts/server-rust/file-document-repository-compatibility.mjs",
+          "scripts/server-rust/file-document-http-compatibility.mjs",
+          "scripts/server-rust/actual-worker-file-documents.mjs",
+          "cantrip_server_rs/tests/file_document_contracts.rs"
+        ],
+        "remaining": [
+          "Shared multi-instance routing and supported-platform/packaged acceptance."
+        ]
       }
     ]
   },
   "durableTables": {
     "defaultStatus": "schema-migrated-only",
     "evidence": ["cantrip_server_rs/tests/database_contract.rs"],
-    "implementedSubset": "Account/session, mobile sign-in, local provisioning, configured-administrator, license-whitelist, audit-query/write and encryption-registry operations in the native auth and encryption repositories. Complete domain operations remain unported. Worker, enrollment-code and credential persistence, atomic replacement/rotation/revocation and heartbeat storage are implemented in workers/repository.rs; this is not the full worker-management or execution domain. Policy owner/bootstrap/collection state, opaque policy CRUD/order, project/workspace assignment transactions, cascade handling and IDE/standalone effective-policy resolution execute natively in policies/repository.rs; project/workspace creation and chat execution remain unported. Settings/model/provider/account/catalog persistence and quota-observation insert/deduplication/weekly projections execute natively; telemetry analytics/export/atomic deletion now execute natively; remaining execution and telemetry write consumers are unported."
+    "implementedSubset": "Account/session, mobile sign-in, local provisioning, configured-administrator, license-whitelist, audit-query/write and encryption-registry operations in the native auth and encryption repositories. Complete domain operations remain unported. Worker, enrollment-code and credential persistence, atomic replacement/rotation/revocation and heartbeat storage are implemented in workers/repository.rs; this is not the full worker-management or execution domain. Policy owner/bootstrap/collection state, opaque policy CRUD/order, project/workspace assignment transactions, cascade handling and IDE/standalone effective-policy resolution execute natively in policies/repository.rs; project/workspace creation and chat execution remain unported. Settings/model/provider/account/catalog persistence and quota-observation insert/deduplication/weekly projections execute natively; telemetry analytics/export/atomic deletion now execute natively; remaining execution and telemetry write consumers are unported.",
+    "overrides": [
+      {
+        "tableName": "file_documents",
+        "exportName": "fileDocuments",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/file_documents/",
+        "evidence": [
+          "scripts/server-rust/file-document-repository-compatibility.mjs",
+          "scripts/server-rust/file-document-http-compatibility.mjs",
+          "scripts/server-rust/actual-worker-file-documents.mjs",
+          "cantrip_server_rs/tests/file_document_contracts.rs"
+        ],
+        "remaining": [
+          "Remaining project-removal and workspace/editor consumers belong to their separate unported domains; current-head supported-platform/packaged acceptance."
+        ]
+      }
+    ]
   },
   "repositoryMethods": {
     "defaultStatus": "unported",
@@ -1952,6 +2046,17 @@
         ],
         "remaining": [
           "Remaining CLI/agent/browser consumers, shared coordination and supported-platform/package product acceptance."
+        ]
+      },
+      {
+        "resource": "file-document",
+        "status": "partial",
+        "implementation": "cantrip_server_rs/src/http/file_documents.rs",
+        "evidence": [
+          "scripts/server-rust/file-document-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Shared multi-instance coordination, remaining workspace/editor consumers and supported-platform/package acceptance."
         ]
       }
     ]
@@ -3100,6 +3205,29 @@
         "Supported-platform and packaged acceptance; owning project/chat archive, deletion and relocation routes remain separate unported domains.",
         "Current supported-platform results; legacy data migration, post-write rollback, artifacts, desktop/Winterhold readiness, performance and Node removal remain required."
       ]
+    },
+    "immutableFileDocuments": {
+      "status": "implemented-pending-platform-acceptance",
+      "implementation": [
+        "cantrip_server_rs/src/file_documents/",
+        "cantrip_server_rs/src/http/file_documents.rs"
+      ],
+      "evidence": [
+        "scripts/server-rust/file-document-repository-compatibility.mjs",
+        "scripts/server-rust/file-document-http-compatibility.mjs",
+        "scripts/server-rust/actual-worker-file-documents.mjs",
+        "cantrip_server_rs/tests/file_document_contracts.rs",
+        "scripts/server-rust/file-document-query-manifest.mjs",
+        "scripts/server-rust/file-document-repository-locks.mjs",
+        "scripts/server-rust/file-document-shutdown.mjs"
+      ],
+      "validatedSubset": "All four native routes and nested repository list/get/create/executionContext behavior. Real-HTTP Node/Rust comparisons pass34anonymous/36account observations and6actualworkercommands perruntime on eachstore, with exactper-requestLive, opaque commands and retainedrows. Repositories pass42operations/4snapshots perstore; externalPostgreSQL passes5actualauthority/INSERTlock races. Native contracts match2089Sourcevalidation/rendered-errorcases and actualSourceSQL. ExistingbrowserAPI/fullNodeworker reads/writes44454realfilebytes, resolvesfreshnonce retries, rejects stale save/wronglocation/replay, and retainsaccessafterserver/workerrestart. Combined32step localproductflow passesPGlite/privatePostgreSQL/externalPostgreSQL sequentially. A real externalPostgreSQL HTTP test blocks the actualINSERT, aborts itscaller and starts shutdown; bothserversretain the samewaiter, commit the identicalopaque binding, finishshutdown andserveitafterrestart. Full native regression127tests/57groups passes with0failed/ignored; strictall-targetClippy,20sourcefiledocumenttests and appproductionbuild pass.",
+      "remaining": [
+        "Current-head supported-platform and packaged acceptance; broad repository check retains one intermittent worker filesystem-notification failure despite10/10 focused passes in both feature and cleanPrimary, with932worker/shared/dependencyfiles byte-identical.",
+        "Workspace/editor ownership, detached windows and dirty-document lifecycle remain separate unported product requirements.",
+        "Redis/multi-instance routing and publication, packaged desktop, existing-data conversion and full post-write rollback remain unfinished."
+      ],
+      "nestedRepositoryInventoryNote": "These four nested repository methods are tracked here; no unrelated facade-method inventory rows are marked ported."
     }
   },
   "remainingAcceptance": [
