@@ -13,6 +13,7 @@ import {
   editorViewport,
 } from "./viewport";
 import { useSyntaxHighlighting } from "./use-syntax-highlighting";
+import { useCodeEditorLineNumbers } from "@/lib/code-editor-preferences";
 import "./native-code-editor.css";
 
 const selection = (input: HTMLTextAreaElement): EditorSelection => ({
@@ -65,6 +66,7 @@ export function NativeCodeEditor({
   onReady?(session: EditorDocumentSession): void;
   onViewStateChange?(): void;
 }) {
+  const showLineNumbers = useCodeEditorLineNumbers();
   const input = useRef<HTMLTextAreaElement>(null);
   const codePaint = useRef<HTMLDivElement>(null);
   const gutterPaint = useRef<HTMLDivElement>(null);
@@ -256,20 +258,25 @@ export function NativeCodeEditor({
       data-native-code-editor="true"
       style={{ "--editor-gutter-width": gutterWidth } as React.CSSProperties}
     >
-      <div className="cantrip-editor-gutter" aria-hidden="true">
-        <div
-          ref={gutterPaint}
-          style={{
-            transform: `translateY(${EDITOR_VERTICAL_PADDING + viewport.first * EDITOR_LINE_HEIGHT - session.scrollTop}px)`,
-          }}
-        >
-          {lines.slice(viewport.first, viewport.last).map((_, offset) => (
-            <div className="cantrip-editor-line" key={viewport.first + offset}>
-              {viewport.first + offset + 1}
-            </div>
-          ))}
+      {showLineNumbers ? (
+        <div className="cantrip-editor-gutter" aria-hidden="true">
+          <div
+            ref={gutterPaint}
+            style={{
+              transform: `translateY(${EDITOR_VERTICAL_PADDING + viewport.first * EDITOR_LINE_HEIGHT - session.scrollTop}px)`,
+            }}
+          >
+            {lines.slice(viewport.first, viewport.last).map((_, offset) => (
+              <div
+                className="cantrip-editor-line"
+                key={viewport.first + offset}
+              >
+                {viewport.first + offset + 1}
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      ) : null}
       <div className="cantrip-editor-body">
         <div className="cantrip-editor-paint" aria-hidden="true">
           <div

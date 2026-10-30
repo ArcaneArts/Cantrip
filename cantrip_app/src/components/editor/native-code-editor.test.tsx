@@ -5,6 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { EditorDocumentSession } from "./document-session";
 import { NativeCodeEditor } from "./native-code-editor";
 import { useSyntaxHighlighting } from "./use-syntax-highlighting";
+import { saveCodeEditorLineNumbers } from "@/lib/code-editor-preferences";
 
 vi.mock("./use-syntax-highlighting", () => ({
   useSyntaxHighlighting: vi.fn(() => new Map()),
@@ -13,6 +14,7 @@ vi.mock("./use-syntax-highlighting", () => ({
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 beforeEach(() => {
+  window.localStorage.clear();
   vi.useFakeTimers();
   vi.mocked(useSyntaxHighlighting).mockClear();
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) =>
@@ -29,6 +31,49 @@ beforeEach(() => {
     },
   );
 });
+
+it.each([false, true])(
+  "toggles line numbers without replacing the input or losing the draft (readOnly: %s)",
+  async (readOnly) => {
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    const session = new EditorDocumentSession("file", "const value = 1;", "v1");
+    session.edit("const value = 2;");
+    session.selection = { start: 6, end: 11, direction: "backward" };
+    const ready = vi.fn();
+    try {
+      await act(async () =>
+        root.render(
+          <NativeCodeEditor
+            session={session}
+            path="file.ts"
+            readOnly={readOnly}
+            onReady={ready}
+          />,
+        ),
+      );
+      const input = container.querySelector("textarea")!;
+      const before = session.captureRecovery();
+      expect(container.querySelector(".cantrip-editor-gutter")).not.toBeNull();
+      await act(async () => saveCodeEditorLineNumbers(false));
+      expect(container.querySelector(".cantrip-editor-gutter")).toBeNull();
+      expect(container.querySelector("textarea")).toBe(input);
+      expect(input.value).toBe(before.text);
+      expect([
+        input.selectionStart,
+        input.selectionEnd,
+        input.selectionDirection,
+      ]).toEqual([6, 11, "backward"]);
+      await act(async () => saveCodeEditorLineNumbers(true));
+      expect(container.querySelector(".cantrip-editor-gutter")).not.toBeNull();
+      expect(container.querySelector("textarea")).toBe(input);
+      expect(session.captureRecovery()).toEqual(before);
+      expect(ready).toHaveBeenCalledOnce();
+    } finally {
+      await act(async () => root.unmount());
+    }
+  },
+);
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.useRealTimers();

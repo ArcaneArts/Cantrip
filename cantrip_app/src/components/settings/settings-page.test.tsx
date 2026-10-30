@@ -50,6 +50,22 @@ function settingsWithContentGutters(contentGutters: boolean): SettingsBundle {
 }
 
 describe("account settings", () => {
+  it("provides a separate Code Editor category with searchable line numbers enabled by default", () => {
+    const markup = renderSettings("code-editor");
+    expect(markup).toContain("Code Editor");
+    expect(markup).toContain("Show line numbers");
+    expect(markup).toContain('type="checkbox"');
+    expect(markup).toContain('checked=""');
+    expect(renderSettings("general")).not.toContain("Show line numbers");
+    expect(
+      settingsSearchResults("line numbers", settingsNavigationSections),
+    ).toEqual([
+      expect.objectContaining({
+        sectionId: "code-editor",
+        id: "code-editor-line-numbers",
+      }),
+    ]);
+  });
   it("carves computer use and remote desktop controls out of General", () => {
     const general = renderSettings("general");
     expect(general).not.toContain("Enable computer use");
