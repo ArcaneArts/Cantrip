@@ -433,7 +433,9 @@ export function installInternalWorkerWebsocketRoute(
             "Could not reconcile Run configuration runtimes",
           );
         });
-        scheduleWorkerWorktreeObservation(workerId);
+        runAsOwner(workerAuth.ownerId, () =>
+          scheduleWorkerWorktreeObservation(workerId),
+        );
         void resumePendingWorktreeTransitionsForWorker(
           workerAuth.ownerId,
           workerId,
