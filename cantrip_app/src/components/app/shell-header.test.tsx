@@ -13,24 +13,61 @@ vi.mock("./use-mouse-back", () => ({
 }));
 
 describe("file document header", () => {
-  it("displays the document filename and its checkout path without an Explorer", () => {
-    const markup = renderToStaticMarkup(
-      <TooltipProvider>
-        <ShellHeader
-          bindings={{
-            appMode: "ide",
-            showContentTitlebar: true,
-            isPopout: true,
-            selectedFileDocument: { path: "src/lib.rs" },
-            explorerDisplayPath: "/checkouts/feature/src/lib.rs",
-          }}
-        />
-      </TooltipProvider>,
-    );
-    expect(markup).toContain("lib.rs");
-    expect(markup).toContain("/checkouts/feature/src/lib.rs");
-    expect(markup).not.toContain(">Cantrip<");
-  });
+  it.each([false, true])(
+    "displays only the document filename without an Explorer (popout: %s)",
+    (isPopout) => {
+      const markup = renderToStaticMarkup(
+        <TooltipProvider>
+          <ShellHeader
+            bindings={{
+              appMode: "ide",
+              showContentTitlebar: true,
+              isPopout,
+              selectedFileDocument: { path: "src/lib.rs" },
+              explorerDisplayPath: "/checkouts/feature/src/lib.rs",
+            }}
+          />
+        </TooltipProvider>,
+      );
+      expect(markup).toContain("lib.rs");
+      expect(markup).not.toContain("/checkouts/feature/src/lib.rs");
+      expect(markup).not.toContain("src/lib.rs");
+      expect(markup).not.toContain(">Cantrip<");
+    },
+  );
+  it.each(["explorer", "code"])(
+    "uses the filename for a file opened in a legacy %s surface",
+    (kind) => {
+      const markup = renderToStaticMarkup(
+        <TooltipProvider>
+          <ShellHeader
+            bindings={{
+              appMode: "ide",
+              showContentTitlebar: true,
+              selectedExplorer:
+                kind === "explorer"
+                  ? { title: "Explorer", selectedPath: "src/lib.rs" }
+                  : undefined,
+              activeExplorerHeader:
+                kind === "explorer"
+                  ? { selectedPath: "src/lib.rs" }
+                  : undefined,
+              selectedCodeTab: kind === "code" ? { title: "Code" } : undefined,
+              codeHeader:
+                kind === "code"
+                  ? { explorer: { selectedPath: "src/lib.rs" } }
+                  : undefined,
+              explorerDisplayPath: "/checkouts/feature/src/lib.rs",
+              activeWorktree: { displayPath: "/checkouts/feature" },
+            }}
+          />
+        </TooltipProvider>,
+      );
+      expect(markup).toContain(">lib.rs<");
+      expect(markup).not.toContain("/checkouts/feature");
+      expect(markup).not.toContain("src/lib.rs");
+    },
+  );
 });
 
 describe("desktop settings workspace", () => {
