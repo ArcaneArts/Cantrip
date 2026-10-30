@@ -245,3 +245,160 @@ describe("mobile settings back navigation", () => {
     expect(exitSettings).toHaveBeenCalledOnce();
   });
 });
+
+function dockFocusedBindings(mainFile = false, region = "right") {
+  const dock = {
+    kind: "history",
+    tabKey: "view:history",
+    entity: {
+      id: "history",
+      title: "History",
+      kind: "history",
+      worktreeId: "dock-tree",
+    },
+  };
+  const file = {
+    kind: "file",
+    tabKey: "file:document",
+    entity: { path: "src/lib.rs", worktreeId: "main-tree", workerId: "worker" },
+  };
+  return {
+    appMode: "ide",
+    overlayTitlebar: true,
+    showContentTitlebar: true,
+    selectedProject: {
+      id: "project",
+      name: "Repository",
+      capabilities: { git: true, worktrees: true },
+    },
+    selectedSurface: dock,
+    selectedProjectView: dock.entity,
+    selectedTabKey: dock.tabKey,
+    gitHistoryProject: { name: "Repository" },
+    gitHistoryHeader: {
+      section: "history",
+      branch: "dock-branch",
+      head: "abcdef12345678",
+      commitsLoaded: 23,
+    },
+    activeWorktreeId: "dock-tree",
+    activeWorktreeTarget: {
+      kind: "history",
+      tabId: "history",
+      projectId: "project",
+    },
+    workspaceSelection: {
+      destination: "surface",
+      focusedPaneId: "dock",
+      activeTabByPane: { main: file.tabKey, dock: dock.tabKey },
+    },
+    tabLayout: {
+      data: {
+        panes: [
+          { id: "main", region: "center", anchorTabKey: file.tabKey },
+          { id: "dock", region, anchorTabKey: dock.tabKey },
+        ],
+      },
+    },
+    projectSurfaceIndex: {
+      byPaneId: new Map([
+        ["main", mainFile ? [file] : []],
+        ["dock", [dock]],
+      ]),
+    },
+    worktrees: {
+      data: [
+        { id: "main-tree", displayPath: "/main" },
+        { id: "dock-tree", displayPath: "/dock" },
+      ],
+    },
+    workers: { data: [] },
+    runConfigurationRuntimes: { data: [] },
+    newBrowser: { mutate: vi.fn() },
+    newChat: { mutate: vi.fn() },
+    newCodeTab: { mutate: vi.fn() },
+    newExplorer: { mutate: vi.fn() },
+    newRemoteDesktop: { mutate: vi.fn() },
+    newTerminal: { mutate: vi.fn() },
+    renderProjectRunConfigurationControl: () => null,
+  };
+}
+function windowMarkup(bindings: Readonly<Record<string, any>>) {
+  return renderToStaticMarkup(
+    <TooltipProvider>
+      <ShellHeader bindings={bindings} />
+    </TooltipProvider>,
+  );
+}
+describe("desktop main tab window title", () => {
+  it.each(["right", "bottom"])(
+    "keeps an empty main title while %s History owns or remembers focus",
+    (region) => {
+      const bindings = dockFocusedBindings(false, region);
+      for (const destination of ["surface", "overview"]) {
+        bindings.workspaceSelection.destination = destination;
+        const markup = windowMarkup(bindings);
+        for (const text of [
+          "History",
+          "Repository",
+          "dock-branch",
+          "abcdef12",
+          "commits loaded",
+          "Choose a project",
+        ])
+          expect(markup).not.toContain(text);
+      }
+    },
+  );
+  it.each(["right", "bottom"])(
+    "keeps the main filename when the %s History pane receives focus",
+    (region) => {
+      const markup = windowMarkup(dockFocusedBindings(true, region));
+      expect(markup).toContain(">lib.rs<");
+      for (const text of [
+        "History",
+        "dock-branch",
+        "abcdef12",
+        "commits loaded",
+        "/dock",
+        "src/lib.rs",
+      ])
+        expect(markup).not.toContain(text);
+    },
+  );
+  it("uses the main tab during focus reconciliation while the focused selection is stale", () => {
+    const bindings = dockFocusedBindings(true);
+    bindings.workspaceSelection.focusedPaneId = "main";
+    const markup = windowMarkup(bindings);
+    expect(markup).toContain(">lib.rs<");
+    expect(markup).not.toContain(">History<");
+  });
+  it("leaves History metadata in its panel even when History is the main tab", () => {
+    const bindings = dockFocusedBindings();
+    bindings.tabLayout.data.panes = [
+      { id: "dock", region: "center", anchorTabKey: "view:history" },
+    ];
+    const markup = windowMarkup(bindings);
+    expect(markup).toContain(">History<");
+    for (const text of [
+      "dock-branch",
+      "abcdef12",
+      "commits loaded",
+      "Repository",
+    ])
+      expect(markup).not.toContain(text);
+  });
+  it("keeps a History popout's own title", () => {
+    expect(
+      windowMarkup({ ...dockFocusedBindings(), isPopout: true }),
+    ).toContain(">History<");
+  });
+  it("keeps settings available over an empty main workspace", () => {
+    const markup = windowMarkup({
+      ...dockFocusedBindings(),
+      showSettings: true,
+    });
+    expect(markup).toContain("Back to Project");
+    expect(markup).toContain("Settings");
+  });
+});
