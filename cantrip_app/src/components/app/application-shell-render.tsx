@@ -6,7 +6,6 @@ import { TabColorDialogHost } from "@/components/workspace/tab-color";
 import { useCallback, useEffect, useState } from "react";
 import { RunConfigurationControl } from "@/components/run/run-configuration-control";
 import { ExplorerFilePopout } from "@/components/explorer/explorer-file-popout";
-import { type ContentHeaderActionsProps } from "@/components/workspace/content-header-actions";
 import { WorkspaceDndProvider } from "@/components/workspace/workspace-dnd-provider";
 import { EliteGlobalEffects } from "@/components/elite/elite-global-effects";
 import {
@@ -114,8 +113,6 @@ export function ApplicationShellRender({
   bindings: ApplicationShellRenderBindings;
 }) {
   const {
-    activePopout,
-    activeProjectOverviewPopout,
     agentInspectOpenChats,
     appMode,
     appToast,
@@ -133,10 +130,7 @@ export function ApplicationShellRender({
     openChatConsole,
     openRunTerminal,
     overlayTitlebar,
-    popOutActiveView,
-    popOutProjectOverviewView,
     popoutError,
-    popoutPending,
     projectSettingsSection,
     runConfigurationEditorId,
     runConfigurationRuntimes,
@@ -166,6 +160,15 @@ export function ApplicationShellRender({
     workspaceDragError,
     worktrees,
   } = bindings;
+  useEffect(() => {
+    if (popoutError)
+      setAppToast({
+        id: crypto.randomUUID(),
+        message: popoutError,
+        title: "Window action failed",
+        tone: "error",
+      });
+  }, [popoutError, setAppToast]);
   const mobileSettingsDestination = showSettings
     ? "global"
     : showProjectSettings && selectedProject
@@ -211,17 +214,6 @@ export function ApplicationShellRender({
     if (compactShell && appMode === "ide" && selectedProject) return;
     setMobileSurfacePickerOpen(false);
   }, [appMode, compactShell, selectedProject]);
-  const contentHeaderActions = {
-    popout: activeProjectOverviewPopout
-      ? {
-          error: popoutError,
-          pending: popoutPending,
-          open: popOutProjectOverviewView,
-        }
-      : activePopout
-        ? { error: popoutError, pending: popoutPending, open: popOutActiveView }
-        : null,
-  } satisfies Pick<ContentHeaderActionsProps, "popout">;
   const renderAgentPanelActions = (chat: ChatSummary) => (
     <AgentPanelActions
       key={chat.id}
@@ -335,7 +327,6 @@ export function ApplicationShellRender({
   const renderBindings = {
     ...bindings,
     codeSurfaceVisible: codeSurfaceVisible && !bindings.showProjectOverview,
-    contentHeaderActions,
     renderAgentPanelActions,
     explorerSurfaceVisible:
       explorerSurfaceVisible && !bindings.showProjectOverview,

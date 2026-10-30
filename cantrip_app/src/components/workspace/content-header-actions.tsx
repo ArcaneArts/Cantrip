@@ -6,7 +6,6 @@ import {
   Check,
   CircleAlert,
   Eye,
-  ExternalLink,
   FileClock,
   Info,
   Loader2,
@@ -42,12 +41,6 @@ interface TerminalServiceAction {
   open(): void;
 }
 
-interface PopoutAction {
-  error: string | null;
-  pending: boolean;
-  open(): void;
-}
-
 interface ChatHeaderActions {
   consoleActive: boolean;
   consolePending: boolean;
@@ -70,7 +63,6 @@ export interface ContentHeaderActionsProps {
   compact?: boolean;
   explorer?: ExplorerHeaderState | null;
   git?: GitHistoryHeaderState | null;
-  popout?: PopoutAction | null;
   terminalService?: TerminalServiceAction | null;
 }
 
@@ -251,7 +243,6 @@ export function ContentHeaderActions({
   compact = false,
   explorer,
   git,
-  popout,
   terminalService,
 }: ContentHeaderActionsProps) {
   return (
@@ -321,23 +312,6 @@ export function ContentHeaderActions({
         >
           <ServerCog className="size-4" />
           <span className="sr-only">Configure terminal service</span>
-        </TooltipButton>
-      ) : null}
-      {popout ? (
-        <TooltipButton
-          size="icon"
-          variant="ghost"
-          disabled={popout.pending}
-          className={cn(popout.error && "text-destructive")}
-          onClick={popout.open}
-          tooltip={popout.error ?? "Open this tab in a new window"}
-        >
-          {popout.pending ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            <ExternalLink className="size-4" />
-          )}
-          <span className="sr-only">Open this tab in a new window</span>
         </TooltipButton>
       ) : null}
       {chat ? (

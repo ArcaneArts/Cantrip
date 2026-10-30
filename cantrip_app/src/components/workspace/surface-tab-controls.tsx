@@ -98,7 +98,7 @@ export function SurfaceMenuItems({
       {onKeepOpen ? <Item onSelect={onKeepOpen}>Keep Open</Item> : null}
       {onPopOut ? (
         <Item onSelect={onPopOut}>
-          <ExternalLink className="size-4" /> Move Tab to New Window
+          <ExternalLink className="size-4" /> Pop Out
         </Item>
       ) : null}
       {onPopOutPane ? (
