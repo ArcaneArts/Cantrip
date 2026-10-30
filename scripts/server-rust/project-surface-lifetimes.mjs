@@ -86,7 +86,12 @@ try {
         const rows =
           await sql`WITH RECURSIVE waiting AS (SELECT pid,query,wait_event_type FROM pg_stat_activity WHERE datname=current_database() AND ${pid}=ANY(pg_blocking_pids(pid)) UNION SELECT a.pid,a.query,a.wait_event_type FROM pg_stat_activity a JOIN waiting w ON w.pid=ANY(pg_blocking_pids(a.pid)) WHERE a.datname=current_database()) SELECT * FROM waiting`;
         const matches = rows.filter((row) => pattern.test(row.query));
-        if (matches.length === count) {
+        // Require the complete witness before releasing the real SQL lock.
+        // A matching blocker count alone is not the requested wait-event proof.
+        if (
+          matches.length === count &&
+          matches.every((row) => row.wait_event_type === "Lock")
+        ) {
           for (const row of matches) assert.equal(row.wait_event_type, "Lock");
           return matches;
         }

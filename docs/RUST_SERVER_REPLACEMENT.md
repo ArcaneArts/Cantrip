@@ -1885,6 +1885,98 @@ client suite uses the same built worker, CLI and Chromium setup as the catalog
 flow below. Configured CI is not passing platform evidence; the coverage ledger
 records the accepted scope.
 
+## GitHub conversion execution in progress
+
+The native conversion repository, two-job executor and all four preflight,
+start/status/retry routes are implemented. Protected repository and commit
+handles remain opaque. Preflight binds the chosen source and worker rather than
+trusting worker-supplied response identities. Admission, retry, lease renewal,
+restart recovery, completion fences and the existing Live publications preserve
+the source behavior. Completion updates the existing source, Primary worktree,
+project origin and job in one transaction; user ownership and identities remain.
+
+Local macOS repository comparisons pass 124 cases and 44 snapshots on all three
+stores. They cover actual last-write constraint failure and rollback, stale
+attempts, source ownership/path/Primary drift and repository collisions. HTTP
+comparisons now pass all nine storage/auth combinations: 67 observations per
+runtime in anonymous/password mode and 72 in account mode, with nine base worker
+commands and eight base job Live invalidations each. Malformed worker preflight
+results return matching 502 bodies.
+Managed folders are created through real HTTP/worker materialization. For the
+external Git branch, existing workspace-discovery ownership metadata is prepared
+with the server stopped: legacy from-folder attachment currently records Cantrip
+ownership in the reference and cannot stand in for a user-owned discovery import.
+This fixture boundary is explicit; it is not proof of the actual external-source
+discovery flow. The separate managed-folder product flow below uses the full client
+and worker without catalog seeding.
+
+The capacity and active-command shutdown extension also passes every combination.
+It records five additional execution commands: three conversions admit two held
+running jobs and one queued job, releasing one slot dispatches the third once,
+and all complete on attempt one. Shutdown retains an interrupted conversion as
+the same blocked worker-offline job at attempt one/revision three. Restart and
+worker reconnect complete it once at attempt two/revision six, with one recovery
+Live invalidation. Strict all-target Clippy/format checks,
+large-file checks and four focused reference tests pass. Current reports are
+`conversion-repository-pglite-v6.json`, `conversion-repository-{postgres,bundled}-v2.json`
+and `conversion-all-auth-{pglite,postgres,bundled}-v1.json` under `.qa/rust-server/`.
+
+Production lease tests now pass on all three stores without fake clocks or SQL
+lease mutation. A held worker command remains attempt one/revision two beyond its
+original two-minute lease, and is dispatched once. A stale ready result remains
+running until the real sweep recovers it; attempt two succeeds at revision five.
+Both jobs publish exactly their expected job Live revisions.
+
+Actual external PostgreSQL lock tests pass anonymous, password and account modes.
+Two same-project starts return 202/409; distinct projects claiming one repository
+return 202/500 with the reference private error contract. Each race persists one
+job. The joined `SKIP LOCKED` claim can skip the first job while the losing
+admission retains its project lock in either runtime; a following admission is
+the real dispatcher wake-up used by this test. The harness records this behavior
+instead of asserting immediate dispatch. A disconnected caller retains the same
+blocked INSERT. Shutdown waits for its commit, leaving queued attempt zero/
+revision one; restart blocks offline at attempt one/revision three and reconnect
+completes the same job at attempt two/revision six.
+
+The existing encrypted browser APIs and full worker now complete a real GitHub
+conversion on all three stores, with 12 product steps per runtime. A fresh managed
+folder receives matching public GitHub history in its disposable worker directory.
+Preflight selects `remoteAction=link`; execution preserves uncommitted file bytes,
+remote refs and the project/source/Primary identities, publishes job revisions
+`[1, 3]`, and retains the converted state through server and worker restart. There
+are no SQL fixtures or command substitutions in this flow. It performs public
+reads and linking, without repository creation or push. Actual external user-source
+discovery and managed-folder push/initial-commit product flows remain required.
+
+The macOS and Windows replica CI jobs also exposed a pending-observation shutdown
+wait. An unanswered real observation command reproduces the Rust failure locally
+at the original 15-second deadline. Shutdown now stops observation admission,
+closes the worker bridge, then drains their owned persistence tasks before storage
+closes. The same regression passes on all three stores without extending its
+deadline or cancelling work. The platform matrix still must verify this fix.
+The Linux contracts job separately failed because the real Run retirement probe
+did not produce its termination marker under Node; its cause remains unresolved.
+
+```sh
+node --import tsx scripts/server-rust/conversion-http-compatibility.mjs --database pglite --profile none --leases --report .qa/rust-server/conversion-real-leases-pglite.json
+node --import tsx scripts/server-rust/conversion-http-compatibility.mjs --database postgres --lifetimes --report .qa/rust-server/conversion-http-lifetimes.json
+node --import tsx scripts/server-rust/conversion-http-compatibility.mjs --database pglite --profile none --lifecycle --observation-shutdown --report .qa/rust-server/conversion-observation-shutdown-pglite.json
+node --import tsx scripts/server-rust/actual-folder-client.mjs --database pglite --github-conversion --report .qa/rust-server/actual-github-conversion-pglite.json
+```
+
+Repeat the lease, observation and product suites with `--database postgres` and
+`--database bundled-postgres`. The independent conversion CI job configures the
+three supported operating systems and all stores; configuration is not evidence
+that those jobs passed. Further source/failure cases, supported-platform results,
+packaging, migration/rollback and multi-instance acceptance remain required.
+
+PR #2348 Windows CI stopped in a project-surface test probe when its blocker
+count matched but `wait_event_type` was null. The surface and workspace probes
+now poll for the complete count-plus-Lock witness before releasing their real
+SQL lock, retaining every assertion and the ten-second deadline. Both complete
+local concurrency/shutdown suites pass. This is not Windows acceptance; the
+platform matrix must still run the updated probes.
+
 ## Project replica execution in progress
 
 The native replica domain now includes durable admission, payload fingerprints,

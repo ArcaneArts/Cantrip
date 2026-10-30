@@ -50,6 +50,12 @@ pub(super) fn apply(
         at.extend(suffix.iter().map(|v| json!(v)));
         result.issue(json!({"code":"custom"}), &at, message.into(), false);
     };
+    if tag == "conversion-source-pair" {
+        if value.get("projectSourceId").is_some() != value.get("workerId").is_some() {
+            custom(&[], "Conversion source fields must be provided together.");
+        }
+        return Ok(());
+    }
     if tag == "worktree-create-mutation-failure" {
         let outcome = value["mutation"]["outcome"].as_str().unwrap_or_default();
         let suffix = match outcome {

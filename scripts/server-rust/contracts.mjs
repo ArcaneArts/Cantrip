@@ -314,9 +314,23 @@ export const contractRoots = [
   "projectReplicaListSchema",
   "projectReplicaSummarySchema",
   "encryptedGithubProjectCreateSchema",
+  "encryptedProjectGithubConversionPreflightRequestSchema",
+  "encryptedProjectGithubConversionStartSchema",
+  "projectGithubConversionRetrySchema",
+  "projectGithubConversionPreflightResultSchema",
+  "projectGithubConversionExecutionResultSchema",
+  "projectGithubConversionJobSummarySchema",
 ];
 
 const refinements = new Map([
+  [
+    protocol.encryptedProjectGithubConversionPreflightRequestSchema,
+    "conversion-source-pair",
+  ],
+  [
+    protocol.encryptedProjectGithubConversionStartSchema,
+    "conversion-source-pair",
+  ],
   [
     runDefinitions.runConfigurationRepositoryEntrySchema,
     "run-repository-entry",
