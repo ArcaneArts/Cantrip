@@ -122,6 +122,15 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
       : appMode === "ide"
         ? switchToChat
         : switchToIde;
+  const activeFilePath =
+    selectedFileDocument?.path ??
+    (selectedCodeTab
+      ? codeHeader?.explorer?.selectedPath
+      : selectedExplorer
+        ? activeExplorerHeader
+          ? activeExplorerHeader.selectedPath
+          : selectedExplorer.selectedPath
+        : null);
   if (
     ((showSettings || showProjectSettings) && !compactShell) ||
     showProjectOverview
@@ -325,7 +334,9 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
                                 : selectedProjectView?.kind === "remote-desktop"
                                   ? selectedProjectView.title
                                   : selectedCodeTab
-                                    ? selectedCodeTab.title
+                                    ? activeFilePath
+                                      ? sidebarFileName(activeFilePath)
+                                      : selectedCodeTab.title
                                     : selectedBrowser
                                       ? selectedBrowser.title
                                       : selectedFileDocument
@@ -333,7 +344,9 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
                                             selectedFileDocument.path,
                                           )
                                         : selectedExplorer
-                                          ? selectedExplorer.title
+                                          ? activeFilePath
+                                            ? sidebarFileName(activeFilePath)
+                                            : selectedExplorer.title
                                           : selectedTerminal
                                             ? selectedTerminal.linkedChatId
                                               ? (linkedConsoleChat?.title ??
@@ -478,13 +491,17 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
               ) : selectedProjectView?.kind === "remote-desktop" ? (
                 "Managed project-worker desktop"
               ) : selectedCodeTab ? (
-                (activeWorktree?.displayPath ??
-                selectedProject?.source?.displayPath ??
-                "Code")
+                activeFilePath ? null : (
+                  (activeWorktree?.displayPath ??
+                  selectedProject?.source?.displayPath ??
+                  "Code")
+                )
               ) : selectedBrowser ? (
                 selectedBrowser.url
               ) : selectedExplorer || selectedFileDocument ? (
-                explorerDisplayPath
+                activeFilePath ? null : (
+                  explorerDisplayPath
+                )
               ) : selectedTerminal ? (
                 selectedTerminal.linkedChatId ? (
                   (activeWorktree?.displayPath ??
