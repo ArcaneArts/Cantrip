@@ -5669,6 +5669,58 @@ describe.sequential("server worktree control plane", () => {
     ).toBe(409);
   });
 
+  it("restores the worktree after worker removal rejection and permits retry", async () => {
+    const created = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees`,
+      payload: {
+        name: "rejected-removal",
+        mode: {
+          type: "newBranch",
+          branch: "rejected-removal",
+          startPoint: "main",
+        },
+      },
+    });
+    expect(created.statusCode, created.body).toBe(201);
+    const worktree = projectWorktreeSummarySchema.parse(created.json());
+    const request = workerBridge.request.bind(workerBridge);
+    const rejection = vi
+      .spyOn(workerBridge, "request")
+      .mockImplementation((...args) =>
+        args[1].type === "worktree.remove"
+          ? Promise.reject(new Error("Controlled dirty checkout rejection"))
+          : request(...args),
+      );
+    try {
+      const rejected = await app.inject({
+        method: "DELETE",
+        url: `/api/projects/${projectId}/worktrees/${worktree.id}`,
+      });
+      expect(rejected.statusCode, rejected.body).toBe(409);
+      expect(
+        await database.repository.getProjectWorktreeContext(
+          LOCAL_USER_ID,
+          projectId,
+          worktree.id,
+        ),
+      ).toMatchObject({
+        worktree: { id: worktree.id, lifecycleState: "ready" },
+      });
+    } finally {
+      rejection.mockRestore();
+    }
+    const retried = await app.inject({
+      method: "DELETE",
+      url: `/api/projects/${projectId}/worktrees/${worktree.id}`,
+    });
+    expect(retried.statusCode, retried.body).toBe(200);
+    expect(projectWorktreeSummarySchema.parse(retried.json())).toMatchObject({
+      id: worktree.id,
+      lifecycleState: "missing",
+    });
+  });
+
   it("retires an active Run instance instead of treating it as a worktree removal blocker", async () => {
     const createdResponse = await app.inject({
       method: "POST",

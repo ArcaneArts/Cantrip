@@ -271,16 +271,31 @@ export class WorktreeLifecycleRepository {
     worktreeId: string,
     lifecycleState: ProjectWorktreeSummary["lifecycleState"],
   ): Promise<ProjectWorktreeSummary | null> {
-    const context = await this.collaborators.getProjectWorktreeContext(
-      ownerId,
-      projectId,
-      worktreeId,
-    );
-    if (!context) return null;
+    // Lifecycle recovery must also reach rows that are no longer executable.
+    // Keep authorization in the update so a removed source cannot be revived.
+    const ownedSources = this.database
+      .select({ id: schema.projectSources.id })
+      .from(schema.projectSources)
+      .innerJoin(
+        schema.projects,
+        eq(schema.projects.id, schema.projectSources.projectId),
+      )
+      .where(
+        and(
+          eq(schema.projects.ownerId, ownerId),
+          eq(schema.projects.id, projectId),
+          isNull(schema.projectSources.removedAt),
+        ),
+      );
     const rows = await this.database
       .update(schema.projectWorktrees)
       .set({ lifecycleState, updatedAt: new Date() })
-      .where(eq(schema.projectWorktrees.id, worktreeId))
+      .where(
+        and(
+          eq(schema.projectWorktrees.id, worktreeId),
+          inArray(schema.projectWorktrees.projectSourceId, ownedSources),
+        ),
+      )
       .returning();
     return rows[0] ? toProjectWorktreeSummary(rows[0], projectId) : null;
   }
