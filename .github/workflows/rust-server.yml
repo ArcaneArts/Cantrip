@@ -179,6 +179,12 @@ jobs:
         run: node --import tsx scripts/server-rust/browser-query-manifest.mjs --check
       - name: Shared desktop verifier retains its owning crate's formatting
         run: rustfmt --edition 2021 --check cantrip_app/src-tauri/src/direct_probe_connection.rs
+      - name: Terminal HTTP and ordered Live notifications with native PGlite
+        run: node --import tsx scripts/server-rust/terminal-http-compatibility.mjs --report .qa/rust-server/terminal-http-pglite.json
+      - name: Terminal HTTP and ordered Live notifications with private PostgreSQL
+        run: node --import tsx scripts/server-rust/terminal-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/terminal-http-bundled.json
+      - name: Terminal HTTP and disconnected creation through shutdown with external PostgreSQL
+        run: node --import tsx scripts/server-rust/terminal-http-compatibility.mjs --database postgres --report .qa/rust-server/terminal-http-external.json
       - name: Build the production worker used by browser integration
         run: pnpm --filter @cantrip/worker build
       - name: Browser state refresh retains concurrent updates and attachment recipients
@@ -282,12 +288,6 @@ jobs:
         run: node --import tsx scripts/server-rust/terminal-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/terminal-repository-bundled.json
       - name: Terminal resources and transactional layouts with external PostgreSQL
         run: node --import tsx scripts/server-rust/terminal-repository-compatibility.mjs --database postgres --report .qa/rust-server/terminal-repository-external.json
-      - name: Terminal HTTP and ordered Live notifications with native PGlite
-        run: node --import tsx scripts/server-rust/terminal-http-compatibility.mjs --report .qa/rust-server/terminal-http-pglite.json
-      - name: Terminal HTTP and ordered Live notifications with private PostgreSQL
-        run: node --import tsx scripts/server-rust/terminal-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/terminal-http-bundled.json
-      - name: Terminal HTTP and disconnected creation through shutdown with external PostgreSQL
-        run: node --import tsx scripts/server-rust/terminal-http-compatibility.mjs --database postgres --report .qa/rust-server/terminal-http-external.json
       - name: Managed console routing and canonical bindings with native PGlite
         run: node --import tsx scripts/server-rust/chat-runtime-repository-compatibility.mjs --report .qa/rust-server/chat-runtime-pglite.json
       - name: Managed console routing and canonical bindings with private PostgreSQL

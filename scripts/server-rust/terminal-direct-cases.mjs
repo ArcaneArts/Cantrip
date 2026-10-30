@@ -6,6 +6,10 @@ import { directTunnelTicketSchema } from "../../packages/protocol/dist/direct-da
 import { label, state as protectedState } from "./project-target-state.mjs";
 import { heartbeat } from "./security-fixtures.mjs";
 import { directAttachmentWireFixtures } from "./direct-attachment-wire-fixtures.mjs";
+import {
+  directPreparationPublished,
+  emptyDirectTelemetry,
+} from "./direct-preparation-publication.mjs";
 async function until(read, name) {
   const end = Date.now() + 10000;
   for (;;) {
@@ -357,13 +361,54 @@ export async function terminalDirectCases({
   );
   controller.abort();
   assert.deepEqual(await caller, { error: "AbortError" });
+  state.directMode = "hold";
+  state.directHeld = undefined;
   pending.emit({ type: "terminal.ready" });
-  const prepared = await until(
-    () =>
-      result.commands
-        .slice(at)
-        .find((c) => c.type === "direct.capability.prepare"),
+  const abandonedAcknowledgment = await until(
+    () => state.directHeld,
     "abandoned direct preparation remains owned",
+  );
+  const prepared = abandonedAcknowledgment.command;
+  const revokes = () =>
+    result.commands
+      .slice(at)
+      .filter(
+        (c) =>
+          c.type === "direct.capability.revoke" &&
+          c.capabilityId === prepared.binding.capabilityId,
+      );
+  const telemetry = `/api/direct-attachments/${prepared.binding.capabilityId}/telemetry`;
+  try {
+    await visit(
+      "release abandoned terminal direct before worker ACK",
+      "DELETE",
+      `/api/direct-attachments/${prepared.binding.capabilityId}`,
+      { status: 204 },
+    );
+    await visit(
+      "unacknowledged abandoned direct has no server grant",
+      "POST",
+      telemetry,
+      { json: emptyDirectTelemetry, status: 404 },
+    );
+    assert.equal(
+      revokes().length,
+      0,
+      "pre-ACK idempotent release has no published grant to revoke",
+    );
+  } finally {
+    state.directMode = "normal";
+    state.directHeld = undefined;
+    abandonedAcknowledgment.resolve({
+      accepted: true,
+      capabilityId: prepared.binding.capabilityId,
+    });
+  }
+  result.directPreparationPublication = [];
+  await directPreparationPublished(
+    fixture,
+    prepared.binding.capabilityId,
+    result.directPreparationPublication,
   );
   await visit(
     "release abandoned terminal direct",
@@ -371,6 +416,31 @@ export async function terminalDirectCases({
     `/api/direct-attachments/${prepared.binding.capabilityId}`,
     { status: 204 },
   );
+  assert.equal(
+    revokes().length,
+    1,
+    "post-ACK release sends exactly one actual worker revoke",
+  );
+  await visit("final abandoned direct telemetry accepted", "POST", telemetry, {
+    json: emptyDirectTelemetry,
+    status: 204,
+  });
+  await visit(
+    "replayed final abandoned direct telemetry acknowledged",
+    "POST",
+    telemetry,
+    { json: emptyDirectTelemetry, status: 204 },
+  );
+  result.directPreparationBoundary = {
+    callerDisconnected: true,
+    preAckRelease: 204,
+    preAckTelemetry: 404,
+    preAckWorkerRevokes: 0,
+    postAckTelemetry: 409,
+    postAckWorkerRevokes: revokes().length,
+    finalTelemetry: 204,
+    replay: 204,
+  };
   state.mode = "normal";
   await live.ping();
   result.terminalDirectCommands = fixture.normalize(

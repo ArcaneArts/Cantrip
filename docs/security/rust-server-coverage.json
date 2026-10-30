@@ -2839,14 +2839,31 @@
         "scripts/server-rust/terminal-direct-cases.mjs",
         "scripts/server-rust/terminal-http-compatibility.mjs",
         "cantrip_server_rs/tests/direct_attachment_contracts.rs",
-        "scripts/server-rust/actual-worker-terminal-direct.mjs"
+        "scripts/server-rust/actual-worker-terminal-direct.mjs",
+        "scripts/server-rust/direct-preparation-publication.mjs"
       ],
       "scope": "Unmerged legacy direct-terminal HTTP bootstrap using native preparation fencing, managed console launch, opaque state, readiness-before-stream-completion semantics, detach/status publication, twelve-hour capabilities and exact tunnel route bindings. Local/account HTTP comparisons pass all3 stores with Unicode client identifiers, actual timeout, controlled worker failures, actual capability revocation before releasing a held preparation acknowledgment, compensating close/idle cleanup, caller-aborted ownership and ordered Live events. Native direct validation matches1584 actual protocol/error cases. The fixture sends a real authenticated heartbeat to maintain normal worker presence. Actual native desktop verification plus controlled TCP forwarding now carries encrypted browser input to a real worker PTY and authenticates ordered output on all3 storage modes; rejects wrong operations, one-use replay, revoked capabilities and mismatched broker identity and observes active revocation.",
       "remaining": [
         "Actual Tauri IPC, production native TCP forwarding, network fallback and packaged acceptance.",
         "Legacy terminal relay sockets and remaining resource consumers.",
         "Supported-platform/package acceptance and coherent merged delivery."
-      ]
+      ],
+      "acknowledgmentBoundaryRegression": {
+        "scope": "Local real-HTTP Node/Rust comparisons on PGlite, private PostgreSQL and external PostgreSQL; held actual worker preparation acknowledgment after caller disconnect. No production behavior change or new accepted route.",
+        "beforeAcknowledgment": {
+          "releaseStatus": 204,
+          "telemetryStatus": 404,
+          "workerRevokes": 0
+        },
+        "afterAcknowledgment": {
+          "inactiveTelemetryStatus": 409,
+          "workerRevokesAfterRelease": 1,
+          "finalTelemetryStatus": 204,
+          "replayedFinalTelemetryStatus": 204
+        },
+        "publicationObservation": "Authenticated telemetry attempts retain every actual reply; only exact unpublished 404 responses may be retried until exact inactive 409. Full original command, HTTP, state and Live comparisons remain.",
+        "remaining": "Current-head supported-platform and packaged acceptance remain required."
+      }
     },
     "terminalLegacyRelay": {
       "status": "partial",
