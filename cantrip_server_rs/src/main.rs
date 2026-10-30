@@ -41,6 +41,9 @@ struct Arguments {
     postgres_bin_dir: Option<PathBuf>,
     #[arg(long)]
     migrate_only: bool,
+    /// Restore trusted INSERT-format pg_dump SQL and pending migrations, then exit.
+    #[arg(long, requires = "migrate_only")]
+    restore_sql: Option<PathBuf>,
     #[arg(long)]
     shutdown_on_stdin_close: bool,
 }
@@ -110,6 +113,12 @@ async fn main() -> Result<()> {
     }
     // Resolve every path before native PostgreSQL can change the process cwd.
     let config = Arc::new(ServerConfig::read(&environment, &std::env::current_dir()?)?);
+    let restore_sql = arguments
+        .restore_sql
+        .map(std::path::absolute)
+        .transpose()
+        .context("resolve SQL export path")?;
+    let restoring = restore_sql.is_some();
     // Native PostgreSQL changes its process stdio during single-user startup.
     // Keep independent handles to the launcher's pipes before initializing it.
     let mut parent_output = os_pipe::dup_stdout()?;
@@ -142,9 +151,34 @@ async fn main() -> Result<()> {
         }
     };
     let database = Arc::new(database);
-    migrate(&database).await?;
-    if arguments.migrate_only {
-        AuthRepository::new(database.clone()).local_user().await?;
+    let prepared: Result<()> = async {
+        if let Some(file) = restore_sql {
+            let receipt = cantrip_server::database_transfer::restore_sql(&database, &file).await?;
+            use std::io::Write;
+            writeln!(
+                parent_output,
+                "\n{}",
+                json!({"event":"database.restore.completed","databaseEngine":database.engine(),"receipt":receipt})
+            )?;
+        }
+        migrate(&database).await?;
+        if arguments.migrate_only && !restoring {
+            AuthRepository::new(database.clone()).local_user().await?;
+        }
+        Ok(())
+    }.await;
+    if let Err(error) = prepared {
+        // A failed offline load must finish closing its private postmaster
+        // before returning. Parent-death cleanup alone races an immediate retry.
+        let database_closed = database.close().await;
+        let owned_closed = if let Some(runtime) = managed.take() {
+            runtime.close().await
+        } else {
+            Ok(())
+        };
+        database_closed.context("close database after setup failure")?;
+        owned_closed.context("close owned PostgreSQL after setup failure")?;
+        return Err(error);
     }
     if !arguments.migrate_only {
         let service = AuthService::initialize(database.clone(), config.clone()).await?;

@@ -19,6 +19,9 @@ importers:
       "@babel/traverse":
         specifier: 7.29.8
         version: 7.29.8(supports-color@10.2.2)
+      "@electric-sql/pglite-tools":
+        specifier: 0.4.4
+        version: 0.4.4(@electric-sql/pglite@0.5.4)
       "@types/node":
         specifier: ^26.1.2
         version: 26.1.2
@@ -1051,6 +1054,14 @@ packages:
       {
         integrity: sha512-z33Il7l5dKjUgGULTqBsQBQwckHh5AbIuxhdsIxDDiZAzBOrZO6q9ogcWC65kU382AfynTfgNumVcNIjuIua6w==,
       }
+
+  "@electric-sql/pglite-tools@0.4.4":
+    resolution:
+      {
+        integrity: sha512-Vw6/o1OJqWFyiRkh1p0453VPrNX1S+CYzhOckm2iu0BdGawvBwEakYB63tN0K2lI8xUtV4QN4eXBtSsTMNr0Hw==,
+      }
+    peerDependencies:
+      "@electric-sql/pglite": 0.5.4
 
   "@electric-sql/pglite@0.5.4":
     resolution:
@@ -9985,6 +9996,10 @@ snapshots:
   "@dotenvx/primitives@0.8.0": {}
 
   "@drizzle-team/brocli@0.10.2": {}
+
+  "@electric-sql/pglite-tools@0.4.4(@electric-sql/pglite@0.5.4)":
+    dependencies:
+      "@electric-sql/pglite": 0.5.4
 
   "@electric-sql/pglite@0.5.4": {}
 

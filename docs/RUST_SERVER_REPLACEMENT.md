@@ -2672,6 +2672,67 @@ against the Node service over actual sockets. Rust formatting and Clippy with
 warnings denied passed. These are foundation results, not the complete server
 or product-flow acceptance matrix.
 
+## Legacy PGlite logical export and transactional restore
+
+A bounded offline JavaScript tool now opens a private copy of the stopped legacy
+PGlite database and exports ordinary PostgreSQL SQL with the pinned, matching
+[PGlite/pg_dump packages](https://pglite.dev/docs/pglite-tools). It never opens the original database for execution and
+creates the export exclusively with private file permissions. Native serving
+and background work do not import or invoke this converter.
+
+The Rust executable accepts trusted INSERT-format exports through `--restore-sql`
+with `--migrate-only`. Restore DDL,
+data and pending migrations execute in one transaction on the selected native
+PGlite, private PostgreSQL or external PostgreSQL backend. The original Drizzle
+journal and migration SQL hashes remain authoritative. Deferred checks are
+resolved before upgrade DDL so valid circular chat/root relationships do not
+leave PostgreSQL 17 trigger events pending during the conversation backfill.
+An offline restore also preserves the existing local-user timestamps instead
+of running the ordinary migrate-only local-user refresh.
+
+For a stopped source and a separate destination, the SQL transfer components
+can be exercised with:
+
+```shell
+node scripts/database-transfer/legacy-pglite.mjs /old/profile/server-db /backup/export.sql
+/absolute/path/to/cantrip-server --database pglite --data-dir /new/profile \
+  --migrate-only --restore-sql /backup/export.sql
+```
+
+Local macOS checks transfer actual PostgreSQL 18.3 WASM PGlite data into native
+PostgreSQL 17.5 PGlite and both PostgreSQL deployment modes. All 115 table
+snapshots and four sequence states match, including the real migration journal,
+large integers, precise numerics, JSONB, bytea, arrays, generated columns,
+Unicode and microsecond timestamps. Snapshot queries explicitly use UTC on
+both sides to compare stored instants. Every one of the source profile's 1,665
+original files retains its bytes and permissions.
+
+A second fixture applies the actual first 233 migrations, seeds a valid
+worker/chat/root cycle and then exports it. The native restore applies the
+three pending migrations and matches a separate copy upgraded by the actual
+Node migrator. Late import errors, a failure after earlier pending upgrades,
+and replay into an existing destination leave destination state intact.
+Actual invalid-value errors expose SQLSTATE without logging exported values.
+A failed private PostgreSQL load closes its postmaster before returning, so an
+immediate retry does not race parent-death shutdown. Two concurrent native
+restores share the startup migration transaction lock: actual blocked-query
+witnesses prove serialization, one succeeds and the other rejects the existing
+destination while the retained snapshot stays identical.
+
+Interruption tests kill the native command only after a SQL-written filesystem
+witness proves execution. The historical case pauses inside the conversation
+migration after earlier upgrades execute. Restart observes no partially
+committed application state, and an identical retry succeeds on all stores.
+An external PostgreSQL backend may retain the interrupted query until it
+finishes and detects the lost connection; these checks include that eventual
+rollback instead of inferring it from the client's exit alone.
+
+These are SQL transfer components. Profile activation, server-managed file/key
+transfer, persistent backend selection, native-to-legacy post-write rollback
+and packaged upgrade integration remain unfinished. Cross-platform jobs are
+configured for this milestone and still require observed results. Normal
+builds continue to select the Node server and Node worker.
+
 ## Remaining delivery sequence
 
 1. Establish cross-platform foundation results and legacy PGlite logical
