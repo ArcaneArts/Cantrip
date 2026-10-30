@@ -74,6 +74,11 @@ on:
       - cantrip_server/src/db/repository/execution-targets.ts
       - cantrip_server/src/execution-targets/**
       - cantrip_server/src/app/routes/project-catalog-and-placement.ts
+      - cantrip_server/src/app/routes/project-replicas.ts
+      - cantrip_server/src/app/routes/project-github-import.ts
+      - cantrip_server/src/db/project-replica*
+      - cantrip_server/src/project-replicas/**
+      - cantrip_server/src/db/repository/project-lifecycle.ts
       - cantrip_server/src/db/repository/chat-catalog.ts
       - cantrip_server/src/db/repository/chat-mappers.ts
       - cantrip_server/src/db/repository/terminals.ts
@@ -689,4 +694,136 @@ jobs:
         if: always()
         with:
           name: rust-server-${{ matrix.os }}
+          path: .qa/rust-server/
+
+  replicas:
+    # Production lease timers take about 30 minutes for the three stores.
+    # Keep the complete replica matrix independent of the existing domain matrix.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.93.0
+          components: rustfmt, clippy
+      - name: Windows native PGlite toolchain
+        if: runner.os == 'Windows'
+        id: mingw
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-zlib mingw-w64-x86_64-openssl
+      - name: Windows Rust target and PostgreSQL
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          CANTRIP_MINGW_BIN: ${{ steps.mingw.outputs.msys2-location }}\mingw64\bin
+        run: |
+          rustup target add x86_64-pc-windows-gnu
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "CARGO_BUILD_TARGET=x86_64-pc-windows-gnu" >> $env:GITHUB_ENV
+          "$env:CANTRIP_MINGW_BIN" >> $env:GITHUB_PATH
+          "CANTRIP_TEST_POSTGRES_BIN_DIR=$env:PGBIN" >> $env:GITHUB_ENV
+      - name: Linux PostgreSQL
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql libssl-dev
+          echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(pg_config --bindir)" >> "$GITHUB_ENV"
+      - name: macOS PostgreSQL
+        if: runner.os == 'macOS'
+        run: |
+          brew install postgresql@18
+          echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(brew --prefix postgresql@18)/bin" >> "$GITHUB_ENV"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol --filter @cantrip/crypto --filter @cantrip/glitch -r build
+      - name: Create replica evidence directory
+        run: |
+          node -e "require('node:fs').mkdirSync('.qa/rust-server', { recursive: true })"
+      - name: Build the production worker used by replica integration
+        run: pnpm --filter @cantrip/worker build
+      - name: Browser for actual encrypted replica clients
+        run: node node_modules/playwright-core/cli.js install --with-deps chromium
+      - name: Allow the downloaded Chromium to use its namespace sandbox on Ubuntu
+        if: runner.os == 'Linux'
+        run: node scripts/server-rust/linux-chromium-sandbox.mjs
+      - name: Replica durable leases and transitions with native PGlite
+        run: node --import tsx scripts/server-rust/replica-lifecycle-repository-compatibility.mjs --database pglite --report .qa/rust-server/replica-lifecycle-repository-compatibility-pglite.json
+      - name: Replica admission and idempotency with native PGlite
+        run: node --import tsx scripts/server-rust/replica-admission-repository-compatibility.mjs --database pglite --report .qa/rust-server/replica-admission-repository-compatibility-pglite.json
+      - name: Replica completion and source transactions with native PGlite
+        run: node --import tsx scripts/server-rust/replica-completion-repository-compatibility.mjs --database pglite --report .qa/rust-server/replica-completion-repository-compatibility-pglite.json
+      - name: Replica HTTP validation and error precedence with native PGlite
+        run: node --import tsx scripts/server-rust/replica-http-validation-compatibility.mjs --database pglite --report .qa/rust-server/replica-http-validation-compatibility-pglite.json
+      - name: Replica protected import, worker transport and recovery with native PGlite
+        run: node --import tsx scripts/server-rust/replica-import-http-compatibility.mjs --database pglite --connected --faults --reconnect --shutdown --report .qa/rust-server/replica-import-http-compatibility-pglite.json
+      - name: Replica executor four-job capacity and queued dispatch with pglite
+        run: node --import tsx scripts/server-rust/replica-import-http-compatibility.mjs --database pglite --connected --faults --reconnect --concurrency --report .qa/rust-server/replica-concurrency-pglite.json
+      - name: Converted-folder replica retention and deletion with pglite
+        run: node --import tsx scripts/server-rust/replica-import-http-compatibility.mjs --database pglite --connected --faults --reconnect --converted-removal --report .qa/rust-server/replica-converted-pglite.json
+      - name: Replica real lease renewal and stale completion recovery with pglite
+        run: node --import tsx scripts/server-rust/replica-import-http-compatibility.mjs --database pglite --connected --faults --reconnect --lease-recovery --report .qa/rust-server/replica-lease-pglite.json
+      - name: Replica durable leases and transitions with private PostgreSQL
+        run: node --import tsx scripts/server-rust/replica-lifecycle-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/replica-lifecycle-repository-compatibility-bundled-postgres.json
+      - name: Replica admission and idempotency with private PostgreSQL
+        run: node --import tsx scripts/server-rust/replica-admission-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/replica-admission-repository-compatibility-bundled-postgres.json
+      - name: Replica completion and source transactions with private PostgreSQL
+        run: node --import tsx scripts/server-rust/replica-completion-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/replica-completion-repository-compatibility-bundled-postgres.json
+      - name: Replica HTTP validation and error precedence with private PostgreSQL
+        run: node --import tsx scripts/server-rust/replica-http-validation-compatibility.mjs --database bundled-postgres --report .qa/rust-server/replica-http-validation-compatibility-bundled-postgres.json
+      - name: Replica protected import, worker transport and recovery with private PostgreSQL
+        run: node --import tsx scripts/server-rust/replica-import-http-compatibility.mjs --database bundled-postgres --connected --faults --reconnect --shutdown --report .qa/rust-server/replica-import-http-compatibility-bundled-postgres.json
+      - name: Replica executor four-job capacity and queued dispatch with bundled-postgres
+        run: node --import tsx scripts/server-rust/replica-import-http-compatibility.mjs --database bundled-postgres --connected --faults --reconnect --concurrency --report .qa/rust-server/replica-concurrency-bundled-postgres.json
+      - name: Converted-folder replica retention and deletion with bundled-postgres
+        run: node --import tsx scripts/server-rust/replica-import-http-compatibility.mjs --database bundled-postgres --connected --faults --reconnect --converted-removal --report .qa/rust-server/replica-converted-bundled-postgres.json
+      - name: Replica real lease renewal and stale completion recovery with bundled-postgres
+        run: node --import tsx scripts/server-rust/replica-import-http-compatibility.mjs --database bundled-postgres --connected --faults --reconnect --lease-recovery --report .qa/rust-server/replica-lease-bundled-postgres.json
+      - name: Replica HTTP admission races, caller disconnect and shutdown ownership
+        run: node --import tsx scripts/server-rust/replica-http-lifetimes.mjs --report .qa/rust-server/replica-http-lifetimes.json
+      - name: Replica durable leases and transitions with external PostgreSQL
+        run: node --import tsx scripts/server-rust/replica-lifecycle-repository-compatibility.mjs --database postgres --report .qa/rust-server/replica-lifecycle-repository-compatibility-postgres.json
+      - name: Replica admission and idempotency with external PostgreSQL
+        run: node --import tsx scripts/server-rust/replica-admission-repository-compatibility.mjs --database postgres --report .qa/rust-server/replica-admission-repository-compatibility-postgres.json
+      - name: Replica completion and source transactions with external PostgreSQL
+        run: node --import tsx scripts/server-rust/replica-completion-repository-compatibility.mjs --database postgres --report .qa/rust-server/replica-completion-repository-compatibility-postgres.json
+      - name: Replica HTTP validation and error precedence with external PostgreSQL
+        run: node --import tsx scripts/server-rust/replica-http-validation-compatibility.mjs --database postgres --report .qa/rust-server/replica-http-validation-compatibility-postgres.json
+      - name: Replica protected import, worker transport and recovery with external PostgreSQL
+        run: node --import tsx scripts/server-rust/replica-import-http-compatibility.mjs --database postgres --connected --faults --reconnect --shutdown --report .qa/rust-server/replica-import-http-compatibility-postgres.json
+      - name: Replica executor four-job capacity and queued dispatch with postgres
+        run: node --import tsx scripts/server-rust/replica-import-http-compatibility.mjs --database postgres --connected --faults --reconnect --concurrency --report .qa/rust-server/replica-concurrency-postgres.json
+      - name: Converted-folder replica retention and deletion with postgres
+        run: node --import tsx scripts/server-rust/replica-import-http-compatibility.mjs --database postgres --connected --faults --reconnect --converted-removal --report .qa/rust-server/replica-converted-postgres.json
+      - name: Replica real lease renewal and stale completion recovery with postgres
+        run: node --import tsx scripts/server-rust/replica-import-http-compatibility.mjs --database postgres --connected --faults --reconnect --lease-recovery --report .qa/rust-server/replica-lease-postgres.json
+      - name: Worker observation lifetime, index retirement and Git safety
+        run: pnpm --filter @cantrip/worker exec vitest run test/worktrees.test.ts test/codegraph-supervisor.test.ts test/github.test.ts --maxWorkers=1
+      - name: Actual browser local Git and managed GitHub replicas with pglite
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --replicas --github-replicas --database pglite --report .qa/rust-server/actual-replica-product-pglite.json
+      - name: Actual browser local Git and managed GitHub replicas with bundled-postgres
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --replicas --github-replicas --database bundled-postgres --report .qa/rust-server/actual-replica-product-bundled-postgres.json
+      - name: Actual browser local Git and managed GitHub replicas with postgres
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --replicas --github-replicas --database postgres --report .qa/rust-server/actual-replica-product-postgres.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rust-server-replicas-${{ matrix.os }}
           path: .qa/rust-server/

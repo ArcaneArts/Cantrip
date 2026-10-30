@@ -299,6 +299,21 @@ export const contractRoots = [
   "directCapabilityPrepareResultSchema",
   "directCapabilityRenewResultSchema",
   "directTransportTelemetrySchema",
+  "projectReplicaJobSummarySchema",
+  "projectReplicaJobListSchema",
+  "projectReplicaProvisionResultSchema",
+  "projectReplicaSynchronizeResultSchema",
+  "projectReplicaRemoveResultSchema",
+  "managedFolderDeleteResultSchema",
+  "encryptedProjectReplicaProvisionCreateSchema",
+  "encryptedProjectReplicaSynchronizeCreateSchema",
+  "encryptedProjectReplicaRemoveCreateSchema",
+  "projectReplicaJobRetrySchema",
+  "projectReplicaJobCancelSchema",
+  "projectReplicaLinkRepairResultSchema",
+  "projectReplicaListSchema",
+  "projectReplicaSummarySchema",
+  "encryptedGithubProjectCreateSchema",
 ];
 
 const refinements = new Map([

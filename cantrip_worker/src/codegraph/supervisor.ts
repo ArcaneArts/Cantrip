@@ -88,6 +88,7 @@ interface ManagedProject extends CodeGraphProjectStatus {
   queued: boolean;
   retryTimer: ReturnType<typeof setTimeout> | null;
   running: boolean;
+  task: Promise<void> | null;
   projectId: string | null;
   worktreeId: string | null;
   job: PublicCodeGraphProjectStatus["job"];
@@ -151,42 +152,48 @@ function processOutcome(
     });
     let stdout = "";
     let stderr = "";
-    let settled = false;
-    const timeout = setTimeout(() => {
-      if (settled) return;
-      child.kill("SIGTERM");
-      setTimeout(() => child.kill("SIGKILL"), 2_000).unref();
-      finish(
-        new Error(`CodeGraph command timed out after ${options.timeoutMs}ms.`),
-      );
-    }, options.timeoutMs);
-    timeout.unref();
-    const finish = (error?: Error, code = 1) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
-      if (error) reject(error);
-      else
-        resolve({
-          code,
-          stderr: boundedText(stderr),
-          stdout: boundedText(stdout),
-        });
+    let failure: Error | undefined;
+    let forceKill: ReturnType<typeof setTimeout> | undefined;
+    const terminate = (error: Error) => {
+      failure ??= error;
+      if (!child.killed) child.kill("SIGTERM");
+      forceKill ??= setTimeout(() => {
+        if (child.exitCode === null && child.signalCode === null)
+          child.kill("SIGKILL");
+      }, 2000);
+      forceKill.unref();
     };
+    const timeout = setTimeout(
+      () =>
+        terminate(
+          new Error(
+            `CodeGraph command timed out after ${options.timeoutMs}ms.`,
+          ),
+        ),
+      options.timeoutMs,
+    );
+    timeout.unref();
     child.stdout?.on("data", (chunk) => {
       stdout = boundedText(stdout + String(chunk));
     });
     child.stderr?.on("data", (chunk) => {
       stderr = boundedText(stderr + String(chunk));
     });
-    child.once("error", (error) => finish(error));
-    child.once("exit", (code, signal) => {
-      finish(
-        signal
-          ? new Error(`CodeGraph command exited from ${signal}.`)
-          : undefined,
-        code ?? 1,
-      );
+    child.once("error", (error) => {
+      terminate(error);
+    });
+    child.once("close", (code, signal) => {
+      clearTimeout(timeout);
+      clearTimeout(forceKill);
+      if (failure) reject(failure);
+      else if (signal)
+        reject(new Error(`CodeGraph command exited from ${signal}.`));
+      else
+        resolve({
+          code: code ?? 1,
+          stderr: boundedText(stderr),
+          stdout: boundedText(stdout),
+        });
     });
   });
 }
@@ -335,6 +342,8 @@ export class CodeGraphProjectSupervisor {
   readonly #changeDebounceMs: number;
   readonly #watcherRetryBaseMs: number;
   readonly #projects = new Map<string, ManagedProject>();
+  readonly #retirements = new Map<string, Promise<void>>();
+  readonly #shutdown = new AbortController();
   readonly #excludeQueues = new Map<string, Promise<void>>();
   readonly #watch: NonNullable<CodeGraphProjectSupervisorOptions["watch"]>;
   #activeOperations = 0;
@@ -442,6 +451,7 @@ export class CodeGraphProjectSupervisor {
       for (const { authorized, root, target } of result.value) {
         if (this.#closed || generation !== this.#configurationGeneration)
           return;
+        if (this.#retirements.has(root)) continue;
         const existing = this.#projects.get(root);
         if (existing) {
           existing.sourcePath = target.sourcePath;
@@ -470,6 +480,7 @@ export class CodeGraphProjectSupervisor {
           retryTimer: null,
           root,
           running: false,
+          task: null,
           sourcePath: target.sourcePath,
           state: "queued",
           watcher: null,
@@ -673,6 +684,82 @@ export class CodeGraphProjectSupervisor {
     }
   }
 
+  // Caller has already verified Cantrip ownership of the checkout. Cleanup
+  // must also work before its first observation/configuration after restart.
+  async withRetiredIndex<T>(
+    root: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const canonical = path.resolve(root);
+    const previous = this.#retirements.get(canonical);
+    let release!: () => void;
+    const retirement = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.#retirements.set(canonical, retirement);
+    await previous;
+    try {
+      const project = this.#projects.get(canonical);
+      const task = project?.task;
+      if (project) this.#remove(project);
+      // Aborting an index command is not proof that its child has exited.
+      await task;
+      await Promise.allSettled([...this.#excludeQueues.values()]);
+      try {
+        const index = await lstat(path.join(canonical, INDEX_DIRECTORY)).catch(
+          (error: NodeJS.ErrnoException) => {
+            if (error.code === "ENOENT") return null;
+            throw error;
+          },
+        );
+        if (index?.isDirectory() && !index.isSymbolicLink()) {
+          const result = await this.#execute(
+            this.#command,
+            [...this.#commandArguments, "uninit", "--force", canonical],
+            {
+              cwd: canonical,
+              environment: this.#environment,
+              signal: this.#shutdown.signal,
+              timeoutMs: STATUS_TIMEOUT_MS,
+            },
+          );
+          if (result.code !== 0)
+            throw new Error(
+              `CodeGraph index retirement failed: ${(result.stderr || result.stdout).trim() || `exit ${result.code}`}`,
+            );
+          workerLogger.event("info", "CodeGraph index retired", {
+            event: "codegraph.project.retired",
+            subsystem: "codegraph",
+            operation: "uninit",
+            status: "completed",
+            worktreePath: canonical,
+          });
+        }
+      } catch (error) {
+        // The filesystem operation still runs its own dirty/ignored checks.
+        // An unavailable optional index tool must not replace their outcome.
+        workerLogger.event(
+          "warn",
+          "CodeGraph index retirement did not complete",
+          {
+            event: "codegraph.project.retirement-failed",
+            subsystem: "codegraph",
+            operation: "uninit",
+            status: "degraded",
+            reasonCode: "cleanup-failed",
+            worktreePath: canonical,
+            error: workerLogError(error),
+          },
+        );
+      }
+      return await operation();
+    } finally {
+      release();
+      if (this.#retirements.get(canonical) === retirement)
+        this.#retirements.delete(canonical);
+    }
+  }
+
   detach(root: string): void {
     const project = this.#projects.get(path.resolve(root));
     if (project) this.#remove(project);
@@ -680,6 +767,7 @@ export class CodeGraphProjectSupervisor {
 
   close(): void {
     this.#closed = true;
+    this.#shutdown.abort();
     this.#configurationGeneration += 1;
     if (this.#reconcileTimer) clearInterval(this.#reconcileTimer);
     this.#reconcileTimer = null;
@@ -826,12 +914,15 @@ export class CodeGraphProjectSupervisor {
       }
       project.abortController = new AbortController();
       this.#emit(project);
-      void this.#run(project, action).finally(() => {
+      const task = this.#run(project, action).finally(() => {
+        if (project.task === task) project.task = null;
         project.abortController = null;
         project.running = false;
         this.#activeOperations -= 1;
         this.#pump();
       });
+      project.task = task;
+      void task;
     }
   }
 

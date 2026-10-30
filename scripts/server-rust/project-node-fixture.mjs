@@ -38,6 +38,126 @@ try {
           consoleTrace,
         );
         value = { result: value, trace: consoleTrace };
+      } else if (request.op.startsWith("replica-")) {
+        const repo = database.repository.projectReplicaJobs;
+        const {
+          owner,
+          job,
+          command,
+          attempt,
+          revision,
+          update,
+          error,
+          worker,
+        } = request;
+        switch (request.op) {
+          case "replica-provision":
+            value = await repo.createProvision(
+              owner,
+              request.project,
+              request.input,
+            );
+            break;
+          case "replica-synchronize":
+            value = await repo.createSynchronize(
+              owner,
+              request.project,
+              request.replica,
+              request.input,
+            );
+            break;
+          case "replica-remove":
+            value = await repo.createRemove(
+              owner,
+              request.project,
+              request.replica,
+              request.input,
+            );
+            break;
+          case "replica-context":
+            value = await repo.operationContext(job, command);
+            break;
+          case "replica-repair-context":
+            value = await repo.linkRepairContext(
+              owner,
+              request.project,
+              request.replica,
+            );
+            break;
+          case "replica-removal-blocker":
+            value = await repo.removalBlocker(request.replica, job);
+            break;
+          case "replica-removal-start":
+            value = await repo.markRemovalStarted(request.replica);
+            break;
+          case "replica-removal-restore":
+            await repo.restoreRemovalReady(request.replica);
+            value = null;
+            break;
+          case "replica-complete-provision":
+            value = await repo.completeProvision(job, command, request.result);
+            break;
+          case "replica-complete-synchronize":
+            value = await repo.completeSynchronize(
+              job,
+              command,
+              request.result,
+            );
+            break;
+          case "replica-complete-remove":
+            value = await repo.completeRemove(job, command, request.result);
+            break;
+          case "replica-provision-race":
+            value = (
+              await Promise.allSettled([
+                repo.createProvision(owner, request.project, request.input),
+                repo.createProvision(owner, request.project, request.input),
+              ])
+            ).map((r) =>
+              r.status === "fulfilled"
+                ? { ok: r.value }
+                : { error: r.reason.message, kind: r.reason.constructor.name },
+            );
+            break;
+          case "replica-get":
+            value = await repo.get(owner, job);
+            break;
+          case "replica-list":
+            value = await repo.list(owner, request.project);
+            break;
+          case "replica-claim":
+            value = await repo.claimNext();
+            break;
+          case "replica-renew":
+            value = await repo.renewLease(job, command, attempt);
+            break;
+          case "replica-progress":
+            value = await repo.updateProgress(job, command, attempt, update);
+            break;
+          case "replica-block":
+            value = await repo.block(job, command, error);
+            break;
+          case "replica-fail":
+            value = await repo.fail(job, command, error);
+            break;
+          case "replica-retry":
+            value = await repo.retry(owner, job, revision);
+            break;
+          case "replica-cancel":
+            value = await repo.cancel(owner, job, revision);
+            break;
+          case "replica-recover":
+            value = await repo.recoverInterrupted(
+              request.force,
+              new Date(request.now),
+            );
+            break;
+          case "replica-requeue":
+            value = await repo.requeueRetryableForWorker(worker);
+            break;
+          default:
+            throw new Error("Unknown replica fixture operation");
+        }
       } else if (request.op.startsWith("browser-")) {
         const repo = database.repository;
         switch (request.op) {
@@ -749,6 +869,9 @@ try {
             request.op.startsWith("layout-")
               ? error.message
               : (error.cause?.message ?? error.message),
+          ...(request.op.startsWith("replica-")
+            ? { replicaError: error.constructor.name }
+            : {}),
           ...(request.op.startsWith("folder-")
             ? { folderError: error.constructor.name }
             : {}),

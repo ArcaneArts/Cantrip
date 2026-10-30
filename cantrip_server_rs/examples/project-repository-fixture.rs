@@ -15,6 +15,8 @@ mod file_documents;
 mod pane_layouts;
 #[path = "support/project_surfaces.rs"]
 mod project_surfaces;
+#[path = "support/replicas.rs"]
+mod replicas;
 #[path = "support/repository_operations.rs"]
 mod repository_operations;
 #[path = "support/run_configurations.rs"]
@@ -112,6 +114,11 @@ async fn run() -> Result<()> {
                 ]))
             } else if request["op"]
                 .as_str()
+                .is_some_and(|op| op.starts_with("replica-"))
+            {
+                replicas::run(database.clone(), &request).boxed().await
+            } else if request["op"]
+                .as_str()
                 .is_some_and(|op| op.starts_with("tunnel-"))
             {
                 tunnels::run(database.clone(), &request).boxed().await
@@ -166,6 +173,20 @@ async fn run() -> Result<()> {
             Ok(value) => reply["value"] = value,
             Err(error) => {
                 reply["diagnostic"] = Value::String(error.to_string().into());
+                if let Some(error) =
+                    error.downcast_ref::<cantrip_server::projects::replicas::ReplicaError>()
+                {
+                    use cantrip_server::projects::replicas::ReplicaError;
+                    reply["replicaError"] = Value::String(
+                        match error {
+                            ReplicaError::Conflict(_) => "ProjectReplicaJobConflictError",
+                            ReplicaError::NotFound(_) => "ProjectReplicaJobNotFoundError",
+                            ReplicaError::Stale(_) => "ProjectReplicaJobStaleAttemptError",
+                        }
+                        .into(),
+                    );
+                }
+
                 if request["op"].as_str().is_some_and(|op| {
                     op.starts_with("project-surface-")
                         || op.starts_with("tunnel-")

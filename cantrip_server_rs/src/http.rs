@@ -20,6 +20,7 @@ mod direct_attachments;
 mod encryption;
 mod file_documents;
 mod folders;
+mod github_import;
 mod live_socket;
 mod middleware;
 mod on_response;
@@ -34,6 +35,7 @@ mod provider_credentials;
 mod provider_management;
 mod provider_quota;
 mod provider_telemetry;
+mod replicas;
 mod repository_operations;
 mod run_configurations;
 mod run_definitions;
@@ -144,6 +146,8 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(policies::routes())
         .merge(projects::routes())
         .merge(folders::routes())
+        .merge(github_import::routes())
+        .merge(replicas::routes())
         .merge(file_documents::routes())
         .merge(pane_layouts::routes())
         .merge(project_surfaces::routes())
