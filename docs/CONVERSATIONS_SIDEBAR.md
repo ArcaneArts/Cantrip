@@ -15,7 +15,7 @@ Implementation milestones follow the [manual change protocol](agents/MANUAL_CHAN
 
 ## Implementation record
 
-### Catalog cycle (in progress)
+### Catalog cycle (merged)
 
 The `codex/conversations-catalog` worktree adds bounded Agent catalog pages,
 server-issued usage tracking with retry receipts and per-client sequencing,
@@ -37,12 +37,51 @@ The broader `pnpm check` found the new tables' missing accounting classification
 a separate checkout of base commit `dc995f51a`; the full check is not recorded
 as passing. Initial Windows CI also encountered an `EBUSY` temporary-directory
 cleanup failure; the subsequent native-contract run passed on Windows without
-changing its assertions. Delivery is tracked in PR #2326; merge is pending.
+changing its assertions. PR [#2326](https://github.com/ArcaneArts/Cantrip/pull/2326) squash-merged as
+`ae2a214b5`. Clean Primary was fast-forwarded and the catalog worktree removed.
+The next cycle, `codex/conversation-views`, implements owned conversation slots
+and their lifecycle integration.
 
-Owned conversation slots, sidebar rendering, client usage signals, inline
-archive interaction, rail placement, Rust workspace parity, and real-interaction
-and scale acceptance remain unimplemented. No feature acceptance item below is
-claimed complete by these server contracts alone.
+### Owned conversation views cycle (in progress, not merged)
+
+The isolated `codex/conversation-views` branch adds version 2 ownership with a
+retained center conversation slot and explicit content selection, separate from
+rail tabs. The current changes cover TypeScript commands, projection, draft
+checkpoint integration, direct-view recovery, and server version negotiation.
+Native commands, validation, resource removal, detach/return, and version
+negotiation now have matching implementations and compatibility fixtures.
+The final diff and delivery checks are underway before this cycle can be
+published. It does not yet expose the sidebar entry points from milestone 3.
+
+All 977 protocol tests pass, including 16 focused conversation-view tests.
+Coverage includes same-pane rail conversion without losing another tab,
+tab-free rail conversion, splitting while retaining the other view, occupied
+return slots, content added while detached, and legacy editor import after a
+version upgrade. The Rust workspace contract suite and both workspace model
+suites pass, including direct-view transfer and import comparisons. HTTP parity
+passes on PGlite and private PostgreSQL across unauthenticated, password, and account profiles (61,
+64, and 66 observations respectively), including old-client read/write/import
+rejection, canonical encrypted titles, receipt replay, and Task/standalone/
+archived/foreign-chat denial. All 19 app workspace API tests pass, including
+version headers on every route. App and server typechecking and the production
+app build pass. All 16 focused workspace API tests pass. Native repository
+compatibility passes all 66 cases and 11 retained-state snapshots on both
+PGlite and private PostgreSQL.
+
+The broad repository check initially found a stale generated route inventory;
+it was regenerated from the changed routes. The restarted check reached CUA
+tests, where `compact_score_supports_full_frame_budget_and_default_holds`
+exceeded its JavaScript execution time limit during concurrent native builds.
+The exact test passed when rerun without that concurrent build; the full check
+is not recorded as passing. Native server clippy passes with warnings denied.
+The full app suite passes (3,917 tests, three skipped across 556 files), and
+the generated workspace query manifest matches the actual repository queries.
+These are interim results, not evidence that the cycle or feature is complete.
+
+Sidebar rendering, client usage signals, inline archive interaction, full rail
+placement interaction, Rust workspace parity, and real-interaction and scale
+acceptance remain outstanding. No feature acceptance item below is claimed
+complete by these partial changes.
 
 ## Product outcome
 

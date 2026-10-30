@@ -1,3 +1,4 @@
+import { workspacePaneViews } from "@cantrip/protocol";
 import {
   useEffect,
   useCallback,
@@ -163,7 +164,9 @@ export function useWorkspaceEditorTransfer({
         ...new Set([
           ...(layout.windows
             .find(({ id }) => id === connection?.windowId)
-            ?.panes.flatMap((pane) => pane.tabs.map(({ id }) => id)) ?? []),
+            ?.panes.flatMap((pane) =>
+              workspacePaneViews(pane).map(({ id }) => id),
+            ) ?? []),
           ...(layout.pendingTransfers ?? [])
             .filter(
               ({ destinationWindowId }) =>
@@ -292,7 +295,9 @@ export function useWorkspaceEditorTransfer({
           if (!reservation || !pane)
             throw new Error("Workspace transfer source is unavailable.");
           const tabs = reservation.tabIds.map((id) => {
-            const tab = pane.tabs.find((candidate) => candidate.id === id);
+            const tab = workspacePaneViews(pane).find(
+              (candidate) => candidate.id === id,
+            );
             if (!tab) throw new Error("Workspace transfer tab is unavailable.");
             return tab;
           });

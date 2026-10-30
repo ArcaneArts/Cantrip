@@ -34,15 +34,17 @@ pub(super) fn refine(
         .as_ref()
         .ok_or(ValidationError::Operation)?
         .clone();
-    let mut issue = |suffix: Vec<Value>, message: &str| {
-        let mut at = path.to_vec();
-        at.extend(suffix);
-        result.issue(json!({"code":"custom"}), &at, message.into(), false);
-    };
+    macro_rules! issue {
+        ($suffix:expr, $message:expr $(,)?) => {{
+            let mut at = path.to_vec();
+            at.extend($suffix);
+            result.issue(json!({"code":"custom"}), &at, $message.into(), false);
+        }};
+    }
     match tag {
         "workspace-pane-title" => {
             if value["classification"]["recordKind"] != "tab-group" {
-                issue(vec![], "Pane titles require tab-group classification.");
+                issue!(vec![], "Pane titles require tab-group classification.");
             }
         }
         "project-tab-member" => {
@@ -57,7 +59,7 @@ pub(super) fn refine(
             };
             if value["titleProtection"].is_null() {
                 if value["tabKind"] != "terminal" && value["tabKind"] != "builtin" {
-                    issue(
+                    issue!(
                         vec![json!("titleProtection")],
                         "Only Run configuration terminal tabs may omit a protected title.",
                     );
@@ -65,7 +67,7 @@ pub(super) fn refine(
             } else if expected
                 .is_none_or(|kind| value["titleProtection"]["classification"]["recordKind"] != kind)
             {
-                issue(
+                issue!(
                     vec![
                         json!("titleProtection"),
                         json!("classification"),
@@ -81,24 +83,24 @@ pub(super) fn refine(
                 )
                 .is_err()
                 {
-                    issue(
+                    issue!(
                         vec![json!("tabId")],
                         "Built-in tab id must be a built-in surface definition.",
                     );
                 }
                 if !coercion::truthy(value.get("builtInState")) {
-                    issue(
+                    issue!(
                         vec![json!("builtInState")],
                         "Built-in tabs must include their persisted state.",
                     );
                 } else if value["builtInState"]["definitionId"] != value["tabId"] {
-                    issue(
+                    issue!(
                         vec![json!("builtInState"), json!("definitionId")],
                         "Built-in tab state must match its definition id.",
                     );
                 }
             } else if !value["builtInState"].is_null() {
-                issue(
+                issue!(
                     vec![json!("builtInState")],
                     "Entity-backed tabs cannot include built-in state.",
                 );
@@ -112,13 +114,13 @@ pub(super) fn refine(
                     "paneId"
                 }] != value["id"]
                 {
-                    issue(
+                    issue!(
                         vec![json!("members"), json!(index), json!("paneId")],
                         "Pane members must reference their containing pane.",
                     );
                 }
                 if member["projectId"] != value["projectId"] {
-                    issue(
+                    issue!(
                         vec![json!("members"), json!(index), json!("projectId")],
                         "Pane members must belong to the pane project.",
                     );
@@ -128,16 +130,40 @@ pub(super) fn refine(
                     && value["region"] != "bottom"
                     && !member["dockPresentation"].is_null()
                 {
-                    issue(
+                    issue!(
                         vec![json!("members"), json!(index), json!("dockPresentation")],
                         "Dock presentation is only valid in right or bottom panes.",
+                    );
+                }
+            }
+            if tag == "project-pane" {
+                let direct = value.get("conversationView").filter(|v| !v.is_null());
+                if values(&value, "members").is_empty() && direct.is_none() {
+                    let mut at = path.to_vec();
+                    at.push(json!("members"));
+                    result.issue(
+                        json!({"code":"too_small","origin":"array","minimum":1,"inclusive":true}),
+                        &at,
+                        "Too small: expected array to have >=1 items".into(),
+                        false,
+                    );
+                }
+                if let Some(view) = direct
+                    && (value["region"] != "center"
+                        || view["tabKind"] != "chat"
+                        || view["paneId"] != value["id"]
+                        || view["projectId"] != value["projectId"])
+                {
+                    issue!(
+                        vec![json!("conversationView")],
+                        "Conversation content must be an Agent view owned by this center pane."
                     );
                 }
             }
             if coercion::truthy(value.get("titleProtection"))
                 && value["titleProtection"]["classification"]["recordKind"] != "tab-group"
             {
-                issue(
+                issue!(
                     vec![
                         json!("titleProtection"),
                         json!("classification"),
@@ -147,7 +173,7 @@ pub(super) fn refine(
                 );
             }
             if values(&value, "members").len() == 1 && !value["titleProtection"].is_null() {
-                issue(
+                issue!(
                     vec![json!("titleProtection")],
                     "A single-tab group derives its title from its member.",
                 );
@@ -167,19 +193,23 @@ pub(super) fn refine(
             .enumerate()
             {
                 if pane["projectId"] != value["projectId"] {
-                    issue(
+                    issue!(
                         vec![json!("panes"), json!(pi), json!("projectId")],
                         "Panes must belong to the layout project.",
                     );
                 }
-                for (mi, member) in values(pane, "members").iter().enumerate() {
+                for (mi, member) in values(pane, "members")
+                    .iter()
+                    .chain(pane.get("conversationView").filter(|v| !v.is_null()))
+                    .enumerate()
+                {
                     if !tabs.insert(
                         member["tabKey"]
                             .as_js_string()
                             .ok_or(ValidationError::Operation)?
                             .clone(),
                     ) {
-                        issue(
+                        issue!(
                             vec![
                                 json!("panes"),
                                 json!(pi),
@@ -200,7 +230,7 @@ pub(super) fn refine(
                     .collect();
                 if root.is_null() {
                     if !centers.is_empty() {
-                        issue(
+                        issue!(
                             vec![json!("centerRoot")],
                             "A center layout root is required when center panes exist.",
                         );
@@ -213,7 +243,7 @@ pub(super) fn refine(
                     while let Some((node, at, depth)) = pending.pop() {
                         count += 1;
                         if depth > 32 || count > 255 {
-                            issue(
+                            issue!(
                                 at,
                                 "The center layout exceeds its supported topology bounds.",
                             );
@@ -223,14 +253,14 @@ pub(super) fn refine(
                             let mut leaf_path = at;
                             leaf_path.push(json!("paneId"));
                             if leaves.contains(&node["paneId"]) {
-                                issue(
+                                issue!(
                                     leaf_path.clone(),
                                     "A center pane may appear in the layout tree only once.",
                                 );
                             }
                             leaves.push(node["paneId"].clone());
                             if !centers.contains(&node["paneId"]) {
-                                issue(
+                                issue!(
                                     leaf_path,
                                     "Center layout leaves must reference center panes.",
                                 );
@@ -239,7 +269,7 @@ pub(super) fn refine(
                             if splits.contains(&node["id"]) {
                                 let mut split_path = at.clone();
                                 split_path.push(json!("id"));
-                                issue(split_path, "Center split ids must be unique.");
+                                issue!(split_path, "Center split ids must be unique.");
                             }
                             splits.push(node["id"].clone());
                             let mut second = at.clone();
@@ -254,7 +284,7 @@ pub(super) fn refine(
                     let mut reported = Vec::new();
                     for pane in centers {
                         if !leaves.contains(&pane) && !reported.contains(&pane) {
-                            issue(
+                            issue!(
                                 vec![json!("centerRoot")],
                                 "Every center pane must appear in the layout tree.",
                             );
@@ -266,7 +296,7 @@ pub(super) fn refine(
         }
         "pane-move" => {
             if !value["targetPaneId"].is_null() && value.get("targetRegion").is_some() {
-                issue(
+                issue!(
                     vec![json!("targetRegion")],
                     "Specify either a target pane or a target region, not both.",
                 );
@@ -276,7 +306,7 @@ pub(super) fn refine(
                 && value["targetRegion"] != "right"
                 && value["targetRegion"] != "bottom"
             {
-                issue(
+                issue!(
                     vec![json!("targetPanePosition")],
                     "A pane position is required when splitting a tab into a new pane.",
                 );
@@ -284,7 +314,7 @@ pub(super) fn refine(
         }
         "legacy-pane-move" => {
             if value["targetGroupId"].is_null() && value.get("targetGroupPosition").is_none() {
-                issue(
+                issue!(
                     vec![json!("targetGroupPosition")],
                     "A sidebar position is required when splitting a tab into a new group.",
                 );

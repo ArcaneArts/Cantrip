@@ -1,6 +1,7 @@
 import {
   applyWorkspaceCommand,
   workspaceOwnershipSchema,
+  workspacePaneViews,
   type ProjectSurfaceDefinitionId,
 } from "@cantrip/protocol";
 import { and, asc, eq } from "drizzle-orm";
@@ -43,7 +44,7 @@ export async function removeResourceWorkspaceViews(
     let layout = workspaceOwnershipSchema.parse(row.layout);
     const removals = layout.windows.flatMap((window) =>
       window.panes.flatMap((pane) =>
-        pane.tabs
+        workspacePaneViews(pane)
           .filter(
             (tab) =>
               tab.resource.kind === "entity" &&
@@ -56,10 +57,24 @@ export async function removeResourceWorkspaceViews(
             windowId: window.id,
             generation: window.attachmentGeneration,
             tabId: tab.id,
+            conversation: pane.conversationView?.id === tab.id,
           })),
       ),
     );
     for (const removal of removals) {
+      for (const transfer of (layout.pendingTransfers ?? []).filter((t) =>
+        t.tabIds.includes(removal.tabId),
+      )) {
+        layout = applyWorkspaceCommand(layout, {
+          projectId,
+          workspaceId: layout.id,
+          windowId: transfer.sourceWindowId,
+          attachmentGeneration: transfer.sourceGeneration,
+          expectedRevision: layout.revision,
+          operationId: `resource-removal-transfer:${resourceId}:${transfer.id}`,
+          action: { type: "cancel-transfer", transferId: transfer.id },
+        }).layout;
+      }
       layout = applyWorkspaceCommand(layout, {
         projectId,
         workspaceId: layout.id,
@@ -67,7 +82,9 @@ export async function removeResourceWorkspaceViews(
         attachmentGeneration: removal.generation,
         expectedRevision: layout.revision,
         operationId: `resource-removal:${resourceId}:${removal.tabId}`,
-        action: { type: "close-tab", tabId: removal.tabId },
+        action: removal.conversation
+          ? { type: "close-conversation", viewId: removal.tabId }
+          : { type: "close-tab", tabId: removal.tabId },
       }).layout;
     }
     if (removals.length)

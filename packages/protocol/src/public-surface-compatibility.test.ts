@@ -425,6 +425,14 @@ const fileDocumentExports = [
   "fileDocumentWireListSchema",
   "fileDocumentWireSummarySchema",
 ];
+const conversationViewExports = [
+  "migrateWorkspaceConversationViews",
+  "projectPaneViews",
+  "workspaceContentSelectionSchema",
+  "workspaceConversationViewSchema",
+  "workspacePaneViews",
+  "workspaceSelectedViewId",
+];
 const conversationCatalogExports = [
   "archivedConversationWireSummarySchema",
   "conversationCatalogQuerySchema",
@@ -460,6 +468,7 @@ describe("protocol public surface compatibility", () => {
           !fileDocumentExports.includes(name) &&
           !legacyFileImportExports.includes(name) &&
           !conversationCatalogExports.includes(name) &&
+          !conversationViewExports.includes(name) &&
           !taskAutomaticRetryExports.includes(name) &&
           !taskConversationExports.includes(name) &&
           !chatFileReferencesExports.includes(name) &&
@@ -472,7 +481,10 @@ describe("protocol public surface compatibility", () => {
     expect(
       exportNames.filter((name) => retiredWorkbenchExports.includes(name)),
     ).toEqual([]);
-    expect(exportNames).toHaveLength(2101);
+    expect(exportNames).toHaveLength(2107);
+    expect(
+      exportNames.filter((name) => conversationViewExports.includes(name)),
+    ).toEqual(conversationViewExports);
     expect(
       exportNames.filter((name) => conversationCatalogExports.includes(name)),
     ).toEqual(conversationCatalogExports);

@@ -4813,7 +4813,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/workspace-layouts.ts",
-      "line": 29,
+      "line": 45,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/workspace-layouts/:workspaceId",
@@ -4826,7 +4826,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/workspace-layouts.ts",
-      "line": 62,
+      "line": 82,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/workspace-layouts/:workspaceId/commands",
@@ -4839,7 +4839,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/workspace-layouts.ts",
-      "line": 86,
+      "line": 107,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/workspace-layouts/:workspaceId/import-legacy-files",
@@ -4852,7 +4852,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/workspace-layouts.ts",
-      "line": 39,
+      "line": 59,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/workspace-layouts/:workspaceId/seed",

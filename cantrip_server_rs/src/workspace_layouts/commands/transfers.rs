@@ -78,11 +78,11 @@ pub(super) fn apply(state: &mut Command, action: &Value) -> Result<()> {
                 t["id"] == action["transferId"]
                     || values(t, "tabIds")
                         .iter()
-                        .any(|id| values(&pane, "tabs").iter().any(|tab| tab["id"] == *id))
+                        .any(|id| pane_views(&pane).iter().any(|tab| tab["id"] == *id))
             }) {
                 return Err(invalid("Transfer identity or views are already in use."));
             }
-            let ids = values(&pane, "tabs")
+            let ids = pane_views(&pane)
                 .iter()
                 .map(|t| t["id"].clone())
                 .collect::<Vec<_>>();
@@ -94,14 +94,14 @@ pub(super) fn apply(state: &mut Command, action: &Value) -> Result<()> {
             let single = truthy(action.get("tabId"));
             let selected = if single {
                 vec![
-                    values(&pane, "tabs")
+                    pane_views(&pane)
                         .iter()
                         .find(|t| t["id"] == action["tabId"])
                         .cloned()
                         .ok_or_else(|| missing("Tab does not belong to the source pane."))?,
                 ]
             } else {
-                values(&pane, "tabs").to_vec()
+                pane_views(&pane).to_vec()
             };
             let mut transfers = pending(state);
             if state
@@ -135,12 +135,16 @@ pub(super) fn apply(state: &mut Command, action: &Value) -> Result<()> {
             let mut windows = values(&state.layout, "windows").to_vec();
             windows.push(json!({"id":action["destinationWindowId"],"attachmentGeneration":0,"panes":Vec::<Value>::new(),"centerRoot":Value::Null,"focusedPaneId":Value::Null,"recentPaneIds":Vec::<Value>::new()}));
             state.layout["windows"] = Value::Array(windows);
-            let tab_position = values(&pane, "tabs")
+            let tab_position = pane_views(&pane)
                 .iter()
                 .position(|t| t["id"] == selected[0]["id"])
                 .unwrap();
             let ids = selected.iter().map(|t| t["id"].clone()).collect::<Vec<_>>();
-            transfers.push(json!({"id":action["transferId"],"sourceWindowId":state.window["id"],"sourceGeneration":state.window["attachmentGeneration"],"sourcePaneId":pane["id"],"sourcePlacement":placement(state,&pane,tab_position),"tabIds":ids,"wholePane":!single,"destinationWindowId":action["destinationWindowId"],"destinationGeneration":0,"destinationPaneId":action["destinationPaneId"],"phase":"preparing"}));
+            let mut source_placement = placement(state, &pane, tab_position);
+            if single && pane["conversationView"]["id"] == action["tabId"] {
+                source_placement["viewKind"] = json!("conversation");
+            }
+            transfers.push(json!({"id":action["transferId"],"sourceWindowId":state.window["id"],"sourceGeneration":state.window["attachmentGeneration"],"sourcePaneId":pane["id"],"sourcePlacement":source_placement,"tabIds":ids,"wholePane":!single,"destinationWindowId":action["destinationWindowId"],"destinationGeneration":0,"destinationPaneId":action["destinationPaneId"],"phase":"preparing"}));
             state.layout["pendingTransfers"] = Value::Array(transfers);
         }
         "transfer-ready" | "transfer-state-ready" => {
@@ -225,7 +229,7 @@ fn commit(state: &mut Command, action: &Value) -> Result<()> {
     let selected = values(&transfer, "tabIds")
         .iter()
         .map(|id| {
-            values(&source, "tabs")
+            pane_views(&source)
                 .iter()
                 .find(|tab| tab["id"] == *id)
                 .cloned()
@@ -235,8 +239,8 @@ fn commit(state: &mut Command, action: &Value) -> Result<()> {
         })
         .collect::<Result<Vec<_>>>()?;
     if transfer["wholePane"] == true
-        && (values(&source, "tabs").len() != selected.len()
-            || values(&source, "tabs")
+        && (pane_views(&source).len() != selected.len()
+            || pane_views(&source)
                 .iter()
                 .zip(values(&transfer, "tabIds"))
                 .any(|(tab, id)| tab["id"] != *id))
@@ -255,7 +259,13 @@ fn commit(state: &mut Command, action: &Value) -> Result<()> {
             return Err(invalid("Single-tab transfer contains multiple tabs."));
         }
         take_tab(&mut state.window, &source, &selected[0]);
-        json!({"id":transfer["destinationPaneId"],"region":"center","titleProtection":source["titleProtection"],"tabs":selected,"activeTabId":selected[0]["id"]})
+        if transfer["sourcePlacement"]["viewKind"] == "conversation" {
+            json!({"id":transfer["destinationPaneId"],"region":"center","titleProtection":source["titleProtection"],
+                "tabs":Vec::<Value>::new(),"activeTabId":Value::Null,"conversationView":selected[0],
+                "selection":json!({"kind":"conversation","viewId":selected[0]["id"]})})
+        } else {
+            json!({"id":transfer["destinationPaneId"],"region":"center","titleProtection":source["titleProtection"],"tabs":selected,"activeTabId":selected[0]["id"]})
+        }
     };
     if truthy(transfer.get("returnSplitId")) {
         let previous = &state.window["returnPlacement"];
@@ -269,27 +279,46 @@ fn commit(state: &mut Command, action: &Value) -> Result<()> {
         };
         let original_pane = original
             .as_ref()
-            .filter(|o| o["wholePane"] != true)
+            .filter(|o| {
+                o["wholePane"] != true
+                    && if o["sourcePlacement"]["viewKind"] == "conversation" {
+                        !moved["conversationView"].is_null() && values(&moved, "tabs").is_empty()
+                    } else {
+                        moved["conversationView"].is_null()
+                    }
+            })
             .and_then(|o| {
                 values(&destination, "panes")
                     .iter()
-                    .find(|p| p["id"] == o["sourcePaneId"])
+                    .find(|p| {
+                        p["id"] == o["sourcePaneId"]
+                            && (o["sourcePlacement"]["viewKind"] != "conversation"
+                                || (p["region"] == "center" && p["conversationView"].is_null()))
+                    })
                     .cloned()
             });
         if let Some(mut pane) = original_pane {
-            let at = (original.as_ref().unwrap()["sourcePlacement"]["tabPosition"]
-                .as_u64()
-                .unwrap() as usize)
-                .min(values(&pane, "tabs").len());
-            tabs(&mut pane).splice(at..at, values(&moved, "tabs").to_vec());
+            if original.as_ref().unwrap()["sourcePlacement"]["viewKind"] == "conversation" {
+                pane["conversationView"] = moved["conversationView"].clone();
+            } else {
+                let at = (original.as_ref().unwrap()["sourcePlacement"]["tabPosition"]
+                    .as_u64()
+                    .unwrap() as usize)
+                    .min(values(&pane, "tabs").len());
+                tabs(&mut pane).splice(at..at, values(&moved, "tabs").to_vec());
+            }
             let id = pane["id"].clone();
             store_pane(&mut destination, pane);
-            focus(&mut destination, &id, &moved["activeTabId"]);
+            focus(&mut destination, &id, &selected_view_id(&moved));
         } else {
-            moved["region"] = original
-                .as_ref()
-                .map(|o| o["sourcePlacement"]["region"].clone())
-                .unwrap_or_else(|| json!("center"));
+            moved["region"] = if !moved["conversationView"].is_null() {
+                json!("center")
+            } else {
+                original
+                    .as_ref()
+                    .map(|o| o["sourcePlacement"]["region"].clone())
+                    .unwrap_or_else(|| json!("center"))
+            };
             let length = values(&destination, "panes").len();
             let at = original
                 .as_ref()
@@ -320,13 +349,13 @@ fn commit(state: &mut Command, action: &Value) -> Result<()> {
                     leaf(&moved["id"])
                 };
             }
-            focus(&mut destination, &moved["id"], &moved["activeTabId"]);
+            focus(&mut destination, &moved["id"], &selected_view_id(&moved));
         }
     } else {
         destination["panes"] = Value::Array(vec![moved.clone()]);
         destination["centerRoot"] = leaf(&moved["id"]);
         destination["returnPlacement"] = json!({"detachedPaneId":moved["id"],"sourceWindowId":transfer["sourceWindowId"],"sourcePaneId":transfer["sourcePaneId"],"sourcePlacement":transfer["sourcePlacement"],"wholePane":transfer["wholePane"]});
-        focus(&mut destination, &moved["id"], &moved["activeTabId"]);
+        focus(&mut destination, &moved["id"], &selected_view_id(&moved));
     }
     state.focus_window = destination["id"].clone();
     state.store_window(destination);

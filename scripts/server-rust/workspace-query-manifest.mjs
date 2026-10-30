@@ -61,7 +61,15 @@ function fullRow(table, fields) {
   return manifest.columns[table].map((key) => fields[key] ?? null);
 }
 function bindings(source, parameters) {
-  return parameters.map((value) => {
+  return parameters.map((value, index) => {
+    // The conversation predicate's context enum shares the fixture project ID's
+    // spelling, but must remain a literal when executing another project ID.
+    if (
+      phase === "conversation" &&
+      source.startsWith('select "protected_label" from "chats"') &&
+      index === 3
+    )
+      return { constant: value, kind: "text" };
     if (ids.includes(value))
       return { document: ids.indexOf(value), kind: "text" };
     if (
@@ -78,7 +86,7 @@ function bindings(source, parameters) {
       return { key: value, kind: "text" };
     if (typeof value === "string" && /^[{[]/u.test(value)) {
       const data = JSON.parse(value);
-      if (data.version === 1 && data.windows)
+      if ((data.version === 1 || data.version === 2) && data.windows)
         return { key: "layout", kind: "jsonb" };
       if (data.operationId) return { key: "command", kind: "jsonb" };
     }
@@ -176,6 +184,9 @@ const database = new Proxy(
     } else if (table === "file_documents") {
       key = phase === "import" ? "import_document" : "resolve_document";
       rows = phase === "resolve_file_fallback" ? [] : [[parameters[0]]];
+    } else if (phase === "conversation" && table === "chats") {
+      key = "resolve_conversation";
+      rows = [[null]];
     } else if (phase.startsWith("resolve")) {
       key = "resolve_" + names[table];
       rows = [["resource", null]];
@@ -237,6 +248,17 @@ const home = {
 await repository.execute("owner", home);
 phase = "execute_replay";
 await repository.execute("owner", home);
+reset();
+phase = "conversation";
+await repository.execute("owner", {
+  ...home,
+  action: {
+    type: "open-conversation",
+    view: workspaceTab("conversation", "resource", "project.agent"),
+    newPaneId: "conversation-pane",
+    splitId: "conversation-split",
+  },
+});
 for (const definition of manifest.surfaceDefinitions.filter((d) => d.tabKind)) {
   phase = "resolve";
   await resolveEntitySurface(database, "project", {

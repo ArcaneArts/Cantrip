@@ -63,7 +63,11 @@ pub fn import_legacy_files(initial: &Value, input: &Value, titles: &Value) -> Re
     let tabs=values(&request,"views").iter().map(|view|json!({"id":view["tabId"],"resource":json!({"kind":"entity","definitionId":"project.file","resourceId":view["documentId"]}),"preview":false,"fileMode":view["mode"],"titleProtection":titles.as_object().unwrap().get(view["documentId"].as_js_string().unwrap()).unwrap(),"builtInState":Value::Null,"dockPresentation":Value::Null})).collect::<Vec<_>>();
     let active = tabs[0]["id"].clone();
     let mut windows = values(&layout, "windows").to_vec();
-    let pane = json!({"id":request["paneId"],"region":"center","titleProtection":Value::Null,"tabs":tabs,"activeTabId":active});
+    let mut pane = json!({"id":request["paneId"],"region":"center","titleProtection":Value::Null,"tabs":tabs,"activeTabId":active});
+    if layout["version"] == json!(2) {
+        pane["conversationView"] = Value::Null;
+        pane["selection"] = json!({"kind":"tab","tabId":active});
+    }
     let center = json!({"kind":"pane","paneId":request["paneId"]});
     windows.push(json!({"id":request["windowId"],"attachmentGeneration":0,"panes":vec![pane],"centerRoot":center,"focusedPaneId":request["paneId"],"recentPaneIds":vec![request["paneId"].clone()],"recentTabIds":vec![active]}));
     layout["windows"] = Value::Array(windows);

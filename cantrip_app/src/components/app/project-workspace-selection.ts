@@ -1,3 +1,4 @@
+import { projectPaneViews } from "@cantrip/protocol";
 import type { AppMode, ProjectTabLayoutSummary } from "@cantrip/protocol";
 import {
   useEffect,
@@ -58,12 +59,13 @@ export function projectWorkspaceSurfaceSelection(
   layout: ProjectTabLayoutSummary | undefined,
 ) {
   const selectedTabKey = selectedWorkspaceTabKey(workspaceSelection);
-  const member =
+  const pane =
     layout?.projectId === workspaceSelection.projectId
-      ? layout.panes
-          .find(({ id }) => id === workspaceSelection.focusedPaneId)
-          ?.members.find(({ tabKey }) => tabKey === selectedTabKey)
+      ? layout.panes.find(({ id }) => id === workspaceSelection.focusedPaneId)
       : undefined;
+  const member = pane
+    ? projectPaneViews(pane).find(({ tabKey }) => tabKey === selectedTabKey)
+    : undefined;
   const resourceId = (kind: string) =>
     member?.tabKind === kind ? member.tabId : null;
   const isProjectView =

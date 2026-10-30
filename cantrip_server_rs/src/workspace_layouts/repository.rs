@@ -16,6 +16,15 @@ pub struct Repository {
 fn command_error(code: &'static str, message: &str) -> anyhow::Error {
     ModelError::command(code, message).into()
 }
+pub(crate) fn assert_version(version: u64, supported: u64) -> Result<()> {
+    if version > supported {
+        return Err(command_error(
+            "version",
+            "Update Cantrip to open this workspace with conversation views.",
+        ));
+    }
+    Ok(())
+}
 fn layout(rows: &[Row]) -> Result<Option<Value>> {
     rows.first()
         .map(|row| {
@@ -34,7 +43,10 @@ fn layout(rows: &[Row]) -> Result<Option<Value>> {
 fn placements(layout: &Value) -> Result<()> {
     for window in values(layout, "windows") {
         for pane in values(window, "panes") {
-            for tab in values(pane, "tabs") {
+            for tab in values(pane, "tabs")
+                .iter()
+                .chain(pane.get("conversationView").filter(|v| !v.is_null()))
+            {
                 let valid =
                     queries::definition(&tab["resource"]["definitionId"]).is_some_and(|d| {
                         d.id != "project.overview"
@@ -127,11 +139,20 @@ impl Repository {
             .await
     }
     pub async fn execute(&self, owner: &str, input: &Value) -> Result<Option<Value>> {
+        self.execute_with_version(owner, input, 2).await
+    }
+    pub async fn execute_with_version(
+        &self,
+        owner: &str,
+        input: &Value,
+        supported_version: u64,
+    ) -> Result<Option<Value>> {
         let command = parse("workspaceCommandSchema", input)?;
         let mut fields = json!({"owner":owner,"project":command["projectId"],"workspace":command["workspaceId"],"operation":command["operationId"],"command":command});
         self.database.transaction(|tx|Box::pin(async move {
             if Query::new("authority",&fields)?.run(tx).await?.is_empty() {return Ok(None);}
             let Some(layout)=layout(&Query::new("locked",&fields)?.run(tx).await?)? else {return Ok(None);};
+            assert_version(if command["action"]["type"] == "open-conversation" { 2 } else { layout["version"].as_u64().unwrap() }, supported_version)?;
             let window=values(&layout,"windows").iter().find(|w|w["id"]==command["windowId"]);
             if window.is_none_or(|w|w["attachmentGeneration"]!=command["attachmentGeneration"]) {
                 return Err(command_error("attachment","The window attachment is no longer current."));
@@ -144,6 +165,12 @@ impl Repository {
             let mut effective=command.clone();
             let action=&command["action"];
             if action["type"]=="migrate-code-files" || action["type"]=="migrate-explorer-file" {migration(tx,&mut fields,action).await?;}
+            if action["type"] == "open-conversation" {
+                fields["resource"] = action["view"]["resource"]["resourceId"].clone();
+                let rows = Query::new("resolve_conversation", &fields)?.run(tx).await?;
+                let row = rows.first().ok_or_else(|| command_error("missing", "The Agent conversation is unavailable in this project."))?;
+                effective["action"]["view"]["titleProtection"] = row.get::<Option<postgres_types::Json<Value>>>(0)?.map(|v| v.0).unwrap_or(Value::Null);
+            }
             if action["type"]=="open" {
                 if action["tab"]["resource"]["kind"]=="entity" {
                     let label=resolve(tx,&mut fields,&action["tab"]["resource"]).await?.ok_or_else(||command_error("missing","The resource is unavailable in this project."))?;
@@ -170,6 +197,17 @@ impl Repository {
         workspace: &str,
         input: &Value,
     ) -> Result<Option<Value>> {
+        self.import_legacy_files_with_version(owner, project, workspace, input, 2)
+            .await
+    }
+    pub async fn import_legacy_files_with_version(
+        &self,
+        owner: &str,
+        project: &str,
+        workspace: &str,
+        input: &Value,
+        supported_version: u64,
+    ) -> Result<Option<Value>> {
         let input = parse("workspaceLegacyFileImportRequestSchema", input)?;
         let mut request = input.clone();
         let Value::Object(object) = &mut request else {
@@ -187,6 +225,7 @@ impl Repository {
                     else {
                         return Ok(None);
                     };
+                    assert_version(layout["version"].as_u64().unwrap(), supported_version)?;
                     let replay = values(&layout, "legacyFileImports")
                         .iter()
                         .any(|r| r["windowId"] == request["windowId"]);

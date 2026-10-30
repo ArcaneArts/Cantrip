@@ -1,5 +1,15 @@
 # Rust server replacement
 
+The Git/worktree/Run milestone broad `pnpm check` exited 1 with 1,633 server
+tests passing, two failing and 57 skipped. Both failures were freshly reproduced
+on clean Primary `b04530e3c`: the pooled-provider assertion in
+`local-foundation.test.ts:7218` and the missing `getModelRuntimeByRoute` mock in
+`terminal-managed-session.test.ts`. This does not make the broad check green.
+Reports: `.qa/rust-server/git-milestone-check-v1-exit.json` and
+`git-milestone-baseline-server-v1.log`. PR #2332's conversation-view changes were
+integrated by regenerating the combined contracts rather than replacing either
+feature set.
+
 Status: **implementation in progress; not a deployable replacement**.
 
 ## Protected Git operations and worker observations (in progress)

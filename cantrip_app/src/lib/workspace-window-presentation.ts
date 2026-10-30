@@ -1,8 +1,11 @@
+import { workspaceSelectedViewId } from "@cantrip/protocol";
 import type {
   ProjectTabKind,
   ProjectTabLayoutWireSummary,
   WorkspaceOwnership,
   WorkspaceTab,
+  WorkspacePane,
+  ProjectTabMemberWireSummary,
 } from "@cantrip/protocol";
 import { chatTitleEncryption } from "./chat-title-encryption";
 import type { WorkspaceSelection } from "./workspace-selection";
@@ -38,6 +41,33 @@ function tabKind(tab: WorkspaceTab): ProjectTabKind {
 // Never persist this projection or use these fields for recent-use ordering.
 const presentationTimestamp = "1970-01-01T00:00:00.000Z";
 
+function presentMember(
+  tab: WorkspaceTab,
+  pane: WorkspacePane,
+  position: number,
+  projectId: string,
+): ProjectTabMemberWireSummary {
+  return {
+    tabKey: tab.id,
+    tabId:
+      tab.resource.kind === "entity"
+        ? tab.resource.resourceId
+        : tab.resource.definitionId,
+    tabKind: tabKind(tab),
+    paneId: pane.id,
+    projectId,
+    position,
+    titleProtection: structuredClone(tab.titleProtection),
+    builtInState: structuredClone(tab.builtInState),
+    dockPresentation:
+      pane.region === "right" || pane.region === "bottom"
+        ? structuredClone(tab.dockPresentation)
+        : null,
+    createdAt: presentationTimestamp,
+    updatedAt: presentationTimestamp,
+  };
+}
+
 /** Read-only projection for existing pane components. It is not a second layout
  * store: only the named owner's panes are visible and tab keys remain opaque. */
 export function workspaceWindowPresentation(
@@ -59,29 +89,23 @@ export function workspaceWindowPresentation(
         projectId: layout.projectId,
         region: pane.region,
         position,
-        anchorTabKey: pane.activeTabId,
+        anchorTabKey: workspaceSelectedViewId(pane)!,
         titleProtection: structuredClone(pane.titleProtection),
         createdAt: presentationTimestamp,
         updatedAt: presentationTimestamp,
-        members: pane.tabs.map((tab, position) => ({
-          tabKey: tab.id,
-          tabId:
-            tab.resource.kind === "entity"
-              ? tab.resource.resourceId
-              : tab.resource.definitionId,
-          tabKind: tabKind(tab),
-          paneId: pane.id,
-          projectId: layout.projectId,
-          position,
-          titleProtection: structuredClone(tab.titleProtection),
-          builtInState: structuredClone(tab.builtInState),
-          dockPresentation:
-            pane.region === "right" || pane.region === "bottom"
-              ? structuredClone(tab.dockPresentation)
-              : null,
-          createdAt: presentationTimestamp,
-          updatedAt: presentationTimestamp,
-        })),
+        members: pane.tabs.map((tab, position) =>
+          presentMember(tab, pane, position, layout.projectId),
+        ),
+        ...(pane.conversationView
+          ? {
+              conversationView: presentMember(
+                pane.conversationView,
+                pane,
+                0,
+                layout.projectId,
+              ),
+            }
+          : {}),
       })),
     },
     selection: workspaceWindowSelection(layout.projectId, window),

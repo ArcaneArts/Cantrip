@@ -1,3 +1,4 @@
+import { projectPaneViews } from "@cantrip/protocol";
 import type { ProjectTabLayoutSummary } from "@cantrip/protocol";
 
 export interface WorkspaceSelection {
@@ -52,7 +53,7 @@ export function reconcileWorkspaceSelection(
   const projectChanged = selection.projectId !== layout.projectId;
   const centerPane = openCenterTab
     ? layout.panes.find(
-        ({ region, members }) => region === "center" && members.length > 0,
+        (pane) => pane.region === "center" && projectPaneViews(pane).length > 0,
       )
     : undefined;
   const overviewSelected =
@@ -61,8 +62,8 @@ export function reconcileWorkspaceSelection(
     !centerPane &&
     selection.destination === "overview";
   const preferredPane = preferredTabKey
-    ? layout.panes.find(({ members }) =>
-        members.some(({ tabKey }) => tabKey === preferredTabKey),
+    ? layout.panes.find((pane) =>
+        projectPaneViews(pane).some(({ tabKey }) => tabKey === preferredTabKey),
       )
     : undefined;
   const previousFocusedTabKey =
@@ -74,11 +75,16 @@ export function reconcileWorkspaceSelection(
     : undefined;
   const relocatedFocusedPane =
     previousFocusedTabKey &&
-    !previousFocusedPane?.members.some(
-      ({ tabKey }) => tabKey === previousFocusedTabKey,
+    !(
+      previousFocusedPane &&
+      projectPaneViews(previousFocusedPane).some(
+        ({ tabKey }) => tabKey === previousFocusedTabKey,
+      )
     )
-      ? layout.panes.find(({ members }) =>
-          members.some(({ tabKey }) => tabKey === previousFocusedTabKey),
+      ? layout.panes.find((pane) =>
+          projectPaneViews(pane).some(
+            ({ tabKey }) => tabKey === previousFocusedTabKey,
+          ),
         )
       : undefined;
   const focusedPane =
@@ -94,12 +100,12 @@ export function reconcileWorkspaceSelection(
       : selection.activeTabByPane[pane.id];
     const preferred =
       preferredPane?.id === pane.id &&
-      pane.members.some(({ tabKey }) => tabKey === preferredTabKey)
+      projectPaneViews(pane).some(({ tabKey }) => tabKey === preferredTabKey)
         ? preferredTabKey
         : undefined;
     activeTabByPane[pane.id] =
       preferred ??
-      (pane.members.some(({ tabKey }) => tabKey === previous)
+      (projectPaneViews(pane).some(({ tabKey }) => tabKey === previous)
         ? previous!
         : pane.anchorTabKey);
   }
@@ -116,8 +122,8 @@ export function selectWorkspaceTab(
   layout: ProjectTabLayoutSummary,
   tabKey: string,
 ): WorkspaceSelection {
-  const pane = layout.panes.find(({ members }) =>
-    members.some((member) => member.tabKey === tabKey),
+  const pane = layout.panes.find((pane) =>
+    projectPaneViews(pane).some((member) => member.tabKey === tabKey),
   );
   if (!pane || pane.projectId !== layout.projectId) return selection;
   const reconciled = reconcileWorkspaceSelection(selection, layout);
@@ -141,7 +147,8 @@ export function selectWorkspacePane(
   if (!pane) return selection;
   const remembered = selection.activeTabByPane[pane.id];
   const activeTabKey =
-    remembered && pane.members.some((member) => member.tabKey === remembered)
+    remembered &&
+    projectPaneViews(pane).some((member) => member.tabKey === remembered)
       ? remembered
       : pane.anchorTabKey;
   return {
