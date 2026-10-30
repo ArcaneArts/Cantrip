@@ -1,6 +1,7 @@
 pub mod coordinator;
 pub mod observations;
 pub mod placement;
+pub mod replicas;
 pub mod repository;
 pub mod repository_operation;
 pub mod targets;

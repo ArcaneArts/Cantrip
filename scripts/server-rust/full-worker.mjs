@@ -30,6 +30,7 @@ export function launchActualWorker(
     chromiumExecutable,
     chromiumTraceDirectory,
     workerId = "actual-catalog-worker",
+    traceShutdown = false,
   } = {},
 ) {
   const environment = {
@@ -66,6 +67,19 @@ export function launchActualWorker(
       ? { CANTRIP_CODEX_BIN: process.env.CANTRIP_CODEX_BIN }
       : {}),
   };
+  if (traceShutdown)
+    environment.NODE_OPTIONS = [
+      environment.NODE_OPTIONS,
+      "--import=" +
+        pathToFileURL(
+          path.join(
+            repositoryRoot,
+            "scripts/server-rust/worker-lifecycle-trace.mjs",
+          ),
+        ).href,
+    ]
+      .filter(Boolean)
+      .join(" ");
   delete environment.CANTRIP_WORKER_TOKEN;
   const child = spawn(
     process.execPath,

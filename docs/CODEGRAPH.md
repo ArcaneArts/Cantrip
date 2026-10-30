@@ -369,6 +369,18 @@ its own internal ignore file. Folder projects without Git need no exclusion.
 
 ### Removal and relinking
 
+Replica deletion retires its managed index after the worker verifies checkout
+ownership. The supervisor fences new indexing for that path, aborts and waits
+for the active CLI process to close, then runs `uninit --force` with
+`CODEGRAPH_DIR=.codegraph-cantrip`. This also works before observation has been
+configured after restart. A symlink at the index location is preserved. If the
+optional cleanup fails, the original filesystem checks still determine whether
+removal can proceed.
+
+The ordinary Git dirty, ignored-file and published-history checks remain in
+force. Other ignored user files block deletion and survive the attempt. Blocked
+removal restores observation; successful removal forgets the retired path.
+
 - Removing a secondary worktree stops its watcher before the checkout is
   deleted; the derived index disappears with it.
 - Unlinking a project while preserving local files stops supervision but may

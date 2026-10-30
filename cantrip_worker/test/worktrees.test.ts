@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import {
   mkdtemp,
   mkdir,
@@ -10,6 +10,7 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
 
 import type { WorkerNotification } from "@cantrip/protocol";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -70,6 +71,75 @@ async function createRepository(prefix = "cantrip-worktrees-test-") {
 }
 
 describe("worker Git worktrees", () => {
+  it("does not retain a worker process when observation configuration arrives after close", async () => {
+    const { repository, workerData } = await createRepository(
+      "cantrip-worktrees-late-close-",
+    );
+    const source = fileURLToPath(
+      new URL("../src/worktrees.ts", import.meta.url),
+    );
+    const script = `
+      import { WorktreeManager } from ${JSON.stringify(new URL("../src/worktrees.ts", import.meta.url).href)};
+      const manager = new WorktreeManager(${JSON.stringify(workerData)});
+      manager.close();
+      manager.configureObservation([{ projectId: "late-project", worktreeId: "late-worktree",
+        sourcePath: ${JSON.stringify(repository)}, worktreePath: ${JSON.stringify(repository)} }]);
+      process.stdout.write("late configuration completed\\n");
+      setTimeout(() => process.stdout.write(JSON.stringify({ resources: process.getActiveResourcesInfo() }) + "\\n"), 1000).unref();
+    `;
+    const child = spawn(
+      process.execPath,
+      ["--import", "tsx", "--input-type=module", "--eval", script],
+      { cwd: path.dirname(source), stdio: ["ignore", "pipe", "pipe"] },
+    );
+    let output = "",
+      errors = "",
+      configured = false;
+    let timer: ReturnType<typeof setTimeout>;
+    try {
+      const exited = new Promise<number | null>((resolve, reject) => {
+        timer = setTimeout(
+          () =>
+            reject(
+              new Error(`Observation child did not initialize: ${errors}`),
+            ),
+          30000,
+        );
+        child.stdout.on("data", (bytes: Buffer) => {
+          output += bytes.toString();
+          if (
+            !configured &&
+            output.includes("late configuration completed\n")
+          ) {
+            configured = true;
+            clearTimeout(timer);
+            timer = setTimeout(
+              () =>
+                reject(
+                  new Error(
+                    `Late configuration retained the process after completing: ${output} ${errors}`,
+                  ),
+                ),
+              5000,
+            );
+          }
+        });
+        child.stderr.on("data", (bytes: Buffer) => {
+          errors += bytes.toString();
+        });
+        child.once("error", reject);
+        child.once("close", (code) => resolve(code));
+      });
+      expect(await exited, errors).toBe(0);
+      expect(configured).toBe(true);
+      expect(output).toBe("late configuration completed\n");
+    } finally {
+      clearTimeout(timer!);
+      if (child.exitCode === null && child.signalCode === null)
+        child.kill("SIGKILL");
+    }
+  }, 45000);
+
   it("builds bounded, stable Git operation observations", () => {
     const head = "a".repeat(40);
     const context = {

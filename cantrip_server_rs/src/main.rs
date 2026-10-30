@@ -12,6 +12,18 @@ use cantrip_server::{
 use clap::{Parser, ValueEnum};
 use serde_json::json;
 
+// Fixed stage names locate a stalled drain without exposing owner data or
+// changing admission, cancellation, shutdown ordering, or timeout semantics.
+macro_rules! shutdown_step {
+    ($stage:literal, $operation:expr) => {{
+        let started = std::time::Instant::now();
+        eprintln!("{}", json!({"event":"server.shutdown.stage","stage":$stage,"phase":"started"}));
+        let result = $operation;
+        eprintln!("{}", json!({"event":"server.shutdown.stage","stage":$stage,"phase":"completed","durationMs":started.elapsed().as_millis()}));
+        result
+    }};
+}
+
 #[derive(Parser)]
 #[command(about = "Cantrip Rust server (replacement implementation in progress)")]
 struct Arguments {
@@ -174,44 +186,70 @@ async fn main() -> Result<()> {
         // Finish active HTTP requests before permanently closing the bridge,
         // disabling publications, or draining service/database owners.
         service.folder_setup.stop();
+        service.project_replicas.stop();
         service.worker_maintenance.stop();
         service.tunnel_leases.stop();
-        service.project_operations.drain().await;
+        shutdown_step!(
+            "project-operations",
+            service.project_operations.drain().await
+        );
         service.worktree_observations.stop();
-        service.worktree_observations.drained().await;
+        shutdown_step!(
+            "worktree-observations",
+            service.worktree_observations.drained().await
+        );
         service.run_configuration_observations.stop();
-        service.run_configuration_observations.drained().await;
-        service.project_shares.close().await;
+        shutdown_step!(
+            "run-observations",
+            service.run_configuration_observations.drained().await
+        );
+        shutdown_step!("project-shares", service.project_shares.close().await);
         service.tunnel_runtime.close();
         service.live.close();
-        service.direct_attachments.close().await;
-        service.worker_links.close().await;
-        service.workers.close();
-        service.live.transports.drained().await;
+        shutdown_step!(
+            "direct-attachments-close",
+            service.direct_attachments.close().await
+        );
+        shutdown_step!("worker-links-close", service.worker_links.close().await);
+        shutdown_step!("worker-bridge-close", service.workers.close());
+        shutdown_step!("live-transports", service.live.transports.drained().await);
         // A socket callback can admit an owned account task. Finish socket
         // handlers before the final account/catalog drain, then finish any
         // commands those tasks admitted before closing their database.
-        service.workers.drained().await?;
-        service.worker_links.local.drained().await;
-        service.provider_accounts.drained().await;
-        for _error in service.provider_catalogs.drain().await {
+        shutdown_step!("worker-handshakes", service.workers.drained().await?);
+        shutdown_step!(
+            "worker-link-callbacks",
+            service.worker_links.local.drained().await
+        );
+        shutdown_step!(
+            "provider-accounts",
+            service.provider_accounts.drained().await
+        );
+        for _error in shutdown_step!("provider-catalogs", service.provider_catalogs.drain().await) {
             eprintln!(
                 "{}",
                 json!({"level":"warn","event":"provider.catalog.background-persistence-failed","message":"Provider catalog background persistence failed during shutdown"})
             );
         }
-        service.workers.commands.drained().await;
-        service.direct_attachments.drained().await;
-        service.tunnel_leases.drained().await;
-        service.tunnel_runtime.drained().await;
-        service.folder_setup.drained().await;
-        service.worker_maintenance.drained().await;
-        service.mutation_audits.drained().await;
-        service.usage.close().await;
+        shutdown_step!("worker-commands", service.workers.commands.drained().await);
+        shutdown_step!(
+            "direct-attachments-drain",
+            service.direct_attachments.drained().await
+        );
+        shutdown_step!("tunnel-leases", service.tunnel_leases.drained().await);
+        shutdown_step!("tunnel-runtime", service.tunnel_runtime.drained().await);
+        shutdown_step!("folder-jobs", service.folder_setup.drained().await);
+        shutdown_step!("replica-jobs", service.project_replicas.drained().await);
+        shutdown_step!(
+            "worker-maintenance",
+            service.worker_maintenance.drained().await
+        );
+        shutdown_step!("mutation-audits", service.mutation_audits.drained().await);
+        shutdown_step!("usage", service.usage.close().await);
     }
-    database.close().await?;
+    shutdown_step!("database", database.close().await?);
     if let Some(runtime) = managed {
-        runtime.close().await?;
+        shutdown_step!("private-postgres", runtime.close().await?);
     }
     Ok(())
 }

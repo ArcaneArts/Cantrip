@@ -427,7 +427,15 @@ try {
       await fixture.start();
       await flow(fixture, result);
     } finally {
-      await fixture.close();
+      const server = fixture.server;
+      try {
+        await fixture.close();
+      } finally {
+        result.shutdownStages =
+          server?.events.filter(
+            (event) => event.event === "server.shutdown.stage",
+          ) ?? [];
+      }
     }
   }
   assert.deepEqual(report.runtimes[1].steps, report.runtimes[0].steps);

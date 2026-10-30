@@ -1885,6 +1885,141 @@ client suite uses the same built worker, CLI and Chromium setup as the catalog
 flow below. Configured CI is not passing platform evidence; the coverage ledger
 records the accepted scope.
 
+## Project replica execution in progress
+
+The native replica domain now includes durable admission, payload fingerprints,
+revision and command fences, source/worktree completion, lease scheduling,
+worker reconnect, and the catalog/job/retry/cancel/link-repair routes. Protected
+GitHub import retains opaque repository handles and the existing separate
+project-creation and job-admission transactions.
+
+Local macOS comparisons pass all three stores for repository lifecycle
+(52 cases/9 snapshots), admission (72/7), and completion (39/19). The HTTP
+validation and offline-import suites each pass 18 observations per runtime and
+authentication profile. Connected transport plus failure recovery passes 43 HTTP
+observations, eight worker commands and 21 job Live events per runtime/profile.
+It holds a command while checking durable progress, rejects stale progress,
+provisions and synchronizes replicas, repairs a managed link, removes a second
+replica, protects the final source, and recovers a worker-blocked job through a
+failed retry and successful retry. Both anonymous and account profiles run.
+
+The reconnect extension passes all three stores: 47 HTTP observations, nine
+worker commands and 25 job Live events per runtime/profile, including exactly
+one dispatch after an offline attempt resumes on reconnect. Real-time renewal
+and stale-completion recovery also pass all three stores: 53 HTTP observations,
+12 commands and 32 job Live events per runtime/profile. A held command stays on
+attempt one beyond its original lease; a stale completion expires and recovers
+exactly once on attempt two. Active-command shutdown/restart passes all three
+stores in both auth profiles: the held first attempt survives as a retryable
+worker-offline job, then reconnect completes attempt two with exact Live revisions.
+A second-account extension passes all three stores with 61 account-profile HTTP
+observations (50 in anonymous mode), including all ten replica/job routes denying
+foreign access, unchanged owner state and no extra worker dispatch.
+Repository removal comparisons also cover extra worktrees, chats, terminals,
+Explorer and Code tabs, project views, and active/released execution lanes.
+Converted-folder retention and deletion pass all three stores in both auth
+profiles (56 anonymous/67 account HTTP observations, 12 commands). Completed
+conversion records are seeded while the server is stopped; production routes
+then detach without a worker command or run folder deletion through failure and
+retry. Restarted database reads confirm source retirement, missing worktrees and
+matching deletion timestamps, including an already absent folder. A real worker
+heartbeat is sent on reconnect; command sockets alone do not refresh presence.
+The capacity comparison also passes all three stores: five admitted jobs yield
+four held running attempts and one queued attempt, releasing one slot dispatches
+the fifth once, and all five finish on attempt one. It records 57 anonymous/68
+account HTTP observations per runtime. Controlled handlers return distinct
+worker paths; a copied-database reproduction retains the real source-path
+ownership rejection from the initial fixture.
+An actual encrypted browser/two-full-worker local Git flow now passes on all
+three stores (12 product steps per runtime). It uses real direct checkout
+attachment, exact admission replay, retained replica identity after server and
+worker restart, refused user-checkout deletion, and detach with Git files intact.
+No catalog, repository or worker handler is seeded for this flow. The existing
+AppLiveClient receives the same per-job sequences from both servers, including
+unchanged completion revisions published by exact admission replay. The comparison
+function also passes against all six saved runtime reports.
+
+The first PGlite run timed out during Node startup before product steps; an
+isolated same-mode startup passed in 6.3 seconds, without proving the cause.
+A second run completed the Node flow but killed a full worker 30 seconds after
+SIGTERM in the Rust case, despite its shutdown-completed log at 853 ms. No worker
+handle trace was available for that failure. A later traced run identified the
+late-observation watcher defect fixed below; attribution of the earlier untraced
+hang remains unproven. Test-only handle tracing and complete server shutdown-stage
+retention support further investigation. The startup timeout remains unresolved.
+
+The managed GitHub extension uses real public `octocat/Hello-World` reads and
+clones through `gh`, the encrypted browser API, and both full workers. The latest
+comparison passes 17 product steps per runtime on all three stores: import,
+exact-revision second replica, synchronization, ignored-user-file rejection, and
+retry/removal with the primary retained. Both dirty and ignored checks remain
+unchanged. The initial PGlite failure is retained: its ignored CodeGraph cache
+blocked removal despite clean Git status.
+
+Worker replica deletion now invokes CodeGraph retirement only after existing
+checkout path/ownership checks. Retirement fences reconfiguration, aborts and
+drains the current CLI through actual process close, and executes managed
+`uninit --force` before the existing Git checks. It also works before first
+observation after restart. Cleanup failure does not replace the filesystem
+operation's result; the actual dirty/ignored checks still run. A blocked removal
+resumes observation. A successful removal forgets the retired path. No ignored
+file allowlist or force-delete bypass was added.
+
+The v4 PGlite/Rust run observes two real retirement events in the previously
+failing cache case. Latest v5 also records real retirements on Node/PostgreSQL
+and Rust/private PostgreSQL; all six runtime/store flows preserve the injected
+ignored user file, then remove only the secondary checkout on attempt two.
+Forty-six focused CodeGraph/Git safety tests and the worker build pass, including
+real delayed-SIGTERM process drain, reconfiguration fencing, cleanup before first
+observation, optional-tool failure, symlink preservation and denial before the
+removal lifecycle. The 11 worktree tests also pass.
+
+The extended run also captures two referenced filesystem watchers on a retiring
+checkout and `.git` after the worker logged shutdown completion. WorktreeManager
+accepted a late observation configuration after close. A child-process regression
+first proves configuration completed and then reproduces both persistent watcher
+handles; a permanent observation-close flag fixes that lifetime defect. All 11
+worker worktree tests and the full worker build pass. Earlier trial regressions
+that timed out before configuration completed are retained as invalid leak
+proof; the measured failing/passing process regression is the evidence. Server
+shutdown deadlines and the worker's 30-second shutdown assertion are unchanged.
+
+Controlled HTTP admission and lifetime comparisons now pass on external
+PostgreSQL for Node and Rust in anonymous and account modes. Five forced races
+cover identical provision keys, competing keys for one worker, a reused key with
+different worker payloads, and identical/distinct synchronization keys. Both
+requests reach the actual blocked INSERT or source-row lock before release;
+each case verifies exact conflict bodies, one durable job and exact later replay.
+The PostgreSQL activity view truncates the reference's long SELECT projection,
+so its actual blocker PID and lock wait establish the source-row boundary.
+Synchronization's unsafe cancellation is refused; normal worker reconnect then
+completes its second attempt. A disconnected admission still commits, and an
+admission disconnected during shutdown retains one queued job at attempt zero,
+revision one. Restart dispatches that same job once and replay returns its
+canonical blocked result. Evidence: `replica-http-lifetimes-v5.json`. These
+cross-session lock cases deliberately use external PostgreSQL; the other suites
+continue to exercise all three storage modes.
+
+Remaining placement/failure product flows and supported-platform acceptance
+remain required before completing this domain.
+Existing platform CI shutdown failures remain unresolved; local comparisons do not prove
+packaged or Winterhold readiness. Fixed native shutdown-stage diagnostics now
+record drain names, start/completion and elapsed time without changing ordering
+or timeouts. Full-worker catalog reports retain these stages on success and
+failure to locate stalled drains. The default server remains Node.
+
+```sh
+node --import tsx scripts/server-rust/replica-import-http-compatibility.mjs --connected --faults --reconnect --report .qa/rust-server/replica-connected-pglite.json
+node --import tsx scripts/server-rust/replica-import-http-compatibility.mjs --connected --faults --reconnect --lease-recovery --report .qa/rust-server/replica-lease-pglite.json
+node --import tsx scripts/server-rust/replica-http-lifetimes.mjs --report .qa/rust-server/replica-http-lifetimes.json
+node --import tsx scripts/server-rust/actual-folder-client.mjs --replicas --report .qa/rust-server/actual-replica-product-pglite.json
+```
+
+Repeat with `--database postgres` and `--database bundled-postgres`. The lease
+scenario uses the production two-minute expiry and 30-second timers without
+clock substitution. The Live test client sends ordinary heartbeat pings throughout
+the wait. These local results do not establish supported-platform acceptance.
+
 ## Project catalog and execution placement
 
 The Rust server implements the four project catalog/placement routes: project

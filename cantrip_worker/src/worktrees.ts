@@ -306,6 +306,7 @@ export class WorktreeManager {
     ReturnType<typeof setTimeout>
   >();
   private readonly observationWatchers = new Map<string, FSWatcher[]>();
+  private observationsClosed = false;
   private observationEmitter: (notification: WorkerNotification) => boolean =
     () => false;
   private observationHeadSweep: ReturnType<typeof setInterval> | null = null;
@@ -322,6 +323,9 @@ export class WorktreeManager {
   }
 
   configureObservation(targets: WorktreeObservationTarget[]): void {
+    // Shutdown may overlap a command already admitted by the transport.
+    // A late configuration must not recreate persistent filesystem watchers.
+    if (this.observationsClosed) return;
     const next = new Map(
       targets.map((target) => [
         observationKey(target),
@@ -402,6 +406,7 @@ export class WorktreeManager {
   }
 
   close(): void {
+    this.observationsClosed = true;
     if (this.observationSweep) clearInterval(this.observationSweep);
     this.observationSweep = null;
     if (this.observationHeadSweep) clearInterval(this.observationHeadSweep);

@@ -285,7 +285,22 @@
     "tunnelDirectActivationSchema": 7764,
     "directCapabilityPrepareResultSchema": 7767,
     "directCapabilityRenewResultSchema": 7769,
-    "directTransportTelemetrySchema": 7772
+    "directTransportTelemetrySchema": 7772,
+    "projectReplicaJobSummarySchema": 7776,
+    "projectReplicaJobListSchema": 7819,
+    "projectReplicaProvisionResultSchema": 7820,
+    "projectReplicaSynchronizeResultSchema": 7840,
+    "projectReplicaRemoveResultSchema": 7849,
+    "managedFolderDeleteResultSchema": 7863,
+    "encryptedProjectReplicaProvisionCreateSchema": 7865,
+    "encryptedProjectReplicaSynchronizeCreateSchema": 7880,
+    "encryptedProjectReplicaRemoveCreateSchema": 7884,
+    "projectReplicaJobRetrySchema": 7890,
+    "projectReplicaJobCancelSchema": 7892,
+    "projectReplicaLinkRepairResultSchema": 7894,
+    "projectReplicaListSchema": 653,
+    "projectReplicaSummarySchema": 654,
+    "encryptedGithubProjectCreateSchema": 7903
   },
   "nodes": [
     {
@@ -45239,6 +45254,807 @@
       "optionalIn": true,
       "optionalOut": true,
       "innerType": 7544,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "projectReplicaJobSummarySchema",
+      "shape": {
+        "id": 7777,
+        "projectId": 7778,
+        "projectReplicaId": 7779,
+        "workerId": 7781,
+        "kind": 7782,
+        "state": 7783,
+        "stateRevision": 7784,
+        "idempotencyKey": 7785,
+        "repository": 7786,
+        "placementMode": 7788,
+        "placementPath": 7789,
+        "resolvedMaterialization": 7792,
+        "resolvedOwnership": 7794,
+        "expectedRevision": 7796,
+        "resolvedRevision": 7797,
+        "synchronizationPolicy": 7798,
+        "deleteLocalFiles": 7801,
+        "attempt": 7804,
+        "progress": 7805,
+        "error": 7807,
+        "createdAt": 7811,
+        "updatedAt": 7812,
+        "startedAt": 7813,
+        "cancellationUnsafeAt": 7815,
+        "completedAt": 7817
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 7780, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "enum",
+      "name": "projectReplicaJobKindSchema",
+      "values": ["provision", "synchronize", "remove"],
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "projectReplicaJobStateSchema",
+      "values": [
+        "queued",
+        "running",
+        "blocked",
+        "succeeded",
+        "failed",
+        "cancelled"
+      ],
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 7787, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 643,
+      "defaultValue": "managed",
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 7790,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 7791, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 7793,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 2883, "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 7795,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 645, "checks": [] },
+    { "type": "nullable", "innerType": 2872, "checks": [] },
+    { "type": "nullable", "innerType": 2872, "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 7799,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 7800, "checks": [] },
+    {
+      "type": "enum",
+      "values": ["verify-only", "fast-forward-primary"],
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 7802,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 7803, "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "projectReplicaJobProgressSchema",
+      "shape": { "stage": 930, "percent": 931, "updatedAt": 7806 },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 7808, "checks": [] },
+    {
+      "type": "object",
+      "name": "projectReplicaJobErrorSchema",
+      "shape": { "code": 7809, "retryable": 7810 },
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "projectReplicaJobErrorCodeSchema",
+      "values": [
+        "target-not-found",
+        "target-mismatch",
+        "worker-offline",
+        "capability-missing",
+        "replica-not-ready",
+        "worktree-dirty",
+        "revision-diverged",
+        "lease-conflict",
+        "attachment-unavailable",
+        "runtime-incompatible",
+        "stale-attempt",
+        "policy-denied",
+        "remote-unavailable",
+        "windows-long-paths-disabled",
+        "placement-unsupported",
+        "path-invalid",
+        "path-permission-denied",
+        "parent-creation-failed",
+        "target-type-mismatch",
+        "target-repository-mismatch",
+        "target-not-primary-worktree",
+        "target-owned-by-another-project",
+        "target-revision-mismatch",
+        "link-unsupported",
+        "link-target-mismatch",
+        "ownership-proof-missing",
+        "replica-in-use",
+        "unpushed-commits",
+        "worker-error"
+      ],
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 7814, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 7816, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 7818, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "array",
+      "name": "projectReplicaJobListSchema",
+      "element": 7776,
+      "checks": [{ "check": "max_length", "maximum": 1000, "when": "length" }]
+    },
+    {
+      "type": "union",
+      "name": "projectReplicaProvisionResultSchema",
+      "options": [7821, 7825],
+      "discriminator": "status",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "projectReplicaProvisionBlockedSchema",
+      "shape": {
+        "status": 7822,
+        "jobId": 7823,
+        "attempt": 7824,
+        "error": 7808
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["blocked"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "projectReplicaProvisionReadySchema",
+      "shape": {
+        "status": 7826,
+        "jobId": 7827,
+        "attempt": 7828,
+        "path": 7829,
+        "displayPath": 7830,
+        "repositoryFingerprint": 7831,
+        "resolvedRevision": 7832,
+        "branch": 7833,
+        "reused": 7835,
+        "placement": 7836,
+        "worktreePolicy": 7838
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["ready"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 2872, "checks": [] },
+    { "type": "nullable", "innerType": 7834, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 7837,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 2882, "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 7839,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 630, "checks": [] },
+    {
+      "type": "union",
+      "name": "projectReplicaSynchronizeResultSchema",
+      "options": [7821, 7841],
+      "discriminator": "status",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "projectReplicaSynchronizeReadySchema",
+      "shape": {
+        "status": 7842,
+        "jobId": 7843,
+        "attempt": 7844,
+        "path": 7845,
+        "previousRevision": 2872,
+        "resolvedRevision": 2872,
+        "branch": 7846,
+        "changed": 7848
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["ready"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 7847, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "union",
+      "name": "projectReplicaRemoveResultSchema",
+      "options": [7821, 7850],
+      "discriminator": "status",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "projectReplicaRemoveReadySchema",
+      "shape": {
+        "status": 7851,
+        "jobId": 7852,
+        "attempt": 7853,
+        "path": 7854,
+        "localFilesDeleted": 7855,
+        "linkRemoved": 7856,
+        "ownershipReleased": 7858,
+        "warning": 7860
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["removed"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 7857,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 7859,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 7861,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 7862, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 1000, "when": "length" }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "managedFolderDeleteResultSchema",
+      "shape": { "deleted": 7864 },
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "object",
+      "name": "encryptedProjectReplicaProvisionCreateSchema",
+      "shape": {
+        "workerId": 7866,
+        "expectedRevision": 7867,
+        "idempotencyKey": 7869,
+        "placement": 7870,
+        "repository": 7878
+      },
+      "catchall": 7879,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 7868,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 2872, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 7871,
+      "checks": []
+    },
+    {
+      "type": "union",
+      "name": "encryptedProjectReplicaPlacementRequestSchema",
+      "options": [2860, 7872, 7875],
+      "discriminator": "mode",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "mode": 7873, "path": 706 },
+      "catchall": 7874,
+      "checks": []
+    },
+    { "type": "literal", "values": ["managed-link"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "mode": 7876, "path": 706 },
+      "catchall": 7877,
+      "checks": []
+    },
+    { "type": "literal", "values": ["direct"], "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "nullable", "innerType": 706, "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "encryptedProjectReplicaSynchronizeCreateSchema",
+      "shape": {
+        "expectedRevision": 2872,
+        "policy": 7881,
+        "idempotencyKey": 7882,
+        "repository": 706
+      },
+      "catchall": 7883,
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 2892,
+      "defaultValue": "verify-only",
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "encryptedProjectReplicaRemoveCreateSchema",
+      "shape": {
+        "deleteLocalFiles": 7885,
+        "idempotencyKey": 7887,
+        "repository": 7888
+      },
+      "catchall": 7889,
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 7886,
+      "defaultValue": true,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 706, "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "projectReplicaJobRetrySchema",
+      "shape": { "stateRevision": 7891 },
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "projectReplicaJobCancelSchema",
+      "shape": { "stateRevision": 7893 },
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "union",
+      "name": "projectReplicaLinkRepairResultSchema",
+      "options": [7895, 7901],
+      "discriminator": "status",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "projectReplicaLinkRepairReadySchema",
+      "shape": {
+        "status": 7896,
+        "projectId": 7897,
+        "path": 7898,
+        "linkPath": 7899,
+        "repaired": 7900
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["ready"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 8192, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 8192, "when": "length" }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "object",
+      "name": "projectReplicaLinkRepairBlockedSchema",
+      "shape": { "status": 7902, "error": 7808 },
+      "checks": []
+    },
+    { "type": "literal", "values": ["blocked"], "checks": [] },
+    {
+      "type": "object",
+      "name": "encryptedGithubProjectCreateSchema",
+      "shape": {
+        "workerId": 7904,
+        "workspaceId": 7905,
+        "id": 7907,
+        "nameProtection": 689,
+        "repositoryBlindIndex": 33,
+        "repositoryId": 706,
+        "nameWithOwner": 706,
+        "placement": 7908,
+        "url": 706
+      },
+      "catchall": 7909,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 7906,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 7871,
       "checks": []
     },
     { "type": "never", "checks": [] }

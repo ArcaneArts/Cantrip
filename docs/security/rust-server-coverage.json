@@ -2545,6 +2545,215 @@
         ],
         "remaining": [],
         "note": "The production Node root request policy tombstones this plaintext endpoint. Preserve HTTP 410 after authentication/CSRF and before payload parsing, rate limiting or worker dispatch; do not restore its latent handler."
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/replicas",
+        "implementation": "cantrip_server_rs/src/http/replicas.rs",
+        "status": "partial",
+        "evidence": [
+          "scripts/server-rust/replica-lifecycle-repository-compatibility.mjs",
+          "scripts/server-rust/replica-admission-repository-compatibility.mjs",
+          "scripts/server-rust/replica-completion-repository-compatibility.mjs",
+          "scripts/server-rust/replica-http-validation-compatibility.mjs",
+          "scripts/server-rust/replica-import-http-compatibility.mjs",
+          "scripts/server-rust/replica-connected-cases.mjs"
+        ],
+        "remaining": [
+          "Actual lease expiry, stale-completion recovery and active-command shutdown acceptance remain in progress.",
+          "Active-command shutdown, converted-folder removal, additional blockers and full app/worker product acceptance.",
+          "Supported-platform CI, packaged operation and multi-instance coordination remain unverified."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/replicas",
+        "implementation": "cantrip_server_rs/src/http/replicas.rs",
+        "status": "partial",
+        "evidence": [
+          "scripts/server-rust/replica-lifecycle-repository-compatibility.mjs",
+          "scripts/server-rust/replica-admission-repository-compatibility.mjs",
+          "scripts/server-rust/replica-completion-repository-compatibility.mjs",
+          "scripts/server-rust/replica-http-validation-compatibility.mjs",
+          "scripts/server-rust/replica-import-http-compatibility.mjs",
+          "scripts/server-rust/replica-connected-cases.mjs"
+        ],
+        "remaining": [
+          "Actual lease expiry, stale-completion recovery and active-command shutdown acceptance remain in progress.",
+          "Active-command shutdown, converted-folder removal, additional blockers and full app/worker product acceptance.",
+          "Supported-platform CI, packaged operation and multi-instance coordination remain unverified."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/replicas/:replicaId",
+        "implementation": "cantrip_server_rs/src/http/replicas.rs",
+        "status": "partial",
+        "evidence": [
+          "scripts/server-rust/replica-lifecycle-repository-compatibility.mjs",
+          "scripts/server-rust/replica-admission-repository-compatibility.mjs",
+          "scripts/server-rust/replica-completion-repository-compatibility.mjs",
+          "scripts/server-rust/replica-http-validation-compatibility.mjs",
+          "scripts/server-rust/replica-import-http-compatibility.mjs",
+          "scripts/server-rust/replica-connected-cases.mjs"
+        ],
+        "remaining": [
+          "Actual lease expiry, stale-completion recovery and active-command shutdown acceptance remain in progress.",
+          "Active-command shutdown, converted-folder removal, additional blockers and full app/worker product acceptance.",
+          "Supported-platform CI, packaged operation and multi-instance coordination remain unverified."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/replicas/:replicaId/synchronize",
+        "implementation": "cantrip_server_rs/src/http/replicas.rs",
+        "status": "partial",
+        "evidence": [
+          "scripts/server-rust/replica-lifecycle-repository-compatibility.mjs",
+          "scripts/server-rust/replica-admission-repository-compatibility.mjs",
+          "scripts/server-rust/replica-completion-repository-compatibility.mjs",
+          "scripts/server-rust/replica-http-validation-compatibility.mjs",
+          "scripts/server-rust/replica-import-http-compatibility.mjs",
+          "scripts/server-rust/replica-connected-cases.mjs"
+        ],
+        "remaining": [
+          "Actual lease expiry, stale-completion recovery and active-command shutdown acceptance remain in progress.",
+          "Active-command shutdown, converted-folder removal, additional blockers and full app/worker product acceptance.",
+          "Supported-platform CI, packaged operation and multi-instance coordination remain unverified."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/replicas/:replicaId/remove",
+        "implementation": "cantrip_server_rs/src/http/replicas.rs",
+        "status": "partial",
+        "evidence": [
+          "scripts/server-rust/replica-lifecycle-repository-compatibility.mjs",
+          "scripts/server-rust/replica-admission-repository-compatibility.mjs",
+          "scripts/server-rust/replica-completion-repository-compatibility.mjs",
+          "scripts/server-rust/replica-http-validation-compatibility.mjs",
+          "scripts/server-rust/replica-import-http-compatibility.mjs",
+          "scripts/server-rust/replica-connected-cases.mjs"
+        ],
+        "remaining": [
+          "Actual lease expiry, stale-completion recovery and active-command shutdown acceptance remain in progress.",
+          "Active-command shutdown, converted-folder removal, additional blockers and full app/worker product acceptance.",
+          "Supported-platform CI, packaged operation and multi-instance coordination remain unverified."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/replicas/:replicaId/repair-link",
+        "implementation": "cantrip_server_rs/src/http/replicas.rs",
+        "status": "partial",
+        "evidence": [
+          "scripts/server-rust/replica-lifecycle-repository-compatibility.mjs",
+          "scripts/server-rust/replica-admission-repository-compatibility.mjs",
+          "scripts/server-rust/replica-completion-repository-compatibility.mjs",
+          "scripts/server-rust/replica-http-validation-compatibility.mjs",
+          "scripts/server-rust/replica-import-http-compatibility.mjs",
+          "scripts/server-rust/replica-connected-cases.mjs"
+        ],
+        "remaining": [
+          "Actual lease expiry, stale-completion recovery and active-command shutdown acceptance remain in progress.",
+          "Active-command shutdown, converted-folder removal, additional blockers and full app/worker product acceptance.",
+          "Supported-platform CI, packaged operation and multi-instance coordination remain unverified."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/replica-jobs",
+        "implementation": "cantrip_server_rs/src/http/replicas.rs",
+        "status": "partial",
+        "evidence": [
+          "scripts/server-rust/replica-lifecycle-repository-compatibility.mjs",
+          "scripts/server-rust/replica-admission-repository-compatibility.mjs",
+          "scripts/server-rust/replica-completion-repository-compatibility.mjs",
+          "scripts/server-rust/replica-http-validation-compatibility.mjs",
+          "scripts/server-rust/replica-import-http-compatibility.mjs",
+          "scripts/server-rust/replica-connected-cases.mjs"
+        ],
+        "remaining": [
+          "Actual lease expiry, stale-completion recovery and active-command shutdown acceptance remain in progress.",
+          "Active-command shutdown, converted-folder removal, additional blockers and full app/worker product acceptance.",
+          "Supported-platform CI, packaged operation and multi-instance coordination remain unverified."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/project-replica-jobs/:jobId",
+        "implementation": "cantrip_server_rs/src/http/replicas.rs",
+        "status": "partial",
+        "evidence": [
+          "scripts/server-rust/replica-lifecycle-repository-compatibility.mjs",
+          "scripts/server-rust/replica-admission-repository-compatibility.mjs",
+          "scripts/server-rust/replica-completion-repository-compatibility.mjs",
+          "scripts/server-rust/replica-http-validation-compatibility.mjs",
+          "scripts/server-rust/replica-import-http-compatibility.mjs",
+          "scripts/server-rust/replica-connected-cases.mjs"
+        ],
+        "remaining": [
+          "Actual lease expiry, stale-completion recovery and active-command shutdown acceptance remain in progress.",
+          "Active-command shutdown, converted-folder removal, additional blockers and full app/worker product acceptance.",
+          "Supported-platform CI, packaged operation and multi-instance coordination remain unverified."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/project-replica-jobs/:jobId/retry",
+        "implementation": "cantrip_server_rs/src/http/replicas.rs",
+        "status": "partial",
+        "evidence": [
+          "scripts/server-rust/replica-lifecycle-repository-compatibility.mjs",
+          "scripts/server-rust/replica-admission-repository-compatibility.mjs",
+          "scripts/server-rust/replica-completion-repository-compatibility.mjs",
+          "scripts/server-rust/replica-http-validation-compatibility.mjs",
+          "scripts/server-rust/replica-import-http-compatibility.mjs",
+          "scripts/server-rust/replica-connected-cases.mjs"
+        ],
+        "remaining": [
+          "Actual lease expiry, stale-completion recovery and active-command shutdown acceptance remain in progress.",
+          "Active-command shutdown, converted-folder removal, additional blockers and full app/worker product acceptance.",
+          "Supported-platform CI, packaged operation and multi-instance coordination remain unverified."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/project-replica-jobs/:jobId/cancel",
+        "implementation": "cantrip_server_rs/src/http/replicas.rs",
+        "status": "partial",
+        "evidence": [
+          "scripts/server-rust/replica-lifecycle-repository-compatibility.mjs",
+          "scripts/server-rust/replica-admission-repository-compatibility.mjs",
+          "scripts/server-rust/replica-completion-repository-compatibility.mjs",
+          "scripts/server-rust/replica-http-validation-compatibility.mjs",
+          "scripts/server-rust/replica-import-http-compatibility.mjs",
+          "scripts/server-rust/replica-connected-cases.mjs"
+        ],
+        "remaining": [
+          "Actual lease expiry, stale-completion recovery and active-command shutdown acceptance remain in progress.",
+          "Active-command shutdown, converted-folder removal, additional blockers and full app/worker product acceptance.",
+          "Supported-platform CI, packaged operation and multi-instance coordination remain unverified."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/from-github",
+        "implementation": "cantrip_server_rs/src/http/github_import.rs",
+        "status": "partial",
+        "evidence": [
+          "scripts/server-rust/replica-lifecycle-repository-compatibility.mjs",
+          "scripts/server-rust/replica-admission-repository-compatibility.mjs",
+          "scripts/server-rust/replica-completion-repository-compatibility.mjs",
+          "scripts/server-rust/replica-http-validation-compatibility.mjs",
+          "scripts/server-rust/replica-import-http-compatibility.mjs",
+          "scripts/server-rust/replica-connected-cases.mjs"
+        ],
+        "remaining": [
+          "Actual lease expiry, stale-completion recovery and active-command shutdown acceptance remain in progress.",
+          "Active-command shutdown, converted-folder removal, additional blockers and full app/worker product acceptance.",
+          "Supported-platform CI, packaged operation and multi-instance coordination remain unverified."
+        ]
       }
     ]
   },
@@ -5222,6 +5431,44 @@
         "Actual GitHub-backed Issues/PR/Actions UI flows and broader project worktree lifecycle remain required.",
         "Native all-target/current-head broad checks and merged delivery; migration/post-write rollback, packaging, Winterhold rehearsal, performance, default cutover and Node server removal remain incomplete.",
         "Prior pane Windows native workspace seed stack overflow remains unresolved; lock-observer race fixed locally but platform rerun remains required."
+      ]
+    },
+    "projectReplicaExecution": {
+      "status": "partial",
+      "implementation": [
+        "cantrip_server_rs/src/projects/replicas/",
+        "cantrip_server_rs/src/http/replicas.rs",
+        "cantrip_server_rs/src/http/github_import.rs",
+        "cantrip_worker/src/codegraph/supervisor.ts",
+        "cantrip_worker/src/github.ts",
+        "cantrip_worker/src/index.ts"
+      ],
+      "evidence": [
+        "scripts/server-rust/replica-lifecycle-repository-compatibility.mjs",
+        "scripts/server-rust/replica-admission-repository-compatibility.mjs",
+        "scripts/server-rust/replica-completion-repository-compatibility.mjs",
+        "scripts/server-rust/replica-http-validation-compatibility.mjs",
+        "scripts/server-rust/replica-import-http-compatibility.mjs",
+        "scripts/server-rust/replica-connected-cases.mjs",
+        "scripts/server-rust/replica-lease-cases.mjs",
+        "scripts/server-rust/replica-shutdown-cases.mjs",
+        "scripts/server-rust/replica-isolation-cases.mjs",
+        "scripts/server-rust/replica-blocker-cases.mjs",
+        "scripts/server-rust/replica-converted-cases.mjs",
+        "scripts/server-rust/replica-concurrency-cases.mjs",
+        "scripts/server-rust/actual-project-replicas.mjs",
+        "scripts/server-rust/actual-folder-client.mjs",
+        "scripts/server-rust/worker-lifecycle-trace.mjs",
+        "scripts/server-rust/actual-github-replicas.mjs",
+        "cantrip_worker/test/worktrees.test.ts",
+        "cantrip_worker/test/codegraph-supervisor.test.ts",
+        "cantrip_worker/test/github.test.ts",
+        "scripts/server-rust/replica-http-lifetimes.mjs"
+      ],
+      "validatedSubset": "Local macOS all three stores: lifecycle52cases/9snapshots, admission72/7, completion39/19. HTTP validation and offline import each18observations/runtime/auth profile. Connected success plus failure recovery43HTTPobservations,8workercommands,21jobLiveevents eachruntime in anonymous/accounts profiles: held valid progress with two stale events rejected; managed-link provision/repair, synchronization, second-source removal and final-source protection; worker block, unsafe cancel refusal, failed retry and successful retry. No full-domain or platform completion claim. Reconnect extension also passes all three stores:47HTTP/9commands/25Liveevents each runtime/profile; offline attempt1 has no dispatch and reconnect executes exactly once as attempt2. Real production lease timers pass all three stores:53HTTP/12commands/32Liveevents each runtime/profile, held attempt remains renewed beyond original expiry and stale completion recovers once on attempt2. Active-command shutdown/restart passes all three stores in both auth profiles; preserved worker-offline attempt1 resumes exactly once as attempt2 with Live revisions7,8. Second-account isolation passes all three stores: all10 routes deny foreign access with unchanged owner job/replica and no extra command; combined shutdown suite61 account/50 anonymous HTTP observations. Removal blockers match for extra worktrees, chats, terminals, Explorer/Code tabs, project views and active/released lanes on all three stores. Converted-folder removal v5 passes all3 stores and both auth profiles:56anonymous/67account HTTP observations,12commands; seeded completed conversion uses production removal routes/executor, retaining files emits no command, deleting uses folder.delete through failure and retry/absent result. Restarted durable snapshots confirm missing worktrees, retired sources and deletion timestamps. Four-job executor capacity passes all3 stores and both auth profiles:57anonymous/68account HTTP observations, five imports leave four held running and one queued, releasing one slot dispatches the fifth once, all finish attempt1. Actual encrypted browser/2full-worker local Git direct attachment/replay/restart/detach passes all3 stores12steps/runtime with no seeded repository/catalog/handler. Source paths remain opaque on HTTP; user checkout deletion refused and files preserved after detach. Existing AppLiveClient per-job sequences including repeated completion invalidations match across all6runtime reports via the actual comparison function. Real public GitHub extension v3 passes16steps/runtime on private/external PostgreSQL: actual gh import+clone, exact second replica, verify-only sync, removal preserving primary. PGlite Node16steps pass; Rust15steps then worker blocks removal because managed CodeGraph cache appears in ignored inventory. Not all-store completion. WorktreeManager late observation after close is fixed with valid child-process red/green watcher retention proof, full11worktree tests and worker build. Index retirement v5 now passes all3stores17steps/runtime: actual public gh clone/sync, ignored-user-file denial and preservation, then attempt2 physical removal of secondary only. v4 PGliteRust records2realuninit events for former failingcache; v5 NodePG and RustprivatePG also execute realcleanup. Retirement after verified ownership fences reconfiguration and drains CLI through close, attempts uninit before first observation, then leaves dirty/ignored/history checks intact. 46focusedCodeGraph/Git safety tests and workerbuild pass, plus11worktree tests. External PostgreSQL real HTTP admission/lifetime v5 passes both runtimes in anonymous/accounts modes: five forced races and two caller-disconnect cases per runtime/profile. Actual blocker PIDs prove both insert/source-lock contenders. Unique constraint replay, active-slot and reused-payload conflicts, one durable winner and exact canonical replay match. Unsafe sync cancellation refuses then reconnect completes attempt2. Shutdown retains disconnected INSERT, commits queued attempt0/revision1, restart dispatches same job once. Latest focused worker worktree/app-server/CodeGraph/Git tests139 pass.",
+      "remaining": [
+        "Remaining placement/failure product flows and supported-platform CI.",
+        "Initial Node startup timeout cause remains unproven; native CI shutdown, packaged operation and multi-instance coordination remain unverified."
       ]
     }
   },
