@@ -138,8 +138,8 @@ export function ConversationArchivedSection({
           variant="ghost"
           size="sm"
           className="w-full"
-          disabled={query.isFetchingNextPage}
-          onClick={() => void query.fetchNextPage()}
+          disabled={query.isFetching}
+          onClick={() => void query.fetchNextPage({ cancelRefetch: false })}
         >
           Load more archived conversations
         </Button>

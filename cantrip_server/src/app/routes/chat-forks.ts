@@ -104,6 +104,7 @@ export function installChatForkRoute(
           input.data,
           reprotect,
         );
+        if (chat) publishChatSummary(chat.id, chat.projectId);
         return chat
           ? reply.code(201).send(chatWireSummarySchema.parse(chat))
           : reply.code(404).send({ error: "Chat or message not found." });

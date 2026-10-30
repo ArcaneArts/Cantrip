@@ -36,6 +36,7 @@ vi.mock("@/lib/chat-title-encryption", () => ({
 }));
 import {
   prepareConversationCreation,
+  prepareConversationFork,
   archiveAgentConversation,
   restoreAgentConversation,
   permanentlyDeleteAgentConversation,
@@ -282,4 +283,61 @@ it("decrypts archived rows through the strict archive schema without passing rec
     lastUsedAt: at,
   });
   expect(mocks.archived.mock.calls[0]![0]).not.toHaveProperty("lastUsedAt");
+});
+
+it("reconciles a committed fork after a lost response through bounded catalog pages", async () => {
+  mocks.protect.mockResolvedValue(chat("unused").titleProtection);
+  let id = "";
+  mocks.request.mockImplementation(async (url: string, init?: RequestInit) => {
+    if (init?.method === "POST") {
+      id = JSON.parse(init.body as string).id;
+      throw new Error("reply lost");
+    }
+    return url.includes("cursor=")
+      ? { state: "active", items: [chat(id)], total: 2, nextCursor: null }
+      : {
+          state: "active",
+          items: [chat("other")],
+          total: 2,
+          nextCursor: "next",
+        };
+  });
+  const run = await prepareConversationFork(
+    "project/id",
+    "source/id",
+    "Source",
+  );
+  expect((await run()).id).toBe(id);
+  expect(
+    mocks.request.mock.calls
+      .slice(1)
+      .every(([url]) => url.includes("limit=50")),
+  ).toBe(true);
+  expect(mocks.request.mock.calls[0]![0]).toBe("/api/chats/source%2Fid/fork");
+});
+it("keeps the fork ID and ciphertext on retry after mutation and reconciliation fail", async () => {
+  mocks.protect.mockResolvedValue(chat("unused").titleProtection);
+  const bodies: string[] = [];
+  mocks.request.mockImplementation(async (_url: string, init?: RequestInit) => {
+    if (init?.method === "POST") bodies.push(init.body as string);
+    throw new Error("offline");
+  });
+  const run = await prepareConversationFork("project/id", "source", "Source");
+  await expect(run()).rejects.toThrow("offline");
+  await expect(run()).rejects.toThrow("offline");
+  expect(bodies).toHaveLength(2);
+  expect(bodies[1]).toBe(bodies[0]);
+  expect(JSON.parse(bodies[0]!).attachToTabLayout).toBe(false);
+  expect(mocks.protect).toHaveBeenCalledTimes(1);
+});
+it("does not reconcile or retry a fork into a changed account", async () => {
+  mocks.protect.mockResolvedValue(chat("unused").titleProtection);
+  mocks.request.mockImplementation(async () => {
+    mocks.matches.mockReturnValue(false);
+    throw new Error("reply lost");
+  });
+  const run = await prepareConversationFork("project/id", "source", "Source");
+  await expect(run()).rejects.toThrow("account or server changed");
+  await expect(run()).rejects.toThrow("account or server changed");
+  expect(mocks.request).toHaveBeenCalledTimes(1);
 });

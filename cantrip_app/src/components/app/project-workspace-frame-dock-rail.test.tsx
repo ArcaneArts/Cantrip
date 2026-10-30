@@ -549,11 +549,16 @@ describe("dock rail tabs", () => {
     await act(async () => renderer.unmount());
   });
 
-  it.each(["right", "bottom"] as const)(
-    "closes a running agent view without stopping it from the %s rail",
-    async (region) => {
+  it.each([
+    ["right", "running"],
+    ["bottom", "running"],
+    ["right", "waiting-for-approval"],
+    ["bottom", "waiting-for-approval"],
+  ] as const)(
+    "closes an agent from the %s rail while %s without stopping it",
+    async (region, status) => {
       const agent = surface("chat", "agent", "Agent", 0);
-      if (agent.kind === "chat") agent.entity.status = "running";
+      if (agent.kind === "chat") agent.entity.status = status;
       const onDelete = vi.fn();
       const onClose = vi.fn();
       const onSelect = vi.fn();

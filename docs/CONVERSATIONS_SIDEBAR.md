@@ -226,7 +226,7 @@ Validation so far:
   Further acceptance coverage and PR delivery remain outstanding.
   No full-feature completion is claimed.
 
-### Acceptance and scale cycle (in progress)
+### Acceptance and scale cycle (merged)
 
 PR [#2341](https://github.com/ArcaneArts/Cantrip/pull/2341) squash-merged the
 placement cycle as `dbc18e0a1`. Primary was synchronized and the placement
@@ -296,6 +296,81 @@ requirement-by-requirement audit remain outstanding. The audit must still
 address uncertain Fork outcomes and placement pending state, and assess the
 remaining Live/concurrent-update and failure cases against their actual tests.
 No full-feature acceptance checkbox is marked complete.
+
+### Mutation recovery audit cycle (in progress)
+
+PR [#2344](https://github.com/ArcaneArts/Cantrip/pull/2344) squash-merged as
+`3826bd015`. Primary was synchronized cleanly and the acceptance worktree was
+removed. Its screenshots and structured fixture results were retained outside
+the worktree. This cycle uses `codex/conversations-mutation-recovery`.
+
+Inspection confirmed sidebar Fork allocated a new ID on retry and project fork
+success did not publish the Live summary event. Prepared sidebar forks now
+retain their encrypted payload, reconcile actual failures through bounded
+catalog pages, and fence retries by session identity. Project forks publish
+summary invalidation. Placement tracks pending work per conversation/controller
+and prevents overlapping moves of the same resource while other conversations
+remain usable. Sidebar controls expose that pending state.
+
+The first 28 focused app tests pass, including lost fork replies, failed
+reconciliation with identical retry payloads, account fencing, independent
+placement pending states, and cleanup after failed moves. The initial test
+attempt could not resolve the unbuilt local crypto package; dependencies were
+built before the passing run. The full app suite passes 3,998 tests with three
+skipped. The real browser recovery fixture now also drops a committed Fork
+reply: it recovers exactly one catalog resource with no rail placement or
+second request, preserving the source draft. All earlier recovery scenarios
+still pass. App typechecking and decomposition budgets pass. The focused
+server suites pass 13 tests, including project Fork Live publication; their
+initial new-fixture failure included a request-only field in a strict response
+schema and was corrected without changing that schema. The server Rust source
+manifest remains unchanged (285 roots, 7,776 nodes).
+
+The previous merged PR's Windows worker-runtime job failed at
+`managed-native-permission-recovery.test.ts:411` while waiting for policy
+application. Its job log is retained for investigation; it is not recorded as
+a passing check. The corresponding 11-test suite passes locally, which does
+not establish a Windows pass. The targeted rerun of that unchanged Windows job
+subsequently passed (workflow attempt 2, job `124147378503`). The original
+failure remains recorded above; no worker code, test assertion, or timeout was
+changed in this cycle.
+
+A further audit reproduced a paging race in both active and archived lists:
+Load more canceled an in-flight Live refresh and requested an obsolete cursor.
+Both repro tests failed before the fix. Paging now waits while that query is
+fetching and explicitly avoids canceling refetches; all 12 sidebar interaction
+tests pass, including use of the fresh cursor after refresh. Five placement
+tests pass after adding rejection of callbacks retained past renderer unmount.
+The final full app suite passes 4,003 tests with three skipped across 568 files.
+Final app typechecking, production build, and changed-file formatting pass. The 20 dock-rail
+tests also pass after adding approval-waiting close coverage on both rails.
+The scale harness now checks all IDs and focus after a full Live refresh, not
+only its visible scroll anchor. The strengthened browser run passed: 20 active
+pages refreshed, all 1,000 resource IDs remained unique and complete, focus
+stayed on the same row, and its pixel offset remained unchanged. Both catalogs
+remained reachable through 40 bounded pages with 28 mounted rows and no
+transcript queries. Seeding the 1,980 additional records took 357.7 seconds
+while other validation was running; that is setup time, not interaction latency.
+Its worker and server shut down without survivors.
+
+The extended recovery fixture also passes switching between two direct
+conversations with separate protected drafts, then reloading and switching
+again without changing existing file rail views. The first attempt read an
+empty composer immediately after reload; the harness now waits for the expected
+draft to load, and the full subsequent run passes. This is recorded as an
+initial harness timing failure, not a passing initial run.
+
+The broad `pnpm check` completed with 1,612 server tests passing, 70 skipped,
+13 test failures, and two failed fixture hooks. The provider-account assertion
+and missing runtime-route mock are the previously baseline-reproduced failures;
+the additional failures are test/hook timeouts. The serial rerun of all 13
+affected files, with unchanged assertions/timeouts, finished with 34 tests
+passing and 10 failing across six files. Besides the two known baseline
+assertions, failures remain in settings-loader, permission-queue, replica-job,
+and workspace-name initialization tests. Serial execution did not resolve
+them. Both runs remain failed and their timing failures require further audit;
+they are not attributed to host contention as a proven cause. PR delivery and the final acceptance
+audit remain outstanding.
 
 ## Product outcome
 

@@ -198,3 +198,85 @@ it("finishes a sole-view return from durable ownership when the source closes be
   expect(requestSignal?.aborted).toBe(true);
   expect(listeners.size).toBe(0);
 });
+
+it("tracks each pending conversation independently and releases it after failure", async () => {
+  const waiting = new Map<string, (error: Error) => void>();
+  const controller = {
+    getSnapshot: () => ({
+      authoritative: { id: "workspace", projectId: "project" },
+    }),
+    placeConversation: vi.fn(
+      (id: string) =>
+        new Promise<void>((_resolve, reject) => waiting.set(id, reject)),
+    ),
+  };
+  let place!: ReturnType<typeof useConversationPlacement>;
+  function Harness() {
+    place = useConversationPlacement(
+      {
+        controller,
+        windowId: "main",
+        surfaces: new Map(),
+        explorers: new Map(),
+      } as unknown as Parameters<typeof useConversationPlacement>[0],
+      vi.fn(),
+    );
+    return null;
+  }
+  await act(async () => {
+    root = TestRenderer.create(<Harness />);
+  });
+  let first!: Promise<void>;
+  let second!: Promise<void>;
+  await act(async () => {
+    first = place("project", "one", { region: "right" });
+  });
+  const firstFailure = expect(first).rejects.toThrow("checkpoint failed");
+  expect([...place.pending]).toEqual(["one"]);
+  await expect(place("project", "one", { region: "bottom" })).rejects.toThrow(
+    "already being placed",
+  );
+  await act(async () => {
+    second = place("project", "two", { region: "bottom" });
+  });
+  const secondFailure = expect(second).rejects.toThrow("transfer failed");
+  expect([...place.pending]).toEqual(["one", "two"]);
+  expect(controller.placeConversation).toHaveBeenCalledTimes(2);
+  await act(async () => {
+    waiting.get("one")!(new Error("checkpoint failed"));
+    await firstFailure;
+  });
+  expect([...place.pending]).toEqual(["two"]);
+  await act(async () => {
+    waiting.get("two")!(new Error("transfer failed"));
+    await secondFailure;
+  });
+  expect(place.pending.size).toBe(0);
+});
+
+it("rejects a retained placement callback after its renderer unmounts", async () => {
+  const controller = {
+    getSnapshot: () => ({
+      authoritative: { id: "workspace", projectId: "project" },
+    }),
+    placeConversation: vi.fn(),
+  };
+  let place!: ReturnType<typeof useConversationPlacement>;
+  function Harness() {
+    place = useConversationPlacement(
+      { controller, windowId: "main" } as unknown as Parameters<
+        typeof useConversationPlacement
+      >[0],
+      vi.fn(),
+    );
+    return null;
+  }
+  await act(async () => {
+    root = TestRenderer.create(<Harness />);
+  });
+  await act(async () => root.unmount());
+  await expect(place("project", "chat", { region: "right" })).rejects.toThrow(
+    "context changed",
+  );
+  expect(controller.placeConversation).not.toHaveBeenCalled();
+});

@@ -1,6 +1,7 @@
 import { retryAfterChatInterruption } from "@/lib/retry-after-chat-interruption";
 import {
   encryptedChatCreateSchema,
+  encryptedChatForkSchema,
   chatInterruptAcceptedSchema,
   chatWireSummarySchema,
   conversationCatalogQuerySchema,
@@ -150,6 +151,71 @@ export async function prepareConversationCreation(
     const chat = await chatTitleEncryption.open(wire);
     assertIdentity(captured);
     return chat;
+  };
+}
+
+/** Retain this operation after failure: a retry must never allocate another fork. */
+export async function prepareConversationFork(
+  projectId: string,
+  sourceId: string,
+  sourceTitle: string,
+) {
+  const captured = identity();
+  const id = crypto.randomUUID();
+  const titleProtection = await chatTitleEncryption.protect(
+    id,
+    `${sourceTitle} (fork)`,
+  );
+  assertIdentity(captured);
+  const body = JSON.stringify(
+    encryptedChatForkSchema.parse({
+      id,
+      titleProtection,
+      attachToTabLayout: false,
+    }),
+  );
+  return async () => {
+    assertIdentity(captured);
+    try {
+      const wire = chatWireSummarySchema.parse(
+        await request(
+          `/api/chats/${encodeURIComponent(sourceId)}/fork`,
+          { method: "POST", body },
+          { expectedIdentity: captured, allowCsrfRecovery: false },
+        ),
+      );
+      assertIdentity(captured);
+      if (
+        wire.id !== id ||
+        wire.projectId !== projectId ||
+        wire.experience !== "agent"
+      )
+        throw new CantripApiError("Forked conversation scope mismatch.", 409);
+      const chat = await chatTitleEncryption.open(wire);
+      assertIdentity(captured);
+      return chat;
+    } catch (error) {
+      assertIdentity(captured);
+      // The server may have committed before the reply was lost. Reconcile
+      // only after an actual failure; every retry still carries the same ID.
+      try {
+        let cursor: string | undefined;
+        do {
+          const page = await getConversationCatalog(projectId, {
+            state: "active",
+            limit: 50,
+            cursor,
+          });
+          assertIdentity(captured);
+          const found = page.items.find((chat) => chat.id === id);
+          if (found) return found;
+          cursor = page.nextCursor ?? undefined;
+        } while (cursor);
+      } catch {
+        assertIdentity(captured);
+      }
+      throw error;
+    }
   };
 }
 
