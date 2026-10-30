@@ -475,11 +475,13 @@ describe("owned input and viewport state", () => {
     index.update("");
     expect(index.lines).toEqual([""]);
   });
-  it("rejects stale worker responses by document, revision, and viewport", () => {
+  it("accepts reusable worker lines across viewports but rejects stale documents and revisions", () => {
     const response = { documentId: "file", revision: 3, first: 10, lines: [] };
-    expect(isCurrentHighlight(response, "file", 3, 10)).toBe(true);
-    expect(isCurrentHighlight(response, "other", 3, 10)).toBe(false);
-    expect(isCurrentHighlight(response, "file", 4, 10)).toBe(false);
-    expect(isCurrentHighlight(response, "file", 3, 20)).toBe(false);
+    expect(isCurrentHighlight(response, "file", 3)).toBe(true);
+    expect(isCurrentHighlight(response, "other", 3)).toBe(false);
+    expect(isCurrentHighlight(response, "file", 4)).toBe(false);
+    expect(isCurrentHighlight({ ...response, first: 20 }, "file", 3)).toBe(
+      true,
+    );
   });
 });

@@ -14,6 +14,7 @@ function Fixture() {
   const [status, setStatus] = useState("loading");
   const [visible, setVisible] = useState(true);
   const [readOnly, setReadOnly] = useState(false);
+  const [viewCheckpoints, setViewCheckpoints] = useState(0);
   const [, redraw] = useState(0);
   useEffect(() => {
     let cancelled = false;
@@ -101,6 +102,7 @@ function Fixture() {
           {status}
         </output>
         <output aria-label="Error">{error}</output>
+        <output aria-label="View checkpoints">{viewCheckpoints}</output>
       </nav>
       <section
         style={{ minHeight: 0, flex: 1, display: visible ? "flex" : "none" }}
@@ -111,6 +113,7 @@ function Fixture() {
             path={path}
             active={visible}
             readOnly={readOnly}
+            onViewStateChange={() => setViewCheckpoints((value) => value + 1)}
             onSave={() => void save()}
             onChange={() => {
               setStatus(session.dirty ? "unsaved" : "saved");

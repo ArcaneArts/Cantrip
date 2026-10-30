@@ -41,6 +41,10 @@ export function NativeCodeEditor({
   onViewStateChange?(): void;
 }) {
   const input = useRef<HTMLTextAreaElement>(null);
+  const codePaint = useRef<HTMLDivElement>(null);
+  const gutterPaint = useRef<HTMLDivElement>(null);
+  const scrollFrame = useRef<number | null>(null);
+  const scrollCheckpoint = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeRef = useRef(active);
   activeRef.current = active;
   const readOnlyRef = useRef(readOnly);
@@ -73,7 +77,24 @@ export function NativeCodeEditor({
   lineIndex.current ??= new EditorLineIndex(session.text);
   lineIndex.current.update(session.text);
   const lines = lineIndex.current.lines;
-  const viewport = editorViewport(session.scrollTop, height, lines.length);
+  const viewport = editorViewport(session.scrollTop, height, lines.length, 16);
+  const paintedViewport = useRef(viewport);
+  const paintScroll = () => {
+    const y =
+      EDITOR_VERTICAL_PADDING +
+      paintedViewport.current.first * EDITOR_LINE_HEIGHT -
+      session.scrollTop;
+    if (codePaint.current)
+      codePaint.current.style.transform = `translate(${-session.scrollLeft}px, ${y}px)`;
+    if (gutterPaint.current)
+      gutterPaint.current.style.transform = `translateY(${y}px)`;
+  };
+  const flushScrollCheckpoint = () => {
+    if (scrollCheckpoint.current === null) return;
+    clearTimeout(scrollCheckpoint.current);
+    scrollCheckpoint.current = null;
+    onViewStateChangeRef.current?.();
+  };
   const highlighted = useSyntaxHighlighting(
     session.id,
     path,
@@ -146,6 +167,10 @@ export function NativeCodeEditor({
         session.scrollLeft = node.scrollLeft;
       }
       observer.disconnect();
+      if (scrollFrame.current !== null)
+        cancelAnimationFrame(scrollFrame.current);
+      scrollFrame.current = null;
+      flushScrollCheckpoint();
       node.removeEventListener("beforeinput", onBeforeInput);
       node.removeEventListener("select", onNativeSelect);
     };
@@ -153,6 +178,10 @@ export function NativeCodeEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
   useLayoutEffect(() => {
+    // Scroll events must use the window actually committed to the DOM, even
+    // while React is preparing a replacement concurrently.
+    paintedViewport.current = viewport;
+    paintScroll();
     const node = input.current;
     if (node && !composing.current && node.value !== session.text) {
       node.value = session.text;
@@ -178,6 +207,14 @@ export function NativeCodeEditor({
   useEffect(() => {
     if (input.current) onReady?.(session);
   }, [session, onReady]);
+  useEffect(() => {
+    if (!active) {
+      if (scrollFrame.current !== null)
+        cancelAnimationFrame(scrollFrame.current);
+      scrollFrame.current = null;
+      flushScrollCheckpoint();
+    }
+  }, [active]);
 
   return (
     <div
@@ -188,6 +225,7 @@ export function NativeCodeEditor({
     >
       <div className="cantrip-editor-gutter" aria-hidden="true">
         <div
+          ref={gutterPaint}
           style={{
             transform: `translateY(${EDITOR_VERTICAL_PADDING + viewport.first * EDITOR_LINE_HEIGHT - session.scrollTop}px)`,
           }}
@@ -202,16 +240,15 @@ export function NativeCodeEditor({
       <div className="cantrip-editor-body">
         <div className="cantrip-editor-paint" aria-hidden="true">
           <div
+            ref={codePaint}
             className="cantrip-editor-code"
             style={{
               transform: `translate(${-session.scrollLeft}px, ${EDITOR_VERTICAL_PADDING + viewport.first * EDITOR_LINE_HEIGHT - session.scrollTop}px)`,
             }}
           >
             {lines.slice(viewport.first, viewport.last).map((line, offset) => {
-              const tokens =
-                highlighted[offset]?.text === line
-                  ? highlighted[offset]!.tokens
-                  : [];
+              const cached = highlighted.get(viewport.first + offset + 1);
+              const tokens = cached?.text === line ? cached.tokens : [];
               return (
                 <div
                   className="cantrip-editor-line"
@@ -259,8 +296,31 @@ export function NativeCodeEditor({
               return;
             session.scrollTop = event.currentTarget.scrollTop;
             session.scrollLeft = event.currentTarget.scrollLeft;
-            redraw((value) => value + 1);
-            onViewStateChange?.();
+            // Align paint immediately with native scrolling. React only needs
+            // to replace the buffered line window when its boundaries change.
+            paintScroll();
+            if (scrollFrame.current === null)
+              scrollFrame.current = requestAnimationFrame(() => {
+                scrollFrame.current = null;
+                if (!activeRef.current) return;
+                const next = editorViewport(
+                  session.scrollTop,
+                  input.current?.clientHeight ?? height,
+                  lineIndex.current!.lines.length,
+                  16,
+                );
+                if (
+                  next.first !== paintedViewport.current.first ||
+                  next.last !== paintedViewport.current.last
+                )
+                  redraw((value) => value + 1);
+              });
+            // The session already holds the latest position for transfers and
+            // tab switches. Persisting it need not rerender the whole explorer
+            // on every scroll frame.
+            if (scrollCheckpoint.current !== null)
+              clearTimeout(scrollCheckpoint.current);
+            scrollCheckpoint.current = setTimeout(flushScrollCheckpoint, 160);
           }}
           onSelect={(event) => rememberSelection(event.currentTarget)}
           onCompositionStart={(event) => {
