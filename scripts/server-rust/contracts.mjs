@@ -141,6 +141,22 @@ export const contractRoots = [
   "runConfigurationRuntimeLifecycleRequestSchema",
   "runConfigurationRuntimeOperationResultSchema",
   "runConfigurationGetResponseSchema",
+  "runConfigurationListQuerySchema",
+  "runConfigurationDetectQuerySchema",
+  "runConfigurationPathsQuerySchema",
+  "runConfigurationApiValidateRequestSchema",
+  "runConfigurationApiFlutterDevicesRequestSchema",
+  "runConfigurationApiWriteRequestSchema",
+  "runConfigurationApiDeleteRequestSchema",
+  "runConfigurationListResponseSchema",
+  "runConfigurationCapabilitiesResponseSchema",
+  "runConfigurationDetectResponseSchema",
+  "runConfigurationPathsResponseSchema",
+  "runConfigurationValidateResponseSchema",
+  "runConfigurationFlutterDevicesResponseSchema",
+  "runConfigurationWriteResponseSchema",
+  "runConfigurationDeleteResponseSchema",
+  "runConfigurationIdSchema",
   "runConfigurationProtectedSecretListSchema",
   "runConfigurationSecretSummaryListSchema",
   "runConfigurationSecretListResultSchema",
@@ -443,6 +459,25 @@ registerChecks(protocol.providerAuthLiveStatusSchema, [
   "provider-auth-live-kind",
 ]);
 const recursiveJson = registerWorkerContracts(registerChecks);
+registerChecks(runDefinitions.runConfigurationProviderValidationSchema, [
+  "run-provider-validation",
+]);
+registerChecks(runDefinitions.runConfigurationDetectionCandidateSchema, [
+  "run-detection-candidate",
+]);
+registerChecks(runConfigurationOperations.runConfigurationListResponseSchema, [
+  "run-definition-list",
+]);
+registerChecks(
+  runConfigurationOperations.runConfigurationCapabilitiesResponseSchema.shape
+    .capabilities,
+  ["run-provider-capabilities"],
+);
+registerChecks(
+  runDefinitions.runConfigurationWriteResultSchema.options[0].shape.entry,
+  ["run-repository-entry", "run-ready-entry"],
+);
+
 registerChecks(protocol.encryptedTerminalCreateSchema, [
   "terminal-placement",
   "terminal-title",
@@ -758,7 +793,8 @@ export function buildContractManifest() {
         visit(
           protocol[name] ??
             runConfigurationRuntime[name] ??
-            runConfigurationOperations[name],
+            runConfigurationOperations[name] ??
+            runDefinitions[name],
           name,
         ),
       ]),

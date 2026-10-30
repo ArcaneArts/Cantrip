@@ -1,9 +1,10 @@
+import {
+  definitionWorker,
+  runDefinitionHttpCases,
+} from "./run-definition-http-cases.mjs";
 import { runSecretHttpCases } from "./run-secret-http-cases.mjs";
 // Actual Node/Rust HTTP routes with the unchanged worker protocol decoder.
-import {
-  runLifecycleCases,
-  runDefinition,
-} from "./run-lifecycle-http-cases.mjs";
+import { runLifecycleCases } from "./run-lifecycle-http-cases.mjs";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -90,6 +91,7 @@ try {
       let runtimeReplyMode = "exited";
       let runtimeReconcileLost = false;
       let outputMismatch = null;
+      const definitions = definitionWorker();
       const visit = async (name, method, url, options = {}) => {
         const before = live?.history.length ?? 0;
         const response = await fixture.observe(name, method, url, {
@@ -411,8 +413,8 @@ try {
           result,
           operationType: "repository.operation",
           runtimeResponse: (command) =>
-            command.type === "project.run-configuration-definitions.get"
-              ? runDefinition(command)
+            command.type.startsWith("project.run-configuration-definitions.")
+              ? definitions.respond(command)
               : command.type.endsWith(".output")
                 ? {
                     requestOperationId:
@@ -1181,6 +1183,18 @@ try {
             runtimeReplyMode = value;
           },
         });
+        result.definitionCommands = await runDefinitionHttpCases({
+          visit,
+          fixture,
+          worker,
+          definitions,
+          projectId: gitProject,
+          profile,
+          worktreeId: fixture.records.get("online worktree create").id,
+          setMode: (value) => {
+            runtimeReplyMode = value;
+          },
+        });
         await runSecretHttpCases({ visit, projectId: gitProject, profile });
         for (const name of [
           "secret create",
@@ -1213,6 +1227,24 @@ try {
           databaseMode,
           databaseUrl,
         });
+        const definitionAudit = await repo.request({
+          op: "query-json",
+          sql: `SELECT coalesce(jsonb_agg(jsonb_build_object('action',action,'result',result,'resourceId',resource_id,'owned',owner_id=${literal(owner)},'actor',actor_user_id=${literal(owner)}) ORDER BY action),'[]') result FROM audit_events WHERE resource_type='run-configuration' AND action LIKE 'run.configuration.app.%'`,
+        });
+        assert.equal(definitionAudit.rejected, false);
+        assert.deepEqual(
+          definitionAudit.value,
+          ["created", "deleted", "flutter-devices-inspected", "updated"].map(
+            (action) => ({
+              action: "run.configuration.app." + action,
+              result: "succeeded",
+              resourceId: "44444444-4444-4444-8444-444444444444",
+              owned: true,
+              actor: true,
+            }),
+          ),
+        );
+        result.definitionAudit = definitionAudit.value;
         const secretAudit = await repo.request({
           op: "query-json",
           sql: `SELECT coalesce(jsonb_agg(jsonb_build_object('action',action,'result',result,'resourceType',resource_type,'resourceId',resource_id,'owned',owner_id=${literal(owner)},'actor',actor_user_id=${literal(owner)},'session',actor_session_id IS NOT NULL,'request',length(request_id)>0)),'[]') result FROM audit_events WHERE action='run.configuration.secret.app.set'`,
@@ -1304,6 +1336,8 @@ try {
       "retirementBatch",
       "runLifecycle",
       "secretAudit",
+      "definitionCommands",
+      "definitionAudit",
     ])
       assert.deepEqual(runtimes[1][key], runtimes[0][key], profile + " " + key);
   }

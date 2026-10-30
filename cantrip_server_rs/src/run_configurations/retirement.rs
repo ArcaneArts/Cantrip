@@ -5,7 +5,7 @@ use crate::{
     projects::targets::TargetRepository,
     wire::{Value, value::json},
 };
-use anyhow::{Context, Result, ensure};
+use anyhow::{Result, ensure};
 use std::time::Duration;
 
 #[derive(Debug)]
@@ -25,6 +25,14 @@ fn target_error(status: u16, message: &'static str) -> anyhow::Error {
         status,
         message,
         worker_unavailable: false,
+    }
+    .into()
+}
+fn conflict(message: &'static str) -> anyhow::Error {
+    super::lifecycle::ApiError {
+        status: 409,
+        code: "conflict",
+        message: message.into(),
     }
     .into()
 }
@@ -96,7 +104,7 @@ pub async fn retire(
                 stopping["terminalId"]
                     .as_str()
                     .is_some_and(|id| !id.is_empty()),
-                "An active Run configuration instance lost its terminal binding."
+                conflict("An active Run configuration instance lost its terminal binding.")
             );
             let identity = json!({"runtimeId":stopping["id"],"projectId":stopping["projectId"],"configurationId":stopping["configurationId"],"worktreeId":stopping["worktreeId"],"workerId":stopping["workerId"],"definitionRevision":stopping["definitionRevision"],"codexEnvironmentRevision":stopping["codexEnvironmentRevision"],"generation":stopping["generation"],"operationId":stopping["requestedOperationId"],"terminalId":stopping["terminalId"]});
             let result = service
@@ -116,7 +124,7 @@ pub async fn retire(
             ensure!(
                 matches!(result["outcome"].as_str(), Some("accepted" | "replayed"))
                     && !result["observation"].is_null(),
-                "The worker could not stop a Run configuration instance before deletion."
+                conflict("The worker could not stop a Run configuration instance before deletion.")
             );
             let applied = repository
                 .observe(owner, worker, &result["observation"])
@@ -124,11 +132,11 @@ pub async fn retire(
             // Notifications can commit the matching stop before its reply.
             // Repository identity/generation/operation checks precede unchanged.
             let applied=applied.filter(|v|matches!(v["reason"].as_str(),Some("applied"|"unchanged")))
-                .context("The stopped Run configuration instance could not be reconciled before deletion.")?;
+                .ok_or_else(|| conflict("The stopped Run configuration instance could not be reconciled before deletion."))?;
             let runtime = &applied["runtime"];
             ensure!(
                 !active(runtime),
-                "The Run configuration instance remained active after its stop request."
+                conflict("The Run configuration instance remained active after its stop request.")
             );
             service
                 .worker_maintenance
@@ -142,7 +150,7 @@ pub async fn retire(
             };
             ensure!(
                 terminals.delete(owner, terminal).await?.is_some(),
-                "A Run configuration terminal changed before deletion."
+                conflict("A Run configuration terminal changed before deletion.")
             );
             invalidate(service, owner, project, "terminal", terminal)?;
         }
@@ -152,7 +160,7 @@ pub async fn retire(
             .collect::<Result<Vec<_>>>()?;
         ensure!(
             repository.delete(owner, project, &ids).await? == runtimes.len(),
-            "A Run configuration instance became active during deletion."
+            conflict("A Run configuration instance became active during deletion.")
         );
     }
 }

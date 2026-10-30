@@ -36,6 +36,7 @@ mod provider_quota;
 mod provider_telemetry;
 mod repository_operations;
 mod run_configurations;
+mod run_definitions;
 mod run_secrets;
 mod sessions;
 mod settings;
@@ -150,6 +151,7 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(repository_operations::routes())
         .merge(worktrees::routes())
         .merge(run_configurations::routes())
+        .merge(run_definitions::routes())
         .merge(run_secrets::routes())
         .merge(settings::routes())
         .merge(terminals::routes())

@@ -1,4 +1,5 @@
 //! Durable Run configuration lifecycle and worker observation fencing.
+pub mod definitions;
 pub mod lifecycle;
 pub mod observations;
 mod operations;
