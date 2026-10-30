@@ -1,6 +1,7 @@
 import path from "node:path";
 import type { NativeHistoryBinding } from "@cantrip/protocol";
 import { NativeHistoryClient } from "./native-history-client.js";
+import { CantripServerRequestError } from "./cli-client.js";
 import { readNativeHistoryRecovery } from "./native-history-recovery.js";
 import { restoreNativeHistoryProjectorState } from "./native-history-projector-bootstrap.js";
 import { rebaseNativeHistoryProjector } from "./native-history-projector-rebase.js";
@@ -21,6 +22,7 @@ type Entry = {
   timer?: ReturnType<typeof setTimeout>;
   dirty: boolean;
   failures: number;
+  unavailable?: Error;
 };
 interface Options {
   directory: string;
@@ -113,6 +115,9 @@ export class ManagedNativeHistoryProjection {
       };
       this.entries.set(key, entry);
     }
+    // A verified missing canonical destination cannot be repaired by replaying
+    // this binding. Keep its encrypted journal for recovery after restart.
+    if (entry.unavailable) return;
     entry.dirty = true;
     this.schedule(entry, 0);
   }
@@ -278,11 +283,21 @@ export class ManagedNativeHistoryProjection {
       }
     } catch (error) {
       if (!this.stopped) {
-        entry.dirty = true;
-        retry = Math.min(
-          this.maxRetryDelayMs,
-          this.retryDelayMs * 2 ** Math.min(entry.failures++, 32),
-        );
+        if (
+          error instanceof CantripServerRequestError &&
+          error.status === 404 &&
+          (error.code === "chat-not-found" ||
+            error.code === "binding-not-found")
+        ) {
+          entry.unavailable = error;
+          entry.dirty = false;
+        } else {
+          entry.dirty = true;
+          retry = Math.min(
+            this.maxRetryDelayMs,
+            this.retryDelayMs * 2 ** Math.min(entry.failures++, 32),
+          );
+        }
         try {
           this.options.onError?.(error, structuredClone(entry.scope));
         } catch {
@@ -308,7 +323,13 @@ export class ManagedNativeHistoryProjection {
       )
     )
       return;
-    for (const waiter of this.waiters) waiter.resolve();
+    const unavailable = [...this.entries.values()].find(
+      (entry) => entry.unavailable,
+    )?.unavailable;
+    for (const waiter of this.waiters) {
+      if (unavailable) waiter.reject(unavailable);
+      else waiter.resolve();
+    }
     this.waiters.clear();
   }
 
@@ -325,8 +346,11 @@ export class ManagedNativeHistoryProjection {
   }
   async close(): Promise<void> {
     this.closing = true;
-    await this.flush();
-    await this.stop();
+    try {
+      await this.flush();
+    } finally {
+      await this.stop();
+    }
   }
   /** Final worker teardown: abort transport, retain every unacknowledged stage,
    * and await in-flight I/O before the caller locks the encryption service. */

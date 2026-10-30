@@ -1596,7 +1596,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           operation: context.phase,
           chatId: context.chatId,
           threadId: context.threadId,
-          runtimeGeneration: context.generation,
+          ...(context.generation
+            ? { runtimeGeneration: context.generation }
+            : {}),
           error: workerLogError(error),
         },
       ),
@@ -6393,9 +6395,14 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         };
         return threadObservations.sync(
           observationScope(command.chatId, command.threadId, options),
-          // A cold reader needs only authorized home/bootstrap context. It never
-          // resumes/configures the native thread or reconstructs a child route.
-          () => runtimeFor(options).syncThread(options),
+          // Prefer the actual managed owner even if its projected route changed.
+          // Cold reads use authorized bootstrap context without resuming or
+          // configuring the native thread or reconstructing a child route.
+          () =>
+            (
+              currentManagedRuntime(command.chatId, command.threadId) ??
+              runtimeFor(options)
+            ).syncThread(options),
         );
       }
     }

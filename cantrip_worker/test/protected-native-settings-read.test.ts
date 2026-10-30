@@ -43,6 +43,25 @@ function setup() {
   return { runtime, target };
 }
 describe("read protection for the selected managed runtime", () => {
+  it("reads the actual source when its model route is newer than the server projection", async () => {
+    const { target, runtime } = setup();
+    const selected = {
+      ...target,
+      scope: { ...scope, modelRouteId: "native-selected-route" },
+    };
+    const result = await readProtectedNativeSettings({
+      scope,
+      service,
+      resolve: () => selected,
+    });
+    expect(runtime.readNativeThreadSettings).toHaveBeenCalledExactlyOnceWith(
+      scope.threadId,
+    );
+    expect(result.context).toMatchObject({
+      threadId: scope.threadId,
+      runtimeGeneration: target.generation,
+    });
+  });
   it("reconciles pending permission evidence before reading the resulting settings", async () => {
     const { target, runtime } = setup();
     const recovered = vi.fn(async () => {

@@ -127,6 +127,44 @@ function codeGraphTarget(
 }
 
 describe("CodeGraph project supervisor", () => {
+  it.each([false, true])(
+    "initializes a nested worktree after ancestor discovery and validates the result (stale after init: %s)",
+    async (staleAfterInit) => {
+      const project = await gitProject("cantrip-codegraph-nested-");
+      const fake = fakeCodeGraph();
+      const supervisor = new CodeGraphProjectSupervisor({
+        authorize: async () => [project],
+        command: "/managed/codegraph",
+        execute: async (command, args, options) => {
+          const beforeInit = !fake.initialized.has(project.root);
+          const result = await fake.execute(command, args, options);
+          if (args[0] === "status" && (beforeInit || staleAfterInit)) {
+            const status = JSON.parse(result.stdout);
+            result.stdout = JSON.stringify({
+              ...status,
+              projectPath: path.dirname(project.root),
+              initialized: true,
+            });
+          }
+          return result;
+        },
+      });
+      try {
+        await supervisor.configure([codeGraphTarget(project.root)]);
+        await supervisor.waitForIdle();
+        expect(fake.calls.map(({ args }) => args[0])).toEqual([
+          "status",
+          "init",
+          "status",
+        ]);
+        expect(supervisor.statuses()[0]!.state).toBe(
+          staleAfterInit ? "degraded" : "ready",
+        );
+      } finally {
+        await supervisor.close();
+      }
+    },
+  );
   it("authorizes, excludes, initializes, and incrementally synchronizes a worktree", async () => {
     const project = await gitProject("cantrip-codegraph-project-");
     const fake = fakeCodeGraph();
