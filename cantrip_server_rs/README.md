@@ -25,6 +25,14 @@ commits detached ownership and retains the draft across server restart. Full
 native window/UI recovery, shared coordination, supported-platform packaging
 and full server replacement remain unfinished.
 
+Legacy panes, tab-group aliases, surface launchers and built-in worktree bindings
+also execute natively, with all 20 routes compared against Node on all three
+stores. The existing browser client follows its normal workspace bootstrap path
+through legacy pane reads and seeding, then retains encrypted dirty-editor state
+across handoff and restart. Transaction boundaries, revision races and admitted
+shutdown have actual PostgreSQL lock evidence; supported-platform acceptance
+remains required.
+
 Managed-folder provisioning now owns durable setup jobs, worker dispatch,
 retry/recovery and shutdown drains. The worker-scoped encrypted repository route
 supports private path registration and resolution through the existing client

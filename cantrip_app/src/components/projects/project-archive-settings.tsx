@@ -33,9 +33,11 @@ function archivedFor(chat: ArchivedChatSummary): string {
 export function ProjectArchiveSettings({
   projectId,
   onRestoreChat,
+  onOpenConversations,
 }: {
   projectId: string;
   onRestoreChat?(chat: ChatSummary): void;
+  onOpenConversations?(): void;
 }) {
   const queryClient = useQueryClient();
   const [deleteTarget, setDeleteTarget] = useState<ArchivedChatSummary | null>(
@@ -69,22 +71,40 @@ export function ProjectArchiveSettings({
     },
   });
   const error = archived.error ?? restore.error ?? remove.error;
-  const chats = archived.data ?? [];
+  const chats = (archived.data ?? []).filter(
+    (chat) => chat.experience === "task",
+  );
 
   return (
     <div
       className="min-h-0 w-full flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8"
       data-content-gutter="standard"
     >
+      {onOpenConversations ? (
+        <div className="mb-5 rounded border p-3 text-sm">
+          <p>
+            Archived Agents are now in the Conversations sidebar, including
+            empty conversations.
+          </p>
+          <Button
+            className="mt-2"
+            variant="outline"
+            size="sm"
+            onClick={onOpenConversations}
+          >
+            Open archived conversations
+          </Button>
+        </div>
+      ) : null}
       <section aria-labelledby="project-archive-title">
         <div className="mb-4">
           <h2 id="project-archive-title" className="font-semibold">
-            Archived agents and tasks{" "}
+            Archived Tasks{" "}
             <span className="text-muted-foreground">{chats.length}</span>
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Agents and Tasks with conversation history remain recoverable for 90
-            days. Empty items are removed immediately.
+            Tasks with conversation history remain recoverable for 90 days.
+            Empty items are removed immediately.
           </p>
         </div>
 
@@ -104,9 +124,9 @@ export function ProjectArchiveSettings({
           ) : chats.length === 0 ? (
             <div className="px-4 py-10 text-center">
               <ArchiveRestore className="mx-auto mb-3 size-5 text-muted-foreground" />
-              <p className="text-sm font-medium">No archived agents or Tasks</p>
+              <p className="text-sm font-medium">No archived Tasks</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Removed agents and Tasks with messages will appear here.
+                Removed Tasks with messages will appear here.
               </p>
             </div>
           ) : (

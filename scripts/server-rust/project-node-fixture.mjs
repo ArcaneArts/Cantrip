@@ -11,6 +11,8 @@ import { buildExecutionTargetCatalog } from "../../cantrip_server/src/execution-
 import { lockNativeCommandChat } from "../../cantrip_server/src/db/repository/native-command-lock.ts";
 import { assertNativeRuntimeWritable } from "../../cantrip_server/src/db/repository/native-runtime-handoff-guard.ts";
 import { managedConsoleFixture } from "./managed-console-node-fixture.mjs";
+import { gitManagedOperationContext } from "../../cantrip_server/src/app/shared/git-managed-operations.ts";
+import { worktreeCoordinatorFixture } from "./worktree-coordinator-node-fixture.mjs";
 console.error(JSON.stringify({ event: "repository-fixture.database.opening" }));
 const database = await connectDatabase(readServerConfig());
 console.error(JSON.stringify({ event: "repository-fixture.database.ready" }));
@@ -67,6 +69,108 @@ try {
             break;
           default:
             throw new Error("Unknown browser operation");
+        }
+      } else if (request.op.startsWith("project-surface-")) {
+        const repo = database.repository;
+        const { owner, project, subject, input, kind } = request;
+        const suffix = {
+          explorer: "Explorer",
+          code: "CodeTab",
+          view: "ProjectView",
+        }[kind];
+        switch (request.op) {
+          case "project-surface-list":
+            value = await repo[`list${suffix}s`](owner, project);
+            break;
+          case "project-surface-context":
+            value = await repo[`get${suffix}ExecutionContext`](owner, subject);
+            break;
+          case "project-surface-project":
+            value = await repo.getProjectViewProjectId(owner, subject);
+            break;
+          case "project-surface-update":
+            value = await repo[`update${suffix}`](owner, subject, input);
+            break;
+          case "project-surface-worktree":
+            value = await repo[`update${suffix}Worktree`](
+              owner,
+              subject,
+              input,
+            );
+            break;
+          case "project-surface-state":
+            value = await repo.updateExplorerViewState(owner, subject, input);
+            break;
+          case "project-surface-pin":
+            value = await repo.pinExplorer(owner, subject, input);
+            break;
+          case "project-surface-create":
+            value = await repo[`create${suffix}`](owner, project, input);
+            break;
+          case "project-surface-delete":
+            value = await repo[`delete${suffix}`](owner, subject);
+            break;
+          default:
+            throw new Error("Unknown surface fixture operation");
+        }
+      } else if (request.op.startsWith("layout-")) {
+        const repo = database.repository.tabLayouts;
+        const { owner, project, subject, input } = request;
+        switch (request.op) {
+          case "layout-get":
+            value = await repo.get(owner, project);
+            break;
+          case "layout-title":
+            value = await repo.updatePane(owner, project, subject, input);
+            break;
+          case "layout-pane-order":
+            value = await repo.reorderPanes(owner, project, input);
+            break;
+          case "layout-legacy-order":
+            value = await repo.reorderLegacyPanes(owner, project, input);
+            break;
+          case "layout-member-order":
+            value = await repo.reorderMembers(owner, project, subject, input);
+            break;
+          case "layout-dock":
+            value = await repo.updateDockPresentation(owner, project, input);
+            break;
+          case "layout-resize":
+            value = await repo.resizeCenterSplit(
+              owner,
+              project,
+              subject,
+              input,
+            );
+            break;
+          case "layout-move":
+            value = await repo.moveMember(owner, project, input);
+            break;
+          case "layout-split":
+            value = await repo.splitMember(owner, project, input);
+            break;
+          case "layout-launchers":
+            value = await repo.listSurfaceLaunchers(owner, project);
+            break;
+          case "layout-pin":
+            value = await repo.setSurfaceLauncherPin(owner, project, input);
+            break;
+          case "layout-open":
+            value = await repo.openSurfaceView(owner, project, input);
+            break;
+          case "layout-close":
+            value = await repo.closeSurfaceView(owner, project, input);
+            break;
+          case "layout-builtin-worktree":
+            value = await repo.updateBuiltInSurfaceWorktree(
+              owner,
+              project,
+              subject,
+              input.worktreeId,
+            );
+            break;
+          default:
+            throw new Error("Unknown pane fixture operation");
         }
       } else if (request.op.startsWith("workspace-")) {
         const repo = database.repository.workspaceLayouts;
@@ -214,7 +318,10 @@ try {
           request.status,
         );
         value = null;
-      } else if (request.op.startsWith("tunnel-")) {
+      } else if (
+        request.op.startsWith("project-surface-") ||
+        request.op.startsWith("tunnel-")
+      ) {
         value = await (
           await import("./tunnel-node-fixture.mjs")
         ).tunnelOperation(database.repository, request);
@@ -337,6 +444,214 @@ try {
           request.session,
           request.owner,
         );
+      else if (request.op === "git-agent-usage") {
+        const { runtime, execution } = request;
+        const attempt = request.operation + ":" + runtime.routeId;
+        await database.repository.recordTokenUsage(request.owner, {
+          sourceKey: "git-agent:" + attempt,
+          projectId: request.project,
+          chatId: null,
+          modelRouteId: runtime.routeId,
+          providerAccountId: runtime.provider.accountId,
+          workerId: request.worker,
+          turnId: execution.turnId,
+          executionAttemptId: attempt,
+          attemptKind: "git-agent",
+          attemptStatus: "completed",
+          reasoningEffort: runtime.model.reasoningEffort,
+          workerVersion: null,
+          serverVersion: "fixture-version",
+          usage: execution.measuredUsage,
+        });
+        value = null;
+      } else if (request.op === "run-secret-race") {
+        value = await Promise.all(
+          request.inputs.map((input) =>
+            database.repository.setRunConfigurationSecret(
+              request.owner,
+              request.project,
+              input,
+            ),
+          ),
+        );
+      } else if (request.op === "run-secret-set") {
+        value = await database.repository.setRunConfigurationSecret(
+          request.owner,
+          request.project,
+          request.input,
+        );
+      } else if (request.op === "run-secret-list") {
+        value = await database.repository.listRunConfigurationSecretSummaries(
+          request.owner,
+          request.project,
+        );
+      } else if (request.op.startsWith("run-runtime-")) {
+        switch (request.op) {
+          case "run-runtime-observation-race":
+            value = await Promise.all(
+              request.inputs.map((observation) =>
+                database.repository.applyRunConfigurationRuntimeObservation(
+                  request.owner,
+                  request.worker,
+                  observation,
+                ),
+              ),
+            );
+            break;
+          case "run-runtime-race":
+            value = await Promise.all(
+              request.inputs.map((input) =>
+                database.repository.requestRunConfigurationRuntimeOperation(
+                  request.owner,
+                  input,
+                ),
+              ),
+            );
+            break;
+          case "run-runtime-request":
+            value =
+              await database.repository.requestRunConfigurationRuntimeOperation(
+                request.owner,
+                request.input,
+              );
+            break;
+          case "run-runtime-get":
+            value = await database.repository.getRunConfigurationRuntime(
+              request.owner,
+              request.project,
+              request.configuration,
+              request.worktree,
+            );
+            break;
+          case "run-runtime-list":
+            value = await database.repository.listRunConfigurationRuntimes(
+              request.owner,
+              request.project,
+              {
+                configurationId: request.configuration,
+                worktreeId: request.worktree,
+                limit: request.limit,
+              },
+            );
+            break;
+          case "run-runtime-identities":
+            value =
+              await database.repository.listActiveRunConfigurationRuntimeIdentitiesForWorker(
+                request.owner,
+                request.worker,
+              );
+            break;
+          case "run-runtime-delete":
+            value = await database.repository.deleteRunConfigurationRuntimes(
+              request.owner,
+              request.project,
+              request.ids,
+            );
+            break;
+          case "run-runtime-observe":
+            value =
+              await database.repository.applyRunConfigurationRuntimeObservation(
+                request.owner,
+                request.worker,
+                request.observation,
+              );
+            break;
+          default:
+            throw new Error("Unknown runtime operation");
+        }
+      } else if (request.op === "worktree-coordinator") {
+        value = await worktreeCoordinatorFixture(
+          database,
+          request,
+          (statement) =>
+            database.repository.projects.database.execute(sql.raw(statement)),
+        );
+      } else if (request.op === "worktree-rollback") {
+        value = await database.repository.rollbackProjectWorktreeCreation(
+          request.owner,
+          request.project,
+          request.worker,
+          request.created,
+        );
+      } else if (request.op === "worktree-set-lifecycle") {
+        value = await database.repository.setProjectWorktreeLifecycle(
+          request.owner,
+          request.project,
+          request.worktree,
+          request.state,
+        );
+      } else if (request.op === "worktree-observe") {
+        value = await database.repository.observeProjectWorktree(
+          request.owner,
+          request.project,
+          request.worktree,
+          request.observed,
+        );
+      } else if (request.op === "worktree-removal-blockers") {
+        value = await database.repository.getWorktreeRemovalBlockers(
+          request.owner,
+          request.project,
+          request.worktree,
+        );
+      } else if (request.op === "inventory-reconcile") {
+        value = await database.repository.reconcileProjectWorktrees(
+          request.owner,
+          request.project,
+          request.worker,
+          request.inventory,
+          request.created,
+        );
+      } else if (request.op === "observation-context") {
+        value = await database.repository.getProjectWorktreeObservationContext(
+          request.owner,
+          request.worker,
+          request.source,
+          request.worktreePath,
+        );
+      } else if (request.op === "observation-operation") {
+        const active = await database.repository.getActiveGitOperation(
+          request.owner,
+          request.project,
+          request.worktree,
+        );
+        value = active
+          ? {
+              id: active.id,
+              workerId: active.workerId,
+              context: gitManagedOperationContext(active),
+            }
+          : null;
+      } else if (request.op === "observation-source")
+        value = await database.repository.getProjectSource(
+          request.owner,
+          request.project,
+          { isWorkerAvailable: (worker) => request.connected.includes(worker) },
+        );
+      else if (request.op === "observation-targets")
+        value = await database.repository[
+          request.gitOnly
+            ? "listWorkerWorktreeObservationTargets"
+            : "listWorkerExecutionRootContexts"
+        ](request.owner, request.worker, request.limit);
+      else if (request.op === "observation-paths")
+        value =
+          await database.repository.reconcileWorkerProjectObservationPaths(
+            request.owner,
+            request.worker,
+            request.paths,
+          );
+      else if (request.op === "worktree-context")
+        value = await database.repository.getProjectWorktreeContext(
+          request.owner,
+          request.project,
+          request.worktree,
+        );
+      else if (request.op === "github-context")
+        value = await database.repository.getGithubProjectExecutionContext(
+          request.owner,
+          request.project,
+          request.worker,
+        );
       else if (request.op === "target-resolve")
         value = await database.repository.resolveExecutionTarget(
           request.owner,
@@ -400,10 +715,12 @@ try {
         JSON.stringify({
           id: request.id,
           rejected: true,
-          ...((request.op.startsWith("tunnel-") ||
+          ...((request.op.startsWith("project-surface-") ||
+            request.op.startsWith("tunnel-") ||
             request.op.startsWith("browser-") ||
             request.op.startsWith("document-") ||
-            request.op.startsWith("workspace-")) &&
+            request.op.startsWith("workspace-") ||
+            request.op.startsWith("layout-")) &&
           error.cause?.code
             ? { databaseCode: error.cause.code }
             : {}),
@@ -414,7 +731,9 @@ try {
                 ...(error.code ? { code: error.code } : {}),
               }
             : {}),
-          ...(request.op.startsWith("workspace-")
+          ...(request.op.startsWith("project-surface-") ||
+          request.op.startsWith("workspace-") ||
+          request.op.startsWith("layout-")
             ? {
                 errorName: error.name,
                 ...(error.code ? { code: error.code } : {}),
@@ -422,10 +741,12 @@ try {
               }
             : {}),
           diagnostic:
+            request.op.startsWith("project-surface-") ||
             request.op.startsWith("terminal-") ||
             request.op.startsWith("browser-") ||
             request.op.startsWith("document-") ||
-            request.op.startsWith("workspace-")
+            request.op.startsWith("workspace-") ||
+            request.op.startsWith("layout-")
               ? error.message
               : (error.cause?.message ?? error.message),
           ...(request.op.startsWith("folder-")

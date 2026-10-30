@@ -110,7 +110,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
     "601cfa1ef62b1fe37e7779ace69d80961404ad97ddc2089da85eef315183f9d9",
   applicationRoutes:
-    "c5c5c0741e1ab5c3aa8f1da83c6a7b76a6cf1f6851b56c187e0ca37c74535697",
+    "3a367cada85d59a586d6add9af4da717a4031478fd99d5b95b669dae77188356",
   clientControlCommands:
     "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
   cliCommands:
@@ -188,6 +188,9 @@ const DURABLE_TABLE_CLASSIFICATIONS = {
   runConfigurationSecrets: "endpoint-protected",
   runConfigurationSecretOperations: "minimized-operational-metadata",
   chats: "endpoint-protected",
+  conversationUsageClients: "minimized-operational-metadata",
+  conversationUsageReceipts: "minimized-operational-metadata",
+  conversationCreationRequests: "endpoint-protected",
   standaloneChatRootJobs: "minimized-operational-metadata",
   standaloneChatRoots: "endpoint-protected",
   tasks: "endpoint-protected",
@@ -1137,6 +1140,12 @@ function taskRouteBoundaryAudit(routes) {
 function privateDisplayLabelRouteBoundaryAudit(routes) {
   const requirements = [
     ["GET", "/api/projects", "projectWireListSchema", "opaque-list"],
+    [
+      "GET",
+      "/api/projects/:projectId/conversations",
+      "conversationCatalogWirePageSchema",
+      "opaque-conversation-catalog",
+    ],
     [
       "POST",
       "/api/projects/from-folder",
@@ -3459,6 +3468,23 @@ function applicationRouteContentClassification(route) {
   const native = nativeRouteContentClassification(route);
   if (native) return native;
   const key = `${route.method} ${route.path}`;
+  if (key === "GET /api/projects/:projectId/conversations") {
+    return {
+      classification: "endpoint-protected",
+      rationale:
+        "owner/project-scoped Agent summaries with encrypted titles; cursor, usage, activity, counts and archive deadlines are operational metadata; no transcript content",
+    };
+  }
+  if (
+    key === "POST /api/chats/:chatId/usage" ||
+    key === "POST /api/chats/:chatId/archive"
+  ) {
+    return {
+      classification: "minimized-operational-metadata",
+      rationale:
+        "authorized Agent identity, operation/sequence correlation and server timestamp only; archive retains protected conversation content without returning it",
+    };
+  }
   if (
     /^\/api\/projects\/:projectId\/workspace-layouts\/:workspaceId(?:\/(?:seed|commands|import-legacy-files))?$/u.test(
       route.path,
@@ -4502,7 +4528,14 @@ async function buildInventory() {
       tunnelFrameKinds,
     ),
   };
-  const durableTables = durableTableContentInventory(schemaText);
+  const durableTables = durableTableContentInventory(
+    schemaText +
+      "\n" +
+      (await readFile(
+        resolve(dirname(schemaPath), "schema-conversation-usage.ts"),
+        "utf8",
+      )),
+  );
   const routes = parsedRoutes.map((parsedRoute) => {
     const contentBoundary = applicationRouteContentClassification(parsedRoute);
     const { source: _source, ...route } = parsedRoute;

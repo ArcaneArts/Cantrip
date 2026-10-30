@@ -1,6 +1,10 @@
 // Development-time export of the real protocol definitions. The native server
 // embeds this data and implements every registered operation in Rust.
 import * as protocol from "../../packages/protocol/dist/index.js";
+import * as runDefinitions from "../../packages/protocol/dist/run-configuration-definitions.js";
+import * as runSecrets from "../../packages/protocol/dist/run-configuration-secrets.js";
+import * as runConfigurationOperations from "../../packages/protocol/dist/run-configuration-operations.js";
+import * as runConfigurationRuntime from "../../packages/protocol/dist/run-configuration-runtime.js";
 import { cuaCursorPreferenceRecordSchema } from "../../packages/protocol/dist/computer-use-preferences.js";
 import { mkdir, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -126,6 +130,55 @@ export const contractRoots = [
   "projectFolderSetupRetrySchema",
   "managedFolderMaterializeReadySchema",
   "projectWorkspaceStorageContextSchema",
+  "worktreeObservationConfigurationResultSchema",
+  "worktreeInventorySchema",
+  "projectWorktreeCreateSchema",
+  "projectWorktreeListSchema",
+  "projectWorktreeSummarySchema",
+  "projectWorktreeLockSchema",
+  "projectWorktreePruneSchema",
+  "projectWorktreeRemoveSchema",
+  "runConfigurationRuntimeLifecycleRequestSchema",
+  "runConfigurationRuntimeOperationResultSchema",
+  "runConfigurationGetResponseSchema",
+  "runConfigurationListQuerySchema",
+  "runConfigurationDetectQuerySchema",
+  "runConfigurationPathsQuerySchema",
+  "runConfigurationApiValidateRequestSchema",
+  "runConfigurationApiFlutterDevicesRequestSchema",
+  "runConfigurationApiWriteRequestSchema",
+  "runConfigurationApiDeleteRequestSchema",
+  "runConfigurationListResponseSchema",
+  "runConfigurationCapabilitiesResponseSchema",
+  "runConfigurationDetectResponseSchema",
+  "runConfigurationPathsResponseSchema",
+  "runConfigurationValidateResponseSchema",
+  "runConfigurationFlutterDevicesResponseSchema",
+  "runConfigurationWriteResponseSchema",
+  "runConfigurationDeleteResponseSchema",
+  "runConfigurationIdSchema",
+  "runConfigurationProtectedSecretListSchema",
+  "runConfigurationSecretSummaryListSchema",
+  "runConfigurationSecretListResultSchema",
+  "runConfigurationSecretSetRequestSchema",
+  "runConfigurationSecretSetResultSchema",
+  "runConfigurationRuntimeStatusQuerySchema",
+  "runConfigurationRuntimeStatusResultSchema",
+  "runConfigurationRuntimeOutputQuerySchema",
+  "protectedRunConfigurationRuntimeWorkerOutputSchema",
+  "protectedRunConfigurationRuntimeOutputResultSchema",
+  "runConfigurationRuntimeWorkerOperationResultSchema",
+  "runConfigurationRuntimeWorkerObservationSchema",
+  "runConfigurationRuntimeWorkerReconciliationSchema",
+  "worktreeMutationResultSchema",
+  "worktreePruneResultSchema",
+  "worktreeCreateResultSchema",
+  "worktreeRemoveResultSchema",
+  "worktreeCreateMutationFailureSchema",
+  "githubPullRequestCheckoutPreparedSchema",
+  "githubPullRequestCheckoutResultSchema",
+  "codeGraphProjectStatusSchema",
+  "repositoryOperationWireRequestSchema",
   "repositoryWorkerOperationWireRequestSchema",
   "repositoryOperationWireResponseSchema",
   "workerEncryptionRefreshRequestSchema",
@@ -145,8 +198,45 @@ export const contractRoots = [
   "projectTabLayoutWireSummarySchema",
   "projectBuiltinSurfaceDefinitionIdSchema",
   "projectCenterLayoutNodeSchema",
+  "encryptedProjectPaneUpdateSchema",
+  "encryptedTabGroupUpdateSchema",
+  "projectPaneOrderSchema",
+  "projectPaneMemberOrderSchema",
+  "projectPaneMemberMoveSchema",
+  "projectPaneMemberSplitSchema",
+  "projectCenterSplitResizeSchema",
+  "projectDockPresentationUpdateSchema",
+  "projectSurfaceViewOpenSchema",
+  "projectSurfaceViewCloseSchema",
+  "projectSurfaceViewOpenResultSchema",
+  "projectSurfaceViewCloseResultSchema",
+  "legacyProjectSurfaceViewOpenResultSchema",
+  "legacyProjectSurfaceViewCloseResultSchema",
+  "legacyProjectTabLayoutWireSummarySchema",
+  "tabGroupOrderSchema",
+  "tabGroupMemberOrderSchema",
+  "tabGroupMemberMoveSchema",
+  "projectSurfaceLauncherListSchema",
+  "projectSurfaceLauncherPinSchema",
+  "projectSurfaceLauncherSchema",
   "terminalWireSummarySchema",
   "terminalWireListSchema",
+  "encryptedExplorerCreateSchema",
+  "encryptedExplorerUpdateSchema",
+  "encryptedExplorerPinSchema",
+  "encryptedExplorerViewStateUpdateSchema",
+  "encryptedExplorerWorktreeUpdateSchema",
+  "explorerWireSummarySchema",
+  "explorerWireListSchema",
+  "explorerOperationWireRequestSchema",
+  "encryptedCodeTabCreateSchema",
+  "encryptedCodeTabUpdateSchema",
+  "codeTabWireSummarySchema",
+  "codeTabWireListSchema",
+  "encryptedProjectViewCreateSchema",
+  "encryptedProjectViewUpdateSchema",
+  "projectViewWireSummarySchema",
+  "projectViewWireListSchema",
   "encryptedBrowserCreateSchema",
   "encryptedBrowserUpdateSchema",
   "browserWireSummarySchema",
@@ -212,6 +302,28 @@ export const contractRoots = [
 ];
 
 const refinements = new Map([
+  [
+    runDefinitions.runConfigurationRepositoryEntrySchema,
+    "run-repository-entry",
+  ],
+  [
+    runDefinitions.runConfigurationCodexEnvironmentSourceStatusSchema,
+    "run-codex-source",
+  ],
+  [runSecrets.runConfigurationSecretSummarySchema, "run-secret-summary"],
+  [
+    runSecrets.runConfigurationSecretSetResultSchema.shape.secret,
+    "run-secret-summary",
+  ],
+  [runSecrets.runConfigurationSecretSummaryListSchema, "run-secret-summaries"],
+  [
+    runConfigurationRuntime.runConfigurationRuntimeWorkerOperationResultSchema,
+    "worker-wire-runtime-result",
+  ],
+  [
+    protocol.worktreeCreateMutationFailureSchema,
+    "worktree-create-mutation-failure",
+  ],
   [protocol.accountEncryptionProfileSchema, "password-wrapper-pair"],
   [
     protocol.accountEncryptionProfileInitializeSchema.shape.profile,
@@ -252,6 +364,9 @@ function registerChecks(schema, tags) {
     );
   tags.forEach((tag, index) => registerCustom(schema, index, tag));
 }
+registerChecks(protocol.repositoryOperationWireRequestSchema, [
+  "repository-agent-model",
+]);
 registerChecks(protocol.repositoryWorkerOperationWireRequestSchema, [
   "repository-agent-model",
 ]);
@@ -344,12 +459,59 @@ registerChecks(protocol.providerAuthLiveStatusSchema, [
   "provider-auth-live-kind",
 ]);
 const recursiveJson = registerWorkerContracts(registerChecks);
+registerChecks(runDefinitions.runConfigurationProviderValidationSchema, [
+  "run-provider-validation",
+]);
+registerChecks(runDefinitions.runConfigurationDetectionCandidateSchema, [
+  "run-detection-candidate",
+]);
+registerChecks(runConfigurationOperations.runConfigurationListResponseSchema, [
+  "run-definition-list",
+]);
+registerChecks(
+  runConfigurationOperations.runConfigurationCapabilitiesResponseSchema.shape
+    .capabilities,
+  ["run-provider-capabilities"],
+);
+registerChecks(
+  runDefinitions.runConfigurationWriteResultSchema.options[0].shape.entry,
+  ["run-repository-entry", "run-ready-entry"],
+);
+
 registerChecks(protocol.encryptedTerminalCreateSchema, [
   "terminal-placement",
   "terminal-title",
 ]);
 registerChecks(protocol.encryptedTerminalUpdateSchema, ["terminal-title"]);
 registerChecks(protocol.terminalWireSummarySchema, ["terminal-wire"]);
+registerChecks(protocol.encryptedExplorerCreateSchema, [
+  "terminal-placement",
+  "surface-title:explorer",
+]);
+registerChecks(protocol.encryptedExplorerUpdateSchema, [
+  "surface-title:explorer",
+]);
+registerChecks(protocol.encryptedExplorerPinSchema, [
+  "browser-placement",
+  "surface-title:explorer",
+]);
+registerChecks(protocol.explorerWireSummarySchema, ["surface-title:explorer"]);
+registerChecks(protocol.encryptedCodeTabCreateSchema, [
+  "terminal-placement",
+  "surface-title:code-tab",
+]);
+registerChecks(protocol.encryptedCodeTabUpdateSchema, ["surface-code-update"]);
+registerChecks(protocol.codeTabWireSummarySchema, ["surface-title:code-tab"]);
+registerChecks(protocol.encryptedProjectViewCreateSchema, [
+  "browser-placement",
+  "surface-title:project-view",
+]);
+registerChecks(protocol.encryptedProjectViewUpdateSchema, [
+  "surface-title:project-view",
+]);
+registerChecks(protocol.projectViewWireSummarySchema, [
+  "surface-title:project-view",
+]);
 registerChecks(protocol.encryptedBrowserCreateSchema, [
   "browser-placement",
   "browser-title",
@@ -368,6 +530,10 @@ registerChecks(protocol.tunnelUserWireCreateSchema, [
 ]);
 registerChecks(protocol.workspaceOwnershipSchema, ["workspace-ownership"]);
 registerChecks(protocol.workspaceTabSchema, ["workspace-tab"]);
+registerChecks(protocol.workspaceConversationViewSchema, [
+  "workspace-tab",
+  "workspace-conversation-view",
+]);
 registerChecks(protocol.workspaceReceiptSchema, ["workspace-receipt"]);
 registerChecks(protocol.explorerPrivateStateOpaqueSchema, [
   "worker-command-surface-kind:explorer-state",
@@ -387,6 +553,26 @@ registerChecks(protocol.projectTabLayoutWireSummarySchema, [
 ]);
 registerChecks(protocol.projectSurfaceResourceRefSchema, [
   "workspace-resource",
+]);
+registerChecks(protocol.encryptedProjectPaneUpdateSchema, ["pane-title"]);
+registerChecks(protocol.projectPaneOrderSchema.shape.paneIds, [
+  "pane-order-unique",
+]);
+registerChecks(protocol.projectPaneMemberOrderSchema.shape.tabKeys, [
+  "member-order-unique",
+]);
+registerChecks(protocol.tabGroupOrderSchema.shape.groupIds, [
+  "group-order-unique",
+]);
+registerChecks(protocol.projectPaneMemberMoveSchema, ["pane-move"]);
+registerChecks(protocol.tabGroupMemberMoveSchema, ["legacy-pane-move"]);
+registerChecks(protocol.projectSurfaceViewOpenSchema, ["surface-open-target"]);
+registerChecks(protocol.legacyProjectTabMemberWireSummarySchema, [
+  "project-tab-member",
+]);
+registerChecks(protocol.tabGroupWireSummarySchema, ["legacy-project-pane"]);
+registerChecks(protocol.legacyProjectTabLayoutWireSummarySchema, [
+  "legacy-project-layout",
 ]);
 const commandContracts = registerWorkerCommandContracts(registerCustom);
 const transforms = new Map([
@@ -602,7 +788,16 @@ export function buildContractManifest() {
   return {
     schemaVersion: 1,
     roots: Object.fromEntries(
-      contractRoots.map((name) => [name, visit(protocol[name], name)]),
+      contractRoots.map((name) => [
+        name,
+        visit(
+          protocol[name] ??
+            runConfigurationRuntime[name] ??
+            runConfigurationOperations[name] ??
+            runDefinitions[name],
+          name,
+        ),
+      ]),
     ),
     nodes,
   };

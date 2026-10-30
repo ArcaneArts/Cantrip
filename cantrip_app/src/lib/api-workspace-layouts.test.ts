@@ -340,3 +340,42 @@ it("does not seed into a replacement account after delayed observation", async (
   ).rejects.toMatchObject({ code: "client-identity-changed" });
   expect(fetcher).toHaveBeenCalledOnce();
 });
+
+it("advertises conversation ownership support on every workspace route", async () => {
+  const fetcher = vi.fn(async (url: unknown, init?: RequestInit) => {
+    const headers = new Headers(init?.headers);
+    expect(headers.get("x-cantrip-workspace-version")).toBe("2");
+    if (String(url).endsWith("/commands")) {
+      const result = applyWorkspaceCommand(
+        layout,
+        JSON.parse(init!.body as string),
+      );
+      return Response.json({
+        ...result,
+        appliedRevision: result.layout.revision,
+        replayed: false,
+      });
+    }
+    if (String(url).endsWith("/import-legacy-files"))
+      return Response.json({ layout, replayed: true });
+    return Response.json(layout);
+  });
+  vi.stubGlobal("fetch", fetcher);
+  const client = transport();
+  await client.read();
+  await client.seed({ mainWindowId: "main" });
+  await client.importLegacyFiles(legacyImport);
+  await client.execute({
+    operationId: "home",
+    workspaceId: layout.id,
+    projectId: layout.projectId,
+    windowId: "main",
+    attachmentGeneration: 0,
+    expectedRevision: 0,
+    action: { type: "home" },
+  });
+  expect(fetcher).toHaveBeenCalledTimes(4);
+  expect(
+    client.classify(new CantripApiError("Upgrade required", 409, "version")),
+  ).toBe("rejected");
+});

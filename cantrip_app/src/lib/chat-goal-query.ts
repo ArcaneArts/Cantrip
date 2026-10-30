@@ -24,8 +24,7 @@ export function chatGoalQueryOptions(
   });
 }
 
-/** Keep a real lookup failure visible while retry is pending, rather than
- * removing/reinserting the banner every time an empty query fetches again. */
+/** Keep lookup failures for a known unfinished goal visible during retries. */
 export function useChatGoalQuery(
   chatId: string,
   status: ChatSummary["status"],
@@ -42,9 +41,15 @@ export function useChatGoalQuery(
   }, [chatId, query.isError, query.isSuccess, query.error]);
   return {
     ...query,
-    statusError: !enabled
-      ? null
-      : (query.error ??
-        (query.isPending && failure?.chatId === chatId ? failure.error : null)),
+    // Discover goals in every agent chat, but a failed discovery is not a
+    // failure of a goal the user never created or already finished.
+    // Keep polling for recovery and externally created goals.
+    statusError:
+      !enabled || !query.data?.goal || query.data.goal.status === "complete"
+        ? null
+        : (query.error ??
+          (query.isPending && failure?.chatId === chatId
+            ? failure.error
+            : null)),
   };
 }

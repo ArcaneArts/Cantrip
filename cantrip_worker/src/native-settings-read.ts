@@ -26,6 +26,11 @@ export async function readProtectedNativeSettings(input: {
 }) {
   const scope = nativeSettingsReadScopeSchema.parse(input.scope);
   const target = input.resolve();
+  // The server's last projected model route may lag a native model change.
+  // Read that same native source to reconcile it; model selection is not source
+  // identity. Account, placement, thread and transport must still match.
+  const { modelRouteId: _requestedRoute, ...requestedSource } = scope;
+  const { modelRouteId: _targetRoute, ...targetSource } = target?.scope ?? {};
   const assertCurrent = () => {
     const current = input.resolve();
     if (
@@ -34,7 +39,8 @@ export async function readProtectedNativeSettings(input: {
       current.runtime !== target.runtime ||
       current.generation !== target.generation ||
       target.runtime.transportGeneration !== target.generation ||
-      !isDeepStrictEqual(scope, current.scope)
+      !isDeepStrictEqual(requestedSource, targetSource) ||
+      !isDeepStrictEqual(target.scope, current.scope)
     )
       throw new Error(
         "The settings read no longer refers to the current managed runtime.",

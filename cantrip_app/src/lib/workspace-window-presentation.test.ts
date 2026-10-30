@@ -247,3 +247,59 @@ it("represents an empty owned window as home and rejects a missing owner", () =>
     "does not belong",
   );
 });
+
+it("projects direct conversation content without a rail member or duplicate owner", async () => {
+  const ownership = fixture();
+  ownership.version = 2;
+  for (const window of ownership.windows)
+    for (const pane of window.panes) {
+      pane.conversationView = null;
+      pane.selection = { kind: "tab", tabId: pane.activeTabId! };
+    }
+  const pane = ownership.windows[0]!.panes[0]!;
+  pane.conversationView = {
+    id: "direct",
+    resource: {
+      kind: "entity",
+      definitionId: "project.agent",
+      resourceId: "agent",
+    },
+    titleProtection: null,
+    builtInState: null,
+    dockPresentation: null,
+    preview: false,
+  };
+  pane.selection = { kind: "conversation", viewId: "direct" };
+  const { wire, selection } = workspaceWindowPresentation(ownership, "main");
+  expect(wire.panes[0]!.members.map((member) => member.tabKey)).toEqual([
+    "main-first",
+    "main-second",
+  ]);
+  expect(wire.panes[0]!.conversationView?.tabKey).toBe("direct");
+  expect(selection.activeTabByPane.main).toBe("direct");
+  const { layout } = await openWorkspaceWindowPresentation(ownership, "main");
+  const index = buildProjectSurfaceIndex(
+    layout,
+    {
+      browsers: [],
+      chats: [],
+      codeTabs: [],
+      explorers: [],
+      projectViews: [],
+      terminals: [],
+    },
+    { layout: ownership, windowId: "main" },
+  );
+  expect(index.byTabKey.get("direct")).toMatchObject({
+    conversation: true,
+    tabId: "agent",
+  });
+  expect(
+    index.byPaneId.get("main")?.filter((surface) => !surface.conversation),
+  ).toHaveLength(2);
+  pane.tabs = [];
+  pane.activeTabId = null;
+  const directOnly = await openWorkspaceWindowPresentation(ownership, "main");
+  expect(directOnly.layout.panes[0]!.members).toEqual([]);
+  expect(directOnly.layout.panes[0]!.conversationView?.tabKey).toBe("direct");
+});

@@ -1,4 +1,9 @@
 import {
+  migrateWorkspaceConversationViews,
+  workspacePaneViews,
+  workspaceSelectedViewId,
+} from "./workspace-pane-views.js";
+import {
   workspaceCommandSchema,
   type WorkspaceCommand,
 } from "./workspace-command.js";
@@ -18,7 +23,7 @@ import {
 export class WorkspaceCommandError extends Error {
   constructor(
     public readonly code:
-      "scope" | "revision" | "attachment" | "missing" | "invalid",
+      "scope" | "revision" | "attachment" | "missing" | "invalid" | "version",
     message: string,
   ) {
     super(message);
@@ -31,8 +36,19 @@ function required<T>(value: T | undefined | null, message: string): T {
   return value;
 }
 
-function focus(window: WorkspaceWindow, pane: WorkspacePane, tabId: string) {
-  pane.activeTabId = tabId;
+function focus(
+  window: WorkspaceWindow,
+  pane: WorkspacePane,
+  tabId: string | null,
+) {
+  if (!tabId)
+    throw new WorkspaceCommandError("invalid", "Pane has no selected view.");
+  if (pane.conversationView?.id === tabId) {
+    pane.selection = { kind: "conversation", viewId: tabId };
+  } else {
+    pane.activeTabId = tabId;
+    if (pane.selection) pane.selection = { kind: "tab", tabId };
+  }
   window.focusedPaneId = pane.id;
   window.recentPaneIds = [
     pane.id,
@@ -69,11 +85,30 @@ function takeTab(
   pane: WorkspacePane,
   tab: WorkspaceTab,
 ) {
+  if (pane.conversationView?.id === tab.id) {
+    const selected = workspaceSelectedViewId(pane) === tab.id;
+    pane.conversationView = null;
+    if (!pane.tabs.length) removePane(window, pane);
+    else if (selected)
+      pane.selection = {
+        kind: "tab",
+        tabId: pane.activeTabId ?? pane.tabs[0]!.id,
+      };
+    return;
+  }
   const index = pane.tabs.findIndex((candidate) => candidate.id === tab.id);
+  const selected = workspaceSelectedViewId(pane) === tab.id;
   pane.tabs.splice(index, 1);
-  if (!pane.tabs.length) removePane(window, pane);
-  else if (pane.activeTabId === tab.id)
-    pane.activeTabId = (pane.tabs[index] ?? pane.tabs[index - 1])!.id;
+  if (!pane.tabs.length && !pane.conversationView) removePane(window, pane);
+  else {
+    if (pane.activeTabId === tab.id)
+      pane.activeTabId = (pane.tabs[index] ?? pane.tabs[index - 1])?.id ?? null;
+    if (selected && pane.selection) {
+      pane.selection = pane.activeTabId
+        ? { kind: "tab", tabId: pane.activeTabId }
+        : { kind: "conversation", viewId: pane.conversationView!.id };
+    }
+  }
 }
 
 function sameResource(a: WorkspaceTab, b: WorkspaceTab) {
@@ -104,7 +139,11 @@ export function applyWorkspaceCommand(
   input: WorkspaceCommand,
 ): WorkspaceCommandResult {
   const command = workspaceCommandSchema.parse(input);
-  const layout = workspaceOwnershipSchema.parse(snapshot);
+  const parsed = workspaceOwnershipSchema.parse(snapshot);
+  const layout =
+    command.action.type === "open-conversation"
+      ? migrateWorkspaceConversationViews(parsed)
+      : parsed;
   if (
     command.workspaceId !== layout.id ||
     command.projectId !== layout.projectId
@@ -135,10 +174,15 @@ export function applyWorkspaceCommand(
     );
   const tabById = (id: string) => {
     const pane = required(
-      window.panes.find((pane) => pane.tabs.some((tab) => tab.id === id)),
+      window.panes.find((pane) =>
+        workspacePaneViews(pane).some((tab) => tab.id === id),
+      ),
       "Tab does not belong to this window.",
     );
-    return { pane, tab: pane.tabs.find((tab) => tab.id === id)! };
+    return {
+      pane,
+      tab: workspacePaneViews(pane).find((tab) => tab.id === id)!,
+    };
   };
   let focusWindowId: string | null = null;
   const retiredDestinationIds: string[] = [];
@@ -157,6 +201,95 @@ export function applyWorkspaceCommand(
       "The destination is reserved for a pending transfer.",
     );
   switch (action.type) {
+    case "open-conversation": {
+      const existing = layout.windows.flatMap((owner) =>
+        owner.panes.flatMap((pane) =>
+          workspacePaneViews(pane)
+            .filter((view) => sameResource(view, action.view))
+            .map((view) => ({ owner, pane, view })),
+        ),
+      )[0];
+      if (existing) {
+        focus(existing.owner, existing.pane, existing.view.id);
+        if (existing.owner.id !== window.id) focusWindowId = existing.owner.id;
+        break;
+      }
+      let pane = action.paneId
+        ? paneById(action.paneId)
+        : (window.recentPaneIds
+            .map((id) =>
+              window.panes.find((p) => p.id === id && p.region === "center"),
+            )
+            .find((p) => p !== undefined) ??
+          window.panes.find((p) => p.region === "center"));
+      if (pane && pane.region !== "center")
+        throw new WorkspaceCommandError(
+          "invalid",
+          "Direct conversations require a center pane.",
+        );
+      if (!pane) {
+        pane = {
+          id: action.newPaneId,
+          region: "center",
+          titleProtection: null,
+          tabs: [],
+          activeTabId: null,
+          conversationView: null,
+        };
+        window.panes.push(pane);
+        window.centerRoot = window.centerRoot
+          ? {
+              kind: "split",
+              id: action.splitId,
+              direction: "horizontal",
+              fraction: 0.5,
+              first: window.centerRoot,
+              second: { kind: "pane", paneId: pane.id },
+            }
+          : { kind: "pane", paneId: pane.id };
+      }
+      if (
+        pane.conversationView &&
+        (layout.pendingTransfers ?? []).some((transfer) =>
+          transfer.tabIds.includes(pane.conversationView!.id),
+        )
+      )
+        throw new WorkspaceCommandError(
+          "invalid",
+          "Conversation is reserved for a pending transfer.",
+        );
+      if (
+        action.expectedConversationViewId !== undefined &&
+        action.expectedConversationViewId !==
+          (pane.conversationView?.id ?? null)
+      )
+        throw new WorkspaceCommandError(
+          "invalid",
+          "Conversation selection changed during draft preparation.",
+        );
+      pane.conversationView = action.view;
+      focus(window, pane, action.view.id);
+      break;
+    }
+    case "close-conversation": {
+      const { pane, tab } = tabById(action.viewId);
+      if (pane.conversationView?.id !== tab.id)
+        throw new WorkspaceCommandError(
+          "invalid",
+          "View is not a direct conversation.",
+        );
+      const selected = workspaceSelectedViewId(pane) === tab.id;
+      pane.conversationView = null;
+      if (!pane.tabs.length) removePane(window, pane);
+      else if (selected)
+        pane.selection = {
+          kind: "tab",
+          tabId: pane.activeTabId ?? pane.tabs[0]!.id,
+        };
+      const next = window.panes.find((p) => p.id === window.focusedPaneId);
+      if (selected && next) focus(window, next, workspaceSelectedViewId(next));
+      break;
+    }
     case "migrate-code-files": {
       const { pane, tab } = tabById(action.tabId);
       if (
@@ -258,7 +391,9 @@ export function applyWorkspaceCommand(
         );
       const occupied = new Set(
         layout.windows.flatMap((owner) =>
-          owner.panes.flatMap((pane) => pane.tabs.map((tab) => tab.id)),
+          owner.panes.flatMap((pane) =>
+            workspacePaneViews(pane).map((tab) => tab.id),
+          ),
         ),
       );
       const documents = new Set([action.documentId]);
@@ -350,6 +485,28 @@ export function applyWorkspaceCommand(
           "The main window cannot return to itself.",
         );
       const pane = paneById(action.paneId);
+      const views = action.tabId
+        ? [
+            required(
+              workspacePaneViews(pane).find((view) => view.id === action.tabId),
+              "Tab does not belong to the source pane.",
+            ),
+          ]
+        : workspacePaneViews(pane);
+      if (
+        action.tabId
+          ? !action.destinationPaneId ||
+            layout.windows.some((owner) =>
+              owner.panes.some((pane) => pane.id === action.destinationPaneId),
+            )
+          : Boolean(
+              action.destinationPaneId && action.destinationPaneId !== pane.id,
+            )
+      )
+        throw new WorkspaceCommandError(
+          "invalid",
+          "A pane transfer preserves its identity; a tab transfer requires a new pane identity.",
+        );
       const destination = required(
         layout.windows.find(({ id }) => id === layout.mainWindowId),
         "Main window is unavailable.",
@@ -359,9 +516,7 @@ export function applyWorkspaceCommand(
         pending.some(
           (transfer) =>
             transfer.id === action.transferId ||
-            transfer.tabIds.some((id) =>
-              pane.tabs.some((tab) => tab.id === id),
-            ),
+            transfer.tabIds.some((id) => views.some((tab) => tab.id === id)),
         )
       )
         throw new WorkspaceCommandError(
@@ -377,15 +532,18 @@ export function applyWorkspaceCommand(
           sourcePaneId: pane.id,
           sourcePlacement: {
             panePosition: window.panes.indexOf(pane),
-            tabPosition: 0,
+            tabPosition: workspacePaneViews(pane).indexOf(views[0]!),
+            ...(action.tabId && pane.conversationView?.id === action.tabId
+              ? { viewKind: "conversation" as const }
+              : {}),
             region: pane.region,
             centerRoot: structuredClone(window.centerRoot),
           },
-          tabIds: pane.tabs.map(({ id }) => id),
-          wholePane: true,
+          tabIds: views.map(({ id }) => id),
+          wholePane: !action.tabId,
           destinationWindowId: destination.id,
           destinationGeneration: destination.attachmentGeneration,
-          destinationPaneId: pane.id,
+          destinationPaneId: action.tabId ? action.destinationPaneId! : pane.id,
           returnSplitId: action.splitId,
           phase: "preparing",
         },
@@ -397,11 +555,11 @@ export function applyWorkspaceCommand(
       const tabs = action.tabId
         ? [
             required(
-              pane.tabs.find(({ id }) => id === action.tabId),
+              workspacePaneViews(pane).find(({ id }) => id === action.tabId),
               "Tab does not belong to the source pane.",
             ),
           ]
-        : pane.tabs;
+        : workspacePaneViews(pane);
       const pending = layout.pendingTransfers ?? [];
       if (
         layout.windows.some(({ id }) => id === action.destinationWindowId) ||
@@ -443,7 +601,10 @@ export function applyWorkspaceCommand(
           sourcePaneId: pane.id,
           sourcePlacement: {
             panePosition: window.panes.indexOf(pane),
-            tabPosition: pane.tabs.indexOf(tabs[0]!),
+            tabPosition: workspacePaneViews(pane).indexOf(tabs[0]!),
+            ...(action.tabId && pane.conversationView?.id === action.tabId
+              ? { viewKind: "conversation" as const }
+              : {}),
             region: pane.region,
             centerRoot: structuredClone(window.centerRoot),
           },
@@ -510,14 +671,16 @@ export function applyWorkspaceCommand(
       );
       const tabs = transfer.tabIds.map((id) =>
         required(
-          source.tabs.find((tab) => tab.id === id),
+          workspacePaneViews(source).find((tab) => tab.id === id),
           "Transferred tab no longer belongs to the prepared source pane.",
         ),
       );
       if (
         transfer.wholePane &&
-        (source.tabs.length !== tabs.length ||
-          source.tabs.some((tab, index) => tab.id !== transfer.tabIds[index]))
+        (workspacePaneViews(source).length !== tabs.length ||
+          workspacePaneViews(source).some(
+            (tab, index) => tab.id !== transfer.tabIds[index],
+          ))
       )
         throw new WorkspaceCommandError(
           "invalid",
@@ -539,8 +702,21 @@ export function applyWorkspaceCommand(
           id: transfer.destinationPaneId,
           region: "center",
           titleProtection: source.titleProtection,
-          tabs,
-          activeTabId: tabs[0]!.id,
+          tabs:
+            transfer.sourcePlacement.viewKind === "conversation" ? [] : tabs,
+          activeTabId:
+            transfer.sourcePlacement.viewKind === "conversation"
+              ? null
+              : tabs[0]!.id,
+          ...(transfer.sourcePlacement.viewKind === "conversation"
+            ? {
+                conversationView: tabs[0]!,
+                selection: {
+                  kind: "conversation" as const,
+                  viewId: tabs[0]!.id,
+                },
+              }
+            : {}),
         };
       }
       if (transfer.returnSplitId) {
@@ -552,21 +728,35 @@ export function applyWorkspaceCommand(
             ? previous
             : undefined;
         const originalPane =
-          original && !original.wholePane
-            ? destination.panes.find(({ id }) => id === original.sourcePaneId)
+          original &&
+          !original.wholePane &&
+          (original.sourcePlacement.viewKind === "conversation"
+            ? moved.conversationView && moved.tabs.length === 0
+            : !moved.conversationView)
+            ? destination.panes.find(
+                (p) =>
+                  p.id === original.sourcePaneId &&
+                  (original.sourcePlacement.viewKind !== "conversation" ||
+                    (p.region === "center" && !p.conversationView)),
+              )
             : undefined;
         if (originalPane) {
-          originalPane.tabs.splice(
-            Math.min(
-              original!.sourcePlacement.tabPosition,
-              originalPane.tabs.length,
-            ),
-            0,
-            ...moved.tabs,
-          );
-          focus(destination, originalPane, moved.activeTabId);
+          if (original!.sourcePlacement.viewKind === "conversation") {
+            originalPane.conversationView = moved.conversationView;
+          } else
+            originalPane.tabs.splice(
+              Math.min(
+                original!.sourcePlacement.tabPosition,
+                originalPane.tabs.length,
+              ),
+              0,
+              ...moved.tabs,
+            );
+          focus(destination, originalPane, workspaceSelectedViewId(moved));
         } else {
-          moved.region = original?.sourcePlacement.region ?? "center";
+          moved.region = moved.conversationView
+            ? "center"
+            : (original?.sourcePlacement.region ?? "center");
           destination.panes.splice(
             Math.min(
               original?.sourcePlacement.panePosition ??
@@ -598,7 +788,7 @@ export function applyWorkspaceCommand(
                   }
                 : { kind: "pane", paneId: moved.id };
           }
-          focus(destination, moved, moved.activeTabId);
+          focus(destination, moved, workspaceSelectedViewId(moved));
         }
         focusWindowId = destination.id;
         layout.pendingTransfers = layout.pendingTransfers!.filter(
@@ -615,7 +805,7 @@ export function applyWorkspaceCommand(
         sourcePlacement: transfer.sourcePlacement,
         wholePane: transfer.wholePane,
       };
-      focus(destination, moved, moved.activeTabId);
+      focus(destination, moved, workspaceSelectedViewId(moved));
       focusWindowId = destination.id;
       layout.pendingTransfers = layout.pendingTransfers!.filter(
         ({ id }) => id !== transfer.id,
@@ -653,13 +843,20 @@ export function applyWorkspaceCommand(
     }
     case "close-tab": {
       const { pane, tab } = tabById(action.tabId);
+      if (pane.conversationView?.id === tab.id)
+        throw new WorkspaceCommandError(
+          "invalid",
+          "Use close-conversation for a direct view.",
+        );
       const wasFocused =
-        window.focusedPaneId === pane.id && pane.activeTabId === tab.id;
+        window.focusedPaneId === pane.id &&
+        workspaceSelectedViewId(pane) === tab.id;
       takeTab(window, pane, tab);
       const next = window.panes.find(
         (candidate) => candidate.id === window.focusedPaneId,
       );
-      if (wasFocused && next) focus(window, next, next.activeTabId);
+      if (wasFocused && next)
+        focus(window, next, workspaceSelectedViewId(next));
       break;
     }
     case "close-pane": {
@@ -669,7 +866,8 @@ export function applyWorkspaceCommand(
       const next = window.panes.find(
         (candidate) => candidate.id === window.focusedPaneId,
       );
-      if (wasFocused && next) focus(window, next, next.activeTabId);
+      if (wasFocused && next)
+        focus(window, next, workspaceSelectedViewId(next));
       break;
     }
     case "pin":
@@ -741,7 +939,8 @@ export function applyWorkspaceCommand(
       // Evaluate the insertion position after removing an emptied source pane.
       const count = window.panes.filter(
         (p) =>
-          p.region === action.region && !(p === pane && pane.tabs.length === 1),
+          p.region === action.region &&
+          !(p === pane && workspacePaneViews(pane).length === 1),
       ).length;
       if (action.position > count)
         throw new WorkspaceCommandError(
@@ -809,14 +1008,16 @@ export function applyWorkspaceCommand(
     case "move": {
       const { pane, tab } = tabById(action.tabId);
       const target = paneById(action.targetPaneId);
-      const maximum = target.tabs.length - (target === pane ? 1 : 0);
+      const direct = pane.conversationView?.id === tab.id;
+      const maximum = target.tabs.length - (target === pane && !direct ? 1 : 0);
       if (action.position > maximum)
         throw new WorkspaceCommandError(
           "invalid",
           "Target tab position is outside the pane.",
         );
       if (target === pane) {
-        pane.tabs.splice(pane.tabs.indexOf(tab), 1);
+        if (direct) pane.conversationView = null;
+        else pane.tabs.splice(pane.tabs.indexOf(tab), 1);
       } else takeTab(window, pane, tab);
       target.tabs.splice(action.position, 0, tab);
       focus(window, target, tab.id);
@@ -827,7 +1028,7 @@ export function applyWorkspaceCommand(
       const target = paneById(action.targetPaneId);
       if (
         target.region !== "center" ||
-        (pane === target && pane.tabs.length === 1)
+        (pane === target && workspacePaneViews(pane).length === 1)
       )
         throw new WorkspaceCommandError(
           "invalid",
@@ -890,7 +1091,7 @@ export function applyWorkspaceCommand(
     case "open": {
       const existing = layout.windows.flatMap((owner) =>
         owner.panes.flatMap((pane) =>
-          pane.tabs
+          workspacePaneViews(pane)
             .filter((tab) => sameResource(tab, action.tab))
             .map((tab) => ({ owner, pane, tab })),
         ),
@@ -969,9 +1170,18 @@ export function applyWorkspaceCommand(
   for (const owner of layout.windows) {
     if (!owner.recentTabIds) continue;
     const owned = new Set(
-      owner.panes.flatMap((pane) => pane.tabs.map((tab) => tab.id)),
+      owner.panes.flatMap((pane) =>
+        workspacePaneViews(pane).map((tab) => tab.id),
+      ),
     );
     owner.recentTabIds = owner.recentTabIds.filter((id) => owned.has(id));
+  }
+  if (layout.version === 2) {
+    for (const owner of layout.windows)
+      for (const pane of owner.panes) {
+        pane.conversationView ??= null;
+        pane.selection ??= { kind: "tab", tabId: pane.activeTabId! };
+      }
   }
   layout.revision++;
   const validated = workspaceOwnershipSchema.safeParse(layout);

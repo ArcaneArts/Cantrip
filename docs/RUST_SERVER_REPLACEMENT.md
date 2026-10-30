@@ -1,6 +1,547 @@
 # Rust server replacement
 
+The Git/worktree/Run milestone broad `pnpm check` exited 1 with 1,633 server
+tests passing, two failing and 57 skipped. Both failures were freshly reproduced
+on clean Primary `b04530e3c`: the pooled-provider assertion in
+`local-foundation.test.ts:7218` and the missing `getModelRuntimeByRoute` mock in
+`terminal-managed-session.test.ts`. This does not make the broad check green.
+Reports: `.qa/rust-server/git-milestone-check-v1-exit.json` and
+`git-milestone-baseline-server-v1.log`. PR #2332's conversation-view changes were
+integrated by regenerating the combined contracts rather than replacing either
+feature set.
+
 Status: **implementation in progress; not a deployable replacement**.
+
+## Removed plaintext GitHub catalog
+
+The root Node request policy disables every `/api/github/` route, including the
+five catalog handlers still present in TypeScript source. Rust now preserves
+that HTTP 410 contract after authentication and CSRF and before payload parsing,
+request limits or worker dispatch. This does not reactivate plaintext repository
+access or implement the separate protected GitHub provisioning domain.
+
+The real-socket `github-catalog-http-compatibility.mjs` suite compares status,
+body, cookies and security/CORS headers for local, password and account modes.
+It includes unknown paths, unsupported methods, duplicate query parameters,
+malformed JSON, unsupported payload types, rejected origins and preflight.
+Local macOS comparisons pass in all three storage modes: 34 local-mode, 38
+password-mode and 38 account-mode observations per implementation per backend.
+Strict all-target Clippy and Rust formatting pass. Evidence is retained in
+`github-catalog-http-{pglite,postgres,bundled}-v1.json`.
+
+Supported-platform CI runs this suite on all three database modes; configuring
+those jobs is not evidence that Windows/Linux have passed.
+
+## Execution-target catalog stack usage (verification in progress)
+
+Windows CI run `41065255700` overflowed the 1 MiB repository probe during the
+execution-target suite. The catalog joined eleven inline database-read futures;
+its future measured 62,088 bytes on local macOS. Boxing those component futures
+reduces the same measured catalog future to 600 bytes while retaining concurrent
+reads, mapper errors and result semantics. The unchanged local baseline passed
+at 1 MiB, so that measurement is not a Windows reproduction or readiness claim.
+
+The target repository harness now retains the last submitted operation for each
+runtime, preserves the original failure when shutdown also fails, and saves the
+report and disposable database root on failure. Previously a cleanup exception
+prevented the Windows failure report from being written. The 1 MiB probe remains
+unchanged; supported-platform verification is still required.
+
+All 431 repository cases pass locally on each of native PGlite, private
+PostgreSQL and external PostgreSQL at 1 MiB (`target-stack-repository-*-v1.json`).
+Strict all-target Clippy and Rust formatting pass. An injected SIGKILL during a
+real catalog request verifies that the original process error, last operation,
+shutdown error, 31 prior cases and database root remain available in the saved
+report (`target-stack-report-fault-v1.json` and
+`target-stack-report-fault-verified.json`). That intentional failure verifies
+report retention; it is not counted as a passing compatibility run.
+
+## Ordered worktree observation comparison
+
+Linux run `41068582355` exposed an unordered test boundary: inventory mutation
+writes the canonical `path` routing handle and the scheduled observation reply
+replaces it with the field-scoped `worktreePath` handle. The next HTTP command
+could race that persisted replacement, producing different reconcile source
+handles despite equivalent source-selection queries. The test now reads the
+actual worktree catalog until the observation path is stored between mutations.
+It retains the exact command/body/Live comparisons and asserts the observed
+path; it does not substitute a delay or remove the differing field. External
+PostgreSQL, private PostgreSQL and native PGlite pass all nine local
+storage/authentication combinations with unchanged 116/120/127 recorded
+observations per runtime. Reports: `observation-order-http-*-v1.json`. Platform
+verification remains pending for this adjustment.
+
+## Actual Run product acceptance
+
+The browser/worker probe now uses the existing app API to store an opaque Run
+secret, discover capabilities/paths, create and update definitions, reject stale
+writes, read/list/validate definitions, and launch a real child. The child writes
+only a SHA-256 digest to prove it received the decrypted secret. Stale definition
+deletion preserves the live process; current-revision deletion stops it, removes
+the definition, and retires durable runtime state. A second child verifies
+worktree retirement while preserving the Primary file.
+
+This exposed a client grant gap: start/restart did not authorize `run-content`
+before dispatch. They now install the existing endpoint encryption grant, as
+output reads already do. Stop remains callable without obtaining a grant.
+Focused app tests pass 37 assertions and app typecheck passes.
+
+Local macOS runs pass 25 steps per Node/Rust runtime on all three stores
+(`run-product-pglite-v5.json`, `run-product-postgres-v1.json`, and
+`run-product-bundled-postgres-v3.json`). A prior PGlite run completed all Node product
+assertions but timed out stopping the worker; the next full run passed. A private
+PostgreSQL attempt timed out stopping the Node-connected worker before the Run
+flows; both the diagnostic rerun and the next uninstrumented run passed. These
+failed reports are retained; they are not passing evidence. Linux CI run
+`41066792147` also failed the Node pane-lifetimes shutdown deadline after logging
+fixture shutdown completion. Its job log and artifacts are retained for further
+investigation; platform verification remains incomplete.
+Linux/macOS CI now includes the POSIX child-retirement probe. Windows needs an
+equivalent process-termination probe; none of this proves packaged acceptance.
+
+## Run definition administration
+
+Native project routes now cover list/get, capabilities, detection, path discovery,
+validation, Flutter devices, writes and deletion. Worker files remain owned by the
+worker; Primary resolution and response correlation match Node. Writes/deletes
+share the existing project queue with runtime and worktree operations. Deletion
+reads the actual definition and checks its revision before runtime retirement;
+a still-active stop result prevents the worker delete command.
+
+The controlled-worker HTTP suite exercises creation/update, stale writes/deletes,
+missing/foreign ownership, malformed and misrouted replies, query parsing,
+server-owned secret summaries, active-runtime retirement, ordered command/Live
+streams and persisted audit rows. Exact protocol comparisons cover 106 definition
+request/response vectors. Evidence: `.qa/rust-server/run-definitions-contract-tests-v2-exit.json`
+and `run-definitions-http-{postgres,bundled-postgres}-v1.json` plus
+`run-definitions-http-pglite-v3.json`. All nine local storage/authentication
+combinations pass with 116/120/127 HTTP observations per runtime. This is not full-worker filesystem or packaged-platform
+acceptance. Additional interruption/concurrent-definition tests remain pending.
+
+## Run secret administration
+
+Native GET/PUT project secret routes preserve validation-before-lookup, tenant
+ownership, opaque envelope persistence, JavaScript-compatible digest receipts,
+revision increments, replay of the original revision/timestamp, and 201/200/502
+behavior. Successful writes and replays preserve both ordered invalidations
+(route publication and response-completion publication) and the owned audit row.
+All nine local database/authentication HTTP combinations pass, with audit rows
+read back after server shutdown. Concurrent identical repository writes produce
+one revision and one receipt on all three stores under the 1 MiB fixture stack.
+Evidence: `run-admin-secret-http-*-final.json` and
+`run-admin-repository-*-v5.json` in `.qa/rust-server/`.
+Supported-platform/package verification remains incomplete. Native Run definition
+administration is described above. The default server is still Node.
+
+## Protected Git operations and worker observations (in progress)
+
+Native Run lifecycle admission now includes owner-scoped receipt replay, Primary
+definition reads, encrypted secret lookup across platform overrides, serialized
+start/restart/stop dispatch, durable worker failure reconciliation and ordered
+terminal/Run invalidations. The expanded HTTP/worker-decoder comparison passes
+all nine database/authentication combinations with stored opaque secrets. Tests
+exercise terminal reuse, generation changes, replay without dispatch, receipt
+conflicts, inactive/active no-op outcomes, current-state receipt reads and missing
+worker runtime persistence. Exact definition/secret-summary schema comparisons
+pass 46 cases, alongside the existing worktree/runtime contract tests. Strict
+all-target Clippy passes. Evidence: `.qa/rust-server/git-run-lifecycle-http-*-v4.json`,
+`git-run-definition-contract-tests-v2-exit.json`, and `git-run-lifecycle-clippy-v3-exit.json`.
+Full definition/secret administration, additional failure boundaries and real
+process/platform acceptance are not established by this controlled-worker suite.
+
+The real browser/full-worker probe exposed a reference retirement race: a worker
+notification committed the stopped state before the stop reply, causing deletion
+to reject an unchanged observation. PR #2331 merged the regression-backed fix as
+`9aad78a702aa6aa4e99dee4ce93e203c861f51d7`; native retirement now follows the same
+rule. Matching applied/unchanged observations are accepted only when the runtime
+is inactive; stale generation/operation observations remain rejected.
+The final differential matrix passes all nine storage/authentication combinations
+with 74/76/80 HTTP observations per runtime. An unchanged `stopping` reply is
+explicitly rejected before any worktree removal dispatch. Reports:
+`.qa/rust-server/git-run-retirement-http-*-v2.json`; strict all-target Clippy:
+`git-retirement-observation-clippy-v1-exit.json`.
+
+Retirement across the 256-row page boundary now passes all nine storage/auth
+combinations with 260 persisted runtimes and terminals per implementation.
+The HTTP status response retains its 256-row cap; deletion leaves zero runtime
+and terminal rows for the target worktree, without extra stop commands for idle
+instances. Evidence: `.qa/rust-server/git-retirement-batch-*-v1.json`, also
+preserved with logs and hashes under `~/.codex/qa-evidence/run-retirement-batch-260`.
+This verifies batching, not concurrent admission or packaged platform behavior.
+
+A held worker start reply now exposes committed admission through real HTTP
+status reads while duplicate client requests overlap. The completed requests
+produce one worker start, preserve the receipt ID and replay flag, and can then
+stop the same generation. All nine storage/authentication combinations pass
+(`.qa/rust-server/git-run-concurrent-*-v3.json`). Concurrent groups compare the
+entire ordered Live stream once rather than attributing overlapping event slices
+to individual responses. Seed timestamps are explicit to keep initial ordering
+inputs identical. Earlier fixture failures remain preserved, including a replay
+racing a stop: the receipt correctly carries the current runtime snapshot, which
+can differ with request admission order. This is not yet deterministic coverage
+of a queued stop/delete or HTTP disconnect during admission.
+
+Admitted Run start also survives a real HTTP socket disconnect while its worker
+reply is held. After the socket close event, retrying the original operation
+returns the persisted receipt and running state with exactly one start dispatch;
+a subsequent stop retains the generation. All nine storage/auth combinations
+pass, including ordered Live events (80/82/86 HTTP observations per runtime).
+Evidence: `.qa/rust-server/git-run-disconnect-pglite-v2.json` and
+`git-run-disconnect-{postgres,bundled-postgres}-v1.json`; reports and logs are
+preserved under `~/.codex/qa-evidence/run-disconnect-http`. The platform workflow
+now runs the Git/worktree/Run contracts and HTTP suite on all three stores; those
+new CI steps have not run yet. Queued deletion and additional worker/server
+interruption boundaries remain outstanding.
+
+Actual browser/full-worker acceptance now passes 17 steps per Node/Rust runtime
+on PGlite, private PostgreSQL and external PostgreSQL locally on macOS. A real
+long-lived child writes an exit marker proving its directory still exists when
+termination arrives; after deletion, its PID is gone, the secondary checkout is
+removed and its durable runtime is absent. The Primary user file remains intact.
+Reports: `.qa/rust-server/git-actual-run-retirement-pglite-v5.json` and
+`git-actual-run-retirement-{postgres,bundled-postgres}-v1.json`. Earlier failed
+reports and the stopped-state database inspection remain retained.
+
+PR #2331 validation passes 79 focused server tests, 92 worker tests plus the
+source worktree test, 56 app tests, 961 protocol tests, app build and server
+typecheck. The broad check failed in two unchanged CUA JavaScript execution-budget
+tests (137 others passed); all 23 JavaScript tests passed separately. This does
+not make the broad check green. Evidence is preserved with hashes under
+`~/.codex/qa-evidence/run-retirement-observation-merged-9aad78a70`. Server CI run `41058467522` passed on macOS, Windows and Linux. Additional lifecycle failure boundaries, definition/secret
+administration, packaged acceptance and full supported-platform evidence remain
+required.
+
+Run status and encrypted-output HTTP reads now execute natively. Differential
+HTTP/worker-socket tests pass across all nine database/authentication combinations
+(PGlite, private PostgreSQL and external PostgreSQL; anonymous, password and
+accounts). Each runtime executes 61/63/67 HTTP observations respectively. The
+added cases verify owned status, foreign-owner isolation, missing/offline output,
+unchanged opaque envelopes, default output tail and rejection of all eleven
+mismatched response identity fields. Strict all-target Clippy passes. These are
+controlled-worker tests; full client acceptance extends beyond the real-process
+retirement flow verified above. Evidence: `.qa/rust-server/git-run-reads-http-*-v2.json` and
+`git-run-reads-clippy-v1-exit.json`.
+
+The native project repository-operation route now uses per-project FIFO admission,
+retains admitted work after client disconnect, and drains result finalization
+before shutdown. It preserves protected request/response envelopes, model routing,
+Git-agent usage recording and the two existing worktree invalidation points.
+The worker remains unchanged.
+
+Worker observation configuration includes owner-scoped source selection, active
+operation context, debouncing and conditional path reconciliation. Real-socket
+comparisons pass with PGlite, private PostgreSQL and external PostgreSQL across
+anonymous, password and account modes. Those scenarios verify opaque routing
+handle persistence, refreshed configuration, filesystem Live invalidation and
+worker reconnects. Repository observation-context comparisons pass 165 cases
+on each backend.
+
+The account-mode comparison exposed a reference-server defect: connection-time
+observation lacked an explicit owner. PR 2320 fixed that propagation and merged
+as `f0b951146277b260e2af7f0f8a5a8d76f97bcf4d`; server-behavior CI passed on Linux,
+macOS and Windows. The separate Rust replacement platform jobs remain pending.
+
+Native CodeGraph status observations reserve revisions before asynchronous
+ownership reads, suppress duplicate publication and retain at most 4,096 recent
+bindings. State tests and HTTP comparisons across all three storage modes and
+authentication modes pass, including missing-worktree and wrong-worker rejection.
+
+Native inventory reconciliation preserves existing worktree identity, validates
+the Primary path and repository fingerprint, and applies missing/prunable state
+in a transaction. Repository comparisons pass 178 cases on each storage backend,
+including an insertion conflict proving that earlier source and Primary updates
+roll back. Worker inventory notifications now resolve owned routing paths,
+publish worktree invalidation and refresh observation configuration. Real-socket
+comparisons pass all nine storage/authentication combinations, including durable
+Git field updates and rejected mismatched routing paths. Strict all-target Clippy
+passes.
+
+Creation rollback, lifecycle updates, observed state writes and removal-blocker
+reads now have native repository implementations. The expanded 212-case target
+repository suite passes on all three storage modes. It covers ready-context
+admission, owner/path/origin checks, repeated rollback, missing/prunable precedence,
+active and released execution lanes, run-configuration terminal exclusion and
+foreign-key protection during rollback. The full worktree coordinator, HTTP
+integration and managed Git recovery remain unfinished; this milestone is not
+replacement acceptance.
+
+The worktree coordinator now has a native implementation for serialized creation,
+inventory reconciliation, pull-request checkout reuse and creation rollback.
+Recovery
+failure validation matches 42 actual protocol cases, including inconsistent
+outcome/code/target combinations and UTF-16 string limits. Eight comparisons also
+match the Node error constructor, including truncation inside an emoji.
+The expanded 231-case repository/coordinator suite passes on all three database
+modes. Controlled worker replies exercise successful creation, missing source,
+ambiguous worker failure, malformed replies, conservative rollback, changed
+catalog bindings, PR checkout reuse/rejection and new user-owned checkout creation.
+These use real repositories with controlled command delegates; actual worker
+filesystem mutations, HTTP lifecycle integration and recovery remain required.
+
+Catalog, create, reconcile, lock, unlock and prune now have native HTTP handlers
+connected to the shared coordinator. Capability checks precede request-schema
+validation, and successful mutations preserve both coordinator and post-response
+worktree invalidations. Socket comparisons pass all nine database/authentication
+combinations, including exact Live-event ordering, command envelopes, durable
+routing handles and operation timestamps. Strict Clippy passes.
+
+Run configuration runtime reads, bounded lists, worker identities, inactive-row
+deletion and fenced observations now have native repository implementations.
+The target repository suite passes 337 cases on each of PGlite, external
+PostgreSQL and bundled PostgreSQL. It covers all 64 state-transition pairs,
+ownership and generation checks, persisted failure details, unchanged observation
+replay, transaction rollback after a constraint violation, list ordering and
+256-item bounds. Strict all-target Clippy passes.
+
+Operation admission and terminal binding are now implemented. The expanded
+421-case repository suite passes on all three database modes, including all
+24 operation/state combinations, receipt replay and identity conflicts, generation
+updates, terminal reuse and exactly-once pane attachment. A forced receipt-write
+failure rolls back runtime creation, terminal creation, membership and layout
+revision; retrying the same operation succeeds. Concurrent admission checks are
+described below. Strict Clippy passes; these repository results alone do not
+establish complete runtime or worktree DELETE parity.
+
+Worktree DELETE and the runtime retirement loop now have native implementations
+under focused HTTP comparison. Retirement stops active instances, validates the
+worker result, reconciles the fenced observation, updates terminal status and
+removes terminal/runtime records before dispatching worktree removal. The new
+runtime-result contract matches 68 protocol cases, and strict Clippy passes.
+Anonymous PGlite HTTP comparison passes 44 observations, including offline active
+instances, missing/active/stale/future-generation stop replies, final retirement,
+retained stop receipts and exact Live-event ordering. All nine storage/authentication
+combinations pass this retirement suite. Actual worker process retirement
+acceptance remains required; filesystem acceptance is described below. Missing worktrees remain observation targets in the reference
+repository; deletion does not remove those catalog identities.
+
+Native runtime notifications now use authenticated connection ownership and retain
+admitted work through shutdown. Reconnect reconciliation compares durable identities,
+marks missing processes lost and publishes run then terminal invalidations. The
+focused anonymous PGlite socket suite passes with wrong-project/stale-generation
+rejection, a failed runtime notification, missing-process reconnect and retirement
+of active/failed/lost instances. Strict Clippy passes; the expanded nine-combination
+notification/reconciliation matrix exposed missing account owner context in the
+Node reference reconnect handler. PR #2327 fixes that handler; its two-owner
+real-WebSocket regression fails before the fix and all 13 focused tests pass after
+it. All nine database/authentication combinations now pass against that merged
+reference (44 anonymous, 46 password and 48 account HTTP observations per
+backend, including notification and reconnect Live events). Concurrent database
+admission now verifies 12 duplicate starts produce one runtime, terminal, pane
+membership and receipt; 12 distinct stops produce one accepted stop; and 12
+identical exit observations apply once. These checks pass for both implementations
+on all three storage modes, with strict Clippy passing. Additional reconciliation
+failure cases and actual process acceptance remain open.
+
+Actual browser/full-worker worktree acceptance now passes on all three database
+modes for both implementations (`actual-folder-client.mjs --worktrees`). The
+existing client encrypts metadata and the unchanged worker creates a real local
+Git checkout, locks/unlocks it, retains its identity across server/worker restart,
+reconciles, removes and prunes it while preserving the primary checkout. The
+fixture seeds only the disposable local Git project's catalog classification to
+exercise GitHub-backed capabilities without external GitHub access. Client
+status convergence respects its existing one-second cache. Active runtime process
+retirement, additional mutation failure/disconnect recovery and supported-platform
+packaging remain unverified by this flow.
+
+Dirty-removal acceptance exposed a reference-server lifecycle rollback bug:
+recovery reused a ready-only execution lookup and left rejected removals stuck
+at `removing`. PR #2330 fixes the Node setter with owner/project/active-source
+checks inside the update; Rust now uses the same atomic authorization. The
+421-case repository suite passes on all three stores, including recovery and
+foreign-owner/removed-source rejection. The expanded 15-step real-browser/full-worker flow passes for both servers on
+all three stores: dirty removal returns the protected error, retains the file,
+restores `ready`, and permits deletion after cleanup. The reference fix passes 61 focused server, 93 worker and 56 app
+tests, app build and server typecheck. Its full repository check finished with
+1,633 server tests passing, 57 skipped and two failures: the pooled provider
+account expectation in local-foundation and the missing getModelRuntimeByRoute
+mock in terminal-managed-session. Both were independently reproduced on the
+pre-fix baseline; the broad check is not green. The final log and hashes are
+preserved in `~/.codex/qa-evidence/worktree-removal-recovery-merged-903542623`.
+
+## Workspace read stack usage follow-up
+
+Follow-up platform run `41037815947` has completed with failures in the later
+actual-browser integration suite: macOS failed the Node fleet-discovery listener
+assertion; Linux and Windows failed Rust browser-surface readiness with a
+connection error. These failures require diagnosis and resolution before platform
+acceptance. Raw failed-step logs and platform artifacts are retained in local QA
+evidence; a passing workspace-specific check does not establish a passing matrix.
+The Linux worker logs show `surface.attach` rejecting a browser URL outside
+HTTP/HTTPS after opening its Chromium target. Open draft PR 2132 addresses the
+overlapping initial blank-page navigation race and still reports unresolved
+Windows validation. Its worker changes have not been adopted into this lane.
+
+PR 2318's Windows run `41035166842` still aborts at the first owned workspace
+seed on its 1 MiB test thread, after missing-project and foreign-owner checks
+pass. The earlier fixture-dispatch extraction is not sufficient Windows
+remediation. Artifact `12967972359` has SHA256
+`682dfad190623bf073d574bce32c38b57c006014cab5fb38a9eb7da030de526f`.
+
+The legacy layout reader now allocates each of its ten joined database futures
+on the heap. It retains concurrent reads, their original executor and the
+caller's transaction boundaries. In the observed ARM debug executable this
+reduces the reader's polling frame from 171,808 to 33,744 bytes. That is a frame
+measurement, not a claim about total process memory or Windows acceptance.
+Both ARM and x86 macOS can run the original workspace suite at 1 MiB; platform
+revalidation remains necessary to establish whether this fixes Windows.
+
+After this change, workspace repository compatibility passes all three storage
+modes at 1 MiB (66 cases and 11 snapshots per mode), as does legacy pane
+repository compatibility. The x86 macOS workspace run, PGlite workspace HTTP
+comparisons, PostgreSQL pane concurrency/read-boundary/shutdown checks, strict
+all-target Clippy and Rust formatting also pass. The broad repository check
+is still running; these focused results do not establish full replacement
+or Windows readiness.
+
+## Explorer, Code tabs and project views
+
+All 18 project-surface routes now execute natively, preserving their distinct
+validation, placement, ownership, encrypted state, capability errors and ordered
+Live invalidations. The implementation reuses native pane placement and workspace
+cleanup, retains Explorer pin idempotency, and fences Code checkout updates using
+the prior worker and worktree binding. Explorer operations use the unchanged worker
+command transport and preserve the separate 4 MiB request limit.
+
+Local comparisons pass on PGlite, bundled PostgreSQL and external PostgreSQL:
+133 repository operations and 68 durable snapshots per store, plus all nine
+storage/authentication HTTP combinations (88/94/98 observations per runtime).
+Populated main/detached workspace layouts cover all view definitions and legacy
+Explorer `project.file` aliases. Another owner's layout remains unchanged.
+An actual SQL trigger failure at the final resource DELETE rolls back workspace,
+legacy-pane, layout-revision and remote-surface cleanup on every store.
+
+Project-view deletion revokes two active WorkerLink grants before sending
+`surface.close`; foreign deletion cannot revoke them, and deleted grants cannot
+renew or be reissued. These cases pass inside the existing terminal/relay suite
+on all three stores for local and account authentication. Repeated deletion does
+not send another close command. Controlled workers use the unchanged decoder and
+transport; this is not full remote-desktop UI acceptance.
+
+Existing browser APIs and the full production worker pass Explorer reads/writes,
+stale-save and stale-binding denial, Code/Explorer metadata, pin retries and
+restart retention. A real local Git checkout is discovered through folder setup;
+encrypted History/Graph creation, rename, deletion and restart retention pass on
+all stores (14 steps per runtime). The source correctly rejects worktree switching
+for these managed-folder projects even when Git is available. Actual GitHub-backed
+Issues/PR/Actions flows and wider worktree lifecycle acceptance remain required.
+
+The 16 schema roots pass 8,396 exact cases; the full wire regression passes
+260,456 cases. PostgreSQL lock tests establish pin/CAS races and admitted work
+surviving caller abort and graceful shutdown. The focused Source suite passes
+37 tests, and the app build passes. Strict all-target Clippy and changed-file formatting pass. Route-template dispatch
+also preserves validation for resource IDs that resemble action names. Current-head
+supported-platform results and merged delivery are still pending. The native
+all-target run passed before the subsequent fixture stack correction; that run
+does not verify the final fixture source. Normal builds
+continue to select the Node server; this milestone does not perform the cutover.
+
+The preceding pane milestone's run `41026486096` has now reported Windows and
+macOS failures. Windows exits during native workspace seeding with a confirmed
+main-thread stack overflow. Its artifact `12963648256` has SHA256
+`b66115ee2ab2a10d83a2f6be1f168041ed95c23a4d33817e3bc1572d7df837d9`.
+macOS caught a lock-observation race: a blocker was visible while the separately
+sampled wait type was null. The observer now waits for both actual signals before
+releasing the transaction, retaining the bounded deadline and assertions; the
+external PostgreSQL workspace repository suite passes locally after this fix.
+A local 1 MiB-stack reproduction isolated excessive debug stack use in the
+shared repository fixture dispatcher: its poll frame alone reserved about
+660 KiB. Extracting unrelated operations into a separately boxed dispatcher
+passes all 66 workspace cases and 11 snapshots on each of native PGlite,
+private PostgreSQL and external PostgreSQL at 1 MiB,
+with production repository code unchanged. The CI workspace repository matrix
+now uses the same explicit stack size. Windows platform revalidation remains
+required; a local pass does not establish that the Windows failure is fixed.
+
+The current focused worker check reports 92 passes and one filesystem-notification
+failure. An isolated repeat fails later in that same test. Clean Primary passes
+the full focused group once, then times out on the isolated test; all 842 compared
+worker/protocol/crypto/CLI source and test files are identical. These results
+establish baseline instability, not its cause or a green worker check.
+The broad current milestone check passes 1,623 Source server tests (57 skipped),
+955 protocol tests and 3,899 app tests (three skipped), but fails four worker
+tests: filesystem notifications, browser-profile adoption, abrupt-process outbox
+replay and large-image encoding. An unchanged isolated rerun of the last three
+files passes all 53 tests. The broad check remains failed.
+
+## Legacy panes, surface launchers and normal workspace bootstrap
+
+All 20 legacy pane, tab-group alias, surface-launcher and built-in worktree
+routes now execute natively. They preserve opaque titles, ordering, center-tree
+splits, dock preferences, member identity, revision conflicts, built-in resource
+resolution and lazy Overview cleanup. Standalone reads retain independent query
+connections; workspace seeding uses its caller-owned transaction. Mutations retain
+admitted work through caller disconnect and graceful shutdown.
+
+Local Node/Rust comparisons pass on native PGlite, private PostgreSQL and external
+PostgreSQL: 107 repository operations and ten durable snapshots per store, plus
+13,823 exact schema/error cases and 38 Source-generated SQL shapes. HTTP tests
+cover all three authentication modes on every store, with 59/62/64 observations
+per runtime. Pane mutations publish the ordered project and project-tab-layout
+notifications; launcher and built-in worktree changes preserve their absence.
+The reference fixture observes completion of the actual final response hook
+before checking Live delivery: a response body or unrelated pong alone does not
+prove completion of the earlier asynchronous audit hook.
+
+Actual PostgreSQL locks establish three revision races, both standalone and
+caller-transaction read boundaries, and cleanup committed before a later failed
+claim. A caller-aborted insert remains admitted through observed server shutdown,
+then commits and survives restart. Injected SQL failures verify rollback without
+replacing the real repository operations.
+
+The existing browser client now exercises normal workspace bootstrap rather than
+supplying a custom seed: workspace GET 404, legacy panes GET 200, then seed POST 200. The unchanged full worker and encrypted dirty-editor handoff/restart flow
+pass on all three stores, with 20 steps per runtime. These results do not establish
+native desktop window hosting or complete React UI acceptance.
+
+Workspace repository and HTTP regressions also pass on all three stores after
+the shared-reader refactor. The full native all-target run passes 131 tests across
+70 result groups, with no failures or ignored tests. Strict all-target Clippy,
+Rust formatting, changed-file
+formatting, the app build, 106 focused Source tests, 955 protocol tests and the
+full app suite (3,899 passed, three skipped) pass locally. The broad repository
+check is not green: a computer-use process test timed out, then passed unchanged
+in isolation. A separate broad Source run encountered migration/test timeouts; all seven
+affected files subsequently pass unchanged with one test worker (14 tests).
+the worker run retains its filesystem-change notification failure. The same
+focused worker failure reproduces on clean Primary, with identical relevant
+source/test hashes and 91 other tests passing in each checkout. Those failures
+are retained and must be investigated without weakening their assertions.
+
+A second full `pnpm check` passes all 1,623 Source server tests (57 skipped),
+3,899 app tests (three skipped), and the earlier computer-use process test. It
+ends with four worker failures: filesystem notifications, batch replay after
+process exit, browser keyboard input and browser-profile adoption (2,528 passed,
+133 skipped). The focused outbox/browser rerun passes the three timeout cases but
+fails a different initial-screenshot browser case (24 passed, one failed).
+All 842 compared worker, protocol, crypto and CLI source/test files match Primary;
+these observations do not establish the remaining browser failure's cause.
+The separate root format check reports 12 unchanged files; all 12 also fail the
+same formatter in clean Primary. Changed-file formatting passes. Broad repository
+and platform acceptance remain incomplete.
+
+The preceding workspace milestone's Windows CI artifact also records a browser
+surface failure in the Node reference, before Rust's private-PostgreSQL run:
+`surface.attach` rejects a protected URL as non-HTTP(S). Its PGlite flow completed
+35 steps for each runtime. The artifact SHA256 is
+`b2218c4c3b9d2d58f03a9784c8032c5a5ef0682fb5ec3d610e0a9f997cba3150`.
+The macOS run fails Rust's external-PostgreSQL catalog sync-state assertion.
+Neither partial result establishes full supported-platform acceptance.
+
+The pane suites are configured in the Linux/macOS/Windows workflow. Current-head
+platform results, broader regressions and merged delivery remain required. Normal
+app and standalone launchers still use Node; this milestone does not switch the
+default server or complete replacement.
+
+```sh
+node --import tsx scripts/server-rust/layout-query-manifest.mjs --check
+node scripts/server-rust/cargo.mjs test --test pane_contracts -- --nocapture
+node --import tsx scripts/server-rust/layout-repository-compatibility.mjs --database pglite --report .qa/rust-server/layout-repository-pglite.json
+node --import tsx scripts/server-rust/pane-http-compatibility.mjs --database pglite --report .qa/rust-server/pane-http-pglite.json
+node --import tsx scripts/server-rust/pane-http-lifetimes.mjs --report .qa/rust-server/pane-http-lifetimes.json
+```
+
+Repeat repository and HTTP comparisons with `--database bundled-postgres` and
+`--database postgres`.
 
 ## Device workspace ownership and editor handoff
 
@@ -76,7 +617,7 @@ Repeat the repository, HTTP and browser commands with `--database pglite`,
 comparisons on Linux, macOS and Windows; configured CI is not passing evidence.
 Native desktop window hosting, full editor/UI recovery, shared coordination and
 packaged acceptance remain required. These device-layout APIs do not complete
-project-workspace CRUD or the remaining legacy pane APIs. The production Node
+project-workspace CRUD or the remaining resource domains. The production Node
 entrypoints remain in place; migration/rollback, packaging, Winterhold rehearsal,
 performance and the remaining resource/execution domains remain in scope.
 

@@ -105,3 +105,30 @@ it("stops opening windows when the connection is disposed", async () => {
   await restoreWorkspaceWindows({ read: () => state, open, onError: vi.fn() });
   expect(open).toHaveBeenCalledTimes(1);
 });
+
+it("recovers a detached direct conversation with no rail tabs", () => {
+  const state = layout();
+  state.version = 2;
+  for (const window of state.windows)
+    for (const pane of window.panes) {
+      pane.conversationView = null;
+      pane.selection = { kind: "tab", tabId: pane.activeTabId! };
+    }
+  const pane = state.windows[1]!.panes[0]!;
+  pane.conversationView = {
+    ...pane.tabs[0]!,
+    resource: {
+      kind: "entity",
+      definitionId: "project.agent",
+      resourceId: "agent",
+    },
+  };
+  pane.tabs = [];
+  pane.activeTabId = null;
+  pane.selection = { kind: "conversation", viewId: "tab-one" };
+  expect(
+    workspaceWindowRecoveryTargets(state).find(
+      (target) => target.windowId === "one",
+    )?.target,
+  ).toEqual({ projectId: "project", paneId: "one", activeTabKey: "tab-one" });
+});

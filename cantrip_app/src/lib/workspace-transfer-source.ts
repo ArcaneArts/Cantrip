@@ -1,3 +1,4 @@
+import { workspacePaneViews, workspaceSelectedViewId } from "@cantrip/protocol";
 import { clearSensitiveBytes } from "@cantrip/crypto";
 import type {
   ClientEncryptionIdentity,
@@ -84,8 +85,6 @@ export async function detachWorkspaceViews(
 ) {
   const { controller } = input;
   input.signal?.throwIfAborted();
-  if (input.returnToMain && input.tabId)
-    throw new Error("Window return transfers a complete pane.");
   const transferId = dependencies.allocateId();
   const destinationWindowId = input.returnToMain
     ? controller.getSnapshot().authoritative.mainWindowId
@@ -101,6 +100,7 @@ export async function detachWorkspaceViews(
           type: "prepare-return",
           transferId,
           paneId: input.paneId,
+          ...(input.tabId ? { tabId: input.tabId, destinationPaneId } : {}),
           splitId: dependencies.allocateId(),
         }
       : {
@@ -130,7 +130,9 @@ export async function detachWorkspaceViews(
       source?.attachmentGeneration === sourceGeneration &&
       reservedTabIds.length > 0 &&
       reservedTabIds.every((id) =>
-        source.panes.some((pane) => pane.tabs.some((tab) => tab.id === id)),
+        source.panes.some((pane) =>
+          workspacePaneViews(pane).some((tab) => tab.id === id),
+        ),
       )
     );
   };
@@ -189,14 +191,15 @@ export async function detachWorkspaceViews(
         );
       }
     });
+    const sourcePane = state.authoritative.windows
+      .find(({ id }) => id === input.windowId)
+      ?.panes.find(({ id }) => id === input.paneId);
     const target = {
       projectId: state.authoritative.projectId,
       paneId: destinationPaneId,
       activeTabKey:
         input.tabId ??
-        state.authoritative.windows
-          .find(({ id }) => id === input.windowId)
-          ?.panes.find(({ id }) => id === input.paneId)?.activeTabId ??
+        (sourcePane ? workspaceSelectedViewId(sourcePane) : null) ??
         transfer.tabIds[0]!,
       transfer: {
         id: transferId,

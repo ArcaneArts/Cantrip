@@ -893,6 +893,48 @@ describe("thread session preparation", () => {
     expect(f.request).not.toHaveBeenCalled();
   });
 
+  it("observes a connected owner without reconfiguring its projected model profile", async () => {
+    const f = fixture();
+    const snapshot = {
+      threadId: "thread-1",
+      status: "idle" as const,
+      turns: [],
+    };
+    const observe = vi
+      .spyOn(f.runtime, "observeThread")
+      .mockResolvedValue(snapshot);
+    f.native.ensureStarted = vi
+      .fn()
+      .mockRejectedValue(
+        new Error(
+          "A Codex runtime received a turn for a different model profile.",
+        ),
+      );
+    await expect(
+      f.runtime.syncThread({
+        ...options,
+        model: {
+          ...options.model,
+          name: "gpt-6.1-sol",
+          routeId: "updated-route",
+        },
+        provider: { ...options.provider, name: "Updated provider label" },
+      }),
+    ).resolves.toEqual(snapshot);
+    expect(observe).toHaveBeenCalledExactlyOnceWith({
+      cwd: options.cwd,
+      threadId: options.threadId,
+    });
+    expect(f.native.ensureStarted).not.toHaveBeenCalled();
+    expect(f.request).not.toHaveBeenCalled();
+
+    observe.mockRejectedValueOnce(new Error("native storage failure"));
+    await expect(f.runtime.syncThread(options)).rejects.toThrow(
+      "native storage failure",
+    );
+    expect(f.native.ensureStarted).not.toHaveBeenCalled();
+  });
+
   it("syncs a prepared custom-child thread using the same native runtime profile", async () => {
     const f = fixture();
     const subagentDefaults = {

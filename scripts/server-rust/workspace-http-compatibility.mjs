@@ -23,6 +23,9 @@ import {
 import { password } from "./security-fixtures.mjs";
 import { streamingHttpRequest } from "./streaming-http-request.mjs";
 
+import { standaloneSql } from "./project-share-http-state.mjs";
+import { workspaceConversationHttpCases } from "./workspace-conversation-http-cases.mjs";
+
 const option = (key) => {
   const i = process.argv.indexOf(key);
   return i < 0 ? undefined : process.argv[i + 1];
@@ -145,6 +148,20 @@ try {
           databaseUrl,
         });
         for (const sql of targetStateSql(owner, other)) await repo.seed(sql);
+        for (const [id, context, experience, archived] of [
+          ["task-conversation", "project", "task", false],
+          ["archived-conversation", "project", "agent", true],
+        ])
+          await repo.seed(
+            `INSERT INTO chats(id,owner_id,project_id,active_worktree_id,active_worker_id,context_kind,experience,archived_at,protected_label,created_at,updated_at) VALUES(${literal(id)},${literal(owner)},'github','github-alpha-main','alpha',${literal(context)},${literal(experience)},${archived ? literal(stamp) : "NULL"},${json(label("chat"))},${literal(stamp)},${literal(stamp)})`,
+          );
+        const standalone = await repo.request({
+          op: "transaction",
+          statements: standaloneSql(owner, {
+            chatId: "standalone-conversation",
+          }),
+        });
+        assert.equal(standalone.rejected, false, standalone.diagnostic);
         await repo.seed(
           `INSERT INTO workspace_layouts(owner_id,project_id,workspace_id,layout) VALUES(${literal(owner)},'github','workspace',${json(workspaceState())}),(${literal(owner)},'github','bad-layout','{}'::jsonb)`,
         );
@@ -476,6 +493,7 @@ try {
           base + "/import-legacy-files",
           { json: input },
         );
+        await workspaceConversationHttpCases(visit, document);
       } catch (error) {
         result.diagnostics = fixture.server?.diagnostics();
         throw error;

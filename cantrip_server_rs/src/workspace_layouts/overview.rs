@@ -1,21 +1,38 @@
 //! The legacy read retires Overview under its original nested transaction.
 use crate::{
     database::{
-        Transaction,
+        Executor, Transaction,
         resource_layout_queries::{column, context as checked, sql},
     },
     wire::{Value, value::json},
 };
 use anyhow::Result;
 
-pub(super) async fn retire(tx: &Transaction<'_>, project: &str, keys: &[String]) -> Result<()> {
+async fn write(tx: &Transaction<'_>, project: &str, keys: &[String]) -> Result<()> {
+    let at = crate::auth::now();
+    checked("project_revision", tx.query("UPDATE projects SET tab_layout_revision=tab_layout_revision+1,updated_at=$1 WHERE id=$2", &[&at,&project]).await, &[json!(crate::auth::iso(at)),json!(project)])?;
+    for key in keys {
+        detach(tx, project, key).await?;
+    }
+    Ok(())
+}
+pub(super) async fn retire_on(
+    executor: Executor<'_, '_>,
+    project: &str,
+    keys: &[String],
+) -> Result<()> {
+    if let Executor::Database(database) = executor {
+        let project = project.to_owned();
+        let keys = keys.to_vec();
+        return database
+            .transaction(|tx| Box::pin(async move { write(tx, &project, &keys).await }))
+            .await;
+    }
+    let Executor::Transaction(tx) = executor else {
+        unreachable!()
+    };
     tx.execute("SAVEPOINT cantrip_workspace_legacy").await?;
-    let outcome=async {
-        let at=crate::auth::now();
-        checked("project_revision",tx.query("UPDATE projects SET tab_layout_revision=tab_layout_revision+1,updated_at=$1 WHERE id=$2",&[&at,&project]).await,&[json!(crate::auth::iso(at)),json!(project)])?;
-        for key in keys {detach(tx,project,key).await?;}
-        Ok(())
-    }.await;
+    let outcome = write(tx, project, keys).await;
     match outcome {
         Ok(()) => {
             tx.execute("RELEASE SAVEPOINT cantrip_workspace_legacy")

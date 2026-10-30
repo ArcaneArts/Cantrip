@@ -759,7 +759,7 @@ describe("project sidebar file tree encryption gate", () => {
     await act(async () => renderer.unmount());
   });
 
-  it("disables authorization and protected queries while Files is collapsed", async () => {
+  it("disables authorization and protected queries while the Files page is hidden", async () => {
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => {
       renderer = TestRenderer.create(tree());
@@ -769,7 +769,7 @@ describe("project sidebar file tree encryption gate", () => {
       expect.objectContaining({ enabled: true }),
     );
 
-    await act(async () => buttonNamed(renderer, "Files").props.onClick());
+    await act(async () => renderer.update(tree({ visible: false })));
 
     expect(runtime.workerEncryption).toHaveBeenLastCalledWith(explorer, false);
     expect(runtime.directory).toHaveBeenLastCalledWith(
@@ -781,7 +781,7 @@ describe("project sidebar file tree encryption gate", () => {
     await act(async () => renderer.unmount());
   });
 
-  it("marks entries revealed by folder and Files expansion for global glitch effects", async () => {
+  it("marks entries revealed by folder expansion and Files page switching for global glitch effects", async () => {
     runtime.entriesByPath.set("", [runtime.directoryEntry]);
     runtime.entriesByPath.set("src", [runtime.entry]);
     let renderer!: TestRenderer.ReactTestRenderer;
@@ -814,9 +814,9 @@ describe("project sidebar file tree encryption gate", () => {
       expandedEntries.every((entry) => entry.props["data-elite-global"]),
     ).toBe(true);
 
-    await act(async () => buttonNamed(renderer, "Files").props.onClick());
+    await act(async () => renderer.update(tree({ visible: false })));
     expect(renderer.root.findAllByProps({ role: "treeitem" })).toHaveLength(0);
-    await act(async () => buttonNamed(renderer, "Files").props.onClick());
+    await act(async () => renderer.update(tree({ visible: true })));
     const reopenedEntries = renderer.root.findAllByProps({ role: "treeitem" });
     expect(reopenedEntries.length).toBeGreaterThan(0);
     expect(

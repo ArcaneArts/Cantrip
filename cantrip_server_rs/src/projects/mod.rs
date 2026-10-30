@@ -1,6 +1,10 @@
+pub mod coordinator;
+pub mod observations;
 pub mod placement;
 pub mod repository;
+pub mod repository_operation;
 pub mod targets;
+pub mod worktrees;
 
 use serde::Serialize;
 

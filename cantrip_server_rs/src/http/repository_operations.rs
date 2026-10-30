@@ -1,5 +1,6 @@
 //! Worker-scoped encrypted repository operations. The server routes opaque
 //! requests and responses; repository contents and paths stay at the endpoints.
+mod project;
 use super::{
     body,
     middleware::{self, Context},
@@ -122,5 +123,10 @@ async fn handle(
     }
 }
 pub(super) fn routes() -> Router<Arc<AuthService>> {
-    Router::new().route("/api/workers/{workerId}/repository-operation", post(handle))
+    Router::new()
+        .route("/api/workers/{workerId}/repository-operation", post(handle))
+        .route(
+            "/api/projects/{projectId}/worktrees/{worktreeId}/repository-operation",
+            post(project::handle),
+        )
 }

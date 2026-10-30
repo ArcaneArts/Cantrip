@@ -34,6 +34,7 @@ import {
   toStandaloneChatWireSummary,
 } from "./chat-mappers.js";
 import type { ProjectWorktreeExecutionContext } from "./projects.js";
+import { replayConversationCreation } from "./conversation-creation.js";
 
 export class StandaloneChatPlacementUnavailableError extends Error {}
 
@@ -318,14 +319,38 @@ export class ChatCatalogRepository {
     input: EncryptedChatCreate,
     isWorkerConnected?: (workerId: string) => boolean,
   ): Promise<ChatWireSummary | null> {
-    const created = await this.createChatExperience(
-      ownerId,
-      projectId,
-      input,
-      "agent",
-      isWorkerConnected,
-    );
-    return created?.chat ?? null;
+    if (input.attachToTabLayout === false) {
+      const replay = await replayConversationCreation(
+        this.database,
+        ownerId,
+        projectId,
+        input,
+      );
+      if (replay) return replay;
+    }
+    try {
+      const created = await this.createChatExperience(
+        ownerId,
+        projectId,
+        input,
+        "agent",
+        isWorkerConnected,
+      );
+      return created?.chat ?? null;
+    } catch (error) {
+      // A concurrent request may have committed this identity while placement
+      // was resolving. Read its receipt after the failed transaction settles.
+      if (input.attachToTabLayout === false) {
+        const replay = await replayConversationCreation(
+          this.database,
+          ownerId,
+          projectId,
+          input,
+        );
+        if (replay) return replay;
+      }
+      throw error;
+    }
   }
 
   async createTask(
@@ -434,6 +459,14 @@ export class ChatCatalogRepository {
         })
         .returning();
       const chat = firstOrThrow(result, "creating a chat");
+      if (
+        experience === "agent" &&
+        (input as EncryptedChatCreate).attachToTabLayout === false
+      ) {
+        await transaction
+          .insert(schema.conversationCreationRequests)
+          .values({ chatId, request: input as EncryptedChatCreate });
+      }
       const runtimeSessionId = randomUUID();
       await transaction.insert(schema.chatRuntimeSessions).values({
         id: runtimeSessionId,
@@ -453,7 +486,10 @@ export class ChatCatalogRepository {
         startingHead,
         runtimeSessionId,
       });
-      if (experience !== "task") {
+      if (
+        experience !== "task" &&
+        (input as EncryptedChatCreate).attachToTabLayout !== false
+      ) {
         await attachProjectTab(transaction, {
           projectId,
           paneId: input.paneId ?? input.tabGroupId,

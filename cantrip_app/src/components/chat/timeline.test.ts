@@ -38,6 +38,96 @@ function message(
 }
 
 describe("chat activity timeline", () => {
+  it.each([false, true])(
+    "shows the root failure reason outside collapsed work (child error: %s)",
+    (includeChild) => {
+      const correlation = {
+        sourceMethod: "turn/completed",
+        diagnosticId: null,
+        threadId: "thread",
+        turnId: "turn",
+        itemId: null,
+      };
+      const rootError = {
+        type: "notice" as const,
+        id: "quota",
+        status: "failed" as const,
+        level: "error" as const,
+        message: "You've hit your usage limit.",
+        details: "Try again at Nov 4th, 2026 12:27 PM.",
+        willRetry: false,
+        reasonCode: "usageLimitExceeded",
+        correlation,
+      };
+      const childScope = {
+        rootThreadId: "thread",
+        agentThreadId: "child",
+        parentThreadId: "thread",
+        rootTurnId: "turn",
+        depth: 1,
+        agentPath: ["child"],
+        isRoot: false,
+        nickname: null,
+        role: null,
+      };
+      const timeline = buildChatTimeline([
+        message("user", "user", "2026-10-30T11:16:00Z", [
+          { type: "text", text: "Hello" },
+        ]),
+        message("error", "assistant", "2026-10-30T11:16:01Z", [
+          { type: "activity", activity: rootError },
+        ]),
+        ...(includeChild
+          ? [
+              message("child-error", "assistant", "2026-10-30T11:16:02Z", [
+                {
+                  type: "activity",
+                  activity: {
+                    ...rootError,
+                    id: "child-error",
+                    message: "Unrelated child failure",
+                    agentScope: childScope,
+                  },
+                },
+              ]),
+            ]
+          : []),
+        message("summary", "assistant", "2026-10-30T11:16:03Z", [
+          {
+            type: "activity",
+            activity: {
+              type: "turnSummary",
+              id: "summary",
+              status: "failed",
+              startedAt: 1,
+              completedAt: 4,
+              durationMs: 3000,
+              correlation,
+            },
+          },
+        ]),
+      ]);
+      expect(timeline.at(-1)).toMatchObject({
+        type: "message",
+        message: {
+          content: [
+            {
+              type: "activity",
+              activity: {
+                type: "notice",
+                message: "Turn failed",
+                details:
+                  "You've hit your usage limit.\n\nTry again at Nov 4th, 2026 12:27 PM.",
+                reasonCode: "usageLimitExceeded",
+                willRetry: false,
+              },
+            },
+          ],
+        },
+      });
+    },
+  );
+
   it("keeps a failed goal cycle in history while the next cycle stays live", () => {
     const correlation = (turnId: string) => ({
       turnId,

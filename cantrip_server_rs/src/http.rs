@@ -23,8 +23,10 @@ mod folders;
 mod live_socket;
 mod middleware;
 mod on_response;
+mod pane_layouts;
 mod policies;
 mod project_shares;
+mod project_surfaces;
 mod projects;
 mod provider_accounts;
 mod provider_catalogs;
@@ -33,6 +35,9 @@ mod provider_management;
 mod provider_quota;
 mod provider_telemetry;
 mod repository_operations;
+mod run_configurations;
+mod run_definitions;
+mod run_secrets;
 mod sessions;
 mod settings;
 mod terminal_direct;
@@ -57,6 +62,7 @@ mod worker_maintenance;
 mod worker_socket;
 mod workers;
 mod workspace_layouts;
+mod worktrees;
 
 fn timestamp() -> String {
     Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
@@ -139,8 +145,14 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(projects::routes())
         .merge(folders::routes())
         .merge(file_documents::routes())
+        .merge(pane_layouts::routes())
+        .merge(project_surfaces::routes())
         .merge(workspace_layouts::routes())
         .merge(repository_operations::routes())
+        .merge(worktrees::routes())
+        .merge(run_configurations::routes())
+        .merge(run_definitions::routes())
+        .merge(run_secrets::routes())
         .merge(settings::routes())
         .merge(terminals::routes())
         .merge(browsers::routes())

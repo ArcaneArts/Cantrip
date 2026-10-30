@@ -2773,7 +2773,12 @@ export class CodexAppServer implements CodexRuntime {
       throw new Error("Could not start a Codex thread.");
     }
     options.onThreadLoaded?.(threadId);
-    if (this.methodAvailable("thread/goal/get")) {
+    // Managed executions already own goal continuation through native
+    // admissions. Optional goal metadata must not gate normal GUI input.
+    if (
+      !options.inheritThreadSettings &&
+      this.methodAvailable("thread/goal/get")
+    ) {
       await this.refreshGoal(threadId);
     }
     const collaborationMode =
@@ -3479,6 +3484,13 @@ export class CodexAppServer implements CodexRuntime {
       "cwd" | "executionProfile" | "model" | "provider" | "threadId"
     > & { threadId: string; subagentDefaults?: RuntimeSubagentDefaults | null },
   ): Promise<AgentThreadSync> {
+    // A read follows the already connected owner. Projected route/provider
+    // metadata can change without changing that thread's running process.
+    const observed = await this.observeThread({
+      cwd: options.cwd,
+      threadId: options.threadId,
+    });
+    if (observed) return observed;
     await this.ensureStarted(
       options.model,
       options.provider,

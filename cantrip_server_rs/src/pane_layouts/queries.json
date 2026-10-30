@@ -1,0 +1,656 @@
+{
+  "columns": {
+    "tabGroups": [
+      "id",
+      "projectId",
+      "protectedLabel",
+      "region",
+      "position",
+      "anchorTabKey",
+      "createdAt",
+      "updatedAt"
+    ],
+    "tabGroupMembers": [
+      "tabKey",
+      "groupId",
+      "projectId",
+      "tabKind",
+      "tabId",
+      "position",
+      "createdAt",
+      "updatedAt"
+    ],
+    "projectSurfaceLauncherPreferences": [
+      "projectId",
+      "location",
+      "definitionId",
+      "pinned",
+      "createdAt",
+      "updatedAt"
+    ]
+  },
+  "definitions": [
+    {
+      "id": "project.agent",
+      "scope": "project",
+      "cardinality": "multi-instance",
+      "label": "Agent",
+      "icon": "message-square-code",
+      "category": "resources",
+      "capabilityRequirements": ["worker"],
+      "suggestedPlacement": "center",
+      "supportedPlacements": ["center", "right", "bottom"],
+      "deletable": true,
+      "archivable": true,
+      "launcherLocations": [
+        "project-navigator",
+        "surface-catalog",
+        "command-palette"
+      ],
+      "launcherPinnedByDefault": false,
+      "tabKind": "chat",
+      "profiles": {
+        "agent": "center",
+        "hybrid": "center",
+        "ide": "right"
+      }
+    },
+    {
+      "id": "project.terminal",
+      "scope": "project",
+      "cardinality": "multi-instance",
+      "label": "Terminal",
+      "icon": "square-terminal",
+      "category": "resources",
+      "capabilityRequirements": ["worker"],
+      "suggestedPlacement": "bottom",
+      "supportedPlacements": ["center", "right", "bottom"],
+      "deletable": true,
+      "archivable": false,
+      "launcherLocations": [
+        "project-navigator",
+        "surface-catalog",
+        "command-palette"
+      ],
+      "launcherPinnedByDefault": false,
+      "tabKind": "terminal",
+      "profiles": {
+        "agent": "center",
+        "hybrid": "bottom",
+        "ide": "bottom"
+      }
+    },
+    {
+      "id": "project.explorer",
+      "scope": "project",
+      "cardinality": "multi-instance",
+      "label": "Explorer",
+      "icon": "folder-tree",
+      "category": "resources",
+      "capabilityRequirements": ["worker"],
+      "suggestedPlacement": "center",
+      "supportedPlacements": ["center", "left", "right", "bottom"],
+      "deletable": true,
+      "archivable": false,
+      "launcherLocations": [
+        "project-navigator",
+        "surface-catalog",
+        "command-palette"
+      ],
+      "launcherPinnedByDefault": false,
+      "tabKind": "explorer",
+      "profiles": {
+        "agent": "center",
+        "hybrid": "center",
+        "ide": "center"
+      }
+    },
+    {
+      "id": "project.file",
+      "scope": "project",
+      "cardinality": "multi-instance",
+      "label": "File",
+      "icon": "file-code-2",
+      "category": "resources",
+      "capabilityRequirements": ["worker"],
+      "suggestedPlacement": "center",
+      "supportedPlacements": ["center", "right", "bottom"],
+      "deletable": true,
+      "archivable": false,
+      "launcherLocations": ["project-navigator", "surface-catalog"],
+      "launcherPinnedByDefault": false,
+      "tabKind": "explorer",
+      "profiles": {
+        "agent": "center",
+        "hybrid": "center",
+        "ide": "center"
+      }
+    },
+    {
+      "id": "project.browser",
+      "scope": "project",
+      "cardinality": "multi-instance",
+      "label": "Browser",
+      "icon": "globe-2",
+      "category": "resources",
+      "capabilityRequirements": ["worker"],
+      "suggestedPlacement": "right",
+      "supportedPlacements": ["center", "right", "bottom"],
+      "deletable": true,
+      "archivable": false,
+      "launcherLocations": [
+        "project-navigator",
+        "surface-catalog",
+        "command-palette"
+      ],
+      "launcherPinnedByDefault": false,
+      "tabKind": "browser",
+      "profiles": {
+        "agent": "center",
+        "hybrid": "right",
+        "ide": "right"
+      }
+    },
+    {
+      "id": "project.code",
+      "scope": "project",
+      "cardinality": "multi-instance",
+      "label": "Code",
+      "icon": "code-2",
+      "category": "resources",
+      "capabilityRequirements": ["worker"],
+      "suggestedPlacement": "center",
+      "supportedPlacements": ["center", "right", "bottom"],
+      "deletable": true,
+      "archivable": false,
+      "launcherLocations": [
+        "project-navigator",
+        "surface-catalog",
+        "command-palette"
+      ],
+      "launcherPinnedByDefault": false,
+      "tabKind": "code",
+      "profiles": {
+        "agent": "center",
+        "hybrid": "center",
+        "ide": "center"
+      }
+    },
+    {
+      "id": "project.remote-desktop",
+      "scope": "project",
+      "cardinality": "multi-instance",
+      "label": "Remote Desktop",
+      "icon": "monitor-up",
+      "category": "resources",
+      "capabilityRequirements": ["remote-desktop"],
+      "suggestedPlacement": "right",
+      "supportedPlacements": ["center", "right", "bottom"],
+      "deletable": true,
+      "archivable": false,
+      "launcherLocations": [
+        "project-navigator",
+        "surface-catalog",
+        "command-palette"
+      ],
+      "launcherPinnedByDefault": false,
+      "tabKind": "remote-desktop",
+      "profiles": {
+        "agent": "center",
+        "hybrid": "right",
+        "ide": "right"
+      }
+    },
+    {
+      "id": "project.git-history",
+      "scope": "project",
+      "cardinality": "multi-instance",
+      "label": "History",
+      "icon": "history",
+      "category": "git",
+      "capabilityRequirements": ["git"],
+      "suggestedPlacement": "right",
+      "supportedPlacements": ["center", "right", "bottom"],
+      "deletable": true,
+      "archivable": false,
+      "launcherLocations": [
+        "project-navigator",
+        "surface-catalog",
+        "command-palette"
+      ],
+      "launcherPinnedByDefault": false,
+      "tabKind": "history",
+      "profiles": {
+        "agent": "center",
+        "hybrid": "right",
+        "ide": "right"
+      }
+    },
+    {
+      "id": "project.git-graph",
+      "scope": "project",
+      "cardinality": "multi-instance",
+      "label": "Graph",
+      "icon": "git-fork",
+      "category": "git",
+      "capabilityRequirements": ["git"],
+      "suggestedPlacement": "right",
+      "supportedPlacements": ["center", "right", "bottom"],
+      "deletable": true,
+      "archivable": false,
+      "launcherLocations": [
+        "project-navigator",
+        "surface-catalog",
+        "command-palette"
+      ],
+      "launcherPinnedByDefault": false,
+      "tabKind": "graph",
+      "profiles": {
+        "agent": "center",
+        "hybrid": "right",
+        "ide": "right"
+      }
+    },
+    {
+      "id": "project.github-issues",
+      "scope": "project",
+      "cardinality": "multi-instance",
+      "label": "Issues",
+      "icon": "circle-dot",
+      "category": "github",
+      "capabilityRequirements": ["github"],
+      "suggestedPlacement": "right",
+      "supportedPlacements": ["center", "right", "bottom"],
+      "deletable": true,
+      "archivable": false,
+      "launcherLocations": [
+        "project-navigator",
+        "surface-catalog",
+        "command-palette"
+      ],
+      "launcherPinnedByDefault": false,
+      "tabKind": "issues",
+      "profiles": {
+        "agent": "center",
+        "hybrid": "right",
+        "ide": "right"
+      }
+    },
+    {
+      "id": "project.github-pull-requests",
+      "scope": "project",
+      "cardinality": "multi-instance",
+      "label": "Pull Requests",
+      "icon": "git-pull-request",
+      "category": "github",
+      "capabilityRequirements": ["github"],
+      "suggestedPlacement": "right",
+      "supportedPlacements": ["center", "right", "bottom"],
+      "deletable": true,
+      "archivable": false,
+      "launcherLocations": [
+        "project-navigator",
+        "surface-catalog",
+        "command-palette"
+      ],
+      "launcherPinnedByDefault": false,
+      "tabKind": "prs",
+      "profiles": {
+        "agent": "center",
+        "hybrid": "right",
+        "ide": "right"
+      }
+    },
+    {
+      "id": "project.github-actions",
+      "scope": "project",
+      "cardinality": "multi-instance",
+      "label": "Actions",
+      "icon": "play-circle",
+      "category": "github",
+      "capabilityRequirements": ["github"],
+      "suggestedPlacement": "right",
+      "supportedPlacements": ["center", "right", "bottom"],
+      "deletable": true,
+      "archivable": false,
+      "launcherLocations": [
+        "project-navigator",
+        "surface-catalog",
+        "command-palette"
+      ],
+      "launcherPinnedByDefault": false,
+      "tabKind": "actions",
+      "profiles": {
+        "agent": "center",
+        "hybrid": "right",
+        "ide": "right"
+      }
+    },
+    {
+      "id": "project.tasks",
+      "scope": "project",
+      "cardinality": "singleton",
+      "label": "Tasks",
+      "icon": "list-todo",
+      "category": "project-tools",
+      "capabilityRequirements": [],
+      "suggestedPlacement": "center",
+      "supportedPlacements": ["center", "right", "bottom"],
+      "deletable": false,
+      "archivable": false,
+      "launcherLocations": [
+        "project-navigator",
+        "surface-catalog",
+        "command-palette"
+      ],
+      "launcherPinnedByDefault": true,
+      "tabKind": null,
+      "profiles": {
+        "agent": "center",
+        "hybrid": "center",
+        "ide": "center"
+      }
+    },
+    {
+      "id": "git.history",
+      "scope": "project",
+      "cardinality": "singleton",
+      "label": "History",
+      "icon": "history",
+      "category": "git",
+      "capabilityRequirements": ["git"],
+      "suggestedPlacement": "right",
+      "supportedPlacements": ["center", "right", "bottom"],
+      "deletable": false,
+      "archivable": false,
+      "launcherLocations": [
+        "project-navigator",
+        "surface-catalog",
+        "command-palette"
+      ],
+      "launcherPinnedByDefault": false,
+      "tabKind": null,
+      "profiles": {
+        "agent": "center",
+        "hybrid": "right",
+        "ide": "right"
+      }
+    },
+    {
+      "id": "git.graph",
+      "scope": "project",
+      "cardinality": "singleton",
+      "label": "Graph",
+      "icon": "git-fork",
+      "category": "git",
+      "capabilityRequirements": ["git"],
+      "suggestedPlacement": "right",
+      "supportedPlacements": ["center", "right", "bottom"],
+      "deletable": false,
+      "archivable": false,
+      "launcherLocations": [
+        "project-navigator",
+        "surface-catalog",
+        "command-palette"
+      ],
+      "launcherPinnedByDefault": false,
+      "tabKind": null,
+      "profiles": {
+        "agent": "center",
+        "hybrid": "right",
+        "ide": "right"
+      }
+    },
+    {
+      "id": "github.issues",
+      "scope": "project",
+      "cardinality": "singleton",
+      "label": "Issues",
+      "icon": "circle-dot",
+      "category": "github",
+      "capabilityRequirements": ["github"],
+      "suggestedPlacement": "right",
+      "supportedPlacements": ["center", "right", "bottom"],
+      "deletable": false,
+      "archivable": false,
+      "launcherLocations": [
+        "project-navigator",
+        "surface-catalog",
+        "command-palette"
+      ],
+      "launcherPinnedByDefault": false,
+      "tabKind": null,
+      "profiles": {
+        "agent": "center",
+        "hybrid": "right",
+        "ide": "right"
+      }
+    },
+    {
+      "id": "github.pull-requests",
+      "scope": "project",
+      "cardinality": "singleton",
+      "label": "Pull Requests",
+      "icon": "git-pull-request",
+      "category": "github",
+      "capabilityRequirements": ["github"],
+      "suggestedPlacement": "right",
+      "supportedPlacements": ["center", "right", "bottom"],
+      "deletable": false,
+      "archivable": false,
+      "launcherLocations": [
+        "project-navigator",
+        "surface-catalog",
+        "command-palette"
+      ],
+      "launcherPinnedByDefault": false,
+      "tabKind": null,
+      "profiles": {
+        "agent": "center",
+        "hybrid": "right",
+        "ide": "right"
+      }
+    },
+    {
+      "id": "github.actions",
+      "scope": "project",
+      "cardinality": "singleton",
+      "label": "Actions",
+      "icon": "play-circle",
+      "category": "github",
+      "capabilityRequirements": ["github"],
+      "suggestedPlacement": "right",
+      "supportedPlacements": ["center", "right", "bottom"],
+      "deletable": false,
+      "archivable": false,
+      "launcherLocations": [
+        "project-navigator",
+        "surface-catalog",
+        "command-palette"
+      ],
+      "launcherPinnedByDefault": false,
+      "tabKind": null,
+      "profiles": {
+        "agent": "center",
+        "hybrid": "right",
+        "ide": "right"
+      }
+    }
+  ],
+  "queries": {
+    "claim": {
+      "source": "update \"projects\" set \"tab_layout_revision\" = \"projects\".\"tab_layout_revision\" + 1, \"updated_at\" = $1 where (\"projects\".\"id\" = $2 and \"projects\".\"owner_id\" = $3 and \"projects\".\"tab_layout_revision\" = $4) returning \"id\"",
+      "types": ["timestamptz", "text", "text", "integer"]
+    },
+    "pane": {
+      "source": "select \"id\" from \"tab_groups\" where (\"tab_groups\".\"id\" = $1 and \"tab_groups\".\"project_id\" = $2) limit $3",
+      "types": ["text", "text", "integer"]
+    },
+    "title_members": {
+      "source": "select \"tab_key\" from \"tab_group_members\" where \"tab_group_members\".\"group_id\" = $1 limit $2",
+      "types": ["text", "integer"]
+    },
+    "pane_title": {
+      "source": "update \"tab_groups\" set \"protected_label\" = $1, \"updated_at\" = $2 where \"tab_groups\".\"id\" = $3",
+      "types": ["jsonb", "timestamptz", "text"]
+    },
+    "dock_region": {
+      "source": "select \"tab_groups\".\"region\" from \"tab_group_members\" inner join \"tab_groups\" on \"tab_groups\".\"id\" = \"tab_group_members\".\"group_id\" where (\"tab_group_members\".\"project_id\" = $1 and \"tab_group_members\".\"tab_key\" = $2) limit $3",
+      "types": ["text", "text", "integer"]
+    },
+    "dock_write": {
+      "source": "insert into \"project_dock_presentation_preferences\" (\"project_id\", \"tab_key\", \"region\", \"preferred_mode\", \"split_fraction\", \"restore_fraction\", \"created_at\", \"updated_at\") values ($1, $2, $3, $4, $5, $6, $7, $8) on conflict (\"project_id\",\"tab_key\",\"region\") do update set \"preferred_mode\" = $9, \"split_fraction\" = $10, \"restore_fraction\" = $11, \"updated_at\" = $12",
+      "types": [
+        "text",
+        "text",
+        "text",
+        "text",
+        "double precision",
+        "double precision",
+        "timestamptz",
+        "timestamptz",
+        "text",
+        "double precision",
+        "double precision",
+        "timestamptz"
+      ]
+    },
+    "center_panes": {
+      "source": "select \"id\" from \"tab_groups\" where (\"tab_groups\".\"project_id\" = $1 and \"tab_groups\".\"region\" = $2)",
+      "types": ["text", "text"]
+    },
+    "center_read": {
+      "source": "select \"center_layout_root\" from \"projects\" where \"projects\".\"id\" = $1 limit $2",
+      "types": ["text", "integer"]
+    },
+    "center_write": {
+      "source": "update \"projects\" set \"center_layout_root\" = $1, \"updated_at\" = $2 where \"projects\".\"id\" = $3",
+      "types": ["jsonb", "timestamptz", "text"]
+    },
+    "pane_position": {
+      "source": "update \"tab_groups\" set \"position\" = $1, \"updated_at\" = $2 where \"tab_groups\".\"id\" = $3",
+      "types": ["integer", "timestamptz", "text"]
+    },
+    "all_panes": {
+      "source": "select \"id\", \"region\" from \"tab_groups\" where \"tab_groups\".\"project_id\" = $1",
+      "types": ["text"]
+    },
+    "member_order": {
+      "source": "select \"tab_key\" from \"tab_group_members\" where \"tab_group_members\".\"group_id\" = $1",
+      "types": ["text"]
+    },
+    "member_position": {
+      "source": "update \"tab_group_members\" set \"group_id\" = $1, \"position\" = $2, \"updated_at\" = $3 where \"tab_group_members\".\"tab_key\" = $4",
+      "types": ["text", "integer", "timestamptz", "text"]
+    },
+    "owned": {
+      "source": "select \"id\" from \"projects\" where (\"projects\".\"id\" = $1 and \"projects\".\"owner_id\" = $2) limit $3",
+      "types": ["text", "text", "integer"]
+    },
+    "launcher_preferences": {
+      "source": "select \"project_id\", \"location\", \"definition_id\", \"pinned\", \"created_at\", \"updated_at\" from \"project_surface_launcher_preferences\" where \"project_surface_launcher_preferences\".\"project_id\" = $1",
+      "types": ["text"]
+    },
+    "launcher_pin": {
+      "source": "insert into \"project_surface_launcher_preferences\" (\"project_id\", \"location\", \"definition_id\", \"pinned\", \"created_at\", \"updated_at\") values ($1, $2, $3, $4, default, default) on conflict (\"project_id\",\"location\",\"definition_id\") do update set \"pinned\" = $5, \"updated_at\" = $6",
+      "types": ["text", "text", "text", "boolean", "boolean", "timestamptz"]
+    },
+    "builtin_worktree": {
+      "source": "select \"project_worktrees\".\"id\" from \"project_worktrees\" inner join \"project_sources\" on \"project_sources\".\"id\" = \"project_worktrees\".\"project_source_id\" inner join \"projects\" on (\"projects\".\"id\" = \"project_sources\".\"project_id\" and \"projects\".\"owner_id\" = $1) where (\"projects\".\"id\" = $2 and \"project_worktrees\".\"id\" = $3 and \"project_worktrees\".\"lifecycle_state\" = $4 and \"project_sources\".\"removed_at\" is null) limit $5",
+      "types": ["text", "text", "text", "text", "integer"]
+    },
+    "builtin_write": {
+      "source": "insert into \"project_builtin_surface_states\" (\"project_id\", \"definition_id\", \"worktree_id\", \"created_at\", \"updated_at\") values ($1, $2, $3, default, default) on conflict (\"project_id\",\"definition_id\") do update set \"worktree_id\" = $4, \"updated_at\" = $5",
+      "types": ["text", "text", "text", "text", "timestamptz"]
+    },
+    "selected_member": {
+      "source": "select \"tab_group_members\".\"tab_key\", \"tab_group_members\".\"group_id\", \"tab_group_members\".\"project_id\", \"tab_group_members\".\"tab_kind\", \"tab_group_members\".\"tab_id\", \"tab_group_members\".\"position\", \"tab_group_members\".\"created_at\", \"tab_group_members\".\"updated_at\", \"tab_groups\".\"id\", \"tab_groups\".\"project_id\", \"tab_groups\".\"protected_label\", \"tab_groups\".\"region\", \"tab_groups\".\"position\", \"tab_groups\".\"anchor_tab_key\", \"tab_groups\".\"created_at\", \"tab_groups\".\"updated_at\" from \"tab_group_members\" inner join \"tab_groups\" on \"tab_groups\".\"id\" = \"tab_group_members\".\"group_id\" where (\"tab_group_members\".\"project_id\" = $1 and \"tab_group_members\".\"tab_key\" = $2) limit $3",
+      "types": ["text", "text", "integer"]
+    },
+    "region_panes": {
+      "source": "select \"id\", \"project_id\", \"protected_label\", \"region\", \"position\", \"anchor_tab_key\", \"created_at\", \"updated_at\" from \"tab_groups\" where (\"tab_groups\".\"project_id\" = $1 and \"tab_groups\".\"region\" = $2) order by \"tab_groups\".\"position\" asc, \"tab_groups\".\"id\" asc",
+      "types": ["text", "text"]
+    },
+    "source_members": {
+      "source": "select \"tab_key\", \"group_id\", \"project_id\", \"tab_kind\", \"tab_id\", \"position\", \"created_at\", \"updated_at\" from \"tab_group_members\" where \"tab_group_members\".\"group_id\" = $1 order by \"tab_group_members\".\"position\" asc, \"tab_group_members\".\"tab_key\" asc",
+      "types": ["text"]
+    },
+    "pane_region": {
+      "source": "update \"tab_groups\" set \"region\" = $1, \"position\" = $2, \"updated_at\" = $3 where \"tab_groups\".\"id\" = $4",
+      "types": ["text", "integer", "timestamptz", "text"]
+    },
+    "delete_member": {
+      "source": "delete from \"tab_group_members\" where \"tab_group_members\".\"tab_key\" = $1",
+      "types": ["text"]
+    },
+    "group_anchor_label": {
+      "source": "update \"tab_groups\" set \"protected_label\" = $1, \"anchor_tab_key\" = $2, \"updated_at\" = $3 where \"tab_groups\".\"id\" = $4",
+      "types": ["jsonb", "text", "timestamptz", "text"]
+    },
+    "group_anchor": {
+      "source": "update \"tab_groups\" set \"anchor_tab_key\" = $1, \"updated_at\" = $2 where \"tab_groups\".\"id\" = $3",
+      "types": ["text", "timestamptz", "text"]
+    },
+    "group_label": {
+      "source": "update \"tab_groups\" set \"protected_label\" = $1, \"updated_at\" = $2 where \"tab_groups\".\"id\" = $3",
+      "types": ["jsonb", "timestamptz", "text"]
+    },
+    "insert_pane": {
+      "source": "insert into \"tab_groups\" (\"id\", \"project_id\", \"protected_label\", \"region\", \"position\", \"anchor_tab_key\", \"created_at\", \"updated_at\") values ($1, $2, default, $3, $4, $5, default, default)",
+      "types": ["text", "text", "text", "integer", "text"]
+    },
+    "insert_member_copy": {
+      "source": "insert into \"tab_group_members\" (\"tab_key\", \"group_id\", \"project_id\", \"tab_kind\", \"tab_id\", \"position\", \"created_at\", \"updated_at\") values ($1, $2, $3, $4, $5, $6, $7, $8)",
+      "types": [
+        "text",
+        "text",
+        "text",
+        "text",
+        "text",
+        "integer",
+        "timestamptz",
+        "timestamptz"
+      ]
+    },
+    "target_pane": {
+      "source": "select \"id\", \"project_id\", \"protected_label\", \"region\", \"position\", \"anchor_tab_key\", \"created_at\", \"updated_at\" from \"tab_groups\" where (\"tab_groups\".\"id\" = $1 and \"tab_groups\".\"project_id\" = $2) limit $3",
+      "types": ["text", "text", "integer"]
+    },
+    "delete_pane": {
+      "source": "delete from \"tab_groups\" where \"tab_groups\".\"id\" = $1",
+      "types": ["text"]
+    },
+    "group_touch": {
+      "source": "update \"tab_groups\" set \"updated_at\" = $1 where \"tab_groups\".\"id\" = $2",
+      "types": ["timestamptz", "text"]
+    },
+    "remaining_member_keys": {
+      "source": "select \"tab_key\" from \"tab_group_members\" where \"tab_group_members\".\"group_id\" = $1 order by \"tab_group_members\".\"position\" asc, \"tab_group_members\".\"tab_key\" asc",
+      "types": ["text"]
+    },
+    "groups_remaining": {
+      "source": "select \"id\" from \"tab_groups\" where (\"tab_groups\".\"project_id\" = $1 and \"tab_groups\".\"region\" = $2) order by \"tab_groups\".\"position\" asc, \"tab_groups\".\"id\" asc",
+      "types": ["text", "text"]
+    },
+    "builtin_create": {
+      "source": "insert into \"project_builtin_surface_states\" (\"project_id\", \"definition_id\", \"worktree_id\", \"created_at\", \"updated_at\") values ($1, $2, default, default, default) on conflict do nothing",
+      "types": ["text", "text"]
+    },
+    "attach_pane": {
+      "source": "select \"id\", \"region\" from \"tab_groups\" where (\"tab_groups\".\"id\" = $1 and \"tab_groups\".\"project_id\" = $2) limit $3",
+      "types": ["text", "text", "integer"]
+    },
+    "last_member_position": {
+      "source": "select \"position\" from \"tab_group_members\" where \"tab_group_members\".\"group_id\" = $1 order by \"tab_group_members\".\"position\" desc limit $2",
+      "types": ["text", "integer"]
+    },
+    "insert_member": {
+      "source": "insert into \"tab_group_members\" (\"tab_key\", \"group_id\", \"project_id\", \"tab_kind\", \"tab_id\", \"position\", \"created_at\", \"updated_at\") values ($1, $2, $3, $4, $5, $6, default, default)",
+      "types": ["text", "text", "text", "text", "text", "integer"]
+    },
+    "placement_profile": {
+      "source": "select \"user_settings\".\"workspace_layout_profile\" from \"projects\" inner join \"user_settings\" on \"user_settings\".\"user_id\" = \"projects\".\"owner_id\" where \"projects\".\"id\" = $1 limit $2",
+      "types": ["text", "integer"]
+    }
+  }
+}

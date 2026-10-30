@@ -3,6 +3,7 @@ import {
   getClientSessionIdentitySnapshot,
   onClientSessionIdentityChanged,
 } from "@/lib/client-session";
+import { desktopQuitCoordinator } from "@/lib/desktop-quit-coordinator";
 import type {
   ChatTransferLifecycle,
   ChatTransferOwner,
@@ -50,9 +51,18 @@ export function registerChatTransferLifecycle(
     },
   };
   owners.set(key, guarded);
+  // Direct slots and rail tabs share this lifecycle. Await their protected
+  // draft writes before native exit, including views hidden behind another tab.
+  const unregisterQuit = desktopQuitCoordinator.register({
+    suspend: () => guarded.suspendTransfer(),
+    checkpoint: async () => {
+      await guarded.captureTransfer();
+    },
+  });
   const remove = () => {
     live = false;
     if (owners.get(key) === guarded) owners.delete(key);
+    unregisterQuit();
   };
   const unsubscribe = onClientSessionIdentityChanged(() => {
     if (!clientSessionIdentityMatches(identity)) remove();
@@ -65,4 +75,19 @@ export function registerChatTransferLifecycle(
 
 export function getChatTransferLifecycle(owner: ChatTransferOwner) {
   return owners.get(keyFor(owner));
+}
+
+/** Checkpoint protected drafts before a view is replaced/closed, without stopping execution. */
+export async function checkpointChatView(owner: ChatTransferOwner) {
+  const lifecycle = getChatTransferLifecycle(owner);
+  // An unmounted view has no live composer to checkpoint.
+  if (!lifecycle) return () => {};
+  const release = lifecycle.suspendTransfer();
+  try {
+    await lifecycle.captureTransfer();
+    return release;
+  } catch (error) {
+    release();
+    throw error;
+  }
 }

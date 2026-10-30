@@ -30,7 +30,8 @@ export class ThreadObservationRegistry {
       scope.chatId,
       scope.threadId,
       scope.cwd,
-      scope.modelRouteId,
+      // Model selection can change within the same native thread. Keep
+      // observing its prepared runtime while isolating provider/account/home.
       scope.providerId,
       scope.providerKind,
       scope.providerAccountId ?? null,

@@ -1481,6 +1481,1070 @@
         "remaining": [
           "Current-head supported-platform and packaged acceptance; full native window/UI recovery and shared coordination."
         ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/projects/:projectId/builtin-surfaces/:definitionId/worktree",
+        "implementation": "cantrip_server_rs/src/http/pane_layouts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "scripts/server-rust/pane-http-compatibility.mjs",
+          "scripts/server-rust/pane-http-lifetimes.mjs",
+          "cantrip_server_rs/tests/pane_contracts.rs",
+          "scripts/server-rust/actual-workspace-client.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform compatibility and packaged desktop acceptance."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/panes",
+        "implementation": "cantrip_server_rs/src/http/pane_layouts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "scripts/server-rust/pane-http-compatibility.mjs",
+          "scripts/server-rust/pane-http-lifetimes.mjs",
+          "cantrip_server_rs/tests/pane_contracts.rs",
+          "scripts/server-rust/actual-workspace-client.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform compatibility and packaged desktop acceptance."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/projects/:projectId/panes/:paneId",
+        "implementation": "cantrip_server_rs/src/http/pane_layouts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "scripts/server-rust/pane-http-compatibility.mjs",
+          "scripts/server-rust/pane-http-lifetimes.mjs",
+          "cantrip_server_rs/tests/pane_contracts.rs",
+          "scripts/server-rust/actual-workspace-client.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform compatibility and packaged desktop acceptance."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/projects/:projectId/panes/:paneId/members/order",
+        "implementation": "cantrip_server_rs/src/http/pane_layouts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "scripts/server-rust/pane-http-compatibility.mjs",
+          "scripts/server-rust/pane-http-lifetimes.mjs",
+          "cantrip_server_rs/tests/pane_contracts.rs",
+          "scripts/server-rust/actual-workspace-client.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform compatibility and packaged desktop acceptance."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/projects/:projectId/panes/member",
+        "implementation": "cantrip_server_rs/src/http/pane_layouts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "scripts/server-rust/pane-http-compatibility.mjs",
+          "scripts/server-rust/pane-http-lifetimes.mjs",
+          "cantrip_server_rs/tests/pane_contracts.rs",
+          "scripts/server-rust/actual-workspace-client.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform compatibility and packaged desktop acceptance."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/panes/member/close",
+        "implementation": "cantrip_server_rs/src/http/pane_layouts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "scripts/server-rust/pane-http-compatibility.mjs",
+          "scripts/server-rust/pane-http-lifetimes.mjs",
+          "cantrip_server_rs/tests/pane_contracts.rs",
+          "scripts/server-rust/actual-workspace-client.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform compatibility and packaged desktop acceptance."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/panes/member/open",
+        "implementation": "cantrip_server_rs/src/http/pane_layouts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "scripts/server-rust/pane-http-compatibility.mjs",
+          "scripts/server-rust/pane-http-lifetimes.mjs",
+          "cantrip_server_rs/tests/pane_contracts.rs",
+          "scripts/server-rust/actual-workspace-client.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform compatibility and packaged desktop acceptance."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/projects/:projectId/panes/member/presentation",
+        "implementation": "cantrip_server_rs/src/http/pane_layouts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "scripts/server-rust/pane-http-compatibility.mjs",
+          "scripts/server-rust/pane-http-lifetimes.mjs",
+          "cantrip_server_rs/tests/pane_contracts.rs",
+          "scripts/server-rust/actual-workspace-client.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform compatibility and packaged desktop acceptance."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/projects/:projectId/panes/member/split",
+        "implementation": "cantrip_server_rs/src/http/pane_layouts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "scripts/server-rust/pane-http-compatibility.mjs",
+          "scripts/server-rust/pane-http-lifetimes.mjs",
+          "cantrip_server_rs/tests/pane_contracts.rs",
+          "scripts/server-rust/actual-workspace-client.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform compatibility and packaged desktop acceptance."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/projects/:projectId/panes/order",
+        "implementation": "cantrip_server_rs/src/http/pane_layouts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "scripts/server-rust/pane-http-compatibility.mjs",
+          "scripts/server-rust/pane-http-lifetimes.mjs",
+          "cantrip_server_rs/tests/pane_contracts.rs",
+          "scripts/server-rust/actual-workspace-client.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform compatibility and packaged desktop acceptance."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/projects/:projectId/panes/splits/:splitId",
+        "implementation": "cantrip_server_rs/src/http/pane_layouts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "scripts/server-rust/pane-http-compatibility.mjs",
+          "scripts/server-rust/pane-http-lifetimes.mjs",
+          "cantrip_server_rs/tests/pane_contracts.rs",
+          "scripts/server-rust/actual-workspace-client.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform compatibility and packaged desktop acceptance."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/surface-launchers",
+        "implementation": "cantrip_server_rs/src/http/pane_layouts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "scripts/server-rust/pane-http-compatibility.mjs",
+          "scripts/server-rust/pane-http-lifetimes.mjs",
+          "cantrip_server_rs/tests/pane_contracts.rs",
+          "scripts/server-rust/actual-workspace-client.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform compatibility and packaged desktop acceptance."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/projects/:projectId/surface-launchers",
+        "implementation": "cantrip_server_rs/src/http/pane_layouts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "scripts/server-rust/pane-http-compatibility.mjs",
+          "scripts/server-rust/pane-http-lifetimes.mjs",
+          "cantrip_server_rs/tests/pane_contracts.rs",
+          "scripts/server-rust/actual-workspace-client.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform compatibility and packaged desktop acceptance."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/tab-groups",
+        "implementation": "cantrip_server_rs/src/http/pane_layouts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "scripts/server-rust/pane-http-compatibility.mjs",
+          "scripts/server-rust/pane-http-lifetimes.mjs",
+          "cantrip_server_rs/tests/pane_contracts.rs",
+          "scripts/server-rust/actual-workspace-client.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform compatibility and packaged desktop acceptance."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/projects/:projectId/tab-groups/:groupId",
+        "implementation": "cantrip_server_rs/src/http/pane_layouts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "scripts/server-rust/pane-http-compatibility.mjs",
+          "scripts/server-rust/pane-http-lifetimes.mjs",
+          "cantrip_server_rs/tests/pane_contracts.rs",
+          "scripts/server-rust/actual-workspace-client.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform compatibility and packaged desktop acceptance."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/projects/:projectId/tab-groups/:groupId/members/order",
+        "implementation": "cantrip_server_rs/src/http/pane_layouts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "scripts/server-rust/pane-http-compatibility.mjs",
+          "scripts/server-rust/pane-http-lifetimes.mjs",
+          "cantrip_server_rs/tests/pane_contracts.rs",
+          "scripts/server-rust/actual-workspace-client.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform compatibility and packaged desktop acceptance."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/projects/:projectId/tab-groups/member",
+        "implementation": "cantrip_server_rs/src/http/pane_layouts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "scripts/server-rust/pane-http-compatibility.mjs",
+          "scripts/server-rust/pane-http-lifetimes.mjs",
+          "cantrip_server_rs/tests/pane_contracts.rs",
+          "scripts/server-rust/actual-workspace-client.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform compatibility and packaged desktop acceptance."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/tab-groups/member/close",
+        "implementation": "cantrip_server_rs/src/http/pane_layouts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "scripts/server-rust/pane-http-compatibility.mjs",
+          "scripts/server-rust/pane-http-lifetimes.mjs",
+          "cantrip_server_rs/tests/pane_contracts.rs",
+          "scripts/server-rust/actual-workspace-client.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform compatibility and packaged desktop acceptance."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/tab-groups/member/open",
+        "implementation": "cantrip_server_rs/src/http/pane_layouts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "scripts/server-rust/pane-http-compatibility.mjs",
+          "scripts/server-rust/pane-http-lifetimes.mjs",
+          "cantrip_server_rs/tests/pane_contracts.rs",
+          "scripts/server-rust/actual-workspace-client.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform compatibility and packaged desktop acceptance."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/projects/:projectId/tab-groups/order",
+        "implementation": "cantrip_server_rs/src/http/pane_layouts.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/layout-repository-compatibility.mjs",
+          "scripts/server-rust/pane-http-compatibility.mjs",
+          "scripts/server-rust/pane-http-lifetimes.mjs",
+          "cantrip_server_rs/tests/pane_contracts.rs",
+          "scripts/server-rust/actual-workspace-client.mjs"
+        ],
+        "remaining": [
+          "Observe supported-platform compatibility and packaged desktop acceptance."
+        ]
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/code-tabs/:codeTabId",
+        "implementation": "cantrip_server_rs/src/http/project_surfaces.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/project-surfaces-repository-compatibility.mjs",
+          "scripts/server-rust/project-surface-http-compatibility.mjs",
+          "scripts/server-rust/project-surface-lifetimes.mjs",
+          "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+          "scripts/server-rust/actual-worker-project-surfaces.mjs",
+          "scripts/server-rust/actual-project-git-views.mjs",
+          "cantrip_server_rs/tests/project_surface_contracts.rs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged desktop acceptance.",
+          "Actual GitHub-backed Issues/PR/Actions UI flows and broader project worktree lifecycle remain required."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/code-tabs/:codeTabId",
+        "implementation": "cantrip_server_rs/src/http/project_surfaces.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/project-surfaces-repository-compatibility.mjs",
+          "scripts/server-rust/project-surface-http-compatibility.mjs",
+          "scripts/server-rust/project-surface-lifetimes.mjs",
+          "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+          "scripts/server-rust/actual-worker-project-surfaces.mjs",
+          "scripts/server-rust/actual-project-git-views.mjs",
+          "cantrip_server_rs/tests/project_surface_contracts.rs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged desktop acceptance.",
+          "Actual GitHub-backed Issues/PR/Actions UI flows and broader project worktree lifecycle remain required."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/code-tabs/:codeTabId/worktree",
+        "implementation": "cantrip_server_rs/src/http/project_surfaces.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/project-surfaces-repository-compatibility.mjs",
+          "scripts/server-rust/project-surface-http-compatibility.mjs",
+          "scripts/server-rust/project-surface-lifetimes.mjs",
+          "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+          "scripts/server-rust/actual-worker-project-surfaces.mjs",
+          "scripts/server-rust/actual-project-git-views.mjs",
+          "cantrip_server_rs/tests/project_surface_contracts.rs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged desktop acceptance.",
+          "Actual GitHub-backed Issues/PR/Actions UI flows and broader project worktree lifecycle remain required."
+        ]
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/explorers/:explorerId",
+        "implementation": "cantrip_server_rs/src/http/project_surfaces.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/project-surfaces-repository-compatibility.mjs",
+          "scripts/server-rust/project-surface-http-compatibility.mjs",
+          "scripts/server-rust/project-surface-lifetimes.mjs",
+          "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+          "scripts/server-rust/actual-worker-project-surfaces.mjs",
+          "scripts/server-rust/actual-project-git-views.mjs",
+          "cantrip_server_rs/tests/project_surface_contracts.rs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged desktop acceptance.",
+          "Actual GitHub-backed Issues/PR/Actions UI flows and broader project worktree lifecycle remain required."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/explorers/:explorerId",
+        "implementation": "cantrip_server_rs/src/http/project_surfaces.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/project-surfaces-repository-compatibility.mjs",
+          "scripts/server-rust/project-surface-http-compatibility.mjs",
+          "scripts/server-rust/project-surface-lifetimes.mjs",
+          "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+          "scripts/server-rust/actual-worker-project-surfaces.mjs",
+          "scripts/server-rust/actual-project-git-views.mjs",
+          "cantrip_server_rs/tests/project_surface_contracts.rs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged desktop acceptance.",
+          "Actual GitHub-backed Issues/PR/Actions UI flows and broader project worktree lifecycle remain required."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/explorers/:explorerId/operation",
+        "implementation": "cantrip_server_rs/src/http/project_surfaces.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/project-surfaces-repository-compatibility.mjs",
+          "scripts/server-rust/project-surface-http-compatibility.mjs",
+          "scripts/server-rust/project-surface-lifetimes.mjs",
+          "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+          "scripts/server-rust/actual-worker-project-surfaces.mjs",
+          "scripts/server-rust/actual-project-git-views.mjs",
+          "cantrip_server_rs/tests/project_surface_contracts.rs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged desktop acceptance.",
+          "Actual GitHub-backed Issues/PR/Actions UI flows and broader project worktree lifecycle remain required."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/explorers/:explorerId/pin",
+        "implementation": "cantrip_server_rs/src/http/project_surfaces.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/project-surfaces-repository-compatibility.mjs",
+          "scripts/server-rust/project-surface-http-compatibility.mjs",
+          "scripts/server-rust/project-surface-lifetimes.mjs",
+          "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+          "scripts/server-rust/actual-worker-project-surfaces.mjs",
+          "scripts/server-rust/actual-project-git-views.mjs",
+          "cantrip_server_rs/tests/project_surface_contracts.rs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged desktop acceptance.",
+          "Actual GitHub-backed Issues/PR/Actions UI flows and broader project worktree lifecycle remain required."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/explorers/:explorerId/view-state",
+        "implementation": "cantrip_server_rs/src/http/project_surfaces.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/project-surfaces-repository-compatibility.mjs",
+          "scripts/server-rust/project-surface-http-compatibility.mjs",
+          "scripts/server-rust/project-surface-lifetimes.mjs",
+          "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+          "scripts/server-rust/actual-worker-project-surfaces.mjs",
+          "scripts/server-rust/actual-project-git-views.mjs",
+          "cantrip_server_rs/tests/project_surface_contracts.rs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged desktop acceptance.",
+          "Actual GitHub-backed Issues/PR/Actions UI flows and broader project worktree lifecycle remain required."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/explorers/:explorerId/worktree",
+        "implementation": "cantrip_server_rs/src/http/project_surfaces.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/project-surfaces-repository-compatibility.mjs",
+          "scripts/server-rust/project-surface-http-compatibility.mjs",
+          "scripts/server-rust/project-surface-lifetimes.mjs",
+          "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+          "scripts/server-rust/actual-worker-project-surfaces.mjs",
+          "scripts/server-rust/actual-project-git-views.mjs",
+          "cantrip_server_rs/tests/project_surface_contracts.rs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged desktop acceptance.",
+          "Actual GitHub-backed Issues/PR/Actions UI flows and broader project worktree lifecycle remain required."
+        ]
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/project-views/:viewId",
+        "implementation": "cantrip_server_rs/src/http/project_surfaces.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/project-surfaces-repository-compatibility.mjs",
+          "scripts/server-rust/project-surface-http-compatibility.mjs",
+          "scripts/server-rust/project-surface-lifetimes.mjs",
+          "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+          "scripts/server-rust/actual-worker-project-surfaces.mjs",
+          "scripts/server-rust/actual-project-git-views.mjs",
+          "cantrip_server_rs/tests/project_surface_contracts.rs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged desktop acceptance.",
+          "Actual GitHub-backed Issues/PR/Actions UI flows and broader project worktree lifecycle remain required."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/project-views/:viewId",
+        "implementation": "cantrip_server_rs/src/http/project_surfaces.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/project-surfaces-repository-compatibility.mjs",
+          "scripts/server-rust/project-surface-http-compatibility.mjs",
+          "scripts/server-rust/project-surface-lifetimes.mjs",
+          "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+          "scripts/server-rust/actual-worker-project-surfaces.mjs",
+          "scripts/server-rust/actual-project-git-views.mjs",
+          "cantrip_server_rs/tests/project_surface_contracts.rs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged desktop acceptance.",
+          "Actual GitHub-backed Issues/PR/Actions UI flows and broader project worktree lifecycle remain required."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/project-views/:viewId/worktree",
+        "implementation": "cantrip_server_rs/src/http/project_surfaces.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/project-surfaces-repository-compatibility.mjs",
+          "scripts/server-rust/project-surface-http-compatibility.mjs",
+          "scripts/server-rust/project-surface-lifetimes.mjs",
+          "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+          "scripts/server-rust/actual-worker-project-surfaces.mjs",
+          "scripts/server-rust/actual-project-git-views.mjs",
+          "cantrip_server_rs/tests/project_surface_contracts.rs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged desktop acceptance.",
+          "Actual GitHub-backed Issues/PR/Actions UI flows and broader project worktree lifecycle remain required."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/code-tabs",
+        "implementation": "cantrip_server_rs/src/http/project_surfaces.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/project-surfaces-repository-compatibility.mjs",
+          "scripts/server-rust/project-surface-http-compatibility.mjs",
+          "scripts/server-rust/project-surface-lifetimes.mjs",
+          "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+          "scripts/server-rust/actual-worker-project-surfaces.mjs",
+          "scripts/server-rust/actual-project-git-views.mjs",
+          "cantrip_server_rs/tests/project_surface_contracts.rs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged desktop acceptance.",
+          "Actual GitHub-backed Issues/PR/Actions UI flows and broader project worktree lifecycle remain required."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/code-tabs",
+        "implementation": "cantrip_server_rs/src/http/project_surfaces.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/project-surfaces-repository-compatibility.mjs",
+          "scripts/server-rust/project-surface-http-compatibility.mjs",
+          "scripts/server-rust/project-surface-lifetimes.mjs",
+          "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+          "scripts/server-rust/actual-worker-project-surfaces.mjs",
+          "scripts/server-rust/actual-project-git-views.mjs",
+          "cantrip_server_rs/tests/project_surface_contracts.rs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged desktop acceptance.",
+          "Actual GitHub-backed Issues/PR/Actions UI flows and broader project worktree lifecycle remain required."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/explorers",
+        "implementation": "cantrip_server_rs/src/http/project_surfaces.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/project-surfaces-repository-compatibility.mjs",
+          "scripts/server-rust/project-surface-http-compatibility.mjs",
+          "scripts/server-rust/project-surface-lifetimes.mjs",
+          "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+          "scripts/server-rust/actual-worker-project-surfaces.mjs",
+          "scripts/server-rust/actual-project-git-views.mjs",
+          "cantrip_server_rs/tests/project_surface_contracts.rs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged desktop acceptance.",
+          "Actual GitHub-backed Issues/PR/Actions UI flows and broader project worktree lifecycle remain required."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/explorers",
+        "implementation": "cantrip_server_rs/src/http/project_surfaces.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/project-surfaces-repository-compatibility.mjs",
+          "scripts/server-rust/project-surface-http-compatibility.mjs",
+          "scripts/server-rust/project-surface-lifetimes.mjs",
+          "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+          "scripts/server-rust/actual-worker-project-surfaces.mjs",
+          "scripts/server-rust/actual-project-git-views.mjs",
+          "cantrip_server_rs/tests/project_surface_contracts.rs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged desktop acceptance.",
+          "Actual GitHub-backed Issues/PR/Actions UI flows and broader project worktree lifecycle remain required."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/views",
+        "implementation": "cantrip_server_rs/src/http/project_surfaces.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/project-surfaces-repository-compatibility.mjs",
+          "scripts/server-rust/project-surface-http-compatibility.mjs",
+          "scripts/server-rust/project-surface-lifetimes.mjs",
+          "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+          "scripts/server-rust/actual-worker-project-surfaces.mjs",
+          "scripts/server-rust/actual-project-git-views.mjs",
+          "cantrip_server_rs/tests/project_surface_contracts.rs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged desktop acceptance.",
+          "Actual GitHub-backed Issues/PR/Actions UI flows and broader project worktree lifecycle remain required."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/views",
+        "implementation": "cantrip_server_rs/src/http/project_surfaces.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/project-surfaces-repository-compatibility.mjs",
+          "scripts/server-rust/project-surface-http-compatibility.mjs",
+          "scripts/server-rust/project-surface-lifetimes.mjs",
+          "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+          "scripts/server-rust/actual-worker-project-surfaces.mjs",
+          "scripts/server-rust/actual-project-git-views.mjs",
+          "cantrip_server_rs/tests/project_surface_contracts.rs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged desktop acceptance.",
+          "Actual GitHub-backed Issues/PR/Actions UI flows and broader project worktree lifecycle remain required."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/worktrees",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/worktrees.rs",
+          "cantrip_server_rs/src/projects/worktrees.rs"
+        ],
+        "evidence": [
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/worktree-coordinator-cases.mjs",
+          "scripts/server-rust/actual-project-worktrees.mjs",
+          "scripts/server-rust/actual-folder-client.mjs --worktrees",
+          "scripts/server-rust/actual-run-retirement.mjs"
+        ],
+        "remaining": [
+          "Batched/concurrent retirement, additional mutation-failure/disconnect recovery, supported-platform and packaged acceptance. Local real-browser/full-worker lifecycle including actual process retirement passes on all three stores."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/worktrees.rs",
+          "cantrip_server_rs/src/projects/worktrees.rs"
+        ],
+        "evidence": [
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/worktree-coordinator-cases.mjs",
+          "scripts/server-rust/actual-project-worktrees.mjs",
+          "scripts/server-rust/actual-folder-client.mjs --worktrees",
+          "scripts/server-rust/actual-run-retirement.mjs"
+        ],
+        "remaining": [
+          "Batched/concurrent retirement, additional mutation-failure/disconnect recovery, supported-platform and packaged acceptance. Local real-browser/full-worker lifecycle including actual process retirement passes on all three stores."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees/reconcile",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/worktrees.rs",
+          "cantrip_server_rs/src/projects/worktrees.rs"
+        ],
+        "evidence": [
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/worktree-coordinator-cases.mjs",
+          "scripts/server-rust/actual-project-worktrees.mjs",
+          "scripts/server-rust/actual-folder-client.mjs --worktrees",
+          "scripts/server-rust/actual-run-retirement.mjs"
+        ],
+        "remaining": [
+          "Batched/concurrent retirement, additional mutation-failure/disconnect recovery, supported-platform and packaged acceptance. Local real-browser/full-worker lifecycle including actual process retirement passes on all three stores."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees/prune",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/worktrees.rs",
+          "cantrip_server_rs/src/projects/worktrees.rs"
+        ],
+        "evidence": [
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/worktree-coordinator-cases.mjs",
+          "scripts/server-rust/actual-project-worktrees.mjs",
+          "scripts/server-rust/actual-folder-client.mjs --worktrees",
+          "scripts/server-rust/actual-run-retirement.mjs"
+        ],
+        "remaining": [
+          "Batched/concurrent retirement, additional mutation-failure/disconnect recovery, supported-platform and packaged acceptance. Local real-browser/full-worker lifecycle including actual process retirement passes on all three stores."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/lock",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/worktrees.rs",
+          "cantrip_server_rs/src/projects/worktrees.rs"
+        ],
+        "evidence": [
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/worktree-coordinator-cases.mjs",
+          "scripts/server-rust/actual-project-worktrees.mjs",
+          "scripts/server-rust/actual-folder-client.mjs --worktrees",
+          "scripts/server-rust/actual-run-retirement.mjs"
+        ],
+        "remaining": [
+          "Batched/concurrent retirement, additional mutation-failure/disconnect recovery, supported-platform and packaged acceptance. Local real-browser/full-worker lifecycle including actual process retirement passes on all three stores."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId/unlock",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/worktrees.rs",
+          "cantrip_server_rs/src/projects/worktrees.rs"
+        ],
+        "evidence": [
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/worktree-coordinator-cases.mjs",
+          "scripts/server-rust/actual-project-worktrees.mjs",
+          "scripts/server-rust/actual-folder-client.mjs --worktrees",
+          "scripts/server-rust/actual-run-retirement.mjs"
+        ],
+        "remaining": [
+          "Batched/concurrent retirement, additional mutation-failure/disconnect recovery, supported-platform and packaged acceptance. Local real-browser/full-worker lifecycle including actual process retirement passes on all three stores."
+        ]
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/projects/:projectId/worktrees/:worktreeId",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/http/worktrees.rs",
+          "cantrip_server_rs/src/projects/worktrees/removal.rs",
+          "cantrip_server_rs/src/run_configurations/retirement.rs"
+        ],
+        "evidence": [
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-runtime-cases.mjs",
+          "scripts/server-rust/run-runtime-admission-cases.mjs",
+          "scripts/server-rust/run-runtime-contention-cases.mjs",
+          "scripts/server-rust/actual-project-worktrees.mjs",
+          "scripts/server-rust/actual-folder-client.mjs --worktrees",
+          "scripts/server-rust/actual-run-retirement.mjs"
+        ],
+        "remaining": [
+          "Batched/concurrent retirement, additional mutation-failure/disconnect recovery, supported-platform and packaged acceptance. Local real-browser/full-worker lifecycle including actual process retirement passes on all three stores."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/run-configuration-runtimes/status",
+        "implementation": "cantrip_server_rs/src/http/run_configurations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": ["scripts/server-rust/project-git-http-compatibility.mjs"],
+        "remaining": [
+          "Full client/worker Run lifecycle and supported-platform acceptance remain required."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/run-configuration-runtimes/output",
+        "implementation": "cantrip_server_rs/src/http/run_configurations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": ["scripts/server-rust/project-git-http-compatibility.mjs"],
+        "remaining": [
+          "Full client/worker Run lifecycle and supported-platform acceptance remain required."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/run-configuration-runtimes/operations",
+        "implementation": [
+          "cantrip_server_rs/src/http/run_configurations.rs",
+          "cantrip_server_rs/src/run_configurations/lifecycle.rs"
+        ],
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-lifecycle-http-cases.mjs",
+          "scripts/server-rust/run-definition-contract-oracle.mjs",
+          "scripts/server-rust/actual-run-retirement.mjs",
+          "scripts/server-rust/run-disconnect-http-case.mjs"
+        ],
+        "remaining": [
+          "Additional failure boundaries, definition/secret administration and supported-platform/package acceptance. Actual local browser/full-worker start and deletion retirement pass all three stores."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/run-configuration-secrets",
+        "implementation": "cantrip_server_rs/src/http/run_secrets.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/run-secret-http-cases.mjs",
+          "scripts/server-rust/actual-run-definitions.mjs",
+          "scripts/server-rust/actual-run-retirement.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Supported-platform and packaged acceptance remain pending. Local macOS browser/worker secret delivery is exercised; intermittent shutdown failures remain under investigation."
+        ]
+      },
+      {
+        "method": "PUT",
+        "path": "/api/projects/:projectId/run-configuration-secrets",
+        "implementation": "cantrip_server_rs/src/http/run_secrets.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/run-secret-http-cases.mjs",
+          "scripts/server-rust/actual-run-definitions.mjs",
+          "scripts/server-rust/actual-run-retirement.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Supported-platform and packaged acceptance remain pending. Local macOS browser/worker secret delivery is exercised; intermittent shutdown failures remain under investigation."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/run-configurations",
+        "implementation": "cantrip_server_rs/src/http/run_definitions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/run-definition-http-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-definition-contract-oracle.mjs",
+          "scripts/server-rust/actual-run-definitions.mjs",
+          "scripts/server-rust/actual-run-retirement.mjs"
+        ],
+        "remaining": [
+          "Additional interruption/serialization boundaries, supported-platform and packaging acceptance remain pending. Actual browser/worker CRUD and active deletion run locally on macOS."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/run-configurations/capabilities",
+        "implementation": "cantrip_server_rs/src/http/run_definitions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/run-definition-http-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-definition-contract-oracle.mjs",
+          "scripts/server-rust/actual-run-definitions.mjs",
+          "scripts/server-rust/actual-run-retirement.mjs"
+        ],
+        "remaining": [
+          "Additional interruption/serialization boundaries, supported-platform and packaging acceptance remain pending. Actual browser/worker CRUD and active deletion run locally on macOS."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/run-configurations/detect",
+        "implementation": "cantrip_server_rs/src/http/run_definitions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/run-definition-http-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-definition-contract-oracle.mjs",
+          "scripts/server-rust/actual-run-definitions.mjs",
+          "scripts/server-rust/actual-run-retirement.mjs"
+        ],
+        "remaining": [
+          "Additional interruption/serialization boundaries, supported-platform and packaging acceptance remain pending. Actual browser/worker CRUD and active deletion run locally on macOS."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/run-configurations/paths",
+        "implementation": "cantrip_server_rs/src/http/run_definitions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/run-definition-http-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-definition-contract-oracle.mjs",
+          "scripts/server-rust/actual-run-definitions.mjs",
+          "scripts/server-rust/actual-run-retirement.mjs"
+        ],
+        "remaining": [
+          "Additional interruption/serialization boundaries, supported-platform and packaging acceptance remain pending. Actual browser/worker CRUD and active deletion run locally on macOS."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/run-configurations/validate",
+        "implementation": "cantrip_server_rs/src/http/run_definitions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/run-definition-http-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-definition-contract-oracle.mjs",
+          "scripts/server-rust/actual-run-definitions.mjs",
+          "scripts/server-rust/actual-run-retirement.mjs"
+        ],
+        "remaining": [
+          "Additional interruption/serialization boundaries, supported-platform and packaging acceptance remain pending. Actual browser/worker CRUD and active deletion run locally on macOS."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/run-configurations/flutter-devices",
+        "implementation": "cantrip_server_rs/src/http/run_definitions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/run-definition-http-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-definition-contract-oracle.mjs"
+        ],
+        "remaining": [
+          "Actual full-worker file operations, additional interruption/serialization boundaries, supported-platform and packaging acceptance remain to be demonstrated."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/run-configurations/:configurationId",
+        "implementation": "cantrip_server_rs/src/http/run_definitions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/run-definition-http-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-definition-contract-oracle.mjs",
+          "scripts/server-rust/actual-run-definitions.mjs",
+          "scripts/server-rust/actual-run-retirement.mjs"
+        ],
+        "remaining": [
+          "Additional interruption/serialization boundaries, supported-platform and packaging acceptance remain pending. Actual browser/worker CRUD and active deletion run locally on macOS."
+        ]
+      },
+      {
+        "method": "PUT",
+        "path": "/api/projects/:projectId/run-configurations/:configurationId",
+        "implementation": "cantrip_server_rs/src/http/run_definitions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/run-definition-http-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-definition-contract-oracle.mjs",
+          "scripts/server-rust/actual-run-definitions.mjs",
+          "scripts/server-rust/actual-run-retirement.mjs"
+        ],
+        "remaining": [
+          "Additional interruption/serialization boundaries, supported-platform and packaging acceptance remain pending. Actual browser/worker CRUD and active deletion run locally on macOS."
+        ]
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/projects/:projectId/run-configurations/:configurationId",
+        "implementation": "cantrip_server_rs/src/http/run_definitions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/run-definition-http-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-definition-contract-oracle.mjs",
+          "scripts/server-rust/actual-run-definitions.mjs",
+          "scripts/server-rust/actual-run-retirement.mjs"
+        ],
+        "remaining": [
+          "Additional interruption/serialization boundaries, supported-platform and packaging acceptance remain pending. Actual browser/worker CRUD and active deletion run locally on macOS."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/github/status",
+        "implementation": "cantrip_server_rs/src/http/middleware.rs",
+        "status": "implemented",
+        "evidence": [
+          "scripts/server-rust/github-catalog-http-compatibility.mjs"
+        ],
+        "remaining": [],
+        "note": "The production Node root request policy tombstones this plaintext endpoint. Preserve HTTP 410 after authentication/CSRF and before payload parsing, rate limiting or worker dispatch; do not restore its latent handler."
+      },
+      {
+        "method": "GET",
+        "path": "/api/github/repositories/cache",
+        "implementation": "cantrip_server_rs/src/http/middleware.rs",
+        "status": "implemented",
+        "evidence": [
+          "scripts/server-rust/github-catalog-http-compatibility.mjs"
+        ],
+        "remaining": [],
+        "note": "The production Node root request policy tombstones this plaintext endpoint. Preserve HTTP 410 after authentication/CSRF and before payload parsing, rate limiting or worker dispatch; do not restore its latent handler."
+      },
+      {
+        "method": "GET",
+        "path": "/api/github/repository-owners",
+        "implementation": "cantrip_server_rs/src/http/middleware.rs",
+        "status": "implemented",
+        "evidence": [
+          "scripts/server-rust/github-catalog-http-compatibility.mjs"
+        ],
+        "remaining": [],
+        "note": "The production Node root request policy tombstones this plaintext endpoint. Preserve HTTP 410 after authentication/CSRF and before payload parsing, rate limiting or worker dispatch; do not restore its latent handler."
+      },
+      {
+        "method": "GET",
+        "path": "/api/github/repositories",
+        "implementation": "cantrip_server_rs/src/http/middleware.rs",
+        "status": "implemented",
+        "evidence": [
+          "scripts/server-rust/github-catalog-http-compatibility.mjs"
+        ],
+        "remaining": [],
+        "note": "The production Node root request policy tombstones this plaintext endpoint. Preserve HTTP 410 after authentication/CSRF and before payload parsing, rate limiting or worker dispatch; do not restore its latent handler."
+      },
+      {
+        "method": "POST",
+        "path": "/api/github/repositories",
+        "implementation": "cantrip_server_rs/src/http/middleware.rs",
+        "status": "implemented",
+        "evidence": [
+          "scripts/server-rust/github-catalog-http-compatibility.mjs"
+        ],
+        "remaining": [],
+        "note": "The production Node root request policy tombstones this plaintext endpoint. Preserve HTTP 410 after authentication/CSRF and before payload parsing, rate limiting or worker dispatch; do not restore its latent handler."
       }
     ]
   },
@@ -1633,6 +2697,188 @@
         "remaining": [
           "Shared multi-instance routing and supported-platform/packaged acceptance."
         ]
+      },
+      {
+        "command": "explorer.operation",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/http/project_surfaces/runtime.rs",
+        "evidence": [
+          "scripts/server-rust/project-surfaces-repository-compatibility.mjs",
+          "scripts/server-rust/project-surface-http-compatibility.mjs",
+          "scripts/server-rust/project-surface-lifetimes.mjs",
+          "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+          "scripts/server-rust/actual-worker-project-surfaces.mjs",
+          "scripts/server-rust/actual-project-git-views.mjs",
+          "cantrip_server_rs/tests/project_surface_contracts.rs"
+        ],
+        "remaining": [
+          "Shared multi-instance routing and supported-platform/packaged acceptance."
+        ]
+      },
+      {
+        "command": "project.run-configuration-runtime.stop",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/run_configurations/retirement.rs",
+        "evidence": [
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-runtime-contract-oracle.mjs"
+        ],
+        "remaining": [
+          "Additional reconciliation identity mismatch and contention cases; actual worker runtime, platform and packaged acceptance."
+        ]
+      },
+      {
+        "command": "project.run-configuration-runtime.reconcile",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/run_configurations/observations.rs",
+        "evidence": [
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-runtime-contract-oracle.mjs"
+        ],
+        "remaining": [
+          "Additional reconciliation identity mismatch and contention cases; actual worker runtime, platform and packaged acceptance."
+        ]
+      },
+      {
+        "command": "project.run-configuration-runtime.start",
+        "implementation": "cantrip_server_rs/src/run_configurations/lifecycle.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-lifecycle-http-cases.mjs"
+        ],
+        "remaining": [
+          "Full definition administration, failure-boundary and platform acceptance."
+        ]
+      },
+      {
+        "command": "project.run-configuration-runtime.restart",
+        "implementation": "cantrip_server_rs/src/run_configurations/lifecycle.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-lifecycle-http-cases.mjs"
+        ],
+        "remaining": [
+          "Full definition administration, failure-boundary and platform acceptance."
+        ]
+      },
+      {
+        "command": "project.run-configuration-definitions.get",
+        "implementation": "cantrip_server_rs/src/run_configurations/definitions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/run-definition-http-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-definition-contract-oracle.mjs"
+        ],
+        "remaining": [
+          "Actual full-worker file operations, additional interruption/serialization boundaries, supported-platform and packaging acceptance remain to be demonstrated."
+        ]
+      },
+      {
+        "command": "project.run-configuration-definitions.list",
+        "implementation": "cantrip_server_rs/src/run_configurations/definitions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/run-definition-http-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-definition-contract-oracle.mjs"
+        ],
+        "remaining": [
+          "Actual full-worker file operations, additional interruption/serialization boundaries, supported-platform and packaging acceptance remain to be demonstrated."
+        ]
+      },
+      {
+        "command": "project.run-configuration-definitions.capabilities",
+        "implementation": "cantrip_server_rs/src/run_configurations/definitions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/run-definition-http-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-definition-contract-oracle.mjs"
+        ],
+        "remaining": [
+          "Actual full-worker file operations, additional interruption/serialization boundaries, supported-platform and packaging acceptance remain to be demonstrated."
+        ]
+      },
+      {
+        "command": "project.run-configuration-definitions.detect",
+        "implementation": "cantrip_server_rs/src/run_configurations/definitions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/run-definition-http-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-definition-contract-oracle.mjs"
+        ],
+        "remaining": [
+          "Actual full-worker file operations, additional interruption/serialization boundaries, supported-platform and packaging acceptance remain to be demonstrated."
+        ]
+      },
+      {
+        "command": "project.run-configuration-definitions.paths",
+        "implementation": "cantrip_server_rs/src/run_configurations/definitions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/run-definition-http-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-definition-contract-oracle.mjs"
+        ],
+        "remaining": [
+          "Actual full-worker file operations, additional interruption/serialization boundaries, supported-platform and packaging acceptance remain to be demonstrated."
+        ]
+      },
+      {
+        "command": "project.run-configuration-definitions.validate",
+        "implementation": "cantrip_server_rs/src/run_configurations/definitions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/run-definition-http-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-definition-contract-oracle.mjs"
+        ],
+        "remaining": [
+          "Actual full-worker file operations, additional interruption/serialization boundaries, supported-platform and packaging acceptance remain to be demonstrated."
+        ]
+      },
+      {
+        "command": "project.run-configuration-definitions.flutter-devices",
+        "implementation": "cantrip_server_rs/src/run_configurations/definitions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/run-definition-http-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-definition-contract-oracle.mjs"
+        ],
+        "remaining": [
+          "Actual full-worker file operations, additional interruption/serialization boundaries, supported-platform and packaging acceptance remain to be demonstrated."
+        ]
+      },
+      {
+        "command": "project.run-configuration-definitions.write",
+        "implementation": "cantrip_server_rs/src/run_configurations/definitions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/run-definition-http-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-definition-contract-oracle.mjs"
+        ],
+        "remaining": [
+          "Actual full-worker file operations, additional interruption/serialization boundaries, supported-platform and packaging acceptance remain to be demonstrated."
+        ]
+      },
+      {
+        "command": "project.run-configuration-definitions.delete",
+        "implementation": "cantrip_server_rs/src/run_configurations/definitions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/run-definition-http-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs",
+          "scripts/server-rust/run-definition-contract-oracle.mjs"
+        ],
+        "remaining": [
+          "Actual full-worker file operations, additional interruption/serialization boundaries, supported-platform and packaging acceptance remain to be demonstrated."
+        ]
       }
     ]
   },
@@ -1696,6 +2942,60 @@
         ],
         "remaining": [
           "Remaining archive/deletion consumers belong to their unported resource domains; full native window/UI, shared coordination, current-head platform and packaged acceptance."
+        ]
+      },
+      {
+        "tableName": "explorers",
+        "exportName": "explorers",
+        "status": "partial",
+        "implementation": "cantrip_server_rs/src/project_surfaces/",
+        "evidence": [
+          "scripts/server-rust/project-surfaces-repository-compatibility.mjs",
+          "scripts/server-rust/project-surface-http-compatibility.mjs",
+          "scripts/server-rust/project-surface-lifetimes.mjs",
+          "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+          "scripts/server-rust/actual-worker-project-surfaces.mjs",
+          "scripts/server-rust/actual-project-git-views.mjs",
+          "cantrip_server_rs/tests/project_surface_contracts.rs"
+        ],
+        "remaining": [
+          "Project-surface repository operations and cleanup are native; owning project deletion/relocation and other domain consumers, shared coordination and supported-platform/package acceptance remain."
+        ]
+      },
+      {
+        "tableName": "code_tabs",
+        "exportName": "codeTabs",
+        "status": "partial",
+        "implementation": "cantrip_server_rs/src/project_surfaces/",
+        "evidence": [
+          "scripts/server-rust/project-surfaces-repository-compatibility.mjs",
+          "scripts/server-rust/project-surface-http-compatibility.mjs",
+          "scripts/server-rust/project-surface-lifetimes.mjs",
+          "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+          "scripts/server-rust/actual-worker-project-surfaces.mjs",
+          "scripts/server-rust/actual-project-git-views.mjs",
+          "cantrip_server_rs/tests/project_surface_contracts.rs"
+        ],
+        "remaining": [
+          "Project-surface repository operations and cleanup are native; owning project deletion/relocation and other domain consumers, shared coordination and supported-platform/package acceptance remain."
+        ]
+      },
+      {
+        "tableName": "project_views",
+        "exportName": "projectViews",
+        "status": "partial",
+        "implementation": "cantrip_server_rs/src/project_surfaces/",
+        "evidence": [
+          "scripts/server-rust/project-surfaces-repository-compatibility.mjs",
+          "scripts/server-rust/project-surface-http-compatibility.mjs",
+          "scripts/server-rust/project-surface-lifetimes.mjs",
+          "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+          "scripts/server-rust/actual-worker-project-surfaces.mjs",
+          "scripts/server-rust/actual-project-git-views.mjs",
+          "cantrip_server_rs/tests/project_surface_contracts.rs"
+        ],
+        "remaining": [
+          "Project-surface repository operations and cleanup are native; owning project deletion/relocation and other domain consumers, shared coordination and supported-platform/package acceptance remain."
         ]
       }
     ]
@@ -2080,6 +3380,465 @@
           "scripts/server-rust/browser-repository-locks.mjs",
           "scripts/server-rust/browser-http-compatibility.mjs"
         ]
+      },
+      {
+        "method": "listExplorers",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/project_surfaces/",
+        "evidence": [
+          "scripts/server-rust/project-surfaces-repository-compatibility.mjs",
+          "scripts/server-rust/project-surface-http-compatibility.mjs",
+          "scripts/server-rust/project-surface-lifetimes.mjs",
+          "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+          "scripts/server-rust/actual-worker-project-surfaces.mjs",
+          "scripts/server-rust/actual-project-git-views.mjs",
+          "cantrip_server_rs/tests/project_surface_contracts.rs"
+        ]
+      },
+      {
+        "method": "createExplorer",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/project_surfaces/",
+        "evidence": [
+          "scripts/server-rust/project-surfaces-repository-compatibility.mjs",
+          "scripts/server-rust/project-surface-http-compatibility.mjs",
+          "scripts/server-rust/project-surface-lifetimes.mjs",
+          "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+          "scripts/server-rust/actual-worker-project-surfaces.mjs",
+          "scripts/server-rust/actual-project-git-views.mjs",
+          "cantrip_server_rs/tests/project_surface_contracts.rs"
+        ]
+      },
+      {
+        "method": "updateExplorerWorktree",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/project_surfaces/",
+        "evidence": [
+          "scripts/server-rust/project-surfaces-repository-compatibility.mjs",
+          "scripts/server-rust/project-surface-http-compatibility.mjs",
+          "scripts/server-rust/project-surface-lifetimes.mjs",
+          "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+          "scripts/server-rust/actual-worker-project-surfaces.mjs",
+          "scripts/server-rust/actual-project-git-views.mjs",
+          "cantrip_server_rs/tests/project_surface_contracts.rs"
+        ]
+      },
+      {
+        "method": "getExplorerExecutionContext",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/project_surfaces/",
+        "evidence": [
+          "scripts/server-rust/project-surfaces-repository-compatibility.mjs",
+          "scripts/server-rust/project-surface-http-compatibility.mjs",
+          "scripts/server-rust/project-surface-lifetimes.mjs",
+          "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+          "scripts/server-rust/actual-worker-project-surfaces.mjs",
+          "scripts/server-rust/actual-project-git-views.mjs",
+          "cantrip_server_rs/tests/project_surface_contracts.rs"
+        ]
+      },
+      {
+        "method": "updateExplorer",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/project_surfaces/",
+        "evidence": [
+          "scripts/server-rust/project-surfaces-repository-compatibility.mjs",
+          "scripts/server-rust/project-surface-http-compatibility.mjs",
+          "scripts/server-rust/project-surface-lifetimes.mjs",
+          "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+          "scripts/server-rust/actual-worker-project-surfaces.mjs",
+          "scripts/server-rust/actual-project-git-views.mjs",
+          "cantrip_server_rs/tests/project_surface_contracts.rs"
+        ]
+      },
+      {
+        "method": "pinExplorer",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/project_surfaces/",
+        "evidence": [
+          "scripts/server-rust/project-surfaces-repository-compatibility.mjs",
+          "scripts/server-rust/project-surface-http-compatibility.mjs",
+          "scripts/server-rust/project-surface-lifetimes.mjs",
+          "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+          "scripts/server-rust/actual-worker-project-surfaces.mjs",
+          "scripts/server-rust/actual-project-git-views.mjs",
+          "cantrip_server_rs/tests/project_surface_contracts.rs"
+        ]
+      },
+      {
+        "method": "updateExplorerViewState",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/project_surfaces/",
+        "evidence": [
+          "scripts/server-rust/project-surfaces-repository-compatibility.mjs",
+          "scripts/server-rust/project-surface-http-compatibility.mjs",
+          "scripts/server-rust/project-surface-lifetimes.mjs",
+          "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+          "scripts/server-rust/actual-worker-project-surfaces.mjs",
+          "scripts/server-rust/actual-project-git-views.mjs",
+          "cantrip_server_rs/tests/project_surface_contracts.rs"
+        ]
+      },
+      {
+        "method": "deleteExplorer",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/project_surfaces/",
+        "evidence": [
+          "scripts/server-rust/project-surfaces-repository-compatibility.mjs",
+          "scripts/server-rust/project-surface-http-compatibility.mjs",
+          "scripts/server-rust/project-surface-lifetimes.mjs",
+          "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+          "scripts/server-rust/actual-worker-project-surfaces.mjs",
+          "scripts/server-rust/actual-project-git-views.mjs",
+          "cantrip_server_rs/tests/project_surface_contracts.rs"
+        ]
+      },
+      {
+        "method": "listCodeTabs",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/project_surfaces/",
+        "evidence": [
+          "scripts/server-rust/project-surfaces-repository-compatibility.mjs",
+          "scripts/server-rust/project-surface-http-compatibility.mjs",
+          "scripts/server-rust/project-surface-lifetimes.mjs",
+          "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+          "scripts/server-rust/actual-worker-project-surfaces.mjs",
+          "scripts/server-rust/actual-project-git-views.mjs",
+          "cantrip_server_rs/tests/project_surface_contracts.rs"
+        ]
+      },
+      {
+        "method": "createCodeTab",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/project_surfaces/",
+        "evidence": [
+          "scripts/server-rust/project-surfaces-repository-compatibility.mjs",
+          "scripts/server-rust/project-surface-http-compatibility.mjs",
+          "scripts/server-rust/project-surface-lifetimes.mjs",
+          "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+          "scripts/server-rust/actual-worker-project-surfaces.mjs",
+          "scripts/server-rust/actual-project-git-views.mjs",
+          "cantrip_server_rs/tests/project_surface_contracts.rs"
+        ]
+      },
+      {
+        "method": "getCodeTabExecutionContext",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/project_surfaces/",
+        "evidence": [
+          "scripts/server-rust/project-surfaces-repository-compatibility.mjs",
+          "scripts/server-rust/project-surface-http-compatibility.mjs",
+          "scripts/server-rust/project-surface-lifetimes.mjs",
+          "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+          "scripts/server-rust/actual-worker-project-surfaces.mjs",
+          "scripts/server-rust/actual-project-git-views.mjs",
+          "cantrip_server_rs/tests/project_surface_contracts.rs"
+        ]
+      },
+      {
+        "method": "updateCodeTab",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/project_surfaces/",
+        "evidence": [
+          "scripts/server-rust/project-surfaces-repository-compatibility.mjs",
+          "scripts/server-rust/project-surface-http-compatibility.mjs",
+          "scripts/server-rust/project-surface-lifetimes.mjs",
+          "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+          "scripts/server-rust/actual-worker-project-surfaces.mjs",
+          "scripts/server-rust/actual-project-git-views.mjs",
+          "cantrip_server_rs/tests/project_surface_contracts.rs"
+        ]
+      },
+      {
+        "method": "updateCodeTabWorktree",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/project_surfaces/",
+        "evidence": [
+          "scripts/server-rust/project-surfaces-repository-compatibility.mjs",
+          "scripts/server-rust/project-surface-http-compatibility.mjs",
+          "scripts/server-rust/project-surface-lifetimes.mjs",
+          "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+          "scripts/server-rust/actual-worker-project-surfaces.mjs",
+          "scripts/server-rust/actual-project-git-views.mjs",
+          "cantrip_server_rs/tests/project_surface_contracts.rs"
+        ]
+      },
+      {
+        "method": "deleteCodeTab",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/project_surfaces/",
+        "evidence": [
+          "scripts/server-rust/project-surfaces-repository-compatibility.mjs",
+          "scripts/server-rust/project-surface-http-compatibility.mjs",
+          "scripts/server-rust/project-surface-lifetimes.mjs",
+          "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+          "scripts/server-rust/actual-worker-project-surfaces.mjs",
+          "scripts/server-rust/actual-project-git-views.mjs",
+          "cantrip_server_rs/tests/project_surface_contracts.rs"
+        ]
+      },
+      {
+        "method": "listProjectViews",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/project_surfaces/",
+        "evidence": [
+          "scripts/server-rust/project-surfaces-repository-compatibility.mjs",
+          "scripts/server-rust/project-surface-http-compatibility.mjs",
+          "scripts/server-rust/project-surface-lifetimes.mjs",
+          "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+          "scripts/server-rust/actual-worker-project-surfaces.mjs",
+          "scripts/server-rust/actual-project-git-views.mjs",
+          "cantrip_server_rs/tests/project_surface_contracts.rs"
+        ]
+      },
+      {
+        "method": "getProjectViewProjectId",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/project_surfaces/",
+        "evidence": [
+          "scripts/server-rust/project-surfaces-repository-compatibility.mjs",
+          "scripts/server-rust/project-surface-http-compatibility.mjs",
+          "scripts/server-rust/project-surface-lifetimes.mjs",
+          "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+          "scripts/server-rust/actual-worker-project-surfaces.mjs",
+          "scripts/server-rust/actual-project-git-views.mjs",
+          "cantrip_server_rs/tests/project_surface_contracts.rs"
+        ]
+      },
+      {
+        "method": "createProjectView",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/project_surfaces/",
+        "evidence": [
+          "scripts/server-rust/project-surfaces-repository-compatibility.mjs",
+          "scripts/server-rust/project-surface-http-compatibility.mjs",
+          "scripts/server-rust/project-surface-lifetimes.mjs",
+          "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+          "scripts/server-rust/actual-worker-project-surfaces.mjs",
+          "scripts/server-rust/actual-project-git-views.mjs",
+          "cantrip_server_rs/tests/project_surface_contracts.rs"
+        ]
+      },
+      {
+        "method": "updateProjectView",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/project_surfaces/",
+        "evidence": [
+          "scripts/server-rust/project-surfaces-repository-compatibility.mjs",
+          "scripts/server-rust/project-surface-http-compatibility.mjs",
+          "scripts/server-rust/project-surface-lifetimes.mjs",
+          "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+          "scripts/server-rust/actual-worker-project-surfaces.mjs",
+          "scripts/server-rust/actual-project-git-views.mjs",
+          "cantrip_server_rs/tests/project_surface_contracts.rs"
+        ]
+      },
+      {
+        "method": "updateProjectViewWorktree",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/project_surfaces/",
+        "evidence": [
+          "scripts/server-rust/project-surfaces-repository-compatibility.mjs",
+          "scripts/server-rust/project-surface-http-compatibility.mjs",
+          "scripts/server-rust/project-surface-lifetimes.mjs",
+          "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+          "scripts/server-rust/actual-worker-project-surfaces.mjs",
+          "scripts/server-rust/actual-project-git-views.mjs",
+          "cantrip_server_rs/tests/project_surface_contracts.rs"
+        ]
+      },
+      {
+        "method": "deleteProjectView",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/project_surfaces/",
+        "evidence": [
+          "scripts/server-rust/project-surfaces-repository-compatibility.mjs",
+          "scripts/server-rust/project-surface-http-compatibility.mjs",
+          "scripts/server-rust/project-surface-lifetimes.mjs",
+          "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+          "scripts/server-rust/actual-worker-project-surfaces.mjs",
+          "scripts/server-rust/actual-project-git-views.mjs",
+          "cantrip_server_rs/tests/project_surface_contracts.rs"
+        ]
+      },
+      {
+        "method": "reconcileProjectWorktrees",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/projects/targets/lifecycle.rs",
+        "evidence": [
+          "scripts/server-rust/project-target-repository-compatibility.mjs",
+          "scripts/server-rust/worktree-inventory-cases.mjs",
+          "scripts/server-rust/worktree-state-cases.mjs"
+        ],
+        "remaining": [
+          "Complete worktree coordinator and HTTP integration, managed Git recovery, supported-platform and packaged acceptance."
+        ]
+      },
+      {
+        "method": "rollbackProjectWorktreeCreation",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/projects/targets/worktree_state.rs",
+        "evidence": [
+          "scripts/server-rust/project-target-repository-compatibility.mjs",
+          "scripts/server-rust/worktree-inventory-cases.mjs",
+          "scripts/server-rust/worktree-state-cases.mjs"
+        ],
+        "remaining": [
+          "Complete worktree coordinator and HTTP integration, managed Git recovery, supported-platform and packaged acceptance."
+        ]
+      },
+      {
+        "method": "setProjectWorktreeLifecycle",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/projects/targets/worktree_state.rs",
+        "evidence": [
+          "scripts/server-rust/project-target-repository-compatibility.mjs",
+          "scripts/server-rust/worktree-inventory-cases.mjs",
+          "scripts/server-rust/worktree-state-cases.mjs"
+        ],
+        "remaining": [
+          "Complete worktree coordinator and HTTP integration, managed Git recovery, supported-platform and packaged acceptance."
+        ]
+      },
+      {
+        "method": "observeProjectWorktree",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/projects/targets/worktree_state.rs",
+        "evidence": [
+          "scripts/server-rust/project-target-repository-compatibility.mjs",
+          "scripts/server-rust/worktree-inventory-cases.mjs",
+          "scripts/server-rust/worktree-state-cases.mjs"
+        ],
+        "remaining": [
+          "Complete worktree coordinator and HTTP integration, managed Git recovery, supported-platform and packaged acceptance."
+        ]
+      },
+      {
+        "method": "getWorktreeRemovalBlockers",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/projects/targets/worktree_state.rs",
+        "evidence": [
+          "scripts/server-rust/project-target-repository-compatibility.mjs",
+          "scripts/server-rust/worktree-inventory-cases.mjs",
+          "scripts/server-rust/worktree-state-cases.mjs"
+        ],
+        "remaining": [
+          "Complete worktree coordinator and HTTP integration, managed Git recovery, supported-platform and packaged acceptance."
+        ]
+      },
+      {
+        "method": "getRunConfigurationRuntime",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/run_configurations/mod.rs",
+        "evidence": [
+          "scripts/server-rust/project-target-repository-compatibility.mjs",
+          "scripts/server-rust/run-runtime-cases.mjs",
+          "scripts/server-rust/run-runtime-admission-cases.mjs",
+          "scripts/server-rust/run-runtime-contention-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Actual worker process stop/retirement integration, remaining HTTP lifecycle and supported-platform/package verification. Local three-store duplicate start, competing stop and duplicate observation contention checks pass; controlled-worker retirement and reconnect pass across all nine storage/authentication combinations."
+        ]
+      },
+      {
+        "method": "listRunConfigurationRuntimes",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/run_configurations/mod.rs",
+        "evidence": [
+          "scripts/server-rust/project-target-repository-compatibility.mjs",
+          "scripts/server-rust/run-runtime-cases.mjs",
+          "scripts/server-rust/run-runtime-admission-cases.mjs",
+          "scripts/server-rust/run-runtime-contention-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Actual worker process stop/retirement integration, remaining HTTP lifecycle and supported-platform/package verification. Local three-store duplicate start, competing stop and duplicate observation contention checks pass; controlled-worker retirement and reconnect pass across all nine storage/authentication combinations."
+        ]
+      },
+      {
+        "method": "listActiveRunConfigurationRuntimeIdentitiesForWorker",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/run_configurations/mod.rs",
+        "evidence": [
+          "scripts/server-rust/project-target-repository-compatibility.mjs",
+          "scripts/server-rust/run-runtime-cases.mjs",
+          "scripts/server-rust/run-runtime-admission-cases.mjs",
+          "scripts/server-rust/run-runtime-contention-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Actual worker process stop/retirement integration, remaining HTTP lifecycle and supported-platform/package verification. Local three-store duplicate start, competing stop and duplicate observation contention checks pass; controlled-worker retirement and reconnect pass across all nine storage/authentication combinations."
+        ]
+      },
+      {
+        "method": "deleteRunConfigurationRuntimes",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/run_configurations/mod.rs",
+        "evidence": [
+          "scripts/server-rust/project-target-repository-compatibility.mjs",
+          "scripts/server-rust/run-runtime-cases.mjs",
+          "scripts/server-rust/run-runtime-admission-cases.mjs",
+          "scripts/server-rust/run-runtime-contention-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Actual worker process stop/retirement integration, remaining HTTP lifecycle and supported-platform/package verification. Local three-store duplicate start, competing stop and duplicate observation contention checks pass; controlled-worker retirement and reconnect pass across all nine storage/authentication combinations."
+        ]
+      },
+      {
+        "method": "applyRunConfigurationRuntimeObservation",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/run_configurations/mod.rs",
+        "evidence": [
+          "scripts/server-rust/project-target-repository-compatibility.mjs",
+          "scripts/server-rust/run-runtime-cases.mjs",
+          "scripts/server-rust/run-runtime-admission-cases.mjs",
+          "scripts/server-rust/run-runtime-contention-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Actual worker process stop/retirement integration, remaining HTTP lifecycle and supported-platform/package verification. Local three-store duplicate start, competing stop and duplicate observation contention checks pass; controlled-worker retirement and reconnect pass across all nine storage/authentication combinations."
+        ]
+      },
+      {
+        "method": "requestRunConfigurationRuntimeOperation",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/run_configurations/operations.rs",
+        "evidence": [
+          "scripts/server-rust/project-target-repository-compatibility.mjs",
+          "scripts/server-rust/run-runtime-cases.mjs",
+          "scripts/server-rust/run-runtime-admission-cases.mjs",
+          "scripts/server-rust/run-runtime-contention-cases.mjs",
+          "scripts/server-rust/project-git-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Actual worker process stop/retirement integration, remaining HTTP lifecycle and supported-platform/package verification. Local three-store duplicate start, competing stop and duplicate observation contention checks pass; controlled-worker retirement and reconnect pass across all nine storage/authentication combinations."
+        ]
+      },
+      {
+        "method": "listRunConfigurationSecretSummaries",
+        "implementation": "cantrip_server_rs/src/run_configurations/secret_writes.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/run-secret-repository-cases.mjs",
+          "scripts/server-rust/run-secret-http-cases.mjs"
+        ],
+        "remaining": [
+          "Supported-platform and packaged acceptance; Run definition administration remains separate and incomplete."
+        ]
+      },
+      {
+        "method": "setRunConfigurationSecret",
+        "implementation": "cantrip_server_rs/src/run_configurations/secret_writes.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/run-secret-repository-cases.mjs",
+          "scripts/server-rust/run-secret-http-cases.mjs"
+        ],
+        "remaining": [
+          "Supported-platform and packaged acceptance; Run definition administration remains separate and incomplete."
+        ]
       }
     ]
   },
@@ -2183,6 +3942,57 @@
         ],
         "remaining": [
           "Shared multi-instance coordination, remaining workspace/editor consumers and supported-platform/package acceptance."
+        ]
+      },
+      {
+        "resource": "explorer",
+        "status": "partial",
+        "implementation": "cantrip_server_rs/src/http/project_surfaces.rs",
+        "evidence": [
+          "scripts/server-rust/project-surfaces-repository-compatibility.mjs",
+          "scripts/server-rust/project-surface-http-compatibility.mjs",
+          "scripts/server-rust/project-surface-lifetimes.mjs",
+          "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+          "scripts/server-rust/actual-worker-project-surfaces.mjs",
+          "scripts/server-rust/actual-project-git-views.mjs",
+          "cantrip_server_rs/tests/project_surface_contracts.rs"
+        ],
+        "remaining": [
+          "Project-surface HTTP mutations publish after response completion; remaining domain consumers, shared coordination and supported-platform/package acceptance remain."
+        ]
+      },
+      {
+        "resource": "code-tab",
+        "status": "partial",
+        "implementation": "cantrip_server_rs/src/http/project_surfaces.rs",
+        "evidence": [
+          "scripts/server-rust/project-surfaces-repository-compatibility.mjs",
+          "scripts/server-rust/project-surface-http-compatibility.mjs",
+          "scripts/server-rust/project-surface-lifetimes.mjs",
+          "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+          "scripts/server-rust/actual-worker-project-surfaces.mjs",
+          "scripts/server-rust/actual-project-git-views.mjs",
+          "cantrip_server_rs/tests/project_surface_contracts.rs"
+        ],
+        "remaining": [
+          "Project-surface HTTP mutations publish after response completion; remaining domain consumers, shared coordination and supported-platform/package acceptance remain."
+        ]
+      },
+      {
+        "resource": "project-view",
+        "status": "partial",
+        "implementation": "cantrip_server_rs/src/http/project_surfaces.rs",
+        "evidence": [
+          "scripts/server-rust/project-surfaces-repository-compatibility.mjs",
+          "scripts/server-rust/project-surface-http-compatibility.mjs",
+          "scripts/server-rust/project-surface-lifetimes.mjs",
+          "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+          "scripts/server-rust/actual-worker-project-surfaces.mjs",
+          "scripts/server-rust/actual-project-git-views.mjs",
+          "cantrip_server_rs/tests/project_surface_contracts.rs"
+        ],
+        "remaining": [
+          "Project-surface HTTP mutations publish after response completion; remaining domain consumers, shared coordination and supported-platform/package acceptance remain."
         ]
       }
     ]
@@ -3376,6 +5186,42 @@
         "Current-head supported-platform acceptance, native desktop window hosting and complete editor/UI recovery.",
         "Shared coordination and remaining project-workspace CRUD/resource lifecycle consumers.",
         "All migration/post-write rollback, packaging/Winterhold rehearsal/performance/default cutover and Node removal requirements."
+      ]
+    },
+    "legacyPaneLayouts": {
+      "status": "implemented-pending-platform-acceptance",
+      "implementation": "cantrip_server_rs/src/pane_layouts/",
+      "evidence": [
+        "scripts/server-rust/layout-repository-compatibility.mjs",
+        "scripts/server-rust/pane-http-compatibility.mjs",
+        "scripts/server-rust/pane-http-lifetimes.mjs",
+        "cantrip_server_rs/tests/pane_contracts.rs",
+        "scripts/server-rust/actual-workspace-client.mjs"
+      ],
+      "validatedSubset": "Local macOS: all three stores pass 107 repository comparisons and ten durable snapshots; all nine authentication/storage HTTP profiles pass with 59/62/64 observations per runtime; 13,823 exact schema/error cases. Actual PostgreSQL locks prove three revision races, standalone versus caller-transaction read boundaries, cleanup before failed claim and caller-aborted insert completion through shutdown. Existing browser normal workspace bootstrap and full worker encrypted editor handoff/restart pass all three stores, 20 steps per runtime.",
+      "remaining": [
+        "Current-head Linux/macOS/Windows results and packaged native window/UI acceptance.",
+        "Full project/workspace CRUD and remaining resource/execution domains remain outside this completed API domain."
+      ]
+    },
+    "projectSurfaces": {
+      "status": "implemented-pending-platform-acceptance",
+      "implementation": "cantrip_server_rs/src/project_surfaces/",
+      "evidence": [
+        "scripts/server-rust/project-surfaces-repository-compatibility.mjs",
+        "scripts/server-rust/project-surface-http-compatibility.mjs",
+        "scripts/server-rust/project-surface-lifetimes.mjs",
+        "scripts/server-rust/remote-surface-worker-link-cases.mjs",
+        "scripts/server-rust/actual-worker-project-surfaces.mjs",
+        "scripts/server-rust/actual-project-git-views.mjs",
+        "cantrip_server_rs/tests/project_surface_contracts.rs"
+      ],
+      "validatedSubset": "Local macOS: all three stores pass 133 repository operations and 68 snapshots, including owned/foreign and detached workspace cleanup, legacy Explorer file aliases, all view definitions, and actual final DELETE failure rollback. All nine authentication/storage HTTP profiles pass 88/94/98 observations per runtime, exact Live barriers and one decoded surface.close despite deletion retry. Actual issued WorkerLink grants revoke before close; renewals and new grants fail after deletion on all stores, local/accounts profiles. Actual browser encryption and full worker Explorer/Code plus local Git History/Graph operations and restart pass all stores, 14 steps per runtime. Local Git managed folders correctly deny worktree switching. PostgreSQL pin/CAS races and admitted shutdown completion pass. Exact 8,396 schema cases across 16 roots and 260,456 protocol regression cases pass. Route-template routing handles project/resource IDs resembling route/action names; strict all-target Clippy passes.",
+      "remaining": [
+        "Current-head supported-platform and packaged desktop acceptance.",
+        "Actual GitHub-backed Issues/PR/Actions UI flows and broader project worktree lifecycle remain required.",
+        "Native all-target/current-head broad checks and merged delivery; migration/post-write rollback, packaging, Winterhold rehearsal, performance, default cutover and Node server removal remain incomplete.",
+        "Prior pane Windows native workspace seed stack overflow remains unresolved; lock-observer race fixed locally but platform rerun remains required."
       ]
     }
   },

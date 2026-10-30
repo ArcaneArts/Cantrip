@@ -6,8 +6,8 @@ use super::{
 };
 use crate::{
     auth::service::AuthService,
-    wire::value::json,
-    workspace_layouts::{LegacyInvariant, ModelError, Repository},
+    wire::{Value, value::json},
+    workspace_layouts::{LegacyInvariant, ModelError, Repository, assert_version},
 };
 use anyhow::Result;
 use axum::{
@@ -32,7 +32,11 @@ fn failure(cause: anyhow::Error) -> Result<Response> {
             } else {
                 StatusCode::CONFLICT
             },
-            json!({"error":message,"code":code}),
+            if *code == "version" {
+                json!({"error":message,"code":code,"supportedVersions":vec![1,2],"requiredVersion":2})
+            } else {
+                json!({"error":message,"code":code})
+            },
         ));
     }
     if cause.is::<LegacyInvariant>() {
@@ -44,12 +48,29 @@ fn failure(cause: anyhow::Error) -> Result<Response> {
     Err(cause)
 }
 
+fn readable(layout: Value, supported: u64) -> Result<Response> {
+    match assert_version(layout["version"].as_u64().unwrap(), supported) {
+        Ok(()) => Ok(json_response(StatusCode::OK, layout)),
+        Err(cause) => failure(cause),
+    }
+}
+
 async fn handle(
     State(service): State<Arc<AuthService>>,
     Extension(ctx): Extension<Arc<Context>>,
     Path(params): Path<HashMap<String, String>>,
     request: Request,
 ) -> Response {
+    let supported_version = if request
+        .headers()
+        .get("x-cantrip-workspace-version")
+        .and_then(|value| value.to_str().ok())
+        == Some("2")
+    {
+        2
+    } else {
+        1
+    };
     let owner = ctx.principal.user.as_ref().unwrap().id.clone();
     let project = params["projectId"].clone();
     let workspace = params["workspaceId"].clone();
@@ -59,7 +80,7 @@ async fn handle(
                 .get(&owner, &project, &workspace)
                 .await?
             {
-                Some(layout) => Ok(json_response(StatusCode::OK, layout)),
+                Some(layout) => readable(layout, supported_version),
                 None => Ok(error(404, "Workspace not found.")),
             };
         }
@@ -90,15 +111,25 @@ async fn handle(
                 let repository = Repository::new(execution.repository.database.clone());
                 let result = match action.as_str() {
                     "seed" => repository.seed(&owner, &project, &workspace, &input).await,
-                    "commands" => repository.execute(&owner, &input).await,
+                    "commands" => {
+                        repository
+                            .execute_with_version(&owner, &input, supported_version)
+                            .await
+                    }
                     _ => {
                         repository
-                            .import_legacy_files(&owner, &project, &workspace, &input)
+                            .import_legacy_files_with_version(
+                                &owner,
+                                &project,
+                                &workspace,
+                                &input,
+                                supported_version,
+                            )
                             .await
                     }
                 };
                 match result {
-                    Ok(Some(value)) if action == "seed" => Ok(json_response(StatusCode::OK, value)),
+                    Ok(Some(value)) if action == "seed" => readable(value, supported_version),
                     Ok(Some(value)) => output(
                         200,
                         if action == "commands" {

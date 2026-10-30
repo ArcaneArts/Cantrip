@@ -530,6 +530,7 @@ export function ProjectSettingsPage({
   onCreateHistory,
   onCreateTerminal,
   onRestoreChat,
+  onOpenConversations,
   onOpenTunnelOwner,
   onOpenImportedChat,
   onOpenPolicySettings,
@@ -553,6 +554,7 @@ export function ProjectSettingsPage({
   onCreateHistory(worktreeId: string): void;
   onCreateTerminal(worktreeId: string): void;
   onRestoreChat?(chat: ChatSummary): void;
+  onOpenConversations?(): void;
   onOpenTunnelOwner?(tunnel: TunnelSummary): void;
   onOpenImportedChat(chatId: string): void;
   onOpenPolicySettings?(policyId?: string): void;
@@ -725,6 +727,7 @@ export function ProjectSettingsPage({
               <ProjectArchiveSettings
                 projectId={project.id}
                 onRestoreChat={onRestoreChat}
+                onOpenConversations={onOpenConversations}
               />
             ) : null}
             {section === "replicas" ? (

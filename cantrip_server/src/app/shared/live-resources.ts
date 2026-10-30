@@ -95,6 +95,8 @@ export function mutationLiveResources(
   if (route === "/api/chats/:chatId/composer-draft") return [];
   if (
     route === "/api/projects/:projectId/chats" ||
+    route === "/api/chats/:chatId/archive" ||
+    route === "/api/chats/:chatId/restore" ||
     route === "/api/chats/:chatId"
   ) {
     return ["chat", "project-tab-layout"];

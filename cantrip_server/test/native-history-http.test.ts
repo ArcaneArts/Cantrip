@@ -223,6 +223,29 @@ async function archiveTurnsFor(
 }
 
 describe("authenticated encrypted history transport", () => {
+  it("delivers an already staged encrypted batch larger than the general API body limit unchanged", async () => {
+    const batch = await prepare();
+    const item = batch.items[0]!;
+    item.message = await protectChatMessage({
+      id: item.message.id,
+      service,
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: "x".repeat(1024 * 1024) }],
+        idempotencyKey: item.message.idempotencyKey,
+      },
+    });
+    const body = JSON.stringify(batch);
+    expect(Buffer.byteLength(body)).toBeGreaterThan(1024 * 1024);
+    const outbox = await NativeHistoryOutbox.open(outboxInput());
+    const record = await outbox.append(randomUUID(), body);
+    const receipt = await client.deliver(scope(), record, body);
+    expect(
+      await client.deliver(scope(), record, await outbox.openBody(record)),
+    ).toEqual(receipt);
+    await outbox.acknowledgeCommitted(receipt);
+    expect(await outbox.pending()).toEqual([]);
+  });
   it("compares the canonical preparation basis rather than accepting a larger producer counter or silently consuming a smaller one", async () => {
     const batch = await prepare();
     batch.items[0]!.revision = 7;

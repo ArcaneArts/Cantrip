@@ -3,10 +3,26 @@ import type {
   ProjectTabLayoutSummary,
 } from "@cantrip/protocol";
 
+import type { ClientSessionIdentitySnapshot } from "./client-session";
 import type { ProjectPaneVisualKind } from "@/lib/project-pane";
 import type { ProjectSurface } from "@/lib/project-surface";
 
+export type ConversationPlacement = {
+  paneId?: string;
+  region: ProjectPaneRegion;
+  position?: number;
+};
+export type ConversationResourceDrag = {
+  type: "conversation";
+  projectId: string;
+  chatId: string;
+  identity: ClientSessionIdentitySnapshot;
+  label: string;
+  visualKind: "chat";
+};
+
 export type WorkspaceDragItem =
+  | ConversationResourceDrag
   | { type: "project"; projectId: string; label: string }
   | {
       type: "pane";
@@ -88,6 +104,13 @@ export type TabLayoutCommand =
 
 export type WorkspaceDropOperation =
   | {
+      type: "place-conversation";
+      projectId: string;
+      chatId: string;
+      identity: ClientSessionIdentitySnapshot;
+      destination: ConversationPlacement;
+    }
+  | {
       type: "reorder-projects";
       sourceProjectId: string;
       targetProjectId: string;
@@ -138,6 +161,36 @@ export function decideWorkspaceDrop(
             targetProjectId: drop.projectId,
           },
         };
+  }
+  if (drag.type === "conversation") {
+    if (drop.type === "project" || drop.projectId !== drag.projectId)
+      return {
+        status: "invalid",
+        reason: "Conversations cannot span projects.",
+      };
+    const pane = layout?.panes.find((pane) => pane.id === drop.paneId);
+    // The source need not have a pane. A stale destination ID is still sent to
+    // the owned command, which resolves its actual validity at mutation time.
+    const destination: ConversationPlacement = {
+      ...(drop.paneId ? { paneId: drop.paneId } : {}),
+      region:
+        drop.type === "region" || drop.type === "pane"
+          ? drop.region
+          : (pane?.region ?? "center"),
+      ...(drop.type === "pane-tab" || drop.type === "pane-strip"
+        ? { position: drop.memberPosition }
+        : {}),
+    };
+    return {
+      status: "valid",
+      operation: {
+        type: "place-conversation",
+        projectId: drag.projectId,
+        chatId: drag.chatId,
+        identity: drag.identity,
+        destination,
+      },
+    };
   }
   if (!layout || drag.projectId !== layout.projectId) {
     return { status: "invalid", reason: "The project layout is unavailable." };
@@ -312,10 +365,10 @@ export function workspaceSurfaceDropPreview({
   region: ProjectPaneRegion;
 }): WorkspaceSurfaceDropPreview | null {
   if (
-    drag?.type !== "surface" ||
+    (drag?.type !== "surface" && drag?.type !== "conversation") ||
     decision?.status !== "valid" ||
     !drop ||
-    drag.paneId === paneId
+    (drag.type === "surface" && drag.paneId === paneId)
   ) {
     return null;
   }
@@ -339,7 +392,10 @@ export function workspaceSurfaceDropPreview({
   return {
     label: drag.label,
     memberPosition: Math.max(0, Math.min(memberPosition, memberCount)),
-    tabKey: drag.tabKey,
+    tabKey:
+      drag.type === "conversation"
+        ? `conversation:${drag.chatId}`
+        : drag.tabKey,
     visualKind: drag.visualKind,
   };
 }

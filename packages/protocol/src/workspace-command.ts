@@ -9,12 +9,24 @@ import {
 import { privateDisplayLabelOpaqueSchema } from "./private-labels.js";
 import {
   workspaceTabSchema,
+  workspaceConversationViewSchema,
   workspaceLegacyFileImportSchema,
 } from "./workspace-ownership.js";
 import { explorerPrivateStateOpaqueSchema } from "./surface-private-state.js";
 
 const id = z.string().min(1);
 export const workspaceActionSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("open-conversation"),
+      expectedConversationViewId: id.nullable().optional(),
+      view: workspaceConversationViewSchema,
+      paneId: id.optional(),
+      newPaneId: id,
+      splitId: id,
+    })
+    .strict(),
+  z.object({ type: z.literal("close-conversation"), viewId: id }).strict(),
   z
     .object({
       type: z.literal("migrate-code-files"),
@@ -54,6 +66,8 @@ export const workspaceActionSchema = z.discriminatedUnion("type", [
       type: z.literal("prepare-return"),
       transferId: id,
       paneId: id,
+      tabId: id.optional(),
+      destinationPaneId: id.optional(),
       splitId: id,
     })
     .strict(),

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   ChatComposerDraftPersistence,
+  forgetChatComposerDraftPersistence,
   scopedChatComposerDraftPersistence,
 } from "./chat-composer-draft-persistence";
 
@@ -75,4 +76,33 @@ describe("chat composer draft persistence", () => {
       scopedChatComposerDraftPersistence(scope, "chat-two", save),
     ).not.toBe(scopedChatComposerDraftPersistence(scope, "chat-one", save));
   });
+});
+
+it("forgets pending retries after permanent deletion, including a late rejected save", async () => {
+  vi.useFakeTimers();
+  const scope = {};
+  let reject!: (error: Error) => void;
+  const save = vi.fn(
+    () =>
+      new Promise<void>((_, no) => {
+        reject = no;
+      }),
+  );
+  const persistence = scopedChatComposerDraftPersistence(
+    scope,
+    "deleted",
+    save,
+  );
+  persistence.schedule(firstDraft);
+  const flushing = persistence.flush();
+  forgetChatComposerDraftPersistence(scope, "deleted");
+  reject(new Error("Deleted"));
+  await flushing;
+  persistence.schedule(firstDraft);
+  await vi.runAllTimersAsync();
+  expect(save).toHaveBeenCalledTimes(1);
+  expect(scopedChatComposerDraftPersistence(scope, "deleted", save)).not.toBe(
+    persistence,
+  );
+  vi.useRealTimers();
 });

@@ -1,7 +1,7 @@
 use super::{ModelError, Result, parse, tree::remove_leaf, values};
 use crate::wire::{Value, coercion::truthy, value::json};
 
-pub(super) fn component(input: &Value) -> Result<String> {
+pub(crate) fn component(input: &Value) -> Result<String> {
     let text = input
         .as_js_string()
         .and_then(|v| v.as_str())

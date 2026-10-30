@@ -39,6 +39,7 @@ const chatPlacementCreateSchema = z
 
 export const chatCreateSchema = chatPlacementCreateSchema
   .safeExtend({
+    attachToTabLayout: z.boolean().optional(),
     title: z.string().trim().min(1).max(200).default("New agent"),
     githubAgentContext: githubAgentWorkflowContextSchema.optional(),
   })
@@ -46,6 +47,7 @@ export const chatCreateSchema = chatPlacementCreateSchema
 
 export const encryptedChatCreateSchema = chatPlacementCreateSchema
   .safeExtend({
+    attachToTabLayout: z.boolean().optional(),
     id: z.string().uuid(),
     titleProtection: privateDisplayLabelOpaqueSchema,
     autoTitle: z.boolean().optional(),
@@ -135,6 +137,7 @@ export const encryptedChatUpdateSchema = z
   );
 
 export const chatForkSchema = z.object({
+  attachToTabLayout: z.boolean().optional(),
   messageId: z.string().min(1).optional(),
   worktreeId: z.string().min(1).optional(),
   worktreeMode: z.enum(["agent-managed", "pinned"]).optional(),

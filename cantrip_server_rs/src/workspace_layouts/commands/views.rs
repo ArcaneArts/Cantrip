@@ -1,7 +1,7 @@
 use super::*;
 use std::collections::HashSet;
 
-fn same_resource(a: &Value, b: &Value) -> bool {
+pub(super) fn same_resource(a: &Value, b: &Value) -> bool {
     a["resource"]["kind"] == b["resource"]["kind"]
         && a["resource"]["definitionId"] == b["resource"]["definitionId"]
         && (a["resource"]["kind"] == "builtin"
@@ -20,14 +20,14 @@ fn exact_ids(ids: &[Value], members: &[Value]) -> bool {
             available.contains(id) && seen.insert(id)
         })
 }
-fn focus_next(window: &mut Value, was_focused: bool) {
+pub(super) fn focus_next(window: &mut Value, was_focused: bool) {
     if was_focused
         && let Some(next) = values(window, "panes")
             .iter()
             .find(|p| p["id"] == window["focusedPaneId"])
             .cloned()
     {
-        focus(window, &next["id"], &next["activeTabId"]);
+        focus(window, &next["id"], &selected_view_id(&next));
     }
 }
 pub(super) fn apply(state: &mut Command, action: &Value) -> Result<()> {
@@ -39,8 +39,11 @@ pub(super) fn apply(state: &mut Command, action: &Value) -> Result<()> {
         }
         "close-tab" => {
             let (pane, tab) = tab_by_id(&state.window, &action["tabId"])?;
+            if pane["conversationView"]["id"] == tab["id"] {
+                return Err(invalid("Use close-conversation for a direct view."));
+            }
             let focused =
-                state.window["focusedPaneId"] == pane["id"] && pane["activeTabId"] == tab["id"];
+                state.window["focusedPaneId"] == pane["id"] && selected_view_id(&pane) == tab["id"];
             take_tab(&mut state.window, &pane, &tab);
             focus_next(&mut state.window, focused);
         }
@@ -69,11 +72,15 @@ pub(super) fn apply(state: &mut Command, action: &Value) -> Result<()> {
                     tab["dockPresentation"] = action["presentation"].clone();
                 }
             }
-            let existing = tabs(&mut pane)
-                .iter_mut()
-                .find(|t| t["id"] == tab["id"])
-                .unwrap();
-            *existing = tab;
+            if pane["conversationView"]["id"] == tab["id"] {
+                pane["conversationView"] = tab;
+            } else {
+                let existing = tabs(&mut pane)
+                    .iter_mut()
+                    .find(|t| t["id"] == tab["id"])
+                    .unwrap();
+                *existing = tab;
+            }
             store_pane(&mut state.window, pane);
         }
         "rename-pane" => {
@@ -124,13 +131,18 @@ pub(super) fn apply(state: &mut Command, action: &Value) -> Result<()> {
             let (pane, tab) = tab_by_id(&state.window, &action["tabId"])?;
             let mut target = pane_by_id(&state.window, &action["targetPaneId"])?;
             let same = target["id"] == pane["id"];
-            let maximum = values(&target, "tabs").len() - usize::from(same);
+            let direct = pane["conversationView"]["id"] == tab["id"];
+            let maximum = values(&target, "tabs").len() - usize::from(same && !direct);
             let position = action["position"].as_u64().unwrap() as usize;
             if position > maximum {
                 return Err(invalid("Target tab position is outside the pane."));
             }
             if same {
-                tabs(&mut target).retain(|t| t["id"] != tab["id"]);
+                if direct {
+                    target["conversationView"] = Value::Null;
+                } else {
+                    tabs(&mut target).retain(|t| t["id"] != tab["id"]);
+                }
             } else {
                 take_tab(&mut state.window, &pane, &tab);
             }
@@ -145,7 +157,7 @@ pub(super) fn apply(state: &mut Command, action: &Value) -> Result<()> {
                 .iter()
                 .filter(|p| {
                     p["region"] == action["region"]
-                        && !(p["id"] == pane["id"] && values(&pane, "tabs").len() == 1)
+                        && !(p["id"] == pane["id"] && pane_views(&pane).len() == 1)
                 })
                 .count();
             let position = action["position"].as_u64().unwrap() as usize;
@@ -209,7 +221,7 @@ pub(super) fn apply(state: &mut Command, action: &Value) -> Result<()> {
             let (pane, tab) = tab_by_id(&state.window, &action["tabId"])?;
             let target = pane_by_id(&state.window, &action["targetPaneId"])?;
             if target["region"] != "center"
-                || (pane["id"] == target["id"] && values(&pane, "tabs").len() == 1)
+                || (pane["id"] == target["id"] && pane_views(&pane).len() == 1)
             {
                 return Err(invalid("A split requires a surviving center target pane."));
             }
@@ -261,7 +273,7 @@ pub(super) fn apply(state: &mut Command, action: &Value) -> Result<()> {
 fn open(state: &mut Command, action: &Value) -> Result<()> {
     for mut owner in state.windows() {
         for mut pane in values(&owner, "panes").to_vec() {
-            if let Some(mut tab) = values(&pane, "tabs")
+            if let Some(mut tab) = pane_views(&pane)
                 .iter()
                 .find(|tab| same_resource(tab, &action["tab"]))
                 .cloned()
@@ -269,11 +281,15 @@ fn open(state: &mut Command, action: &Value) -> Result<()> {
                 if action["tab"]["preview"] == false {
                     tab["preview"] = json!(false);
                 }
-                let old = tabs(&mut pane)
-                    .iter_mut()
-                    .find(|t| t["id"] == tab["id"])
-                    .unwrap();
-                *old = tab.clone();
+                if pane["conversationView"]["id"] == tab["id"] {
+                    pane["conversationView"] = tab.clone();
+                } else {
+                    let old = tabs(&mut pane)
+                        .iter_mut()
+                        .find(|t| t["id"] == tab["id"])
+                        .unwrap();
+                    *old = tab.clone();
+                }
                 store_pane(&mut owner, pane.clone());
                 focus(&mut owner, &pane["id"], &tab["id"]);
                 if owner["id"] != state.window["id"] {

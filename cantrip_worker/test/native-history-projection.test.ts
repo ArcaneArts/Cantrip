@@ -184,6 +184,44 @@ afterEach(async () => {
 });
 
 describe("durable native history projection transactions", () => {
+  it("bounds multi-item encrypted batches by bytes while preserving every full source item", async () => {
+    const binding = await client.open({
+      chatId: f.chatId,
+      threadId,
+      provenance: { kind: "current" },
+    });
+    project.mockImplementation(
+      createNativeHistoryProjector({
+        binding,
+        service,
+        client,
+        context: async () => ({ cwd: directory, mode: "default" }),
+        materialize: async () => ({ attachments: [] }),
+        associate: async () => ({ kind: "native" }),
+      }),
+    );
+    for (let i = 0; i < 4; i++)
+      await event(`large-${i}`, "x".repeat(1100 * 1024));
+    const bodies: string[] = [];
+    const deliver = client.deliver.bind(client);
+    vi.spyOn(client, "deliver").mockImplementation(async (...args) => {
+      bodies.push(args[2]);
+      return deliver(...args);
+    });
+    await projection.drain();
+    expect(bodies.length).toBeGreaterThan(1);
+    expect(
+      bodies.every((body) => Buffer.byteLength(body) <= 4 * 1024 * 1024 + 1024),
+    ).toBe(true);
+    const items = bodies.flatMap((body) => JSON.parse(body).items);
+    expect(items.map((item) => item.identity.itemId)).toEqual([
+      "large-0",
+      "large-1",
+      "large-2",
+      "large-3",
+    ]);
+    expect((await canonical()).messages).toHaveLength(4);
+  });
   it("projects turn-start labels without usage and recovers them through encrypted replay", async () => {
     const runtime = f.modelRuntime;
     const capture = {

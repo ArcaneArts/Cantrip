@@ -42,7 +42,12 @@ export function installInternalNativeHistoryRoutes(
   ) {
     app.post(
       `/api/internal/native-history/${action}`,
-      { logLevel: "warn" },
+      // Retained encrypted evidence can exceed the general 1 MiB API limit.
+      // Keep a separate finite allowance, including already staged retry bytes.
+      {
+        logLevel: "warn",
+        bodyLimit: action === "ingest" ? 64 * 1024 * 1024 : undefined,
+      },
       async (request, reply) => {
         const parsed = schema.safeParse(request.body);
         if (!parsed.success) return reply.code(400).send({ code: invalidCode });

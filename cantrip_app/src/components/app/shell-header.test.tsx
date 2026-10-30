@@ -23,7 +23,6 @@ describe("file document header", () => {
             isPopout: true,
             selectedFileDocument: { path: "src/lib.rs" },
             explorerDisplayPath: "/checkouts/feature/src/lib.rs",
-            contentHeaderActions: {},
           }}
         />
       </TooltipProvider>,

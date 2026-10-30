@@ -223,6 +223,7 @@ export function createProjectExplorerFileOpening({
 }
 
 export function useSidebarExplorerModel({
+  revealedWorktreeId,
   unavailablePaneIds,
   environment,
   explorers,
@@ -232,6 +233,7 @@ export function useSidebarExplorerModel({
   tabLayout,
   worktrees,
 }: {
+  revealedWorktreeId?: string;
   unavailablePaneIds: ReadonlySet<string>;
   environment: Pick<
     ShellEnvironment,
@@ -247,7 +249,9 @@ export function useSidebarExplorerModel({
   const { explorerFileTarget, popoutTarget, projectOverviewPopoutTarget } =
     environment;
   const sidebarDesiredWorktreeId =
-    surfaceWorktreeId(selectedSurface) ?? primaryWorktreeId(worktrees ?? []);
+    revealedWorktreeId ??
+    surfaceWorktreeId(selectedSurface) ??
+    primaryWorktreeId(worktrees ?? []);
   const sidebarExplorer = preferredSidebarExplorer({
     desiredWorktreeId: sidebarDesiredWorktreeId,
     explorers: explorers ?? [],
@@ -343,6 +347,7 @@ export function sidebarExplorerProvisioningDetails({
 }
 
 export function useSidebarExplorerProvisioning({
+  visible = true,
   explorers,
   explorersIsSuccess,
   isPopout,
@@ -355,6 +360,7 @@ export function useSidebarExplorerProvisioning({
   tabLayoutIsSuccess,
   workers,
 }: {
+  visible?: boolean;
   explorers: ExplorerSummary[] | undefined;
   explorersIsSuccess: boolean;
   isPopout: boolean;
@@ -397,6 +403,7 @@ export function useSidebarExplorerProvisioning({
   });
   useEffect(() => {
     if (
+      !visible ||
       isPopout ||
       !explorersIsSuccess ||
       !tabLayoutIsSuccess ||
@@ -413,6 +420,7 @@ export function useSidebarExplorerProvisioning({
   }, [
     createSidebarExplorerMutation,
     explorersIsSuccess,
+    visible,
     isPopout,
     sidebarExplorerCreationInput,
     sidebarExplorerCreationKey,

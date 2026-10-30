@@ -424,16 +424,20 @@ export function installInternalWorkerWebsocketRoute(
         void synchronizeTerminalServicesForWorker(workerId).catch(() => {
           app.log.error({ workerId }, "Could not reconcile terminal services");
         });
-        void reconcileRunConfigurationRuntimesForWorker(
-          workerAuth.ownerId,
-          workerId,
+        void runAsOwner(workerAuth.ownerId, () =>
+          reconcileRunConfigurationRuntimesForWorker(
+            workerAuth.ownerId,
+            workerId,
+          ),
         ).catch((error) => {
           app.log.error(
             { err: error, workerId },
             "Could not reconcile Run configuration runtimes",
           );
         });
-        scheduleWorkerWorktreeObservation(workerId);
+        runAsOwner(workerAuth.ownerId, () =>
+          scheduleWorkerWorktreeObservation(workerId),
+        );
         void resumePendingWorktreeTransitionsForWorker(
           workerAuth.ownerId,
           workerId,

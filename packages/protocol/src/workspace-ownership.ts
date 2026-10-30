@@ -43,6 +43,7 @@ const pendingTransferSchema = z
       .object({
         panePosition: z.int().nonnegative(),
         tabPosition: z.int().nonnegative(),
+        viewKind: z.enum(["tab", "conversation"]).optional(),
         region: projectPaneRegionSchema,
         centerRoot: projectCenterLayoutNodeSchema.nullable(),
       })
@@ -99,13 +100,29 @@ export const workspaceTabSchema = z
     }
   });
 
+export const workspaceConversationViewSchema = workspaceTabSchema.refine(
+  (view) =>
+    view.resource.kind === "entity" &&
+    view.resource.definitionId === "project.agent" &&
+    !view.preview,
+  "A conversation view must be a permanent Agent view.",
+);
+
+export const workspaceContentSelectionSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("tab"), tabId: identity }).strict(),
+  z.object({ kind: z.literal("conversation"), viewId: identity }).strict(),
+]);
+
 export const workspacePaneSchema = z
   .object({
     id: identity,
     region: projectPaneRegionSchema,
     titleProtection: privateDisplayLabelOpaqueSchema.nullable(),
-    tabs: z.array(workspaceTabSchema).min(1),
-    activeTabId: identity,
+    tabs: z.array(workspaceTabSchema),
+    // Last selected rail tab, retained while a direct conversation is selected.
+    activeTabId: identity.nullable(),
+    conversationView: workspaceConversationViewSchema.nullable().optional(),
+    selection: workspaceContentSelectionSchema.optional(),
   })
   .strict();
 
@@ -143,7 +160,7 @@ export const workspaceWindowSchema = z
  */
 export const workspaceOwnershipSchema = z
   .object({
-    version: z.literal(1),
+    version: z.union([z.literal(1), z.literal(2)]),
     id: identity,
     projectId: identity,
     revision: z.int().nonnegative(),
@@ -207,7 +224,12 @@ export const workspaceOwnershipSchema = z
       }
       const recentIds = new Set<string>();
       const localTabIds = new Set(
-        window.panes.flatMap((pane) => pane.tabs.map((tab) => tab.id)),
+        window.panes.flatMap((pane) =>
+          [
+            ...pane.tabs,
+            ...(pane.conversationView ? [pane.conversationView] : []),
+          ].map((view) => view.id),
+        ),
       );
       const recentTabs = new Set<string>();
       for (const [ri, id] of (window.recentTabIds ?? []).entries()) {
@@ -232,11 +254,56 @@ export const workspaceOwnershipSchema = z
         if (paneIds.has(pane.id))
           issue([...pp, "id"], "A pane must have exactly one window owner.");
         paneIds.add(pane.id);
-        if (!pane.tabs.some((tab) => tab.id === pane.activeTabId)) {
+        if (
+          layout.version === 1 &&
+          (pane.conversationView !== undefined || pane.selection !== undefined)
+        )
+          issue(pp, "Conversation content requires workspace version 2.");
+        if (
+          layout.version === 2 &&
+          (pane.conversationView === undefined || pane.selection === undefined)
+        )
+          issue(
+            pp,
+            "Version 2 panes require conversation content and selection.",
+          );
+        if (!pane.tabs.length && !pane.conversationView)
+          issue([...pp, "tabs"], "A pane must own at least one view.");
+        if (
+          pane.activeTabId === null
+            ? pane.tabs.length > 0
+            : !pane.tabs.some((tab) => tab.id === pane.activeTabId)
+        )
           issue(
             [...pp, "activeTabId"],
             "The active tab must belong to this pane.",
           );
+        if (pane.conversationView && pane.region !== "center")
+          issue(
+            [...pp, "conversationView"],
+            "Direct conversations require a center pane.",
+          );
+        if (
+          pane.selection?.kind === "tab" &&
+          (pane.selection.tabId !== pane.activeTabId ||
+            !pane.tabs.some((tab) => tab.id === pane.activeTabId))
+        )
+          issue([...pp, "selection"], "Selected tab must belong to this pane.");
+        if (
+          pane.selection?.kind === "conversation" &&
+          pane.conversationView?.id !== pane.selection.viewId
+        )
+          issue(
+            [...pp, "selection"],
+            "Selected conversation must belong to this pane.",
+          );
+        if (pane.conversationView) {
+          if (tabIds.has(pane.conversationView.id))
+            issue(
+              [...pp, "conversationView", "id"],
+              "A view must have exactly one pane owner.",
+            );
+          tabIds.add(pane.conversationView.id);
         }
         for (const [ti, tab] of pane.tabs.entries()) {
           if (tabIds.has(tab.id))
@@ -327,7 +394,7 @@ export const workspaceOwnershipSchema = z
         !destination ||
         source === destination ||
         (transfer.returnSplitId
-          ? destination.id !== layout.mainWindowId || !transfer.wholePane
+          ? destination.id !== layout.mainWindowId
           : destination.id === layout.mainWindowId ||
             destination.panes.length > 0)
       )

@@ -20,6 +20,7 @@ import { AttachmentStore } from "../src/attachment-store.js";
 import { openWorkerAttachment } from "../src/attachment-encryption.js";
 import { createNativeHistoryProjectorAdapters } from "../src/native-history-projector-adapters.js";
 import { NativeHistoryClient } from "../src/native-history-client.js";
+import { CantripServerRequestError } from "../src/cli-client.js";
 import { NativeHistorySourceJournal } from "../src/native-history-source-journal.js";
 import { NativeHistoryOutbox } from "../src/native-history-outbox.js";
 import { NativeHistoryProjection } from "../src/native-history-projection.js";
@@ -138,6 +139,54 @@ afterEach(async () => {
 });
 
 describe("production managed history source ownership", () => {
+  it.each(["chat-not-found", "binding-not-found"])(
+    "parks confirmed missing destinations without deleting the source or retrying forever (%s)",
+    async (code) => {
+      await f.bindThread(threadId);
+      const saved = await journal();
+      await saved.append({
+        kind: "notification",
+        generation,
+        sequence: 1,
+        threadId,
+        receivedAtMs: 1,
+        method: "item/completed",
+        params: {
+          threadId,
+          turnId: "turn",
+          item: {
+            id: "retained",
+            type: "agentMessage",
+            text: "keep this encrypted source",
+          },
+        },
+      });
+      const missing = new CantripServerRequestError(
+        "Missing history destination",
+        404,
+        code,
+      );
+      const open = vi.spyOn(client, "open").mockRejectedValue(missing);
+      const projection = pump();
+      const scope = {
+        chatId: f.chatId,
+        threadId,
+        bindingId: saved.scope.bindingId,
+      };
+      projection.wake(saved, scope);
+      await expect(projection.flush()).rejects.toBe(missing);
+      projection.wake(saved, scope);
+      await new Promise((resolve) => setTimeout(resolve, 75));
+      expect(open).toHaveBeenCalledTimes(1);
+      expect(errors).toHaveBeenCalledTimes(1);
+      expect(await saved.read(0)).toHaveLength(1);
+      open.mockRestore();
+      const restored = pump();
+      restored.wake(saved, scope);
+      await restored.flush();
+      expect((await counts()).receipts).toBeGreaterThan(0);
+    },
+  );
   const adapters = async () => ({
     context: async () => ({ cwd: directory, mode: "default" as const }),
     materialize: async () => ({ attachments: [] }),

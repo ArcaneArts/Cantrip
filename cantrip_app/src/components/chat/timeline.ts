@@ -469,6 +469,19 @@ function buildAgentChatTimeline(messages: ChatMessage[]): ChatTimelineEntry[] {
             messageActivities(entry).includes(turnSummary),
           )
         : undefined;
+    const failureNotice = [...grouped]
+      .reverse()
+      .find(
+        (activity): activity is Extract<AgentActivity, { type: "notice" }> =>
+          activity.type === "notice" &&
+          activity.level === "error" &&
+          activity.willRetry !== true &&
+          (activity.agentScope?.isRoot ?? true) &&
+          Boolean(activity.message.trim()) &&
+          (!turnSummary?.correlation?.turnId ||
+            !activity.correlation?.turnId ||
+            activity.correlation.turnId === turnSummary.correlation.turnId),
+      );
     const failureEntry: ChatTimelineEntry | null =
       failedSummaryMessage && turnSummary
         ? {
@@ -484,12 +497,17 @@ function buildAgentChatTimeline(messages: ChatMessage[]): ChatTimelineEntry[] {
                     type: "notice",
                     id: `${turnSummary.id}:failure`,
                     status: "failed",
-                    correlation: turnSummary.correlation,
+                    correlation:
+                      failureNotice?.correlation ?? turnSummary.correlation,
                     level: "error",
                     message: "Turn failed",
-                    details:
-                      "Review this turn’s output for details. Some steps may have completed.",
-                    willRetry: null,
+                    details: failureNotice
+                      ? [failureNotice.message, failureNotice.details]
+                          .filter(Boolean)
+                          .join("\n\n")
+                      : "Review this turn’s output for details. Some steps may have completed.",
+                    reasonCode: failureNotice?.reasonCode,
+                    willRetry: failureNotice?.willRetry ?? null,
                   },
                 },
               ],

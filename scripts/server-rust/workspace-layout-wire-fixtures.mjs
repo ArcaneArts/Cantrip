@@ -108,6 +108,13 @@ export function workspaceLayoutWireFixtures(label) {
     ].map((type) => ({ type, transferId: "transfer" })),
     { type: "select", tabId: "a" },
     { type: "home" },
+    {
+      type: "open-conversation",
+      view: workspaceTab("conversation", "chat", "project.agent"),
+      newPaneId: "conversation-pane",
+      splitId: "conversation-split",
+    },
+    { type: "close-conversation", viewId: "conversation" },
     { type: "close-tab", tabId: "a" },
     { type: "close-pane", paneId: "pane" },
     { type: "pin", tabId: "a" },

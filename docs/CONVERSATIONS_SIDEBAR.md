@@ -1,0 +1,1031 @@
+# Conversations sidebar implementation plan
+
+Status: **implementation and acceptance coverage complete**. Validation evidence
+and the remaining unrelated baseline-check limitation are recorded below.
+
+Prepared on 2026-10-30 against `64bbf0148` on `main`. In the current workspace
+ownership model, rail middle-click already closes a view without archiving its
+Agent resource. Preserve that
+behavior and complete the resource catalog and tab-free conversation experience
+described here.
+
+Related contracts: [tabs and workspace ownership](TABS.md),
+[workspace implementation record](WORKSPACE_OWNERSHIP.md),
+[standalone Chat](CHAT.md), [Tasks](TASKS.md), and [encryption](ENCRYPTION.md).
+Implementation milestones follow the [manual change protocol](agents/MANUAL_CHANGE_PROTOCOL.md).
+
+## Implementation record
+
+### Catalog cycle (merged)
+
+The `codex/conversations-catalog` worktree adds bounded Agent catalog pages,
+server-issued usage tracking with retry receipts and per-client sequencing,
+explicit empty-chat archival, and resource-only creation/restoration. Creation
+retries retain the original encrypted request identity. Existing legacy deletion
+behavior remains available for its existing callers.
+
+Validation: all 37 focused server tests across archive, migration, composer
+drafts, workspace layouts, standalone lifecycle, and storage accounting passed.
+All 961 protocol tests passed. Server typechecking, changed-file formatting,
+the content-boundary audit, Rust workspace query-manifest validation and
+workspace contract/model tests, and `git diff --check` passed. Concurrent
+creation requests produce one Agent catalog entry.
+
+The broader `pnpm check` found the new tables' missing accounting classifications
+(now fixed) and two pre-existing failures: provider account selection in
+`local-foundation.test.ts:7218` and a missing `getModelRuntimeByRoute` fixture in
+`terminal-managed-session.test.ts:140`. Both failures reproduced unchanged in
+a separate checkout of base commit `dc995f51a`; the full check is not recorded
+as passing. Initial Windows CI also encountered an `EBUSY` temporary-directory
+cleanup failure; the subsequent native-contract run passed on Windows without
+changing its assertions. PR [#2326](https://github.com/ArcaneArts/Cantrip/pull/2326) squash-merged as
+`ae2a214b5`. Clean Primary was fast-forwarded and the catalog worktree removed.
+The next cycle, `codex/conversation-views`, implements owned conversation slots
+and their lifecycle integration.
+
+### Owned conversation views cycle (merged)
+
+The isolated `codex/conversation-views` branch adds version 2 ownership with a
+retained center conversation slot and explicit content selection, separate from
+rail tabs. The current changes cover TypeScript commands, projection, draft
+checkpoint integration, direct-view recovery, and server version negotiation.
+Native commands, validation, resource removal, detach/return, and version
+negotiation now have matching implementations and compatibility fixtures.
+PR [#2332](https://github.com/ArcaneArts/Cantrip/pull/2332) squash-merged as
+`b04530e3c`. Clean Primary was fast-forwarded and the cycle worktree removed.
+Optional GitHub workflows were still running at merge time; they are not
+recorded here as passing. Sidebar entry points remain milestone 3 work.
+
+All 977 protocol tests pass, including 16 focused conversation-view tests.
+Coverage includes same-pane rail conversion without losing another tab,
+tab-free rail conversion, splitting while retaining the other view, occupied
+return slots, content added while detached, and legacy editor import after a
+version upgrade. The Rust workspace contract suite and both workspace model
+suites pass, including direct-view transfer and import comparisons. HTTP parity
+passes on PGlite and private PostgreSQL across unauthenticated, password, and account profiles (61,
+64, and 66 observations respectively), including old-client read/write/import
+rejection, canonical encrypted titles, receipt replay, and Task/standalone/
+archived/foreign-chat denial. All 19 app workspace API tests pass, including
+version headers on every route. App and server typechecking and the production
+app build pass. All 16 focused workspace API tests pass. Native repository
+compatibility passes all 66 cases and 11 retained-state snapshots on both
+PGlite and private PostgreSQL.
+
+The broad repository check initially found a stale generated route inventory;
+it was regenerated from the changed routes. The restarted check reached CUA
+tests, where `compact_score_supports_full_frame_budget_and_default_holds`
+exceeded its JavaScript execution time limit during concurrent native builds.
+The exact test passed when rerun without that concurrent build; the full check
+is not recorded as passing. Native server clippy passes with warnings denied.
+The full app suite passes (3,917 tests, three skipped across 556 files), and
+the generated workspace query manifest matches the actual repository queries.
+These are interim results, not evidence that the cycle or feature is complete.
+
+Sidebar rendering, client usage signals, inline archive interaction, full rail
+placement interaction, Rust workspace parity, and real-interaction and scale
+acceptance remain outstanding. No feature acceptance item below is claimed
+complete by these partial changes.
+
+### Sidebar shell cycle (merged)
+
+The isolated `codex/conversations-sidebar` branch adds the app catalog client,
+Files/Conversations switcher, persisted page preference, visibility-aware file
+tree, active conversation list, resource-only creation, and direct selection.
+Creation retains encrypted request identity across uncertain retries and follows
+the existing Agent naming preference. Pending actions are fenced against changed
+sessions, projects, workspace controllers, and unmounted sidebars.
+
+Explicit owned Agent open/select commands and composer send/retry/steer actions
+record usage without blocking navigation or execution. The tracker coalesces
+same-activation focus signals, retains receipt identities for bounded retries,
+and discards obsolete pending activity. Passive reads, restoration, and close
+fallback do not emit usage events. Catalog queries reuse chat Live invalidation
+and poll only while visible without Live coverage.
+
+File tabs in the sidebar-bearing window offer Reveal in Files. This explicitly
+selects Files and expands the requested worktree/path; ordinary file selection
+does not switch sidebar pages. File scroll restoration survives asynchronous
+reauthorization/directory loading. Detached windows retain their existing return
+to main-window workflow rather than offering a nonfunctional sidebar command.
+
+The final app suite passed 3,936 tests with 3 skipped across 562 files. Coverage
+includes the reveal/sidebar/rail subset and delayed scroll restoration. App
+typechecking, production build, five source-corpus tests, decomposition budgets,
+changed-file formatting, and diff whitespace checks passed.
+
+The repository `pnpm check` stopped at two CUA tests with "JavaScript execution
+limit exceeded": `compact_score_supports_full_frame_budget_and_default_holds`
+and `live_help_and_large_generated_score_match_runtime_limits`. Both pass when
+run individually unchanged; the broad check remains recorded as failed, not
+converted to a pass by those isolated retries. No CUA source or limits changed.
+
+Inline archive, resource drag placement, list virtualization/scroll anchoring,
+and the complete real-interaction acceptance matrix remain subsequent milestones.
+No full-feature acceptance checkbox is marked complete by this cycle alone.
+
+PR [#2334](https://github.com/ArcaneArts/Cantrip/pull/2334) squash-merged as
+`cad9d5d81`. Clean Primary was synchronized and the sidebar worktree removed.
+Optional CI was still running at merge time. App API domains subsequently passed
+on Linux, macOS, and Windows. The Rust replacement workflow failed on all three:
+the workspace repository fixture aborted under `CANTRIP_FIXTURE_STACK_BYTES=1048576`
+(SIGABRT on Unix, stack-overflow exit status on Windows). The archive-cycle
+worktree reproduced the failure. The native repair subsequently merged separately
+in [#2335](https://github.com/ArcaneArts/Cantrip/pull/2335), and this cycle now
+includes that merge rather than its provisional local repair. Revalidation with
+`CANTRIP_FIXTURE_STACK_BYTES=1048576` passes all 66 cases and 11 snapshots on
+both PGlite and private PostgreSQL. This validates the local fixture, not the
+remaining multiwindow or physical-device interaction acceptance.
+
+### Inline archive cycle (merged)
+
+The isolated `codex/conversations-archive` branch starts from the merged sidebar.
+It connects the explicit archive contract, protected draft checkpointing,
+Stop and Archive, inline recovery/deletion, and the Agent archive Settings
+transition. Current unmerged code adds archive/restore/delete clients with
+session fencing, shared bounded interruption settling, per-conversation pending
+state, protected draft checkpointing, inline menus and confirmations, and draft
+retry cancellation after confirmed deletion. Settings now retains Task archives
+and links to Conversations for archived Agents. DOM interaction tests cover
+middle-click archival, Shift+F10 menus, restore without opening, explicit Stop
+and Archive, delete confirmation, and focus recovery after dialog teardown.
+Uncertain mutation responses refresh authoritative catalogs and workspace state
+without claiming success or discarding an unconfirmed deletion's drafts.
+
+The full app suite passes 3,953 tests with three skipped across 565 files. A
+subsequent five-test DOM interaction run also covers the Settings archive focus
+request and inert middle-click on archived rows. The Settings test confirms that
+Task recovery remains functional and the Agent archive link only navigates.
+Production app build, app typechecking, decomposition budgets, and changed-file
+formatting pass. The broad repository check failed at the unchanged CUA tests
+`compact_score_supports_full_frame_budget_and_default_holds` and
+`live_help_and_large_generated_score_match_runtime_limits`, both with JavaScript
+execution limits. Each exact test passes individually; the broad check remains
+failed. These results do not complete feature acceptance or the archive cycle's
+PR delivery.
+The full feature and its acceptance matrix remain unfinished.
+
+PR [#2337](https://github.com/ArcaneArts/Cantrip/pull/2337) squash-merged as
+`bea74e541`. Clean Primary was fast-forwarded and the archive worktree removed.
+Optional platform CI was still running at merge observation; those jobs are not
+recorded as passing. The next isolated cycle, `codex/conversations-placement`,
+implements resource dragging and accessible placement into all three rails.
+
+### Rail placement cycle (merged)
+
+The isolated `codex/conversations-placement` worktree started from `bea74e541`
+and includes merged baseline updates through `b8a6b8947`. Placement resolves
+current resource ownership, checkpoints drafts, converts direct views, and
+inserts tabs into the indicated rail. Catalog drag payloads carry session and
+resource identity without inventing a source pane. The shell connects pointer
+placement and keyboard/touch menu actions to the same commands.
+
+Cross-window requests carry IDs only. The source performs the existing protected
+handoff before the destination re-reads ownership and places the view. Prepared
+returns now support one view while retaining sibling views in the source window.
+The transfer adapter also captures direct conversation slots. TypeScript and
+Rust transitions, validation, and the wire manifest are aligned; contract/model
+comparisons pass, including single-conversation return. Recent handoff receipts
+are bounded, duplicate in-flight view requests share work, and context disposal
+rejects pending requests without guessing ownership outcomes.
+
+Validation so far:
+
+- Final app suite: 3,986 passed, three skipped across 567 files. All 979 protocol
+  tests passed. Subsequent catalog regression tests pass all 11 cases.
+- Command, transfer, keyboard menu, and session-change tests pass. A session
+  change during a draft checkpoint releases its lease and prevents placement.
+- The real Chromium fixture in `scripts/qa/conversations-placement.mjs` passes
+  sidebar creation without a rail tab, pointer dragging into right/bottom/top,
+  one view identity and catalog row through moves, and middle-click view-only
+  closure on each rail. Reopening preserves the unsent draft. Sidebar archive
+  of that draft-only chat and resource-only Restore pass; reopening restores
+  the draft and retains the paused execution state.
+- This browser run exposed a real catalog adapter bug: `lastUsedAt` was passed
+  into the strict title-decryption schema. The adapter now removes recency
+  metadata before decryption and restores it afterward for active and archived
+  pages. Tests retain strict summary validation instead of accepting extras.
+- The initial browser attempt could not start its worker because the fresh
+  worktree lacked the CLI binary. Building the CLI resolved that failure. A
+  later fixture assertion incorrectly assumed an unpaused composer placeholder;
+  it now identifies the composer independently and checks the paused state.
+- Native macOS interaction created a direct conversation alongside `qa.txt`,
+  placed it in the top rail, and detached it with the unsent draft intact.
+  Returning it through the sidebar exposed a real completion race: closing the
+  sole-view source window could discard its acknowledgement, leaving the view
+  in the intermediate return pane instead of the requested rail. Placement now
+  also observes authoritative local ownership after protected restoration and
+  cancels its redundant acknowledgement wait. All eight focused handoff/hook
+  tests pass, including source closure and cancellation. The rebuilt macOS native run passes: sidebar placement returns the
+  detached conversation into the requested right rail, retains the unsent draft
+  and sibling file, and closes the retired source window.
+- App typechecking, decomposition budgets, formatting, and diff whitespace
+  checks pass after the native race fix. The broader `pnpm check` reached
+  server tests: 1,634 passed, 57 skipped, and two failed. The failures are the
+  previously baseline-reproduced provider-account assertion in
+  `local-foundation.test.ts:7218` and missing `getModelRuntimeByRoute` mock in
+  `terminal-managed-session.test.ts:140`; the broad check is recorded as failed.
+  Further acceptance coverage and PR delivery remain outstanding.
+  No full-feature completion is claimed.
+
+### Acceptance and scale cycle (merged)
+
+PR [#2341](https://github.com/ArcaneArts/Cantrip/pull/2341) squash-merged the
+placement cycle as `dbc18e0a1`. Primary was synchronized and the placement
+worktree removed. The new isolated `codex/conversations-acceptance` branch
+starts from that merge.
+
+Inspection found that both catalogs mounted every loaded summary and shared
+one unbounded scrolling area. The current implementation adds bounded active
+and archived viewports, measured virtual rows, resource-ID scroll anchoring,
+retained focused rows, and Arrow/Home/End navigation through loaded results.
+The first 11 focused component tests pass, including 1,000-row reachability,
+bounded mounted rows, recency changes above the viewport, focus across virtual
+boundaries, and existing archive/restore interactions. This does not yet prove
+the required real 1,000-active/1,000-archived network and interaction fixture.
+Active menus now reuse encrypted Rename and Fork actions. An additive fork
+placement option preserves legacy callers while sidebar forks create a catalog
+resource without a rail tab. The focused server archive/fork suite passes all
+12 tests; the combined virtual-list and sidebar interaction suite passes all
+13 tests, including Rename and placement-free Fork.
+
+The final real Chromium scale run created 1,000 active and 1,000 archived
+conversations through normal encrypted APIs. It reached every ID using 40
+catalog pages (at most 50 items per response), mounted 28 rows, and fetched no
+transcripts while browsing. The small-list baseline mounted 20 rows; the large
+browse needed 43 total requests, including 40 catalog pages. Seeding 1,980
+additional records took 109.8 seconds; this measures fixture API setup, not
+interactive rendering. Home/End reached the first and thousandth loaded items
+in both lists. A Live usage update preserved the visible resource at its prior
+pixel offset. The rendered screenshot was inspected: active and archived
+sections remain separately scrollable with visible menus and archive copy.
+
+The first run's final anchor assertion read before the scroll render; the
+harness now waits for that render and the completed Live page refresh. An
+intervening repeat received an actual worker-placement-unavailable response
+during startup; setup retries the same prepared creation only for that response,
+with a deadline. Both failed attempts remain failures; the subsequent complete
+run passed and shut down its owned processes. All 979 protocol tests, app
+typechecking, and decomposition budgets pass. The complete app suite also
+passes 3,994 tests with three skipped. The mobile fixture initially tapped the
+switcher before the fresh installation had selected a project; temporary
+diagnostics confirmed a null project scope and were removed. The fixture now
+selects the project through the drawer and reopens the drawer after navigation.
+Those incomplete mobile runs are not acceptance evidence. The subsequent full
+390×844 touch-browser run passed direct creation with zero rail tabs, protected
+draft persistence after drawer navigation and reload, placement through the
+right/bottom/top menus with exactly one view, archive/restore with no placement
+on restore, deletion cancellation, and confirmed deletion. Its independent
+mobile workspace had a different ID and left the desktop workspace's windows
+unchanged. The final screenshot was inspected: the switcher, active section,
+Archived section, and creation control fit the drawer. Its owned worker and
+server exited with no survivors.
+
+A real recovery browser run dropped successful create, archive, and restore
+responses after the server committed. Creation retried the identical ID and
+encrypted payload and opened exactly one view; archive/restore reconciled both
+catalogs and ownership while retaining the protected draft, with no placement
+on restore. After reload, injected catalog 503 responses exposed Retry while
+the direct view and draft remained usable; lifting the fault restored the row.
+The fixture completed and shut down its owned processes without survivors.
+
+`pnpm check` completed with 1,635 server tests passing, 57 skipped, and the two
+previously baseline-reproduced failures in `local-foundation.test.ts:7218` and
+`terminal-managed-session.test.ts:140`. This broad check remains failed; the
+separate full app pass does not override it. The app production build,
+changed-file formatting, and `git diff --check` pass. PR delivery and the final
+requirement-by-requirement audit remain outstanding. The audit must still
+address uncertain Fork outcomes and placement pending state, and assess the
+remaining Live/concurrent-update and failure cases against their actual tests.
+No full-feature acceptance checkbox is marked complete.
+
+### Mutation recovery audit cycle (merged)
+
+PR [#2344](https://github.com/ArcaneArts/Cantrip/pull/2344) squash-merged as
+`3826bd015`. Primary was synchronized cleanly and the acceptance worktree was
+removed. Its screenshots and structured fixture results were retained outside
+the worktree. This cycle uses `codex/conversations-mutation-recovery`.
+
+Inspection confirmed sidebar Fork allocated a new ID on retry and project fork
+success did not publish the Live summary event. Prepared sidebar forks now
+retain their encrypted payload, reconcile actual failures through bounded
+catalog pages, and fence retries by session identity. Project forks publish
+summary invalidation. Placement tracks pending work per conversation/controller
+and prevents overlapping moves of the same resource while other conversations
+remain usable. Sidebar controls expose that pending state.
+
+The first 28 focused app tests pass, including lost fork replies, failed
+reconciliation with identical retry payloads, account fencing, independent
+placement pending states, and cleanup after failed moves. The initial test
+attempt could not resolve the unbuilt local crypto package; dependencies were
+built before the passing run. The full app suite passes 3,998 tests with three
+skipped. The real browser recovery fixture now also drops a committed Fork
+reply: it recovers exactly one catalog resource with no rail placement or
+second request, preserving the source draft. All earlier recovery scenarios
+still pass. App typechecking and decomposition budgets pass. The focused
+server suites pass 13 tests, including project Fork Live publication; their
+initial new-fixture failure included a request-only field in a strict response
+schema and was corrected without changing that schema. The server Rust source
+manifest remains unchanged (285 roots, 7,776 nodes).
+
+The previous merged PR's Windows worker-runtime job failed at
+`managed-native-permission-recovery.test.ts:411` while waiting for policy
+application. Its job log is retained for investigation; it is not recorded as
+a passing check. The corresponding 11-test suite passes locally, which does
+not establish a Windows pass. The targeted rerun of that unchanged Windows job
+subsequently passed (workflow attempt 2, job `124147378503`). The original
+failure remains recorded above; no worker code, test assertion, or timeout was
+changed in this cycle.
+
+A further audit reproduced a paging race in both active and archived lists:
+Load more canceled an in-flight Live refresh and requested an obsolete cursor.
+Both repro tests failed before the fix. Paging now waits while that query is
+fetching and explicitly avoids canceling refetches; all 12 sidebar interaction
+tests pass, including use of the fresh cursor after refresh. Five placement
+tests pass after adding rejection of callbacks retained past renderer unmount.
+The final full app suite passes 4,003 tests with three skipped across 568 files.
+Final app typechecking, production build, and changed-file formatting pass. The 20 dock-rail
+tests also pass after adding approval-waiting close coverage on both rails.
+The scale harness now checks all IDs and focus after a full Live refresh, not
+only its visible scroll anchor. The strengthened browser run passed: 20 active
+pages refreshed, all 1,000 resource IDs remained unique and complete, focus
+stayed on the same row, and its pixel offset remained unchanged. Both catalogs
+remained reachable through 40 bounded pages with 28 mounted rows and no
+transcript queries. Seeding the 1,980 additional records took 357.7 seconds
+while other validation was running; that is setup time, not interaction latency.
+Its worker and server shut down without survivors.
+
+The extended recovery fixture also passes switching between two direct
+conversations with separate protected drafts, then reloading and switching
+again without changing existing file rail views. The first attempt read an
+empty composer immediately after reload; the harness now waits for the expected
+draft to load, and the full subsequent run passes. This is recorded as an
+initial harness timing failure, not a passing initial run.
+
+The broad `pnpm check` completed with 1,612 server tests passing, 70 skipped,
+13 test failures, and two failed fixture hooks. The provider-account assertion
+and missing runtime-route mock are the previously baseline-reproduced failures;
+the additional failures are test/hook timeouts. The serial rerun of all 13
+affected files, with unchanged assertions/timeouts, finished with 34 tests
+passing and 10 failing across six files. Besides the two known baseline
+assertions, failures remain in settings-loader, permission-queue, replica-job,
+and workspace-name initialization tests. Serial execution did not resolve
+them. Both runs remain failed and their timing failures require further audit;
+they are not attributed to host contention as a proven cause.
+
+PR [#2345](https://github.com/ArcaneArts/Cantrip/pull/2345) squash-merged as
+`76d66e25c`. Clean Primary was synchronized and that cycle's worktree removed.
+The final acceptance audit continues in `codex/conversations-final-audit`.
+
+### Final acceptance audit
+
+Delivery: [PR #2346](https://github.com/ArcaneArts/Cantrip/pull/2346),
+branch `codex/conversations-final-audit`.
+
+The reconnect fixture in `terminal-managed-session.test.ts` lacked the bound
+route repository lookup and assigned an account to an OpenAI-compatible route,
+which does not support account binding. The fixture now supplies the lookup and
+uses a valid account-free runtime. The test additionally verifies the exact
+bound-route lookup and that reconnect never invokes fresh runtime selection.
+All eight managed-session tests pass. Together with unchanged settings-loader
+and workspace-name suites, the focused run passes 11 tests. A second serial run
+passes all 11 permission-queue and replica-job tests, but still fails the
+provider-account assertion in `local-foundation.test.ts:7218`. These focused
+results do not turn the earlier broad check into a pass. No timeouts or product
+assertions were relaxed. The remaining account-selection failure expects automatic turn-time account
+reselection. The eager managed-preparation and explicit provider-transfer
+contracts in `CODEX_AUDIT.md` (passes 42–43) instead bind the native session's
+route/account. The test reproduces on the pre-feature baseline; no provider
+routing behavior or assertion is changed to hide it in this sidebar cycle.
+
+PR #2345's Linux App API, native contracts, and server behavior checks and
+Windows App API and native contracts checks were observed successful. All nine jobs subsequently completed successfully, including the
+remaining macOS and Windows jobs.
+
+The shutdown audit found that Agent view lifecycles were not registered with
+the desktop quit coordinator. Three new regressions failed before the repair:
+quit did not wait for a pending protected checkpoint, did not reject a failed
+checkpoint, and did not revoke readiness on owner removal. Both direct and rail
+Agent views now participate through their existing session-fenced lifecycle.
+The coordinator awaits actual draft writes, resumes the view after failure or
+cancellation, and never retires or interrupts execution. All 27 focused quit,
+transfer, and window-recovery tests pass. The extended browser recovery run also passes with a real mounted composer:
+a held encrypted write keeps quit pending; a rejected write leaves the draft
+editable; retry followed by reload restores the final text. Earlier lost-reply,
+catalog-error, fork and multiple-direct scenarios still pass. This exercises
+the same coordinator used by native quit; native IPC acknowledgments are tested
+separately by `desktop-quit.test.ts`, rather than claiming the browser exited a
+native process. The final full app suite passes 4,006 tests with three skipped
+across 568 files. The production app build, including TypeScript checking,
+passes. Application decomposition (189 files), large-file checks,
+changed-file formatting and `git diff --check` pass.
+
+The scale harness now records five End/Home keyboard round trips and page-open
+latency for 10 and 1,000 active rows, alongside catalog request counts and
+mounted rows. Its first current-worktree attempt failed because the worker
+could not find a built CLI. That fixture shut down without survivors; the CLI
+was built successfully before starting the next attempt. The subsequent run
+passes on the current paging implementation: 20 small-list rows versus 28
+large-list rows mounted; two initial catalog requests versus 40 requests for
+both complete 1,000-row catalogs, with no transcript requests. Five End/Home
+round trips had median times of 16.6 ms for 10 active rows and 16.5 ms for 1,000.
+Opening Conversations took 204.6 ms and 578.3 ms respectively on this host.
+These are measured observations, not cross-device performance guarantees.
+Seeding took 194.0 seconds and is separate from interaction latency. All 1,000
+active IDs remained unique and complete through the 20-page Live refresh,
+retaining focus and the same pixel anchor. The worker/server stopped with no
+survivors.
+
+### Acceptance evidence map
+
+This map identifies concrete coverage for every item in the final checklist.
+Feature acceptance is separate from a claim that the unrelated legacy
+provider-account baseline test or the entire repository check passes.
+
+| Requirement                                          | Evidence                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Files/Conversations, preserved file edits and scroll | `project-sidebar-pages.test.tsx` exercises keyboard switching, retained mounted editor content and delayed file scroll restoration; `use-project-sidebar-page.test.tsx` checks installation/account/server/project scope; file-tree source has no `filesCollapsed` heading behavior.                                                                                                                          |
+| Complete Agent-only MRU catalog                      | `chat-archive-api.test.ts` checks owner isolation, bounded complete paging, stale/replayed usage receipts, status changes without reordering, restored recency and Task exclusion; `conversation-catalog-migration.test.ts` checks legacy usage and unchanged archive deadlines.                                                                                                                              |
+| Resource-only creation and direct rendering          | `project-conversation-list.test.tsx` checks offline opening, existing-window focus, immutable uncertain creation retry and stale sidebar callbacks. Browser `recovery.create` proves one committed chat/view after a lost response.                                                                                                                                                                           |
+| Multiple direct chats alongside file/tool tabs       | Browser `recovery.multiple-direct` switches two protected drafts before/after reload with unchanged file rail IDs. Direct content uses the ordinary Agent renderer and local controls.                                                                                                                                                                                                                        |
+| One view and rail placement                          | `workspace-conversation-views.test.ts` covers direct/rail conversion, selection, empty/populated panes, occupied return slots and inactive whole-pane transfer. `workspace-dnd-model.test.ts` checks all regions, exact insertion, canceled and cross-project drops. Real placement harness exercises pointer drops and view-only middle-click on all three rails.                                            |
+| Multiwindow ownership                                | Native macOS detach/return retained the protected draft and sibling file and closed the retired source window. `workspace-conversation-handoff.test.ts` checks protected acknowledgment, duplicate/coalesced requests, source failure and disposal.                                                                                                                                                           |
+| Running/approval rail closure                        | `project-tab-bar.test.tsx` and `project-workspace-frame-dock-rail.test.tsx` verify close-only behavior for running and approval-waiting Agents on all rails; the real placement harness verifies draft retention after reopening.                                                                                                                                                                             |
+| Sidebar archive, restore and deletion                | `conversation-archive-interaction.test.tsx` exercises middle-click, Stop and Archive confirmation, keyboard menus, focus recovery, inert archived middle-click and permanent-delete confirmation. `use-conversation-lifecycle.test.tsx` checks checkpoint failure, session changes, unknown outcomes and per-chat concurrency. Browser mobile and recovery scenarios verify actual resource/layout mutations. |
+| Archive persistence and compatibility                | Archive API tests retain empty/populated chats, reject executing/foreign archives and stale deletion after restore, preserve resource-only restoration, and test expiry. Workspace API tests remove direct ownership and in-flight transfers atomically. Settings retains Task archives and redirects Agent recovery to the inline section.                                                                   |
+| Reload, recovery, session fences                     | Browser recovery results prove lost create/archive/restore/fork replies, failed catalog reads and two independent drafts after reload. Workspace client tests retain uncertain commands and reject stale session/renderer observations. Window recovery tests include a detached direct view without rail tabs. Shutdown validation is recorded above.                                                        |
+| Accessibility/mobile                                 | Component tests exercise tab arrows, Shift+F10 menus, archive/restore/delete focus and virtual-row keyboard navigation. The 390×844 touch-browser run exercises direct creation/reload, placement menus on all rails, restore without placement, deletion cancellation/confirmation and independent desktop workspace state. Physical iOS/Android devices and screen-reader audio were not exercised.         |
+| Privacy and parity                                   | Catalog APIs carry encrypted summaries; migration stores operational usage metadata only. Existing protocol, Rust contract/model and HTTP/database compatibility results are recorded per cycle. Protected draft/history use the shared Agent lifecycle, with no transcript in layout or drag payloads.                                                                                                       |
+
+## Product outcome
+
+Replace the collapsible **Files** heading below the project selector with a
+**Files | Conversations** switcher. Files retains the project file tree.
+Conversations provides a complete catalog of the selected project's Agent
+chats, ordered by last usage, followed by an **Archived** section.
+
+A conversation exists independently of an open tab. Users can work entirely
+from this sidebar, leaving the top, right, and bottom rails for files, Issues,
+Git, and other tools. Users who prefer one Agent tab can keep that tab open and
+leave Files selected. Both workflows use the same chats and transcript UI.
+
+Closing an Agent view and archiving its conversation are separate actions:
+**rail middle-click hides the view; sidebar middle-click archives the
+conversation**.
+
+### Scope and defaults
+
+- “All agent chats” means every eligible Agent chat in the **selected project**,
+  including chats on other project worktrees and chats with no open views.
+  Project selection remains the scope selector; this is not an account-wide
+  cross-project inbox.
+- Include only project-context chats with `experience === "agent"`. Exclude
+  Task conversations, Task planning/execution/follow-up chats, standalone Chat
+  mode conversations, and nested runtime subagent records. A chat's mode,
+  worker availability, or absence from a rail does not decide eligibility.
+- Active chats stay in Conversations even while open in any rail or another
+  local window. Render one catalog row per chat ID, not one row per view.
+- Files is the default for existing installations. Remember the chosen sidebar
+  page per installation/account/server/project; changing projects restores that
+  project's preference. Viewport resizing does not create a new preference.
+- Preserve the existing 90-day archive recovery policy. Show the expiration
+  information in the Archived section; moving its UI does not silently make
+  archived chats permanent storage. Explicit **Permanently Delete** remains
+  available before expiration.
+- Deliver this document first. Runtime changes are subsequent, independently
+  reviewable implementation milestones; their completion must be recorded with
+  actual validation evidence.
+
+## Interaction contract
+
+| User action                                                   | Required result                                                                | Resource or layout effect                                                        |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------- |
+| Select Files or Conversations                                 | Show that sidebar page; the heading never collapses its contents               | Sidebar preference only                                                          |
+| Press Conversations `+`                                       | Create an Agent, put it first in Conversations, and open its composer directly | Create a chat and a conversation view, with no rail tab or legacy tab attachment |
+| Click an active conversation with no open view                | Show it directly in the workspace content area                                 | Open an owned conversation view without a rail tab                               |
+| Click an active conversation already open                     | Focus its existing view, revealing its dock or owner window when needed        | Select/focus; do not duplicate or relocate it                                    |
+| Drag an active conversation to the top, right, or bottom rail | Open or move its view at the indicated destination and select it               | Place a tab; keep the sidebar row                                                |
+| Middle-click an Agent rail tab                                | Close that tab and use normal neighboring-tab/pane focus fallback              | Do not archive, delete, interrupt, or pause the chat                             |
+| Middle-click an active sidebar conversation                   | Move the chat into Archived, including an empty chat                           | Archive the resource and remove its open views                                   |
+| Choose Archive from an active row's menu                      | Same result as sidebar middle-click                                            | Accessible equivalent of archive                                                 |
+| Open an archived row's `...` menu                             | Offer **Restore** and **Permanently Delete**                                   | Opening the menu has no mutation                                                 |
+| Choose Restore                                                | Return the chat to the active list at the top                                  | Restore the same chat ID; create no tab and do not steal content focus           |
+| Choose Permanently Delete and confirm                         | Remove that archived chat and its conversation history                         | Irreversible resource deletion through the existing lifecycle                    |
+| Middle-click an archived row                                  | No deletion or restoration                                                     | No mutation                                                                      |
+
+### Sidebar presentation
+
+Use the existing sidebar spacing, fonts, selection treatment, and icons. Keep
+the switcher fixed above the scrolling content. Its two choices are actual
+accessible tabs, not a button that toggles the entire tree. Folder expansion
+inside Files remains unchanged, as does the application's whole-sidebar
+collapse control.
+
+Conversations has a compact `+` action with the accessible name **New agent
+conversation**. Rows show the decrypted chat title and existing Agent activity,
+approval, unread-completion, and unavailable-worker indicators. An open-view
+indicator may identify Top, Right, Bottom, or another window without splitting
+the list into separate open/closed groups. Selection and open placement are
+different states: several rows can have open views, but focus has one owner.
+
+Below the active list, always expose an **Archived** heading and its count,
+including a useful empty state. Do not hide this section behind Settings or a
+second navigation page. Use bounded scrolling for a large active list so the
+Archived heading remains reachable without loading every active page first;
+its rows can scroll within their own section. Preserve scroll position by chat
+ID when recent usage changes ordering.
+
+Each archived row exposes a trailing `...` button on hover and keyboard focus.
+Keep it visible on touch devices. Its menu contains the exact actions
+**Restore** and **Permanently Delete**, with the latter styled as destructive.
+Reuse the existing permanent-delete confirmation, including the affected chat
+name, pending state, failure message, and cancellation behavior. Opening or
+using the menu must not also select, drag, or middle-click the underlying row.
+
+Active-row menus expose Archive and keyboard/touch equivalents of placing the
+chat in the top, right, or bottom rail. Preserve existing Rename and Fork
+capabilities through shared chat actions. A fork started here becomes another
+sidebar conversation by default, rather than forcing an Agent rail tab.
+
+### Direct viewing without rail tabs
+
+Clicking an unplaced conversation opens the ordinary Agent transcript and
+composer in the most recently focused center pane, otherwise the first center
+pane, or creates a center conversation pane if none exists. Existing file/tool
+tabs and their order remain intact. The pane
+can show its selected conversation without adding an Agent entry to its tab
+strip. Clicking one of its existing tabs returns to that tab's content.
+
+Keep the Agent's local toolbar above the transcript, including its existing
+customization, console, Inspect, and applicable relocation controls. Linked
+console mode must also work for a directly viewed conversation. Reuse the
+Agent renderer, message queries, encrypted drafts, queueing, attachments,
+approvals, and runtime subscriptions; do not build a reduced second chat UI.
+
+Selecting another unplaced conversation replaces that pane's conversation
+selection after its draft is checkpointed. Switching to Files changes only
+the sidebar and leaves the displayed conversation visible. Switching to a
+file/tool tab preserves the conversation selection and draft for returning
+through the sidebar. Limit each pane to one retained direct conversation view;
+the catalog itself does not mount a transcript for every chat.
+
+If the requested chat already has a view in this device workspace, focus that
+view instead. Do not simultaneously mount a second interactive composer in a
+direct conversation host. Another device's placement does not prevent this
+device from opening its own view under the existing cross-device rules.
+
+### Last usage
+
+Define last usage as an explicit user activation or interaction, not generic
+database modification time. Record usage when the user creates, selects,
+restores, or submits/steers a message to an Agent conversation. Selecting its
+rail tab or its already-open window through navigation counts too. Passive
+mounting, startup restoration, polling, background streamed tokens, automatic
+title changes, hover, opening a row menu, and reordering tabs do not count.
+
+Persist an owner-scoped `lastUsedAt` for each project Agent and synchronize it
+across the owner's devices. Order active rows by `lastUsedAt DESC`, then
+`createdAt DESC`, then chat ID as a stable tie-breaker. Placement order and
+workspace recent-tab history remain separate. Archived rows use
+`archivedAt DESC`, then chat ID; Restore records a new usage event.
+
+Use server-issued timestamps and idempotent usage events. Coalesce repeated
+focus signals for the same activation, retain an operation ID across retries,
+and reject obsolete per-client activation sequences so delayed requests cannot
+reorder newer activity from the same client. A failed usage update must not
+block opening, reading, or sending to the conversation. Keep the local recent
+selection visible while reconciling; do not replay a backlog of old offline
+focus events as new activity after reconnect.
+
+For existing chats, backfill from `updatedAt`, falling back to `createdAt`.
+This is a one-time approximation, not a claim to recover historical user
+activity. After migration, only the defined usage events change recency.
+
+## Existing implementation and required changes
+
+The following table records the planning baseline before the implementation
+cycles above. It is retained to explain the required changes, not to describe
+the current implementation.
+
+| Area                 | Current implementation                                                                                                                                                                                                                    | Required change                                                                                       |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Project sidebar      | [ProjectChatList](../cantrip_app/src/components/sidebar/project-chat-list.tsx) currently hosts the selected project's file tree despite its name                                                                                          | Introduce a clear project sidebar body with Files and Conversations pages                             |
+| Files heading        | [ProjectSidebarFileTree](../cantrip_app/src/components/sidebar/project-sidebar-file-tree.tsx) owns `filesCollapsed`; that flag also controls directory/encryption work                                                                    | Move the page header to the switcher and drive expensive tree work from actual Files visibility       |
+| Sidebar wiring       | [ShellSidebar](../cantrip_app/src/components/app/shell-sidebar.tsx) and [sidebar explorer controller](../cantrip_app/src/components/app/sidebar-explorer-controller.ts) supply file operations                                            | Bind conversation resources and actions without tying their availability to Explorer or a live worker |
+| Chat inventory       | [Project workspace resources](../cantrip_app/src/components/app/project-workspace-resources.ts) fetches `['chats', projectId]`; [chat catalog](../cantrip_server/src/db/repository/chat-catalog.ts) lists active chats by stored position | Add a complete Agent-only recent catalog independent of placement and Task queries                    |
+| Chat creation        | [Creation operations](../cantrip_app/src/components/app/surface-creation-operations.ts) has `open: false`, but server `createChatExperience` still attaches non-Task chats to the legacy layout                                           | Add an explicit resource-only creation path; an app-only `open: false` is insufficient                |
+| Close versus archive | [TABS.md](TABS.md) specifies view-only rail close; [removeAgentChat](../cantrip_app/src/lib/remove-agent-chat.ts) invokes interruption/removal for resource deletion                                                                      | Keep close on workspace commands and archive on a distinct lifecycle action                           |
+| Archive semantics    | [ChatArchiveLifecycleRepository](../cantrip_server/src/db/repository/chat-archive-lifecycle.ts) archives chats with messages but deletes empty chats; restore attaches a legacy tab                                                       | Explicit Agent archive must retain empty chats, and resource-only restore must not attach tabs        |
+| Archive UI           | [ProjectArchiveSettings](../cantrip_app/src/components/projects/project-archive-settings.tsx) mixes archived Agents and Tasks with restore/delete controls                                                                                | Move Agent recovery into the sidebar; retain Task archive access in Settings                          |
+| Drag/drop            | [Workspace drag model](../cantrip_app/src/lib/workspace-dnd-model.ts) assumes a surface drag already has a pane and tab key                                                                                                               | Support catalog-resource drags with no source placement                                               |
+| View ownership       | [Workspace schema](../packages/protocol/src/workspace-ownership.ts) requires nonempty `pane.tabs` and an `activeTabId`; [command client](../cantrip_app/src/lib/workspace-command-client.ts) opens resources as tabs                      | Model directly viewed conversations explicitly, preserving exclusive ownership and recovery           |
+
+Use project identity plus `experience === "agent"` for both active and archived
+catalogs. The legacy project schemas allow an omitted `contextKind`; normalize
+that documented project form at the API adapter rather than accidentally
+excluding old project chats. Never use `experience !== "task"` on unknown
+unvalidated data or equate “currently has an Agent tab” with eligibility.
+
+The Node server remains the normal runtime at this baseline. The
+[Rust replacement](RUST_SERVER_REPLACEMENT.md) already implements workspace
+contracts and has compatibility fixtures. Keep changed workspace schemas,
+transitions, persistence, and fixtures aligned there; explicitly record any
+chat-domain parity work still pending. This feature does not perform a server
+cutover or change the worker's execution ownership.
+
+## Workspace model for direct conversation views
+
+A new JSX branch or hidden rail tab is not enough: the existing layout schema,
+focus history, native transfer, resource removal, and restoration all enumerate
+pane tabs. Extend the authoritative ownership model before exposing tab-free
+conversation viewing.
+
+### Proposed representation
+
+Factor the existing tab's view identity/resource binding into a shared owned
+view shape, then add an optional `conversationView` to a center pane. It is a
+view of a `project.agent` resource with its own stable view ID, owned by that
+pane/window/workspace, but absent from `pane.tabs` and all rail counts. Keep
+`pane.tabs` as the ordered list of actual rail tabs.
+
+Introduce an explicit active-content discriminator:
+
+```text
+pane.selection = { kind: "tab", tabId }
+               | { kind: "conversation", viewId }
+
+pane.tabs = ordered rail tabs
+pane.conversationView = null | owned Agent view
+```
+
+These are proposed field names, not existing API fields. Version and migrate
+the schema as one contract, including receipt and selection adapters. A pane
+is valid when it contains at least one tab or a conversation view; its
+selection must reference content it owns. A completely empty pane is removed
+using the existing topology/focus rules. Right and bottom regions continue to
+use ordinary tabs; direct conversation hosts live in center panes.
+
+Closing an inactive tab preserves the selected content. Closing an active tab
+selects its right neighbor, then its left, then the retained conversation slot
+if present. Closing the selected conversation slot selects the last active
+surviving tab, otherwise the first tab. Only an empty pane is removed; focus
+then follows surviving pane history. Resource removal applies the same rules.
+
+Within one device workspace, ordinary opening of a chat resolves its existing
+view across **both** tabs and conversation slots. Conversion between a direct
+view and a rail tab preserves view identity and draft state. Closing a view
+may discard its view identity after protected state is retained; reopening
+creates a new view of the same chat resource. No catalog entry itself claims
+ownership of a renderer.
+
+### Commands and rendering
+
+Extend the existing revisioned workspace command path with operations for:
+
+1. Opening/selecting an existing Agent in a conversation slot, or focusing its
+   existing tab/slot elsewhere in the workspace.
+2. Placing a catalog Agent into an explicit pane/region/index, converting a
+   direct view in place or moving an existing tab when necessary.
+3. Selecting pane content and closing a direct view, with deterministic focus
+   fallback and draft preparation.
+
+Use stable operation IDs, immutable sent command bytes, revisions, and
+attachment generations through
+[WorkspaceCommandClient](../cantrip_app/src/lib/workspace-command-client.ts)
+and the [pure transitions](../packages/protocol/src/workspace-command-apply.ts).
+Extend resource lookup, presentation, focus history, command search, native
+window focusing, and lifecycle registration to enumerate both kinds of view.
+Do not write a parallel local-storage layout or mutate the retired project
+layout to implement these actions.
+
+The pane renderer selects either its rail tab content or its conversation
+content. Its tab strip still shows existing file/tool tabs when a conversation
+is active, but none is falsely marked as the selected content. The direct
+conversation title and controls live in the panel toolbar. When there are no
+rail tabs, omit the empty Agent tab strip while retaining a usable way to open
+other project surfaces.
+
+Treat replacement, hiding, and transfer as lifecycle operations. Preserve
+encrypted composer text, attachments, queued inputs, transcript position,
+console selection, and Inspect state using existing protected state adapters.
+Do not destroy the old renderer based solely on an optimistic request that
+may fail. A failed checkpoint or transfer keeps the source recoverable with
+an actionable error; a missing acknowledgment does not prove it is safe to
+mount a duplicate.
+
+Extend whole-pane detach/return and application quit/reload recovery to include
+conversation slots, even when inactive behind a file tab. Detaching a direct
+conversation alone uses the same prepared ownership transfer and presents a
+conversation view in the destination. Return restores its conversation slot
+when possible; if that slot now holds a different conversation, create a
+center conversation pane rather than overwrite intervening work. Other device
+workspaces keep their placements. Resource archival, unlike view closure,
+removes all views of that resource across the owner's workspaces.
+
+## Drag and drop
+
+Add a catalog-resource drag variant carrying account/session scope, project
+ID, and chat resource ID. It may include an observed view ID for presentation,
+but the committed operation resolves current ownership rather than trusting a
+stale source pane. Never manufacture a fake `paneId` for an unplaced chat.
+
+Reuse the existing drag provider, insertion previews, region hit testing,
+keyboard equivalents, and move/transfer commands:
+
+- **Top rail:** insert into the indicated center pane at the displayed index;
+  an empty center target creates a pane.
+- **Right rail:** insert into its target pane or create a right pane, then
+  reveal the dock without overwriting its remembered split size.
+- **Bottom rail:** the same behavior for the bottom region.
+- **Already placed:** move the existing view to the explicit drop destination,
+  preserving identity. This differs from a simple sidebar click, which focuses
+  the existing placement. A drop at the same location is a no-op.
+- **Directly viewed:** convert/move that owned view into a tab, clearing its
+  conversation slot only when the placement commits.
+- **No view:** create one owned tab for the existing resource. Do not create,
+  fork, restore, or duplicate the chat itself.
+- **Archived row:** not draggable. The user restores it first.
+
+An explicit cross-window move uses the existing protected handoff before
+changing ownership. A cross-project/account drop is rejected by the real
+command authorization. Canceling a drag has no side effect. If a chat is
+archived/deleted or its source/destination changes during a drag, reconcile the
+actual command result and retain the current valid state. A stale UI snapshot
+must not prevent attempting an otherwise valid operation.
+
+Do not enable manual sorting within Conversations: its order is last usage.
+Dragging from its row is a placement action, not a list reorder. Suppress the
+following click after a completed drag so it does not reopen another host.
+
+## Server, persistence, and lifecycle work
+
+### Catalog and recency
+
+Add a paginated, owner-authorized project Agent catalog, backed by the existing
+chat records and encrypted summary mappers. A proposed additive API is
+`GET /api/projects/:projectId/conversations?state=active|archived&cursor=...`.
+Return typed summaries and `nextCursor`; provide section totals independently
+of the loaded page. Keep existing `getChats` consumers and Task APIs compatible.
+
+Add last-usage storage and an index matching project, Agent experience, archive
+state, and the relevant ordering. A proposed
+`POST /api/chats/:chatId/usage` accepts a stable operation ID and client sequence
+and returns authoritative recency. Authorize the actual chat/project on every
+request. Use server time; timestamps and opaque IDs are operational metadata,
+while chat titles and content retain their current encryption boundary.
+
+Use bounded cursor pages with deterministic tie-breakers. Live changes restart
+the affected ordered query and merge by chat ID; preserve the visible anchor
+and never append duplicate rows. Handle a chat moving across a page boundary
+while pages are in flight. Offer load-more/retry access to every item, not a
+fixed recent-N cap. Virtualize long lists without mounting transcripts or
+fetching message histories for each row.
+
+### Creation and restoration without placement
+
+Add an explicit placement option to the validated create/restore contracts,
+such as `attachToTabLayout: false`, rather than inferring intent from a missing
+pane ID. Preserve legacy behavior when the option is absent until all callers
+are migrated. New owned-workspace callers create/restore the resource without
+legacy placement and issue the desired owned-view command separately.
+
+The sidebar `+` flow must create an Agent resource with normal model, permission,
+worktree/worker selection, naming, encryption, and draft behavior. It then opens
+the direct conversation host. If creation succeeds but opening fails, retain
+the new catalog row and offer opening it again; retrying must not create a
+second chat. Use the existing client-generated chat ID as the stable creation
+identity, with server retry handling for an uncertain response.
+
+Restore clears archive state and records last usage but performs no placement
+operation. It preserves the chat ID, messages, attachments, title, model,
+worktree binding, and existing automation-pause policy; restoring does not
+silently restart a turn or automation. If its old execution location is
+unavailable, keep history accessible and report that actual limitation when
+execution is requested. Do not make history recovery depend on a worker being
+online.
+
+### Archive and permanent deletion
+
+Introduce an explicitly named Agent archive operation in the app and server
+domain. Its contract always archives an idle eligible Agent, including one
+with no messages or only an unsent draft. Do not call the current generic
+`deleteChat` path unchanged, because it can permanently remove empty chats.
+An additive `POST /api/chats/:chatId/archive` can preserve old clients and Task
+deletion semantics while making the new intent unambiguous.
+
+Perform archive validation and mutation transactionally against current
+execution state. Retain the archive timestamp on an idempotent retry; a retry
+must not extend retention. Pause automation/queued execution according to the
+existing Agent archive policy and remove owned tabs and conversation slots in
+the same durable resource transition. Extend
+[workspace resource removal](../cantrip_server/src/db/workspace-resource-removal.ts)
+to cover conversation views, focus history, and in-flight transfers.
+
+For a running or approval-waiting chat, sidebar middle-click presents the
+existing stop-and-archive flow with an explicit **Stop and Archive** action;
+it does not silently stop execution. After accepted interruption, retry the
+actual archive operation while the terminal event is still in flight, using
+the existing bounded removal pattern. A raced start or failed interruption
+leaves the row active and shows the actual error. Rail close always remains
+available without stopping the Agent.
+
+Before archiving the locally displayed chat, checkpoint its unsent draft.
+Preserve recoverable drafts in other attached windows through the existing
+protected draft/recovery lifecycle when resource removal invalidates them.
+Neither archival nor switching sidebar pages may discard a draft just because
+the transcript is no longer rendered.
+
+Permanent deletion uses the archived-resource endpoint and existing cleanup
+semantics. Validate archive state and ownership at mutation time so a stale
+delete dialog cannot delete a concurrently restored active chat. Remove cached
+drafts, selections, resource summaries, and view references after confirmed
+deletion. Do not delete the project's repository/worktree files merely because
+its Agent conversation was deleted. Preserve existing retention cleanup and
+exclude expired resources from recovery once the actual purge has committed.
+
+### Invalidation and failure behavior
+
+Publish or reuse App Live invalidations for create, usage, rename, status,
+archive, restore, and delete. Update active/archived catalogs, existing
+`['chats', projectId]` and `['archived-chats', projectId]` caches, and affected
+workspace revisions. Resource status updates change badges without changing
+last usage. Follow existing fallback polling only when Live coverage is absent.
+
+Track pending state per chat/action rather than disabling every conversation
+while one mutation runs. Reconcile optimistic patches by resource ID and
+operation outcome; do not restore a whole stale list after one failure. A
+request with an unknown outcome is resolved through authoritative state and
+idempotent retry, not by guessing success or creating another resource.
+
+Fence requests and retained callbacks by account, server, project, workspace,
+and renderer generation. Loading failures show loading/error/retry content;
+they do not imply that a chat has been deleted. Server-owned history remains
+readable when its worker is offline. Use actual API/worker outcomes for creation
+and execution failures, not speculative readiness checks that prevent valid
+operations from running.
+
+## Sidebar state, compatibility, and accessibility
+
+Extract the file heading from the tree. Replace `filesCollapsed` query gating
+with an explicit visibility signal so hidden Files does not continually fetch
+directories or negotiate file access. Keep folder expansion, selected paths,
+pending edits, scroll, and file-change indicators intact across page switches.
+An explicit Reveal in Files command selects Files and expands the path; merely
+receiving a new file selection must not steal the Conversations page.
+
+Use shared hooks for catalog mutations and archive rows instead of copying
+`ProjectArchiveSettings` into a second inconsistent implementation. Move Agent
+archive browsing out of Settings, keeping archived Tasks available there. Old
+Agent-archive links should navigate to this project's Conversations/Archived
+section. Existing archived Agents appear automatically from the same records;
+do not move, duplicate, unarchive, or reset their retention dates in migration.
+
+For ownership migration, translate existing `activeTabId` into tab selection,
+preserve every tab/pane/window ID and split, and initialize empty conversation
+slots. Do not auto-convert existing Agent tabs, reopen closed chats, or seed
+tabs from the catalog. Readers must understand the new version before writers
+emit it. An older client must not round-trip a new layout through an old strict
+schema and erase conversation views; use an explicit supported-version
+response, with upgrade guidance, instead of lossy conversion. Preserve data
+on rollback, including protected drafts and views the old client cannot show.
+
+Use tablist/tab/tabpanel semantics and arrow-key navigation for Files and
+Conversations. Keep focus visible; Enter/Space selects a conversation and
+Shift+F10 or `...` opens its menu. After archive, focus moves to the next row,
+then the previous row, then `+`; after restore, focus can move to the restored
+row without opening its content. After permanent deletion, focus returns to a
+surviving archive row or its heading. Announce action results and errors without
+stealing focus from a composer.
+
+Touch and mobile use the same sidebar pages and menu actions. Placement menus
+provide alternatives to drag and middle-click, mapped to supported responsive
+presentation without rearranging another device's workspace. A tab-free
+conversation must remain reachable through the sidebar after closing the
+drawer; it must not manufacture a mobile rail tab just to stay selected.
+
+## Implementation sequence
+
+Each milestone receives its own isolated worktree, ready PR, squash automerge,
+merge observation, and cleanup. Keep dependent UI unavailable until its real
+contracts exist; do not ship controls that pretend to work. Rebase the plan's
+touchpoints against current source before each milestone.
+
+### 1. Catalog, recency, and resource lifecycle contracts
+
+Add protocol schemas, migration/indexes, Agent-only catalog paging, usage
+tracking, explicit archive, and resource-only create/restore. Preserve legacy
+Task/standalone semantics and encrypted labels. Add API/repository tests for
+ownership, ordering, empty-chat archival, retention, idempotency, and races.
+Exit: the API supports the complete catalog lifecycle without creating tabs.
+
+### 2. Owned conversation views
+
+Implement versioned pane conversation slots and active-content selection in
+protocol, transitions, persistence, resource cleanup, and the command client.
+Extend focus/open deduplication, presentation, transfer, quit/reload, and
+protected draft adapters. Update the Rust workspace contract implementation and
+comparison fixtures. Exit: a conversation can be viewed, switched, closed,
+detached, and recovered without any rail entry or duplicate interactive owner.
+
+### 3. Files/Conversations shell and direct use
+
+Add the switcher, preference persistence, visible-state file query behavior,
+active list, and `+`. Wire direct viewing through milestone 2 and reuse Agent
+local controls. Keep list ordering independent of rail order and background
+activity. Exit: several newly created chats can be used while the top rail
+contains only files/tools, and switching back to Files preserves its state.
+
+### 4. Inline archive and Settings transition
+
+Add the Archived section, row menus, Stop and Archive, restore, permanent
+delete, focus recovery, errors, and Live reconciliation. Remove duplicate Agent
+archive browsing from Settings while preserving Task archives and old links.
+Exit: sidebar archive is recoverable for empty and populated Agents, restore
+does not create tabs, and Tasks/standalone chats never appear in either list.
+
+### 5. Rail placement and close semantics
+
+Add resource drags, all three rail targets, keyboard/touch placement menus,
+direct-view conversion, existing-view movement, and canceled/stale drag
+handling. Audit every top/right/bottom rail close handler and context label.
+Exit: repeated drag/close cycles preserve one chat and its history, never
+archive on rail close, and never create duplicate views in one workspace.
+
+### 6. Acceptance, scale, and documentation
+
+Run the focused matrix below, then the applicable broader checks. Exercise
+real browser and native interaction, including multiwindow transfer and mobile
+presentation; record unsupported physical-device coverage honestly. Verify
+large-list navigation and paging, finish compatibility removal that is safe,
+and update `TABS.md`, sidebar guidance, archive copy, and this document's status.
+Exit: all acceptance criteria have recorded evidence, with failures and any
+remaining limitations explicitly stated.
+
+## Validation matrix
+
+| Layer                | Required coverage                                                                                                                                                                                                                                                                                                                  |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Protocol/model       | Eligible Agent filtering; cursor and usage validation; no empty invalid panes; valid active content; view-ID uniqueness across tabs/slots; deterministic close fallback; tab-to-slot conversion; stale revisions and renderer generations                                                                                          |
+| Database/API         | Owned-project filtering; no Task or standalone leakage; deterministic MRU and equal timestamps; pagination during updates; create/restore without legacy placement; empty/draft-only archive; 90-day retention; running/archive race; concurrent restore/delete; idempotent retries and transaction rollback                       |
+| Workspace lifecycle  | One interactive view per ordinary chat open in a device workspace; other-window focus; hidden/closed views keep execution running; checkpoint failure; direct conversation detach/return; whole-pane transfer with an inactive conversation; crash/reload/quit recovery; resource archive removes slots and tabs across workspaces |
+| App components       | Switcher replaces heading collapse; file expansion and edits survive switching; stable list keys/scroll; correct row counts; active/archived menus and pending/error states; creation retry; restore creates no tab; no background-token reordering                                                                                |
+| Drag/rails           | Catalog-only chat to empty/populated center/right/bottom; exact insertion; existing tab move; direct-view conversion; canceled drag; stale target; source archived mid-drag; cross-project denial; rail middle-click view-only on all rails                                                                                        |
+| Live/offline         | Archive/restore/create/delete from another window/device; disconnected Live fallback; delayed or duplicated events; project/account switch while mutation is pending; offline history; command/refresh failures retain recoverable state                                                                                           |
+| Accessibility/mobile | Keyboard switcher and list navigation; menu focus; touch equivalents; no hover-only required actions; screen-reader labels and announcements; narrow drawer navigation; independent desktop/mobile placement                                                                                                                       |
+| Privacy/regression   | Encrypted titles/drafts/attachments; no plaintext transcript in layout, drag transport, logs, or recency storage; unchanged Task and standalone Chat lifecycle; file/tool tabs and dirty buffers preserved                                                                                                                         |
+
+Extend existing suites where they own the behavior, especially:
+
+- [sidebar tree tests](../cantrip_app/src/components/sidebar/project-sidebar-file-tree.test.tsx)
+  and [sidebar composition tests](../cantrip_app/src/components/sidebar/project-chat-list.test.tsx);
+- [surface creation ownership tests](../cantrip_app/src/components/app/surface-creation-ownership.test.ts),
+  [tab strip tests](../cantrip_app/src/components/workspace/project-tab-bar.test.tsx),
+  and [dock rail tests](../cantrip_app/src/components/app/project-workspace-frame-dock-rail.test.tsx);
+- [drag model tests](../cantrip_app/src/lib/workspace-dnd-model.test.ts),
+  [command client tests](../cantrip_app/src/lib/workspace-command-client.test.ts),
+  and [Live query tests](../cantrip_app/src/lib/app-live-query.test.ts);
+- [workspace protocol tests](../packages/protocol/test/workspace-ownership.test.ts)
+  and [archive API tests](../cantrip_server/test/chat-archive-api.test.ts).
+
+Add dedicated conversation catalog, recency, direct-view, and sidebar tests
+where these introduce new behavior. Do not substitute text/snapshot assertions
+for actual mutation outcomes or real drag/focus interactions.
+
+Measure a fixture with at least 1,000 active and 1,000 archived chats: bounded
+request sizes, bounded mounted row count, no per-row transcript queries,
+reachable oldest items, no duplicate/missing rows after Live updates, and
+stable focus/scroll during ordering changes. Compare interaction and network
+cost to a small-list baseline and record the observations.
+
+For implementation, run applicable protocol/server/app tests, the app build,
+changed-file formatting, `git diff --check`, Rust workspace parity checks when
+those contracts change, and the repository's required checks. Retain failures
+as failures rather than claiming an isolated retry proves a broad pass.
+Documentation-only delivery of this plan requires link inspection, formatting,
+and `git diff --check`, not a claim that the feature has passed runtime tests.
+
+## Acceptance checklist
+
+- [x] Files is a page of the Files/Conversations switcher; the old heading
+      collapse behavior is gone and normal directory collapse still works.
+- [x] Every active Agent in the selected project is reachable in most-recent-use
+      order, with no Task or standalone Chat entries.
+- [x] `+` creates a usable sidebar conversation without creating a rail tab or
+      legacy placement, including after reload and uncertain creation replies.
+- [x] Multiple conversations can be used directly while file/tool tabs remain
+      in the top rail; all Agent controls and protected drafts still work.
+- [x] A chat remains listed while open in top, right, bottom, or another local
+      window, and clicking it focuses the existing view.
+- [x] Dragging an active row to any rail places or moves exactly one view,
+      preserving the chat, history, draft, and indicated destination.
+- [x] Middle-clicking any Agent rail tab only hides its view; it neither archives
+      nor interrupts the chat, including a running or approval-waiting chat.
+- [x] Middle-clicking an active sidebar row archives it into the section below;
+      empty chats are recoverable and running chats use Stop and Archive.
+- [x] Archived `...` menus expose Restore and Permanently Delete on mouse,
+      keyboard, and touch; restore never creates a tab and deletion confirms.
+- [x] Old archived Agents are visible in the sidebar with their original
+      retention deadlines; archived Tasks remain accessible in Settings.
+- [x] Direct views survive reload, project/page switches, native transfer, and
+      concurrent mutations without duplicated ownership or lost drafts.
+- [x] Paging, Live updates, offline errors, accessibility, and desktop/mobile
+      workspace independence have recorded acceptance evidence.

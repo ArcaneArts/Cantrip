@@ -1,3 +1,4 @@
+import { projectPaneViews, workspacePaneViews } from "@cantrip/protocol";
 import type {
   BrowserSummary,
   ChatSummary,
@@ -77,6 +78,7 @@ export interface ProjectSurfaceBase<
   title: string;
   view: ProjectSurfaceView;
   preview?: boolean;
+  conversation?: boolean;
   fileMode?: ExplorerFileMode;
 }
 
@@ -314,7 +316,9 @@ export function buildProjectSurfaceIndex(
   if (ownership && !owner) return { byPaneId, byTabKey, unresolvedTabKeys };
   const ownedTabs = new Map(
     owner?.panes.flatMap((pane) =>
-      pane.tabs.map((tab) => [tab.id, { tab, paneId: pane.id }] as const),
+      workspacePaneViews(pane).map(
+        (tab) => [tab.id, { tab, paneId: pane.id }] as const,
+      ),
     ),
   );
 
@@ -329,7 +333,7 @@ export function buildProjectSurfaceIndex(
   };
   for (const pane of layout.panes) {
     const surfaces: ProjectSurface[] = [];
-    for (const member of pane.members) {
+    for (const member of projectPaneViews(pane)) {
       const owned = ownedTabs.get(member.tabKey);
       if (
         ownership &&
@@ -397,6 +401,8 @@ export function buildProjectSurfaceIndex(
           fileMode: owned.tab.fileMode,
         } as ProjectSurface;
       }
+      if (pane.conversationView?.tabKey === surface.tabKey)
+        surface = { ...surface, conversation: true };
       byTabKey.set(surface.tabKey, surface);
       surfaces.push(surface);
     }

@@ -748,3 +748,194 @@ it("commits restored transfers when the destination update has not reached the s
       ?.id,
   ).toBe("tab");
 });
+
+it("opens tab-free conversations and checkpoints replacement before changing ownership", async () => {
+  const { client, transport } = setup();
+  await client.openConversation("first");
+  const first =
+    client.getSnapshot().authoritative.windows[0]!.panes[0]!.conversationView!;
+  expect(client.getSnapshot().authoritative.windows[0]!.panes[0]!.tabs).toEqual(
+    [],
+  );
+  const pending = deferred<() => void>();
+  const checkpoint = vi.fn(() => pending.promise);
+  const release = vi.fn();
+  const replacement = client.openConversation("second", { checkpoint });
+  expect(checkpoint).toHaveBeenCalledWith({
+    tabId: first.id,
+    chatId: "first",
+    projectId: "project",
+  });
+  expect(transport.execute).toHaveBeenCalledTimes(1);
+  expect(
+    client.getSnapshot().projected.windows[0]!.panes[0]!.conversationView?.id,
+  ).toBe(first.id);
+  pending.resolve(release);
+  await replacement;
+  expect(release).toHaveBeenCalledTimes(1);
+  expect(
+    client.getSnapshot().authoritative.windows[0]!.panes[0]!.conversationView
+      ?.resource,
+  ).toMatchObject({ resourceId: "second" });
+});
+
+it("failed draft checkpoint retains the current conversation and sends no replacement", async () => {
+  const { client, transport } = setup();
+  await client.openConversation("first");
+  const before = client.getSnapshot().authoritative;
+  await expect(
+    client.openConversation("second", {
+      checkpoint: async () => {
+        throw new Error("draft save failed");
+      },
+    }),
+  ).rejects.toThrow("draft save failed");
+  expect(client.getSnapshot().authoritative).toBe(before);
+  expect(transport.execute).toHaveBeenCalledTimes(1);
+});
+
+it("does not overwrite a different conversation selected while a checkpoint is pending", async () => {
+  const { client } = setup();
+  await client.openConversation("first");
+  const pending = deferred<() => void>();
+  const replacement = client.openConversation("second", {
+    checkpoint: () => pending.promise,
+  });
+  await client.openConversation("intervening");
+  const release = vi.fn();
+  pending.resolve(release);
+  await expect(replacement).rejects.toThrow("Conversation selection changed");
+  expect(release).toHaveBeenCalledTimes(1);
+  expect(
+    client.getSnapshot().authoritative.windows[0]!.panes[0]!.conversationView
+      ?.resource,
+  ).toMatchObject({ resourceId: "intervening" });
+});
+
+it("emits Agent activation for deliberate navigation but not passive observations or view closure", async () => {
+  const { client } = setup();
+  const activated = vi.fn();
+  const unsubscribe = client.subscribeAgentActivation(activated);
+  await client.openConversation("chat-one");
+  expect(activated).toHaveBeenLastCalledWith("chat-one");
+  activated.mockClear();
+  client.observe(client.getSnapshot().authoritative);
+  await client.refresh();
+  expect(activated).not.toHaveBeenCalled();
+  await client.updateSelection((current) => current);
+  expect(activated).not.toHaveBeenCalled();
+  activated.mockClear();
+  await client.dispatch(open());
+  expect(activated).not.toHaveBeenCalled();
+  const window = client.getSnapshot().projected.windows[0]!;
+  const pane = window.panes.find((pane) => pane.conversationView)!;
+  await client.dispatch({ type: "select", tabId: pane.conversationView!.id });
+  expect(activated).toHaveBeenCalledExactlyOnceWith("chat-one");
+  activated.mockClear();
+  await client.dispatch({
+    type: "close-conversation",
+    viewId: pane.conversationView!.id,
+  });
+  expect(activated).not.toHaveBeenCalled();
+  unsubscribe();
+  await client.openConversation("chat-two");
+  expect(activated).not.toHaveBeenCalled();
+});
+
+it.each(["center", "right", "bottom"] as const)(
+  "places a direct conversation into the %s rail with its existing view identity",
+  async (region) => {
+    const { client } = setup();
+    await client.openConversation("chat");
+    const before =
+      client.getSnapshot().authoritative.windows[0]!.panes[0]!
+        .conversationView!;
+    const release = vi.fn();
+    const checkpoint = vi.fn(async () => release);
+    const transfer = vi.fn();
+    await client.placeConversation(
+      "chat",
+      { region, position: 0 },
+      { checkpoint, transfer },
+    );
+    const panes = client.getSnapshot().authoritative.windows[0]!.panes;
+    expect(panes.flatMap((pane) => pane.tabs).map((tab) => tab.id)).toEqual([
+      before.id,
+    ]);
+    expect(
+      panes.find((pane) => pane.tabs.some((tab) => tab.id === before.id))
+        ?.region,
+    ).toBe(region);
+    expect(panes.every((pane) => !pane.conversationView)).toBe(true);
+    expect(checkpoint).toHaveBeenCalledWith({
+      tabId: before.id,
+      chatId: "chat",
+      projectId: "project",
+    });
+    expect(release).toHaveBeenCalledOnce();
+    expect(transfer).not.toHaveBeenCalled();
+  },
+);
+it("places a catalog-only conversation at the requested index without duplicating its resource", async () => {
+  const { client } = setup();
+  await client.dispatch(open());
+  const options = {
+    checkpoint: vi.fn(async () => () => {}),
+    transfer: vi.fn(),
+  };
+  await client.placeConversation(
+    "chat",
+    { paneId: "pane", region: "center", position: 0 },
+    options,
+  );
+  const first =
+    client.getSnapshot().authoritative.windows[0]!.panes[0]!.tabs[0]!;
+  expect(first.resource).toEqual({
+    kind: "entity",
+    definitionId: "project.agent",
+    resourceId: "chat",
+  });
+  await client.placeConversation(
+    "chat",
+    { paneId: "pane", region: "center", position: 2 },
+    options,
+  );
+  expect(
+    client
+      .getSnapshot()
+      .authoritative.windows[0]!.panes[0]!.tabs.map((tab) => tab.id),
+  ).toEqual(["tab", first.id]);
+});
+it("retains direct ownership when placement checkpoint fails", async () => {
+  const { client } = setup();
+  await client.openConversation("chat");
+  const before = structuredClone(client.getSnapshot().authoritative);
+  await expect(
+    client.placeConversation(
+      "chat",
+      { region: "bottom" },
+      {
+        checkpoint: async () => {
+          throw new Error("Draft unavailable");
+        },
+        transfer: vi.fn(),
+      },
+    ),
+  ).rejects.toThrow("Draft unavailable");
+  expect(client.getSnapshot().authoritative).toEqual(before);
+});
+
+it("fences catalog-only placement after an awaited ownership refresh", async () => {
+  const { client, transport } = setup();
+  const options = {
+    checkpoint: vi.fn(),
+    transfer: vi.fn(),
+    assertCurrent: () => {
+      throw new Error("Account changed");
+    },
+  };
+  await expect(
+    client.placeConversation("chat", { region: "right" }, options),
+  ).rejects.toThrow("Account changed");
+  expect(transport.execute).not.toHaveBeenCalled();
+});

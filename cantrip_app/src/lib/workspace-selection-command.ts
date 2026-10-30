@@ -1,3 +1,4 @@
+import { workspacePaneViews, workspaceSelectedViewId } from "@cantrip/protocol";
 import type { WorkspaceAction, WorkspaceWindow } from "@cantrip/protocol";
 import type { WorkspaceSelection } from "./workspace-selection";
 
@@ -10,7 +11,7 @@ export function workspaceWindowSelection(
     destination: window.focusedPaneId === null ? "overview" : "surface",
     focusedPaneId: window.focusedPaneId,
     activeTabByPane: Object.fromEntries(
-      window.panes.map((pane) => [pane.id, pane.activeTabId]),
+      window.panes.map((pane) => [pane.id, workspaceSelectedViewId(pane)!]),
     ),
   };
 }
@@ -30,9 +31,14 @@ export function workspaceSelectionAction(
     (candidate) => candidate.id === next.focusedPaneId,
   );
   const tabId = pane && next.activeTabByPane[pane.id];
-  if (!pane || !tabId || !pane.tabs.some((tab) => tab.id === tabId))
+  if (
+    !pane ||
+    !tabId ||
+    !workspacePaneViews(pane).some((tab) => tab.id === tabId)
+  )
     throw new Error("Selected tab does not belong to this window.");
-  return window.focusedPaneId === pane.id && pane.activeTabId === tabId
+  return window.focusedPaneId === pane.id &&
+    workspaceSelectedViewId(pane) === tabId
     ? null
     : { type: "select", tabId };
 }

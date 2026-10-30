@@ -1,3 +1,4 @@
+import { workspacePaneViews } from "@cantrip/protocol";
 import {
   applyWorkspaceCommand,
   workspaceActionSchema,
@@ -54,6 +55,7 @@ export class WorkspaceCommandClient {
   private refreshError: unknown | null = null;
   private refreshRequest: Promise<void> | null = null;
   private listeners = new Set<() => void>();
+  private activationListeners = new Set<(chatId: string) => void>();
   private state: WorkspaceClientState;
 
   constructor(
@@ -81,6 +83,38 @@ export class WorkspaceCommandClient {
       this.listeners.delete(listener);
     };
   };
+
+  /** Explicit navigation only; observations, recovery and close fallback do not emit. */
+  subscribeAgentActivation(listener: (chatId: string) => void) {
+    this.activationListeners.add(listener);
+    return () => {
+      this.activationListeners.delete(listener);
+    };
+  }
+  private noteActivation(action: WorkspaceAction) {
+    const resource =
+      action.type === "open" || action.type === "open-conversation"
+        ? action.type === "open"
+          ? action.tab.resource
+          : action.view.resource
+        : action.type === "select"
+          ? this.state.projected.windows
+              .flatMap((window) => window.panes.flatMap(workspacePaneViews))
+              .find((view) => view.id === action.tabId)?.resource
+          : undefined;
+    if (
+      resource?.kind !== "entity" ||
+      resource.definitionId !== "project.agent"
+    )
+      return;
+    for (const listener of this.activationListeners) {
+      try {
+        listener(resource.resourceId);
+      } catch {
+        /* Recency must never reject workspace navigation. */
+      }
+    }
+  }
 
   private assertAttachment() {
     if (
@@ -198,6 +232,7 @@ export class WorkspaceCommandClient {
     if (this.disposed)
       return Promise.reject(new Error("Workspace controller is disposed."));
     const parsed = workspaceActionSchema.parse(action);
+    this.noteActivation(parsed);
     return new Promise((resolve, reject) => {
       const pending = {
         id: this.allocateId(),
@@ -241,6 +276,187 @@ export class WorkspaceCommandClient {
       return Promise.reject(error);
     }
   }
+  async openConversation(
+    chatId: string,
+    options: {
+      checkpoint?: (owner: {
+        tabId: string;
+        chatId: string;
+        projectId: string;
+      }) => Promise<() => void>;
+    } = {},
+  ): Promise<WorkspaceReceipt> {
+    if (this.disposed) throw new Error("Workspace controller is disposed.");
+    const layout = this.state.projected;
+    const window = layout.windows.find((w) => w.id === this.windowId);
+    if (!window) throw new Error("Workspace window attachment changed.");
+    const existing = layout.windows
+      .flatMap((w) => w.panes.flatMap(workspacePaneViews))
+      .find(
+        (view) =>
+          view.resource.kind === "entity" &&
+          view.resource.definitionId === "project.agent" &&
+          view.resource.resourceId === chatId,
+      );
+    const pane =
+      window.recentPaneIds
+        .map((id) =>
+          window.panes.find((p) => p.id === id && p.region === "center"),
+        )
+        .find((p) => p !== undefined) ??
+      window.panes.find((p) => p.region === "center");
+    const previous = existing ? undefined : pane?.conversationView;
+    const action: WorkspaceAction = {
+      type: "open-conversation",
+      paneId: pane?.id,
+      expectedConversationViewId: pane?.conversationView?.id ?? null,
+      newPaneId: this.allocateId(),
+      splitId: this.allocateId(),
+      view: {
+        id: this.allocateId(),
+        resource: {
+          kind: "entity",
+          definitionId: "project.agent",
+          resourceId: chatId,
+        },
+        preview: false,
+        titleProtection: null,
+        builtInState: null,
+        dockPresentation: null,
+      },
+    };
+    const release =
+      previous?.resource.kind === "entity"
+        ? await options.checkpoint?.({
+            tabId: previous.id,
+            chatId: previous.resource.resourceId,
+            projectId: layout.projectId,
+          })
+        : undefined;
+    try {
+      return await this.dispatch(action);
+    } finally {
+      release?.();
+    }
+  }
+
+  /** Explicit placement differs from opening: resolve current ownership, then
+   * move that view (including a direct slot) to the requested rail position. */
+  async placeConversation(
+    chatId: string,
+    destination: {
+      paneId?: string;
+      region: ProjectPaneRegion;
+      position?: number;
+    },
+    options: {
+      assertCurrent?(): void;
+      checkpoint(owner: {
+        tabId: string;
+        chatId: string;
+        projectId: string;
+      }): Promise<() => void>;
+      transfer(owner: {
+        windowId: string;
+        paneId: string;
+        viewId: string;
+      }): Promise<void>;
+    },
+  ): Promise<WorkspaceReceipt> {
+    const locate = () =>
+      this.state.projected.windows.flatMap((owner) =>
+        owner.panes.flatMap((pane) =>
+          workspacePaneViews(pane)
+            .filter(
+              (view) =>
+                view.resource.kind === "entity" &&
+                view.resource.definitionId === "project.agent" &&
+                view.resource.resourceId === chatId,
+            )
+            .map((view) => ({ owner, pane, view })),
+        ),
+      )[0];
+    await this.refresh();
+    options.assertCurrent?.();
+    let existing = locate();
+    if (existing && existing.owner.id !== this.windowId) {
+      await options.transfer({
+        windowId: existing.owner.id,
+        paneId: existing.pane.id,
+        viewId: existing.view.id,
+      });
+      await this.refresh();
+      options.assertCurrent?.();
+      existing = locate();
+      if (!existing || existing.owner.id !== this.windowId)
+        throw new Error(
+          "Conversation transfer did not establish ownership in this window.",
+        );
+    }
+    const release = existing
+      ? await options.checkpoint({
+          tabId: existing.view.id,
+          chatId,
+          projectId: this.state.projected.projectId,
+        })
+      : undefined;
+    try {
+      options.assertCurrent?.();
+      let opened: WorkspaceReceipt | undefined;
+      if (!existing) {
+        opened = await this.openResource(
+          { kind: "entity", definitionId: "project.agent", resourceId: chatId },
+          {
+            targetPaneId: destination.paneId,
+            targetRegion: destination.region,
+          },
+        );
+        options.assertCurrent?.();
+        existing = locate();
+      }
+      if (!existing || existing.owner.id !== this.windowId)
+        throw new Error(
+          "Conversation ownership changed during placement. Try again.",
+        );
+      const owner = this.state.projected.windows.find(
+        (window) => window.id === this.windowId,
+      );
+      const target = destination.paneId
+        ? owner?.panes.find((pane) => pane.id === destination.paneId)
+        : (owner?.panes.find(
+            (pane) =>
+              pane.region === destination.region &&
+              pane.id === owner.focusedPaneId,
+          ) ?? owner?.panes.find((pane) => pane.region === destination.region));
+      const samePaneTab =
+        target?.id === existing.pane.id &&
+        target.tabs.some((tab) => tab.id === existing!.view.id);
+      const sourceIndex = samePaneTab
+        ? target!.tabs.findIndex((tab) => tab.id === existing!.view.id)
+        : -1;
+      const position =
+        destination.position === undefined
+          ? Math.max(0, (target?.tabs.length ?? 0) - (samePaneTab ? 1 : 0))
+          : destination.position -
+            (sourceIndex >= 0 && sourceIndex < destination.position ? 1 : 0);
+      if (
+        opened &&
+        target?.id === existing.pane.id &&
+        target.tabs[position]?.id === existing.view.id
+      )
+        return opened;
+      return await this.dispatchLayout({
+        type: "move-member",
+        tabKey: existing.view.id,
+        targetPaneId: destination.paneId ?? target?.id ?? null,
+        targetRegion: destination.region,
+        targetMemberPosition: position,
+      });
+    } finally {
+      release?.();
+    }
+  }
+
   openResource(
     resource: ProjectSurfaceResourceRef,
     options: {
@@ -281,7 +497,7 @@ export class WorkspaceCommandClient {
           })();
       const alreadyOpen = this.state.projected.windows.some((owner) =>
         owner.panes.some((pane) =>
-          pane.tabs.some(
+          workspacePaneViews(pane).some(
             (tab) =>
               tab.resource.kind === resource.kind &&
               tab.resource.definitionId === resource.definitionId &&
@@ -372,6 +588,7 @@ export class WorkspaceCommandClient {
     this.error = reason;
     this.publish();
     this.listeners.clear();
+    this.activationListeners.clear();
   }
   private async pump() {
     if (this.running || this.disposed) return;

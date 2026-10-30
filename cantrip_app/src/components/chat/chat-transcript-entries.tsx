@@ -262,6 +262,7 @@ export const ChatTranscriptEntries = memo(function ChatTranscriptEntries({
     );
     const editingThisMessage = user && editingSentMessage?.id === message.id;
     const messageAttachments = user ? editableMessageAttachments(message) : [];
+    const MessageContainer = editingThisMessage ? "form" : "div";
     return (
       <div
         key={message.id}
@@ -278,125 +279,114 @@ export const ChatTranscriptEntries = memo(function ChatTranscriptEntries({
             <Bot className="size-3.5" />
           </div>
         ) : null}
-        <div
-          data-chat-message-role={user ? "user" : undefined}
+        <MessageContainer
+          onSubmit={
+            editingThisMessage
+              ? (event) => onSubmitEditedMessage(message, event)
+              : undefined
+          }
           className={cn(
             "min-w-0",
-            user &&
-              "max-w-[85%] overflow-clip rounded-2xl border border-transparent bg-muted/80 px-4 py-3 text-foreground sm:max-w-[42rem]",
+            user && "max-w-[85%] sm:max-w-[42rem]",
             editingThisMessage && "w-full",
             !user && !system && "flex-1 py-1",
-            system &&
-              "max-w-[85%] overflow-clip rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-destructive",
+            system && "max-w-[85%]",
           )}
         >
-          {user && message.mode !== "default" ? (
-            <Badge
-              variant="outline"
-              className={cn(
-                "mb-2 h-5 capitalize",
-                message.mode === "goal"
-                  ? "border-violet-500/30 text-violet-600 dark:text-violet-400"
-                  : "border-sky-500/30 text-sky-600 dark:text-sky-400",
-              )}
-            >
-              {message.mode} mode
-            </Badge>
-          ) : null}
-          {editingThisMessage ? (
-            <form
-              className="space-y-3"
-              onSubmit={(event) => onSubmitEditedMessage(message, event)}
-            >
-              <textarea
-                ref={editedMessageRef}
-                aria-label="Edit latest message"
-                className="max-h-[min(60vh,32rem)] min-h-40 w-full field-sizing-content resize-y overflow-y-auto bg-transparent text-sm leading-6 text-foreground outline-none placeholder:text-muted-foreground"
-                disabled={retryPending}
-                onChange={(event) =>
-                  onChangeEditingMessage(message.id, event.target.value)
-                }
-                onKeyDown={(event) => {
-                  if (
-                    event.key === "Enter" &&
-                    !event.shiftKey &&
-                    !event.nativeEvent.isComposing
-                  ) {
-                    event.preventDefault();
-                    onSubmitEditedMessage(message);
-                  }
-                }}
-                rows={1}
-                value={editingSentMessage.text}
-              />
-              {messageAttachments.length > 0 ? (
-                <MessageContent
-                  message={{
-                    ...message,
-                    content: messageAttachments.map((attachment) => ({
-                      type: "attachment" as const,
-                      attachment,
-                    })),
-                  }}
-                  onOpenFile={onOpenFile}
-                />
-              ) : null}
-              {editingSentMessage.error ? (
-                <p className="text-xs text-destructive" role="alert">
-                  {editingSentMessage.error}
-                </p>
-              ) : null}
-              <div className="flex justify-end gap-2">
-                <Button
+          <div
+            data-chat-message-role={user ? "user" : undefined}
+            className={cn(
+              user &&
+                "overflow-clip rounded-2xl border border-transparent bg-muted/80 px-4 py-3 text-foreground",
+              system &&
+                "overflow-clip rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-destructive",
+            )}
+          >
+            {user && message.mode !== "default" ? (
+              <Badge
+                variant="outline"
+                className={cn(
+                  "mb-2 h-5 capitalize",
+                  message.mode === "goal"
+                    ? "border-violet-500/30 text-violet-600 dark:text-violet-400"
+                    : "border-sky-500/30 text-sky-600 dark:text-sky-400",
+                )}
+              >
+                {message.mode} mode
+              </Badge>
+            ) : null}
+            {editingThisMessage ? (
+              <div className="space-y-3">
+                <textarea
+                  ref={editedMessageRef}
+                  aria-label="Edit latest message"
+                  className="max-h-[min(60vh,32rem)] min-h-40 w-full field-sizing-content resize-y overflow-y-auto bg-transparent text-sm leading-6 text-foreground outline-none placeholder:text-muted-foreground"
                   disabled={retryPending}
-                  onClick={onCancelEditingMessage}
-                  size="sm"
-                  type="button"
-                  variant="ghost"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  disabled={
-                    retryPending ||
-                    (!editingSentMessage.text.trim() &&
-                      messageAttachments.length === 0)
+                  onChange={(event) =>
+                    onChangeEditingMessage(message.id, event.target.value)
                   }
-                  size="sm"
-                  type="submit"
-                >
-                  {retryPending ? <Loader2 className="animate-spin" /> : null}
-                  Send
-                </Button>
+                  onKeyDown={(event) => {
+                    if (
+                      event.key === "Enter" &&
+                      !event.shiftKey &&
+                      !event.nativeEvent.isComposing
+                    ) {
+                      event.preventDefault();
+                      onSubmitEditedMessage(message);
+                    }
+                  }}
+                  rows={1}
+                  value={editingSentMessage.text}
+                />
+                {messageAttachments.length > 0 ? (
+                  <MessageContent
+                    message={{
+                      ...message,
+                      content: messageAttachments.map((attachment) => ({
+                        type: "attachment" as const,
+                        attachment,
+                      })),
+                    }}
+                    onOpenFile={onOpenFile}
+                  />
+                ) : null}
+                {editingSentMessage.error ? (
+                  <p className="text-xs text-destructive" role="alert">
+                    {editingSentMessage.error}
+                  </p>
+                ) : null}
               </div>
-            </form>
-          ) : (
-            <MessageContent message={message} onOpenFile={onOpenFile} />
-          )}
-          {fileSummary ? (
-            chatId ? (
-              <ChatMessageFileSummary
-                chatId={chatId}
-                model={fileSummary}
-                onOpenFile={(path) => onOpenFile(path, message.worktreeId)}
-              />
             ) : (
-              <MessageFileSummary
-                model={fileSummary}
-                onOpenFile={(path) => onOpenFile(path, message.worktreeId)}
-              />
-            )
-          ) : null}
-          {user && modelLabels.has(message.id) ? (
-            <p
-              data-slot="turn-model-label"
-              className="mt-1.5 truncate text-[10px] text-muted-foreground"
-            >
-              {modelLabels.get(message.id)}
-            </p>
-          ) : null}
+              <MessageContent message={message} onOpenFile={onOpenFile} />
+            )}
+            {fileSummary ? (
+              chatId ? (
+                <ChatMessageFileSummary
+                  chatId={chatId}
+                  model={fileSummary}
+                  onOpenFile={(path) => onOpenFile(path, message.worktreeId)}
+                />
+              ) : (
+                <MessageFileSummary
+                  model={fileSummary}
+                  onOpenFile={(path) => onOpenFile(path, message.worktreeId)}
+                />
+              )
+            ) : null}
+            {user && modelLabels.has(message.id) ? (
+              <p
+                data-slot="turn-model-label"
+                className="mt-1.5 truncate text-[10px] text-muted-foreground"
+              >
+                {modelLabels.get(message.id)}
+              </p>
+            ) : null}
+          </div>
           {assistantText ? (
-            <div className="mt-2 flex items-center gap-1 text-muted-foreground">
+            <div
+              data-slot="message-actions"
+              className="mt-2 flex items-center gap-1 text-muted-foreground"
+            >
               <Button
                 size="icon"
                 variant="ghost"
@@ -429,10 +419,41 @@ export const ChatTranscriptEntries = memo(function ChatTranscriptEntries({
               ) : null}
             </div>
           ) : null}
+          {editingThisMessage ? (
+            <div
+              data-slot="message-actions"
+              className="mt-2 flex items-center gap-2"
+            >
+              <Button
+                disabled={retryPending}
+                onClick={onCancelEditingMessage}
+                size="sm"
+                type="button"
+                variant="ghost"
+              >
+                Cancel
+              </Button>
+              <Button
+                disabled={
+                  retryPending ||
+                  (!editingSentMessage.text.trim() &&
+                    messageAttachments.length === 0)
+                }
+                size="sm"
+                type="submit"
+              >
+                {retryPending ? <Loader2 className="animate-spin" /> : null}
+                Send
+              </Button>
+            </div>
+          ) : null}
           {user &&
           !editingThisMessage &&
           latestEditableMessageId === message.id ? (
-            <div className="mt-2 flex justify-end">
+            <div
+              data-slot="message-actions"
+              className="mt-2 flex items-center gap-1 text-muted-foreground"
+            >
               <Button
                 aria-label="Edit and resend latest message"
                 className="size-7 text-muted-foreground"
@@ -446,7 +467,7 @@ export const ChatTranscriptEntries = memo(function ChatTranscriptEntries({
               </Button>
             </div>
           ) : null}
-        </div>
+        </MessageContainer>
         {user ? (
           <div className="mt-1 grid size-7 shrink-0 place-items-center rounded-lg bg-muted">
             <User className="size-3.5" />

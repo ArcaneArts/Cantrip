@@ -1,0 +1,343 @@
+import {
+  chatSummarySchema,
+  archivedChatSummarySchema,
+} from "@cantrip/protocol";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+const mocks = vi.hoisted(() => ({
+  request: vi.fn(),
+  open: vi.fn(),
+  protect: vi.fn(),
+  archived: vi.fn(),
+  matches: vi.fn(),
+}));
+const identity = {
+  accountId: "owner",
+  connectionId: "connection",
+  generation: 1,
+  incarnationId: "incarnation",
+  serverId: "server",
+  serverUrl: null,
+  userId: "owner",
+};
+vi.mock("@/lib/api-client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api-client")>()),
+  request: mocks.request,
+}));
+vi.mock("@/lib/client-session", () => ({
+  getClientSessionIdentitySnapshot: () => identity,
+  clientSessionIdentityMatches: mocks.matches,
+}));
+vi.mock("@/lib/chat-title-encryption", () => ({
+  chatTitleEncryption: {
+    open: mocks.open,
+    protect: mocks.protect,
+    openArchived: mocks.archived,
+  },
+}));
+import {
+  prepareConversationCreation,
+  prepareConversationFork,
+  archiveAgentConversation,
+  restoreAgentConversation,
+  permanentlyDeleteAgentConversation,
+  getConversationCatalog,
+  recordConversationUsage,
+} from "./conversations";
+
+const at = "2026-10-30T00:00:00.000Z";
+function chat(id: string) {
+  return {
+    id,
+    projectId: "project/id",
+    contextKind: "project",
+    experience: "agent",
+    lastUsedAt: at,
+    titleProtection: {
+      classification: { recordKind: "chat" },
+      protectedLabel: {
+        formatVersion: 1,
+        keyRevision: 1,
+        envelope: {
+          version: 1,
+          algorithm: "AES-256-GCM",
+          keyRevision: 1,
+          nonce: "AAAAAAAAAAAAAAAA",
+          ciphertext: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        },
+      },
+    },
+    position: 0,
+    status: "idle",
+    activeWorkerId: "worker",
+    activeWorktreeId: "tree",
+    placementRevision: 1,
+    worktreeMode: "agent-managed",
+    modelId: null,
+    reasoningEffort: null,
+    permissionProfileId: null,
+    planMode: "default",
+    hasPendingPlanQuestion: false,
+    hasUnreadCompletion: false,
+    automationPaused: false,
+    createdAt: at,
+    updatedAt: at,
+  };
+}
+beforeEach(() => {
+  vi.clearAllMocks();
+  mocks.matches.mockReturnValue(true);
+  mocks.open.mockImplementation(async ({ titleProtection: _, ...item }) =>
+    chatSummarySchema.parse({
+      ...item,
+      title: "Decrypted",
+    }),
+  );
+  mocks.archived.mockImplementation(async ({ titleProtection: _, ...item }) =>
+    archivedChatSummarySchema.parse({ ...item, title: "Decrypted" }),
+  );
+});
+it("fetches only a bounded page and preserves server order, precision, and continuation", async () => {
+  mocks.request.mockResolvedValue({
+    state: "active",
+    items: [chat("b"), chat("a")],
+    total: 1000,
+    nextCursor: "opaque-next",
+  });
+  const page = await getConversationCatalog("project/id", {
+    limit: 25,
+    cursor: "cursor/+",
+  });
+  expect(page.items.map((c) => c.id)).toEqual(["b", "a"]);
+  expect(page.total).toBe(1000);
+  expect(page.nextCursor).toBe("opaque-next");
+  expect(page.items[0]).not.toHaveProperty("titleProtection");
+  expect(page.items[0]!.lastUsedAt).toBe(at);
+  expect(mocks.open).toHaveBeenCalledTimes(2);
+  const [url, , behavior] = mocks.request.mock.calls[0]!;
+  const parsed = new URL(url, "https://test.invalid");
+  expect(parsed.pathname).toBe("/api/projects/project%2Fid/conversations");
+  expect(parsed.searchParams.get("limit")).toBe("25");
+  expect(parsed.searchParams.get("cursor")).toBe("cursor/+");
+  expect(behavior.expectedIdentity).toEqual(identity);
+});
+it("rejects a foreign page before decrypting any labels", async () => {
+  mocks.request.mockResolvedValue({
+    state: "active",
+    items: [{ ...chat("a"), projectId: "other" }],
+    total: 1,
+    nextCursor: null,
+  });
+  await expect(getConversationCatalog("project/id")).rejects.toThrow(
+    "scope mismatch",
+  );
+  expect(mocks.open).not.toHaveBeenCalled();
+});
+it("keeps the archive page distinct from the active catalog", async () => {
+  mocks.request.mockResolvedValue({
+    state: "archived",
+    items: [],
+    total: 0,
+    nextCursor: null,
+  });
+  await expect(
+    getConversationCatalog("project/id", { state: "archived" }),
+  ).resolves.toMatchObject({ state: "archived", total: 0 });
+  await expect(getConversationCatalog("project/id")).rejects.toThrow(
+    "scope mismatch",
+  );
+});
+it("does not publish a decrypted page into a later account session", async () => {
+  mocks.request.mockResolvedValue({
+    state: "active",
+    items: [chat("a")],
+    total: 1,
+    nextCursor: null,
+  });
+  mocks.open.mockImplementationOnce(async () => {
+    mocks.matches.mockReturnValue(false);
+    return { id: "a", title: "Private" };
+  });
+  await expect(getConversationCatalog("project/id")).rejects.toMatchObject({
+    code: "client-identity-changed",
+  });
+});
+it("retains the exact usage operation for retries and rejects a stale account", async () => {
+  const usage = {
+    clientId: "00000000-0000-4000-8000-000000000001",
+    operationId: "00000000-0000-4000-8000-000000000002",
+    sequence: 4,
+  };
+  mocks.request.mockRejectedValueOnce(new TypeError("offline"));
+  await expect(
+    recordConversationUsage("chat/id", usage, identity),
+  ).rejects.toThrow("offline");
+  mocks.request.mockResolvedValue({ lastUsedAt: at, applied: false });
+  await recordConversationUsage("chat/id", usage, identity);
+  expect(mocks.request.mock.calls[0]).toEqual(mocks.request.mock.calls[1]);
+  expect(mocks.request.mock.calls[0]![0]).toBe("/api/chats/chat%2Fid/usage");
+  mocks.matches.mockReturnValue(false);
+  await expect(
+    recordConversationUsage("chat/id", usage, identity),
+  ).rejects.toMatchObject({ code: "client-identity-changed" });
+  expect(mocks.request).toHaveBeenCalledTimes(2);
+});
+
+it("retries creation with the same encrypted identity and never requests placement", async () => {
+  mocks.protect.mockResolvedValue(chat("seed").titleProtection);
+  const create = await prepareConversationCreation(
+    "project/id",
+    "Private name",
+  );
+  mocks.request.mockRejectedValueOnce(new TypeError("response lost"));
+  await expect(create()).rejects.toThrow("response lost");
+  const body = JSON.parse(mocks.request.mock.calls[0]![1].body);
+  expect(body).toMatchObject({ attachToTabLayout: false, autoTitle: true });
+  expect(JSON.stringify(body)).not.toContain("Private name");
+  const { lastUsedAt: _, ...created } = chat(body.id);
+  mocks.request.mockResolvedValue(created);
+  await expect(create()).resolves.toMatchObject({
+    id: body.id,
+    title: "Decrypted",
+  });
+  expect(mocks.request.mock.calls[0]).toEqual(mocks.request.mock.calls[1]);
+  expect(mocks.protect).toHaveBeenCalledTimes(1);
+  mocks.matches.mockReturnValue(false);
+  await expect(create()).rejects.toMatchObject({
+    code: "client-identity-changed",
+  });
+  expect(mocks.request).toHaveBeenCalledTimes(2);
+});
+
+afterEach(() => vi.useRealTimers());
+it("archives empty Agents explicitly without using legacy DELETE", async () => {
+  mocks.request.mockResolvedValue(undefined);
+  await archiveAgentConversation("empty/id");
+  expect(mocks.request).toHaveBeenCalledExactlyOnceWith(
+    "/api/chats/empty%2Fid/archive",
+    { method: "POST", body: "{}" },
+    { expectedIdentity: identity, allowCsrfRecovery: false },
+  );
+});
+it("restores the same Agent without requesting a rail placement", async () => {
+  const { lastUsedAt: _, ...wire } = chat("restore/id");
+  mocks.request.mockResolvedValue(wire);
+  await expect(
+    restoreAgentConversation("project/id", "restore/id"),
+  ).resolves.toMatchObject({ id: "restore/id" });
+  expect(JSON.parse(mocks.request.mock.calls[0]![1].body)).toEqual({
+    attachToTabLayout: false,
+  });
+  expect(mocks.request.mock.calls[0]![2]).toMatchObject({
+    expectedIdentity: identity,
+  });
+});
+it("fences a delayed archive callback and permanent deletion against the captured session", async () => {
+  mocks.matches.mockReturnValue(false);
+  await expect(
+    archiveAgentConversation("one", true, identity),
+  ).rejects.toMatchObject({ code: "client-identity-changed" });
+  await expect(
+    permanentlyDeleteAgentConversation("one", identity),
+  ).rejects.toMatchObject({ code: "client-identity-changed" });
+  expect(mocks.request).not.toHaveBeenCalled();
+});
+
+it("does not continue from interruption into archival after an account switch", async () => {
+  mocks.request.mockImplementationOnce(async () => {
+    mocks.matches.mockReturnValue(false);
+    return { interrupted: true };
+  });
+  await expect(
+    archiveAgentConversation("running", true, identity),
+  ).rejects.toMatchObject({ code: "client-identity-changed" });
+  expect(mocks.request).toHaveBeenCalledTimes(1);
+  expect(mocks.request.mock.calls[0]![0]).toBe("/api/chats/running/interrupt");
+});
+it("decrypts archived rows through the strict archive schema without passing recency metadata", async () => {
+  mocks.request.mockResolvedValue({
+    state: "archived",
+    items: [
+      {
+        id: "archived",
+        projectId: "project/id",
+        contextKind: "project",
+        experience: "agent",
+        titleProtection: chat("archived").titleProtection,
+        createdAt: at,
+        updatedAt: at,
+        lastUsedAt: at,
+        archivedAt: at,
+        expiresAt: "2027-01-28T00:00:00.000Z",
+        messageCount: 0,
+      },
+    ],
+    total: 1,
+    nextCursor: null,
+  });
+  const page = await getConversationCatalog("project/id", {
+    state: "archived",
+  });
+  expect(page.items[0]).toMatchObject({
+    id: "archived",
+    title: "Decrypted",
+    lastUsedAt: at,
+  });
+  expect(mocks.archived.mock.calls[0]![0]).not.toHaveProperty("lastUsedAt");
+});
+
+it("reconciles a committed fork after a lost response through bounded catalog pages", async () => {
+  mocks.protect.mockResolvedValue(chat("unused").titleProtection);
+  let id = "";
+  mocks.request.mockImplementation(async (url: string, init?: RequestInit) => {
+    if (init?.method === "POST") {
+      id = JSON.parse(init.body as string).id;
+      throw new Error("reply lost");
+    }
+    return url.includes("cursor=")
+      ? { state: "active", items: [chat(id)], total: 2, nextCursor: null }
+      : {
+          state: "active",
+          items: [chat("other")],
+          total: 2,
+          nextCursor: "next",
+        };
+  });
+  const run = await prepareConversationFork(
+    "project/id",
+    "source/id",
+    "Source",
+  );
+  expect((await run()).id).toBe(id);
+  expect(
+    mocks.request.mock.calls
+      .slice(1)
+      .every(([url]) => url.includes("limit=50")),
+  ).toBe(true);
+  expect(mocks.request.mock.calls[0]![0]).toBe("/api/chats/source%2Fid/fork");
+});
+it("keeps the fork ID and ciphertext on retry after mutation and reconciliation fail", async () => {
+  mocks.protect.mockResolvedValue(chat("unused").titleProtection);
+  const bodies: string[] = [];
+  mocks.request.mockImplementation(async (_url: string, init?: RequestInit) => {
+    if (init?.method === "POST") bodies.push(init.body as string);
+    throw new Error("offline");
+  });
+  const run = await prepareConversationFork("project/id", "source", "Source");
+  await expect(run()).rejects.toThrow("offline");
+  await expect(run()).rejects.toThrow("offline");
+  expect(bodies).toHaveLength(2);
+  expect(bodies[1]).toBe(bodies[0]);
+  expect(JSON.parse(bodies[0]!).attachToTabLayout).toBe(false);
+  expect(mocks.protect).toHaveBeenCalledTimes(1);
+});
+it("does not reconcile or retry a fork into a changed account", async () => {
+  mocks.protect.mockResolvedValue(chat("unused").titleProtection);
+  mocks.request.mockImplementation(async () => {
+    mocks.matches.mockReturnValue(false);
+    throw new Error("reply lost");
+  });
+  const run = await prepareConversationFork("project/id", "source", "Source");
+  await expect(run()).rejects.toThrow("account or server changed");
+  await expect(run()).rejects.toThrow("account or server changed");
+  expect(mocks.request).toHaveBeenCalledTimes(1);
+});

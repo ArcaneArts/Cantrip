@@ -323,20 +323,73 @@ function validatePaneMembership(
   }
 }
 
+/** Rendering adapters retain direct content separately from actual rail members. */
+export function projectPaneViews<T>(pane: {
+  members: T[];
+  conversationView?: T | null;
+}): T[] {
+  return pane.conversationView
+    ? [...pane.members, pane.conversationView]
+    : pane.members;
+}
+
+function validateConversationPane(
+  pane: {
+    id: string;
+    projectId: string;
+    region: string;
+    members: unknown[];
+    conversationView?: {
+      paneId: string;
+      projectId: string;
+      tabKind: string;
+    } | null;
+  },
+  context: z.RefinementCtx,
+) {
+  if (!pane.members.length && !pane.conversationView)
+    context.addIssue({
+      code: "too_small",
+      origin: "array",
+      minimum: 1,
+      inclusive: true,
+      path: ["members"],
+    });
+  if (
+    pane.conversationView &&
+    (pane.region !== "center" ||
+      pane.conversationView.tabKind !== "chat" ||
+      pane.conversationView.paneId !== pane.id ||
+      pane.conversationView.projectId !== pane.projectId)
+  )
+    context.addIssue({
+      code: "custom",
+      path: ["conversationView"],
+      message:
+        "Conversation content must be an Agent view owned by this center pane.",
+    });
+}
+
 export const projectPaneSummarySchema = projectPaneSummaryBaseSchema
   .extend({
     title: z.string().min(1).max(120),
-    members: z.array(projectTabMemberSummarySchema).min(1),
+    members: z.array(projectTabMemberSummarySchema),
+    conversationView: projectTabMemberSummarySchema.nullable().optional(),
   })
-  .superRefine(validatePaneMembership);
+  .superRefine((pane, context) => {
+    validatePaneMembership(pane, context);
+    validateConversationPane(pane, context);
+  });
 
 export const projectPaneWireSummarySchema = projectPaneSummaryBaseSchema
   .extend({
     titleProtection: privateDisplayLabelOpaqueSchema.nullable(),
-    members: z.array(projectTabMemberWireSummarySchema).min(1),
+    members: z.array(projectTabMemberWireSummarySchema),
+    conversationView: projectTabMemberWireSummarySchema.nullable().optional(),
   })
   .superRefine((pane, context) => {
     validatePaneMembership(pane, context);
+    validateConversationPane(pane, context);
     if (
       pane.titleProtection &&
       pane.titleProtection.classification.recordKind !== "tab-group"
@@ -383,6 +436,7 @@ function validatePaneLayout(
       projectId: string;
       region?: z.infer<typeof projectPaneRegionSchema>;
       members: Array<{ tabKey: string }>;
+      conversationView?: { tabKey: string } | null;
     }>;
     centerRoot?: ProjectCenterLayoutNode | null;
   },
@@ -397,7 +451,7 @@ function validatePaneLayout(
         path: ["panes", paneIndex, "projectId"],
       });
     }
-    for (const [memberIndex, member] of pane.members.entries()) {
+    for (const [memberIndex, member] of projectPaneViews(pane).entries()) {
       if (tabKeys.has(member.tabKey)) {
         context.addIssue({
           code: "custom",

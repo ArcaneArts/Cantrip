@@ -1,3 +1,4 @@
+import { projectSurfaceWireFixtures } from "./project-surface-wire-fixtures.mjs";
 import * as p from "../../packages/protocol/dist/index.js";
 import { workerIngressFixtures } from "./worker-wire-fixtures.mjs";
 import workerCommands from "./worker-command-fixtures.json" with { type: "json" };
@@ -14,6 +15,7 @@ import { fileDocumentWireFixtures } from "./file-document-wire-fixtures.mjs";
 import { tunnelWireFixtures } from "./tunnel-wire-fixtures.mjs";
 import { workspaceWireFixtures } from "./workspace-wire-fixtures.mjs";
 import { workspaceLayoutWireFixtures } from "./workspace-layout-wire-fixtures.mjs";
+import { paneWireFixtures } from "./pane-wire-fixtures.mjs";
 import { workerLinkWireFixtures } from "./worker-link-wire-fixtures.mjs";
 import { directAttachmentWireFixtures } from "./direct-attachment-wire-fixtures.mjs";
 
@@ -660,11 +662,13 @@ export const securityFixtures = {
   ...folderWireFixtures(projectLabel),
   ...terminalWireFixtures(projectLabel),
   ...browserWireFixtures(projectLabel),
+  ...projectSurfaceWireFixtures(projectLabel),
   ...projectShareWireFixtures(),
   ...fileDocumentWireFixtures(),
   ...tunnelWireFixtures,
   ...workspaceWireFixtures(),
   ...workspaceLayoutWireFixtures(projectLabel),
+  ...paneWireFixtures(projectLabel),
   ...workerLinkWireFixtures,
   ...directAttachmentWireFixtures,
   workerRequestEnvelopeSchema: [

@@ -12,6 +12,7 @@ const drainAuthNotifications = process.argv.includes(
   "--drain-auth-notifications",
 );
 const observeAudits = process.argv.includes("--observe-audits");
+const observeResponses = process.argv.includes("--observe-responses");
 const observeTunnelExpiry = process.argv.includes("--observe-tunnel-expiry");
 const notifications = new Set();
 const repositoryOperations = new Set();
@@ -129,7 +130,7 @@ if (drainAuthNotifications) {
 const app = await buildApp({
   config,
   database,
-  logger: false,
+  logger: process.env.CANTRIP_FIXTURE_LOGGING === "true",
   ...(ingressBridge ? { workerBridge: ingressBridge } : {}),
 });
 if (process.argv.includes("--observe-http-clocks")) {
@@ -146,7 +147,7 @@ if (process.argv.includes("--observe-http-clocks")) {
     done();
   });
 }
-if (observeAudits) {
+if (observeAudits || observeResponses) {
   // Observe the actual source hooks after their writes; no replacement handler,
   // altered response or synthetic completion delay is installed.
   app.addHook("onResponse", async (request) => {

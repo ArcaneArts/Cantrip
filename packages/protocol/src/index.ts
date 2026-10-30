@@ -1,6 +1,8 @@
 export * from "./native-settings-state.js";
+export * from "./conversations.js";
 export * from "./file-documents.js";
 export * from "./workspace-ownership.js";
+export * from "./workspace-pane-views.js";
 export * from "./workspace-legacy-file-import.js";
 export * from "./workspace-command.js";
 export * from "./workspace-command-apply.js";
@@ -39,3 +41,5 @@ export * from "./native-behavior-attribution.js";
 export * from "./native-runtime-handoff.js";
 export * from "./managed-chat-preparation.js";
 export * from "./native-runtime-handoff-configuration.js";
+
+export { projectPaneViews } from "./project-tabs.js";

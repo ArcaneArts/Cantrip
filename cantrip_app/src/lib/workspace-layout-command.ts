@@ -1,4 +1,8 @@
-import type { WorkspaceAction, WorkspaceWindow } from "@cantrip/protocol";
+import {
+  workspacePaneViews,
+  type WorkspaceAction,
+  type WorkspaceWindow,
+} from "@cantrip/protocol";
 import type { TabLayoutCommand } from "./workspace-dnd-model";
 
 /** Allocate new identities once, before enqueueing. The command client retains
@@ -46,14 +50,14 @@ export function workspaceLayoutAction(
           position: command.targetMemberPosition,
         };
       const source = window.panes.find((pane) =>
-        pane.tabs.some((tab) => tab.id === command.tabKey),
+        workspacePaneViews(pane).some((tab) => tab.id === command.tabKey),
       );
       if (!source) throw new Error("Tab does not belong to this window.");
       const region = command.targetRegion ?? source.region;
       const remaining = window.panes.filter(
         (pane) =>
           pane.region === region &&
-          !(pane === source && source.tabs.length === 1),
+          !(pane === source && workspacePaneViews(source).length === 1),
       );
       return {
         type: "move-new-pane",

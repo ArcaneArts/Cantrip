@@ -81,6 +81,10 @@ pub struct AuthService {
     pub project_shares: Arc<crate::project_shares::Service>,
     pub transport_metrics: Arc<crate::operations::TransportMetrics>,
     pub model_routing: Arc<crate::chats::routing::ModelRouting>,
+    pub worktree_observations: Arc<crate::projects::observations::Service>,
+    pub project_operations: Arc<crate::projects::coordinator::Coordinator>,
+    pub worktrees: Arc<crate::projects::worktrees::Service>,
+    pub run_configuration_observations: Arc<crate::run_configurations::observations::Service>,
     pub managed_console: Arc<crate::chats::managed_console::ManagedConsole>,
     rate_limit: Mutex<AuthRateLimiter>,
 }
@@ -233,6 +237,36 @@ impl AuthService {
             provider_catalogs.clone(),
             workers.bridge.clone(),
         );
+        let publisher = Arc::downgrade(&live);
+        let worktree_observations = crate::projects::observations::Service::new(
+            repository.database.clone(),
+            workers.bridge.clone(),
+            workers.commands.clone(),
+            &live,
+        );
+        let observations = worktree_observations.clone();
+        let project_operations =
+            crate::projects::coordinator::Coordinator::new(Arc::new(move |owner, project| {
+                if let Some(live) = publisher.upgrade() {
+                    crate::projects::repository_operation::publish(
+                        &live, owner, project, "worktree",
+                    );
+                }
+                observations.schedule_project(owner.to_owned(), project.to_owned());
+            }));
+        let worktrees = crate::projects::worktrees::Service::new(
+            repository.database.clone(),
+            workers.bridge.clone(),
+            workers.commands.clone(),
+            project_operations.clone(),
+        );
+        let run_configuration_observations = crate::run_configurations::observations::Service::new(
+            repository.database.clone(),
+            workers.bridge.clone(),
+            workers.commands.clone(),
+            &live,
+            worker_maintenance.clone(),
+        );
         let managed_console = crate::chats::managed_console::ManagedConsole::new(
             repository.database.clone(),
             model_routing.clone(),
@@ -305,6 +339,10 @@ impl AuthService {
             transport_metrics: Arc::new(Default::default()),
             model_routing,
             managed_console,
+            project_operations,
+            worktrees,
+            run_configuration_observations,
+            worktree_observations,
             registration: Mutex::new(()),
             revocations: broadcast::channel(256).0,
         }))

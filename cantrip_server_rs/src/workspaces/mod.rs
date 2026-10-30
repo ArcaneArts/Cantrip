@@ -30,6 +30,7 @@ pub fn remove_views(
             values(window, "panes").iter().flat_map(move |pane| {
                 values(pane, "tabs")
                     .iter()
+                    .chain(pane.get("conversationView").filter(|v| !v.is_null()))
                     .filter(move |tab| {
                         tab["resource"]["kind"] == "entity"
                             && (tab["resource"]["definitionId"] == definition
@@ -42,21 +43,51 @@ pub fn remove_views(
                             window["id"].clone(),
                             window["attachmentGeneration"].clone(),
                             tab["id"].clone(),
+                            pane["conversationView"]["id"] == tab["id"],
                         )
                     })
             })
         })
         .collect::<Vec<_>>();
-    for (window, generation, tab) in removals {
+    for (window, generation, tab, conversation) in removals {
+        let transfers = values(&layout, "pendingTransfers")
+            .iter()
+            .filter(|t| values(t, "tabIds").contains(&tab))
+            .cloned()
+            .collect::<Vec<_>>();
+        for transfer in transfers {
+            let operation = JsString::new(
+                format!("resource-removal-transfer:{resource}:")
+                    .encode_utf16()
+                    .chain(
+                        transfer["id"]
+                            .as_js_string()
+                            .unwrap()
+                            .units()
+                            .iter()
+                            .copied(),
+                    )
+                    .collect(),
+            );
+            let command = json!({"operationId":operation,"projectId":project,"workspaceId":layout["id"],
+                "windowId":transfer["sourceWindowId"],"attachmentGeneration":transfer["sourceGeneration"],
+                "expectedRevision":layout["revision"],"action":json!({"type":"cancel-transfer","transferId":transfer["id"]})});
+            layout = crate::workspace_layouts::apply(&layout, &command)?["layout"].clone();
+        }
         let operation = JsString::new(
             format!("resource-removal:{resource}:")
                 .encode_utf16()
                 .chain(tab.as_js_string().unwrap().units().iter().copied())
                 .collect(),
         );
+        let action = if conversation {
+            json!({"type":"close-conversation","viewId":tab})
+        } else {
+            json!({"type":"close-tab","tabId":tab})
+        };
         let command = json!({"operationId":operation,"projectId":project,"workspaceId":layout["id"],
             "windowId":window,"attachmentGeneration":generation,"expectedRevision":layout["revision"],
-            "action":json!({"type":"close-tab","tabId":tab})});
+            "action":action});
         layout = crate::workspace_layouts::apply(&layout, &command)?["layout"].clone();
     }
     Ok(layout)

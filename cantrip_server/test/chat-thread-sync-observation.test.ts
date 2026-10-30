@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import Fastify from "fastify";
+import { installChatGoalRoutes } from "../src/app/routes/chat-goals.js";
 import {
   createChatThreadSyncRuntime,
   type ChatThreadSyncRuntimeDependencies,
@@ -69,11 +71,48 @@ const context: ChatExecutionContext = {
 };
 
 describe("observational custom-child thread reconciliation", () => {
+  it("reads goal metadata from the bound route instead of rerouting through model availability", async () => {
+    const app = Fastify();
+    const runtimeForContext = vi
+      .fn()
+      .mockRejectedValue(new Error("picker route unavailable"));
+    const request = vi.fn().mockResolvedValue({ goal: null });
+    installChatGoalRoutes(app, {
+      applicationOwnerId: () => "owner",
+      repository: {
+        getChatExecutionContext: vi.fn().mockResolvedValue(context),
+        getModelRuntimeByRoute: vi.fn().mockResolvedValue(root),
+      },
+      bridge: { isConnected: () => true, request },
+      runtimeForContext,
+    } as never);
+    try {
+      const result = await app.inject({
+        method: "GET",
+        url: "/api/chats/chat/goal",
+      });
+      expect(result.statusCode, result.body).toBe(200);
+      expect(result.json()).toEqual({ goal: null });
+      expect(request).toHaveBeenCalledWith(
+        "worker",
+        expect.objectContaining({
+          type: "chat.goal.get",
+          threadId: "native-thread",
+          model: root.model,
+          provider: root.provider,
+        }),
+      );
+      expect(runtimeForContext).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
+  });
   it.each(["running", "idle", "failed"] as const)(
     "recovers %s from native lifecycle even when history has no imported turns",
     async (status) => {
       const current = { ...context, status: "failed", executionLaneId: "lane" };
       const repository = {
+        getModelRuntimeByRoute: vi.fn().mockResolvedValue(root),
         nativeCommands: {
           reconcileThreadObservation: vi
             .fn()
@@ -93,7 +132,9 @@ describe("observational custom-child thread reconciliation", () => {
             turns: [],
           }),
         },
-        runtimeForContext: async () => root,
+        runtimeForContext: async () => {
+          throw new Error("picker route unavailable");
+        },
         publishChatSummary,
         continuePendingWorktreeTransition: vi.fn().mockResolvedValue(false),
         dispatchNextQueuedPrompt: vi.fn(),
@@ -111,6 +152,7 @@ describe("observational custom-child thread reconciliation", () => {
       applicationOwnerId: () => "owner",
       repository: {
         getChatExecutionContext: vi.fn().mockResolvedValue(context),
+        getModelRuntimeByRoute: vi.fn().mockResolvedValue(root),
       },
       bridge: {
         isConnected: () => true,

@@ -1,3 +1,4 @@
+import { workspacePaneViews } from "@cantrip/protocol";
 import type {
   ProjectSummary,
   ProjectTabLayoutSummary,
@@ -423,7 +424,7 @@ export function useOrphanedDesktopPopoutEffect({
       if (
         owned.windows
           .find(({ id }) => id === windowId)
-          ?.panes.some((pane) => pane.tabs.length > 0)
+          ?.panes.some((pane) => workspacePaneViews(pane).length > 0)
       )
         return;
     } else if (layout?.panes.some(({ id }) => id === popoutTarget.paneId))

@@ -20,14 +20,34 @@ WebSocket.prototype.emit = function (event, ...args) {
       value = JSON.parse(Buffer.from(args[0]).toString());
     } catch {}
     if (
-      value?.kind === "request" &&
-      value.command?.type === "file-document.operation"
+      (value?.kind === "request" &&
+        [
+          "file-document.operation",
+          "explorer.operation",
+          "repository.operation",
+          "surface.close",
+        ].includes(value.command?.type)) ||
+      (value?.kind === "request" &&
+        value.command?.type?.startsWith("worktree.") &&
+        value.command.type !== "worktree.observation.configure") ||
+      (value?.kind === "request" &&
+        value.command?.type?.startsWith("project.run-configuration-"))
     )
       frames.push({ socket: this, ...value, claimed: false });
   }
   return Reflect.apply(emit, this, [event, ...args]);
 };
-export async function fileDocumentHttpWorker({ fixture, root, visit, result }) {
+export async function fileDocumentHttpWorker({
+  fixture,
+  root,
+  visit,
+  result,
+  operationType = "file-document.operation",
+  operationResponse,
+  observationResponse,
+  worktreeResponse,
+  runtimeResponse,
+}) {
   await visit(
     "document worker enrollment code",
     "POST",
@@ -64,11 +84,60 @@ export async function fileDocumentHttpWorker({ fixture, root, visit, result }) {
     workerId: "alpha",
   });
   let connected = false;
-  const state = { mode: "ok", pending: [], socket: null };
+  const state = {
+    mode: "ok",
+    pending: [],
+    socket: null,
+    surfaceCommands: [],
+    observationCommands: [],
+    worktreeCommands: [],
+    runtimeCommands: [],
+    readyCount: 0,
+  };
   const connection = new WorkerConnection(
     config,
     async (command) => {
-      if (command.type !== "file-document.operation") return null;
+      if (
+        command.type === "worktree.observation.configure" &&
+        observationResponse
+      ) {
+        state.observationCommands.push(command);
+        return observationResponse(command);
+      }
+      if (command.type === "surface.close") {
+        const frame = frames.find(
+          (f) => !f.claimed && isDeepStrictEqual(f.command, command),
+        );
+        assert.ok(frame, "surface close reaches unchanged worker decoder");
+        frame.claimed = true;
+        state.socket = frame.socket;
+        state.surfaceCommands.push(command);
+        return null;
+      }
+      if (
+        runtimeResponse &&
+        command.type.startsWith("project.run-configuration-")
+      ) {
+        const frame = frames.find(
+          (f) => !f.claimed && isDeepStrictEqual(f.command, command),
+        );
+        assert.ok(frame, "runtime command reaches unchanged worker decoder");
+        frame.claimed = true;
+        state.runtimeCommands.push(command);
+        await state.beforeRuntimeResponse?.(command);
+        return runtimeResponse(command);
+      }
+      if (worktreeResponse && command.type.startsWith("worktree.")) {
+        const frame = frames.find(
+          (f) => !f.claimed && isDeepStrictEqual(f.command, command),
+        );
+        assert.ok(frame, "worktree mutation reaches unchanged worker decoder");
+        frame.claimed = true;
+        state.socket = frame.socket;
+        state.worktreeCommands.push(command);
+        return worktreeResponse(command);
+      }
+      if (command.type !== operationType) return null;
       const frame = frames.find(
         (f) => !f.claimed && isDeepStrictEqual(f.command, command),
       );
@@ -79,11 +148,13 @@ export async function fileDocumentHttpWorker({ fixture, root, visit, result }) {
       frame.claimed = true;
       state.socket = frame.socket;
       result.commands.push(command);
-      const response = {
-        ...fileDocumentWireFixtures().surfaceStreamWireResponseSchema[0],
-        operationId: command.operationId,
-        sequence: command.sequence,
-      };
+      const response = operationResponse
+        ? operationResponse(command)
+        : {
+            ...fileDocumentWireFixtures().surfaceStreamWireResponseSchema[0],
+            operationId: command.operationId,
+            sequence: command.sequence,
+          };
       if (state.mode === "error")
         throw new Error("controlled document worker failure");
       if (state.mode === "invalid") return null;
@@ -100,10 +171,21 @@ export async function fileDocumentHttpWorker({ fixture, root, visit, result }) {
     1000,
     () => {
       connected = true;
+      state.readyCount++;
     },
   );
   state.release = () => {
     for (const resolve of state.pending.splice(0)) resolve();
+  };
+  state.notify = (notification) => connection.sendNotification(notification);
+  state.reconnect = async () => {
+    const before = state.readyCount;
+    assert.ok(state.socket, "operation captured the actual worker socket");
+    state.socket.close(1012, "controlled worker reconnect");
+    await eventually(
+      () => state.readyCount,
+      (count) => assert.ok(count > before),
+    );
   };
   state.close = async () => {
     state.release();

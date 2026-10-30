@@ -1,3 +1,4 @@
+import { noteConversationUsage } from "@/lib/conversation-usage";
 import {
   workspaceCommandSchema,
   workspaceOwnershipSchema,
@@ -40,15 +41,19 @@ export function workspaceLayoutTransport(
   const expectedIdentity = { ...identity };
   const base = `/api/projects/${encodeURIComponent(projectId)}/workspace-layouts/${encodeURIComponent(workspaceId)}`;
   const behavior = { expectedIdentity, allowCsrfRecovery: false };
+  const headers = { "x-cantrip-workspace-version": "2" };
   return {
     read: async () =>
-      workspaceOwnershipSchema.parse(await request(base, undefined, behavior)),
+      workspaceOwnershipSchema.parse(
+        await request(base, { headers }, behavior),
+      ),
     importLegacyFiles: async (input) =>
       workspaceLegacyFileImportReceiptSchema.parse(
         await request(
           `${base}/import-legacy-files`,
           {
             method: "POST",
+            headers,
             body: JSON.stringify(
               workspaceLegacyFileImportRequestSchema.parse(input),
             ),
@@ -62,6 +67,7 @@ export function workspaceLayoutTransport(
           `${base}/seed`,
           {
             method: "POST",
+            headers,
             body: JSON.stringify(workspaceSeedRequestSchema.parse(input)),
           },
           behavior,
@@ -77,7 +83,7 @@ export function workspaceLayoutTransport(
       return workspaceReceiptSchema.parse(
         await request(
           `${base}/commands`,
-          { method: "POST", body: JSON.stringify(command) },
+          { method: "POST", headers, body: JSON.stringify(command) },
           behavior,
         ),
       );
@@ -145,6 +151,9 @@ export async function connectWorkspaceCommands(
     window.attachmentGeneration,
     transport,
   );
+  const stopUsage = controller.subscribeAgentActivation((chatId) => {
+    if (clientSessionIdentityMatches(identity)) noteConversationUsage(chatId);
+  });
   const closeRefreshChannel = bindWorkspaceRefreshChannel(controller, identity);
   let disposed = false;
   let unsubscribe = () => {};
@@ -153,6 +162,7 @@ export async function connectWorkspaceCommands(
     disposed = true;
     lifetime?.signal.removeEventListener("abort", endLifetime);
     closeRefreshChannel();
+    stopUsage();
     unsubscribe();
     controller.dispose(reason);
     lifetime?.releaseConnection?.();

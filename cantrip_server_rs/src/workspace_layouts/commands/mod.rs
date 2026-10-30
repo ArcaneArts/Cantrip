@@ -1,3 +1,4 @@
+mod conversations;
 mod migrations;
 mod transfers;
 mod views;
@@ -44,11 +45,7 @@ impl Command {
     fn all_tabs(&self) -> Vec<Value> {
         self.windows()
             .iter()
-            .flat_map(|w| {
-                values(w, "panes")
-                    .iter()
-                    .flat_map(|p| values(p, "tabs").iter().cloned())
-            })
+            .flat_map(|w| values(w, "panes").iter().flat_map(pane_views))
             .collect()
     }
     fn reserved(&self, id: &Value) -> bool {
@@ -75,6 +72,28 @@ fn tabs(pane: &mut Value) -> &mut Vec<Value> {
     };
     tabs
 }
+fn pane_views(pane: &Value) -> Vec<Value> {
+    let mut views = values(pane, "tabs").to_vec();
+    if let Some(view) = pane.get("conversationView").filter(|v| !v.is_null()) {
+        views.push(view.clone());
+    }
+    views
+}
+fn selected_view_id(pane: &Value) -> Value {
+    match pane["selection"]["kind"].as_str() {
+        Some("conversation") => pane["selection"]["viewId"].clone(),
+        Some("tab") => pane["selection"]["tabId"].clone(),
+        _ => pane["activeTabId"].clone(),
+    }
+}
+fn normalize_pane(pane: &mut Value) {
+    if pane.get("conversationView").is_none() {
+        pane["conversationView"] = Value::Null;
+    }
+    if pane.get("selection").is_none() {
+        pane["selection"] = json!({"kind":"tab","tabId":pane["activeTabId"]});
+    }
+}
 fn pane_by_id(window: &Value, id: &Value) -> Result<Value> {
     values(window, "panes")
         .iter()
@@ -84,7 +103,7 @@ fn pane_by_id(window: &Value, id: &Value) -> Result<Value> {
 }
 fn tab_by_id(window: &Value, id: &Value) -> Result<(Value, Value)> {
     for pane in values(window, "panes") {
-        if let Some(tab) = values(pane, "tabs").iter().find(|t| t["id"] == *id) {
+        if let Some(tab) = pane_views(pane).iter().find(|t| t["id"] == *id) {
             return Ok((pane.clone(), tab.clone()));
         }
     }
@@ -109,7 +128,14 @@ fn focus(window: &mut Value, pane_id: &Value, tab_id: &Value) {
         .iter_mut()
         .find(|p| p["id"] == *pane_id)
         .expect("focus belongs to window");
-    pane["activeTabId"] = tab_id.clone();
+    if pane["conversationView"]["id"] == *tab_id {
+        pane["selection"] = json!({"kind":"conversation","viewId":tab_id});
+    } else {
+        pane["activeTabId"] = tab_id.clone();
+        if pane.get("selection").is_some() {
+            pane["selection"] = json!({"kind":"tab","tabId":tab_id});
+        }
+    }
     window["focusedPaneId"] = pane_id.clone();
     window["recentPaneIds"] = front(pane_id, values(window, "recentPaneIds"));
     window["recentTabIds"] = front(tab_id, values(window, "recentTabIds"));
@@ -144,20 +170,43 @@ fn remove_pane(window: &mut Value, pane: &Value) {
 }
 fn take_tab(window: &mut Value, pane: &Value, tab: &Value) {
     let mut updated = pane.clone();
-    let index = values(pane, "tabs")
-        .iter()
-        .position(|t| t["id"] == tab["id"])
-        .expect("owned tab");
-    tabs(&mut updated).remove(index);
-    if values(&updated, "tabs").is_empty() {
-        remove_pane(window, pane);
+    let selected = selected_view_id(pane) == tab["id"];
+    if pane["conversationView"]["id"] == tab["id"] {
+        updated["conversationView"] = Value::Null;
+        if values(&updated, "tabs").is_empty() {
+            remove_pane(window, pane);
+            return;
+        }
+        if selected {
+            updated["selection"] = json!({"kind":"tab","tabId":updated["activeTabId"]});
+        }
     } else {
+        let index = values(pane, "tabs")
+            .iter()
+            .position(|t| t["id"] == tab["id"])
+            .expect("owned tab");
+        tabs(&mut updated).remove(index);
+        if pane_views(&updated).is_empty() {
+            remove_pane(window, pane);
+            return;
+        }
         if updated["activeTabId"] == tab["id"] {
             let remaining = values(&updated, "tabs");
-            updated["activeTabId"] = remaining[index.min(remaining.len() - 1)]["id"].clone();
+            updated["activeTabId"] = remaining
+                .get(index)
+                .or_else(|| remaining.last())
+                .map(|v| v["id"].clone())
+                .unwrap_or(Value::Null);
         }
-        store_pane(window, updated);
+        if selected && updated.get("selection").is_some() {
+            updated["selection"] = if updated["activeTabId"].is_null() {
+                json!({"kind":"conversation","viewId":updated["conversationView"]["id"]})
+            } else {
+                json!({"kind":"tab","tabId":updated["activeTabId"]})
+            };
+        }
     }
+    store_pane(window, updated);
 }
 fn leaf(id: &Value) -> Value {
     json!({"kind":"pane","paneId":id})
@@ -171,7 +220,17 @@ fn new_pane(id: &Value, region: &Value, tab: &Value) -> Value {
 
 pub fn apply(initial: &Value, input: &Value) -> Result<Value> {
     let command = parse("workspaceCommandSchema", input)?;
-    let layout = parse("workspaceOwnershipSchema", initial)?;
+    let mut layout = parse("workspaceOwnershipSchema", initial)?;
+    if command["action"]["type"] == "open-conversation" && layout["version"] == json!(1) {
+        layout["version"] = json!(2);
+        let mut windows = values(&layout, "windows").to_vec();
+        for window in &mut windows {
+            for pane in panes(window) {
+                normalize_pane(pane);
+            }
+        }
+        layout["windows"] = Value::Array(windows);
+    }
     if command["workspaceId"] != layout["id"] || command["projectId"] != layout["projectId"] {
         return Err(ModelError::command(
             "scope",
@@ -219,6 +278,7 @@ pub fn apply(initial: &Value, input: &Value) -> Result<Value> {
         retired: vec![],
     };
     match kind {
+        "open-conversation" | "close-conversation" => conversations::apply(&mut state, action)?,
         "migrate-code-files" | "migrate-explorer-file" => migrations::apply(&mut state, action)?,
         "replace-attachment"
         | "prepare-return"
@@ -231,10 +291,16 @@ pub fn apply(initial: &Value, input: &Value) -> Result<Value> {
     }
     let mut windows = state.windows();
     for window in &mut windows {
+        if state.layout["version"] == json!(2) {
+            for pane in panes(window) {
+                normalize_pane(pane);
+            }
+        }
         if window.get("recentTabIds").is_some() {
             let owned = values(window, "panes")
                 .iter()
-                .flat_map(|p| values(p, "tabs").iter().map(|t| t["id"].clone()))
+                .flat_map(pane_views)
+                .map(|t| t["id"].clone())
                 .collect::<Vec<_>>();
             window["recentTabIds"] = Value::Array(
                 values(window, "recentTabIds")

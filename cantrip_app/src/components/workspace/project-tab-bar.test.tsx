@@ -738,7 +738,7 @@ describe("project pane tab strip", () => {
     expect(markup.match(/lucide-x/gu)).toHaveLength(2);
     expect(markup.match(/lucide-trash-2/gu)).toHaveLength(2);
     expect(markup).not.toContain("Close file tab?");
-    expect(markup).not.toContain("Move Tab to New Window");
+    expect(markup).not.toContain("Pop Out");
   });
 
   it.each(["center", "right", "bottom"] as const)(
@@ -780,14 +780,12 @@ describe("project pane tab strip", () => {
       expect(labels(menus[0]!)).toContain("Rename");
       expect(labels(menus[0]!)).toContain("Close View");
       expect(labels(menus[0]!)).toContain("Delete Resource");
-      expect(labels(menus[0]!)).toContain("Move Tab to New Window");
+      expect(labels(menus[0]!)).toContain("Pop Out");
       for (const menu of menus) {
         await act(async () =>
           menu
             .findAllByType("button")
-            .find(
-              (item) => textContent(item).trim() === "Move Tab to New Window",
-            )!
+            .find((item) => textContent(item).trim() === "Pop Out")!
             .props.onClick(),
         );
       }
