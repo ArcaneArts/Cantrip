@@ -78,6 +78,7 @@ pub struct AuthService {
     pub direct_attachments: Arc<crate::direct_attachments::Coordinator>,
     pub tunnel_leases: Arc<crate::tunnels::sweep::LeaseSweeper>,
     pub tunnel_runtime: Arc<crate::tunnels::runtime::Runtime>,
+    pub project_shares: Arc<crate::project_shares::Service>,
     pub transport_metrics: Arc<crate::operations::TransportMetrics>,
     pub model_routing: Arc<crate::chats::routing::ModelRouting>,
     pub managed_console: Arc<crate::chats::managed_console::ManagedConsole>,
@@ -272,6 +273,13 @@ impl AuthService {
             live.clone(),
             tunnel_runtime.clone(),
         );
+        let project_shares = crate::project_shares::Service::new(
+            repository.database.clone(),
+            workers.commands.clone(),
+            workers.bridge.clone(),
+            live.clone(),
+            worker_links.clone(),
+        );
         Ok(Arc::new(Self {
             config,
             repository,
@@ -293,6 +301,7 @@ impl AuthService {
             direct_attachments,
             tunnel_leases,
             tunnel_runtime,
+            project_shares,
             transport_metrics: Arc::new(Default::default()),
             model_routing,
             managed_console,

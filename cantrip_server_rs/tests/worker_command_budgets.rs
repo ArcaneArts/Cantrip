@@ -37,6 +37,7 @@ fn unavailable(message: String) -> CommandError {
         message: message.into(),
         code: None,
         unavailable: true,
+        request_id: None,
         encoding_error: None,
     }
 }
@@ -311,6 +312,7 @@ impl Fixture {
                                     message: JsString::new(message),
                                     code: None,
                                     unavailable: false,
+                                    request_id: None,
                                     encoding_error: None,
                                 });
                             }

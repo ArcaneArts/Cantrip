@@ -58,6 +58,7 @@ pub async fn update(
                 message: "Browser worker is offline.".into(),
                 code: None,
                 unavailable: true,
+                request_id: None,
                 encoding_error: None,
             }
             .into());

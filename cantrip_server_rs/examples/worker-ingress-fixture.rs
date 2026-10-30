@@ -180,6 +180,7 @@ async fn request(State(f): State<Arc<Fixture>>, Json(body): Json<Value>) -> Json
                     code: None,
                     unavailable: false,
                     encoding_error: None,
+                    request_id: None,
                 });
             }
             f.record(true, "event", &key, value);

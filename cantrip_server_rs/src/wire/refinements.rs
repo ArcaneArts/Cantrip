@@ -7,6 +7,9 @@ pub(super) fn apply(
     path: &[Value],
     message: Option<&str>,
 ) -> Result<(), ValidationError> {
+    if super::project_shares::refine(tag, result, path, message)? {
+        return Ok(());
+    }
     if super::browsers::refine(tag, result, path, message)? {
         return Ok(());
     }

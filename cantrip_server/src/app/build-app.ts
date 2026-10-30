@@ -220,6 +220,13 @@ export async function buildApp({
     bridge,
     directAttachments,
     projectShareTunnel,
+    revokeShareWorkerLinks: (ownerId, tunnelId) =>
+      workerLinks.revokeResource(
+        ownerId,
+        "tunnel",
+        tunnelId,
+        "resource-deleted",
+      ),
     publishLiveInvalidation,
     relayQuotas,
     repository,

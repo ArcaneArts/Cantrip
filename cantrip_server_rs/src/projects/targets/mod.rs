@@ -9,6 +9,7 @@ use crate::{
     wire::Value,
 };
 use anyhow::Result;
+pub(crate) use reads::worktree as worktree_summary;
 use reads::{Kind, Reads};
 use std::sync::Arc;
 

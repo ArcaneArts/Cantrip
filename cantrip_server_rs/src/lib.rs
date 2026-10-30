@@ -13,6 +13,7 @@ pub mod migrations;
 pub mod operations;
 pub mod policies;
 mod project_layout;
+pub mod project_shares;
 pub mod projects;
 pub mod relay;
 pub mod remote_surfaces;

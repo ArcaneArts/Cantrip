@@ -25,6 +25,10 @@ export interface TunnelControlPlaneRuntimeDependencies {
   bridge: LimitedWorkerCommandBus;
   directAttachments: DirectAttachmentCoordinator;
   projectShareTunnel: ProjectShareTunnelBroker;
+  revokeShareWorkerLinks: (
+    ownerId: string,
+    tunnelId: string,
+  ) => Promise<unknown>;
   publishLiveInvalidation: (
     resource: AppLiveResource,
     input?: {
@@ -48,6 +52,7 @@ export function createTunnelControlPlaneRuntime({
   bridge,
   directAttachments,
   projectShareTunnel,
+  revokeShareWorkerLinks,
   publishLiveInvalidation,
   relayQuotas,
   repository,
@@ -78,6 +83,7 @@ export function createTunnelControlPlaneRuntime({
     repository,
     tunnelStreamBroker,
     publishTunnelRuntimeChange,
+    revokeShareWorkerLinks,
   );
   const revokeManagedFileShare = async (
     ownerId: string,

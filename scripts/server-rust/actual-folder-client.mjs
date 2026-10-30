@@ -41,6 +41,13 @@ import {
 import { actualWorkerTunnelRelay } from "./actual-worker-tunnel-relay.mjs";
 import { actualWorkerBrowserDiscovery } from "./actual-worker-browser-discovery.mjs";
 import {
+  prepareProjectShares,
+  prepareExistingScratch,
+  seedExistingScratch,
+  finishProjectShares,
+  liveWorkerShareRestart,
+} from "./actual-worker-project-shares.mjs";
+import {
   prepareBrowserSurface,
   actualWorkerBrowserSurface,
 } from "./actual-worker-browser-surface.mjs";
@@ -84,6 +91,9 @@ async function flow(
     const pathname = new URL(request.url()).pathname;
     if (
       pathname.startsWith("/api/projects") ||
+      pathname.startsWith("/api/chats/") ||
+      pathname.startsWith("/api/tunnel") ||
+      pathname.startsWith("/api/project-shares/") ||
       pathname.endsWith("/repository-operation") ||
       pathname.endsWith("/encryption/refresh")
     )
@@ -432,7 +442,12 @@ async function flow(
       });
     // The preceding terminal offline case intentionally stops the worker.
     // Browser creation now uses real placement through the public client API.
-    if (process.argv.includes("--surfaces") && !worker) await startWorker();
+    if (
+      (process.argv.includes("--surfaces") ||
+        process.argv.includes("--project-shares")) &&
+      !worker
+    )
+      await startWorker();
     const surface = process.argv.includes("--surfaces")
       ? await prepareBrowserSurface(
           page,
@@ -451,6 +466,15 @@ async function flow(
     }
     if (process.argv.includes("--tunnels"))
       tunnel = await prepareTunnelLink(page, created.id, workerId);
+    const projectShares = process.argv.includes("--project-shares")
+      ? await prepareProjectShares({
+          page,
+          project: first,
+          workerId,
+          result,
+          requests,
+        })
+      : undefined;
     // Capture after browser creation has committed its project layout update.
     const wire = await page.evaluate(() =>
       window.folderWire.getProjectWireList(),
@@ -486,9 +510,14 @@ async function flow(
       "server receives opaque labels, encrypted repository operations and routing handles without private names or paths",
     );
     await stopWorker();
+    const scratch = projectShares
+      ? await prepareExistingScratch(dataDirectory)
+      : undefined;
     await page.evaluate(() => window.folderLive.stop());
     const retainedPort =
-      surface || tunnel ? Number(new URL(fixture.server.origin).port) : 0;
+      surface || tunnel || projectShares
+        ? Number(new URL(fixture.server.origin).port)
+        : 0;
     // Retain a generous diagnostic deadline for both implementations. Earlier
     // reference runs retained a zero-byte connection beyond this whole window;
     // production idle-connection cleanup now has separate real-socket tests.
@@ -498,6 +527,15 @@ async function flow(
     result.serverRestartShutdownMs = Date.now() - shutdownStarted;
     if (tunnel)
       await seedTunnelLink(fixture, root, surfaceRepositoryBinary, tunnel);
+    if (scratch)
+      await seedExistingScratch({
+        fixture,
+        root,
+        executable: surfaceRepositoryBinary,
+        page,
+        scratch,
+        workerId,
+      });
     await fixture.start({ port: retainedPort });
     const retained = await page.evaluate(
       async ({ serverUrl, password }) => {
@@ -551,7 +589,7 @@ async function flow(
     );
     assert.deepEqual(retained.projects, wire);
     assert.deepEqual(retained.labels, names);
-    if (surface || tunnel) {
+    if (surface || tunnel || projectShares) {
       await startWorker();
       if (surface)
         await actualWorkerBrowserSurface({
@@ -570,6 +608,24 @@ async function flow(
         });
       if (tunnel)
         await actualWorkerTunnelRelay({ page, tunnel, result, fixture });
+      if (projectShares)
+        await finishProjectShares({
+          page,
+          prepared: projectShares,
+          scratch,
+          result,
+          requests,
+        });
+      if (projectShares)
+        await liveWorkerShareRestart({
+          page,
+          fixture,
+          project: first,
+          workerId,
+          worker,
+          result,
+          requests,
+        });
       await stopWorker();
     }
     for (const project of retained.projects)
@@ -595,7 +651,11 @@ async function flow(
 }
 try {
   const executable = await buildRustServer();
-  if (process.argv.includes("--surfaces") || process.argv.includes("--tunnels"))
+  if (
+    process.argv.includes("--surfaces") ||
+    process.argv.includes("--tunnels") ||
+    process.argv.includes("--project-shares")
+  )
     surfaceRepositoryBinary = await buildRustExample(
       "project-repository-fixture",
     );

@@ -197,7 +197,7 @@ impl CommandDelegate for Delegate {
                 if let Some(error)=response["error"].as_js_string().filter(|error|!error.is_empty()){anyhow::bail!("{}",error.lossy())}
                 Ok(response.get("reply").cloned())
             }.await;
-            execute.map_err(|error|CommandError{message:error.to_string().into(),code:None,unavailable:false,encoding_error:None})
+            execute.map_err(|error|CommandError{message:error.to_string().into(),code:None,unavailable:false,encoding_error:None,request_id:None})
         }.boxed()
     }
 }

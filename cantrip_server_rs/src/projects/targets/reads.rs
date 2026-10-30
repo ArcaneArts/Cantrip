@@ -161,7 +161,7 @@ fn worker(raw: &Value) -> Result<Value> {
     result["online"] = Value::Bool(chrono::Utc::now().timestamp_millis() - seen <= 30000);
     Ok(result)
 }
-pub(super) fn worktree(raw: &Value, project: &str) -> Result<Value> {
+pub(crate) fn worktree(raw: &Value, project: &str) -> Result<Value> {
     let mut result = mapped(
         raw,
         &[

@@ -169,6 +169,7 @@ async fn deadline_cleans_up_actor_and_late_response_cannot_complete_twice() {
     tokio::time::advance(Duration::from_secs(601)).await;
     let error = result.await.unwrap().unwrap_err();
     assert_eq!(error.code.as_deref(), Some("worker-command-timeout"));
+    assert_eq!(error.request_id.as_deref(), Some(id.as_str()));
     for _ in 0..10 {
         tokio::task::yield_now().await;
     }
@@ -176,6 +177,26 @@ async fn deadline_cleans_up_actor_and_late_response_cannot_complete_twice() {
     bridge.response("worker", &peer, &ok(&id));
     assert_eq!(bridge.stats().succeeded_requests, 0);
     assert_eq!(bridge.stats().failed_requests, 1);
+    bridge.close();
+}
+#[tokio::test(start_paused = true)]
+async fn worker_failure_retains_the_dispatched_request_identity() {
+    let bridge = WorkerBridge::new(Duration::from_secs(15));
+    let (peer, mut rx) = connect(&bridge, identity());
+    assert_eq!(text(&mut rx).await, "ready");
+    let (id, result) = request(&bridge, &mut rx, None).await;
+    bridge.response(
+        "worker",
+        &peer,
+        &Value::from_serialize(&serde_json::json!({
+            "kind":"response", "requestId":id, "ok":false,
+            "error":{"message":"Private worker failure", "code":"project-source-unavailable"}
+        })),
+    );
+    let error = result.await.unwrap().unwrap_err();
+    assert_eq!(error.request_id.as_deref(), Some(id.as_str()));
+    assert_eq!(error.code.as_deref(), Some("project-source-unavailable"));
+    assert_eq!(error.message.as_str(), Some("Private worker failure"));
     bridge.close();
 }
 #[tokio::test(start_paused = true)]
@@ -189,6 +210,7 @@ async fn callback_failure_and_missing_result_preserve_javascript_semantics() {
                 message: JsString::new(vec![0xd800]),
                 code: None,
                 unavailable: false,
+                request_id: None,
                 encoding_error: None,
             })
         })
