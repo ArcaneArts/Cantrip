@@ -1,17 +1,38 @@
 // @vitest-environment jsdom
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { EditorDocumentSession } from "./document-session";
 import { NativeCodeEditor } from "./native-code-editor";
+import { useSyntaxHighlighting } from "./use-syntax-highlighting";
 
 vi.mock("./use-syntax-highlighting", () => ({
-  useSyntaxHighlighting: () => [],
+  useSyntaxHighlighting: vi.fn(() => new Map()),
 }));
 (
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
-afterEach(() => vi.unstubAllGlobals());
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.mocked(useSyntaxHighlighting).mockClear();
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) =>
+    setTimeout(() => callback(performance.now()), 16),
+  );
+  vi.stubGlobal("cancelAnimationFrame", (id: ReturnType<typeof setTimeout>) =>
+    clearTimeout(id),
+  );
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  );
+});
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
 
 it("reports readiness after installing the document into its inert DOM input", async () => {
   vi.stubGlobal(
@@ -76,6 +97,7 @@ it("reports readiness after installing the document into its inert DOM input", a
       input!.scrollLeft = 45;
       input!.dispatchEvent(new Event("scroll", { bubbles: true }));
     });
+    await act(async () => vi.advanceTimersByTimeAsync(160));
     expect(viewChanged).toHaveBeenCalledOnce();
     expect([session.scrollTop, session.scrollLeft]).toEqual([180, 45]);
     await act(async () =>
@@ -99,4 +121,82 @@ it("reports readiness after installing the document into its inert DOM input", a
   } finally {
     await act(async () => root.unmount());
   }
+});
+
+it("tracks scroll paint immediately while coalescing line renders and explorer checkpoints", async () => {
+  const container = document.createElement("div");
+  const root = createRoot(container);
+  const session = new EditorDocumentSession(
+    "large",
+    Array.from({ length: 1000 }, (_, i) => `const value${i} = ${i};`).join(
+      "\n",
+    ),
+    "v1",
+  );
+  const changed = vi.fn();
+  const render = (active = true) =>
+    root.render(
+      <NativeCodeEditor
+        session={session}
+        path="large.ts"
+        active={active}
+        onViewStateChange={changed}
+      />,
+    );
+  try {
+    await act(async () => render());
+    const input = container.querySelector("textarea")!;
+    const renders = vi.mocked(useSyntaxHighlighting).mock.calls.length;
+    await act(async () => {
+      for (let top = 1; top <= 120; top++) {
+        input.scrollTop = top;
+        input.dispatchEvent(new Event("scroll", { bubbles: true }));
+      }
+    });
+    expect(session.scrollTop).toBe(120);
+    expect(
+      container.querySelector<HTMLElement>(".cantrip-editor-code")!.style
+        .transform,
+    ).toBe("translate(0px, -108px)");
+    expect(vi.mocked(useSyntaxHighlighting).mock.calls).toHaveLength(renders);
+    await act(async () => vi.advanceTimersByTimeAsync(16));
+    expect(vi.mocked(useSyntaxHighlighting).mock.calls).toHaveLength(renders);
+    expect(changed).not.toHaveBeenCalled();
+    await act(async () => {
+      for (let top = 800; top <= 900; top++) {
+        input.scrollTop = top;
+        input.dispatchEvent(new Event("scroll", { bubbles: true }));
+      }
+      await vi.advanceTimersByTimeAsync(16);
+    });
+    expect(vi.mocked(useSyntaxHighlighting).mock.calls).toHaveLength(
+      renders + 1,
+    );
+    expect(changed).not.toHaveBeenCalled();
+    await act(async () => vi.advanceTimersByTimeAsync(160));
+    expect(changed).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      input.scrollLeft = 50;
+      input.dispatchEvent(new Event("scroll", { bubbles: true }));
+    });
+    expect(
+      container.querySelector<HTMLElement>(".cantrip-editor-code")!.style
+        .transform,
+    ).toContain("translate(-50px,");
+    await act(async () => render(false));
+    expect(changed).toHaveBeenCalledTimes(2);
+    expect(session.scrollLeft).toBe(50);
+    await act(async () => vi.advanceTimersByTimeAsync(200));
+    expect(changed).toHaveBeenCalledTimes(2);
+    await act(async () => render());
+    await act(async () => {
+      input.scrollTop = 1600;
+      input.dispatchEvent(new Event("scroll", { bubbles: true }));
+    });
+    expect(session.scrollTop).toBe(1600);
+    expect(changed).toHaveBeenCalledTimes(2);
+  } finally {
+    await act(async () => root.unmount());
+  }
+  expect(changed).toHaveBeenCalledTimes(3);
 });

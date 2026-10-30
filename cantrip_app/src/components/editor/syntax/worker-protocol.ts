@@ -38,11 +38,6 @@ export function isCurrentHighlight(
   response: SyntaxResponse,
   documentId: string,
   revision: number,
-  first: number,
 ): boolean {
-  return (
-    response.documentId === documentId &&
-    response.revision === revision &&
-    response.first === first
-  );
+  return response.documentId === documentId && response.revision === revision;
 }

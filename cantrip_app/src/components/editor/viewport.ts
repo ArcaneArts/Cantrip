@@ -49,12 +49,14 @@ export function editorViewport(
   scrollTop: number,
   height: number,
   lineCount: number,
+  blockSize = 1,
 ): { first: number; last: number } {
-  const first = Math.max(
+  const start = Math.max(
     0,
     Math.floor((scrollTop - EDITOR_VERTICAL_PADDING) / EDITOR_LINE_HEIGHT) -
       EDITOR_OVERSCAN,
   );
+  const first = Math.floor(start / blockSize) * blockSize;
   return {
     first,
     last: Math.min(
@@ -62,7 +64,7 @@ export function editorViewport(
       first +
         Math.ceil(Math.max(0, height) / EDITOR_LINE_HEIGHT) +
         EDITOR_OVERSCAN * 2 +
-        1,
+        blockSize,
     ),
   };
 }
