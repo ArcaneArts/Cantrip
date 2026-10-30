@@ -9,7 +9,6 @@ import {
 } from "react";
 import { updateSettings } from "@/lib/api";
 import { clientLogger, operationalErrorMetadata } from "@/lib/client-log-relay";
-import { hasScrolledContent } from "@/lib/scroll-divider";
 import {
   clampSidebarWidth,
   DEFAULT_SIDEBAR_WIDTH,
@@ -27,9 +26,6 @@ export function useShellChromeState({
     useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
   const [sidebarResizing, setSidebarResizing] = useState(false);
-  const [contentScrolled, setContentScrolled] = useState(false);
-  const contentRootRef = useRef<HTMLElement>(null);
-  const scrolledContentRef = useRef(new Set<EventTarget>());
   const sidebarRef = useRef<HTMLElement>(null);
   const sidebarWidthRef = useRef(DEFAULT_SIDEBAR_WIDTH);
   const sidebarResizePointerIdRef = useRef<number | null>(null);
@@ -55,11 +51,7 @@ export function useShellChromeState({
   }, [desktopSidebarDrawerOpen]);
 
   return {
-    contentRootRef,
-    contentScrolled,
     desktopSidebarDrawerOpen,
-    scrolledContentRef,
-    setContentScrolled,
     setDesktopSidebarDrawerOpen,
     setSidebarCollapsed,
     setSidebarResizing,
@@ -93,44 +85,6 @@ export function useSidebarWidthPersistence(queryClient: QueryClient) {
       });
     },
   });
-}
-
-export function useContentScrollChrome({
-  activeContentKey,
-  contentRootRef,
-  isPopout,
-  scrolledContentRef,
-  setContentScrolled,
-}: Pick<
-  ShellChromeState,
-  "contentRootRef" | "scrolledContentRef" | "setContentScrolled"
-> & {
-  activeContentKey: string;
-  isPopout: boolean;
-}) {
-  useEffect(() => {
-    scrolledContentRef.current.clear();
-    setContentScrolled(false);
-  }, [activeContentKey, scrolledContentRef, setContentScrolled]);
-  useEffect(() => {
-    const root = contentRootRef.current;
-    if (!root || isPopout) return;
-    const update = (event: Event) => {
-      const target = event.target;
-      if (!(target instanceof Node) || !root.contains(target)) return;
-      const scrolled = scrolledContentRef.current;
-      for (const candidate of scrolled) {
-        if (!(candidate instanceof Node) || !root.contains(candidate)) {
-          scrolled.delete(candidate);
-        }
-      }
-      if (hasScrolledContent(target)) scrolled.add(target);
-      else scrolled.delete(target);
-      setContentScrolled(scrolled.size > 0);
-    };
-    root.addEventListener("scroll", update, true);
-    return () => root.removeEventListener("scroll", update, true);
-  }, [contentRootRef, isPopout, scrolledContentRef, setContentScrolled]);
 }
 
 export function useSidebarResizeController({

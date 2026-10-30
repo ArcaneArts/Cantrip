@@ -1,4 +1,5 @@
 import { PanelToolbar } from "@/components/workspace/panel-toolbar";
+import { usePanelScrollDivider } from "@/lib/use-panel-scroll-divider";
 import { useEditorQuit } from "./use-editor-quit";
 import {
   ExplorerFileCloseButton,
@@ -1751,8 +1752,14 @@ export function ExplorerView({
     openEntry(explorerFileEntryForGraphPath(path));
   };
 
+  const panelScrollRef = usePanelScrollDivider(
+    `${nativeDocumentId ?? selectedPath ?? ""}:${fileMode}`,
+    active && showToolbar && Boolean(selectedPath) && !graphVisible,
+  );
   return (
     <div
+      ref={panelScrollRef}
+      data-panel-scroll-root=""
       aria-hidden={!active}
       inert={
         active && !transferSuspended && !transferInstalling ? undefined : true
@@ -1765,7 +1772,10 @@ export function ExplorerView({
       data-slot="explorer-view"
     >
       {showToolbar ? (
-        <PanelToolbar aria-label="File controls">
+        <PanelToolbar
+          aria-label="File controls"
+          scrollDivider={Boolean(selectedPath) && !graphVisible}
+        >
           <span
             className="min-w-0 flex-1 truncate text-muted-foreground"
             title={

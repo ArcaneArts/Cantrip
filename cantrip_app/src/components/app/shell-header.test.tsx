@@ -23,6 +23,7 @@ describe("file document header", () => {
               appMode: "ide",
               showContentTitlebar: true,
               isPopout,
+              contentScrolled: true,
               selectedFileDocument: { path: "src/lib.rs" },
               explorerDisplayPath: "/checkouts/feature/src/lib.rs",
             }}
@@ -32,6 +33,7 @@ describe("file document header", () => {
       expect(markup).toContain("lib.rs");
       expect(markup).not.toContain("/checkouts/feature/src/lib.rs");
       expect(markup).not.toContain("src/lib.rs");
+      expect(markup).not.toContain("bg-border transition-opacity");
       expect(markup).not.toContain(">Cantrip<");
     },
   );
