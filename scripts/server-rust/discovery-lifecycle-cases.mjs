@@ -344,10 +344,22 @@ export async function discoveryLifecycleCases({
     await resumedLive.initialized();
     await resumedLive.subscribed("discovery lifecycle recovery", [currentUser]);
     await connectWorker();
+    const recoverySnapshots = (fixture.discoveryRecoverySnapshots = []);
     const resumed = await until(
-      () => read(scanUrl(ids[4])),
-      (snapshot) =>
-        assert.equal(snapshot.candidates[0].importState, "imported"),
+      async () => {
+        const snapshot = await read(scanUrl(ids[4]));
+        recoverySnapshots.push(fixture.normalize(snapshot));
+        return snapshot;
+      },
+      (snapshot) => {
+        // Both implementations read the job and candidates in separate queries.
+        // A completion can commit between those reads. Wait for the complete
+        // expected state; the final revision and ordered Live assertions remain.
+        assert.equal(snapshot.candidates[0].importState, "imported");
+        assert.equal(snapshot.job.stateRevision, 12);
+        assert.equal(snapshot.candidates[0].importAttempt, 3);
+        assert.equal(snapshot.candidates[0].projectId, projects[1]);
+      },
     );
     assert.equal(resumed.job.stateRevision, 12);
     assert.equal(resumed.candidates[0].importAttempt, 3);

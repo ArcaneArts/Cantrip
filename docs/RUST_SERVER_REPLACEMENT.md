@@ -12,6 +12,56 @@ feature set.
 
 Status: **implementation in progress; not a deployable replacement**.
 
+## Platform recovery observations and PostgreSQL 16 transfer
+
+PR #2361 platform run `41129609392` exposed two observation races. The macOS
+external-PostgreSQL discovery check read an imported candidate with parent
+revision 11 and returned before asserting the required revision 12. Both
+production implementations read the job and candidates through separate queries,
+so a completion can commit between those reads. The recovery poll now waits for
+all expected fields together and retains each raw snapshot. Exact final revisions
+and ordered recovery events still have their original assertions.
+
+The Windows external-PostgreSQL terminal report shows the startup reconciliation
+command arriving after service creation and enabling, producing an extra terminal
+invalidation during the later restart check. The fixture now observes the actual
+empty startup reconciliation before creating the service. It keeps exact event
+counts, order, scope and payload checks, and retains raw Live traces and failed
+fixture roots for diagnosis.
+
+PR #2362 Linux migration run `41138651367` reached the native storage contracts,
+then PostgreSQL 16 rejected pg_dump 18's generated `transaction_timeout` setting.
+An isolated PostgreSQL 16.15 container reproduced that error. The bounded exporter
+now adapts only the generated leading prelude: it attempts the real setting in a
+DO block and tolerates only an absent setting. Permission errors and other SQL
+failures still propagate. Function bodies and exported multiline values are never
+searched or rewritten. PostgreSQL's [cross-version dump notes](https://www.postgresql.org/docs/18/app-pgdump.html#APP-PGDUMP-NOTES)
+explain why older destinations can require SQL adaptation.
+
+Local current and genuine 233-migration transfers pass into PostgreSQL 16.15,
+native PGlite 17.5 and private PostgreSQL 17.9 with identical 115-table snapshots
+and four sequence states. The fixture includes a multiline row containing the
+same setting text to verify that data remains unchanged. The optional test-only
+`--postgres-url` creates isolated random databases on a supplied PostgreSQL test
+server and removes only those databases afterward. These backend results do not
+prove the Rust executable's Linux or Windows acceptance.
+
+The local discovery lifecycle suite passes on all three stores and all three auth
+modes; terminal HTTP/Live passes on all three stores and both auth modes. A retained
+PostgreSQL recovery trace actually includes `(revision 11, imported)` followed by
+`(revision 12, imported)`. Current and historical transfer interruption checks also
+pass on all stores. The original Windows migration job passes with SQL-written
+SIGKILL witnesses and successful retries; the follow-up head still needs CI results.
+
+The broad repository check ran and failed with 21 source-server test failures,
+1,628 passing and 71 skipped under concurrent validation. Sequential reruns of all
+16 failing files on both clean baseline and this branch each pass 49 tests and
+reproduce only the existing provider-routing assertion in
+`local-foundation.test.ts:7218`. No deadlines or assertions were changed, and this
+does not make the broad check green. The local startup stalls were separately
+sampled in tsx disk-cache eviction before application entry; the reruns disable
+that shared cache without deleting it.
+
 ## Removed plaintext GitHub catalog
 
 The root Node request policy disables every `/api/github/` route, including the
