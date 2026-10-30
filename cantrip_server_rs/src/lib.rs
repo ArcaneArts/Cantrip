@@ -3,6 +3,7 @@ pub mod browsers;
 pub mod chats;
 pub mod config;
 pub mod database;
+pub mod database_transfer;
 pub mod direct_attachments;
 pub mod encryption;
 mod environment;
