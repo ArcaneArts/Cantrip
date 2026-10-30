@@ -56,6 +56,7 @@ mod worker_links;
 mod worker_maintenance;
 mod worker_socket;
 mod workers;
+mod workspace_layouts;
 
 fn timestamp() -> String {
     Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
@@ -138,6 +139,7 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(projects::routes())
         .merge(folders::routes())
         .merge(file_documents::routes())
+        .merge(workspace_layouts::routes())
         .merge(repository_operations::routes())
         .merge(settings::routes())
         .merge(terminals::routes())

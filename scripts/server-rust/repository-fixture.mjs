@@ -57,6 +57,7 @@ export async function repositoryFixture({
     waiting.clear();
   });
   return {
+    diagnostics: () => server.diagnostics(),
     async request(operation) {
       const id = sequence++;
       return new Promise((resolve, reject) => {

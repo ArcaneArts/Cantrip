@@ -13,6 +13,7 @@ import { projectShareWireFixtures } from "./project-share-wire-fixtures.mjs";
 import { fileDocumentWireFixtures } from "./file-document-wire-fixtures.mjs";
 import { tunnelWireFixtures } from "./tunnel-wire-fixtures.mjs";
 import { workspaceWireFixtures } from "./workspace-wire-fixtures.mjs";
+import { workspaceLayoutWireFixtures } from "./workspace-layout-wire-fixtures.mjs";
 import { workerLinkWireFixtures } from "./worker-link-wire-fixtures.mjs";
 import { directAttachmentWireFixtures } from "./direct-attachment-wire-fixtures.mjs";
 
@@ -663,6 +664,7 @@ export const securityFixtures = {
   ...fileDocumentWireFixtures(),
   ...tunnelWireFixtures,
   ...workspaceWireFixtures(),
+  ...workspaceLayoutWireFixtures(projectLabel),
   ...workerLinkWireFixtures,
   ...directAttachmentWireFixtures,
   workerRequestEnvelopeSchema: [

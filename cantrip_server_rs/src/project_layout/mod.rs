@@ -6,6 +6,7 @@ use crate::{
     wire::Value,
 };
 use anyhow::{Context, Result, ensure};
+pub(crate) use center::{leaf_ids, remove as remove_center_pane};
 pub use detach::{detach_resource, detach_terminal};
 
 pub async fn next_position(database: &Database, project: &str) -> Result<i64> {

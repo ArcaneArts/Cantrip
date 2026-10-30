@@ -26,4 +26,5 @@ pub mod usage;
 pub mod wire;
 pub mod worker_links;
 pub mod workers;
+pub mod workspace_layouts;
 pub mod workspaces;

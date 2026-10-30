@@ -16,6 +16,9 @@ pub(super) fn apply(
     if super::workspaces::refine(tag, result, path)? {
         return Ok(());
     }
+    if super::project_tabs::refine(tag, result, path)? {
+        return Ok(());
+    }
     if super::terminals::refine(tag, result, path, message)? {
         return Ok(());
     }
@@ -56,6 +59,11 @@ pub(super) fn apply(
     }
     let wrapper = &value["passwordWrappedMasterKey"];
     match tag {
+        "workspace-receipt" => {
+            if value["appliedRevision"].as_f64() > value["layout"]["revision"].as_f64() {
+                custom(&[], "Receipt is newer than its layout");
+            }
+        }
         "tunnel-create-operation" => {
             if value["id"] != value["protectedRecord"]["operationId"] {
                 custom(
