@@ -1,6 +1,7 @@
 # Conversations sidebar implementation plan
 
-Status: **implementation in progress; the complete feature is not yet delivered**.
+Status: **implementation and acceptance coverage complete**. Validation evidence
+and the remaining unrelated baseline-check limitation are recorded below.
 
 Prepared on 2026-10-30 against `64bbf0148` on `main`. In the current workspace
 ownership model, rail middle-click already closes a view without archiving its
@@ -297,7 +298,7 @@ address uncertain Fork outcomes and placement pending state, and assess the
 remaining Live/concurrent-update and failure cases against their actual tests.
 No full-feature acceptance checkbox is marked complete.
 
-### Mutation recovery audit cycle (in progress)
+### Mutation recovery audit cycle (merged)
 
 PR [#2344](https://github.com/ArcaneArts/Cantrip/pull/2344) squash-merged as
 `3826bd015`. Primary was synchronized cleanly and the acceptance worktree was
@@ -369,8 +370,88 @@ passing and 10 failing across six files. Besides the two known baseline
 assertions, failures remain in settings-loader, permission-queue, replica-job,
 and workspace-name initialization tests. Serial execution did not resolve
 them. Both runs remain failed and their timing failures require further audit;
-they are not attributed to host contention as a proven cause. PR delivery and the final acceptance
-audit remain outstanding.
+they are not attributed to host contention as a proven cause.
+
+PR [#2345](https://github.com/ArcaneArts/Cantrip/pull/2345) squash-merged as
+`76d66e25c`. Clean Primary was synchronized and that cycle's worktree removed.
+The final acceptance audit continues in `codex/conversations-final-audit`.
+
+### Final acceptance audit
+
+The reconnect fixture in `terminal-managed-session.test.ts` lacked the bound
+route repository lookup and assigned an account to an OpenAI-compatible route,
+which does not support account binding. The fixture now supplies the lookup and
+uses a valid account-free runtime. The test additionally verifies the exact
+bound-route lookup and that reconnect never invokes fresh runtime selection.
+All eight managed-session tests pass. Together with unchanged settings-loader
+and workspace-name suites, the focused run passes 11 tests. A second serial run
+passes all 11 permission-queue and replica-job tests, but still fails the
+provider-account assertion in `local-foundation.test.ts:7218`. These focused
+results do not turn the earlier broad check into a pass. No timeouts or product
+assertions were relaxed. The remaining account-selection failure expects automatic turn-time account
+reselection. The eager managed-preparation and explicit provider-transfer
+contracts in `CODEX_AUDIT.md` (passes 42–43) instead bind the native session's
+route/account. The test reproduces on the pre-feature baseline; no provider
+routing behavior or assertion is changed to hide it in this sidebar cycle.
+
+PR #2345's Linux App API, native contracts, and server behavior checks and
+Windows App API and native contracts checks were observed successful. All nine jobs subsequently completed successfully, including the
+remaining macOS and Windows jobs.
+
+The shutdown audit found that Agent view lifecycles were not registered with
+the desktop quit coordinator. Three new regressions failed before the repair:
+quit did not wait for a pending protected checkpoint, did not reject a failed
+checkpoint, and did not revoke readiness on owner removal. Both direct and rail
+Agent views now participate through their existing session-fenced lifecycle.
+The coordinator awaits actual draft writes, resumes the view after failure or
+cancellation, and never retires or interrupts execution. All 27 focused quit,
+transfer, and window-recovery tests pass. The extended browser recovery run also passes with a real mounted composer:
+a held encrypted write keeps quit pending; a rejected write leaves the draft
+editable; retry followed by reload restores the final text. Earlier lost-reply,
+catalog-error, fork and multiple-direct scenarios still pass. This exercises
+the same coordinator used by native quit; native IPC acknowledgments are tested
+separately by `desktop-quit.test.ts`, rather than claiming the browser exited a
+native process. The final full app suite passes 4,006 tests with three skipped
+across 568 files. The production app build, including TypeScript checking,
+passes. Application decomposition (189 files), large-file checks,
+changed-file formatting and `git diff --check` pass.
+
+The scale harness now records five End/Home keyboard round trips and page-open
+latency for 10 and 1,000 active rows, alongside catalog request counts and
+mounted rows. Its first current-worktree attempt failed because the worker
+could not find a built CLI. That fixture shut down without survivors; the CLI
+was built successfully before starting the next attempt. The subsequent run
+passes on the current paging implementation: 20 small-list rows versus 28
+large-list rows mounted; two initial catalog requests versus 40 requests for
+both complete 1,000-row catalogs, with no transcript requests. Five End/Home
+round trips had median times of 16.6 ms for 10 active rows and 16.5 ms for 1,000.
+Opening Conversations took 204.6 ms and 578.3 ms respectively on this host.
+These are measured observations, not cross-device performance guarantees.
+Seeding took 194.0 seconds and is separate from interaction latency. All 1,000
+active IDs remained unique and complete through the 20-page Live refresh,
+retaining focus and the same pixel anchor. The worker/server stopped with no
+survivors.
+
+### Acceptance evidence map
+
+This map identifies concrete coverage for every item in the final checklist.
+Feature acceptance is separate from a claim that the unrelated legacy
+provider-account baseline test or the entire repository check passes.
+
+| Requirement                                          | Evidence                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Files/Conversations, preserved file edits and scroll | `project-sidebar-pages.test.tsx` exercises keyboard switching, retained mounted editor content and delayed file scroll restoration; `use-project-sidebar-page.test.tsx` checks installation/account/server/project scope; file-tree source has no `filesCollapsed` heading behavior.                                                                                                                          |
+| Complete Agent-only MRU catalog                      | `chat-archive-api.test.ts` checks owner isolation, bounded complete paging, stale/replayed usage receipts, status changes without reordering, restored recency and Task exclusion; `conversation-catalog-migration.test.ts` checks legacy usage and unchanged archive deadlines.                                                                                                                              |
+| Resource-only creation and direct rendering          | `project-conversation-list.test.tsx` checks offline opening, existing-window focus, immutable uncertain creation retry and stale sidebar callbacks. Browser `recovery.create` proves one committed chat/view after a lost response.                                                                                                                                                                           |
+| Multiple direct chats alongside file/tool tabs       | Browser `recovery.multiple-direct` switches two protected drafts before/after reload with unchanged file rail IDs. Direct content uses the ordinary Agent renderer and local controls.                                                                                                                                                                                                                        |
+| One view and rail placement                          | `workspace-conversation-views.test.ts` covers direct/rail conversion, selection, empty/populated panes, occupied return slots and inactive whole-pane transfer. `workspace-dnd-model.test.ts` checks all regions, exact insertion, canceled and cross-project drops. Real placement harness exercises pointer drops and view-only middle-click on all three rails.                                            |
+| Multiwindow ownership                                | Native macOS detach/return retained the protected draft and sibling file and closed the retired source window. `workspace-conversation-handoff.test.ts` checks protected acknowledgment, duplicate/coalesced requests, source failure and disposal.                                                                                                                                                           |
+| Running/approval rail closure                        | `project-tab-bar.test.tsx` and `project-workspace-frame-dock-rail.test.tsx` verify close-only behavior for running and approval-waiting Agents on all rails; the real placement harness verifies draft retention after reopening.                                                                                                                                                                             |
+| Sidebar archive, restore and deletion                | `conversation-archive-interaction.test.tsx` exercises middle-click, Stop and Archive confirmation, keyboard menus, focus recovery, inert archived middle-click and permanent-delete confirmation. `use-conversation-lifecycle.test.tsx` checks checkpoint failure, session changes, unknown outcomes and per-chat concurrency. Browser mobile and recovery scenarios verify actual resource/layout mutations. |
+| Archive persistence and compatibility                | Archive API tests retain empty/populated chats, reject executing/foreign archives and stale deletion after restore, preserve resource-only restoration, and test expiry. Workspace API tests remove direct ownership and in-flight transfers atomically. Settings retains Task archives and redirects Agent recovery to the inline section.                                                                   |
+| Reload, recovery, session fences                     | Browser recovery results prove lost create/archive/restore/fork replies, failed catalog reads and two independent drafts after reload. Workspace client tests retain uncertain commands and reject stale session/renderer observations. Window recovery tests include a detached direct view without rail tabs. Shutdown validation is recorded above.                                                        |
+| Accessibility/mobile                                 | Component tests exercise tab arrows, Shift+F10 menus, archive/restore/delete focus and virtual-row keyboard navigation. The 390×844 touch-browser run exercises direct creation/reload, placement menus on all rails, restore without placement, deletion cancellation/confirmation and independent desktop workspace state. Physical iOS/Android devices and screen-reader audio were not exercised.         |
+| Privacy and parity                                   | Catalog APIs carry encrypted summaries; migration stores operational usage metadata only. Existing protocol, Rust contract/model and HTTP/database compatibility results are recorded per cycle. Protected draft/history use the shared Agent lifecycle, with no transcript in layout or drag payloads.                                                                                                       |
 
 ## Product outcome
 
@@ -518,7 +599,9 @@ activity. After migration, only the defined usage events change recency.
 
 ## Existing implementation and required changes
 
-The following are current source observations, not proposed new behavior.
+The following table records the planning baseline before the implementation
+cycles above. It is retained to explain the required changes, not to describe
+the current implementation.
 
 | Area                 | Current implementation                                                                                                                                                                                                                    | Required change                                                                                       |
 | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
@@ -919,27 +1002,27 @@ and `git diff --check`, not a claim that the feature has passed runtime tests.
 
 ## Acceptance checklist
 
-- [ ] Files is a page of the Files/Conversations switcher; the old heading
+- [x] Files is a page of the Files/Conversations switcher; the old heading
       collapse behavior is gone and normal directory collapse still works.
-- [ ] Every active Agent in the selected project is reachable in most-recent-use
+- [x] Every active Agent in the selected project is reachable in most-recent-use
       order, with no Task or standalone Chat entries.
-- [ ] `+` creates a usable sidebar conversation without creating a rail tab or
+- [x] `+` creates a usable sidebar conversation without creating a rail tab or
       legacy placement, including after reload and uncertain creation replies.
-- [ ] Multiple conversations can be used directly while file/tool tabs remain
+- [x] Multiple conversations can be used directly while file/tool tabs remain
       in the top rail; all Agent controls and protected drafts still work.
-- [ ] A chat remains listed while open in top, right, bottom, or another local
+- [x] A chat remains listed while open in top, right, bottom, or another local
       window, and clicking it focuses the existing view.
-- [ ] Dragging an active row to any rail places or moves exactly one view,
+- [x] Dragging an active row to any rail places or moves exactly one view,
       preserving the chat, history, draft, and indicated destination.
-- [ ] Middle-clicking any Agent rail tab only hides its view; it neither archives
+- [x] Middle-clicking any Agent rail tab only hides its view; it neither archives
       nor interrupts the chat, including a running or approval-waiting chat.
-- [ ] Middle-clicking an active sidebar row archives it into the section below;
+- [x] Middle-clicking an active sidebar row archives it into the section below;
       empty chats are recoverable and running chats use Stop and Archive.
-- [ ] Archived `...` menus expose Restore and Permanently Delete on mouse,
+- [x] Archived `...` menus expose Restore and Permanently Delete on mouse,
       keyboard, and touch; restore never creates a tab and deletion confirms.
-- [ ] Old archived Agents are visible in the sidebar with their original
+- [x] Old archived Agents are visible in the sidebar with their original
       retention deadlines; archived Tasks remain accessible in Settings.
-- [ ] Direct views survive reload, project/page switches, native transfer, and
+- [x] Direct views survive reload, project/page switches, native transfer, and
       concurrent mutations without duplicated ownership or lost drafts.
-- [ ] Paging, Live updates, offline errors, accessibility, and desktop/mobile
+- [x] Paging, Live updates, offline errors, accessibility, and desktop/mobile
       workspace independence have recorded acceptance evidence.

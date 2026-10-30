@@ -70,6 +70,7 @@ import { desktopExplorerFileSearch as qaFileSearch, desktopStandaloneChatFileSea
 import { createStandaloneChat as qaCreateChat } from '@/lib/api/chats';
 import { createChat as qaCreateProjectChat } from '@/lib/api/chats';
 import { prepareConversationCreation as qaPrepareConversation, archiveAgentConversation as qaArchiveConversation, recordConversationUsage as qaUseConversation } from '@/lib/api/conversations';
+import { desktopQuitCoordinator as qaQuit } from '@/lib/desktop-quit-coordinator';
 import { clearClientSession as qaClearSession } from '@/lib/client-session';
 import { getClientSessionIdentitySnapshot as qaIdentity } from '@/lib/client-session';
 import { readWorkspaceDeviceIdentity as qaWorkspaceIdentity } from '@/lib/workspace-device-identity';
@@ -156,6 +157,8 @@ if (import.meta.env.VITE_CANTRIP_CODE_MIGRATION_QA === 'true') {
   void import('@tauri-apps/api/window').then(({getCurrentWindow}) => {if (getCurrentWindow().label === 'main') document.body.append(button);});
 }
 globalThis.__qaRepositoryFixture = {
+  prepareQuit(id) { return qaQuit.prepare(id); },
+  cancelQuit(id) { qaQuit.cancel(id); },
   async useConversation(id) { return qaUseConversation(id, {clientId: crypto.randomUUID(), operationId: crypto.randomUUID(), sequence: 1}); },
   async seedConversations(active, archived) {
     const result = {active: [], archived: []};

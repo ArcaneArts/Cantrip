@@ -1,4 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
+import { desktopQuitCoordinator } from "@/lib/desktop-quit-coordinator";
 import type { ChatTransferLifecycle, ChatViewState } from "./chat-view-state";
 
 const session = vi.hoisted(() => ({
@@ -33,6 +34,7 @@ function register(actions = lifecycle()) {
   return getChatTransferLifecycle(owner)!;
 }
 afterEach(() => {
+  desktopQuitCoordinator.cancel(91);
   for (const cleanup of cleanups.splice(0)) cleanup();
   session.authenticated = true;
   session.generation++;
@@ -88,4 +90,62 @@ it("does not register a renderer without an authenticated session", () => {
   session.authenticated = false;
   expect(register()).toBeUndefined();
   expect(session.listeners.size).toBe(0);
+});
+
+it("waits for a direct view checkpoint before allowing quit and resumes it on cancellation", async () => {
+  let finish!: (state: ChatViewState) => void;
+  const resume = vi.fn();
+  const actions = {
+    ...lifecycle(),
+    suspendTransfer: vi.fn(() => resume),
+    captureTransfer: vi.fn(
+      () =>
+        new Promise<ChatViewState>((resolve) => {
+          finish = resolve;
+        }),
+    ),
+  };
+  register(actions);
+  let prepared = false;
+  const quitting = desktopQuitCoordinator.prepare(91).then(() => {
+    prepared = true;
+  });
+  await Promise.resolve();
+  expect(actions.suspendTransfer).toHaveBeenCalledOnce();
+  expect(actions.captureTransfer).toHaveBeenCalledOnce();
+  expect(prepared).toBe(false);
+  finish({ version: 1 } as ChatViewState);
+  await quitting;
+  expect(prepared).toBe(true);
+  expect(resume).not.toHaveBeenCalled();
+  expect(actions.retireTransfer).not.toHaveBeenCalled();
+  desktopQuitCoordinator.cancel(91);
+  expect(resume).toHaveBeenCalledOnce();
+});
+
+it("rejects quit on a failed chat checkpoint without retiring the view", async () => {
+  const resume = vi.fn();
+  const actions = {
+    ...lifecycle(),
+    suspendTransfer: vi.fn(() => resume),
+    captureTransfer: vi
+      .fn()
+      .mockRejectedValue(new Error("protected draft write failed")),
+  };
+  const handle = register(actions);
+  await expect(desktopQuitCoordinator.prepare(91)).rejects.toThrow(
+    "protected draft write failed",
+  );
+  expect(resume).toHaveBeenCalledOnce();
+  expect(actions.retireTransfer).not.toHaveBeenCalled();
+  expect(getChatTransferLifecycle(owner)).toBe(handle);
+});
+
+it("revokes prepared quit when the conversation owner unmounts", async () => {
+  register();
+  const invalidate = vi.fn();
+  await desktopQuitCoordinator.prepare(91, invalidate);
+  cleanups.pop()!();
+  expect(invalidate).toHaveBeenCalledOnce();
+  expect(getChatTransferLifecycle(owner)).toBeUndefined();
 });
