@@ -3484,6 +3484,13 @@ export class CodexAppServer implements CodexRuntime {
       "cwd" | "executionProfile" | "model" | "provider" | "threadId"
     > & { threadId: string; subagentDefaults?: RuntimeSubagentDefaults | null },
   ): Promise<AgentThreadSync> {
+    // A read follows the already connected owner. Projected route/provider
+    // metadata can change without changing that thread's running process.
+    const observed = await this.observeThread({
+      cwd: options.cwd,
+      threadId: options.threadId,
+    });
+    if (observed) return observed;
     await this.ensureStarted(
       options.model,
       options.provider,
