@@ -725,11 +725,15 @@ export function GitHistoryView({
   const branchesOpen = activeDrawer?.kind === "branches";
   const repositoryOpen = activeDrawer?.kind === "repository";
   const operationsOpen = activeDrawer?.kind === "operations";
-  const drawerOpen = activeDrawer !== null;
-  const presentedActiveDrawer = activeDrawer ?? presentedDrawer;
+  const activeToolDrawer =
+    activeDrawer?.kind === "commit" ? null : activeDrawer;
+  const drawerOpen = activeToolDrawer !== null;
+  const presentedActiveDrawer = activeToolDrawer ?? presentedDrawer;
 
   useEffect(() => {
-    if (activeDrawer) setPresentedDrawer(activeDrawer);
+    if (activeDrawer && activeDrawer.kind !== "commit") {
+      setPresentedDrawer(activeDrawer);
+    }
   }, [activeDrawer]);
 
   const applyHistoryFilters = useCallback((next: Partial<GitHistoryFilter>) => {
@@ -741,7 +745,7 @@ export function GitHistoryView({
     });
   }, []);
 
-  const openCommitDrawer = (revision: string) => {
+  const openCommitDialog = (revision: string) => {
     setActiveDrawer({ kind: "commit", revision });
   };
   const openToolDrawer = (kind: GitHistoryToolDrawer) => {
@@ -1517,24 +1521,6 @@ export function GitHistoryView({
           </aside>
         )
       ) : null}
-      {drawer.kind === "commit" ? (
-        <GitCommitInspector
-          currentHead={status?.head ?? null}
-          githubUrl={project.github?.url ?? null}
-          projectId={project.id}
-          worktreeId={worktreeId}
-          revision={drawer.revision}
-          onClose={closeDrawer}
-          onOpenFile={(path) => onOpenGraphFile(worktreeId, path)}
-          onNavigate={openCommitDrawer}
-          onFilter={(filters) => {
-            applyHistoryFilters(filters);
-            closeDrawer();
-          }}
-          onViewInGraph={showCommitInGraph}
-          onAction={setCommitActionRequest}
-        />
-      ) : null}
       {drawer.kind === "compare" ? (
         <GitComparisonPanel
           projectId={project.id}
@@ -1865,7 +1851,7 @@ export function GitHistoryView({
           worktreeId={worktreeId}
           onActivateFile={(path) => onOpenGraphFile(worktreeId, path)}
           onClearCommit={() => setGraphRevision(null)}
-          onOpenCommit={openCommitDrawer}
+          onOpenCommit={openCommitDialog}
           onStatusChange={setGraphStatus}
         />
       ) : section === "actions" ? (
@@ -2165,14 +2151,14 @@ export function GitHistoryView({
                         onClick={(event) => {
                           if ((event.target as Element).closest("button"))
                             return;
-                          openCommitDrawer(row.commit.hash);
+                          openCommitDialog(row.commit.hash);
                         }}
                         onKeyDown={(event) => {
                           if (event.target !== event.currentTarget) return;
                           if (event.key !== "Enter" && event.key !== " ")
                             return;
                           event.preventDefault();
-                          openCommitDrawer(row.commit.hash);
+                          openCommitDialog(row.commit.hash);
                         }}
                       >
                         <div className="relative h-full min-w-0 overflow-hidden md:h-8 md:overflow-visible">
@@ -2432,15 +2418,39 @@ export function GitHistoryView({
               shellDataSlot="git-history-drawer-shell"
               storageKey={GIT_HISTORY_DRAWER_WIDTH_STORAGE_KEY}
               surfaceClassName="bg-background [&>aside]:!relative [&>aside]:!inset-auto [&>aside]:!z-auto [&>aside]:!h-full [&>aside]:!w-full [&>aside]:!max-w-none [&>aside]:!border-l-0 [&>aside]:!shadow-none"
-              surfaceData={{ "data-kind": activeDrawer?.kind }}
+              surfaceData={{ "data-kind": activeToolDrawer?.kind }}
               surfaceDataSlot="git-history-drawer"
               title="Drag to resize Git details drawer"
             >
-              {activeDrawer ? renderDrawerContent(activeDrawer) : null}
+              {activeToolDrawer ? renderDrawerContent(activeToolDrawer) : null}
             </ResizablePanel>
           )}
         </GitContentSurface>
       )}
+
+      {navigationActive &&
+      (section === "history" || section === "graph") &&
+      selectedCommit ? (
+        <GitCommitInspector
+          currentHead={status?.head ?? null}
+          githubUrl={project.github?.url ?? null}
+          projectId={project.id}
+          worktreeId={worktreeId}
+          revision={selectedCommit}
+          onClose={closeDrawer}
+          onOpenFile={(path) => {
+            closeDrawer();
+            onOpenGraphFile(worktreeId, path);
+          }}
+          onNavigate={openCommitDialog}
+          onFilter={(filters) => {
+            applyHistoryFilters(filters);
+            closeDrawer();
+          }}
+          onViewInGraph={showCommitInGraph}
+          onAction={setCommitActionRequest}
+        />
+      ) : null}
 
       <GitCommitActionDialog
         projectId={project.id}
@@ -2617,7 +2627,7 @@ export function GitHistoryView({
         worktreeId={worktreeId}
         onOpenFile={(path) => onOpenGraphFile(worktreeId, path)}
         onOpenCommit={(revision) => {
-          openCommitDrawer(revision);
+          openCommitDialog(revision);
         }}
       />
       <GitCommitSearchDialog
@@ -2626,7 +2636,7 @@ export function GitHistoryView({
         projectId={project.id}
         worktreeId={worktreeId}
         onOpenCommit={(revision) => {
-          openCommitDrawer(revision);
+          openCommitDialog(revision);
         }}
         onUseFilters={(filters) =>
           setHistoryOptions((current) => ({ ...current, filters }))

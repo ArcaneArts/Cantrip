@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import type {
   GitBranchList,
+  GitCommitDetail,
   GitHistory,
   GitStatus,
   ProjectSummary,
@@ -13,11 +14,22 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import * as api from "@/lib/api";
+import { useCompactLayout } from "@/lib/use-compact-layout";
 import { GitHistoryView, type GitHistoryHeaderState } from "./git-history";
 
 vi.mock("@/lib/api", async (original) => ({
   ...(await original<typeof import("@/lib/api")>()),
   getProjectWorktreeHistory: vi.fn(async () => history),
+  getProjectWorktreeCommit: vi.fn(async (_project, _worktree, revision) =>
+    commitDetail(revision),
+  ),
+  getProjectWorktreeCommitSignature: vi.fn(async () => null),
+  getProjectWorktreeRevisionDiff: vi.fn(async () => ({
+    patch:
+      "diff --git a/src/main.ts b/src/main.ts\n--- a/src/main.ts\n+++ b/src/main.ts\n@@ -1 +1 @@\n-old\n+new\n",
+    binary: false,
+    truncated: false,
+  })),
   getProjectWorktreeGitOperation: vi.fn(async () => ({ operation: null })),
   getProjectWorktreeBranches: vi.fn(async () => inventory),
   reconcileProjectWorktrees: vi.fn(async () => [primary]),
@@ -30,7 +42,7 @@ vi.mock("@/lib/api", async (original) => ({
 }));
 vi.mock("@/lib/app-live-react", () => ({ useAppLiveStatus: () => "live" }));
 vi.mock("@/lib/use-compact-layout", () => ({
-  useCompactLayout: () => false,
+  useCompactLayout: vi.fn(() => false),
   useNarrowViewport: () => false,
 }));
 const head = "a".repeat(40);
@@ -86,6 +98,38 @@ const history: GitHistory = {
     },
   ],
 };
+const parent = "b".repeat(40);
+function commitDetail(revision: string): GitCommitDetail {
+  return {
+    hash: revision,
+    shortHash: revision.slice(0, 7),
+    subject: revision === head ? history.commits[0]!.subject : "Parent commit",
+    message: "Full commit message",
+    messageTruncated: false,
+    parents: revision === head ? [parent] : [],
+    children: revision === head ? [] : [head],
+    parentIndex: revision === head ? 0 : null,
+    baseHash: revision === head ? parent : null,
+    author: { name: "QA", email: "qa@example.invalid", date },
+    committer: { name: "QA", email: "qa@example.invalid", date },
+    signature: null,
+    refs: [],
+    files: [
+      {
+        path: "src/main.ts",
+        originalPath: null,
+        status: "modified",
+        additions: 1,
+        deletions: 1,
+        binary: false,
+      },
+    ],
+    filesTruncated: false,
+    filesChanged: 1,
+    additions: 1,
+    deletions: 1,
+  };
+}
 const inventory: GitBranchList = {
   currentBranch: "main",
   head,
@@ -158,6 +202,7 @@ let header: GitHistoryHeaderState | null;
 const select = vi.fn();
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(useCompactLayout).mockReturnValue(false);
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal(
     "ResizeObserver",
@@ -479,5 +524,95 @@ describe("History managed-worktree capabilities", () => {
         'input[placeholder="origin/main"]',
       )!.value,
     ).toBe("refs/heads/main");
+  });
+});
+
+async function openCommit() {
+  const row = container.querySelector<HTMLElement>(
+    `[role="button"][title^="${history.commits[0]!.subject}"]`,
+  )!;
+  expect(row).not.toBeNull();
+  await act(async () => {
+    row.focus();
+    row.click();
+  });
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  return row;
+}
+
+describe("History commit dialog", () => {
+  it.each([false, true])(
+    "opens outside the History pane, navigates revisions, and restores focus on Escape (compact=%s)",
+    async (compact) => {
+      vi.mocked(useCompactLayout).mockReturnValue(compact);
+      await mount(true);
+      const row = await openCommit();
+      expect(dialogs()).toHaveLength(1);
+      const dialog = dialogs()[0]!;
+      expect(container.contains(dialog)).toBe(false);
+      expect(dialog.textContent).toContain("Full commit message");
+      expect(
+        container
+          .querySelector('[data-slot="git-history-drawer"]')
+          ?.getAttribute("aria-hidden"),
+      ).toBe(compact ? undefined : "true");
+      expect(
+        container.querySelector('[data-slot="git-history-mobile-drawer"]'),
+      ).toBeNull();
+      await click(parent.slice(0, 10));
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      expect(api.getProjectWorktreeCommit).toHaveBeenLastCalledWith(
+        "project-one",
+        "primary",
+        parent,
+        0,
+      );
+      expect([...dialogs()]).toEqual([dialog]);
+      expect(dialog.textContent).toContain("Parent commit");
+      await act(async () =>
+        document.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+        ),
+      );
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      expect(dialogs()).toHaveLength(0);
+      expect(document.activeElement).toBe(row);
+      expect(window.location.search).not.toContain("gitCommit=");
+    },
+  );
+
+  it("opens changed-file patches in the dialog and applies file filters on close", async () => {
+    await mount(true);
+    await openCommit();
+    await click("Open src/main.ts patch");
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(api.getProjectWorktreeRevisionDiff).toHaveBeenCalledWith(
+      "project-one",
+      "primary",
+      head,
+      parent,
+      "src/main.ts",
+      3,
+    );
+    expect(dialogs()).toHaveLength(1);
+    expect(dialogs()[0]!.textContent).toContain("revision patch");
+    await click("Filter History to src/main.ts");
+    expect(dialogs()).toHaveLength(0);
+    expect(api.getProjectWorktreeHistory).toHaveBeenLastCalledWith(
+      "project-one",
+      "primary",
+      0,
+      expect.objectContaining({
+        filters: expect.objectContaining({ path: "src/main.ts" }),
+      }),
+    );
   });
 });
