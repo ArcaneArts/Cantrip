@@ -74,6 +74,7 @@ pub struct AuthService {
     pub mutation_audits: Arc<super::audit::AuditService>,
     pub project_replicas: Arc<crate::projects::replicas::service::ReplicaService>,
     pub github_conversion: Arc<crate::projects::github_conversion::service::ConversionService>,
+    pub workspace_discovery: Arc<crate::projects::workspace_discovery::service::DiscoveryService>,
     pub folder_setup: Arc<crate::projects::folders::service::FolderService>,
     pub worker_maintenance: Arc<crate::workers::maintenance::Service>,
     pub worker_links: Arc<crate::worker_links::service::Service>,
@@ -262,6 +263,14 @@ impl AuthService {
             worktree_observations.clone(),
         );
         github_conversion.start().await?;
+        let workspace_discovery =
+            crate::projects::workspace_discovery::service::DiscoveryService::new(
+                repository.database.clone(),
+                workers.commands.clone(),
+                workers.bridge.clone(),
+                live.clone(),
+            );
+        workspace_discovery.start().await?;
         let observations = worktree_observations.clone();
         let project_operations =
             crate::projects::coordinator::Coordinator::new(Arc::new(move |owner, project| {
@@ -350,6 +359,7 @@ impl AuthService {
             folder_setup,
             project_replicas,
             github_conversion,
+            workspace_discovery,
             worker_maintenance,
             worker_links,
             direct_attachments,

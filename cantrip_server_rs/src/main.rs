@@ -188,6 +188,7 @@ async fn main() -> Result<()> {
         service.folder_setup.stop();
         service.project_replicas.stop();
         service.github_conversion.stop();
+        service.workspace_discovery.stop();
         service.worker_maintenance.stop();
         service.tunnel_leases.stop();
         shutdown_step!(
@@ -248,6 +249,10 @@ async fn main() -> Result<()> {
         shutdown_step!(
             "github-conversion-jobs",
             service.github_conversion.drained().await
+        );
+        shutdown_step!(
+            "workspace-discovery-jobs",
+            service.workspace_discovery.drained().await
         );
         shutdown_step!(
             "worker-maintenance",

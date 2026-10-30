@@ -108,6 +108,6 @@ fn run_definition_responses_match_protocol() -> Result<()> {
         };
         assert_eq!(actual, case["outcome"], "Run definition contract {index}");
     }
-    assert_eq!(cases.len(), 106);
+    assert_eq!(cases.len(), 112);
     Ok(())
 }

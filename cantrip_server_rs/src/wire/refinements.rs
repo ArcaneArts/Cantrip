@@ -7,6 +7,9 @@ pub(super) fn apply(
     path: &[Value],
     message: Option<&str>,
 ) -> Result<(), ValidationError> {
+    if super::workspace_discovery::refine(tag, result, path)? {
+        return Ok(());
+    }
     if super::run_configurations::refine(tag, result, path)? {
         return Ok(());
     }

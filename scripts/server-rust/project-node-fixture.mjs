@@ -14,6 +14,7 @@ import { managedConsoleFixture } from "./managed-console-node-fixture.mjs";
 import { gitManagedOperationContext } from "../../cantrip_server/src/app/shared/git-managed-operations.ts";
 import { worktreeCoordinatorFixture } from "./worktree-coordinator-node-fixture.mjs";
 import { conversionFixture } from "./conversion-node-fixture.mjs";
+import { discoveryFixture } from "./discovery-node-fixture.mjs";
 console.error(JSON.stringify({ event: "repository-fixture.database.opening" }));
 const database = await connectDatabase(readServerConfig());
 console.error(JSON.stringify({ event: "repository-fixture.database.ready" }));
@@ -39,6 +40,12 @@ try {
           consoleTrace,
         );
         value = { result: value, trace: consoleTrace };
+      } else if (request.op.startsWith("discovery-")) {
+        value = await discoveryFixture(
+          database.repository.workspaceRepositoryDiscoveryJobs,
+          request,
+          database.repository,
+        );
       } else if (request.op.startsWith("conversion-")) {
         value = await conversionFixture(
           database.repository.projectGithubConversionJobs,
@@ -841,7 +848,9 @@ try {
         JSON.stringify({
           id: request.id,
           rejected: true,
-          ...((request.op.startsWith("project-surface-") ||
+          ...((request.op === "sql" ||
+            request.op.startsWith("project-surface-") ||
+            request.op.startsWith("discovery-") ||
             request.op.startsWith("tunnel-") ||
             request.op.startsWith("browser-") ||
             request.op.startsWith("document-") ||
@@ -880,6 +889,9 @@ try {
             : {}),
           ...(request.op.startsWith("conversion-")
             ? { conversionError: error.constructor.name }
+            : {}),
+          ...(request.op.startsWith("discovery-")
+            ? { discoveryError: error.constructor.name }
             : {}),
           ...(request.op.startsWith("folder-")
             ? { folderError: error.constructor.name }

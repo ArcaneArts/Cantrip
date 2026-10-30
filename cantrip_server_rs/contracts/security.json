@@ -306,7 +306,25 @@
     "projectGithubConversionRetrySchema": 7924,
     "projectGithubConversionPreflightResultSchema": 7926,
     "projectGithubConversionExecutionResultSchema": 7952,
-    "projectGithubConversionJobSummarySchema": 7966
+    "projectGithubConversionJobSummarySchema": 7966,
+    "workspaceRepositoryDiscoveryJobSummarySchema": 7981,
+    "repositoryRoutingHandleSchema": 706,
+    "workspaceRepositoryDiscoveryCountsSchema": 911,
+    "workspaceRepositoryDiscoveryProgressSchema": 910,
+    "workspaceRepositoryCandidateSummarySchema": 8004,
+    "workspaceRepositoryCandidateClassificationSchema": 8012,
+    "workspaceRepositoryCandidateDiagnosticCodeSchema": 8039,
+    "workspaceRepositoryDiscoverySnapshotSchema": 8043,
+    "workspaceRepositoryDiscoveryStartSchema": 8048,
+    "workspaceRepositoryImportStartSchema": 8054,
+    "workspaceRepositoryDiscoveryWorkerResultSchema": 8064,
+    "workspaceRepositoryImportValidationResultSchema": 8078,
+    "encryptedProjectWorkspaceCreateSchema": 8090,
+    "encryptedAttachedProjectWorkspaceCreateSchema": 8107,
+    "encryptedAttachedProjectWorkspaceCreateResultSchema": 8114,
+    "encryptedProjectWorkspaceUpdateSchema": 8139,
+    "projectWorkspaceWireSummarySchema": 8116,
+    "projectWorkspaceWireListSchema": 8145
   },
   "nodes": [
     {
@@ -46578,6 +46596,1042 @@
           "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
         }
       ]
-    }
+    },
+    {
+      "type": "object",
+      "name": "workspaceRepositoryDiscoveryJobSummarySchema",
+      "shape": {
+        "id": 7982,
+        "workspaceId": 7983,
+        "workerId": 7984,
+        "state": 7985,
+        "stateRevision": 7986,
+        "attempt": 7987,
+        "depth": 7988,
+        "diagnosticCode": 7989,
+        "truncated": 7990,
+        "counts": 7991,
+        "error": 7992,
+        "createdAt": 7997,
+        "updatedAt": 7998,
+        "startedAt": 7999,
+        "completedAt": 8001
+      },
+      "catchall": 8003,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "discovery-truncation",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "enum",
+      "name": "workspaceRepositoryDiscoveryJobStateSchema",
+      "values": ["queued", "running", "blocked", "succeeded", "failed"],
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": -1, "inclusive": true },
+        { "check": "less_than", "value": 16, "inclusive": true }
+      ]
+    },
+    { "type": "nullable", "innerType": 921, "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "nullable", "innerType": 911, "checks": [] },
+    { "type": "nullable", "innerType": 7993, "checks": [] },
+    {
+      "type": "object",
+      "name": "workspaceRepositoryDiscoveryErrorSchema",
+      "shape": { "code": 7994, "retryable": 7995 },
+      "catchall": 7996,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "workspaceRepositoryDiscoveryErrorCodeSchema",
+      "values": [
+        "worker-offline",
+        "capability-missing",
+        "root-unavailable",
+        "discovery-failed"
+      ],
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 8000, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 8002, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "workspaceRepositoryCandidateSummarySchema",
+      "shape": {
+        "id": 8005,
+        "jobId": 8006,
+        "workspaceId": 8007,
+        "workerId": 8008,
+        "pathHandle": 706,
+        "displayHandle": 706,
+        "originUrlHandle": 8009,
+        "github": 8010,
+        "repositoryFingerprint": 8011,
+        "classification": 8012,
+        "importState": 8013,
+        "importAttempt": 8014,
+        "importError": 8016,
+        "projectId": 8022,
+        "conflict": 8025,
+        "diagnosticCode": 8038,
+        "createdAt": 8040,
+        "updatedAt": 8041
+      },
+      "catchall": 8042,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "discovery-candidate-summary",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 706, "checks": [] },
+    { "type": "nullable", "innerType": 705, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[0-9a-f]{64}$",
+          "flags": "u",
+          "displayPattern": "/^[0-9a-f]{64}$/u"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "workspaceRepositoryCandidateClassificationSchema",
+      "values": [
+        "unclassified",
+        "local-git",
+        "github-accessible",
+        "github-unavailable",
+        "unsupported"
+      ],
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "workspaceRepositoryCandidateImportStateSchema",
+      "values": [
+        "pending",
+        "queued",
+        "importing",
+        "imported",
+        "blocked",
+        "failed",
+        "skipped"
+      ],
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 8015,
+      "defaultValue": 0,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 8017,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 8018, "checks": [] },
+    {
+      "type": "object",
+      "name": "workspaceRepositoryImportErrorSchema",
+      "shape": { "code": 8019, "retryable": 8020 },
+      "catchall": 8021,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "workspaceRepositoryImportErrorCodeSchema",
+      "values": [
+        "worker-offline",
+        "capability-missing",
+        "repository-unavailable",
+        "repository-changed",
+        "project-conflict",
+        "import-failed"
+      ],
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 8023,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 8024, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 8026,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 8027, "checks": [] },
+    {
+      "type": "union",
+      "name": "workspaceRepositoryCandidateConflictSchema",
+      "options": [8028, 8034],
+      "discriminator": "kind",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "projectId": 8029,
+        "workspaceId": 8030,
+        "code": 8031,
+        "kind": 8032
+      },
+      "catchall": 8033,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "literal", "values": ["duplicate-checkout"], "checks": [] },
+    { "type": "literal", "values": ["checkout"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "projectId": 8029,
+        "workspaceId": 8030,
+        "code": 8035,
+        "kind": 8036
+      },
+      "catchall": 8037,
+      "checks": []
+    },
+    { "type": "literal", "values": ["duplicate-github"], "checks": [] },
+    { "type": "literal", "values": ["github"], "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "nullable", "innerType": 8039, "checks": [] },
+    {
+      "type": "enum",
+      "name": "workspaceRepositoryCandidateDiagnosticCodeSchema",
+      "values": [
+        "origin-invalid",
+        "origin-unavailable",
+        "github-cli-unavailable",
+        "github-api-unavailable",
+        "github-api-invalid",
+        "github-identity-mismatch",
+        "bare-repository",
+        "linked-worktree"
+      ],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "workspaceRepositoryDiscoverySnapshotSchema",
+      "shape": { "job": 7981, "candidates": 8044, "progress": 8045 },
+      "catchall": 8047,
+      "checks": []
+    },
+    { "type": "array", "element": 8004, "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 8046,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 910, "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "workspaceRepositoryDiscoveryStartSchema",
+      "shape": { "expectedStateRevision": 8049, "depth": 8051 },
+      "catchall": 8053,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 8050,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 8052,
+      "defaultValue": -1,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": -1, "inclusive": true },
+        { "check": "less_than", "value": 16, "inclusive": true }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "workspaceRepositoryImportStartSchema",
+      "shape": { "expectedStateRevision": 8055, "candidates": 8056 },
+      "catchall": 8063,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 8057,
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "discovery-import-unique",
+          "messageAfterPath": true,
+          "message": "Repository import candidates must be unique."
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "workspaceRepositoryImportCandidateCreateSchema",
+      "shape": {
+        "candidateId": 8058,
+        "projectId": 8059,
+        "nameProtection": 689,
+        "repositoryBlindIndex": 8060
+      },
+      "catchall": 8062,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 8061,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 33, "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "workspaceRepositoryDiscoveryWorkerResultSchema",
+      "shape": {
+        "jobId": 8065,
+        "attempt": 8066,
+        "candidates": 8067,
+        "counts": 911,
+        "diagnosticCode": 8075,
+        "truncated": 8076
+      },
+      "catchall": 8077,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "discovery-truncation",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    { "type": "array", "element": 8068, "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "path": 706,
+        "displayPath": 706,
+        "originUrl": 8069,
+        "github": 8070,
+        "repositoryFingerprint": 8071,
+        "classification": 8072,
+        "diagnosticCode": 8073
+      },
+      "catchall": 8074,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "discovery-worker-classification",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 706, "checks": [] },
+    { "type": "nullable", "innerType": 705, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[0-9a-f]{64}$",
+          "flags": "u",
+          "displayPattern": "/^[0-9a-f]{64}$/u"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "workspaceRepositoryDiscoveredClassificationSchema",
+      "values": [
+        "local-git",
+        "github-accessible",
+        "github-unavailable",
+        "unsupported"
+      ],
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 8039, "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "nullable", "innerType": 921, "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "workspaceRepositoryImportValidationResultSchema",
+      "shape": {
+        "candidateId": 8079,
+        "attempt": 8080,
+        "path": 706,
+        "displayPath": 706,
+        "originUrl": 8081,
+        "github": 8082,
+        "repositoryFingerprint": 8083,
+        "classification": 8084,
+        "diagnosticCode": 8085,
+        "branch": 8086,
+        "head": 8088
+      },
+      "catchall": 8089,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "discovery-import-classification",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    { "type": "nullable", "innerType": 706, "checks": [] },
+    { "type": "nullable", "innerType": 705, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[0-9a-f]{64}$",
+          "flags": "u",
+          "displayPattern": "/^[0-9a-f]{64}$/u"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "workspaceRepositoryDetectedClassificationSchema",
+      "values": ["local-git", "github-accessible", "github-unavailable"],
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 8039, "checks": [] },
+    { "type": "nullable", "innerType": 8087, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 512, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 2872, "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "encryptedProjectWorkspaceCreateSchema",
+      "shape": { "id": 8091, "nameProtection": 8092, "storage": 8098 },
+      "catchall": 8106,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "encryptedProjectWorkspaceNameSchema",
+      "shape": {
+        "state": 8093,
+        "formatVersion": 8094,
+        "keyRevision": 8095,
+        "blindIndex": 33,
+        "envelope": 8096
+      },
+      "catchall": 8097,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "project-workspace-name",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    { "type": "literal", "values": ["encrypted"], "checks": [] },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "version": 22,
+        "algorithm": 39,
+        "keyRevision": 23,
+        "nonce": 40,
+        "ciphertext": 41
+      },
+      "catchall": 42,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "project-workspace-name-bytes",
+          "messageAfterPath": true,
+          "message": "Encrypted workspace name is too large."
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "union",
+      "name": "encryptedProjectWorkspaceStorageCreateSchema",
+      "options": [8099, 8102],
+      "discriminator": "kind",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "kind": 8100 },
+      "catchall": 8101,
+      "checks": []
+    },
+    { "type": "literal", "values": ["managed"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "kind": 8103,
+        "workerId": 8104,
+        "rootPathHandle": 706,
+        "displayHandle": 706
+      },
+      "catchall": 8105,
+      "checks": []
+    },
+    { "type": "literal", "values": ["attached"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "encryptedAttachedProjectWorkspaceCreateSchema",
+      "shape": {
+        "id": 8108,
+        "nameProtection": 8092,
+        "storage": 8109,
+        "operationId": 4110,
+        "protectedRequest": 4111
+      },
+      "catchall": 8113,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": { "kind": 8110, "workerId": 8111 },
+      "catchall": 8112,
+      "checks": []
+    },
+    { "type": "literal", "values": ["attached"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "encryptedAttachedProjectWorkspaceCreateResultSchema",
+      "shape": { "workspace": 8115, "operation": 6847 },
+      "catchall": 8138,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 8116, "checks": [] },
+    {
+      "type": "object",
+      "name": "projectWorkspaceWireSummarySchema",
+      "shape": {
+        "id": 8117,
+        "storage": 8118,
+        "position": 8126,
+        "isDefault": 8127,
+        "projectIds": 8128,
+        "revision": 8130,
+        "createdAt": 8131,
+        "updatedAt": 8132,
+        "nameProtection": 8133
+      },
+      "catchall": 8137,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 255, "when": "length" }
+      ]
+    },
+    {
+      "type": "union",
+      "name": "projectWorkspaceStorageProfileSchema",
+      "options": [8119, 8122],
+      "discriminator": "kind",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "kind": 8120 },
+      "catchall": 8121,
+      "checks": []
+    },
+    { "type": "enum", "values": ["system", "legacy", "managed"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "kind": 8123,
+        "workerId": 8124,
+        "rootPathHandle": 706,
+        "displayHandle": 706
+      },
+      "catchall": 8125,
+      "checks": []
+    },
+    { "type": "literal", "values": ["attached"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "array", "element": 8129, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "union",
+      "options": [8092, 8134],
+      "discriminator": "state",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "systemDefaultProjectWorkspaceNameSchema",
+      "shape": { "state": 8135 },
+      "catchall": 8136,
+      "checks": []
+    },
+    { "type": "literal", "values": ["system-default"], "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "encryptedProjectWorkspaceUpdateSchema",
+      "shape": {
+        "expectedRevision": 8140,
+        "nameProtection": 8141,
+        "isDefault": 8142
+      },
+      "catchall": 8144,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "project-workspace-update",
+          "messageAfterPath": true,
+          "message": "At least one workspace field is required."
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 8092,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 8143,
+      "checks": []
+    },
+    { "type": "literal", "values": [true], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "projectWorkspaceWireListSchema",
+      "shape": { "workspaces": 8146 },
+      "catchall": 8147,
+      "checks": []
+    },
+    { "type": "array", "element": 8116, "checks": [] },
+    { "type": "never", "checks": [] }
   ]
 }

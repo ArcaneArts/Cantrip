@@ -1,6 +1,23 @@
 // Test-only preload: observe handles that retain a full worker after shutdown.
 // Unreferenced diagnostic timers do not extend the process lifetime.
 import { createHook } from "node:async_hooks";
+const kill = process.kill;
+process.kill = function (pid, signal) {
+  try {
+    return kill.call(process, pid, signal);
+  } finally {
+    if (signal && signal !== 0)
+      console.error(
+        JSON.stringify({
+          event: "test.worker.process.signal",
+          workerPid: process.pid,
+          targetPid: pid,
+          signal,
+          stack: new Error().stack?.split("\n").slice(2, 8),
+        }),
+      );
+  }
+};
 const resources = new Map();
 const tracked = new Set([
   "Timeout",

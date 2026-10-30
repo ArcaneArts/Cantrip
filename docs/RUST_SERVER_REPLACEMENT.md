@@ -1825,6 +1825,57 @@ All 2,072 compared Node server, worker, shared and dependency files are identica
 to that baseline; the earlier baseline receipts also retain both failing tests.
 The repository-wide check is not reported as passing.
 
+## Workspace catalog, repository discovery and imports
+
+The native server now implements all eight workspace catalog, attached-root,
+scan and import routes. Encrypted names, active key revisions, default promotion,
+immutable worker/root bindings, revision conflicts, candidate classification,
+checkout/GitHub conflicts and file-preserving workspace removal use native
+repositories. Import completion creates the user-owned direct project, external
+Primary and workspace membership in one transaction. Late constraint failures
+roll back the whole completion; retrying the identical completion succeeds.
+
+Discovery scans and imports share one executor slot, with scans taking priority.
+The unchanged worker receives protected routing handles over its existing
+command socket. Scan requests have no fixed command deadline; import validation
+retains its 60-second deadline. Both retain the production two-minute lease,
+30-second renewal/recovery and bounded retries for actual command quota errors.
+Caller disconnect does not cancel an admitted mutation. Shutdown drains admitted
+work while the database remains open, and startup/worker reconnect recovers
+unfinished scans and imports with the existing attempt/revision fences.
+
+Local macOS evidence covers all three stores: 241 repository observations and
+73 SQL snapshots each, 6,590 exact source validation cases across 18 roots, and
+all three authentication modes with 68/68/72 HTTP observations per runtime when
+lifecycle cases are enabled. Real worker reconnect, missing capability, explicit
+retry and shutdown recovery match the reference. Separate tests hold scans
+through the real lease deadline and reject a stale attempt before actual expiry
+and sweep recovery; production clocks and SQL lease timestamps are unchanged.
+
+Admitted root attachment survives a real HTTP client abort on every store.
+External PostgreSQL tests use actual blocking SQL and backend identities to
+prove concurrent same-revision admission returns one 202 and one 409, and that
+an admitted catalog insert survives client disconnect and shutdown. Raw
+pg_stat_activity witnesses are retained separately from normalized comparisons.
+
+The actual encrypted browser APIs and full built worker attach a disposable
+root, discover/import a local Git checkout, and link its existing public GitHub
+origin without pushing. Project/source/Primary identities, Git refs and dirty
+bytes survive conversion and server restart. Removing the workspace while the
+worker is offline removes catalog records and preserves every worker file.
+This flow passes for PGlite, private PostgreSQL and external PostgreSQL without
+seeding project catalog rows or substituting worker commands.
+
+The generic source oracle now supplies baselines for all 324 registered native
+roots, including 69 previously missing Run/worktree/provisioning roots. A real
+empty-revision Run refinement mismatch was corrected to preserve JavaScript
+truthiness; all 112 dedicated definition cases pass. The full generic suite now
+passes 296,220 exact source comparisons and 69,648 ECMAScript JSON round trips
+locally. Discovery CI is configured for Linux, macOS and Windows;
+this milestone has not yet run there. Full managed execution/removal consumers,
+shared coordination, packaging, migration and final default cutover remain open.
+Normal app/server packaging still selects the Node server and Node worker.
+
 ## Managed-folder provisioning
 
 Native folder creation now includes default workspace/storage bootstrap,

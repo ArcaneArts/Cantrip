@@ -18,6 +18,7 @@ mod terminals;
 pub mod value;
 mod worker_command;
 mod worker_contract;
+pub(crate) mod workspace_discovery;
 mod workspaces;
 pub use value::{JsString, Value};
 use value::{Object, json};

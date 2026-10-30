@@ -3,16 +3,16 @@
   "completeReplacement": false,
   "inventory": {
     "path": "docs/security/server-route-inventory.json",
-    "sha256": "01e5d3b9a31f7df789b1b1ed9d31f1fdae2b823659578ef9acd289109d03e33f",
-    "baselineCommit": "899defa8bce147a196a7fad83cab130af7b55415",
+    "sha256": "98df357c9523f5687c8e6a96e11a7bc910fc7517af1633df33b5a50f2e289ae9",
+    "baselineCommit": "f8af0e1c2bff8792d647a063e3bd9ab06f3fe9f4",
     "counts": {
-      "routes": 520,
+      "routes": 523,
       "workerCommands": 278,
-      "durableTables": 110,
-      "repositoryMethods": 363,
+      "durableTables": 113,
+      "repositoryMethods": 364,
       "liveResources": 45
     },
-    "workingTreeNote": "Source file inventory refreshed for project-share WorkerLink revocation; baseline route/command/table/method/resource counts are unchanged."
+    "workingTreeNote": "Refreshed against the current source inventory, including the three conversation-usage tables, three added routes and one added repository method. Inventory audit executes the current source parser; new managed execution behavior remains in scope."
   },
   "interpretation": "Every row in the referenced inventory inherits its category default unless explicitly overridden. Schema creation is not domain behavior. Test commands and configured CI are not passing evidence.",
   "routes": {
@@ -2820,6 +2820,135 @@
           "Actual external user-source discovery and managed-folder push/initial-commit product acceptance remain required; the full-worker link flow is now proven on all three stores.",
           "Migration/post-write rollback, packaged operation and multi-instance coordination remain unverified."
         ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/workspaces",
+        "implementation": "cantrip_server_rs/src/http/project_workspaces.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/discovery_contracts.rs",
+          "scripts/server-rust/discovery-repository-compatibility.mjs",
+          "scripts/server-rust/discovery-http-compatibility.mjs",
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/actual-workspace-discovery.mjs"
+        ],
+        "remaining": [
+          "Observe this milestone on Linux, macOS and Windows; packaged and multi-instance acceptance remains required."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/workspaces",
+        "implementation": "cantrip_server_rs/src/http/project_workspaces.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/discovery_contracts.rs",
+          "scripts/server-rust/discovery-repository-compatibility.mjs",
+          "scripts/server-rust/discovery-http-compatibility.mjs",
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/actual-workspace-discovery.mjs"
+        ],
+        "remaining": [
+          "Observe this milestone on Linux, macOS and Windows; packaged and multi-instance acceptance remains required."
+        ]
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/workspaces/:workspaceId",
+        "implementation": "cantrip_server_rs/src/http/project_workspaces.rs",
+        "status": "partial",
+        "evidence": [
+          "cantrip_server_rs/tests/discovery_contracts.rs",
+          "scripts/server-rust/discovery-repository-compatibility.mjs",
+          "scripts/server-rust/discovery-http-compatibility.mjs",
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/actual-workspace-discovery.mjs"
+        ],
+        "remaining": [
+          "Observe this milestone on Linux, macOS and Windows; packaged and multi-instance acceptance remains required.",
+          "Full managed-execution, archive and automation removal consumers must be ported with their domains. Existing Run, terminal and surface retirement/revocation is invoked; actual offline workspace removal preserves worker files."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/workspaces/:workspaceId",
+        "implementation": "cantrip_server_rs/src/http/project_workspaces.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/discovery_contracts.rs",
+          "scripts/server-rust/discovery-repository-compatibility.mjs",
+          "scripts/server-rust/discovery-http-compatibility.mjs",
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/actual-workspace-discovery.mjs"
+        ],
+        "remaining": [
+          "Observe this milestone on Linux, macOS and Windows; packaged and multi-instance acceptance remains required."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/workspaces/:workspaceId/repository-discovery",
+        "implementation": "cantrip_server_rs/src/http/project_workspaces.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/discovery_contracts.rs",
+          "scripts/server-rust/discovery-repository-compatibility.mjs",
+          "scripts/server-rust/discovery-http-compatibility.mjs",
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/actual-workspace-discovery.mjs"
+        ],
+        "remaining": [
+          "Observe this milestone on Linux, macOS and Windows; packaged and multi-instance acceptance remains required."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/workspaces/:workspaceId/repository-discovery",
+        "implementation": "cantrip_server_rs/src/http/project_workspaces.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/discovery_contracts.rs",
+          "scripts/server-rust/discovery-repository-compatibility.mjs",
+          "scripts/server-rust/discovery-http-compatibility.mjs",
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/actual-workspace-discovery.mjs"
+        ],
+        "remaining": [
+          "Observe this milestone on Linux, macOS and Windows; packaged and multi-instance acceptance remains required."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/workspaces/:workspaceId/repository-imports",
+        "implementation": "cantrip_server_rs/src/http/project_workspaces.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/discovery_contracts.rs",
+          "scripts/server-rust/discovery-repository-compatibility.mjs",
+          "scripts/server-rust/discovery-http-compatibility.mjs",
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/actual-workspace-discovery.mjs"
+        ],
+        "remaining": [
+          "Observe this milestone on Linux, macOS and Windows; packaged and multi-instance acceptance remains required."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/workspaces/attached",
+        "implementation": "cantrip_server_rs/src/http/project_workspaces.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/discovery_contracts.rs",
+          "scripts/server-rust/discovery-repository-compatibility.mjs",
+          "scripts/server-rust/discovery-http-compatibility.mjs",
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/actual-workspace-discovery.mjs"
+        ],
+        "remaining": [
+          "Observe this milestone on Linux, macOS and Windows; packaged and multi-instance acceptance remains required."
+        ]
       }
     ]
   },
@@ -3190,6 +3319,36 @@
           "Actual external user-source discovery and managed-folder push/initial-commit product acceptance remain required; the full-worker link flow is now proven on all three stores.",
           "Migration/post-write rollback, packaged operation and multi-instance coordination remain unverified."
         ]
+      },
+      {
+        "command": "workspace.repositories.discover",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/projects/workspace_discovery/",
+        "evidence": [
+          "cantrip_server_rs/tests/discovery_contracts.rs",
+          "scripts/server-rust/discovery-repository-compatibility.mjs",
+          "scripts/server-rust/discovery-http-compatibility.mjs",
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/actual-workspace-discovery.mjs"
+        ],
+        "remaining": [
+          "Observe this milestone on Linux, macOS and Windows; packaged and multi-instance acceptance remains required."
+        ]
+      },
+      {
+        "command": "workspace.repository-import.validate",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/projects/workspace_discovery/",
+        "evidence": [
+          "cantrip_server_rs/tests/discovery_contracts.rs",
+          "scripts/server-rust/discovery-repository-compatibility.mjs",
+          "scripts/server-rust/discovery-http-compatibility.mjs",
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/actual-workspace-discovery.mjs"
+        ],
+        "remaining": [
+          "Observe this milestone on Linux, macOS and Windows; packaged and multi-instance acceptance remains required."
+        ]
       }
     ]
   },
@@ -3326,6 +3485,103 @@
           "Further source-selection/failure cases and supported-platform verification remain required.",
           "Actual external user-source discovery and managed-folder push/initial-commit product acceptance remain required; the full-worker link flow is now proven on all three stores.",
           "Migration/post-write rollback, packaged operation and multi-instance coordination remain unverified."
+        ]
+      },
+      {
+        "tableName": "project_workspaces",
+        "exportName": "projectWorkspaces",
+        "status": "partial",
+        "implementation": [
+          "cantrip_server_rs/src/projects/workspaces/",
+          "cantrip_server_rs/src/projects/workspace_discovery/"
+        ],
+        "evidence": [
+          "cantrip_server_rs/tests/discovery_contracts.rs",
+          "scripts/server-rust/discovery-repository-compatibility.mjs",
+          "scripts/server-rust/discovery-http-compatibility.mjs",
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/actual-workspace-discovery.mjs"
+        ],
+        "remaining": [
+          "Observe this milestone on Linux, macOS and Windows; packaged and multi-instance acceptance remains required.",
+          "Remaining project/execution consumers stay open under their owning domains."
+        ]
+      },
+      {
+        "tableName": "project_workspace_storage_profiles",
+        "exportName": "projectWorkspaceStorageProfiles",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/projects/workspaces/",
+          "cantrip_server_rs/src/projects/workspace_discovery/"
+        ],
+        "evidence": [
+          "cantrip_server_rs/tests/discovery_contracts.rs",
+          "scripts/server-rust/discovery-repository-compatibility.mjs",
+          "scripts/server-rust/discovery-http-compatibility.mjs",
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/actual-workspace-discovery.mjs"
+        ],
+        "remaining": [
+          "Observe this milestone on Linux, macOS and Windows; packaged and multi-instance acceptance remains required."
+        ]
+      },
+      {
+        "tableName": "project_workspace_memberships",
+        "exportName": "projectWorkspaceMemberships",
+        "status": "partial",
+        "implementation": [
+          "cantrip_server_rs/src/projects/workspaces/",
+          "cantrip_server_rs/src/projects/workspace_discovery/"
+        ],
+        "evidence": [
+          "cantrip_server_rs/tests/discovery_contracts.rs",
+          "scripts/server-rust/discovery-repository-compatibility.mjs",
+          "scripts/server-rust/discovery-http-compatibility.mjs",
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/actual-workspace-discovery.mjs"
+        ],
+        "remaining": [
+          "Observe this milestone on Linux, macOS and Windows; packaged and multi-instance acceptance remains required.",
+          "Remaining project/execution consumers stay open under their owning domains."
+        ]
+      },
+      {
+        "tableName": "workspace_repository_discovery_jobs",
+        "exportName": "workspaceRepositoryDiscoveryJobs",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/projects/workspaces/",
+          "cantrip_server_rs/src/projects/workspace_discovery/"
+        ],
+        "evidence": [
+          "cantrip_server_rs/tests/discovery_contracts.rs",
+          "scripts/server-rust/discovery-repository-compatibility.mjs",
+          "scripts/server-rust/discovery-http-compatibility.mjs",
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/actual-workspace-discovery.mjs"
+        ],
+        "remaining": [
+          "Observe this milestone on Linux, macOS and Windows; packaged and multi-instance acceptance remains required."
+        ]
+      },
+      {
+        "tableName": "workspace_repository_candidates",
+        "exportName": "workspaceRepositoryCandidates",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/projects/workspaces/",
+          "cantrip_server_rs/src/projects/workspace_discovery/"
+        ],
+        "evidence": [
+          "cantrip_server_rs/tests/discovery_contracts.rs",
+          "scripts/server-rust/discovery-repository-compatibility.mjs",
+          "scripts/server-rust/discovery-http-compatibility.mjs",
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/actual-workspace-discovery.mjs"
+        ],
+        "remaining": [
+          "Observe this milestone on Linux, macOS and Windows; packaged and multi-instance acceptance remains required."
         ]
       }
     ]
@@ -4169,6 +4425,126 @@
         "remaining": [
           "Supported-platform and packaged acceptance; Run definition administration remains separate and incomplete."
         ]
+      },
+      {
+        "method": "ensureDefaultProjectWorkspace",
+        "implementation": "cantrip_server_rs/src/projects/workspaces/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/discovery_contracts.rs",
+          "scripts/server-rust/discovery-repository-compatibility.mjs",
+          "scripts/server-rust/discovery-http-compatibility.mjs",
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/actual-workspace-discovery.mjs"
+        ],
+        "remaining": [
+          "Observe this milestone on Linux, macOS and Windows; packaged and multi-instance acceptance remains required."
+        ]
+      },
+      {
+        "method": "listProjectWorkspaceWire",
+        "implementation": "cantrip_server_rs/src/projects/workspaces/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/discovery_contracts.rs",
+          "scripts/server-rust/discovery-repository-compatibility.mjs",
+          "scripts/server-rust/discovery-http-compatibility.mjs",
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/actual-workspace-discovery.mjs"
+        ],
+        "remaining": [
+          "Observe this milestone on Linux, macOS and Windows; packaged and multi-instance acceptance remains required."
+        ]
+      },
+      {
+        "method": "createEncryptedProjectWorkspace",
+        "implementation": "cantrip_server_rs/src/projects/workspaces/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/discovery_contracts.rs",
+          "scripts/server-rust/discovery-repository-compatibility.mjs",
+          "scripts/server-rust/discovery-http-compatibility.mjs",
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/actual-workspace-discovery.mjs"
+        ],
+        "remaining": [
+          "Observe this milestone on Linux, macOS and Windows; packaged and multi-instance acceptance remains required."
+        ]
+      },
+      {
+        "method": "createVerifiedAttachedProjectWorkspace",
+        "implementation": "cantrip_server_rs/src/projects/workspaces/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/discovery_contracts.rs",
+          "scripts/server-rust/discovery-repository-compatibility.mjs",
+          "scripts/server-rust/discovery-http-compatibility.mjs",
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/actual-workspace-discovery.mjs"
+        ],
+        "remaining": [
+          "Observe this milestone on Linux, macOS and Windows; packaged and multi-instance acceptance remains required."
+        ]
+      },
+      {
+        "method": "updateEncryptedProjectWorkspace",
+        "implementation": "cantrip_server_rs/src/projects/workspaces/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/discovery_contracts.rs",
+          "scripts/server-rust/discovery-repository-compatibility.mjs",
+          "scripts/server-rust/discovery-http-compatibility.mjs",
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/actual-workspace-discovery.mjs"
+        ],
+        "remaining": [
+          "Observe this milestone on Linux, macOS and Windows; packaged and multi-instance acceptance remains required."
+        ]
+      },
+      {
+        "method": "deleteProjectWorkspace",
+        "implementation": "cantrip_server_rs/src/projects/workspaces/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/discovery_contracts.rs",
+          "scripts/server-rust/discovery-repository-compatibility.mjs",
+          "scripts/server-rust/discovery-http-compatibility.mjs",
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/actual-workspace-discovery.mjs"
+        ],
+        "remaining": [
+          "Observe this milestone on Linux, macOS and Windows; packaged and multi-instance acceptance remains required."
+        ]
+      },
+      {
+        "method": "getProjectWorkspaceDeletionPlan",
+        "implementation": "cantrip_server_rs/src/projects/workspaces/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/discovery_contracts.rs",
+          "scripts/server-rust/discovery-repository-compatibility.mjs",
+          "scripts/server-rust/discovery-http-compatibility.mjs",
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/actual-workspace-discovery.mjs"
+        ],
+        "remaining": [
+          "Observe this milestone on Linux, macOS and Windows; packaged and multi-instance acceptance remains required."
+        ]
+      },
+      {
+        "method": "getProjectRemovalContext",
+        "implementation": "cantrip_server_rs/src/projects/workspaces/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/discovery_contracts.rs",
+          "scripts/server-rust/discovery-repository-compatibility.mjs",
+          "scripts/server-rust/discovery-http-compatibility.mjs",
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/actual-workspace-discovery.mjs"
+        ],
+        "remaining": [
+          "Observe this milestone on Linux, macOS and Windows; packaged and multi-instance acceptance remains required."
+        ]
       }
     ]
   },
@@ -4341,6 +4717,23 @@
           "Actual external user-source discovery and managed-folder push/initial-commit product acceptance remain required; the full-worker link flow is now proven on all three stores.",
           "Migration/post-write rollback, packaged operation and multi-instance coordination remain unverified."
         ]
+      },
+      {
+        "resource": "workspace-repository-discovery-job",
+        "status": "partial",
+        "implementation": "cantrip_server_rs/src/projects/workspace_discovery/service.rs",
+        "evidence": [
+          "cantrip_server_rs/tests/discovery_contracts.rs",
+          "scripts/server-rust/discovery-repository-compatibility.mjs",
+          "scripts/server-rust/discovery-http-compatibility.mjs",
+          "scripts/server-rust/actual-folder-client.mjs",
+          "scripts/server-rust/actual-workspace-discovery.mjs",
+          "scripts/server-rust/discovery-lifecycle-cases.mjs",
+          "scripts/server-rust/discovery-expiry-cases.mjs"
+        ],
+        "remaining": [
+          "Shared coordination, multi-instance replay/recovery and packaged supported-platform acceptance."
+        ]
       }
     ]
   },
@@ -4446,12 +4839,16 @@
         "scripts/server-rust/worker-wire-oracle.mjs",
         "packages/protocol/src/json-message.test.ts",
         "cantrip_server_rs/tests/worker_command_contracts.rs",
-        "cantrip_server_rs/tests/worker_request_admission.rs"
+        "cantrip_server_rs/tests/worker_request_admission.rs",
+        "scripts/server-rust/run-wire-fixtures.mjs",
+        "scripts/server-rust/worktree-wire-fixtures.mjs",
+        "scripts/server-rust/provisioning-wire-fixtures.mjs"
       ],
       "validatedSubset": "46 actual protocol exports; 37,396 validation comparisons and 69,647 JavaScript JSON round trips. Includes App Live client/server messages, bounded event payloads, client-control refinements, project wire summaries/lists and model configuration. Development export rejects unregistered checks/transforms; default URL behavior is covered, not arbitrary URL options. Native JSON tree construction, clone, equality, serialization and drop now use explicit stacks. Small-stack tests exercise 32,768 nested arrays and 12,000 alternating object/array pairs. Actual anonymous/password HTTP and App Live comparisons cover accepted, stripped, rejected, malformed, poisoned, numeric-overflow and raw UTF-16 inputs. Current ingress branch: 48 actual schema exports with 59,830 base validation comparisons, plus 22,697 complete incoming worker-envelope comparisons including all 142 reachable union alternatives across 23 union identities, 31 explicitly registered custom check identities and eight recursive JSON schema sites. Recursive JSON tests compare 8,228 bare/nested value/error cases and bounded-stack deep inputs. Date.parse comparisons use 4,456 actual Node values in each of 15 timezone configurations, including the actual system default, DST folds/gaps, invalid/case-sensitive zone IDs and extreme years. The shared TypeScript decoder rejects validator exceptions without taking down its socket service. These are local results; later edits and supported platforms require fresh results. Current settings/provider export has 85 actual roots and 5881 nodes; the retained native wire run matches 78419 actual protocol cases, including legacy credential capture/purge and authenticated credential upload/read records. These local checks do not establish the unported schemas or current-platform acceptance. Subsequent account-auth export adds codexAuthStatusSchema:86 actual roots/5893 nodes and78742 actual protocol cases pass locally.",
       "remaining": [
         "Remaining protocol schemas, coercion/refinement boundaries and authenticated/hash serialization across all domains. Selected HTTP/WS paths and nesting examples do not establish all-server parser or schema parity."
-      ]
+      ],
+      "fixtureCoverageFollowup": "All 324 current native contract roots have actual exported TypeScript source baselines (1,221 samples). Newly filled 69 roots include Run definitions, worktrees, provisioning, replicas and conversion. Complete generic validation now passes 296,220 exact differential cases plus 69,648 ECMAScript JSON round trips locally, with outgoing worker requests independently covered by the streaming command oracle. An empty ready Run revision now preserves JavaScript truthiness; all 112 dedicated Run-definition cases match. Later platform and full native suite results remain separate requirements."
     },
     "workerControlTransport": {
       "status": "partial",
@@ -5630,6 +6027,31 @@
         "Actual external user-source discovery and managed-folder push/initial-commit product acceptance remain required; the full-worker link flow is now proven on all three stores.",
         "Migration/post-write rollback, packaged operation and multi-instance coordination remain unverified."
       ]
+    },
+    "workspaceRepositoryDiscovery": {
+      "status": "implemented-pending-platform-acceptance",
+      "implementation": [
+        "cantrip_server_rs/src/projects/workspaces/",
+        "cantrip_server_rs/src/projects/workspace_discovery/",
+        "cantrip_server_rs/src/http/project_workspaces.rs"
+      ],
+      "evidence": [
+        "cantrip_server_rs/tests/discovery_contracts.rs",
+        "scripts/server-rust/discovery-repository-compatibility.mjs",
+        "scripts/server-rust/discovery-http-compatibility.mjs",
+        "scripts/server-rust/actual-folder-client.mjs",
+        "scripts/server-rust/actual-workspace-discovery.mjs",
+        "scripts/server-rust/discovery-lifecycle-cases.mjs",
+        "scripts/server-rust/discovery-expiry-cases.mjs",
+        "scripts/server-rust/discovery-lifetime-cases.mjs",
+        "scripts/server-rust/workspace-catalog-query-manifest.mjs"
+      ],
+      "validatedSubset": "Local macOS: 18 schema roots/6,590 exact validation cases; 241 repository observations/73 SQL snapshots per store; all three authentication modes across all three stores (68/68/72 HTTP observations per runtime including lifecycle). Production two-minute scan lease renewal and stale-result expiry/recovery execute unchanged timers on all stores. One shared slot prioritizes scans before imports; actual worker disconnect, missing capabilities, explicit retry and restart recovery match. Aborted root attachment completes on all stores; actual PostgreSQL row-lock witnesses prove one same-revision admission wins, an admitted create retains its SQL PID after caller disconnect, and shutdown drains it before restart. The real encrypted browser APIs and full worker attach/scan/import a local Git checkout, link its existing GitHub origin without pushing, restart with stable identities and preserve dirty bytes through offline workspace deletion on all three stores. This is not complete managed execution, platform packaging or full replacement.",
+      "remaining": [
+        "Observe this milestone on Linux, macOS and Windows; packaged and multi-instance acceptance remains required.",
+        "Full managed runtime and automation deletion consumers.",
+        "Observe and inspect platform job artifacts; configured CI is not passing evidence."
+      ]
     }
   },
   "remainingAcceptance": [
@@ -5727,6 +6149,15 @@
       "status": "in_progress",
       "conclusion": null,
       "scope": "Linux and macOS each passed6browser repository/HTTP steps, then failed the Node full-worker reference. Linux artifact12939240103 SHA2562722b22fd8ced150d308e65490b4b3907338df42f24278ee8583fd0513b02302 proves downloaded Chromium sandbox startup abort. macOS artifact12938452619 SHA25639fdb0423cd9c9e791417aae43b77c02baaf2999109fae0387efc6e0cd02a684 proves WorkerLink tunnel success then missing legacy CTTN reply. Windows still running at observation. No platform/package/full-replacement acceptance."
+    },
+    {
+      "pullRequest": "https://github.com/ArcaneArts/Cantrip/pull/2350",
+      "commit": "7256cfcc43876d0225166a1d7427ed6b9172e859",
+      "observedHead": "aab9b6d1fb1c4e26f01fae97b9f2597b990327a2",
+      "observedRun": "https://github.com/ArcaneArts/Cantrip/actions/runs/41115688172",
+      "platforms": ["ubuntu-24.04", "macos-15", "windows-2025"],
+      "conclusion": "Replica and conversion jobs pass on all three platforms; overall workflow failed in separate contracts jobs.",
+      "scope": "Six passing replica/conversion job artifacts downloaded with exact uploaded ZIP SHA256 verification and all 132 JSON reports parsed for failures. This establishes the scoped provisioning/conversion tests at that head. Linux contracts still failed actual Run-definition retirement with a missing child exit marker; later current-head generic/full contracts, workspace discovery, packaging and final replacement acceptance remain open."
     }
   ]
 }

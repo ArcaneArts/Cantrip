@@ -31,3 +31,5 @@ pub(crate) fn capabilities(origin: &str, git: bool, github: bool) -> Capabilitie
 }
 pub mod folders;
 pub mod github_conversion;
+pub mod workspace_discovery;
+pub mod workspaces;

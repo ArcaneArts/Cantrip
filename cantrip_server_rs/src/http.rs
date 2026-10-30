@@ -29,6 +29,7 @@ mod pane_layouts;
 mod policies;
 mod project_shares;
 mod project_surfaces;
+mod project_workspaces;
 mod projects;
 mod provider_accounts;
 mod provider_catalogs;
@@ -149,6 +150,7 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(folders::routes())
         .merge(github_import::routes())
         .merge(github_conversion::routes())
+        .merge(project_workspaces::routes())
         .merge(replicas::routes())
         .merge(file_documents::routes())
         .merge(pane_layouts::routes())
