@@ -22,6 +22,14 @@ inferred 413. Other fixture operations keep their existing fetch transport.
 Five real socket tests cover early replies and cookies, a complete chunked
 upload, headers without body bytes, absent replies and incomplete replies.
 
+PR 2314's Windows socket test then records four passes and an actual reset from
+its immediate-close early-response peer. The early-reply test now responds after
+receiving the first real chunk and explicitly keeps that connection open until
+the client consumes the reply. It still requires the exact 413, JSON, both
+cookies, chunked framing and a nonempty partial upload. The separate reset and
+truncated-response cases still require failure. The client and production server
+are unchanged by this test-peer correction; Windows results must be observed.
+
 The actual headers-only comparison exposes a native parsing defect independently
 of that reference-client reset: Node immediately returns 413 for JSON, text and
 its registered binary parser, and 415 for unsupported or missing content types.
