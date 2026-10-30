@@ -394,7 +394,7 @@ export const workspaceOwnershipSchema = z
         !destination ||
         source === destination ||
         (transfer.returnSplitId
-          ? destination.id !== layout.mainWindowId || !transfer.wholePane
+          ? destination.id !== layout.mainWindowId
           : destination.id === layout.mainWindowId ||
             destination.panes.length > 0)
       )

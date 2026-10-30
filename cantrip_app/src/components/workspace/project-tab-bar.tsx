@@ -166,8 +166,10 @@ export function ProjectPaneTabStrip({
   const projectId = explicitProjectId ?? surfaces[0]?.projectId ?? "empty";
   const workspaceDnd = useWorkspaceDndState();
   const crossPaneDrag =
-    workspaceDnd.activeDrag?.type === "surface" &&
-    workspaceDnd.activeDrag.paneId !== paneId
+    (workspaceDnd.activeDrag?.type === "conversation" ||
+      workspaceDnd.activeDrag?.type === "surface") &&
+    (workspaceDnd.activeDrag.type === "conversation" ||
+      workspaceDnd.activeDrag.paneId !== paneId)
       ? workspaceDnd.activeDrag
       : null;
   const dropPreview = workspaceSurfaceDropPreview({
@@ -282,7 +284,11 @@ export function ProjectPaneTabStrip({
                       label={crossPaneDrag.label}
                       orientation="horizontal"
                       paneId={paneId}
-                      tabKey={crossPaneDrag.tabKey}
+                      tabKey={
+                        crossPaneDrag.type === "conversation"
+                          ? `conversation:${crossPaneDrag.chatId}`
+                          : crossPaneDrag.tabKey
+                      }
                       visualKind={crossPaneDrag.visualKind}
                     />
                   ) : null}
@@ -393,7 +399,11 @@ export function ProjectPaneTabStrip({
                 label={crossPaneDrag.label}
                 orientation="horizontal"
                 paneId={paneId}
-                tabKey={crossPaneDrag.tabKey}
+                tabKey={
+                  crossPaneDrag.type === "conversation"
+                    ? `conversation:${crossPaneDrag.chatId}`
+                    : crossPaneDrag.tabKey
+                }
                 visualKind={crossPaneDrag.visualKind}
               />
             ) : null}

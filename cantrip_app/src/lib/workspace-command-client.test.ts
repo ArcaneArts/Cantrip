@@ -841,3 +841,101 @@ it("emits Agent activation for deliberate navigation but not passive observation
   await client.openConversation("chat-two");
   expect(activated).not.toHaveBeenCalled();
 });
+
+it.each(["center", "right", "bottom"] as const)(
+  "places a direct conversation into the %s rail with its existing view identity",
+  async (region) => {
+    const { client } = setup();
+    await client.openConversation("chat");
+    const before =
+      client.getSnapshot().authoritative.windows[0]!.panes[0]!
+        .conversationView!;
+    const release = vi.fn();
+    const checkpoint = vi.fn(async () => release);
+    const transfer = vi.fn();
+    await client.placeConversation(
+      "chat",
+      { region, position: 0 },
+      { checkpoint, transfer },
+    );
+    const panes = client.getSnapshot().authoritative.windows[0]!.panes;
+    expect(panes.flatMap((pane) => pane.tabs).map((tab) => tab.id)).toEqual([
+      before.id,
+    ]);
+    expect(
+      panes.find((pane) => pane.tabs.some((tab) => tab.id === before.id))
+        ?.region,
+    ).toBe(region);
+    expect(panes.every((pane) => !pane.conversationView)).toBe(true);
+    expect(checkpoint).toHaveBeenCalledWith({
+      tabId: before.id,
+      chatId: "chat",
+      projectId: "project",
+    });
+    expect(release).toHaveBeenCalledOnce();
+    expect(transfer).not.toHaveBeenCalled();
+  },
+);
+it("places a catalog-only conversation at the requested index without duplicating its resource", async () => {
+  const { client } = setup();
+  await client.dispatch(open());
+  const options = {
+    checkpoint: vi.fn(async () => () => {}),
+    transfer: vi.fn(),
+  };
+  await client.placeConversation(
+    "chat",
+    { paneId: "pane", region: "center", position: 0 },
+    options,
+  );
+  const first =
+    client.getSnapshot().authoritative.windows[0]!.panes[0]!.tabs[0]!;
+  expect(first.resource).toEqual({
+    kind: "entity",
+    definitionId: "project.agent",
+    resourceId: "chat",
+  });
+  await client.placeConversation(
+    "chat",
+    { paneId: "pane", region: "center", position: 2 },
+    options,
+  );
+  expect(
+    client
+      .getSnapshot()
+      .authoritative.windows[0]!.panes[0]!.tabs.map((tab) => tab.id),
+  ).toEqual(["tab", first.id]);
+});
+it("retains direct ownership when placement checkpoint fails", async () => {
+  const { client } = setup();
+  await client.openConversation("chat");
+  const before = structuredClone(client.getSnapshot().authoritative);
+  await expect(
+    client.placeConversation(
+      "chat",
+      { region: "bottom" },
+      {
+        checkpoint: async () => {
+          throw new Error("Draft unavailable");
+        },
+        transfer: vi.fn(),
+      },
+    ),
+  ).rejects.toThrow("Draft unavailable");
+  expect(client.getSnapshot().authoritative).toEqual(before);
+});
+
+it("fences catalog-only placement after an awaited ownership refresh", async () => {
+  const { client, transport } = setup();
+  const options = {
+    checkpoint: vi.fn(),
+    transfer: vi.fn(),
+    assertCurrent: () => {
+      throw new Error("Account changed");
+    },
+  };
+  await expect(
+    client.placeConversation("chat", { region: "right" }, options),
+  ).rejects.toThrow("Account changed");
+  expect(transport.execute).not.toHaveBeenCalled();
+});

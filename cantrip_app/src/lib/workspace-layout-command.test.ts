@@ -139,3 +139,88 @@ it("positions a newly extracted pane after removing an emptied source", () => {
     ),
   ).toThrow("does not belong");
 });
+
+it.each(["center", "right", "bottom"] as const)(
+  "places a direct conversation in a new %s pane",
+  (region) => {
+    const direct = structuredClone(window);
+    const pane = direct.panes[0]!;
+    pane.conversationView = {
+      ...pane.tabs[0]!,
+      id: "conversation-view",
+      resource: {
+        kind: "entity",
+        definitionId: "project.agent",
+        resourceId: "chat",
+      },
+    };
+    pane.selection = { kind: "conversation", viewId: "conversation-view" };
+    expect(
+      workspaceLayoutAction(
+        {
+          type: "move-member",
+          tabKey: "conversation-view",
+          targetPaneId: null,
+          targetRegion: region,
+          targetMemberPosition: 0,
+        },
+        direct,
+        () => "allocated",
+      ),
+    ).toMatchObject({
+      type: "move-new-pane",
+      tabId: "conversation-view",
+      region,
+      position: region === "center" ? 1 : 0,
+    });
+  },
+);
+it("keeps a pane containing a retained conversation when moving its last rail tab", () => {
+  const direct = structuredClone(window);
+  direct.panes[0]!.conversationView = {
+    ...direct.panes[0]!.tabs[0]!,
+    id: "conversation-view",
+    resource: {
+      kind: "entity",
+      definitionId: "project.agent",
+      resourceId: "chat",
+    },
+  };
+  expect(
+    workspaceLayoutAction(
+      {
+        type: "move-member",
+        tabKey: "opaque",
+        targetPaneId: null,
+        targetMemberPosition: 0,
+      },
+      direct,
+      () => "allocated",
+    ),
+  ).toMatchObject({ position: 1 });
+});
+it("removes a tab-free source from the new-pane insertion count", () => {
+  const direct = structuredClone(window);
+  direct.panes[0]!.conversationView = {
+    ...direct.panes[0]!.tabs[0]!,
+    id: "conversation-view",
+    resource: {
+      kind: "entity",
+      definitionId: "project.agent",
+      resourceId: "chat",
+    },
+  };
+  direct.panes[0]!.tabs = [];
+  expect(
+    workspaceLayoutAction(
+      {
+        type: "move-member",
+        tabKey: "conversation-view",
+        targetPaneId: null,
+        targetMemberPosition: 0,
+      },
+      direct,
+      () => "allocated",
+    ),
+  ).toMatchObject({ position: 0 });
+});

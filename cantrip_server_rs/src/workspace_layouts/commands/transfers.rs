@@ -71,6 +71,32 @@ pub(super) fn apply(state: &mut Command, action: &Value) -> Result<()> {
                 return Err(invalid("The main window cannot return to itself."));
             }
             let pane = pane_by_id(&state.window, &action["paneId"])?;
+            let single = truthy(action.get("tabId"));
+            let selected = if single {
+                vec![
+                    pane_views(&pane)
+                        .iter()
+                        .find(|tab| tab["id"] == action["tabId"])
+                        .cloned()
+                        .ok_or_else(|| missing("Tab does not belong to the source pane."))?,
+                ]
+            } else {
+                pane_views(&pane).to_vec()
+            };
+            if if single {
+                !truthy(action.get("destinationPaneId"))
+                    || state.windows().iter().any(|window| {
+                        values(window, "panes")
+                            .iter()
+                            .any(|pane| pane["id"] == action["destinationPaneId"])
+                    })
+            } else {
+                truthy(action.get("destinationPaneId")) && action["destinationPaneId"] != pane["id"]
+            } {
+                return Err(invalid(
+                    "A pane transfer preserves its identity; a tab transfer requires a new pane identity.",
+                ));
+            }
             let destination =
                 state.other_window(&state.layout["mainWindowId"], "Main window is unavailable.")?;
             let mut transfers = pending(state);
@@ -78,15 +104,25 @@ pub(super) fn apply(state: &mut Command, action: &Value) -> Result<()> {
                 t["id"] == action["transferId"]
                     || values(t, "tabIds")
                         .iter()
-                        .any(|id| pane_views(&pane).iter().any(|tab| tab["id"] == *id))
+                        .any(|id| selected.iter().any(|tab| tab["id"] == *id))
             }) {
                 return Err(invalid("Transfer identity or views are already in use."));
             }
-            let ids = pane_views(&pane)
+            let ids = selected.iter().map(|t| t["id"].clone()).collect::<Vec<_>>();
+            let position = pane_views(&pane)
                 .iter()
-                .map(|t| t["id"].clone())
-                .collect::<Vec<_>>();
-            transfers.push(json!({"id":action["transferId"],"sourceWindowId":state.window["id"],"sourceGeneration":state.window["attachmentGeneration"],"sourcePaneId":pane["id"],"sourcePlacement":placement(state,&pane,0),"tabIds":ids,"wholePane":true,"destinationWindowId":destination["id"],"destinationGeneration":destination["attachmentGeneration"],"destinationPaneId":pane["id"],"returnSplitId":action["splitId"],"phase":"preparing"}));
+                .position(|tab| tab["id"] == selected[0]["id"])
+                .unwrap();
+            let mut source_placement = placement(state, &pane, position);
+            if single && pane["conversationView"]["id"] == action["tabId"] {
+                source_placement["viewKind"] = json!("conversation");
+            }
+            let destination_pane = if single {
+                action["destinationPaneId"].clone()
+            } else {
+                pane["id"].clone()
+            };
+            transfers.push(json!({"id":action["transferId"],"sourceWindowId":state.window["id"],"sourceGeneration":state.window["attachmentGeneration"],"sourcePaneId":pane["id"],"sourcePlacement":source_placement,"tabIds":ids,"wholePane":!single,"destinationWindowId":destination["id"],"destinationGeneration":destination["attachmentGeneration"],"destinationPaneId":destination_pane,"returnSplitId":action["splitId"],"phase":"preparing"}));
             state.layout["pendingTransfers"] = Value::Array(transfers);
         }
         "prepare-detach" => {

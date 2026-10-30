@@ -135,7 +135,7 @@ includes that merge rather than its provisional local repair. Revalidation with
 both PGlite and private PostgreSQL. This validates the local fixture, not the
 remaining multiwindow or physical-device interaction acceptance.
 
-### Inline archive cycle (in progress)
+### Inline archive cycle (merged)
 
 The isolated `codex/conversations-archive` branch starts from the merged sidebar.
 It connects the explicit archive contract, protected draft checkpointing,
@@ -162,6 +162,69 @@ execution limits. Each exact test passes individually; the broad check remains
 failed. These results do not complete feature acceptance or the archive cycle's
 PR delivery.
 The full feature and its acceptance matrix remain unfinished.
+
+PR [#2337](https://github.com/ArcaneArts/Cantrip/pull/2337) squash-merged as
+`bea74e541`. Clean Primary was fast-forwarded and the archive worktree removed.
+Optional platform CI was still running at merge observation; those jobs are not
+recorded as passing. The next isolated cycle, `codex/conversations-placement`,
+implements resource dragging and accessible placement into all three rails.
+
+### Rail placement cycle (in progress)
+
+The isolated `codex/conversations-placement` worktree started from `bea74e541`
+and includes merged baseline updates through `b8a6b8947`. Placement resolves
+current resource ownership, checkpoints drafts, converts direct views, and
+inserts tabs into the indicated rail. Catalog drag payloads carry session and
+resource identity without inventing a source pane. The shell connects pointer
+placement and keyboard/touch menu actions to the same commands.
+
+Cross-window requests carry IDs only. The source performs the existing protected
+handoff before the destination re-reads ownership and places the view. Prepared
+returns now support one view while retaining sibling views in the source window.
+The transfer adapter also captures direct conversation slots. TypeScript and
+Rust transitions, validation, and the wire manifest are aligned; contract/model
+comparisons pass, including single-conversation return. Recent handoff receipts
+are bounded, duplicate in-flight view requests share work, and context disposal
+rejects pending requests without guessing ownership outcomes.
+
+Validation so far:
+
+- Final app suite: 3,986 passed, three skipped across 567 files. All 979 protocol
+  tests passed. Subsequent catalog regression tests pass all 11 cases.
+- Command, transfer, keyboard menu, and session-change tests pass. A session
+  change during a draft checkpoint releases its lease and prevents placement.
+- The real Chromium fixture in `scripts/qa/conversations-placement.mjs` passes
+  sidebar creation without a rail tab, pointer dragging into right/bottom/top,
+  one view identity and catalog row through moves, and middle-click view-only
+  closure on each rail. Reopening preserves the unsent draft. Sidebar archive
+  of that draft-only chat and resource-only Restore pass; reopening restores
+  the draft and retains the paused execution state.
+- This browser run exposed a real catalog adapter bug: `lastUsedAt` was passed
+  into the strict title-decryption schema. The adapter now removes recency
+  metadata before decryption and restores it afterward for active and archived
+  pages. Tests retain strict summary validation instead of accepting extras.
+- The initial browser attempt could not start its worker because the fresh
+  worktree lacked the CLI binary. Building the CLI resolved that failure. A
+  later fixture assertion incorrectly assumed an unpaused composer placeholder;
+  it now identifies the composer independently and checks the paused state.
+- Native macOS interaction created a direct conversation alongside `qa.txt`,
+  placed it in the top rail, and detached it with the unsent draft intact.
+  Returning it through the sidebar exposed a real completion race: closing the
+  sole-view source window could discard its acknowledgement, leaving the view
+  in the intermediate return pane instead of the requested rail. Placement now
+  also observes authoritative local ownership after protected restoration and
+  cancels its redundant acknowledgement wait. All eight focused handoff/hook
+  tests pass, including source closure and cancellation. The rebuilt macOS native run passes: sidebar placement returns the
+  detached conversation into the requested right rail, retains the unsent draft
+  and sibling file, and closes the retired source window.
+- App typechecking, decomposition budgets, formatting, and diff whitespace
+  checks pass after the native race fix. The broader `pnpm check` reached
+  server tests: 1,634 passed, 57 skipped, and two failed. The failures are the
+  previously baseline-reproduced provider-account assertion in
+  `local-foundation.test.ts:7218` and missing `getModelRuntimeByRoute` mock in
+  `terminal-managed-session.test.ts:140`; the broad check is recorded as failed.
+  Further acceptance coverage and PR delivery remain outstanding.
+  No full-feature completion is claimed.
 
 ## Product outcome
 

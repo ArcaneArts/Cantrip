@@ -158,6 +158,7 @@ export function workspaceConversationModelCases(add) {
   }
   for (const scenario of [
     "whole-inactive",
+    "single-return",
     "direct",
     "occupied",
     "added-rail",
@@ -174,13 +175,16 @@ export function workspaceConversationModelCases(add) {
       type: "prepare-detach",
       transferId: "detach",
       paneId: "pane",
-      ...(scenario === "whole-inactive"
+      ...(scenario === "whole-inactive" || scenario === "single-return"
         ? {}
         : {
             tabId: scenario === "rail-added-slot" ? "terminal" : "conversation",
           }),
       destinationWindowId: "popout",
-      destinationPaneId: scenario === "whole-inactive" ? "pane" : "detached",
+      destinationPaneId:
+        scenario === "whole-inactive" || scenario === "single-return"
+          ? "pane"
+          : "detached",
     });
     layout = commit(layout, "detach", "main", "popout");
     if (scenario === "occupied")
@@ -224,7 +228,13 @@ export function workspaceConversationModelCases(add) {
       {
         type: "prepare-return",
         transferId: "return",
-        paneId: scenario === "whole-inactive" ? "pane" : "detached",
+        paneId:
+          scenario === "whole-inactive" || scenario === "single-return"
+            ? "pane"
+            : "detached",
+        ...(scenario === "single-return"
+          ? { tabId: "conversation", destinationPaneId: "returned-single" }
+          : {}),
         splitId: "return-split",
       },
       "popout",

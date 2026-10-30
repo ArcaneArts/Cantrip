@@ -9,12 +9,14 @@ export function ConversationRowMenu({
   title,
   pending,
   archive,
+  place,
   restore,
   remove,
 }: {
   title: string;
   pending: boolean;
   archive?: () => void;
+  place?: (region: "center" | "right" | "bottom") => void;
   restore?: () => void;
   remove?: () => void;
 }) {
@@ -48,6 +50,22 @@ export function ConversationRowMenu({
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <StyledDropdownMenuContent align="end">
+          {place
+            ? (
+                [
+                  ["center", "Place in top rail"],
+                  ["right", "Place in right rail"],
+                  ["bottom", "Place in bottom rail"],
+                ] as const
+              ).map(([region, label]) => (
+                <StyledDropdownMenuItem
+                  key={region}
+                  onSelect={() => place(region)}
+                >
+                  {label}
+                </StyledDropdownMenuItem>
+              ))
+            : null}
           {archive ? (
             <StyledDropdownMenuItem onSelect={archive}>
               Archive

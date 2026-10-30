@@ -406,6 +406,13 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                         <ProjectConversationList
                           key={selectedProjectId}
                           projectId={selectedProjectId}
+                          onPlace={(chatId, region) =>
+                            bindings.placeConversation(
+                              selectedProjectId,
+                              chatId,
+                              { region },
+                            )
+                          }
                           archiveFocusRequest={
                             bindings.conversationArchiveRequest?.projectId ===
                             selectedProjectId

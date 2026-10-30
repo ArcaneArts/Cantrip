@@ -374,7 +374,7 @@ pub(super) fn refine(
             (Some(s), Some(t)) => {
                 s == t
                     || if returning {
-                        windows[t]["id"] != value["mainWindowId"] || transfer["wholePane"] != true
+                        windows[t]["id"] != value["mainWindowId"]
                     } else {
                         windows[t]["id"] == value["mainWindowId"]
                             || !array(&windows[t], "panes").is_empty()

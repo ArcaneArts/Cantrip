@@ -555,3 +555,25 @@ it("allows explicit cancellation while waiting for destination readiness", async
   expect(f.lease.capture).not.toHaveBeenCalled();
   expect(f.layout().windows).toHaveLength(1);
 });
+
+it("returns one requested view through the existing protected handoff", async () => {
+  const f = setup(true);
+  const pane = f.layout().windows.find((window) => window.id === "popout")!
+    .panes[0]!;
+  pane.tabs.push({ ...pane.tabs[0]!, id: "sibling" });
+  await detachWorkspaceViews({ ...f.input, tabId: "tab" }, f.dependencies);
+  expect(f.input.prepare).toHaveBeenCalledWith(["tab"]);
+  expect(f.dependencies.open).not.toHaveBeenCalled();
+  expect(
+    f
+      .layout()
+      .windows.find((window) => window.id === "popout")!
+      .panes[0]!.tabs.map((tab) => tab.id),
+  ).toEqual(["sibling"]);
+  expect(
+    f
+      .layout()
+      .windows.find((window) => window.id === "main")!
+      .panes[0]!.tabs.map((tab) => tab.id),
+  ).toEqual(["tab"]);
+});
