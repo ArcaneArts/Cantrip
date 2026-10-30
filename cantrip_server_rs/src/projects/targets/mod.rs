@@ -13,6 +13,7 @@ use crate::{
     wire::Value,
 };
 use anyhow::Result;
+use futures::FutureExt;
 pub(crate) use reads::worktree as worktree_summary;
 use reads::{Kind, Reads};
 use std::sync::Arc;
@@ -65,6 +66,8 @@ impl TargetRepository {
         // Run all collaborators before deciding whether the project exists.
         // In particular, invalid owned worker/resource data must retain its
         // actual mapper error, even when another read returns no project.
+        // Box the component reads so callers do not embed all eleven query
+        // futures in their stack frames when constructing and polling this join.
         let (
             project,
             replicas,
@@ -78,17 +81,17 @@ impl TargetRepository {
             desktops,
             remotes,
         ) = tokio::try_join!(
-            projects.get(owner, project_id),
-            projects.replicas(owner, project_id),
-            reads.workers(owner),
-            reads.worktrees(owner, project_id),
-            reads.resources(Kind::Chat, owner, project_id),
-            reads.resources(Kind::Terminal, owner, project_id),
-            reads.resources(Kind::Explorer, owner, project_id),
-            reads.resources(Kind::Code, owner, project_id),
-            reads.resources(Kind::Browser, owner, project_id),
-            reads.desktops(owner, project_id),
-            reads.remotes(owner, project_id),
+            projects.get(owner, project_id).boxed(),
+            projects.replicas(owner, project_id).boxed(),
+            reads.workers(owner).boxed(),
+            reads.worktrees(owner, project_id).boxed(),
+            reads.resources(Kind::Chat, owner, project_id).boxed(),
+            reads.resources(Kind::Terminal, owner, project_id).boxed(),
+            reads.resources(Kind::Explorer, owner, project_id).boxed(),
+            reads.resources(Kind::Code, owner, project_id).boxed(),
+            reads.resources(Kind::Browser, owner, project_id).boxed(),
+            reads.desktops(owner, project_id).boxed(),
+            reads.remotes(owner, project_id).boxed(),
         )?;
         let (Some(project), Some(replicas)) = (project, replicas) else {
             return Ok(None);
