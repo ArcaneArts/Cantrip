@@ -19,12 +19,16 @@ test("retains the actual early HTTP rejection and cookies without finishing the 
     request.on("data", (chunk) => {
       received += chunk.length;
     });
-    response.writeHead(413, {
-      "content-type": "application/json",
-      connection: "close",
-      "set-cookie": ["first=one; Path=/", "second=two; Path=/"],
+    request.once("data", () => {
+      // Keep the peer open while unread upload bytes arrive. Closing it here
+      // can reset the TCP connection before Windows delivers the actual reply.
+      response.writeHead(413, {
+        "content-type": "application/json",
+        connection: "keep-alive",
+        "set-cookie": ["first=one; Path=/", "second=two; Path=/"],
+      });
+      response.end(JSON.stringify({ error: "actual early response" }));
     });
-    response.end(JSON.stringify({ error: "actual early response" }));
   });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
@@ -39,6 +43,7 @@ test("retains the actual early HTTP rejection and cookies without finishing the 
       },
     );
     assert.equal(response.status, 413);
+    assert.equal(response.headers.get("connection"), "keep-alive");
     assert.deepEqual(await response.json(), { error: "actual early response" });
     assert.deepEqual(response.headers.getSetCookie(), [
       "first=one; Path=/",
@@ -46,6 +51,7 @@ test("retains the actual early HTTP rejection and cookies without finishing the 
     ]);
     assert.equal(declared, undefined);
     assert.equal(encoding, "chunked");
+    assert.ok(received > 0, "the actual chunked upload reached the peer");
     assert.ok(
       received < Buffer.byteLength(body),
       "actual early response stops unnecessary writes",
