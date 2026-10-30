@@ -23,13 +23,21 @@ explicit empty-chat archival, and resource-only creation/restoration. Creation
 retries retain the original encrypted request identity. Existing legacy deletion
 behavior remains available for its existing callers.
 
-Validation so far: 32 focused server tests across archive, migration, composer
-drafts, workspace layouts, and standalone lifecycle suites passed. A subsequent
-archive API run passed 11 tests, including simultaneous creation retries that
-produce exactly one Agent. All 961 protocol tests passed, including bounded
-query, usage identity, and cursor precision validation. Server typechecking,
-changed-file formatting, the content-boundary audit, and `git diff --check`
-passed. The repository-wide `pnpm check` and PR delivery remain pending.
+Validation: all 37 focused server tests across archive, migration, composer
+drafts, workspace layouts, standalone lifecycle, and storage accounting passed.
+All 961 protocol tests passed. Server typechecking, changed-file formatting,
+the content-boundary audit, Rust workspace query-manifest validation and
+workspace contract/model tests, and `git diff --check` passed. Concurrent
+creation requests produce one Agent catalog entry.
+
+The broader `pnpm check` found the new tables' missing accounting classifications
+(now fixed) and two pre-existing failures: provider account selection in
+`local-foundation.test.ts:7218` and a missing `getModelRuntimeByRoute` fixture in
+`terminal-managed-session.test.ts:140`. Both failures reproduced unchanged in
+a separate checkout of base commit `dc995f51a`; the full check is not recorded
+as passing. Initial Windows CI also encountered an `EBUSY` temporary-directory
+cleanup failure; the subsequent native-contract run passed on Windows without
+changing its assertions. Delivery is tracked in PR #2326; merge is pending.
 
 Owned conversation slots, sidebar rendering, client usage signals, inline
 archive interaction, rail placement, Rust workspace parity, and real-interaction
