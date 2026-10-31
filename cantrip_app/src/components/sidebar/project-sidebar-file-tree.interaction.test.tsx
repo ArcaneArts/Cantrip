@@ -6,6 +6,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 const runtime = vi.hoisted(() => ({
   entries: new Map<string, ExplorerEntry[]>(),
+  bindingKey: "binding",
 }));
 
 vi.mock("@/lib/client-session", () => ({
@@ -18,7 +19,7 @@ vi.mock("./use-file-change-activity", () => ({
 vi.mock("@/components/explorer/use-explorer-worker-encryption", () => ({
   useExplorerWorkerEncryption: () => ({
     ready: true,
-    bindingKey: "binding",
+    bindingKey: runtime.bindingKey,
     continuityKey: "worker",
     error: null,
   }),
@@ -31,6 +32,7 @@ vi.mock("@/components/explorer/use-explorer-directory", () => ({
 }));
 
 import { ProjectSidebarFileTree } from "./project-sidebar-file-tree";
+import type { SidebarFileImporter } from "./sidebar-file-drop";
 
 (
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -59,7 +61,10 @@ async function flush() {
   });
 }
 
-async function mount(createWait?: Promise<void>) {
+async function mount(
+  createWait?: Promise<void>,
+  onImportFiles?: SidebarFileImporter,
+) {
   await act(async () => {
     root.render(
       <ProjectSidebarFileTree
@@ -73,6 +78,7 @@ async function mount(createWait?: Promise<void>) {
           } as ExplorerSummary
         }
         loading={false}
+        onImportFiles={onImportFiles}
         onCreateFolder={async (parent) => {
           if (createWait) await createWait;
           const created = folder(
@@ -139,6 +145,7 @@ function expectSelectedName(name: string) {
 
 beforeEach(() => {
   runtime.entries.clear();
+  runtime.bindingKey = "binding";
   runtime.entries.set("", [folder("src")]);
   localStorage.clear();
   onRename.mockClear();
@@ -236,4 +243,142 @@ it("restores row focus without starting an action when the menu is dismissed", a
   expect(document.activeElement).toBe(row);
   expect(host.querySelector("input")).toBeNull();
   expect(runtime.entries.get("")).toHaveLength(1);
+});
+
+async function drag(
+  element: Element,
+  type: string,
+  dataTransfer: Partial<Omit<DataTransfer, "items">> & {
+    items?: ArrayLike<DataTransferItem>;
+  },
+) {
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  Object.defineProperty(event, "dataTransfer", {
+    value: { types: [], items: [], files: [], ...dataTransfer },
+  });
+  await act(async () => {
+    element.dispatchEvent(event);
+  });
+  return event;
+}
+
+it.each(["", "src"])(
+  "drops external files into %j with copy feedback and progress",
+  async (parent) => {
+    let finish!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const importer = vi.fn<SidebarFileImporter>(
+      async (_path, _files, _auth, onProgress) => {
+        onProgress({
+          name: "photo.png",
+          completed: 2,
+          total: 4,
+          index: 0,
+          count: 1,
+        });
+        await pending;
+      },
+    );
+    await mount(undefined, importer);
+    const target = host.querySelector(
+      parent ? '[role="treeitem"]' : '[role="tree"]',
+    )!;
+    const file = new File([new Uint8Array([0, 255, 128, 10])], "photo.png");
+    const dataTransfer = {
+      types: ["Files"],
+      items: [{ kind: "file" }] as DataTransferItem[],
+      files: [file] as unknown as FileList,
+      dropEffect: "none" as DataTransfer["dropEffect"],
+    };
+    expect(
+      (await drag(target, "dragover", dataTransfer)).defaultPrevented,
+    ).toBe(true);
+    expect(host.querySelector("[data-file-drop-target]")).not.toBeNull();
+    expect(host.textContent).toContain(
+      `Drop files into ${parent || "project root"}`,
+    );
+    await drag(target, "drop", dataTransfer);
+    expect(importer).toHaveBeenCalledExactlyOnceWith(
+      parent,
+      [file],
+      expect.objectContaining({ isCurrent: expect.any(Function) }),
+      expect.any(Function),
+    );
+    expect(host.querySelector("[data-file-drop-target]")).toBeNull();
+    expect(host.textContent).toContain("Adding 1 of 1: photo.png (50%)");
+    await drag(target, "drop", dataTransfer);
+    expect(importer).toHaveBeenCalledOnce();
+    await act(async () => finish());
+    expect(host.textContent).not.toContain("Adding 1 of 1");
+  },
+);
+
+it("leaves text and workspace-tab drags alone and clears file-drop feedback on leave", async () => {
+  const importer = vi.fn<SidebarFileImporter>();
+  await mount(undefined, importer);
+  const tree = host.querySelector('[role="tree"]')!;
+  expect(
+    (await drag(tree, "dragover", { types: ["text/plain"] })).defaultPrevented,
+  ).toBe(false);
+  expect(
+    (
+      await drag(tree, "drop", {
+        types: ["application/x-cantrip-workspace-tab"],
+      })
+    ).defaultPrevented,
+  ).toBe(false);
+  await drag(tree, "dragover", { types: ["Files"] });
+  await drag(tree, "dragleave", { types: ["Files"] });
+  expect(host.querySelector("[data-file-drop-target]")).toBeNull();
+  expect(importer).not.toHaveBeenCalled();
+});
+
+it("reports directory drops and import failures without navigating away", async () => {
+  const importer = vi.fn<SidebarFileImporter>(async () => {
+    throw new Error("photo.png already exists");
+  });
+  await mount(undefined, importer);
+  const tree = host.querySelector('[role="tree"]')!;
+  const file = new File(["data"], "photo.png");
+  const files = [file] as unknown as FileList;
+  await drag(tree, "drop", {
+    types: ["Files"],
+    files,
+    items: [
+      { kind: "file", webkitGetAsEntry: () => ({ isDirectory: true }) },
+    ] as DataTransferItem[],
+  });
+  expect(host.textContent).toContain("folder uploads are not supported");
+  expect(importer).not.toHaveBeenCalled();
+  expect(
+    (await drag(tree, "drop", { types: ["Files"], files })).defaultPrevented,
+  ).toBe(true);
+  expect(host.querySelector('[role="alert"]')?.textContent).toContain(
+    "photo.png already exists",
+  );
+});
+
+it("retires an unfinished drop when its project binding changes", async () => {
+  let fail!: (error: Error) => void;
+  const importer = vi.fn<SidebarFileImporter>(
+    () =>
+      new Promise<void>((_, reject) => {
+        fail = reject;
+      }),
+  );
+  await mount(undefined, importer);
+  await drag(host.querySelector('[role="tree"]')!, "drop", {
+    types: ["Files"],
+    files: [new File(["data"], "name.bin")] as unknown as FileList,
+  });
+  const authorization = importer.mock.calls[0]![2];
+  expect(authorization.isCurrent()).toBe(true);
+  runtime.bindingKey = "other-project";
+  await mount(undefined, importer);
+  expect(authorization.isCurrent()).toBe(false);
+  await act(async () => fail(new Error("old failure")));
+  expect(host.textContent).not.toContain("old failure");
+  expect(host.textContent).not.toContain("Adding");
 });

@@ -15,6 +15,7 @@ import {
 } from "../surface-stream-encryption.js";
 import type { WorkerEncryptionService } from "../worker-encryption.js";
 import { handleExplorerCommand } from "./explorer.js";
+import { ExplorerFileImports } from "../explorer-file-imports.js";
 
 const files = vi.hoisted(() => ({ read: vi.fn(), write: vi.fn() }));
 vi.mock("../explorer.js", () => ({
@@ -86,6 +87,7 @@ async function fixture(
     }),
   };
   const dependencies = {
+    fileImports: new ExplorerFileImports(),
     workerEncryption: service,
     surfaceStreamReplay: new SurfaceStreamReplayGuard(),
   };
@@ -176,6 +178,16 @@ it.each(["projectId", "workerId", "worktreeId"] as const)(
 it.each([
   { type: "explorer.file.read", path: "another.rs" },
   { type: "explorer.directory.list", path: "src/main.rs" },
+  {
+    type: "explorer.file.import",
+    path: "src",
+    name: "main.rs",
+    size: 0,
+    offset: 0,
+    data: "",
+    eof: true,
+  },
+  { type: "explorer.file.import.cancel" },
 ] as ExplorerOperationRequestContent[])(
   "rejects operations outside the immutable document",
   async (request) => {

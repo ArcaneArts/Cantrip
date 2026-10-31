@@ -2008,6 +2008,7 @@ export function App() {
   const {
     createSidebarFolder,
     createSidebarFile,
+    importSidebarFiles,
     deleteSidebarFileEntry,
     openSidebarFilePreview,
     openSidebarFilePreviewPath,
@@ -2162,7 +2163,7 @@ export function App() {
     bindWorktreeMutation, bootstrap, browsers, chatRelocationOpen, chatRelocations,
     chatConsoleOpenChats, chats, closeCompactProject, closeProjectTask, codeAppearance,
     codeHeader, codeTabs, stagedExplorerTransfers, stagedCodeTransfers, stagedTerminalTransfers, incomingTerminalViews, incomingExplorerViews, incomingFileDocumentViews, incomingCodeViews, incomingBrowserViews, incomingChatViews, incomingRemoteDesktopViews, commandBarOpen, compactManagedHeader, compactShell,
-    createProjectSurface, createSidebarExplorerMutation, createSidebarFolder, createSidebarFile,
+    createProjectSurface, createSidebarExplorerMutation, createSidebarFolder, createSidebarFile, importSidebarFiles,
     createWorkspaceMutation, createWorktreeMutation, creatingSurfaceKinds, currentRelocation, deleteBrowserMutation, dockPresentationMutation,
     deleteChatMutation, deleteCodeTabMutation, deleteExplorerMutation, deleteProjectViewMutation, deleteSidebarFileEntry,
     closeSurfaceView, keepSurfaceOpen, deleteSurfaceResource, deleteTerminalMutation, desktopRuntime, desktopSidebarDrawer,

@@ -449,6 +449,7 @@ const legacyFileImportExports = [
   "workspaceLegacyFileImportRequestSchema",
   "workspaceLegacyFileImportSchema",
 ];
+const explorerFileImportExports = ["EXPLORER_FILE_IMPORT_CHUNK_BYTES"];
 
 describe("protocol public surface compatibility", () => {
   it("preserves the root runtime export baseline with reviewed CUA and managed-session additions", () => {
@@ -467,6 +468,7 @@ describe("protocol public surface compatibility", () => {
           !workspaceOwnershipExports.includes(name) &&
           !fileDocumentExports.includes(name) &&
           !legacyFileImportExports.includes(name) &&
+          !explorerFileImportExports.includes(name) &&
           !conversationCatalogExports.includes(name) &&
           !conversationViewExports.includes(name) &&
           !taskAutomaticRetryExports.includes(name) &&
@@ -481,7 +483,10 @@ describe("protocol public surface compatibility", () => {
     expect(
       exportNames.filter((name) => retiredWorkbenchExports.includes(name)),
     ).toEqual([]);
-    expect(exportNames).toHaveLength(2107);
+    expect(exportNames).toHaveLength(2108);
+    expect(
+      exportNames.filter((name) => explorerFileImportExports.includes(name)),
+    ).toEqual(explorerFileImportExports);
     expect(
       exportNames.filter((name) => conversationViewExports.includes(name)),
     ).toEqual(conversationViewExports);

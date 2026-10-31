@@ -1,4 +1,11 @@
 import { z } from "zod";
+import {
+  explorerFileImportChunkSchema,
+  explorerFileImportCancelSchema,
+  explorerFileImportResultSchema,
+} from "./explorer-file-import.js";
+export { EXPLORER_FILE_IMPORT_CHUNK_BYTES } from "./explorer-file-import.js";
+export type { ExplorerFileImportChunk } from "./explorer-file-import.js";
 
 import {
   explorerDirectoryCreateSchema,
@@ -124,6 +131,8 @@ export const terminalSnapshotContentSchema = z
 export const explorerOperationRequestContentSchema = z.discriminatedUnion(
   "type",
   [
+    explorerFileImportChunkSchema,
+    explorerFileImportCancelSchema,
     z
       .object({ type: z.literal("explorer.directory.list"), path: z.string() })
       .strict(),
@@ -187,6 +196,7 @@ export const explorerOperationRequestContentSchema = z.discriminatedUnion(
 export const explorerOperationResultContentSchema = z.discriminatedUnion(
   "type",
   [
+    explorerFileImportResultSchema,
     z
       .object({
         type: z.literal("explorer.directory.list"),

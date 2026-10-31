@@ -327,6 +327,7 @@ import { handleExternalHistoryCommand } from "./commands/external-history.js";
 import { handleSurfaceCommand } from "./commands/surface.js";
 import { handleDiagnosticsCommand } from "./commands/diagnostics.js";
 import { handleExplorerCommand } from "./commands/explorer.js";
+import { ExplorerFileImports } from "./explorer-file-imports.js";
 import { handleSkillsCommand } from "./commands/skills.js";
 import { handleCustomizationCommand } from "./commands/customization.js";
 
@@ -677,6 +678,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     }
   };
   const surfaceStreamReplay = new SurfaceStreamReplayGuard();
+  const explorerFileImports = new ExplorerFileImports();
   const repositoryOperationReplay = new RepositoryOperationReplayGuard();
   const customizationContentReplay = new CustomizationContentReplayGuard();
   const repositoryManagedOperations = new RepositoryManagedOperationStore(
@@ -4086,6 +4088,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       case "explorer.operation":
       case "file-document.operation":
         return handleExplorerCommand(command, {
+          fileImports: explorerFileImports,
           surfaceStreamReplay,
           workerEncryption,
         });
@@ -6683,6 +6686,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     if (stopping) return;
 
     stopping = true;
+    await explorerFileImports.dispose().catch(() => undefined);
     // Abort downloads/probes together before awaiting the other shutdown owners.
     const managedRuntimesClosed = Promise.allSettled([
       playwrightRuntime.close(),
