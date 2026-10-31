@@ -2921,6 +2921,40 @@ profile activation, server-managed file/key transfer, persisted backend selectio
 packaged upgrades and full product rollback remain unfinished. The normal desktop,
 development and standalone paths continue to use the Node server and Node worker.
 
+## Early upload rejection lifetime
+
+The Windows file-document comparison in run `41141260086` failed with
+`ECONNRESET` while uploading the request above the 4 MiB operation limit. The
+native parser dropped its unread request body on overflow. Hyper can then close
+with unread TCP bytes before the peer receives the complete error response.
+
+The parser now bounds collection itself, sends the existing 413 response with
+the Node parser's `Connection: close`, and discards remaining frames without
+collecting them. An abandoned rejected upload is released after five seconds.
+Neither response delivery nor advertised-length rejection waits for upload EOF.
+The limit, error contract, authorization and worker dispatch behavior remain in
+place. Unsupported oversized media types retain their existing 415 selection.
+
+Native tests exercise an actual bounded-channel upload, an advertised-length
+rejection without sending body bytes, cleanup with a paused clock, and a real
+loopback HTTP connection that receives its complete response before finishing
+the upload. The real Node/Rust file-document fixture retains its original cases
+and adds an 8 MiB streamed request plus exact connection-close assertions.
+The client still fails on TCP resets and incomplete responses without retrying.
+Local comparisons pass 40 anonymous and 42 account observations per runtime
+on each of native PGlite, private PostgreSQL and external PostgreSQL, with six
+worker commands per profile. All 31 native library tests, the JSON/WS comparison,
+the five upload-client tests and strict all-target Clippy pass. The three new
+lifetime/loopback tests compile and fail against the original parser, then pass
+with the fix. Supported-platform results remain required; local evidence alone
+does not close the Windows failure.
+
+Run `41157035912` also exposed a Windows compiler error in native SQL export:
+the TCP connection future inferred its error type only from a Unix-only branch.
+Its TCP result now explicitly uses `std::io::Error` on every platform. This fixes
+the diagnosed inference path; actual Windows compilation and export acceptance
+must be observed in the subsequent platform run.
+
 ## Remaining delivery sequence
 
 1. Establish cross-platform foundation results and legacy PGlite logical
