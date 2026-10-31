@@ -9,6 +9,16 @@ import { settingsWireFixtures } from "./settings-wire-fixtures.mjs";
 import { placementWireFixtures } from "./placement-wire-fixtures.mjs";
 import { folderWireFixtures } from "./folder-wire-fixtures.mjs";
 import { standaloneChatWireFixtures } from "./standalone-chat-wire-fixtures.mjs";
+import { nativeCommandWireFixtures } from "./native-command-wire-fixtures.mjs";
+import { nativeSettingsWireFixtures } from "./native-settings-fixtures.mjs";
+import { settlementWireFixtures } from "./native-settlement-fixtures.mjs";
+import { deferredAttachment } from "./native-settlement-fixtures.mjs";
+import { managedQueueWireFixtures } from "./managed-queue-wire-fixtures.mjs";
+import { eventPlan } from "./native-event-fixtures.mjs";
+import { nativeSettingsHttpWireFixtures } from "./native-settings-http-wire-fixtures.mjs";
+import { nativeModelInventoryWireFixtures } from "./native-model-inventory-fixtures.mjs";
+import { nativeEventWireFixtures } from "./native-event-http-wire-fixtures.mjs";
+import { agentInteractionWireFixtures } from "./agent-interaction-fixtures.mjs";
 import { terminalWireFixtures } from "./terminal-wire-fixtures.mjs";
 import { browserWireFixtures } from "./browser-wire-fixtures.mjs";
 import { projectShareWireFixtures } from "./project-share-wire-fixtures.mjs";
@@ -253,6 +263,12 @@ export const projectWire = {
   updatedAt: timestamp,
 };
 export const securityFixtures = {
+  ...nativeEventWireFixtures(),
+  ...nativeModelInventoryWireFixtures(),
+  ...agentInteractionWireFixtures(),
+  ...nativeSettingsHttpWireFixtures(),
+  chatPlanOpaqueStateSchema: [eventPlan],
+  chatAttachmentOpaqueSummarySchema: [deferredAttachment()],
   modelConfigurationSchema: [
     { modelId: null },
     {
@@ -666,6 +682,10 @@ export const securityFixtures = {
   ...placementWireFixtures(projectLabel),
   ...folderWireFixtures(projectLabel),
   ...standaloneChatWireFixtures(timestamp),
+  ...nativeCommandWireFixtures(timestamp),
+  ...nativeSettingsWireFixtures(),
+  ...settlementWireFixtures(timestamp),
+  ...managedQueueWireFixtures(timestamp),
   ...terminalWireFixtures(projectLabel),
   ...browserWireFixtures(projectLabel),
   ...projectSurfaceWireFixtures(projectLabel),

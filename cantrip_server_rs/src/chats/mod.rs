@@ -3,6 +3,7 @@ mod archive;
 pub mod catalog;
 mod context;
 pub mod eligibility;
+pub mod execution_lanes;
 pub mod forks;
 pub mod guard;
 pub mod managed_console;

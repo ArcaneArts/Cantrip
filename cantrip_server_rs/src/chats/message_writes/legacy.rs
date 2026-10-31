@@ -80,6 +80,87 @@ impl Repository {
         touch(executor, chat).await?;
         messages::plain(&required(&rows, "updating a chat message")?).map(Some)
     }
+}
+pub(crate) async fn append_task_with(
+    executor: Executor<'_, '_>,
+    owner: &str,
+    chat: &str,
+    input: &Value,
+    attribution: Option<&Value>,
+) -> Result<Option<Value>> {
+    if attribution.is_some_and(|a| a["contextKind"] == "standalone") {
+        anyhow::bail!("Standalone Chats do not support Task messages.")
+    }
+    let input = crate::settings::parse_response("taskMessageOpaqueContentSchema", Some(input))?;
+    let Some(current) = project_chat(executor, owner, chat, true).await? else {
+        return Ok(None);
+    };
+    let active = lane(executor, chat, &current, attribution).await?;
+    if attribution.is_some() && active.is_none() {
+        return Ok(None);
+    }
+    if let Some(saved) = raw_key(executor, chat, &text(&input["idempotencyKey"])?).await? {
+        if saved["id"] != input["id"]
+            || saved["role"] != input["classification"]["role"]
+            || saved["mode"] != input["classification"]["mode"]
+            || saved["reasoning_effort"] != input["reasoningEffort"]
+            || saved["task_attachment_ids"].stringify()
+                != input["classification"]["attachmentIds"].stringify()
+            || messages::task(&saved)?["protectedContent"].stringify()
+                != input["protectedContent"].stringify()
+        {
+            anyhow::bail!("Encrypted Task message idempotency metadata is inconsistent.")
+        }
+        return messages::task(&saved).map(Some);
+    }
+    let worktree = attribution
+        .map(|a| nullish(a.get("worktreeId"), &current["active_worktree_id"]))
+        .unwrap_or(&current["active_worktree_id"]);
+    let mut fields = protected_fields(&input, true);
+    fields.extend([
+        ("id", input["id"].clone()),
+        ("chat_id", json!(chat)),
+        ("worktree_id", worktree.clone()),
+        ("execution_lane_id", json!(active)),
+        ("content", Value::Null),
+        ("idempotency_key", input["idempotencyKey"].clone()),
+    ]);
+    let rows = insert(executor, fields).await?;
+    touch(executor, chat).await?;
+    messages::task(&required(&rows, "appending a Task message")?).map(Some)
+}
+pub(crate) async fn upsert_task_with(
+    executor: Executor<'_, '_>,
+    owner: &str,
+    chat: &str,
+    input: &Value,
+    attribution: Option<&Value>,
+) -> Result<Option<Value>> {
+    let input = crate::settings::parse_response("taskMessageOpaqueContentSchema", Some(input))?;
+    let Some(saved) = owned_key(
+        executor,
+        owner,
+        chat,
+        &text(&input["idempotencyKey"])?,
+        MessageKind::Task,
+    )
+    .await?
+    else {
+        return append_task_with(executor, owner, chat, &input, attribution).await;
+    };
+    if saved["id"] != input["id"] {
+        anyhow::bail!("Encrypted Task message update targets another row.")
+    }
+    let rows = update(
+        executor,
+        &text(&input["id"])?,
+        protected_fields(&input, true),
+    )
+    .await?;
+    touch(executor, chat).await?;
+    messages::task(&required(&rows, "updating an encrypted Task message")?).map(Some)
+}
+impl Repository {
     pub async fn append_task_message(
         &self,
         owner: &str,
@@ -87,47 +168,14 @@ impl Repository {
         input: &Value,
         attribution: Option<&Value>,
     ) -> Result<Option<Value>> {
-        if attribution.is_some_and(|a| a["contextKind"] == "standalone") {
-            anyhow::bail!("Standalone Chats do not support Task messages.")
-        }
-        let input = crate::settings::parse_response("taskMessageOpaqueContentSchema", Some(input))?;
-        let executor = Executor::Database(&self.database);
-        let Some(current) = project_chat(executor, owner, chat, true).await? else {
-            return Ok(None);
-        };
-        let active = lane(executor, chat, &current, attribution).await?;
-        if attribution.is_some() && active.is_none() {
-            return Ok(None);
-        }
-        if let Some(saved) = raw_key(executor, chat, &text(&input["idempotencyKey"])?).await? {
-            if saved["id"] != input["id"]
-                || saved["role"] != input["classification"]["role"]
-                || saved["mode"] != input["classification"]["mode"]
-                || saved["reasoning_effort"] != input["reasoningEffort"]
-                || saved["task_attachment_ids"].stringify()
-                    != input["classification"]["attachmentIds"].stringify()
-                || messages::task(&saved)?["protectedContent"].stringify()
-                    != input["protectedContent"].stringify()
-            {
-                anyhow::bail!("Encrypted Task message idempotency metadata is inconsistent.")
-            }
-            return messages::task(&saved).map(Some);
-        }
-        let worktree = attribution
-            .map(|a| nullish(a.get("worktreeId"), &current["active_worktree_id"]))
-            .unwrap_or(&current["active_worktree_id"]);
-        let mut fields = protected_fields(&input, true);
-        fields.extend([
-            ("id", input["id"].clone()),
-            ("chat_id", json!(chat)),
-            ("worktree_id", worktree.clone()),
-            ("execution_lane_id", json!(active)),
-            ("content", Value::Null),
-            ("idempotency_key", input["idempotencyKey"].clone()),
-        ]);
-        let rows = insert(executor, fields).await?;
-        touch(executor, chat).await?;
-        messages::task(&required(&rows, "appending a Task message")?).map(Some)
+        append_task_with(
+            Executor::Database(&self.database),
+            owner,
+            chat,
+            input,
+            attribution,
+        )
+        .await
     }
     pub async fn upsert_task_message(
         &self,
@@ -136,32 +184,14 @@ impl Repository {
         input: &Value,
         attribution: Option<&Value>,
     ) -> Result<Option<Value>> {
-        let input = crate::settings::parse_response("taskMessageOpaqueContentSchema", Some(input))?;
-        let executor = Executor::Database(&self.database);
-        let Some(saved) = owned_key(
-            executor,
+        upsert_task_with(
+            Executor::Database(&self.database),
             owner,
             chat,
-            &text(&input["idempotencyKey"])?,
-            MessageKind::Task,
+            input,
+            attribution,
         )
-        .await?
-        else {
-            return self
-                .append_task_message(owner, chat, &input, attribution)
-                .await;
-        };
-        if saved["id"] != input["id"] {
-            anyhow::bail!("Encrypted Task message update targets another row.")
-        }
-        let rows = update(
-            executor,
-            &text(&input["id"])?,
-            protected_fields(&input, true),
-        )
-        .await?;
-        touch(executor, chat).await?;
-        messages::task(&required(&rows, "updating an encrypted Task message")?).map(Some)
+        .await
     }
     pub async fn set_message_model_route(
         &self,

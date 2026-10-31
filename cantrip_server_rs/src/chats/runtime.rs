@@ -76,7 +76,7 @@ impl Repository {
                     let same=binding.get("workerId")==Some(&json!(input.worker)) && binding.get("threadId")==Some(&nullable(&input.thread)) && binding.get("placementId")==Some(&json!(placement));
                     let replaced=binding.get("modelRouteId")!=Some(&json!(input.route)) || input.provider_account.as_ref().is_some_and(|account|binding.get("providerAccountId")!=Some(&nullable(account)));
                     if binding.get("modelRouteId")!=Some(&Value::Null) && same && replaced {
-                        return Err(NativeCommandError {code:"native-runtime-route-replaced",message:"The native route changed before this runtime update. Refresh the bound session.",status:409}.into());
+                        return Err(NativeCommandError::new("native-runtime-route-replaced",Some("The native route changed before this runtime update. Refresh the bound session."),409).into());
                     }
                 }
             }

@@ -12,6 +12,62 @@ feature set.
 
 Status: **implementation in progress; not a deployable replacement**.
 
+The native command milestone's current-main `pnpm check` exited 1: 1,645 server
+tests passed, 18 failed and 57 were skipped. One failure is the pooled-provider
+assertion at `local-foundation.test.ts:7218`; the other 17 are unchanged 5-second
+test timeouts. A fresh run of the eight failing files on clean Primary
+`a1b125544` reproduced 15 failures, including the provider assertion; the other
+three timeout cases passed there. The full app suite passed 4,112 tests with one
+timeout, and the full worker suite passed 2,558 with four timeouts. Those exact
+five cases subsequently passed on both the milestone branch and clean Primary
+with one test worker and their original timeouts. The app production build,
+current native/worker wire comparisons, Rust formatting and strict all-target
+Clippy passed. Root Prettier checking still fails on 12 unchanged files; the
+same 12 failures were reproduced on clean Primary. These results do not make
+the broad checks green. Logs and exit records use the
+`.qa/rust-server/native-kernel-*` prefix and are preserved with milestone evidence.
+
+## Native command kernel and protected internal APIs
+
+The additive native kernel implements command admission, immutable receipts,
+preparation/dispatch, observed turns, logical continuations and completion
+records, execution lanes/leases, encrypted prompts and managed queue authority.
+Visible/protected interaction storage, accepted worker replies, expiry,
+permission state/evidence and transaction-bound Agent/Task message and plan
+writes retain the Node repository's transaction and idempotency behavior.
+
+Native HTTP now handles admission, bind-preparation, dispatch, protected events,
+permission transitions, pending requests, continuations and settings evidence.
+Settings refresh/update/observation, account defaults and native model inventory
+also execute natively. Real HTTP/Live comparisons cover native PGlite, private
+PostgreSQL and external PostgreSQL in anonymous, password and account modes,
+using the unchanged worker transport and production endpoint encryption helpers.
+Stored command requests and native settings evidence decrypt using their
+original associated data and retain the keyed worker digest. PostgreSQL fault
+injection additionally verifies event rollback, actual row-lock waits and
+historical Task chat/project notification ordering.
+
+The coordination HTTP comparisons also reject missing, mismatched,
+insufficient-scope, revoked and expired worker credentials for each new route.
+In account mode, a second account enrolls a real worker and cannot access the
+first account's command or Chat state. Rejected calls publish no Live events.
+
+Restart recovery deliberately suspends existing execution lanes. The HTTP
+fixtures therefore admit and dispatch through real routes after server startup;
+they do not disable recovery or weaken event fencing. Current managed command
+admission preserves Node's Agent-project eligibility. Task and standalone
+managed admissions retain `managed-session-ineligible`; their complete product
+execution paths remain separate work in the replacement goal.
+
+The dedicated `native-commands` workflow job runs protocol/policy comparisons,
+the repository suites with a 1 MiB fixture stack, and settings/model/event/
+coordination HTTP suites across all three databases on Linux, macOS and Windows.
+Registration of that job is not platform acceptance. Receipt HTTP with actual
+queue notifications and dispatch/recovery, GUI orchestration, canonical history
+ingestion, complete Task/Goal execution, Redis coordination, supported-platform
+packaging, data-preserving upgrades/rollback and Winterhold rehearsal remain
+required. Normal development, desktop and standalone entrypoints still use Node.
+
 ## Controlled conversion caller connection ownership
 
 Linux conversion run `41160107203` reset the first status request after the

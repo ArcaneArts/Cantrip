@@ -1,6 +1,8 @@
 // Development-time export of the real protocol definitions. The native server
 // embeds this data and implements every registered operation in Rust.
 import * as protocol from "../../packages/protocol/dist/index.js";
+import * as computerUsePreview from "../../packages/protocol/dist/computer-use-preview.js";
+import * as attachmentContent from "../../packages/protocol/dist/attachment-content.js";
 import * as runDefinitions from "../../packages/protocol/dist/run-configuration-definitions.js";
 import * as runSecrets from "../../packages/protocol/dist/run-configuration-secrets.js";
 import * as runConfigurationOperations from "../../packages/protocol/dist/run-configuration-operations.js";
@@ -15,6 +17,7 @@ import { registerWorkerContracts } from "./worker-contracts.mjs";
 import { registerWorkerCommandContracts } from "./worker-command-contracts.mjs";
 
 export const contractRoots = [
+  "chatAttachmentOpaqueSummarySchema",
   "accountRegistrationSchema",
   "authLoginSchema",
   "authReauthenticationSchema",
@@ -71,6 +74,14 @@ export const contractRoots = [
   "contextualChatWireSummarySchema",
   "modelConfigurationSchema",
   "agentInteractionProvenanceSchema",
+  "agentInteractionRequestCreateSchema",
+  "encryptedAgentInteractionRequestCreateSchema",
+  "agentInteractionRequestSchema",
+  "encryptedAgentInteractionRequestSchema",
+  "agentInteractionResolutionCreateSchema",
+  "encryptedAgentInteractionResolutionCreateSchema",
+  "agentInteractionRequestQuerySchema",
+  "agentInteractionRequestWireListSchema",
   "workerServerEnvelopeSchema",
   "workerRequestEnvelopeSchema",
   "accountResourceUsageSchema",
@@ -364,6 +375,54 @@ export const contractRoots = [
   "taskMessageOpaqueContentSchema",
   "nativeHistoryTurnReadRequestSchema",
   "nativeHistoryTurnReadResponseSchema",
+  "chatPlanOpaqueStateSchema",
+  "nativeSettingsRefreshRequestSchema",
+  "nativeSettingsUpdateRequestSchema",
+  "nativeSettingsUpdateReceiptSchema",
+  "nativeAccountDefaultsRequestSchema",
+  "nativeAccountDefaultsResponseSchema",
+  "nativeModelInventoryRequestSchema",
+  "nativeCommandEventSchema",
+  "nativePermissionTransitionResolveSchema",
+  "cuaPreviewAuthoritySchema",
+  "nativeModelInventorySchema",
+  "nativeChatModelInventoryQuerySchema",
+  "nativeChatModelInventorySchema",
+  "nativeCommandSessionSchema",
+  "nativeCommandAdmissionSchema",
+  "nativeCommandIntentSchema",
+  "nativeCommandReceiptSchema",
+  "nativeCommandDispatchSchema",
+  "nativeCommandContinuationSchema",
+  "nativePendingRequestSchema",
+  "nativeSettingsStateSchema",
+  "nativeSettingsIntentSchema",
+  "nativeSettingsBindingSchema",
+  "nativeSettingsReadScopeSchema",
+  "protectedNativeSettingsSnapshotSchema",
+  "nativeSettingsVersionSchema",
+  "nativeSettingsObservationRequestSchema",
+  "nativeSettingsObservationReceiptSchema",
+  "nativeSettingsEvidenceSchema",
+  "nativeSettingsEvidenceResultSchema",
+  "nativeCommandSettlementSchema",
+  "nativeCommandTerminalEvidenceSchema",
+  "queuedPromptOpaqueContentSchema",
+  "encryptedQueuedPromptSchema",
+  "nativeTurnRecoveryObservationSchema",
+  "managedQueueClaimSchema",
+  "managedQueueReadSchema",
+  "managedQueueSnapshotSchema",
+  "managedQueueMutationSchema",
+  "managedQueueMutateSchema",
+  "managedQueueMutationResultSchema",
+  "managedQueueStartReceiptSchema",
+  "managedQueueStartReceiptResultSchema",
+  "managedQueueImportSchema",
+  "managedQueueImportAckSchema",
+  "managedQueueImportResultSchema",
+  "managedQueueLookupSchema",
+  "managedQueueLookupResultSchema",
 ];
 
 // Resolve the actual source schemas, including their separate protocol modules.
@@ -371,9 +430,14 @@ export const contractRoots = [
 export function sourceContractSchema(name) {
   return (
     protocol[name] ??
+    computerUsePreview[name] ??
+    attachmentContent[name] ??
     runConfigurationRuntime[name] ??
     runConfigurationOperations[name] ??
     runDefinitions[name] ??
+    (name === "nativeCommandTerminalEvidenceSchema"
+      ? protocol.nativeCommandSettlementSchema.shape.reconciliation.unwrap()
+      : undefined) ??
     (name === "repositoryRoutingHandleSchema"
       ? repositoryRoutingHandleSchema
       : undefined)
@@ -451,6 +515,18 @@ function registerChecks(schema, tags) {
     );
   tags.forEach((tag, index) => registerCustom(schema, index, tag));
 }
+registerChecks(protocol.nativeSettingsVersionSchema.shape.revision, [
+  "native-settings-version",
+]);
+registerChecks(protocol.nativeCommandAdmissionSchema, [
+  "native-command-admission",
+]);
+registerChecks(protocol.nativeSettingsEvidenceSchema, [
+  "native-settings-evidence",
+]);
+registerChecks(protocol.nativeCommandSettlementSchema.shape.deferred.unwrap(), [
+  "native-deferred-pair",
+]);
 for (const schema of [
   protocol.workspaceRepositoryDiscoveryJobSummarySchema,
   protocol.workspaceRepositoryDiscoveryWorkerResultSchema,
@@ -587,6 +663,16 @@ registerChecks(protocol.providerAuthLiveStatusSchema, [
   "provider-auth-live-kind",
 ]);
 const recursiveJson = registerWorkerContracts(registerChecks);
+registerChecks(protocol.agentInteractionRequestCreateSchema, [
+  "interaction-payload-owner",
+  "worker-wire-interaction-storage",
+]);
+registerChecks(protocol.agentInteractionRequestSchema, [
+  "interaction-visible-row",
+]);
+registerChecks(protocol.encryptedAgentInteractionRequestSchema, [
+  "interaction-protected-row",
+]);
 registerChecks(runDefinitions.runConfigurationProviderValidationSchema, [
   "run-provider-validation",
 ]);
@@ -703,7 +789,14 @@ registerChecks(protocol.legacyProjectTabLayoutWireSummarySchema, [
   "legacy-project-layout",
 ]);
 const commandContracts = registerWorkerCommandContracts(registerCustom);
+registerChecks(protocol.nativeCommandEventSchema.shape.event._zod.def.in, [
+  "native-command-event",
+]);
 const transforms = new Map([
+  [
+    protocol.nativeCommandEventSchema.shape.event._zod.def.out,
+    "native-event-identity",
+  ],
   [protocol.appLiveEventPayloadSchema._zod.def.out, "live-json-object"],
   ...commandContracts.transforms,
 ]);

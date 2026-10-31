@@ -14,6 +14,7 @@ pub mod enrichment;
 pub mod grok;
 pub mod lifecycle;
 mod models;
+pub mod native_inventory;
 pub mod ollama;
 pub mod openrouter;
 mod providers;

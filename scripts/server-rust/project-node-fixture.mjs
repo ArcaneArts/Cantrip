@@ -18,6 +18,10 @@ import { discoveryFixture } from "./discovery-node-fixture.mjs";
 import { scratchRootFixture } from "./scratch-root-node-fixture.mjs";
 import { chatForkFixture } from "./chat-fork-node-fixture.mjs";
 import { chatMessageFixture } from "./chat-message-node-fixture.mjs";
+import { nativeCommandFixture } from "./native-command-node-fixture.mjs";
+import { NativeCommandError } from "../../cantrip_server/src/db/repository/native-command-errors.ts";
+import { ExecutionLaneConflictError } from "../../cantrip_server/src/db/repository/chat-execution-lanes.ts";
+import { AgentInteractionConflictError } from "../../cantrip_server/src/db/repository/agent-interactions.ts";
 console.error(JSON.stringify({ event: "repository-fixture.database.opening" }));
 const database = await connectDatabase(readServerConfig());
 console.error(JSON.stringify({ event: "repository-fixture.database.ready" }));
@@ -53,6 +57,8 @@ try {
         );
       } else if (request.op.startsWith("message-")) {
         value = await chatMessageFixture(database.repository, request);
+      } else if (request.op.startsWith("native-command-")) {
+        value = await nativeCommandFixture(database.repository, request);
       } else if (request.op.startsWith("scratch-")) {
         value = await scratchRootFixture(
           database.repository.standaloneChatRootJobs,
@@ -867,6 +873,17 @@ try {
         JSON.stringify({
           id: request.id,
           rejected: true,
+          ...(error instanceof AgentInteractionConflictError
+            ? { interactionError: "AgentInteractionConflictError" }
+            : {}),
+          ...(request.op.startsWith("native-command-lane-") &&
+          error instanceof ExecutionLaneConflictError
+            ? { laneError: error.constructor.name }
+            : {}),
+          ...(request.op.startsWith("native-command-") &&
+          error instanceof NativeCommandError
+            ? { commandError: error.code, commandStatus: error.statusCode }
+            : {}),
           ...(request.op.startsWith("message-") &&
           error.name === "NativeHistoryError"
             ? { historyError: error.code, historyStatus: error.statusCode }
@@ -894,7 +911,8 @@ try {
             request.op.startsWith("layout-") ||
             request.op.startsWith("scratch-") ||
             request.op.startsWith("fork-") ||
-            request.op.startsWith("message-")) &&
+            request.op.startsWith("message-") ||
+            request.op.startsWith("native-command-")) &&
           error.cause?.code
             ? { databaseCode: error.cause.code }
             : {}),

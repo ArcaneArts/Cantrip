@@ -1,5 +1,6 @@
 use super::*;
 use crate::database::Transaction;
+use futures::FutureExt;
 async fn append(
     tx: &Transaction<'_>,
     owner: &str,
@@ -95,6 +96,32 @@ async fn upsert(
     touch(executor, chat).await?;
     messages::opaque(&required(&rows, "updating an encrypted chat message")?).map(Some)
 }
+pub(crate) async fn write_in_transaction(
+    tx: &Transaction<'_>,
+    owner: &str,
+    chat: &str,
+    input: &Value,
+    attribution: Option<&Value>,
+    is_update: bool,
+) -> Result<Option<Value>> {
+    checked(tx.query("WITH locked_project AS MATERIALIZED(SELECT p.id FROM projects p INNER JOIN chats c ON c.project_id=p.id WHERE p.owner_id=$1 AND c.id=$2 FOR UPDATE OF p) SELECT c.id FROM locked_project p INNER JOIN chats c ON c.project_id=p.id WHERE c.id=$2 FOR UPDATE OF c",&[&owner,&chat]).await,&[json!(owner),json!(chat)])?;
+    let chats = checked(
+        tx.query(
+            "SELECT id FROM chats WHERE id=$1 AND owner_id=$2 AND experience='agent' FOR UPDATE",
+            &[&chat, &owner],
+        )
+        .await,
+        &[json!(chat), json!(owner)],
+    )?;
+    if chats.is_empty() {
+        return Ok(None);
+    }
+    if is_update {
+        upsert(tx, owner, chat, input, attribution).boxed().await
+    } else {
+        append(tx, owner, chat, input, attribution).boxed().await
+    }
+}
 impl Repository {
     async fn write_encrypted(
         &self,
@@ -110,12 +137,15 @@ impl Repository {
             input.clone(),
             attribution.cloned(),
         );
-        self.database.transaction(|tx|Box::pin(async move{
-            checked(tx.query("WITH locked_project AS MATERIALIZED(SELECT p.id FROM projects p INNER JOIN chats c ON c.project_id=p.id WHERE p.owner_id=$1 AND c.id=$2 FOR UPDATE OF p) SELECT c.id FROM locked_project p INNER JOIN chats c ON c.project_id=p.id WHERE c.id=$2 FOR UPDATE OF c",&[&owner,&chat]).await,&[json!(owner),json!(chat)])?;
-            let chats=checked(tx.query("SELECT id FROM chats WHERE id=$1 AND owner_id=$2 AND experience='agent' FOR UPDATE",&[&chat,&owner]).await,&[json!(chat),json!(owner)])?;
-            if chats.is_empty(){return Ok(None)}
-            if is_update{upsert(tx,&owner,&chat,&input,attribution.as_ref()).await}else{append(tx,&owner,&chat,&input,attribution.as_ref()).await}
-        })).await
+        self.database
+            .transaction(|tx| {
+                Box::pin(async move {
+                    write_in_transaction(tx, &owner, &chat, &input, attribution.as_ref(), is_update)
+                        .boxed()
+                        .await
+                })
+            })
+            .await
     }
     pub async fn append_encrypted_message(
         &self,

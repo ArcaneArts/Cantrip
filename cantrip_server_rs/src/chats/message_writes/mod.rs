@@ -9,6 +9,8 @@ use crate::{
 };
 use anyhow::{Context, Result};
 pub use canonical::HistoryError;
+pub(crate) use encrypted::write_in_transaction;
+pub(crate) use legacy::upsert_task_with;
 
 fn text(value: &Value) -> Result<String> {
     Ok(value
