@@ -12,6 +12,13 @@ feature set.
 
 Status: **implementation in progress; not a deployable replacement**.
 
+The queue runtime milestone's fresh `pnpm check` exited 1 with 1,662 server
+tests passing, one failing and 57 skipped. The provider-pooling assertion at
+`local-foundation.test.ts:7218` also fails in a fresh focused run on clean
+Primary `038a7226f`. All 40 Rust library tests and strict all-target Clippy pass.
+Reports use `.qa/rust-server/native-runtime-*`; the Primary reproduction is
+`native-runtime-root-baseline-v1.log`. The broad check is not green.
+
 The native command milestone's current-main `pnpm check` exited 1: 1,645 server
 tests passed, 18 failed and 57 were skipped. One failure is the pooled-provider
 assertion at `local-foundation.test.ts:7218`; the other 17 are unchanged 5-second
@@ -96,8 +103,13 @@ for each operation before it is polled. The original 1 MiB PGlite workload passe
 locally with all 1,523 original cases plus 20 GUI cases. Windows run
 `41226706489` now passes that same 1 MiB workload, including 1,337 snapshots and
 10 reopen checks. The earlier full platform run separately failed an execution
-target repository fixture with stack overflow; run `41228493161` captures that
-unchanged workload under GDB. This does not establish full Windows acceptance.
+target repository fixture with stack overflow. Run `41228493161` captured
+373,760 bytes retained by the repository operation dispatcher and 235,232 by
+its outer dispatcher while resolving a project target. Both selectors now
+construct the selected future before polling it. All 431 original target cases
+pass locally, with no cases removed or assertions changed. Windows candidate
+`41229647423` exercises the original 1 MiB admission and target workloads;
+full Windows acceptance remains pending.
 
 Restart recovery deliberately suspends existing execution lanes. The HTTP
 fixtures therefore admit and dispatch through real routes after server startup;
