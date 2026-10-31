@@ -22,6 +22,7 @@ import { sendHeartbeat } from "../../cantrip_worker/src/heartbeat.ts";
 import { discoveryLifecycleCases } from "./discovery-lifecycle-cases.mjs";
 import { discoveryExpiryCases } from "./discovery-expiry-cases.mjs";
 import { discoveryLifetimeCases } from "./discovery-lifetime-cases.mjs";
+import { traceHttpConnections } from "./http-connection-trace.mjs";
 const option = (name) => {
   const i = process.argv.indexOf(name);
   return i < 0 ? undefined : process.argv[i + 1];
@@ -37,6 +38,8 @@ const report = {
   completeReplacement: false,
   profiles: [],
 };
+const connectionTrace =
+  process.argv.includes("--trace-http") && traceHttpConnections();
 const ids = Array.from(
   { length: 8 },
   (_, i) => `66666666-6666-4666-8666-${String(i + 1).padStart(12, "0")}`,
@@ -815,12 +818,12 @@ try {
               connected = false;
             },
           });
-          result.lifetimeEvidence = fixture.discoveryLifetimeEvidence;
         }
       } catch (error) {
         result.diagnostics = fixture.server?.diagnostics();
         throw error;
       } finally {
+        result.lifetimeEvidence = fixture.discoveryLifetimeEvidence;
         result.recoverySnapshots = fixture.discoveryRecoverySnapshots;
         releaseScan();
         releaseImport();
@@ -875,8 +878,19 @@ try {
 } catch (error) {
   failure = error;
   report.failure = error.stack;
+  report.failureCauses = [];
+  const seen = new Set();
+  for (let cause = error; cause && !seen.has(cause); cause = cause.cause) {
+    seen.add(cause);
+    report.failureCauses.push({
+      name: cause.name,
+      message: cause.message,
+      code: cause.code,
+    });
+  }
   report.retainedRoot = root;
 } finally {
+  if (connectionTrace) report.httpConnections = connectionTrace.close();
   await pg?.close();
   if (option("--report")) {
     await mkdir(path.dirname(path.resolve(option("--report"))), {
