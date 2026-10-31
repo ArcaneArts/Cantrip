@@ -61,6 +61,14 @@ including concurrent abort/read outcomes and multiple listeners. The public
 native method reads the actual managed queue repository. Receipt and queue HTTP
 routes still require their real GUI dispatch and recovery consumers.
 
+Native GUI queue preparation, mutation and lookup now use those same durable
+repositories. Twenty GUI scenarios on each database compare original JSON
+digests, explicit optimistic revisions, immutable replay and rejected receipts,
+retained input after deletion, administrative input fences and tenant/placement
+rejection with the unchanged Source helper. Their surrounding managed queue
+corpus also retains restart checks and 20 same/mixed-runtime PostgreSQL races.
+These helpers do not complete GUI turn dispatch or its HTTP consumers.
+
 PR #2384's Windows native command job failed its first fresh GUI admission on
 the original 1 MiB fixture thread with stack overflow (`3221225725`). The
 `native_stack_diagnostic` workflow input runs that same repository suite under
@@ -68,6 +76,13 @@ MinGW GDB and retains native thread stacks/registers. It changes neither the
 requested stack nor the suite's assertions and is separate from platform
 acceptance. The optional `CANTRIP_FIXTURE_GDB` launcher affects only disposable
 Rust repository fixtures; ordinary launches retain their existing command line.
+The first debugger capture places the failure on the Rust caller during branch
+lease acquisition while the PGlite engine thread is idle. The follow-up capture
+measured 214,064 bytes retained by the native fixture dispatcher and 242,720 by
+its outer dispatcher. The native selector now returns an individual boxed future
+for each operation before it is polled. The original 1 MiB PGlite workload passes
+locally with all 1,523 original cases plus 20 GUI cases; Windows revalidation is
+still required.
 
 Restart recovery deliberately suspends existing execution lanes. The HTTP
 fixtures therefore admit and dispatch through real routes after server startup;

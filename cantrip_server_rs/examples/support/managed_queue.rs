@@ -1,6 +1,8 @@
 use anyhow::{Context, Result};
 use cantrip_server::{
-    database::Database, native_commands::managed_queue::QueueRepository, wire::Value,
+    database::Database,
+    native_commands::{managed_queue::QueueRepository, runtime::gui_queue::GuiQueue},
+    wire::Value,
 };
 use futures::FutureExt;
 use std::sync::Arc;
@@ -12,11 +14,49 @@ fn text(value: &Value) -> Result<String> {
         .into_owned())
 }
 pub async fn run(database: Arc<Database>, input: &Value) -> Result<Value> {
-    let repository = QueueRepository::new(database);
+    let repository = QueueRepository::new(database.clone());
     let owner = text(&input["owner"])?;
     let chat = input.get("chat").map(text).transpose()?.unwrap_or_default();
     let empty = Value::object([] as [(&str, Value); 0]);
     let content = &input["content"];
+    if matches!(
+        input["action"].as_str(),
+        Some("gui-mutate" | "gui-lookup" | "gui-context")
+    ) {
+        let context = if let Some(context) = input.get("context").filter(|v| !v.is_null()) {
+            context.clone()
+        } else {
+            cantrip_server::chats::Repository::new(database.clone())
+                .execution_context(&owner, &chat)
+                .boxed()
+                .await?
+                .context("GUI queue context is unavailable.")?
+        };
+        let gui = GuiQueue::new(database);
+        return match input["action"].as_str().unwrap() {
+            "gui-context" => Ok(context),
+            "gui-mutate" => {
+                gui.mutate(
+                    &owner,
+                    &context,
+                    content,
+                    input.get("options").unwrap_or(&empty),
+                )
+                .boxed()
+                .await
+            }
+            _ => Ok(gui
+                .lookup(
+                    &owner,
+                    &context,
+                    content,
+                    input.get("options").unwrap_or(&empty),
+                )
+                .boxed()
+                .await?
+                .unwrap_or(Value::Null)),
+        };
+    }
     Ok(
         match input["action"]
             .as_str()

@@ -12,6 +12,7 @@ import { command } from "./native-command-admission-cases.mjs";
 
 import { literal, stamp, otherOwner } from "./project-target-state.mjs";
 import { runManagedQueueImportCases } from "./managed-queue-import-cases.mjs";
+import { runGuiQueueCases } from "./gui-queue-cases.mjs";
 export async function runManagedQueueCases(h) {
   const { seed, observe, snapshot, reset, owner } = h;
   let n = 0;
@@ -155,5 +156,6 @@ export async function runManagedQueueCases(h) {
   await runManagedQueueClaimCases(context);
   await runManagedQueueImportCases(context);
   await runManagedQueueDeliveryCases(context);
+  await runGuiQueueCases(context);
   await setup();
 }

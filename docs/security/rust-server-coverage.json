@@ -8289,7 +8289,9 @@
         "cantrip_server_rs/src/agent_interactions/mod.rs",
         "cantrip_server_rs/src/http/native_admission.rs",
         "cantrip_server_rs/src/http/native_events.rs",
-        "cantrip_server_rs/src/native_commands/events.rs"
+        "cantrip_server_rs/src/native_commands/events.rs",
+        "cantrip_server_rs/src/native_commands/runtime/receipts.rs",
+        "cantrip_server_rs/src/native_commands/runtime/gui_queue.rs"
       ],
       "evidence": [
         "cantrip_server_rs/tests/native_command_contracts.rs",
@@ -8298,7 +8300,6 @@
         "scripts/server-rust/native-event-context-cases.mjs",
         "scripts/server-rust/native-event-races.mjs",
         "scripts/server-rust/managed-queue-races.mjs",
-        "cantrip_server_rs/tests/native_command_contracts.rs",
         "scripts/server-rust/native-settings-http-compatibility.mjs",
         "scripts/server-rust/native-settings-http-fixture.mjs",
         "scripts/server-rust/native-settings-repository-cases.mjs",
@@ -8308,16 +8309,15 @@
         "scripts/server-rust/agent-interaction-cases.mjs",
         "scripts/server-rust/agent-interaction-response-cases.mjs",
         "scripts/server-rust/agent-interaction-races.mjs",
-        "scripts/server-rust/native-event-context-cases.mjs",
-        "cantrip_server_rs/tests/native_command_contracts.rs",
         "scripts/server-rust/native-event-http-compatibility.mjs",
         "scripts/server-rust/native-event-http-setup.mjs",
         "scripts/server-rust/native-event-http-content.mjs",
         "scripts/server-rust/native-event-http-special-cases.mjs",
-        "cantrip_server_rs/tests/native_command_contracts.rs",
         "scripts/server-rust/native-coordination-http-compatibility.mjs",
         "scripts/server-rust/native-coordination-http-cases.mjs",
-        "cantrip_server_rs/tests/native_command_contracts.rs"
+        "scripts/server-rust/native-queue-receipts-oracle.mjs",
+        "cantrip_server_rs/src/native_commands/runtime/receipts/tests.rs",
+        "scripts/server-rust/gui-queue-cases.mjs"
       ],
       "implemented": [
         "Durable native command admission, immutable receipts, preparation, dispatch, settlement, recovery, settings and permission synchronization, observed turns, logical input continuations and completion delivery records.",
@@ -8327,12 +8327,14 @@
         "Native model inventory helper and GET route preserve account/worker availability, locale sorting, disabled bound-route lookup and binding/provider revalidation after the inventory read. All three database/authentication modes and eight real PostgreSQL lock-witness HTTP read races compared against the Node source.",
         "All twelve public interaction repository operations and their actual transaction-bound native event collaborators: visible/protected request recording, reads and global expiry, validation/resolution, secret-answer redaction, interruption and accepted worker terminal replies. Sixteen real PostgreSQL resolution races include all same/mixed Node/Rust caller pairings. Interaction/event HTTP orchestration remains separate.",
         "Admission, bind-preparation, dispatch and event HTTP routes with worker credential scope, exact computer-use authority, eight-event validation and actual transaction writers. After-commit Live publication covers protected messages, plan/interaction invalidations and historical Task project fanout; SQL failure and blocked-transaction HTTP proof are retained.",
-        "Permission-transition, pending, continuation and settings-evidence HTTP routes preserve their distinct validation/errors, post-commit settings invalidation, exact settings binding checks and activation fences. Three storage and authentication modes compare approval registration/consumption, applied permission revision and actual continuation to a new activation; stored opaque requests/evidence decrypt with their original worker AAD and keyed digests."
+        "Permission-transition, pending, continuation and settings-evidence HTTP routes preserve their distinct validation/errors, post-commit settings invalidation, exact settings binding checks and activation fences. Three storage and authentication modes compare approval registration/consumption, applied permission revision and actual continuation to a new activation; stored opaque requests/evidence decrypt with their original worker AAD and keyed digests.",
+        "Native receipt notification/wait primitive preserves notices during reads, exact 750ms durable polling, original UTF16 Chat keys, completed-read/abort ordering and subscription cleanup. Fifteen scenarios execute the unchanged Node waiter; the native public method reads the real managed queue repository. HTTP dispatch consumers remain separate.",
+        "Native GUI queue preparation/mutation/lookup use real snapshot, control, retained encrypted input and mutation repositories. Twenty GUI cases per database preserve original JSON digests, nullish options, resume/revision behavior, immutable rejected receipts, deleted-input lookup, administrative input fences and tenant/placement rejection. No receipt or GUI dispatch HTTP consumer is stubbed."
       ],
       "remaining": [
         "Protected settings/default HTTP flows use the unchanged worker transport and production encryption helpers with controlled native RPC. Internal admission/preparation/dispatch/event HTTP now uses real durable commands; complete GUI/native runtime execution/history integration and existing full app/worker acceptance remain required.",
         "Supported-platform acceptance, full app/worker native execution, Redis/multi-instance coordination, migration/post-write rollback, packaging and default cutover remain unfinished.",
-        "Receipt handling with actual queue notification/wake/recovery, GUI command/managed queue orchestration and complete background recovery/delivery remain required. Canonical history ingestion must be implemented separately; no fake canonical history writers are used."
+        "Receipt HTTP and real background queue notification/delivery/wake/recovery, GUI turn dispatch and complete history integration remain required. Receipt waiting and GUI queue mutation preparation are now native helpers with Source parity evidence; their actual product consumers remain unfinished. Canonical history ingestion must be implemented separately; no fake canonical history writers are used."
       ]
     }
   },

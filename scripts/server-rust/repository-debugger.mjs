@@ -34,11 +34,15 @@ export async function repositoryDebugger(executable, args) {
       "-ex",
       "run",
       "-ex",
-      "thread apply all bt 80",
-      "-ex",
       "python exec(" +
         JSON.stringify(`import gdb
-frame = gdb.newest_frame()
+try:
+    frame = gdb.newest_frame()
+except gdb.error:
+    frame = None
+if frame is not None:
+    gdb.execute('thread apply all bt 80')
+    gdb.execute('info registers')
 previous = None
 previous_name = None
 for index in range(80):
@@ -56,8 +60,6 @@ for index in range(80):
         break
 `) +
         ")",
-      "-ex",
-      "info registers",
       "--args",
       executable,
       ...args,
