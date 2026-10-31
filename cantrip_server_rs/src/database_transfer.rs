@@ -6,7 +6,7 @@ pub(crate) mod native_postgres;
 use crate::{database::Database, migrations::migrate_transaction};
 use anyhow::{Context, Result};
 pub use export::{ExportReceipt, PreparedDump, export_sql, prepare_sql};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::path::Path;
 
@@ -75,7 +75,7 @@ fn failure(error: anyhow::Error, phase: &'static str) -> anyhow::Error {
     .into()
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RestoreReceipt {
     pub bytes: usize,
@@ -87,6 +87,24 @@ pub struct RestoreReceipt {
 /// archive DDL/data and pending Cantrip migrations share one transaction.
 /// Existing objects produce their real database error and roll back the load.
 pub async fn restore_sql(database: &Database, file: &Path) -> Result<RestoreReceipt> {
+    restore_once(database, file, None).await
+}
+
+/// A profile publication may be interrupted after the external database commits.
+/// An in-transaction receipt makes that exact import retryable without replaying
+/// the snapshot over later accepted writes.
+pub(crate) async fn restore_profile_sql(
+    database: &Database,
+    file: &Path,
+    operation: String,
+) -> Result<RestoreReceipt> {
+    restore_once(database, file, Some(operation)).await
+}
+async fn restore_once(
+    database: &Database,
+    file: &Path,
+    operation: Option<String>,
+) -> Result<RestoreReceipt> {
     let bytes = tokio::fs::read(file)
         .await
         .context("read SQL export")
@@ -96,12 +114,50 @@ pub async fn restore_sql(database: &Database, file: &Path) -> Result<RestoreRece
     let sql = String::from_utf8(bytes)
         .context("SQL export must be UTF-8")
         .map_err(|error| failure(error, "decoding the export"))?;
+    let operation_digest = digest.clone();
     let migrations_applied = database
         .transaction(|transaction| {
             Box::pin(async move {
                 transaction
                     .execute("SELECT pg_advisory_xact_lock(4310, 1)")
                     .await?;
+                if let Some(key) = &operation {
+                    let present: Option<String> = transaction
+                        .query("SELECT to_regclass('public.system_state')::text", &[])
+                        .await?[0]
+                        .get(0)?;
+                    if present.is_some() {
+                        let rows = transaction
+                            .query("SELECT value FROM public.system_state WHERE key=$1", &[key])
+                            .await?;
+                        if let Some(row) = rows.first() {
+                            let value: serde_json::Value = row.get(0)?;
+                            let previous: RestoreReceipt = serde_json::from_value(value)?;
+                            anyhow::ensure!(
+                                previous.sha256 == operation_digest
+                                    && previous.bytes == receipt_bytes,
+                                "Profile import receipt belongs to different SQL bytes"
+                            );
+                            // Still execute actual pending migrations on retry.
+                            let added = migrate_transaction(transaction).await?;
+                            let count = previous.migrations_applied + added;
+                            if added > 0 {
+                                let value = serde_json::to_value(RestoreReceipt {
+                                    bytes: receipt_bytes,
+                                    sha256: operation_digest.clone(),
+                                    migrations_applied: count,
+                                })?;
+                                transaction
+                                    .query(
+                                        "UPDATE public.system_state SET value=$2,updated_at=now() WHERE key=$1",
+                                        &[key, &value],
+                                    )
+                                    .await?;
+                            }
+                            return Ok(count);
+                        }
+                    }
+                }
                 let search_path: String =
                     transaction.query("SHOW search_path", &[]).await?[0].get(0)?;
                 transaction.execute(&sql).await?;
@@ -110,7 +166,21 @@ pub async fn restore_sql(database: &Database, file: &Path) -> Result<RestoreRece
                 transaction
                     .query("SELECT set_config('search_path',$1,false)", &[&search_path])
                     .await?;
-                migrate_transaction(transaction).await
+                let count = migrate_transaction(transaction).await?;
+                if let Some(key) = operation {
+                    let value = serde_json::to_value(RestoreReceipt {
+                        bytes: receipt_bytes,
+                        sha256: operation_digest,
+                        migrations_applied: count,
+                    })?;
+                    transaction
+                        .query(
+                            "INSERT INTO public.system_state(key,value) VALUES($1,$2)",
+                            &[&key, &value],
+                        )
+                        .await?;
+                }
+                Ok(count)
             })
         })
         .await

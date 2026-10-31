@@ -15,6 +15,7 @@ pub mod migrations;
 pub mod operations;
 pub mod pane_layouts;
 pub mod policies;
+pub mod profile;
 mod project_layout;
 pub mod project_shares;
 pub mod projects;

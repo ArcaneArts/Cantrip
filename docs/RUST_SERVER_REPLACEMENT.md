@@ -2837,11 +2837,11 @@ An external PostgreSQL backend may retain the interrupted query until it
 finishes and detects the lost connection; these checks include that eventual
 rollback instead of inferring it from the client's exit alone.
 
-These are SQL transfer components. Profile activation, server-managed file/key
-transfer, persistent backend selection, native-to-legacy post-write rollback
-and packaged upgrade integration remain unfinished. Cross-platform jobs are
-configured for this milestone and still require observed results. Normal
-builds continue to select the Node server and Node worker.
+These are SQL transfer components. The complete-profile components described
+below add file/key transfer, persistent backend selection and representative
+post-write reverse conversion. Packaged upgrade integration and full product
+rollback remain unfinished. Normal builds continue to select the Node server
+and Node worker.
 
 ## Native logical export and representative post-write rollback
 
@@ -2916,10 +2916,11 @@ account-resource-usage timeout. The latter passes unchanged in isolation on both
 this branch and clean Primary, with actual test durations of 2.28 and 2.29 seconds.
 No deadline or assertion was relaxed, and the broad check remains non-green.
 
-These results establish a representative database rollback subset. Complete
-profile activation, server-managed file/key transfer, persisted backend selection,
-packaged upgrades and full product rollback remain unfinished. The normal desktop,
-development and standalone paths continue to use the Node server and Node worker.
+These results establish a representative database rollback subset. The
+complete-profile components below extend it to file/key transfer and persisted
+backend selection. Packaged upgrades and full product rollback remain unfinished.
+The normal desktop, development and standalone paths continue to use the Node
+server and Node worker.
 
 ## Early upload rejection lifetime
 
@@ -2985,6 +2986,99 @@ password-authenticated Rust writes,
 Node post-write rollback, real-row interruption/retry, eleven TLS cases and
 restricted-role redaction pass with compressed transport. Current supported-platform outcomes must be observed separately. No complete profile,
 packaged migration or full replacement acceptance follows from this fix.
+
+## Logical profile transfer and durable backend selection
+
+The native CLI can export a stopped installation's database and opaque files
+as one directory bundle, then restore it into a new profile root. The bundle
+contains logical SQL, a versioned manifest and copied files with SHA256/length
+records. It retains unknown regular files, materializes file references and
+preserves empty directories, executable bits and file modification times.
+Physical `server-db` and `postgres` engine directories are excluded. Paths use
+portable forward slashes; unsafe paths, duplicates, directory cycles and changed
+SQL/assets fail without publishing the destination.
+
+```shell
+# Stop the source server before exporting its database and files.
+node scripts/database-transfer/legacy-profile.mjs /old/profile /backup/profile-bundle /absolute/path/to/cantrip-server
+/absolute/path/to/cantrip-server --data-dir /new/profile --database pglite \
+  --migrate-only --restore-profile /backup/profile-bundle
+
+# After Rust has accepted writes, export its current database and files.
+/absolute/path/to/cantrip-server --data-dir /new/profile --migrate-only \
+  --export-profile /backup/after-rust --pg-dump-path /absolute/path/to/pg_dump
+node scripts/database-transfer/legacy-profile.mjs --restore /backup/after-rust /rollback/profile /absolute/path/to/cantrip-server
+```
+
+Use `--database bundled-postgres --postgres-bin-dir <directory>` or an explicit
+`DATABASE_URL` to restore into the other backends. A bundle carries its source
+mode as the default; external PostgreSQL credentials must be supplied separately.
+Successful restore writes private `server-database.json` and profile-receipt
+files. Normal Rust startup reads the stored backend, connection and binary path.
+Explicit backend inputs retain precedence. `--migrate-only --remember-database`
+records a selection only after the actual database setup succeeds; a failed
+open leaves the previous selection intact. No metadata capability probe replaces
+the real open. Stored external URLs contain credentials and require the same
+protection as the installation's existing key/configuration files.
+
+Restore copies verified files and creates local storage inside a private stage
+in the destination's parent. Database restore and pending migrations commit
+together with a manifest-specific import receipt. It closes sessions and owned
+postmasters, restores the launch working directory, syncs the profile and
+publishes the directory exclusively. Even an existing empty destination is
+preserved. Unix staging directories are explicitly restricted to owner access
+before any profile data is written, independent of the native engine's umask.
+The JavaScript reverse converter is an offline bounded operation; native serving
+and background work never invoke it.
+
+Local macOS tests pass the complete Node-profile → each Rust backend → Node-profile
+path. All 115 table snapshots, four sequence states, SQL functions, mixed newline
+bytes, SQL NULL versus JSON null, large integers, precise numerics and opaque
+file bytes match. The original session/CSRF, server UUID, encryption key and
+encrypted workspace survive. Rust commits workspace revision 2; the actual Node
+server reads that state and commits revision 3. Original source files and bundle
+bytes remain unchanged. Restart tests verify all three remembered backend modes,
+explicit external overrides and retention of the prior selection after a real
+missing-executable setup failure.
+
+Fault cases kill the importer only after an actual SQL filesystem witness. No
+partial profile appears, the private postmaster exits after its owner dies, and
+retry succeeds against the same destination/external database. A PostgreSQL
+protocol proxy holds the actual COMMIT acknowledgement after a direct database
+query confirms the durable import receipt. The killed importer publishes no
+profile. A separate Rust server then accepts a real HTTP write; retrying the
+original bundle preserves that newer write and publishes the profile. Late SQL
+exceptions roll back the load, retain SQLSTATE/private diagnostics and expose no
+fixture SQL values in ordinary native or legacy-converter diagnostics.
+
+The local complete-profile suite passes in 94.73 seconds; eleven native profile
+file/configuration tests and strict all-target Clippy also pass. Linux/macOS/
+Windows migration jobs now include these profile checks, but this milestone's
+new platform outcomes still require observation. Earlier Windows raw-SQL
+current/historical/reverse-transfer reports from run `41160107203` were downloaded,
+checked against uploaded ZIP SHA256
+`4bff8c251e44489c948bacae50cea021bd482b38aa37cb7907a02f674b78ad96`
+and inspected successfully; they do not validate the newer profile publisher.
+
+The final complete-profile regression passes in 100.81 seconds after wrapping
+converter setup/cleanup failures in the same private diagnostic boundary.
+Stored-backend restart checks also cover an empty `DATABASE_URL` environment
+template: it retains the saved external connection. All 977 actual Node/Rust
+configuration cases match. The broad `pnpm check` exits 1 after 500.85 seconds
+with 1,662 source-server tests passing, 57 skipped and the retained provider
+selection assertion failing at `local-foundation.test.ts:7218`. Server, worker,
+shared package and dependency sources are unchanged from the merged baseline;
+the repository-wide check is not green.
+
+This CLI component requires stopped sources, trusted logical bundles and new
+destination directories. It does not yet activate an existing installation in
+the desktop launcher. A crash after final publication may leave a completed
+profile without the command's acknowledgement; a retry refuses the existing
+directory and preserves it. Hard-killed imports can leave private temporary
+directories that need owned-stage cleanup. Historical physical PGlite runtime
+versions, packaged upgrade/rollback supervision, all product flows and full
+supported-platform acceptance remain required. Normal development, standalone
+and desktop builds still use the Node server and worker.
 
 ## Remaining delivery sequence
 

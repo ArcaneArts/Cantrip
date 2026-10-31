@@ -1121,6 +1121,7 @@ jobs:
           node scripts/server-rust/cargo.mjs test --test database_contract
           node scripts/server-rust/cargo.mjs test --test native_wire_session
           node scripts/server-rust/cargo.mjs test --test native_sql_dump --test native_dump_bytes
+          node scripts/server-rust/cargo.mjs test --test profile_database --test profile_files
       - name: Real restricted SQL export failures retain private diagnostics without publishing partial files
         run: node scripts/server-rust/native-export-redaction.mjs --report .qa/rust-server/native-export-redaction.json
       - name: Legacy dump preserves literal guard lines and redacts real failures
@@ -1129,6 +1130,10 @@ jobs:
         run: node --import tsx scripts/server-rust/legacy-pglite-compatibility.mjs --interrupt --report .qa/rust-server/migration-current.json
       - name: Historical schema upgrades and interrupted migration recovery on all stores
         run: node --import tsx scripts/server-rust/legacy-pglite-compatibility.mjs --history-count 233 --interrupt --report .qa/rust-server/migration-historical.json
+      - name: Stored backend selection survives real restart and failed setup on all stores
+        run: node --import tsx scripts/server-rust/profile-database-compatibility.mjs --report .qa/rust-server/profile-database.json
+      - name: Complete profile transfer, post-write reverse migration and interrupted publication on all stores
+        run: node --import tsx scripts/server-rust/profile-transfer-compatibility.mjs --report .qa/rust-server/profile-transfer.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
