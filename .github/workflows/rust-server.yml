@@ -153,6 +153,10 @@ on:
         description: Run only the repeated Linux HTTP conversion lifetime diagnostic
         type: boolean
         default: false
+      discovery_lifetime_diagnostic:
+        description: Run only the repeated Linux workspace admission lifetime diagnostic
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -163,7 +167,7 @@ concurrency:
 
 jobs:
   contracts:
-    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.conversion_lifetime_diagnostic }}
+    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.conversion_lifetime_diagnostic && !inputs.discovery_lifetime_diagnostic) }}
     strategy:
       fail-fast: false
       matrix:
@@ -758,7 +762,7 @@ jobs:
           path: .qa/rust-server/
 
   replicas:
-    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.conversion_lifetime_diagnostic }}
+    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.conversion_lifetime_diagnostic && !inputs.discovery_lifetime_diagnostic) }}
     # Production lease timers take about 30 minutes for the three stores.
     # Keep the complete replica matrix independent of the existing domain matrix.
     strategy:
@@ -891,7 +895,7 @@ jobs:
           path: .qa/rust-server/
 
   conversions:
-    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.conversion_lifetime_diagnostic }}
+    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.conversion_lifetime_diagnostic && !inputs.discovery_lifetime_diagnostic) }}
     # Exercise production lease timers separately from the domain matrices.
     strategy:
       fail-fast: false
@@ -997,7 +1001,7 @@ jobs:
           path: .qa/rust-server/
 
   discovery:
-    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.conversion_lifetime_diagnostic }}
+    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.conversion_lifetime_diagnostic && !inputs.discovery_lifetime_diagnostic) }}
     # Exercise attached roots, imports, lease renewal and real user-owned Git.
     strategy:
       fail-fast: false
@@ -1069,7 +1073,7 @@ jobs:
       - name: Workspace scan renewal, stale completion and real lease expiry with pglite
         run: node --import tsx scripts/server-rust/discovery-http-compatibility.mjs --database pglite --profile none --leases --expiry --report .qa/rust-server/discovery-real-leases-pglite.json
       - name: Workspace caller disconnect and admitted shutdown with pglite
-        run: node --import tsx scripts/server-rust/discovery-http-compatibility.mjs --database pglite --profile none --lifetimes --report .qa/rust-server/discovery-lifetimes-pglite.json
+        run: node --import tsx scripts/server-rust/discovery-http-compatibility.mjs --database pglite --profile none --lifetimes --trace-http --report .qa/rust-server/discovery-lifetimes-pglite.json
       - name: Actual encrypted browser and full worker discover, import, convert and preserve user files with pglite
         env:
           GH_TOKEN: ${{ github.token }}
@@ -1081,7 +1085,7 @@ jobs:
       - name: Workspace scan renewal, stale completion and real lease expiry with bundled-postgres
         run: node --import tsx scripts/server-rust/discovery-http-compatibility.mjs --database bundled-postgres --profile none --leases --expiry --report .qa/rust-server/discovery-real-leases-bundled-postgres.json
       - name: Workspace caller disconnect and admitted shutdown with bundled-postgres
-        run: node --import tsx scripts/server-rust/discovery-http-compatibility.mjs --database bundled-postgres --profile none --lifetimes --report .qa/rust-server/discovery-lifetimes-bundled-postgres.json
+        run: node --import tsx scripts/server-rust/discovery-http-compatibility.mjs --database bundled-postgres --profile none --lifetimes --trace-http --report .qa/rust-server/discovery-lifetimes-bundled-postgres.json
       - name: Actual encrypted browser and full worker discover, import, convert and preserve user files with bundled-postgres
         env:
           GH_TOKEN: ${{ github.token }}
@@ -1093,7 +1097,7 @@ jobs:
       - name: Workspace scan renewal, stale completion and real lease expiry with postgres
         run: node --import tsx scripts/server-rust/discovery-http-compatibility.mjs --database postgres --profile none --leases --expiry --report .qa/rust-server/discovery-real-leases-postgres.json
       - name: Workspace caller disconnect and admitted shutdown with postgres
-        run: node --import tsx scripts/server-rust/discovery-http-compatibility.mjs --database postgres --lifetimes --report .qa/rust-server/discovery-lifetimes-postgres.json
+        run: node --import tsx scripts/server-rust/discovery-http-compatibility.mjs --database postgres --lifetimes --trace-http --report .qa/rust-server/discovery-lifetimes-postgres.json
       - name: Actual encrypted browser and full worker discover, import, convert and preserve user files with postgres
         env:
           GH_TOKEN: ${{ github.token }}
@@ -1105,7 +1109,7 @@ jobs:
           path: .qa/rust-server/
 
   migrations:
-    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.conversion_lifetime_diagnostic }}
+    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.conversion_lifetime_diagnostic && !inputs.discovery_lifetime_diagnostic) }}
     # Exercise real legacy SQL transfer, pending upgrades and interrupted restores.
     strategy:
       fail-fast: false
@@ -1220,4 +1224,35 @@ jobs:
         if: always()
         with:
           name: rust-server-conversion-lifetime-diagnostic
+          path: .qa/rust-server/
+  discovery-lifetime-diagnostic:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.discovery_lifetime_diagnostic }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.1
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.93.0
+      - name: PostgreSQL and native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql libssl-dev
+          echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(pg_config --bindir)" >> "$GITHUB_ENV"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol --filter @cantrip/crypto --filter @cantrip/glitch -r build
+      - name: Repeated actual workspace admission, disconnect and restart with socket tracing
+        run: |
+          node --test scripts/server-rust/streaming-http-request.test.mjs scripts/server-rust/http-connection-trace.test.mjs
+          node scripts/server-rust/repeat-discovery-lifetimes.mjs --iterations 20
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rust-server-discovery-lifetime-diagnostic
           path: .qa/rust-server/

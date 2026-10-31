@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { LiveProbe, currentUser } from "./live-sockets.mjs";
 import { projectLabel } from "./security-fixtures.mjs";
+import { streamingHttpRequest } from "./streaming-http-request.mjs";
 const postgres = createRequire(
   new URL("../../cantrip_server/package.json", import.meta.url),
 )("postgres");
@@ -28,7 +29,20 @@ export async function discoveryLifetimeCases({
   );
   const commands = [],
     releases = new Map(),
-    evidence = { races: [], disconnected: [] };
+    evidence = (fixture.discoveryLifetimeEvidence = {
+      races: [],
+      disconnected: [],
+      stages: [],
+    });
+  const mark = (phase, details = {}) =>
+    evidence.stages.push({
+      phase,
+      at: Date.now(),
+      serverPid: fixture.server?.child.pid,
+      origin: fixture.server?.origin,
+      ...details,
+    });
+  mark("started");
   const result = { attachment: {}, races: [], disconnected: [] };
   const route = (i) => `/api/workspaces/${ids[i]}/repository-discovery`;
   let holdAttachment = true,
@@ -91,7 +105,10 @@ export async function discoveryLifetimeCases({
   });
   const call = async (url, body, signal) => {
     const client = fixture.client();
-    const response = await fetch(fixture.server.origin + url, {
+    // The controlled caller owns its socket. The retained Linux trace shows
+    // that aborting global fetch opens an unused replacement connection to the
+    // old process, which its shared pool later reuses for a worker heartbeat.
+    const response = await streamingHttpRequest(fixture.server.origin + url, {
       method: "POST",
       headers: {
         origin: "http://127.0.0.1:5173",
@@ -145,8 +162,10 @@ export async function discoveryLifetimeCases({
       () => releases.has("attachment"),
       (ready) => assert.equal(ready, true),
     );
+    mark("attachment-held");
     abort.abort();
     assert.deepEqual(await pending, { error: "AbortError" });
+    mark("attachment-caller-aborted");
     pending = undefined;
     holdAttachment = false;
     releases.get("attachment")();
@@ -314,8 +333,14 @@ export async function discoveryLifetimeCases({
           /insert into ["\s]*project_workspaces/i,
           1,
         );
+        mark("managed-insert-blocked", {
+          shutdown,
+          workspaceId: ids[i],
+          waits,
+        });
         abort.abort();
         assert.deepEqual(await pending, { error: "AbortError" });
+        mark("managed-caller-aborted", { shutdown, workspaceId: ids[i] });
         pending = undefined;
         const server = fixture.server,
           port = Number(new URL(server.origin).port);
@@ -335,6 +360,10 @@ export async function discoveryLifetimeCases({
                 ),
               ),
           );
+          mark("shutdown-started", {
+            serverPid: server.child.pid,
+            origin: server.origin,
+          });
         }
         const retained = await waiting(
           pid,
@@ -343,6 +372,13 @@ export async function discoveryLifetimeCases({
         );
         assert.equal(retained[0].pid, waits[0].pid);
         assert.equal(server.child.exitCode, null);
+        mark("admission-retained", {
+          shutdown,
+          workspaceId: ids[i],
+          retained,
+          serverPid: server.child.pid,
+          origin: server.origin,
+        });
         await release(true);
         await until(
           () =>
@@ -355,15 +391,22 @@ export async function discoveryLifetimeCases({
         if (shutdown) {
           await closing;
           closing = undefined;
+          mark("closed", {
+            serverPid: server.child.pid,
+            origin: server.origin,
+          });
           stopWorker();
           await fixture.start({ port });
+          mark("restarted");
           await connectWorker();
+          mark("worker-reconnected");
         }
         const catalog = await visit(
           "lifetime retained managed workspace " + i,
           "GET",
           "/api/workspaces",
         );
+        mark("recovered-state-read", { shutdown, workspaceId: ids[i] });
         const retainedWorkspace = catalog.workspaces.find(
           (w) => w.id === ids[i],
         );
