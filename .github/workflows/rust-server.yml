@@ -394,6 +394,8 @@ jobs:
         run: node scripts/server-rust/cargo.mjs test --test chat_contracts -- --nocapture
       - name: Chat fork command-budget HTTP error compatibility
         run: node scripts/server-rust/cargo.mjs test --lib http::chat_forks::tests -- --nocapture
+      - name: Chat fork snapshot equality matches the actual reference runtime
+        run: node scripts/server-rust/cargo.mjs test --lib chats::forks::tests -- --nocapture
       - name: Protected Chat fork transactions and cleanup with native PGlite
         run: node --import tsx scripts/server-rust/chat-fork-repository-compatibility.mjs --database pglite --report .qa/rust-server/chat-fork-repository-pglite.json
       - name: Protected Chat fork transactions and cleanup with private PostgreSQL

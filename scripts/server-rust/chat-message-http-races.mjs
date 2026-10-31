@@ -52,9 +52,17 @@ export async function chatMessageHttpRaces({
         UNION SELECT a.pid,a.query,a.wait_event_type FROM pg_stat_activity a
         JOIN waiting w ON w.pid=ANY(pg_blocking_pids(a.pid))
         WHERE a.datname=current_database()) SELECT * FROM waiting`,
-      (rows) => rows.length === count,
+      (rows) => {
+        if (rows.length !== count) return false;
+        if (rows.every((row) => row.wait_event_type === "Lock")) return true;
+        // Blocking PIDs and wait-event fields can change during one sample.
+        // Retain the incomplete observation and await the full lock witness.
+        (evidence.incompleteWaitSamples ??= []).push({ lockerPid: pid, rows });
+        return false;
+      },
       `observe ${count} actual blocked message writer(s)`,
     );
+    assert.equal(rows.length, count);
     for (const row of rows) assert.equal(row.wait_event_type, "Lock");
     evidence.waits.push({ lockerPid: pid, rows });
   }

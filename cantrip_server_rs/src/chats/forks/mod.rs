@@ -1,6 +1,8 @@
 //! Protected message copying preserves each context's original commit model.
 mod project;
 mod standalone;
+#[cfg(test)]
+mod tests;
 use crate::{
     database::{Executor, Row},
     wire::{Value, coercion::truthy, value::json},
@@ -217,10 +219,10 @@ fn dates(mut row: Value) -> Result<Value> {
                 .and_then(crate::wire::date_milliseconds)
                 .and_then(crate::wire::date_iso_milliseconds)
                 .map(|iso| json!(iso))
-                // The reference Node 24 treats two invalid Date instances as
-                // unequal. NaN stays internal to this reread snapshot and makes
-                // the guard fail after reprotection, rather than before it.
-                .unwrap_or(Value::Number(f64::NAN));
+                // Node 24.22's deep comparison considers invalid Dates equal.
+                // A private marker retains that identity without conflating it
+                // with SQL NULL or exposing it in a message or wire response.
+                .unwrap_or_else(|| json!({"invalidDate":true}));
         }
     }
     Ok(row)
