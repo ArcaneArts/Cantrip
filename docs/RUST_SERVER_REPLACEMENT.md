@@ -107,9 +107,10 @@ target repository fixture with stack overflow. Run `41228493161` captured
 373,760 bytes retained by the repository operation dispatcher and 235,232 by
 its outer dispatcher while resolving a project target. Both selectors now
 construct the selected future before polling it. All 431 original target cases
-pass locally, with no cases removed or assertions changed. Windows candidate
-`41229647423` exercises the original 1 MiB admission and target workloads;
-full Windows acceptance remains pending.
+pass locally, with no cases removed or assertions changed. Windows run
+`41229647423` now passes the same 1 MiB admission workload (1,550 cases, 1,345
+snapshots and 10 reopens) and all 431 target cases under GDB. Full Windows
+platform acceptance remains pending beyond those two suites.
 
 Restart recovery deliberately suspends existing execution lanes. The HTTP
 fixtures therefore admit and dispatch through real routes after server startup;
