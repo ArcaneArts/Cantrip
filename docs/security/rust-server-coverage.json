@@ -6106,7 +6106,21 @@
         "Finish URL/connection-policy variant coverage and observe current-head platform jobs.",
         "Measure representative large-profile export memory/throughput and complete whole-server performance acceptance."
       ],
-      "validationLimits": "Final strict all-target Clippy passes. Broad pnpm check exits1 with1661source tests passing57skipped, known provider assertion at local-foundation.test.ts:7218 and a5000ms account-resource-usage timeout. The latter passes unchanged in isolation on current and cleanPrimary, actual test durations2.28/2.29s. No deadlines/assertions changed; no broad-green claim. Linux client setup success is not Linux Rust acceptance; current platform/package results remain required."
+      "validationLimits": "Final strict all-target Clippy passes. Broad pnpm check exits1 with1661source tests passing57skipped, known provider assertion at local-foundation.test.ts:7218 and a5000ms account-resource-usage timeout. The latter passes unchanged in isolation on current and cleanPrimary, actual test durations2.28/2.29s. No deadlines/assertions changed; no broad-green claim. Linux client setup success is not Linux Rust acceptance; current platform/package results remain required. Run41157035912 actualWindows compilation failed at native_postgres.rs55 because TCPfuture error inference depended on a Unix-onlybranch. Follow-up explicitly annotates std::io::Error on theTCPresult; subsequentWindows result must still be observed."
+    },
+    "httpRejectedUploads": {
+      "status": "partial",
+      "implementation": "cantrip_server_rs/src/http/body.rs",
+      "evidence": [
+        "cantrip_server_rs/src/http/body.rs (native lifetime and real loopback tests)",
+        "scripts/server-rust/file-document-http-compatibility.mjs",
+        "scripts/server-rust/streaming-http-request.test.mjs"
+      ],
+      "validatedSubset": "Local native tests prove an early413 before uploadEOF, ongoing discard without collecting extra payload, advertised rejection without body bytes, and bounded abandoned-drain cleanup. Real loopback observes the complete413 and then sends trailing request bytes. Expanded actualNode/RustHTTP fixture retains4MiB case and adds8MiB plus exactConnectionclose assertions; all supported-platform outcomes remain required. Final local all3store comparisons pass40anonymous/42account observations perruntime with6workercommands perprofile, including8MiB andConnectionclose. All31native librarytests, JSON/WS and5clienttests pass; strictalltargetClippy passes. The3newtests compile and fail on theoriginalparser and pass withthefix.",
+      "remaining": [
+        "Observe current-head Windows actualHTTP and native tests; retain resets/partial-response failures without retries.",
+        "Complete full product/platform and package acceptance required by the original goal."
+      ]
     }
   },
   "remainingAcceptance": [

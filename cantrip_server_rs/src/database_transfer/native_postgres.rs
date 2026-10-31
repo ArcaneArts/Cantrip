@@ -52,7 +52,7 @@ impl Endpoint {
                 TcpStream::connect((domain, self.port)).await?
             };
             stream.set_nodelay(true)?;
-            Ok(Box::new(stream) as Wire)
+            Ok::<Wire, std::io::Error>(Box::new(stream))
         };
         let mut stream = match self.configuration.get_connect_timeout() {
             Some(timeout) => tokio::time::timeout(*timeout, connect).await??,

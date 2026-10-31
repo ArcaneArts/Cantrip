@@ -329,11 +329,25 @@ try {
             413,
             { ...requestBody(), padding: "x".repeat(4 * 1024 * 1024) },
           ],
+          [
+            "operation route rejects midway through 8MiB upload",
+            ids[0],
+            413,
+            { ...requestBody(), padding: "x".repeat(8 * 1024 * 1024) },
+          ],
         ])
           await visit(name, "POST", `/api/file-documents/${id}/operation`, {
             json: body,
             status,
-            ...(status === 413 ? { fetcher: streamingHttpRequest } : {}),
+            ...(status === 413
+              ? {
+                  fetcher: async (...args) => {
+                    const response = await streamingHttpRequest(...args);
+                    assert.equal(response.headers.get("connection"), "close");
+                    return response;
+                  },
+                }
+              : {}),
           });
         for (const [name, contentType, status] of [
           ["JSON oversized headers", "application/json", 413],

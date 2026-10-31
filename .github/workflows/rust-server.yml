@@ -217,6 +217,8 @@ jobs:
         run: node --import tsx scripts/server-rust/file-document-query-manifest.mjs --check
       - name: Early HTTP replies survive upload termination while resets and partial replies fail
         run: node --test scripts/server-rust/streaming-http-request.test.mjs
+      - name: Native HTTP rejections deliver before upload EOF and bound abandoned drains
+        run: node scripts/server-rust/cargo.mjs test --lib http::body::tests -- --nocapture
       - name: File-document and surface-stream protocol compatibility
         run: node scripts/server-rust/cargo.mjs test --test file_document_contracts -- --nocapture
       - name: Workspace query statements match the actual TypeScript repositories
