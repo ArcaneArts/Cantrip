@@ -2962,7 +2962,7 @@
         ],
         "remaining": [
           "Actual client and full worker scratch filesystem acceptance, production lease timer/fault scenarios, Linux/macOS/Windows verification, packaged operation and multi-instance coordination remain required.",
-          "Chat forks and the broader execution/queue/history/Task/Goal domains remain unfinished; lifecycle/metadata/draft/file implementations have additional scoped acceptance in the Chat lifecycle milestone."
+          "The broader execution/queue/history/Task/Goal domains remain unfinished; lifecycle/metadata/draft/file implementations have additional scoped acceptance in the Chat lifecycle milestone."
         ]
       },
       {
@@ -2977,7 +2977,7 @@
         ],
         "remaining": [
           "Actual client and full worker scratch filesystem acceptance, production lease timer/fault scenarios, Linux/macOS/Windows verification, packaged operation and multi-instance coordination remain required.",
-          "Chat forks and the broader execution/queue/history/Task/Goal domains remain unfinished; lifecycle/metadata/draft/file implementations have additional scoped acceptance in the Chat lifecycle milestone."
+          "The broader execution/queue/history/Task/Goal domains remain unfinished; lifecycle/metadata/draft/file implementations have additional scoped acceptance in the Chat lifecycle milestone."
         ]
       },
       {
@@ -2992,7 +2992,7 @@
         ],
         "remaining": [
           "Actual client and full worker scratch filesystem acceptance, production lease timer/fault scenarios, Linux/macOS/Windows verification, packaged operation and multi-instance coordination remain required.",
-          "Chat forks and the broader execution/queue/history/Task/Goal domains remain unfinished; lifecycle/metadata/draft/file implementations have additional scoped acceptance in the Chat lifecycle milestone."
+          "The broader execution/queue/history/Task/Goal domains remain unfinished; lifecycle/metadata/draft/file implementations have additional scoped acceptance in the Chat lifecycle milestone."
         ]
       },
       {
@@ -3008,7 +3008,7 @@
         ],
         "remaining": [
           "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
-          "Forks, messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished."
+          "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
         ]
       },
       {
@@ -3024,7 +3024,7 @@
         ],
         "remaining": [
           "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
-          "Forks, messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished."
+          "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
         ]
       },
       {
@@ -3040,7 +3040,7 @@
         ],
         "remaining": [
           "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
-          "Forks, messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished."
+          "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
         ]
       },
       {
@@ -3056,7 +3056,7 @@
         ],
         "remaining": [
           "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
-          "Forks, messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished."
+          "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
         ]
       },
       {
@@ -3072,7 +3072,7 @@
         ],
         "remaining": [
           "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
-          "Forks, messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished."
+          "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
         ]
       },
       {
@@ -3088,7 +3088,7 @@
         ],
         "remaining": [
           "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
-          "Forks, messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished."
+          "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
         ]
       },
       {
@@ -3104,7 +3104,7 @@
         ],
         "remaining": [
           "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
-          "Forks, messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished."
+          "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
         ]
       },
       {
@@ -3120,7 +3120,7 @@
         ],
         "remaining": [
           "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
-          "Forks, messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished."
+          "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
         ]
       },
       {
@@ -3136,7 +3136,7 @@
         ],
         "remaining": [
           "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
-          "Forks, messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished."
+          "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
         ]
       },
       {
@@ -3152,7 +3152,7 @@
         ],
         "remaining": [
           "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
-          "Forks, messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished."
+          "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
         ]
       },
       {
@@ -3168,7 +3168,23 @@
         ],
         "remaining": [
           "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
-          "Forks, messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished."
+          "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
+        ]
+      },
+      {
+        "path": "/api/chats/:chatId/fork",
+        "method": "POST",
+        "implementation": "cantrip_server_rs/src/http/chat_forks.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/chat-fork-error-oracle.mjs",
+          "scripts/server-rust/chat-fork-repository-compatibility.mjs",
+          "scripts/server-rust/chat-fork-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Full client/full-worker key provisioning and filesystem integration, supported-platform acceptance, multi-instance coordination and further interruption boundaries remain required.",
+          "General messages, native history ingestion, execution queues, Tasks, Goal/automation continuity and packaging remain unfinished."
         ]
       }
     ]
@@ -3582,7 +3598,7 @@
         ],
         "remaining": [
           "Actual client and full worker scratch filesystem acceptance, production lease timer/fault scenarios, Linux/macOS/Windows verification, packaged operation and multi-instance coordination remain required.",
-          "Chat forks and the broader execution/queue/history/Task/Goal domains remain unfinished; lifecycle/metadata/draft/file implementations have additional scoped acceptance in the Chat lifecycle milestone."
+          "The broader execution/queue/history/Task/Goal domains remain unfinished; lifecycle/metadata/draft/file implementations have additional scoped acceptance in the Chat lifecycle milestone."
         ]
       },
       {
@@ -3596,7 +3612,7 @@
         ],
         "remaining": [
           "Actual client and full worker scratch filesystem acceptance, production lease timer/fault scenarios, Linux/macOS/Windows verification, packaged operation and multi-instance coordination remain required.",
-          "Chat forks and the broader execution/queue/history/Task/Goal domains remain unfinished; lifecycle/metadata/draft/file implementations have additional scoped acceptance in the Chat lifecycle milestone."
+          "The broader execution/queue/history/Task/Goal domains remain unfinished; lifecycle/metadata/draft/file implementations have additional scoped acceptance in the Chat lifecycle milestone."
         ]
       },
       {
@@ -3610,7 +3626,7 @@
         ],
         "remaining": [
           "Actual client and full worker scratch filesystem acceptance, production lease timer/fault scenarios, Linux/macOS/Windows verification, packaged operation and multi-instance coordination remain required.",
-          "Chat forks and the broader execution/queue/history/Task/Goal domains remain unfinished; lifecycle/metadata/draft/file implementations have additional scoped acceptance in the Chat lifecycle milestone."
+          "The broader execution/queue/history/Task/Goal domains remain unfinished; lifecycle/metadata/draft/file implementations have additional scoped acceptance in the Chat lifecycle milestone."
         ]
       },
       {
@@ -3625,7 +3641,7 @@
         ],
         "remaining": [
           "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
-          "Forks, messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished."
+          "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
         ]
       },
       {
@@ -3640,7 +3656,7 @@
         ],
         "remaining": [
           "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
-          "Forks, messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished."
+          "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
         ]
       },
       {
@@ -3655,7 +3671,7 @@
         ],
         "remaining": [
           "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
-          "Forks, messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished."
+          "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
         ]
       },
       {
@@ -3670,7 +3686,21 @@
         ],
         "remaining": [
           "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
-          "Forks, messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished."
+          "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
+        ]
+      },
+      {
+        "command": "chat.messages.reprotect",
+        "implementation": "cantrip_server_rs/src/http/chat_forks.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/chat-fork-repository-compatibility.mjs",
+          "scripts/server-rust/chat-fork-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Full client/full-worker key provisioning and filesystem integration, supported-platform acceptance, multi-instance coordination and further interruption boundaries remain required.",
+          "General messages, native history ingestion, execution queues, Tasks, Goal/automation continuity and packaging remain unfinished."
         ]
       }
     ]
@@ -3923,7 +3953,7 @@
         ],
         "remaining": [
           "Actual client and full worker scratch filesystem acceptance, production lease timer/fault scenarios, Linux/macOS/Windows verification, packaged operation and multi-instance coordination remain required.",
-          "Chat forks and the broader execution/queue/history/Task/Goal domains remain unfinished; lifecycle/metadata/draft/file implementations have additional scoped acceptance in the Chat lifecycle milestone."
+          "The broader execution/queue/history/Task/Goal domains remain unfinished; lifecycle/metadata/draft/file implementations have additional scoped acceptance in the Chat lifecycle milestone."
         ]
       },
       {
@@ -3941,7 +3971,7 @@
         ],
         "remaining": [
           "Actual client and full worker scratch filesystem acceptance, production lease timer/fault scenarios, Linux/macOS/Windows verification, packaged operation and multi-instance coordination remain required.",
-          "Chat forks and the broader execution/queue/history/Task/Goal domains remain unfinished; lifecycle/metadata/draft/file implementations have additional scoped acceptance in the Chat lifecycle milestone."
+          "The broader execution/queue/history/Task/Goal domains remain unfinished; lifecycle/metadata/draft/file implementations have additional scoped acceptance in the Chat lifecycle milestone."
         ]
       },
       {
@@ -3950,18 +3980,54 @@
         "implementation": [
           "cantrip_server_rs/src/chats/catalog.rs",
           "cantrip_server_rs/src/chats/archive.rs",
-          "cantrip_server_rs/src/chats/state.rs"
+          "cantrip_server_rs/src/chats/state.rs",
+          "cantrip_server_rs/src/chats/forks/"
         ],
         "status": "partial",
         "evidence": [
           "cantrip_server_rs/tests/chat_contracts.rs",
           "scripts/server-rust/chat-lifecycle-repository-compatibility.mjs",
           "scripts/server-rust/chat-lifecycle-http-cases.mjs",
-          "scripts/server-rust/standalone-chat-http-compatibility.mjs"
+          "scripts/server-rust/standalone-chat-http-compatibility.mjs",
+          "scripts/server-rust/chat-fork-repository-compatibility.mjs",
+          "scripts/server-rust/chat-fork-http-compatibility.mjs"
         ],
         "remaining": [
           "Actual client and full worker scratch filesystem acceptance, production lease timer/fault scenarios, Linux/macOS/Windows verification, packaged operation and multi-instance coordination remain required.",
-          "Chat forks and the broader execution/queue/history/Task/Goal domains remain unfinished; lifecycle/metadata/draft/file implementations have additional scoped acceptance in the Chat lifecycle milestone."
+          "The broader execution/queue/history/Task/Goal domains remain unfinished; lifecycle/metadata/draft/file implementations have additional scoped acceptance in the Chat lifecycle milestone."
+        ]
+      },
+      {
+        "tableName": "chat_messages",
+        "exportName": "chatMessages",
+        "implementation": [
+          "cantrip_server_rs/src/chats/messages.rs",
+          "cantrip_server_rs/src/chats/forks/"
+        ],
+        "status": "partial",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/chat-fork-repository-compatibility.mjs",
+          "scripts/server-rust/chat-fork-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Full client/full-worker key provisioning and filesystem integration, supported-platform acceptance, multi-instance coordination and further interruption boundaries remain required.",
+          "General messages, native history ingestion, execution queues, Tasks, Goal/automation continuity and packaging remain unfinished."
+        ]
+      },
+      {
+        "tableName": "model_behavior_observations",
+        "exportName": "modelBehaviorObservations",
+        "implementation": ["cantrip_server_rs/src/chats/forks/project.rs"],
+        "status": "partial",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/chat-fork-repository-compatibility.mjs",
+          "scripts/server-rust/chat-fork-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Full client/full-worker key provisioning and filesystem integration, supported-platform acceptance, multi-instance coordination and further interruption boundaries remain required.",
+          "General messages, native history ingestion, execution queues, Tasks, Goal/automation continuity and packaging remain unfinished."
         ]
       }
     ]
@@ -4937,7 +5003,7 @@
         ],
         "remaining": [
           "Actual client and full worker scratch filesystem acceptance, production lease timer/fault scenarios, Linux/macOS/Windows verification, packaged operation and multi-instance coordination remain required.",
-          "Chat forks and the broader execution/queue/history/Task/Goal domains remain unfinished; lifecycle/metadata/draft/file implementations have additional scoped acceptance in the Chat lifecycle milestone."
+          "The broader execution/queue/history/Task/Goal domains remain unfinished; lifecycle/metadata/draft/file implementations have additional scoped acceptance in the Chat lifecycle milestone."
         ]
       },
       {
@@ -4951,7 +5017,7 @@
         ],
         "remaining": [
           "Actual client and full worker scratch filesystem acceptance, production lease timer/fault scenarios, Linux/macOS/Windows verification, packaged operation and multi-instance coordination remain required.",
-          "Chat forks and the broader execution/queue/history/Task/Goal domains remain unfinished; lifecycle/metadata/draft/file implementations have additional scoped acceptance in the Chat lifecycle milestone."
+          "The broader execution/queue/history/Task/Goal domains remain unfinished; lifecycle/metadata/draft/file implementations have additional scoped acceptance in the Chat lifecycle milestone."
         ]
       },
       {
@@ -4965,7 +5031,7 @@
         ],
         "remaining": [
           "Actual client and full worker scratch filesystem acceptance, production lease timer/fault scenarios, Linux/macOS/Windows verification, packaged operation and multi-instance coordination remain required.",
-          "Chat forks and the broader execution/queue/history/Task/Goal domains remain unfinished; lifecycle/metadata/draft/file implementations have additional scoped acceptance in the Chat lifecycle milestone."
+          "The broader execution/queue/history/Task/Goal domains remain unfinished; lifecycle/metadata/draft/file implementations have additional scoped acceptance in the Chat lifecycle milestone."
         ]
       },
       {
@@ -4980,7 +5046,7 @@
         ],
         "remaining": [
           "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
-          "Forks, messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished."
+          "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
         ]
       },
       {
@@ -4995,7 +5061,7 @@
         ],
         "remaining": [
           "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
-          "Forks, messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished."
+          "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
         ]
       },
       {
@@ -5010,7 +5076,7 @@
         ],
         "remaining": [
           "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
-          "Forks, messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished."
+          "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
         ]
       },
       {
@@ -5025,7 +5091,7 @@
         ],
         "remaining": [
           "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
-          "Forks, messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished."
+          "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
         ]
       },
       {
@@ -5040,7 +5106,7 @@
         ],
         "remaining": [
           "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
-          "Forks, messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished."
+          "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
         ]
       },
       {
@@ -5055,7 +5121,7 @@
         ],
         "remaining": [
           "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
-          "Forks, messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished."
+          "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
         ]
       },
       {
@@ -5070,7 +5136,7 @@
         ],
         "remaining": [
           "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
-          "Forks, messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished."
+          "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
         ]
       },
       {
@@ -5085,7 +5151,7 @@
         ],
         "remaining": [
           "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
-          "Forks, messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished."
+          "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
         ]
       },
       {
@@ -5100,7 +5166,7 @@
         ],
         "remaining": [
           "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
-          "Forks, messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished."
+          "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
         ]
       },
       {
@@ -5115,7 +5181,7 @@
         ],
         "remaining": [
           "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
-          "Forks, messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished."
+          "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
         ]
       },
       {
@@ -5130,7 +5196,7 @@
         ],
         "remaining": [
           "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
-          "Forks, messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished."
+          "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
         ]
       },
       {
@@ -5145,7 +5211,35 @@
         ],
         "remaining": [
           "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
-          "Forks, messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished."
+          "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
+        ]
+      },
+      {
+        "method": "forkChat",
+        "implementation": "cantrip_server_rs/src/chats/forks/project.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/chat-fork-repository-compatibility.mjs",
+          "scripts/server-rust/chat-fork-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Full client/full-worker key provisioning and filesystem integration, supported-platform acceptance, multi-instance coordination and further interruption boundaries remain required.",
+          "General messages, native history ingestion, execution queues, Tasks, Goal/automation continuity and packaging remain unfinished."
+        ]
+      },
+      {
+        "method": "forkStandaloneChat",
+        "implementation": "cantrip_server_rs/src/chats/forks/standalone.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/chat-fork-repository-compatibility.mjs",
+          "scripts/server-rust/chat-fork-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Full client/full-worker key provisioning and filesystem integration, supported-platform acceptance, multi-instance coordination and further interruption boundaries remain required.",
+          "General messages, native history ingestion, execution queues, Tasks, Goal/automation continuity and packaging remain unfinished."
         ]
       }
     ]
@@ -5342,7 +5436,8 @@
         "implementation": [
           "cantrip_server_rs/src/http/chat_catalogs.rs",
           "cantrip_server_rs/src/chats/roots/service.rs",
-          "cantrip_server_rs/src/http/chat_lifecycle.rs"
+          "cantrip_server_rs/src/http/chat_lifecycle.rs",
+          "cantrip_server_rs/src/http/chat_forks.rs"
         ],
         "status": "partial",
         "evidence": [
@@ -5351,11 +5446,12 @@
           "scripts/server-rust/standalone-chat-http-compatibility.mjs",
           "scripts/server-rust/chat-lifecycle-repository-compatibility.mjs",
           "scripts/server-rust/chat-lifecycle-http-cases.mjs",
-          "scripts/server-rust/standalone-chat-http-compatibility.mjs"
+          "scripts/server-rust/chat-fork-repository-compatibility.mjs",
+          "scripts/server-rust/chat-fork-http-compatibility.mjs"
         ],
         "remaining": [
           "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
-          "Forks, messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished."
+          "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
         ]
       },
       {
@@ -5370,7 +5466,7 @@
         ],
         "remaining": [
           "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
-          "Forks, messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished."
+          "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
         ]
       }
     ]

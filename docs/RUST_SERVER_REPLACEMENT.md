@@ -3511,3 +3511,75 @@ probes, additional lock/interruption boundaries, supported-platform artifacts,
 Redis coordination and packaged activation remain required. Forks, messages,
 execution, queues, history, Tasks and Goal/automation continuity are unfinished.
 This milestone does not switch the normal Node server build or packaging paths.
+
+## Protected Chat forks (pending platform acceptance)
+
+The native server now serves `POST /api/chats/:chatId/fork` for project and
+standalone Chats. It preserves encrypted title validation, Task relocation errors,
+offline and missing-source responses, message-prefix selection, 201/202 response
+differences, placement and post-response invalidations. Source messages stay
+opaque to the server. The existing worker reprotects them for new message IDs in
+batches of at most 100, with the existing `fork:<source-id>` idempotency keys.
+
+Project forks read their source in a transaction, release it before worker
+dispatch and compare a fresh read in the write transaction. The comparison
+includes source Chat, destination worktree and selected messages. It retains
+JavaScript millisecond Date equality, including the Node 24 invalid-Date conflict
+after reprotection. The retained failing prototype rejected infinite timestamps
+before invoking the callback; the corrected port preserves the source's order.
+Creation of the Chat, runtime session, suspended lane, optional legacy placement,
+messages and behavior fork count shares the original transaction. Archived Chat
+positions count toward ordering, nonprimary worktrees retain exclusive suspended
+lanes and starting heads, and copied metadata retains its original attribution.
+
+Standalone forks keep their different commit model. They call the existing
+standalone creator after reprotection, then copy settings and messages separately.
+Later failures delete the new Chat; its already committed provision job remains.
+If cleanup itself fails, its SQL error wins and the earlier records remain,
+matching the source. Both paths keep the parameterized bulk message insertion,
+SQL NULL behavior and actual driver failures for oversized parameter lists.
+
+The real repository comparison passes 48 operations and 82 snapshots per backend
+on native PGlite, private PostgreSQL and external PostgreSQL. It checks ownership,
+history prefixes, non-opaque refusal, source/destination changes during the worker
+callback, Date precision, classifications, attribution, layout/lane state, forced
+SQL failures, cleanup failures and exact reopen state. A 4,000-message copy
+actually attempts the oversized bulk operation and checks rollback and continued
+database usability. No capability probe substitutes for that operation. Twenty
+Chat/scratch/fork schemas match 15,980 protocol, issue and rendered-error cases.
+
+The HTTP suite passes all nine local backend/authentication combinations using
+the unchanged worker transport and production `protectChatMessage` and
+`reprotectChatMessages` functions with a test-owned endpoint key provider. The
+key stays outside both servers. Each implementation/profile compares 25 anonymous,
+26 password or 27 account HTTP observations, 14 reprotection commands, 516
+decryption/binding proofs and eight ordered Chat events. It checks a 205-message
+history, 100-message batching, prefix copies, ordinary duplicate inserts, worker
+errors/invalid results, Task/owner/offline rejection, standalone provisioning and
+an admitted fork whose HTTP caller disconnects. Every stored copied message is
+decrypted under its new ID, retains its expected plaintext and rejects the old
+ID binding. Raw encrypted commands/state are retained alongside compared metadata;
+the server diagnostic output contains no test plaintext sentinel.
+
+A separate actual-source HTTP oracle verifies command-budget failures: the Rust
+route preserves `429`, the error body and `Retry-After`, including the source
+route's earlier duplicate-message classification when both conditions apply.
+
+The broad `pnpm check` again finishes with the existing source provider-selection
+failure at `local-foundation.test.ts:7218` (1,662 pass, 57 skip, one fails;
+483 seconds). Source server, worker, shared package and dependency files are
+unchanged. The separate Linux workspace-disconnect suite also has an unresolved
+`ECONNRESET` failure in run `41170859141`, job `124448318451`; its uploaded
+artifact was downloaded and SHA-256 verified for a separate follow-up. These
+results do not establish a green broad check or platform acceptance.
+
+The same run's Windows contracts job `124448318427` also exits during the PGlite
+execution-target repository suite: the Rust fixture exits with code `3221225725`
+while resolving a project. Its artifact and log are retained for investigation;
+this fork milestone does not claim a Windows pass.
+
+Full client/full-worker key provisioning and filesystem integration, supported
+platforms, further interruption boundaries, Redis coordination and packaging
+remain required. General messages, native history ingestion, execution queues,
+Tasks, Goal/automation continuity and default cutover remain unfinished. Normal
+builds still use the Node server.

@@ -28,7 +28,7 @@ impl std::error::Error for StatementFailure {
         Some(self.cause.as_ref())
     }
 }
-fn statement_failure(cause: anyhow::Error, parameters: &[&str]) -> anyhow::Error {
+pub(super) fn statement_failure(cause: anyhow::Error, parameters: &[&str]) -> anyhow::Error {
     // Drizzle's top-level message contains its statement and rendered params,
     // rather than the PostgreSQL cause. The route matches only that message.
     // Retain the resulting predicate without adding opaque params to logs.

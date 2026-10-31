@@ -386,8 +386,22 @@ jobs:
         run: node --import tsx scripts/server-rust/folder-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/folder-http-bundled.json
       - name: Managed-folder HTTP, Live, encrypted routing and shutdown with external PostgreSQL
         run: node --import tsx scripts/server-rust/folder-http-compatibility.mjs --database postgres --report .qa/rust-server/folder-http-external.json
-      - name: Standalone Chat and scratch result protocol compatibility
+      - name: Chat, scratch and protected fork protocol compatibility
         run: node scripts/server-rust/cargo.mjs test --test chat_contracts -- --nocapture
+      - name: Chat fork command-budget HTTP error compatibility
+        run: node scripts/server-rust/cargo.mjs test --lib http::chat_forks::tests -- --nocapture
+      - name: Protected Chat fork transactions and cleanup with native PGlite
+        run: node --import tsx scripts/server-rust/chat-fork-repository-compatibility.mjs --database pglite --report .qa/rust-server/chat-fork-repository-pglite.json
+      - name: Protected Chat fork transactions and cleanup with private PostgreSQL
+        run: node --import tsx scripts/server-rust/chat-fork-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/chat-fork-repository-bundled.json
+      - name: Protected Chat fork transactions and cleanup with external PostgreSQL
+        run: node --import tsx scripts/server-rust/chat-fork-repository-compatibility.mjs --database postgres --report .qa/rust-server/chat-fork-repository-external.json
+      - name: Chat fork HTTP and production worker reprotection with native PGlite
+        run: node --import tsx scripts/server-rust/chat-fork-http-compatibility.mjs --database pglite --report .qa/rust-server/chat-fork-http-pglite.json
+      - name: Chat fork HTTP and production worker reprotection with private PostgreSQL
+        run: node --import tsx scripts/server-rust/chat-fork-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/chat-fork-http-bundled.json
+      - name: Chat fork HTTP and production worker reprotection with external PostgreSQL
+        run: node --import tsx scripts/server-rust/chat-fork-http-compatibility.mjs --database postgres --report .qa/rust-server/chat-fork-http-external.json
       - name: Standalone Chat catalog and scratch transactions with native PGlite
         run: node --import tsx scripts/server-rust/scratch-root-repository-compatibility.mjs --database pglite --report .qa/rust-server/scratch-catalog-repository-pglite.json
       - name: Standalone Chat catalog and scratch transactions with private PostgreSQL

@@ -338,7 +338,10 @@
     "encryptedChatComposerDraftWireStateSchema": 8216,
     "encryptedChatComposerDraftUpdateSchema": 8222,
     "standaloneChatScratchArchiveResultSchema": 8225,
-    "standaloneChatFileWireRequestSchema": 8231
+    "standaloneChatFileWireRequestSchema": 8231,
+    "encryptedChatForkSchema": 8238,
+    "chatMessageOpaqueSummarySchema": 4750,
+    "chatMessageOpaqueContentListSchema": 8249
   },
   "nodes": [
     {
@@ -48213,6 +48216,86 @@
       ]
     },
     { "type": "never", "checks": [] },
-    { "type": "never", "checks": [] }
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "encryptedChatForkSchema",
+      "shape": {
+        "attachToTabLayout": 8239,
+        "messageId": 8241,
+        "worktreeId": 8243,
+        "worktreeMode": 8245,
+        "id": 8247,
+        "titleProtection": 689
+      },
+      "catchall": 8248,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-command-chat-title",
+          "messageAfterPath": true,
+          "message": "Forked chat title classification must be chat.",
+          "path": ["titleProtection", "classification", "recordKind"]
+        }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 8240,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 8242,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 8244,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 8246,
+      "checks": []
+    },
+    { "type": "enum", "values": ["agent-managed", "pinned"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "array",
+      "name": "chatMessageOpaqueContentListSchema",
+      "element": 1383,
+      "checks": [{ "check": "max_length", "maximum": 100000, "when": "length" }]
+    }
   ]
 }
