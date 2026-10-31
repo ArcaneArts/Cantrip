@@ -5,7 +5,6 @@ import type {
   InferenceProgressSnapshot,
 } from "@cantrip/protocol";
 import {
-  BrainCircuit,
   Check,
   CircleX,
   FileDiff,
@@ -19,6 +18,11 @@ import type { InferenceProgressTrace } from "@/lib/inference-progress-history";
 import { cn } from "@/lib/utils";
 
 import { AgentTrajectory, type TrajectoryEventOrder } from "./agent-trajectory";
+import { AgentLatestThought } from "./agent-latest-thought";
+export {
+  AGENT_INSPECT_THOUGHT_LINE_LIMIT,
+  latestInspectorThoughtLines,
+} from "./agent-latest-thought";
 import type { AgentTurnProjection } from "./agent-turn-projection";
 import { displayCommand } from "./command-display";
 import { FileChangePreview } from "./file-change-preview";
@@ -33,7 +37,6 @@ import {
 export const AGENT_INSPECT_CLOCK_INTERVAL_MS = 250;
 export const AGENT_INSPECT_SCROLL_BOTTOM_TOLERANCE_PX = 24;
 export const AGENT_INSPECT_SCROLLING_CARD_HEIGHT_PX = 176;
-export const AGENT_INSPECT_THOUGHT_LINE_LIMIT = 3;
 
 export function agentInspectorActive(status: ChatSummary["status"]): boolean {
   return status === "running" || status === "waiting-for-approval";
@@ -69,14 +72,6 @@ export function commandOutputIsAtBottom(input: {
 
 export function inspectorSingleLine(value: string): string {
   return value.replace(/(?:\r\n|[\r\n])+/gu, " ↵ ");
-}
-
-export function latestInspectorThoughtLines(value: string): string {
-  return value
-    .split(/\r\n|[\r\n]/u)
-    .filter((line) => line.trim().length > 0)
-    .slice(-AGENT_INSPECT_THOUGHT_LINE_LIMIT)
-    .join("\n");
 }
 
 export function inspectorCommandLayout(commandCount: number): {
@@ -246,9 +241,6 @@ export function AgentInspectPresentation({
 }) {
   const commands = visibleInspectorCommands(snapshot.commands);
   const layout = inspectorCommandLayout(commands.length);
-  const thoughtText = snapshot.thought
-    ? latestInspectorThoughtLines(snapshot.thought.text)
-    : null;
   const hasSummary =
     snapshot.thought !== null ||
     snapshot.files.length > 0 ||
@@ -265,22 +257,7 @@ export function AgentInspectPresentation({
           commands.length > 0 ? "max-h-[45%] border-b" : "flex-1",
         )}
       >
-        {snapshot.thought ? (
-          <section aria-labelledby="agent-inspect-thought-heading">
-            <div className="flex items-center gap-2">
-              <BrainCircuit className="size-3.5 text-violet-500" />
-              <h3
-                className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground"
-                id="agent-inspect-thought-heading"
-              >
-                Latest thought
-              </h3>
-            </div>
-            <p className="mt-2 line-clamp-3 whitespace-pre-wrap text-xs leading-5 text-foreground/85 animate-in fade-in slide-in-from-bottom-1 duration-200 motion-reduce:animate-none">
-              {thoughtText}
-            </p>
-          </section>
-        ) : null}
+        <AgentLatestThought thought={snapshot.thought} />
 
         {snapshot.files.length > 0 ? (
           <section
