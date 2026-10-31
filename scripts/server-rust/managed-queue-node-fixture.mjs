@@ -1,7 +1,25 @@
+import {
+  mutateManagedGuiQueue,
+  lookupManagedGuiQueue,
+} from "../../cantrip_server/src/app/runtime/managed-queue-input.ts";
+import { queueDeliveryFixture } from "./queue-delivery-node-fixture.mjs";
 export async function managedQueueFixture(repository, input) {
   const { owner, chat, worker, session, claimId: id, content } = input,
     queue = repository.managedQueue;
+  if (["gui-context", "gui-mutate", "gui-lookup"].includes(input.action)) {
+    const context =
+      input.context ?? (await repository.getChatExecutionContext(owner, chat));
+    if (!context) throw new Error("GUI queue context is unavailable.");
+    if (input.action === "gui-context") return context;
+    return (
+      input.action === "gui-mutate"
+        ? mutateManagedGuiQueue
+        : lookupManagedGuiQueue
+    )(repository, owner, context, content, input.options ?? {});
+  }
   switch (input.action) {
+    case "deliver":
+      return queueDeliveryFixture(repository, input);
     case "snapshot":
       return queue.snapshot(owner, chat);
     case "read":

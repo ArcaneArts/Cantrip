@@ -19,6 +19,7 @@ mod queue;
 pub mod queued_prompt;
 pub mod receipt;
 mod recovery;
+pub mod runtime;
 mod settings_evidence;
 mod settings_observations;
 pub mod settings_persistence;

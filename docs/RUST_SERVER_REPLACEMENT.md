@@ -12,6 +12,13 @@ feature set.
 
 Status: **implementation in progress; not a deployable replacement**.
 
+The queue runtime milestone's fresh `pnpm check` exited 1 with 1,662 server
+tests passing, one failing and 57 skipped. The provider-pooling assertion at
+`local-foundation.test.ts:7218` also fails in a fresh focused run on clean
+Primary `038a7226f`. All 40 Rust library tests and strict all-target Clippy pass.
+Reports use `.qa/rust-server/native-runtime-*`; the Primary reproduction is
+`native-runtime-root-baseline-v1.log`. The broad check is not green.
+
 The native command milestone's current-main `pnpm check` exited 1: 1,645 server
 tests passed, 18 failed and 57 were skipped. One failure is the pooled-provider
 assertion at `local-foundation.test.ts:7218`; the other 17 are unchanged 5-second
@@ -51,6 +58,59 @@ The coordination HTTP comparisons also reject missing, mismatched,
 insufficient-scope, revoked and expired worker credentials for each new route.
 In account mode, a second account enrolls a real worker and cannot access the
 first account's command or Chat state. Rejected calls publish no Live events.
+
+The next runtime layer includes a native receipt notification/wait primitive.
+It retains notices received during a database read, polls durable receipts every
+750 milliseconds when a notice is lost, preserves original UTF-16 Chat keys,
+and removes subscriptions on completion or cancellation. Fifteen controlled
+read/timer scenarios compare the unchanged Node waiter directly with Rust,
+including concurrent abort/read outcomes and multiple listeners. The public
+native method reads the actual managed queue repository. Receipt and queue HTTP
+routes still require their real GUI dispatch and recovery consumers.
+
+Native GUI queue preparation, mutation and lookup now use those same durable
+repositories. Twenty GUI scenarios on each database compare original JSON
+digests, explicit optimistic revisions, immutable replay and rejected receipts,
+retained input after deletion, administrative input fences and tenant/placement
+rejection with the unchanged Source helper. Their surrounding managed queue
+corpus also retains restart checks and 20 same/mixed-runtime PostgreSQL races.
+These helpers do not complete GUI turn dispatch or its HTTP consumers.
+
+Native queue delivery now uses the durable notification repository and admitted
+worker command bus. Its recovery group runs independently of notification
+sweeps; each group has eight workers, retries retain their durable cursor, and
+stop prevents late acknowledgment or defer. Twenty-four controlled scenarios
+execute the unchanged Node service, including coalesced callers, errors at each
+boundary, independently running recovery, early rejection with other workers
+still active, and interval/stop behavior. Real repository/worker-wire comparisons
+on all three storage modes also verify successful acknowledgment, no duplicate
+delivery and a five-second defer after an actual worker rejection. Product
+registration still requires the real GUI dispatcher; no production no-op
+dispatch is supplied.
+
+PR #2384's Windows native command job failed its first fresh GUI admission on
+the original 1 MiB fixture thread with stack overflow (`3221225725`). The
+`native_stack_diagnostic` workflow input runs that same repository suite under
+MinGW GDB and retains native thread stacks/registers. It changes neither the
+requested stack nor the suite's assertions and is separate from platform
+acceptance. The optional `CANTRIP_FIXTURE_GDB` launcher affects only disposable
+Rust repository fixtures; ordinary launches retain their existing command line.
+The first debugger capture places the failure on the Rust caller during branch
+lease acquisition while the PGlite engine thread is idle. The follow-up capture
+measured 214,064 bytes retained by the native fixture dispatcher and 242,720 by
+its outer dispatcher. The native selector now returns an individual boxed future
+for each operation before it is polled. The original 1 MiB PGlite workload passes
+locally with all 1,523 original cases plus 20 GUI cases. Windows run
+`41226706489` now passes that same 1 MiB workload, including 1,337 snapshots and
+10 reopen checks. The earlier full platform run separately failed an execution
+target repository fixture with stack overflow. Run `41228493161` captured
+373,760 bytes retained by the repository operation dispatcher and 235,232 by
+its outer dispatcher while resolving a project target. Both selectors now
+construct the selected future before polling it. All 431 original target cases
+pass locally, with no cases removed or assertions changed. Windows run
+`41229647423` now passes the same 1 MiB admission workload (1,550 cases, 1,345
+snapshots and 10 reopens) and all 431 target cases under GDB. Full Windows
+platform acceptance remains pending beyond those two suites.
 
 Restart recovery deliberately suspends existing execution lanes. The HTTP
 fixtures therefore admit and dispatch through real routes after server startup;

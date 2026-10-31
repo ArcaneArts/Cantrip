@@ -3,6 +3,7 @@ import { createInterface } from "node:readline";
 import path from "node:path";
 import { repositoryRoot } from "./build.mjs";
 import { fixtureEnvironment, startServer } from "./process.mjs";
+import { repositoryDebugger } from "./repository-debugger.mjs";
 
 export async function repositoryFixture({
   kind,
@@ -25,13 +26,14 @@ export async function repositoryFixture({
       process.env.CANTRIP_TEST_POSTGRES_BIN_DIR;
   let server;
   try {
-    server = await startServer(
-      kind === "node" ? process.execPath : executable,
-      kind === "node"
-        ? ["--import", "tsx", nodeScript]
-        : ["--database", databaseMode],
-      { cwd: repositoryRoot, env: environment },
-    );
+    const launch =
+      kind === "rust"
+        ? await repositoryDebugger(executable, ["--database", databaseMode])
+        : { command: process.execPath, args: ["--import", "tsx", nodeScript] };
+    server = await startServer(launch.command, launch.args, {
+      cwd: repositoryRoot,
+      env: environment,
+    });
   } catch (error) {
     error.message = `${kind}/${databaseMode}: ${error.message}`;
     throw error;

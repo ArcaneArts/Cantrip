@@ -176,6 +176,9 @@ try {
   await seed(
     `INSERT INTO chat_execution_lanes(id,chat_id,worker_id,worktree_id,scratch_root_id,acquiring_actor,state,created_at,updated_at) VALUES('lane','chat','alpha','github-alpha-main',NULL,'fixture','active',${literal(stamp)},${literal(stamp)}),('scratch-lane',${literal(standalone)},'alpha',NULL,${literal(scratch)},'fixture','active',${literal(stamp)},${literal(stamp)});`,
   );
+  // Migration 0235 gives this field a live default. Both isolated stores must
+  // start with the same input; retain exact snapshot comparisons of the field.
+  await seed(`UPDATE chats SET last_used_at=${literal(stamp)}`);
   for (const id of ["missing", "disabled-model", "foreign-model"])
     assert.equal(await model("unavailable model " + id, { model: id }), null);
   assert.equal(await model("missing chat", { chat: "missing" }), null);
