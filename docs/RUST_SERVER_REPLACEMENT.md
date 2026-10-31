@@ -12,6 +12,13 @@ feature set.
 
 Status: **implementation in progress; not a deployable replacement**.
 
+The production logical-completion milestone's `pnpm check` exited 1 with 1,662
+server tests passing, one failing and 57 skipped. The same provider-pooling
+assertion at `local-foundation.test.ts:7218` fails in a fresh focused run on clean
+Primary `75e4b68f7`. All 41 Rust library tests, strict all-target Clippy and a
+release-mode library check pass. Reports use
+`.qa/rust-server/execution-completion-*`; the broad check is not green.
+
 The queue runtime milestone's fresh `pnpm check` exited 1 with 1,662 server
 tests passing, one failing and 57 skipped. The provider-pooling assertion at
 `local-foundation.test.ts:7218` also fails in a fresh focused run on clean
