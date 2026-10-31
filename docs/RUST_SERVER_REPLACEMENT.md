@@ -3583,3 +3583,32 @@ platforms, further interruption boundaries, Redis coordination and packaging
 remain required. General messages, native history ingestion, execution queues,
 Tasks, Goal/automation continuity and default cutover remain unfinished. Normal
 builds still use the Node server.
+
+## Controlled workspace admission caller connections
+
+The Linux diagnostic reproduces the earlier workspace restart reset on iteration
+nine of run `41176923583`, job `124466282896`. Its SHA-256-verified artifact
+`13032917940` retains all eight successful iterations and the partial failing
+password/Rust iteration. Socket 25 connected to the old server 41 milliseconds
+before that process closed. After a new process started on the same port, the
+shared global fetch pool reused that socket for the unchanged worker's heartbeat
+125 milliseconds later and received `ECONNRESET`.
+
+The controlled test caller now uses the existing `streamingHttpRequest` helper
+with its own socket. Production servers and worker heartbeat behavior are
+unchanged. Actual caller aborts, SQL lock/PID witnesses, durable admissions,
+revisions, worker commands and same-port restart assertions remain in place.
+Partial lifecycle evidence and optional HTTP connection tracing are retained
+even when a scenario fails. The repeat driver stops at the first failure and
+does not retry failed requests or scenarios.
+
+Two local PostgreSQL iterations pass all twelve authentication/runtime scenarios;
+the anonymous PGlite and private PostgreSQL lifetime suites also pass. Corrected
+Linux run `41178019278`, job `124469506406`, passes all twenty iterations and
+120 authentication/runtime restart scenarios. Its SHA-256-verified artifact
+`13033962863` also proves that all 240 post-restart heartbeat and catalog requests
+use connections established after the old process closed. The tested source
+head is `5713c2f66bd30ea91c2733819f005d413ca5220f`. The required broad `pnpm check`
+completes in 430 seconds with the existing provider-selection failure at
+`local-foundation.test.ts:7218` (1,662 pass, 57 skip, one fails). This work does
+not establish a green broad check, Windows acceptance or packaged activation.

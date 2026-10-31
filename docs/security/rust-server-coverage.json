@@ -7008,6 +7008,15 @@
       "platforms": ["windows-2025"],
       "conclusion": "Windows migration job passed. Artifact 13029171435 ZIP SHA256 748fac193d59fd521c6143c6b1cab5a846249dc9f35a100057f09c12d1c7f0fe verified; all six JSON reports inspected.",
       "scope": "Current/historical SQL migration, native byte preservation, reverse transfer, redaction and complete profile transfer on all three stores, including HTTP post-write rollback, process interruption and real lost-COMMIT-acknowledgement recovery. Linux failed because the profile harness ignored the configured client 18 override; macOS was queued at observation. This is not all-platform, packaged or full-replacement acceptance."
+    },
+    {
+      "observedHead": "5713c2f66bd30ea91c2733819f005d413ca5220f",
+      "observedRun": "https://github.com/ArcaneArts/Cantrip/actions/runs/41178019278",
+      "platforms": ["ubuntu-24.04"],
+      "conclusion": "Workspace admission lifetime diagnostic passes 20 iterations and 120 authentication/runtime restart scenarios; all 21 artifact reports inspected after ZIP SHA256 verification.",
+      "scope": "Controlled test callers own their sockets, preserving the production worker and server behavior. All 240 post-restart heartbeat/catalog requests use connections established after the old process closes. Original Linux run 41176923583 fails at iteration 9 with a heartbeat reusing an unused replacement connection to the old process. Actual SQL lock/PID, revision, durable state, caller-abort and same-port restart assertions remain intact. This is scoped Linux diagnostic evidence, not a full platform, packaged or replacement pass.",
+      "artifactId": 13033962863,
+      "artifactZipSha256": "4f65a7a82a8e42213e236d7d96c54adf3b9549c66f46d1f9e4288abe6484ed63"
     }
   ]
 }
