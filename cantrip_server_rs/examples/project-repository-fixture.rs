@@ -45,6 +45,8 @@ mod queue_delivery;
 mod queued_prompts;
 #[path = "support/replicas.rs"]
 mod replicas;
+#[path = "support/repository_dispatch.rs"]
+mod repository_dispatch;
 #[path = "support/repository_operations.rs"]
 mod repository_operations;
 #[path = "support/run_configurations.rs"]
@@ -120,6 +122,14 @@ async fn run() -> Result<()> {
         cantrip_server::projects::placement::PlacementRepository::new(database.clone())?;
     let live = cantrip_server::live::repository::LiveRepository::new(database.clone())?;
     let chats = cantrip_server::chats::Repository::new(database.clone());
+    let dispatcher = repository_dispatch::Dispatcher {
+        database: &database,
+        repository: &repository,
+        folders: &folders,
+        placement: &placement,
+        live: &live,
+        chats: &chats,
+    };
     eprintln!("project-fixture repository ready");
     writeln!(
         output,
@@ -130,106 +140,7 @@ async fn run() -> Result<()> {
     for line in io::BufReader::new(input).lines() {
         let request: Value = serde_json::from_str(&line?)?;
         let console_trace = Arc::new(std::sync::Mutex::new(Vec::new()));
-        let outcome: Result<Value> = async {
-            if request["op"]
-                .as_str()
-                .is_some_and(|op| op.starts_with("console-"))
-            {
-                let result = chat_console::run(database.clone(), &request, console_trace.clone())
-                    .boxed()
-                    .await?;
-                Ok(Value::object([
-                    ("result", result),
-                    ("trace", Value::Array(console_trace.lock().unwrap().clone())),
-                ]))
-            } else if request["op"]
-                .as_str()
-                .is_some_and(|op| op.starts_with("fork-"))
-            {
-                chat_forks::run(database.clone(), &request, console_trace.clone())
-                    .boxed()
-                    .await
-            } else if request["op"]
-                .as_str()
-                .is_some_and(|op| op.starts_with("message-"))
-            {
-                chat_messages::run(database.clone(), &request).boxed().await
-            } else if request["op"]
-                .as_str()
-                .is_some_and(|op| op.starts_with("native-command-"))
-            {
-                native_commands::run(database.clone(), &request)
-                    .boxed()
-                    .await
-            } else if request["op"]
-                .as_str()
-                .is_some_and(|op| op.starts_with("scratch-"))
-            {
-                scratch_roots::run(database.clone(), &request).boxed().await
-            } else if request["op"]
-                .as_str()
-                .is_some_and(|op| op.starts_with("discovery-"))
-            {
-                discovery::run(database.clone(), &request).boxed().await
-            } else if request["op"]
-                .as_str()
-                .is_some_and(|op| op.starts_with("conversion-"))
-            {
-                conversions::run(database.clone(), &request).boxed().await
-            } else if request["op"]
-                .as_str()
-                .is_some_and(|op| op.starts_with("replica-"))
-            {
-                replicas::run(database.clone(), &request).boxed().await
-            } else if request["op"]
-                .as_str()
-                .is_some_and(|op| op.starts_with("tunnel-"))
-            {
-                tunnels::run(database.clone(), &request).boxed().await
-            } else if request["op"]
-                .as_str()
-                .is_some_and(|op| op.starts_with("browser-"))
-            {
-                browsers::run(database.clone(), &request).boxed().await
-            } else if request["op"]
-                .as_str()
-                .is_some_and(|op| op.starts_with("document-"))
-            {
-                file_documents::run(database.clone(), &request)
-                    .boxed()
-                    .await
-            } else if request["op"]
-                .as_str()
-                .is_some_and(|op| op.starts_with("layout-"))
-            {
-                pane_layouts::run(database.clone(), &request).boxed().await
-            } else if request["op"]
-                .as_str()
-                .is_some_and(|op| op.starts_with("workspace-"))
-            {
-                workspaces::run(database.clone(), &request).boxed().await
-            } else if request["op"]
-                .as_str()
-                .is_some_and(|op| op.starts_with("project-surface-"))
-            {
-                project_surfaces::run(database.clone(), &request)
-                    .boxed()
-                    .await
-            } else {
-                repository_operations::run(
-                    &database,
-                    &request,
-                    &repository,
-                    &folders,
-                    &placement,
-                    &live,
-                    &chats,
-                )
-                .await
-            }
-        }
-        .boxed()
-        .await;
+        let outcome = dispatcher.run(&request, console_trace.clone()).await;
         let mut reply: Value = serde_json::from_value(
             serde_json::json!({"id":request["id"],"rejected":outcome.is_err()}),
         )?;
