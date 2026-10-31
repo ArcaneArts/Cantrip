@@ -36,6 +36,27 @@ export async function repositoryDebugger(executable, args) {
       "-ex",
       "thread apply all bt 80",
       "-ex",
+      "python exec(" +
+        JSON.stringify(`import gdb
+frame = gdb.newest_frame()
+previous = None
+previous_name = None
+for index in range(80):
+    if frame is None:
+        break
+    try:
+        address = int(frame.read_register('rsp'))
+        if previous is not None:
+            print('NATIVE_STACK_FRAME bytes=%d sp=0x%x function=%s' % (address-previous, previous, previous_name))
+        previous = address
+        previous_name = frame.name()
+        frame = frame.older()
+    except Exception as error:
+        print('NATIVE_STACK_FRAME unavailable: %s' % error)
+        break
+`) +
+        ")",
+      "-ex",
       "info registers",
       "--args",
       executable,
