@@ -12,6 +12,39 @@ feature set.
 
 Status: **implementation in progress; not a deployable replacement**.
 
+## Controlled conversion caller connection ownership
+
+Linux conversion run `41160107203` reset the first status request after the
+fixture restarted its server on the same port. An optional diagnostic workflow
+repeats the original scenarios on isolated external PostgreSQL databases and
+stops at the first failed iteration. It retains actual TCP connection and send
+times without collecting credentials, query parameters or request bodies.
+
+Diagnostic run `41165810079` failed at iteration four. Socket 53 connected at
+`1793418880326`, while process 9018 was shutting down. That process exited at
+`1793418880366`. The socket remained unused until the first status GET to the
+restarted process 9033 at `1793418880741`, then reset one millisecond later.
+The connection belonged to the previous server process: aborting the controlled
+global-fetch caller had opened an unused replacement connection.
+
+The controlled admission caller now uses the existing single-socket streaming
+HTTP helper. Its abort closes that socket without opening a replacement. The
+original database locks, admitted-write, shutdown, restart, recovery, revision
+and worker-command assertions remain in place. The repeat harness additionally
+checks actual TCP connection times for post-restart status reads. Resets and
+incomplete HTTP responses still fail without retrying. All eight focused
+streaming-client and trace tests pass, including the new actual abort/connection
+ownership test. Two corrected local repeats pass all three auth modes for both
+implementations on Node 24.22.1, including the actual post-restart connection
+checks. Linux diagnostic run `41167479583` at code head `9412d6565` passes all
+20 repetitions. Its verified artifact contains 120 completed restart scenarios
+(three auth modes and both implementations per repetition), with each actual
+post-restart GET using a connection established after the prior process exited.
+The artifact ZIP SHA256 is
+`579fb182432dc55adbafb30a38ebbf089b4c7dce046f393927fb9c312e625086`.
+This is focused Linux lifetime evidence; diagnostic dispatch does not replace
+the full platform matrix or packaged acceptance.
+
 ## Platform recovery observations and PostgreSQL 16 transfer
 
 PR #2361 platform run `41129609392` exposed two observation races. The macOS

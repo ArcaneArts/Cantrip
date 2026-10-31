@@ -148,6 +148,11 @@ on:
       - pnpm-workspace.yaml
       - patches/@zavora-ai__computer-use-mcp@7.0.0.patch
   workflow_dispatch:
+    inputs:
+      conversion_lifetime_diagnostic:
+        description: Run only the repeated Linux HTTP conversion lifetime diagnostic
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -158,6 +163,7 @@ concurrency:
 
 jobs:
   contracts:
+    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.conversion_lifetime_diagnostic }}
     strategy:
       fail-fast: false
       matrix:
@@ -216,7 +222,7 @@ jobs:
       - name: File-document query statements match the actual TypeScript repository
         run: node --import tsx scripts/server-rust/file-document-query-manifest.mjs --check
       - name: Early HTTP replies survive upload termination while resets and partial replies fail
-        run: node --test scripts/server-rust/streaming-http-request.test.mjs
+        run: node --test scripts/server-rust/streaming-http-request.test.mjs scripts/server-rust/http-connection-trace.test.mjs
       - name: Native HTTP rejections deliver before upload EOF and bound abandoned drains
         run: node scripts/server-rust/cargo.mjs test --lib http::body::tests -- --nocapture
       - name: File-document and surface-stream protocol compatibility
@@ -712,6 +718,7 @@ jobs:
           path: .qa/rust-server/
 
   replicas:
+    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.conversion_lifetime_diagnostic }}
     # Production lease timers take about 30 minutes for the three stores.
     # Keep the complete replica matrix independent of the existing domain matrix.
     strategy:
@@ -844,6 +851,7 @@ jobs:
           path: .qa/rust-server/
 
   conversions:
+    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.conversion_lifetime_diagnostic }}
     # Exercise production lease timers separately from the domain matrices.
     strategy:
       fail-fast: false
@@ -941,7 +949,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: node --import tsx scripts/server-rust/actual-folder-client.mjs --github-conversion --database postgres --report .qa/rust-server/actual-github-conversion-postgres.json
       - name: Conversion actual PostgreSQL admission races and disconnected shutdown
-        run: node --import tsx scripts/server-rust/conversion-http-compatibility.mjs --database postgres --lifetimes --report .qa/rust-server/conversion-http-lifetimes.json
+        run: node --import tsx scripts/server-rust/conversion-http-compatibility.mjs --database postgres --lifetimes --trace-http --report .qa/rust-server/conversion-http-lifetimes.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -949,6 +957,7 @@ jobs:
           path: .qa/rust-server/
 
   discovery:
+    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.conversion_lifetime_diagnostic }}
     # Exercise attached roots, imports, lease renewal and real user-owned Git.
     strategy:
       fail-fast: false
@@ -1056,6 +1065,7 @@ jobs:
           path: .qa/rust-server/
 
   migrations:
+    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.conversion_lifetime_diagnostic }}
     # Exercise real legacy SQL transfer, pending upgrades and interrupted restores.
     strategy:
       fail-fast: false
@@ -1138,4 +1148,36 @@ jobs:
         if: always()
         with:
           name: rust-server-migrations-${{ matrix.os }}
+          path: .qa/rust-server/
+
+  conversion-lifetime-diagnostic:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.conversion_lifetime_diagnostic }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.1
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.93.0
+      - name: PostgreSQL and native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql libssl-dev
+          echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(pg_config --bindir)" >> "$GITHUB_ENV"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol --filter @cantrip/crypto --filter @cantrip/glitch -r build
+      - name: Repeated actual admission, disconnect and restart scenarios with socket tracing
+        run: |
+          node --test scripts/server-rust/streaming-http-request.test.mjs scripts/server-rust/http-connection-trace.test.mjs
+          node scripts/server-rust/repeat-conversion-lifetimes.mjs --iterations 20
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rust-server-conversion-lifetime-diagnostic
           path: .qa/rust-server/

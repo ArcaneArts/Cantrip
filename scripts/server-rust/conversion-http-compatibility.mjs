@@ -2,6 +2,7 @@
 import { conversionLifecycleCases } from "./conversion-lifecycle-cases.mjs";
 import { conversionLeaseCases } from "./conversion-lease-cases.mjs";
 import { conversionLifetimeCases } from "./conversion-lifetime-cases.mjs";
+import { traceHttpConnections } from "./http-connection-trace.mjs";
 import assert from "node:assert/strict";
 import { hashPassword } from "../../cantrip_server/src/auth/service.ts";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
@@ -33,6 +34,8 @@ const report = {
   lifetimes: process.argv.includes("--lifetimes"),
   observationShutdown: process.argv.includes("--observation-shutdown"),
 };
+const connectionTrace =
+  process.argv.includes("--trace-http") && traceHttpConnections();
 if (report.lifetimes)
   assert.equal(
     databaseMode,
@@ -827,6 +830,7 @@ try {
   report.retainedRoot = root;
 } finally {
   await pg?.close();
+  if (connectionTrace) report.httpConnections = connectionTrace.close();
   if (option("--report")) {
     await mkdir(path.dirname(path.resolve(option("--report"))), {
       recursive: true,

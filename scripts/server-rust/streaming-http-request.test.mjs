@@ -177,3 +177,46 @@ test("an incomplete rejection body still fails", async () => {
     await new Promise((resolve) => server.close(resolve));
   }
 });
+
+test("aborting the actual caller closes its only connection without leaving a replacement", async () => {
+  let received;
+  const admitted = new Promise((resolve) => {
+    received = resolve;
+  });
+  let connections = 0;
+  const server = http.createServer((request) => {
+    request.resume();
+    request.once("end", () => received(request.socket));
+  });
+  server.on("connection", () => connections++);
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const controller = new AbortController();
+  try {
+    const rejected = assert.rejects(
+      streamingHttpRequest(`http://127.0.0.1:${server.address().port}/`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ actual: "admitted body" }),
+        signal: controller.signal,
+      }),
+      { name: "AbortError" },
+    );
+    const socket = await admitted;
+    const closed = once(socket, "close");
+    controller.abort();
+    await rejected;
+    await closed;
+    assert.equal(connections, 1);
+    const remaining = await new Promise((resolve, reject) =>
+      server.getConnections((error, count) =>
+        error ? reject(error) : resolve(count),
+      ),
+    );
+    assert.equal(remaining, 0);
+  } finally {
+    controller.abort();
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
