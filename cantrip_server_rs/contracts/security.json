@@ -345,7 +345,11 @@
     "taskMessageOpaqueSummarySchema": 8250,
     "chatMessagePageQuerySchema": 8276,
     "chatMessageWireListSchema": 8282,
-    "chatMessageWirePageSchema": 8291
+    "chatMessageWirePageSchema": 8291,
+    "chatMessageOpaqueContentSchema": 1383,
+    "taskMessageOpaqueContentSchema": 1442,
+    "nativeHistoryTurnReadRequestSchema": 8310,
+    "nativeHistoryTurnReadResponseSchema": 8316
   },
   "nodes": [
     {
@@ -48586,6 +48590,115 @@
       "element": 4750,
       "checks": [{ "check": "max_length", "maximum": 500, "when": "length" }]
     },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "nativeHistoryTurnReadRequestSchema",
+      "shape": { "turns": 8311 },
+      "catchall": 8315,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 8312,
+      "checks": [{ "check": "max_length", "maximum": 512, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "nativeHistoryTurnReadIdentitySchema",
+      "shape": { "threadId": 8313, "turnId": 8313 },
+      "catchall": 8314,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 500, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "nativeHistoryTurnReadResponseSchema",
+      "shape": { "chatId": 8313, "turns": 8317 },
+      "catchall": 8332,
+      "checks": []
+    },
+    { "type": "array", "element": 8318, "checks": [] },
+    {
+      "type": "object",
+      "shape": { "bindingId": 8313, "workerId": 8313, "turn": 8319 },
+      "catchall": 8331,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "nativeHistoryTurnSchema",
+      "shape": {
+        "threadId": 8320,
+        "turnId": 8320,
+        "revision": 8321,
+        "ordinal": 8322,
+        "status": 8323,
+        "startedAtMs": 8324,
+        "completedAtMs": 8326,
+        "usage": 8328,
+        "modelAttribution": 8329,
+        "metadata": 38
+      },
+      "catchall": 8330,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 255, "when": "length" }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false },
+        { "check": "less_than", "value": 9007199254740991, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 9007199254740991, "inclusive": true }
+      ]
+    },
+    {
+      "type": "enum",
+      "values": ["inProgress", "completed", "failed", "interrupted"],
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 8325, "checks": [] },
+    { "type": "number", "checks": [] },
+    { "type": "nullable", "innerType": 8327, "checks": [] },
+    { "type": "number", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 6327,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 1255,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
     { "type": "never", "checks": [] }
   ]
 }

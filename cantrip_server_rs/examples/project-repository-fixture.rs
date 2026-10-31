@@ -210,6 +210,12 @@ async fn run() -> Result<()> {
             Ok(value) => reply["value"] = value,
             Err(error) => {
                 reply["diagnostic"] = Value::String(error.to_string().into());
+                if let Some(error) =
+                    error.downcast_ref::<cantrip_server::chats::message_writes::HistoryError>()
+                {
+                    reply["historyError"] = Value::String(error.code.into());
+                    reply["historyStatus"] = Value::from_serialize(&error.status_code);
+                }
                 if request["op"]
                     .as_str()
                     .is_some_and(|op| op.starts_with("fork-"))

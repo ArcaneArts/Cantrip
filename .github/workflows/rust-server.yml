@@ -1000,6 +1000,95 @@ jobs:
           name: rust-server-conversions-${{ matrix.os }}
           path: .qa/rust-server/
 
+  chat-messages:
+    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.conversion_lifetime_diagnostic && !inputs.discovery_lifetime_diagnostic) }}
+    # Compare protected message writes and archive reads through real sockets.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.93.0
+          components: rustfmt, clippy
+      - name: Windows native PGlite toolchain
+        if: runner.os == 'Windows'
+        id: mingw
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-zlib mingw-w64-x86_64-openssl
+      - name: Windows Rust target and PostgreSQL
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          CANTRIP_MINGW_BIN: ${{ steps.mingw.outputs.msys2-location }}\mingw64\bin
+        run: |
+          rustup target add x86_64-pc-windows-gnu
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "CARGO_BUILD_TARGET=x86_64-pc-windows-gnu" >> $env:GITHUB_ENV
+          "$env:CANTRIP_MINGW_BIN" >> $env:GITHUB_PATH
+          "CANTRIP_TEST_POSTGRES_BIN_DIR=$env:PGBIN" >> $env:GITHUB_ENV
+      - name: Linux PostgreSQL
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql libssl-dev
+          echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(pg_config --bindir)" >> "$GITHUB_ENV"
+      - name: macOS PostgreSQL
+        if: runner.os == 'macOS'
+        run: |
+          brew install postgresql@18
+          echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(brew --prefix postgresql@18)/bin" >> "$GITHUB_ENV"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol --filter @cantrip/crypto --filter @cantrip/glitch -r build
+      - name: Protected message validation contracts
+        run: node scripts/server-rust/cargo.mjs test --test chat_contracts -- --nocapture
+      - name: Message query state with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/chat-message-repository-compatibility.mjs --database pglite --report .qa/rust-server/chat-message-repository-compatibility-pglite.json
+      - name: Message writes and archive restart with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/chat-message-write-repository-compatibility.mjs --database pglite --report .qa/rust-server/chat-message-write-repository-compatibility-pglite.json
+      - name: Message HTTP, endpoint encryption and ordered Live with pglite
+        run: node --import tsx scripts/server-rust/chat-message-http-compatibility.mjs --database pglite --report .qa/rust-server/chat-message-http-compatibility-pglite.json
+      - name: Message query state with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/chat-message-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/chat-message-repository-compatibility-bundled-postgres.json
+      - name: Message writes and archive restart with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/chat-message-write-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/chat-message-write-repository-compatibility-bundled-postgres.json
+      - name: Message HTTP, endpoint encryption and ordered Live with bundled-postgres
+        run: node --import tsx scripts/server-rust/chat-message-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/chat-message-http-compatibility-bundled-postgres.json
+      - name: Message query state with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/chat-message-repository-compatibility.mjs --database postgres --report .qa/rust-server/chat-message-repository-compatibility-postgres.json
+      - name: Message writes and archive restart with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/chat-message-write-repository-compatibility.mjs --database postgres --report .qa/rust-server/chat-message-write-repository-compatibility-postgres.json
+      - name: Message HTTP, endpoint encryption and ordered Live with postgres
+        run: node --import tsx scripts/server-rust/chat-message-http-compatibility.mjs --database postgres --report .qa/rust-server/chat-message-http-compatibility-postgres.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rust-server-chat-messages-${{ matrix.os }}
+          path: .qa/rust-server/
   discovery:
     if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.conversion_lifetime_diagnostic && !inputs.discovery_lifetime_diagnostic) }}
     # Exercise attached roots, imports, lease renewal and real user-owned Git.

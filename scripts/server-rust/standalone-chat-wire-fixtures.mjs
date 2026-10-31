@@ -64,6 +64,61 @@ export function standaloneChatWireFixtures(timestamp) {
     startsAtUserTurn: true,
   };
   return {
+    chatMessageOpaqueContentSchema: [
+      {
+        id: job.id,
+        classification: { role: "user", mode: "default", attachmentIds: [] },
+        protectedContent: titleProtection.protectedLabel,
+        idempotencyKey: "input",
+      },
+    ],
+    taskMessageOpaqueContentSchema: [
+      {
+        id: job.id,
+        classification: { role: "user", mode: "default", attachmentIds: [] },
+        protectedContent: titleProtection.protectedLabel,
+        idempotencyKey: "input",
+      },
+    ],
+    nativeHistoryTurnReadRequestSchema: [
+      { turns: [] },
+      { turns: [{ threadId: "thread", turnId: "turn" }] },
+    ],
+    nativeHistoryTurnReadResponseSchema: [
+      { chatId: job.chatId, turns: [] },
+      {
+        chatId: job.chatId,
+        turns: [
+          {
+            bindingId: "binding",
+            workerId: "worker",
+            turn: {
+              threadId: "thread",
+              turnId: "turn",
+              revision: 1,
+              ordinal: 0,
+              status: "completed",
+              startedAtMs: 1.125,
+              completedAtMs: null,
+              metadata: titleProtection.protectedLabel.envelope,
+              usage: {
+                version: 1,
+                responses: [],
+                complete: false,
+                conflictingResponseIds: [],
+              },
+              modelAttribution: {
+                threadId: "thread",
+                turnId: "turn",
+                isRoot: true,
+                reasoningEffort: null,
+                selection: { status: "unavailable" },
+              },
+            },
+          },
+        ],
+      },
+    ],
     taskMessageOpaqueSummarySchema: [taskMessage],
     chatMessagePageQuerySchema: [
       {},

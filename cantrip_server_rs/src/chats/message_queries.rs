@@ -14,7 +14,7 @@ pub enum MessageKind {
     AgentWire,
 }
 impl MessageKind {
-    fn map(self, raw: &Value) -> Result<Value> {
+    pub(super) fn map(self, raw: &Value) -> Result<Value> {
         match self {
             Self::Plain => messages::plain(raw),
             Self::Encrypted => messages::opaque(raw),

@@ -867,6 +867,10 @@ try {
         JSON.stringify({
           id: request.id,
           rejected: true,
+          ...(request.op.startsWith("message-") &&
+          error.name === "NativeHistoryError"
+            ? { historyError: error.code, historyStatus: error.statusCode }
+            : {}),
           ...(request.op.startsWith("fork-")
             ? {
                 trace: consoleTrace,
@@ -889,7 +893,8 @@ try {
             request.op.startsWith("workspace-") ||
             request.op.startsWith("layout-") ||
             request.op.startsWith("scratch-") ||
-            request.op.startsWith("fork-")) &&
+            request.op.startsWith("fork-") ||
+            request.op.startsWith("message-")) &&
           error.cause?.code
             ? { databaseCode: error.cause.code }
             : {}),

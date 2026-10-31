@@ -30,6 +30,10 @@ fn contextual_chat_contracts_match_actual_protocol() -> Result<()> {
         "chatMessagePageQuerySchema",
         "chatMessageWireListSchema",
         "chatMessageWirePageSchema",
+        "chatMessageOpaqueContentSchema",
+        "taskMessageOpaqueContentSchema",
+        "nativeHistoryTurnReadRequestSchema",
+        "nativeHistoryTurnReadResponseSchema",
     ] {
         let output = Command::new("node")
             .args([

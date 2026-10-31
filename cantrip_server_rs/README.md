@@ -12,6 +12,13 @@ worker pairing, credentials, heartbeat storage and foundational control sockets.
 Storage supports native PGlite, private managed PostgreSQL and external
 PostgreSQL. The worker remains Node.
 
+Protected Chat message listing, turn-aware pagination, append and stored turn
+archive reads also execute natively. Repository and real HTTP/Live comparisons
+cover all three databases and authentication modes, with endpoint decryption,
+tenant isolation, actual write races and restart persistence. Canonical history
+ingestion, native command execution, Tasks and complete client/worker product
+flows remain unfinished; these checks do not establish packaged readiness.
+
 Immutable file-document catalog, creation and encrypted worker operations now
 run natively. Actual SQL authority locks, idempotent bindings, strict wire
 contracts and response-completion Live invalidations are compared against the

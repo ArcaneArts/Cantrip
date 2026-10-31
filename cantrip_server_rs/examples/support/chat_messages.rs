@@ -10,6 +10,62 @@ pub async fn run(database: Arc<Database>, input: &Value) -> Result<Value> {
     let owner = input["owner"].as_str().context("Message owner")?;
     let chat = input["chat"].as_str().context("Message Chat")?;
     Ok(match input["op"].as_str().context("Message operation")? {
+        "message-history" => {
+            repo.read_native_history_turns(owner, chat, &input["input"])
+                .await?
+        }
+        "message-append" | "message-upsert" => {
+            let attribution = input.get("attribution").filter(|v| !v.is_null());
+            let append = input["op"] == "message-append";
+            match (input["kind"].as_str(), append) {
+                (Some("plain"), true) => {
+                    repo.append_message(owner, chat, &input["input"], attribution)
+                        .await?
+                }
+                (Some("plain"), false) => {
+                    repo.upsert_message(owner, chat, &input["input"], attribution)
+                        .await?
+                }
+                (Some("encrypted"), true) => {
+                    repo.append_encrypted_message(owner, chat, &input["input"], attribution)
+                        .await?
+                }
+                (Some("encrypted"), false) => {
+                    repo.upsert_encrypted_message(owner, chat, &input["input"], attribution)
+                        .await?
+                }
+                (Some("task"), true) => {
+                    repo.append_task_message(owner, chat, &input["input"], attribution)
+                        .await?
+                }
+                (Some("task"), false) => {
+                    repo.upsert_task_message(owner, chat, &input["input"], attribution)
+                        .await?
+                }
+                _ => anyhow::bail!("Unknown message write kind"),
+            }
+            .unwrap_or(Value::Null)
+        }
+        "message-key" => repo
+            .message_by_idempotency_key(
+                owner,
+                chat,
+                input["key"].as_str().context("Idempotency key")?,
+                kind(input)?,
+            )
+            .await?
+            .unwrap_or(Value::Null),
+        "message-model" => repo
+            .set_message_model_route(
+                owner,
+                input["message"].as_str().context("Message ID")?,
+                input["modelId"].as_str().context("Message model")?,
+                &input["runtime"],
+                input.get("reasoning").filter(|v| !v.is_null()),
+                kind(input)?,
+            )
+            .await?
+            .unwrap_or(Value::Null),
         "message-list" => Value::Array(
             repo.list_messages(
                 owner,
@@ -52,5 +108,13 @@ pub async fn run(database: Arc<Database>, input: &Value) -> Result<Value> {
         ),
         "message-headers" => Value::Array(repo.message_headers(owner, chat).await?),
         _ => anyhow::bail!("Unknown message fixture operation"),
+    })
+}
+fn kind(input: &Value) -> Result<MessageKind> {
+    Ok(match input["kind"].as_str() {
+        Some("plain") => MessageKind::Plain,
+        Some("encrypted") => MessageKind::Encrypted,
+        Some("task") => MessageKind::Task,
+        _ => anyhow::bail!("Unknown message kind"),
     })
 }
