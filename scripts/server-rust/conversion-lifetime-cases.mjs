@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { projectLabel } from "./security-fixtures.mjs";
+import { streamingHttpRequest } from "./streaming-http-request.mjs";
 
 const postgres = createRequire(
   new URL("../../cantrip_server/package.json", import.meta.url),
@@ -28,7 +29,17 @@ export async function conversionLifetimeCases({
     races: [],
     disconnects: [],
     commands,
+    stages: [],
   });
+  const mark = (phase, details = {}) =>
+    evidence.stages.push({
+      phase,
+      at: Date.now(),
+      serverPid: fixture.server?.child.pid,
+      origin: fixture.server?.origin,
+      ...details,
+    });
+  mark("started");
   const result = { races: [], disconnects: [], shutdown: {} };
   const route = (n) => `/api/projects/${ids[n]}/github-conversion`;
   let held, closing, pending;
@@ -67,17 +78,22 @@ export async function conversionLifetimeCases({
     );
   const call = async (n, input, signal) => {
     const client = fixture.client();
-    const response = await fetch(fixture.server.origin + route(n), {
-      method: "POST",
-      headers: {
-        origin: "http://127.0.0.1:5173",
-        "content-type": "application/json",
-        cookie: [...client.cookies].map(([k, v]) => `${k}=${v}`).join("; "),
-        ...(client.csrf ? { "x-cantrip-csrf": client.csrf } : {}),
+    // This controlled caller owns one socket. Aborting global fetch can open
+    // an unused replacement connection to the process being shut down.
+    const response = await streamingHttpRequest(
+      fixture.server.origin + route(n),
+      {
+        method: "POST",
+        headers: {
+          origin: "http://127.0.0.1:5173",
+          "content-type": "application/json",
+          cookie: [...client.cookies].map(([k, v]) => `${k}=${v}`).join("; "),
+          ...(client.csrf ? { "x-cantrip-csrf": client.csrf } : {}),
+        },
+        body: JSON.stringify(input),
+        signal: signal ?? AbortSignal.timeout(30000),
       },
-      body: JSON.stringify(input),
-      signal: signal ?? AbortSignal.timeout(30000),
-    });
+    );
     const body = await response.json();
     const requestId = response.headers.get("x-request-id");
     assert.match(requestId, /^[0-9a-f-]{36}$/);
@@ -202,6 +218,7 @@ export async function conversionLifetimeCases({
       compared.revision = completed.stateRevision;
     }
     for (const shutdown of [false, true]) {
+      mark("disconnect-admission", { shutdown });
       const n = shutdown ? 13 : 12;
       const pid = await lock(insertion);
       const abort = new AbortController();
@@ -214,6 +231,7 @@ export async function conversionLifetimeCases({
       const server = fixture.server;
       const port = Number(new URL(server.origin).port);
       if (shutdown) {
+        mark("closing-with-blocked-insert");
         closing = fixture.close();
         closing.catch(() => {});
         await until(
@@ -240,6 +258,7 @@ export async function conversionLifetimeCases({
       await release();
       if (shutdown) {
         await closing;
+        mark("closed", { previousServerPid: server.child.pid });
         closing = undefined;
         stopWorker();
         const rows =
@@ -249,6 +268,7 @@ export async function conversionLifetimeCases({
         assert.equal(rows[0].attempt, 0);
         assert.equal(rows[0].state_revision, 1);
         await fixture.start({ port });
+        mark("restarted");
         const blocked = await until(
           () => read(route(n)),
           (j) => {
@@ -261,6 +281,7 @@ export async function conversionLifetimeCases({
             });
           },
         );
+        mark("blocked-state-read");
         assert.equal(blocked.id, rows[0].id);
         setMode("ready");
         await connectWorker();
@@ -272,6 +293,7 @@ export async function conversionLifetimeCases({
             assert.equal(j.stateRevision, 6);
           },
         );
+        mark("recovered-state-read");
         assert.equal(completed.id, blocked.id);
         assert.deepEqual(
           commands
@@ -311,6 +333,9 @@ export async function conversionLifetimeCases({
       }
     }
     return result;
+  } catch (error) {
+    mark("failed", { name: error.name, causeCode: error.cause?.code });
+    throw error;
   } finally {
     await release();
     await pending?.catch(() => {});
