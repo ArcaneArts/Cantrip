@@ -148,6 +148,11 @@ pass locally, with no cases removed or assertions changed. Windows run
 snapshots and 10 reopens) and all 431 target cases under GDB. Full Windows
 platform acceptance remains pending beyond those two suites.
 
+The production completion milestone's Windows diagnostic `41235358597` also
+passes the original 1 MiB fixture thread: 1,569 admission cases, 1,354 snapshots,
+10 reopens and all 431 target cases. The retained GDB logs report normal exits.
+This focused diagnostic does not run the complete platform matrix.
+
 Restart recovery deliberately suspends existing execution lanes. The HTTP
 fixtures therefore admit and dispatch through real routes after server startup;
 they do not disable recovery or weaken event fencing. Current managed command
