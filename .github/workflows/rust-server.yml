@@ -1120,7 +1120,7 @@ jobs:
         run: |
           node scripts/server-rust/cargo.mjs test --test database_contract
           node scripts/server-rust/cargo.mjs test --test native_wire_session
-          node scripts/server-rust/cargo.mjs test --test native_sql_dump
+          node scripts/server-rust/cargo.mjs test --test native_sql_dump --test native_dump_bytes
       - name: Real restricted SQL export failures retain private diagnostics without publishing partial files
         run: node scripts/server-rust/native-export-redaction.mjs --report .qa/rust-server/native-export-redaction.json
       - name: Legacy dump preserves literal guard lines and redacts real failures

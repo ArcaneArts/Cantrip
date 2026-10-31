@@ -6088,7 +6088,8 @@
         "cantrip_server_rs/src/database_transfer/native_postgres.rs",
         "cantrip_server_rs/src/database.rs",
         "cantrip_server_rs/src/main.rs",
-        "cantrip_server_rs/third-party/pglite-rs"
+        "cantrip_server_rs/third-party/pglite-rs",
+        "cantrip_server_rs/src/database_transfer/dump_stream.rs"
       ],
       "evidence": [
         "cantrip_server_rs/tests/native_wire_session.rs",
@@ -6097,7 +6098,8 @@
         "scripts/server-rust/native-export-http-writes.mjs",
         "scripts/server-rust/native-export-interruption.mjs",
         "scripts/server-rust/native-export-tls.mjs",
-        "scripts/server-rust/native-export-redaction.mjs"
+        "scripts/server-rust/native-export-redaction.mjs",
+        "cantrip_server_rs/tests/native_dump_bytes.rs"
       ],
       "validatedSubset": "Local macOS: production --export-sql --migrate-only uses real native pg_dump for all3stores, skipping migrations/identity refresh/background startup. Full current/historical115table4sequence reverse transfers preserve function literals and SQL NULL versus JSON null. Actual password-authenticated Rust writes initialize protection records, create/promote a workspace, then actual Node accepts the retained session/CSRF, identical server UUID and workspace, and commits revision3. Native same-key multiline/function and CRLF guard variants restore exactly. Real SQL execution witnesses verify raw-session cancellation/serialization. A real dump-row observer drives SIGKILL before publication; owned dump processes exit and normal retry retains the source. Eleven actual TLS cases include pg_dump-specific blocked-query/pg_stat_ssl witnesses. Real restricted-role SQL failures retain private diagnostics while ordinary rendering is redacted and no partial file is published. Final role/URI and mixed-version results are included below; current supported-platform/package acceptance remains required. Mixed-version follow-up passes current/historical transfers with native pg_dump18.6, private PostgreSQL18.6 and external PostgreSQL16.15 alongside nativePGlite17.5. Ubuntu24.04/arm64 official PGDG client setup actually executed successfully; this is not Linux Rust server acceptance. Startup-role testing reproduced Rust failing an actual Node-accepted options=-c+role URL. Retained query parameters now use percent-only re-encoding; actual role and login identities plus space/literal-plus/Unicode application-name results match the Node driver, and export preserves the original configured login identity through startup role/session-authorization changes. Final11-case TLS regression passes after that fix. The146-test/64-group native regression passes with zero failures/ignored before the final role/URI correction; focused role/TLS tests verify that correction.",
       "remaining": [
@@ -6106,7 +6108,7 @@
         "Finish URL/connection-policy variant coverage and observe current-head platform jobs.",
         "Measure representative large-profile export memory/throughput and complete whole-server performance acceptance."
       ],
-      "validationLimits": "Final strict all-target Clippy passes. Broad pnpm check exits1 with1661source tests passing57skipped, known provider assertion at local-foundation.test.ts:7218 and a5000ms account-resource-usage timeout. The latter passes unchanged in isolation on current and cleanPrimary, actual test durations2.28/2.29s. No deadlines/assertions changed; no broad-green claim. Linux client setup success is not Linux Rust acceptance; current platform/package results remain required. Run41157035912 actualWindows compilation failed at native_postgres.rs55 because TCPfuture error inference depended on a Unix-onlybranch. Follow-up explicitly annotates std::io::Error on theTCPresult; subsequentWindows result must still be observed."
+      "validationLimits": "Final strict all-target Clippy passes. Broad pnpm check exits1 with1661source tests passing57skipped, known provider assertion at local-foundation.test.ts:7218 and a5000ms account-resource-usage timeout. The latter passes unchanged in isolation on current and cleanPrimary, actual test durations2.28/2.29s. No deadlines/assertions changed; no broad-green claim. Linux client setup success is not Linux Rust acceptance; current platform/package results remain required. Run41157035912 actualWindows compilation failed at native_postgres.rs55 because TCPfuture error inference depended on a Unix-onlybranch. Follow-up explicitly annotates std::io::Error on theTCPresult; subsequentWindows result must still be observed. Windows run 41157865174 exposed LF-to-CRLF corruption in row and function literals during native SQL reverse export. Artifact 13025514562 has verified ZIP SHA256 eca40b2852e6d92570e9705aa494c4959e14d64a7baa765656cc1672a49ca0ff. The follow-up uses native gzip-compressed plain stdout (binary on Windows), Rust gzip decoding without SQL normalization, and exact fresh-process mixed-newline byte assertions. Local current-schema transfers pass on all three stores, including HTTP post-write rollback, actual dump-row interruption, TLS and redaction. Genuine historical 233/236-migration transfers, interrupted pending upgrades, restart and native SQL reverse migration pass in 95.21 seconds. Actual Windows verification of the byte-preservation fix remains required."
     },
     "httpRejectedUploads": {
       "status": "partial",

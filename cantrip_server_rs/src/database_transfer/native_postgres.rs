@@ -251,6 +251,7 @@ async fn dump_inner(
             "--no-privileges",
             "--encoding=UTF8",
         ])
+        .args(super::dump_stream::OPTIONS)
         .env("PGHOST", vec!["127.0.0.1"; count].join(","))
         .env_remove("PGHOSTADDR")
         .env("PGPORT", ports.join(","))
@@ -310,5 +311,5 @@ async fn dump_inner(
         String::from_utf8_lossy(&output.stderr),
         diagnostics.lock()
     );
-    String::from_utf8(output.stdout).context("decode UTF-8 dump")
+    super::dump_stream::decode(&output.stdout)
 }

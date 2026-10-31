@@ -1,4 +1,5 @@
 //! Offline logical SQL restore. No JavaScript participates in the native path.
+mod dump_stream;
 mod export;
 pub mod native_pglite;
 pub(crate) mod native_postgres;

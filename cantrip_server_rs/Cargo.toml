@@ -14,6 +14,7 @@ chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4", features = ["derive", "env"] }
 deadpool = { version = "=0.12.3", default-features = false, features = ["managed"] }
 futures = "0.3"
+flate2 = "1"
 getrandom = { version = "0.3", features = ["std"] }
 native-tls = "0.2"
 os_pipe = "1"
@@ -62,6 +63,7 @@ sha2 = "0.10"
 hyper = { path = "third-party/hyper" }
 
 [dev-dependencies]
+async-compression = { version = "0.4", features = ["tokio", "gzip"] }
 ed25519-dalek = "2"
 futures-util = "0.3"
 desktop-tokio-tungstenite = { package = "tokio-tungstenite", version = "0.28", features = ["native-tls"] }

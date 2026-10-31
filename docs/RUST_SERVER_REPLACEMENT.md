@@ -2955,6 +2955,37 @@ Its TCP result now explicitly uses `std::io::Error` on every platform. This fixe
 the diagnosed inference path; actual Windows compilation and export acceptance
 must be observed in the subsequent platform run.
 
+## Native dump byte preservation on Windows
+
+Run `41157865174` passed the native upload tests on Windows, then its migration
+job caught a distinct native export defect: LF bytes became CRLF inside both
+stored text and SQL function bodies during the reverse transfer. Artifact
+`13025514562` was retained with its verified uploaded ZIP SHA256
+`eca40b2852e6d92570e9705aa494c4959e14d64a7baa765656cc1672a49ca0ff`.
+The exact table/function comparisons remain in place.
+
+Native pg_dump now produces gzip-compressed plain SQL on stdout. PostgreSQL's
+[Windows output setup](https://github.com/postgres/postgres/blob/REL_17_9/src/bin/pg_dump/pg_backup_archiver.c)
+explicitly selects binary stdout for compressed plain output. Rust decodes the
+gzip stream and publishes the existing plain SQL export. It does not rewrite
+newlines in SQL or row values. The added Rust dependencies were already resolved
+in the lockfile; no package versions change.
+
+The dump-row interruption observer decodes the real child's gzip stream before
+recognizing the actual fixture INSERT, then forwards gzip from Rust's binary
+stdout. Its real-row witness, process cleanup and unpublished-destination
+assertions remain. The shared transfer fixture additionally contains original
+CRLF and bare CR beside LF and Unicode in its SQL function value. A dedicated
+actual pg_dump test restores in a fresh process and compares exact mixed-newline
+bytes in both the table value and function result. PGlite cannot reopen after
+close in one process, so this test uses the same process boundary as the CLI.
+
+Local current and historical-schema (233 of 236 migrations) all-store transfers,
+password-authenticated Rust writes,
+Node post-write rollback, real-row interruption/retry, eleven TLS cases and
+restricted-role redaction pass with compressed transport. Current supported-platform outcomes must be observed separately. No complete profile,
+packaged migration or full replacement acceptance follows from this fix.
+
 ## Remaining delivery sequence
 
 1. Establish cross-platform foundation results and legacy PGlite logical

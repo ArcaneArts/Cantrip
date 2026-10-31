@@ -18,13 +18,15 @@ async fn main() -> Result<()> {
         .stderr(Stdio::piped())
         .kill_on_drop(true)
         .spawn()?;
-    let mut input = BufReader::new(child.stdout.take().context("dump stdout")?);
+    let mut input = BufReader::new(async_compression::tokio::bufread::GzipDecoder::new(
+        BufReader::new(child.stdout.take().context("dump stdout")?),
+    ));
     let mut stderr = child.stderr.take().context("dump stderr")?;
     let errors = tokio::spawn(async move {
         let mut bytes = Vec::new();
         stderr.read_to_end(&mut bytes).await.map(|_| bytes)
     });
-    let mut output = tokio::io::stdout();
+    let mut output = async_compression::tokio::write::GzipEncoder::new(tokio::io::stdout());
     let mut line = Vec::new();
     let mut observed = false;
     let copying:Result<()>=async {
@@ -38,6 +40,7 @@ async fn main() -> Result<()> {
             }
             line.clear();
         }
+        output.shutdown().await?;
         Ok(())
     }.await;
     if copying.is_err() {
