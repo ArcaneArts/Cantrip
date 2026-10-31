@@ -3080,6 +3080,28 @@ versions, packaged upgrade/rollback supervision, all product flows and full
 supported-platform acceptance remain required. Normal development, standalone
 and desktop builds still use the Node server and worker.
 
+The complete Windows migration job in run `41163777652` passes at profile head
+`40bdce5e58884d72928037b8c2c238d32fb009e1`. All six uploaded JSON reports were
+inspected after checking ZIP SHA256
+`748fac193d59fd521c6143c6b1cab5a846249dc9f35a100057f09c12d1c7f0fe`.
+This includes exact 115-table/four-sequence profile transfer and reverse
+comparison, original sessions/keys/files, actual Node revision 3, real process
+interruption/private-postmaster cleanup and the held-COMMIT-acknowledgement case.
+It validates the Windows profile publisher at that head, not packaged activation.
+
+That run's Linux profile test failed during native PGlite export: the new
+harness ignored `CANTRIP_TEST_PG_DUMP_PATH` and selected the configured PostgreSQL
+16 server directory's client. It now passes the requested dump-client path to
+the existing CLI option, independently of the database server directory. There
+is no version probe or fallback. An actual source-built pg_dump 16.15 reproduces
+the failure against native PGlite 17.5 while the requested client 18 is left
+unused. Follow-up tests keep that incompatible default client present and use
+the explicitly configured native client for the export. The corrected all-store
+profile suite passes in 94.64 seconds with the same default client still present;
+an actual wrapper witness records all three exports invoking pg_dump 18.6. All
+table/sequence/function/file comparisons and interruption/rollback assertions
+remain. Linux verification of this follow-up is still required.
+
 ## Remaining delivery sequence
 
 1. Establish cross-platform foundation results and legacy PGlite logical
