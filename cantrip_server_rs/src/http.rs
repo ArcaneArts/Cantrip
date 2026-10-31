@@ -28,6 +28,10 @@ mod github_conversion;
 mod github_import;
 mod live_socket;
 mod middleware;
+mod native_admission;
+mod native_coordination;
+mod native_events;
+mod native_settings;
 mod on_response;
 mod pane_layouts;
 mod policies;
@@ -156,6 +160,10 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(chat_lifecycle::routes())
         .merge(chat_forks::routes())
         .merge(chat_messages::routes())
+        .merge(native_settings::routes())
+        .merge(native_events::routes())
+        .merge(native_admission::routes())
+        .merge(native_coordination::routes())
         .merge(github_import::routes())
         .merge(github_conversion::routes())
         .merge(project_workspaces::routes())

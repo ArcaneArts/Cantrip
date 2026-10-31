@@ -12,6 +12,22 @@ worker pairing, credentials, heartbeat storage and foundational control sockets.
 Storage supports native PGlite, private managed PostgreSQL and external
 PostgreSQL. The worker remains Node.
 
+The native command kernel now owns admission, immutable receipts, execution
+lanes, logical continuations, encrypted prompts, managed queue claims/imports,
+settings evidence, permission policies and interaction requests. Internal HTTP
+routes cover admission, preparation, dispatch, protected events, permission
+resolution, pending requests, continuations and settings evidence. Native
+settings, account defaults and model inventory also use native HTTP handlers.
+The unchanged worker transport and production endpoint cryptography are compared
+against Node on all three local database and authentication modes. Current
+managed admission retains Node's Agent-project eligibility; Tasks and standalone
+Chats continue through their separate execution paths.
+
+Receipt HTTP with queue wake/delivery, GUI queue and turn orchestration,
+canonical history ingestion and full native runtime product flows remain
+unfinished. The `native-commands` CI job exercises the kernel and protected APIs
+on Linux, macOS and Windows; local checks do not establish those platform passes.
+
 Protected Chat message listing, turn-aware pagination, append and stored turn
 archive reads also execute natively. Repository and real HTTP/Live comparisons
 cover all three databases and authentication modes, with endpoint decryption,

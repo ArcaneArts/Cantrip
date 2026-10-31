@@ -3237,6 +3237,245 @@
           "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
           "Supported-platform results, Redis coordination and packaging/default cutover remain required."
         ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/chats/:chatId/native-settings",
+        "implementation": "cantrip_server_rs/src/http/native_settings.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/native_command_contracts.rs",
+          "scripts/server-rust/native-settings-http-compatibility.mjs",
+          "scripts/server-rust/native-settings-http-fixture.mjs",
+          "scripts/server-rust/native-settings-repository-cases.mjs"
+        ],
+        "remaining": [
+          "The HTTP/Live flows use the production Node worker transport and production worker encryption/read/update/account-default helpers with a controlled native RPC runtime. Complete native command admission/dispatch/history integration and existing full app/worker acceptance remain required.",
+          "Supported-platform acceptance, full app/worker native execution, Redis/multi-instance coordination, migration/post-write rollback, packaging and default cutover remain unfinished."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/chats/:chatId/native-settings/refresh",
+        "implementation": "cantrip_server_rs/src/http/native_settings.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/native_command_contracts.rs",
+          "scripts/server-rust/native-settings-http-compatibility.mjs",
+          "scripts/server-rust/native-settings-http-fixture.mjs",
+          "scripts/server-rust/native-settings-repository-cases.mjs"
+        ],
+        "remaining": [
+          "The HTTP/Live flows use the production Node worker transport and production worker encryption/read/update/account-default helpers with a controlled native RPC runtime. Complete native command admission/dispatch/history integration and existing full app/worker acceptance remain required.",
+          "Supported-platform acceptance, full app/worker native execution, Redis/multi-instance coordination, migration/post-write rollback, packaging and default cutover remain unfinished."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/chats/:chatId/native-settings/update",
+        "implementation": "cantrip_server_rs/src/http/native_settings.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/native_command_contracts.rs",
+          "scripts/server-rust/native-settings-http-compatibility.mjs",
+          "scripts/server-rust/native-settings-http-fixture.mjs",
+          "scripts/server-rust/native-settings-repository-cases.mjs"
+        ],
+        "remaining": [
+          "The HTTP/Live flows use the production Node worker transport and production worker encryption/read/update/account-default helpers with a controlled native RPC runtime. Complete native command admission/dispatch/history integration and existing full app/worker acceptance remain required.",
+          "Supported-platform acceptance, full app/worker native execution, Redis/multi-instance coordination, migration/post-write rollback, packaging and default cutover remain unfinished."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/chats/:chatId/native-account-defaults",
+        "implementation": "cantrip_server_rs/src/http/native_settings.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/native_command_contracts.rs",
+          "scripts/server-rust/native-settings-http-compatibility.mjs",
+          "scripts/server-rust/native-settings-http-fixture.mjs",
+          "scripts/server-rust/native-settings-repository-cases.mjs"
+        ],
+        "remaining": [
+          "The HTTP/Live flows use the production Node worker transport and production worker encryption/read/update/account-default helpers with a controlled native RPC runtime. Complete native command admission/dispatch/history integration and existing full app/worker acceptance remain required.",
+          "Supported-platform acceptance, full app/worker native execution, Redis/multi-instance coordination, migration/post-write rollback, packaging and default cutover remain unfinished."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/internal/native-commands/settings-refresh",
+        "implementation": "cantrip_server_rs/src/http/native_settings.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/native_command_contracts.rs",
+          "scripts/server-rust/native-settings-http-compatibility.mjs",
+          "scripts/server-rust/native-settings-http-fixture.mjs",
+          "scripts/server-rust/native-settings-repository-cases.mjs"
+        ],
+        "remaining": [
+          "The HTTP/Live flows use the production Node worker transport and production worker encryption/read/update/account-default helpers with a controlled native RPC runtime. Complete native command admission/dispatch/history integration and existing full app/worker acceptance remain required.",
+          "Supported-platform acceptance, full app/worker native execution, Redis/multi-instance coordination, migration/post-write rollback, packaging and default cutover remain unfinished."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/internal/native-commands/settings-observation",
+        "implementation": "cantrip_server_rs/src/http/native_settings.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/native_command_contracts.rs",
+          "scripts/server-rust/native-settings-http-compatibility.mjs",
+          "scripts/server-rust/native-settings-http-fixture.mjs",
+          "scripts/server-rust/native-settings-repository-cases.mjs"
+        ],
+        "remaining": [
+          "The HTTP/Live flows use the production Node worker transport and production worker encryption/read/update/account-default helpers with a controlled native RPC runtime. Complete native command admission/dispatch/history integration and existing full app/worker acceptance remain required.",
+          "Supported-platform acceptance, full app/worker native execution, Redis/multi-instance coordination, migration/post-write rollback, packaging and default cutover remain unfinished."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/chats/:chatId/native-settings/models",
+        "implementation": "cantrip_server_rs/src/http/native_settings/model_inventory.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/native-model-inventory-http-compatibility.mjs",
+          "scripts/server-rust/native-model-inventory-http-races.mjs",
+          "scripts/server-rust/native-model-inventory-cases.mjs",
+          "cantrip_server_rs/tests/native_command_contracts.rs"
+        ],
+        "remaining": [
+          "Supported-platform acceptance, full app/worker native execution, Redis/multi-instance coordination, migration/post-write rollback, packaging and default cutover remain unfinished."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/internal/native-commands/events",
+        "implementation": "cantrip_server_rs/src/http/native_events.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/native-event-http-compatibility.mjs",
+          "scripts/server-rust/native-event-http-setup.mjs",
+          "scripts/server-rust/native-event-http-content.mjs",
+          "scripts/server-rust/native-event-http-special-cases.mjs",
+          "cantrip_server_rs/tests/native_command_contracts.rs"
+        ],
+        "remaining": [
+          "The current Agent-project managed admission and event flow is compared against Node on all three database and authentication modes, using the unchanged worker transport and production endpoint crypto. Historical Task event fanout, actual SQL failure rollback and HTTP lock/commit fencing are verified on external PostgreSQL. Task/standalone managed admission retains the Source rejection behavior; full product Task/Goal and standalone execution are separate acceptance requirements.",
+          "Full native command/GUI queue orchestration, canonical history ingestion, background delivery/recovery, supported-platform and app/worker acceptance, Redis/multi-instance, upgrade/post-write rollback, packaging, Winterhold rehearsal and default cutover remain required."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/internal/native-commands/admit",
+        "implementation": "cantrip_server_rs/src/http/native_admission.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/native-event-http-compatibility.mjs",
+          "scripts/server-rust/native-event-http-setup.mjs",
+          "scripts/server-rust/native-event-http-content.mjs",
+          "scripts/server-rust/native-event-http-special-cases.mjs",
+          "cantrip_server_rs/tests/native_command_contracts.rs"
+        ],
+        "remaining": [
+          "The current Agent-project managed admission and event flow is compared against Node on all three database and authentication modes, using the unchanged worker transport and production endpoint crypto. Historical Task event fanout, actual SQL failure rollback and HTTP lock/commit fencing are verified on external PostgreSQL. Task/standalone managed admission retains the Source rejection behavior; full product Task/Goal and standalone execution are separate acceptance requirements.",
+          "Full native command/GUI queue orchestration, canonical history ingestion, background delivery/recovery, supported-platform and app/worker acceptance, Redis/multi-instance, upgrade/post-write rollback, packaging, Winterhold rehearsal and default cutover remain required."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/internal/native-commands/dispatch",
+        "implementation": "cantrip_server_rs/src/http/native_admission.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/native-event-http-compatibility.mjs",
+          "scripts/server-rust/native-event-http-setup.mjs",
+          "scripts/server-rust/native-event-http-content.mjs",
+          "scripts/server-rust/native-event-http-special-cases.mjs",
+          "cantrip_server_rs/tests/native_command_contracts.rs"
+        ],
+        "remaining": [
+          "The current Agent-project managed admission and event flow is compared against Node on all three database and authentication modes, using the unchanged worker transport and production endpoint crypto. Historical Task event fanout, actual SQL failure rollback and HTTP lock/commit fencing are verified on external PostgreSQL. Task/standalone managed admission retains the Source rejection behavior; full product Task/Goal and standalone execution are separate acceptance requirements.",
+          "Full native command/GUI queue orchestration, canonical history ingestion, background delivery/recovery, supported-platform and app/worker acceptance, Redis/multi-instance, upgrade/post-write rollback, packaging, Winterhold rehearsal and default cutover remain required."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/internal/native-commands/bind-preparation",
+        "implementation": "cantrip_server_rs/src/http/native_admission.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/native-event-http-compatibility.mjs",
+          "scripts/server-rust/native-event-http-setup.mjs",
+          "scripts/server-rust/native-event-http-content.mjs",
+          "scripts/server-rust/native-event-http-special-cases.mjs",
+          "cantrip_server_rs/tests/native_command_contracts.rs"
+        ],
+        "remaining": [
+          "The current Agent-project managed admission and event flow is compared against Node on all three database and authentication modes, using the unchanged worker transport and production endpoint crypto. Historical Task event fanout, actual SQL failure rollback and HTTP lock/commit fencing are verified on external PostgreSQL. Task/standalone managed admission retains the Source rejection behavior; full product Task/Goal and standalone execution are separate acceptance requirements.",
+          "Full native command/GUI queue orchestration, canonical history ingestion, background delivery/recovery, supported-platform and app/worker acceptance, Redis/multi-instance, upgrade/post-write rollback, packaging, Winterhold rehearsal and default cutover remain required."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/internal/native-commands/permission-transition",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/http/native_coordination.rs",
+        "evidence": [
+          "scripts/server-rust/native-coordination-http-compatibility.mjs",
+          "scripts/server-rust/native-coordination-http-cases.mjs",
+          "cantrip_server_rs/tests/native_command_contracts.rs"
+        ],
+        "remaining": [
+          "Real HTTP/Live flows across all three local database/authentication modes verify pending request consumption, exact permission binding/errors, encrypted settings evidence and continuation activation replacement using unchanged worker transport and production endpoint crypto. Native RPC execution remains controlled.",
+          "Receipts with actual queue wake/delivery, GUI orchestration, canonical history ingestion, full app/worker/runtime acceptance, supported platforms, shared coordination, upgrade/post-write rollback, packaging, Winterhold rehearsal and cutover remain required."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/internal/native-commands/pending",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/http/native_coordination.rs",
+        "evidence": [
+          "scripts/server-rust/native-coordination-http-compatibility.mjs",
+          "scripts/server-rust/native-coordination-http-cases.mjs",
+          "cantrip_server_rs/tests/native_command_contracts.rs"
+        ],
+        "remaining": [
+          "Real HTTP/Live flows across all three local database/authentication modes verify pending request consumption, exact permission binding/errors, encrypted settings evidence and continuation activation replacement using unchanged worker transport and production endpoint crypto. Native RPC execution remains controlled.",
+          "Receipts with actual queue wake/delivery, GUI orchestration, canonical history ingestion, full app/worker/runtime acceptance, supported platforms, shared coordination, upgrade/post-write rollback, packaging, Winterhold rehearsal and cutover remain required."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/internal/native-commands/continue",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/http/native_admission.rs",
+        "evidence": [
+          "scripts/server-rust/native-coordination-http-compatibility.mjs",
+          "scripts/server-rust/native-coordination-http-cases.mjs",
+          "cantrip_server_rs/tests/native_command_contracts.rs"
+        ],
+        "remaining": [
+          "Real HTTP/Live flows across all three local database/authentication modes verify pending request consumption, exact permission binding/errors, encrypted settings evidence and continuation activation replacement using unchanged worker transport and production endpoint crypto. Native RPC execution remains controlled.",
+          "Receipts with actual queue wake/delivery, GUI orchestration, canonical history ingestion, full app/worker/runtime acceptance, supported platforms, shared coordination, upgrade/post-write rollback, packaging, Winterhold rehearsal and cutover remain required."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/internal/native-commands/settings-evidence",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/http/native_admission.rs",
+        "evidence": [
+          "scripts/server-rust/native-coordination-http-compatibility.mjs",
+          "scripts/server-rust/native-coordination-http-cases.mjs",
+          "cantrip_server_rs/tests/native_command_contracts.rs"
+        ],
+        "remaining": [
+          "Real HTTP/Live flows across all three local database/authentication modes verify pending request consumption, exact permission binding/errors, encrypted settings evidence and continuation activation replacement using unchanged worker transport and production endpoint crypto. Native RPC execution remains controlled.",
+          "Receipts with actual queue wake/delivery, GUI orchestration, canonical history ingestion, full app/worker/runtime acceptance, supported platforms, shared coordination, upgrade/post-write rollback, packaging, Winterhold rehearsal and cutover remain required."
+        ]
       }
     ]
   },
@@ -3753,6 +3992,51 @@
           "Full client/full-worker key provisioning and filesystem integration, supported-platform acceptance, multi-instance coordination and further interruption boundaries remain required.",
           "General messages, native history ingestion, execution queues, Tasks, Goal/automation continuity and packaging remain unfinished."
         ]
+      },
+      {
+        "command": "chat.settings.read",
+        "implementation": "cantrip_server_rs/src/http/native_settings.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/native_command_contracts.rs",
+          "scripts/server-rust/native-settings-http-compatibility.mjs",
+          "scripts/server-rust/native-settings-http-fixture.mjs",
+          "scripts/server-rust/native-settings-repository-cases.mjs"
+        ],
+        "remaining": [
+          "The HTTP/Live flows use the production Node worker transport and production worker encryption/read/update/account-default helpers with a controlled native RPC runtime. Complete native command admission/dispatch/history integration and existing full app/worker acceptance remain required.",
+          "Supported-platform acceptance, Redis/multi-instance coordination, migration/post-write rollback, packaging and default cutover remain unfinished."
+        ]
+      },
+      {
+        "command": "chat.settings.update",
+        "implementation": "cantrip_server_rs/src/http/native_settings.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/native_command_contracts.rs",
+          "scripts/server-rust/native-settings-http-compatibility.mjs",
+          "scripts/server-rust/native-settings-http-fixture.mjs",
+          "scripts/server-rust/native-settings-repository-cases.mjs"
+        ],
+        "remaining": [
+          "The HTTP/Live flows use the production Node worker transport and production worker encryption/read/update/account-default helpers with a controlled native RPC runtime. Complete native command admission/dispatch/history integration and existing full app/worker acceptance remain required.",
+          "Supported-platform acceptance, Redis/multi-instance coordination, migration/post-write rollback, packaging and default cutover remain unfinished."
+        ]
+      },
+      {
+        "command": "chat.account-defaults",
+        "implementation": "cantrip_server_rs/src/http/native_settings.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/native_command_contracts.rs",
+          "scripts/server-rust/native-settings-http-compatibility.mjs",
+          "scripts/server-rust/native-settings-http-fixture.mjs",
+          "scripts/server-rust/native-settings-repository-cases.mjs"
+        ],
+        "remaining": [
+          "The HTTP/Live flows use the production Node worker transport and production worker encryption/read/update/account-default helpers with a controlled native RPC runtime. Complete native command admission/dispatch/history integration and existing full app/worker acceptance remain required.",
+          "Supported-platform acceptance, Redis/multi-instance coordination, migration/post-write rollback, packaging and default cutover remain unfinished."
+        ]
       }
     ]
   },
@@ -4140,6 +4424,358 @@
           "Only owner-authorized persisted reads and canonical legacy-write ownership are ported; ingestion, receipts, publication recovery and durable execution remain unfinished.",
           "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
           "Supported-platform results, Redis coordination and packaging/default cutover remain required."
+        ]
+      },
+      {
+        "tableName": "native_commands",
+        "exportName": "nativeCommands",
+        "implementation": [
+          "cantrip_server_rs/src/native_commands/mod.rs",
+          "cantrip_server_rs/src/chats/execution_lanes/mod.rs"
+        ],
+        "status": "partial",
+        "evidence": [
+          "cantrip_server_rs/tests/native_command_contracts.rs",
+          "scripts/server-rust/native-command-admission-compatibility.mjs",
+          "scripts/server-rust/execution-lane-repository-compatibility.mjs",
+          "scripts/server-rust/native-event-context-cases.mjs",
+          "scripts/server-rust/native-event-races.mjs",
+          "scripts/server-rust/managed-queue-races.mjs"
+        ],
+        "remaining": [
+          "Core repository behavior is ported and compared with actual Node repositories on all three local storage backends, including restart and same/mixed-runtime PostgreSQL races. Full command/queue HTTP orchestration, event HTTP integration, canonical history ingestion and recovery services remain unfinished.",
+          "The HTTP/Live flows use the production Node worker transport and production worker encryption/read/update/account-default helpers with a controlled native RPC runtime. Complete native command admission/dispatch/history integration and existing full app/worker acceptance remain required.",
+          "Supported-platform acceptance, Redis/multi-instance coordination, migration/post-write rollback, packaging and default cutover remain unfinished."
+        ]
+      },
+      {
+        "tableName": "native_command_activations",
+        "exportName": "nativeCommandActivations",
+        "implementation": [
+          "cantrip_server_rs/src/native_commands/mod.rs",
+          "cantrip_server_rs/src/chats/execution_lanes/mod.rs"
+        ],
+        "status": "partial",
+        "evidence": [
+          "cantrip_server_rs/tests/native_command_contracts.rs",
+          "scripts/server-rust/native-command-admission-compatibility.mjs",
+          "scripts/server-rust/execution-lane-repository-compatibility.mjs",
+          "scripts/server-rust/native-event-context-cases.mjs",
+          "scripts/server-rust/native-event-races.mjs",
+          "scripts/server-rust/managed-queue-races.mjs"
+        ],
+        "remaining": [
+          "Core repository behavior is ported and compared with actual Node repositories on all three local storage backends, including restart and same/mixed-runtime PostgreSQL races. Full command/queue HTTP orchestration, event HTTP integration, canonical history ingestion and recovery services remain unfinished.",
+          "The HTTP/Live flows use the production Node worker transport and production worker encryption/read/update/account-default helpers with a controlled native RPC runtime. Complete native command admission/dispatch/history integration and existing full app/worker acceptance remain required.",
+          "Supported-platform acceptance, Redis/multi-instance coordination, migration/post-write rollback, packaging and default cutover remain unfinished."
+        ]
+      },
+      {
+        "tableName": "native_command_turns",
+        "exportName": "nativeCommandTurns",
+        "implementation": [
+          "cantrip_server_rs/src/native_commands/mod.rs",
+          "cantrip_server_rs/src/chats/execution_lanes/mod.rs"
+        ],
+        "status": "partial",
+        "evidence": [
+          "cantrip_server_rs/tests/native_command_contracts.rs",
+          "scripts/server-rust/native-command-admission-compatibility.mjs",
+          "scripts/server-rust/execution-lane-repository-compatibility.mjs",
+          "scripts/server-rust/native-event-context-cases.mjs",
+          "scripts/server-rust/native-event-races.mjs",
+          "scripts/server-rust/managed-queue-races.mjs"
+        ],
+        "remaining": [
+          "Core repository behavior is ported and compared with actual Node repositories on all three local storage backends, including restart and same/mixed-runtime PostgreSQL races. Full command/queue HTTP orchestration, event HTTP integration, canonical history ingestion and recovery services remain unfinished.",
+          "The HTTP/Live flows use the production Node worker transport and production worker encryption/read/update/account-default helpers with a controlled native RPC runtime. Complete native command admission/dispatch/history integration and existing full app/worker acceptance remain required.",
+          "Supported-platform acceptance, Redis/multi-instance coordination, migration/post-write rollback, packaging and default cutover remain unfinished."
+        ]
+      },
+      {
+        "tableName": "native_logical_completions",
+        "exportName": "nativeLogicalCompletions",
+        "implementation": [
+          "cantrip_server_rs/src/native_commands/mod.rs",
+          "cantrip_server_rs/src/chats/execution_lanes/mod.rs"
+        ],
+        "status": "partial",
+        "evidence": [
+          "cantrip_server_rs/tests/native_command_contracts.rs",
+          "scripts/server-rust/native-command-admission-compatibility.mjs",
+          "scripts/server-rust/execution-lane-repository-compatibility.mjs",
+          "scripts/server-rust/native-event-context-cases.mjs",
+          "scripts/server-rust/native-event-races.mjs",
+          "scripts/server-rust/managed-queue-races.mjs"
+        ],
+        "remaining": [
+          "Core repository behavior is ported and compared with actual Node repositories on all three local storage backends, including restart and same/mixed-runtime PostgreSQL races. Full command/queue HTTP orchestration, event HTTP integration, canonical history ingestion and recovery services remain unfinished.",
+          "The HTTP/Live flows use the production Node worker transport and production worker encryption/read/update/account-default helpers with a controlled native RPC runtime. Complete native command admission/dispatch/history integration and existing full app/worker acceptance remain required.",
+          "Supported-platform acceptance, Redis/multi-instance coordination, migration/post-write rollback, packaging and default cutover remain unfinished."
+        ]
+      },
+      {
+        "tableName": "native_settings_states",
+        "exportName": "nativeSettingsStates",
+        "implementation": [
+          "cantrip_server_rs/src/native_commands/mod.rs",
+          "cantrip_server_rs/src/chats/execution_lanes/mod.rs"
+        ],
+        "status": "partial",
+        "evidence": [
+          "cantrip_server_rs/tests/native_command_contracts.rs",
+          "scripts/server-rust/native-command-admission-compatibility.mjs",
+          "scripts/server-rust/execution-lane-repository-compatibility.mjs",
+          "scripts/server-rust/native-event-context-cases.mjs",
+          "scripts/server-rust/native-event-races.mjs",
+          "scripts/server-rust/managed-queue-races.mjs"
+        ],
+        "remaining": [
+          "Core repository behavior is ported and compared with actual Node repositories on all three local storage backends, including restart and same/mixed-runtime PostgreSQL races. Full command/queue HTTP orchestration, event HTTP integration, canonical history ingestion and recovery services remain unfinished.",
+          "The HTTP/Live flows use the production Node worker transport and production worker encryption/read/update/account-default helpers with a controlled native RPC runtime. Complete native command admission/dispatch/history integration and existing full app/worker acceptance remain required.",
+          "Supported-platform acceptance, Redis/multi-instance coordination, migration/post-write rollback, packaging and default cutover remain unfinished."
+        ]
+      },
+      {
+        "tableName": "native_settings_evidence",
+        "exportName": "nativeSettingsEvidence",
+        "implementation": [
+          "cantrip_server_rs/src/native_commands/mod.rs",
+          "cantrip_server_rs/src/chats/execution_lanes/mod.rs"
+        ],
+        "status": "partial",
+        "evidence": [
+          "cantrip_server_rs/tests/native_command_contracts.rs",
+          "scripts/server-rust/native-command-admission-compatibility.mjs",
+          "scripts/server-rust/execution-lane-repository-compatibility.mjs",
+          "scripts/server-rust/native-event-context-cases.mjs",
+          "scripts/server-rust/native-event-races.mjs",
+          "scripts/server-rust/managed-queue-races.mjs"
+        ],
+        "remaining": [
+          "Core repository behavior is ported and compared with actual Node repositories on all three local storage backends, including restart and same/mixed-runtime PostgreSQL races. Full command/queue HTTP orchestration, event HTTP integration, canonical history ingestion and recovery services remain unfinished.",
+          "The HTTP/Live flows use the production Node worker transport and production worker encryption/read/update/account-default helpers with a controlled native RPC runtime. Complete native command admission/dispatch/history integration and existing full app/worker acceptance remain required.",
+          "Supported-platform acceptance, Redis/multi-instance coordination, migration/post-write rollback, packaging and default cutover remain unfinished."
+        ]
+      },
+      {
+        "tableName": "native_pending_requests",
+        "exportName": "nativePendingRequests",
+        "implementation": [
+          "cantrip_server_rs/src/native_commands/mod.rs",
+          "cantrip_server_rs/src/chats/execution_lanes/mod.rs"
+        ],
+        "status": "partial",
+        "evidence": [
+          "cantrip_server_rs/tests/native_command_contracts.rs",
+          "scripts/server-rust/native-command-admission-compatibility.mjs",
+          "scripts/server-rust/execution-lane-repository-compatibility.mjs",
+          "scripts/server-rust/native-event-context-cases.mjs",
+          "scripts/server-rust/native-event-races.mjs",
+          "scripts/server-rust/managed-queue-races.mjs"
+        ],
+        "remaining": [
+          "Core repository behavior is ported and compared with actual Node repositories on all three local storage backends, including restart and same/mixed-runtime PostgreSQL races. Full command/queue HTTP orchestration, event HTTP integration, canonical history ingestion and recovery services remain unfinished.",
+          "The HTTP/Live flows use the production Node worker transport and production worker encryption/read/update/account-default helpers with a controlled native RPC runtime. Complete native command admission/dispatch/history integration and existing full app/worker acceptance remain required.",
+          "Supported-platform acceptance, Redis/multi-instance coordination, migration/post-write rollback, packaging and default cutover remain unfinished."
+        ]
+      },
+      {
+        "tableName": "managed_queue_states",
+        "exportName": "managedQueueStates",
+        "implementation": [
+          "cantrip_server_rs/src/native_commands/mod.rs",
+          "cantrip_server_rs/src/chats/execution_lanes/mod.rs"
+        ],
+        "status": "partial",
+        "evidence": [
+          "cantrip_server_rs/tests/native_command_contracts.rs",
+          "scripts/server-rust/native-command-admission-compatibility.mjs",
+          "scripts/server-rust/execution-lane-repository-compatibility.mjs",
+          "scripts/server-rust/native-event-context-cases.mjs",
+          "scripts/server-rust/native-event-races.mjs",
+          "scripts/server-rust/managed-queue-races.mjs"
+        ],
+        "remaining": [
+          "Core repository behavior is ported and compared with actual Node repositories on all three local storage backends, including restart and same/mixed-runtime PostgreSQL races. Full command/queue HTTP orchestration, event HTTP integration, canonical history ingestion and recovery services remain unfinished.",
+          "The HTTP/Live flows use the production Node worker transport and production worker encryption/read/update/account-default helpers with a controlled native RPC runtime. Complete native command admission/dispatch/history integration and existing full app/worker acceptance remain required.",
+          "Supported-platform acceptance, Redis/multi-instance coordination, migration/post-write rollback, packaging and default cutover remain unfinished."
+        ]
+      },
+      {
+        "tableName": "managed_queue_claims",
+        "exportName": "managedQueueClaims",
+        "implementation": [
+          "cantrip_server_rs/src/native_commands/mod.rs",
+          "cantrip_server_rs/src/chats/execution_lanes/mod.rs"
+        ],
+        "status": "partial",
+        "evidence": [
+          "cantrip_server_rs/tests/native_command_contracts.rs",
+          "scripts/server-rust/native-command-admission-compatibility.mjs",
+          "scripts/server-rust/execution-lane-repository-compatibility.mjs",
+          "scripts/server-rust/native-event-context-cases.mjs",
+          "scripts/server-rust/native-event-races.mjs",
+          "scripts/server-rust/managed-queue-races.mjs"
+        ],
+        "remaining": [
+          "Core repository behavior is ported and compared with actual Node repositories on all three local storage backends, including restart and same/mixed-runtime PostgreSQL races. Full command/queue HTTP orchestration, event HTTP integration, canonical history ingestion and recovery services remain unfinished.",
+          "The HTTP/Live flows use the production Node worker transport and production worker encryption/read/update/account-default helpers with a controlled native RPC runtime. Complete native command admission/dispatch/history integration and existing full app/worker acceptance remain required.",
+          "Supported-platform acceptance, Redis/multi-instance coordination, migration/post-write rollback, packaging and default cutover remain unfinished."
+        ]
+      },
+      {
+        "tableName": "managed_queue_input_snapshots",
+        "exportName": "managedQueueInputSnapshots",
+        "implementation": [
+          "cantrip_server_rs/src/native_commands/mod.rs",
+          "cantrip_server_rs/src/chats/execution_lanes/mod.rs"
+        ],
+        "status": "partial",
+        "evidence": [
+          "cantrip_server_rs/tests/native_command_contracts.rs",
+          "scripts/server-rust/native-command-admission-compatibility.mjs",
+          "scripts/server-rust/execution-lane-repository-compatibility.mjs",
+          "scripts/server-rust/native-event-context-cases.mjs",
+          "scripts/server-rust/native-event-races.mjs",
+          "scripts/server-rust/managed-queue-races.mjs"
+        ],
+        "remaining": [
+          "Core repository behavior is ported and compared with actual Node repositories on all three local storage backends, including restart and same/mixed-runtime PostgreSQL races. Full command/queue HTTP orchestration, event HTTP integration, canonical history ingestion and recovery services remain unfinished.",
+          "The HTTP/Live flows use the production Node worker transport and production worker encryption/read/update/account-default helpers with a controlled native RPC runtime. Complete native command admission/dispatch/history integration and existing full app/worker acceptance remain required.",
+          "Supported-platform acceptance, Redis/multi-instance coordination, migration/post-write rollback, packaging and default cutover remain unfinished."
+        ]
+      },
+      {
+        "tableName": "managed_queue_imports",
+        "exportName": "managedQueueImports",
+        "implementation": [
+          "cantrip_server_rs/src/native_commands/mod.rs",
+          "cantrip_server_rs/src/chats/execution_lanes/mod.rs"
+        ],
+        "status": "partial",
+        "evidence": [
+          "cantrip_server_rs/tests/native_command_contracts.rs",
+          "scripts/server-rust/native-command-admission-compatibility.mjs",
+          "scripts/server-rust/execution-lane-repository-compatibility.mjs",
+          "scripts/server-rust/native-event-context-cases.mjs",
+          "scripts/server-rust/native-event-races.mjs",
+          "scripts/server-rust/managed-queue-races.mjs"
+        ],
+        "remaining": [
+          "Core repository behavior is ported and compared with actual Node repositories on all three local storage backends, including restart and same/mixed-runtime PostgreSQL races. Full command/queue HTTP orchestration, event HTTP integration, canonical history ingestion and recovery services remain unfinished.",
+          "The HTTP/Live flows use the production Node worker transport and production worker encryption/read/update/account-default helpers with a controlled native RPC runtime. Complete native command admission/dispatch/history integration and existing full app/worker acceptance remain required.",
+          "Supported-platform acceptance, Redis/multi-instance coordination, migration/post-write rollback, packaging and default cutover remain unfinished."
+        ]
+      },
+      {
+        "tableName": "queued_prompts",
+        "exportName": "queuedPrompts",
+        "implementation": [
+          "cantrip_server_rs/src/native_commands/mod.rs",
+          "cantrip_server_rs/src/chats/execution_lanes/mod.rs"
+        ],
+        "status": "partial",
+        "evidence": [
+          "cantrip_server_rs/tests/native_command_contracts.rs",
+          "scripts/server-rust/native-command-admission-compatibility.mjs",
+          "scripts/server-rust/execution-lane-repository-compatibility.mjs",
+          "scripts/server-rust/native-event-context-cases.mjs",
+          "scripts/server-rust/native-event-races.mjs",
+          "scripts/server-rust/managed-queue-races.mjs"
+        ],
+        "remaining": [
+          "Core repository behavior is ported and compared with actual Node repositories on all three local storage backends, including restart and same/mixed-runtime PostgreSQL races. Full command/queue HTTP orchestration, event HTTP integration, canonical history ingestion and recovery services remain unfinished.",
+          "The HTTP/Live flows use the production Node worker transport and production worker encryption/read/update/account-default helpers with a controlled native RPC runtime. Complete native command admission/dispatch/history integration and existing full app/worker acceptance remain required.",
+          "Supported-platform acceptance, Redis/multi-instance coordination, migration/post-write rollback, packaging and default cutover remain unfinished."
+        ]
+      },
+      {
+        "tableName": "chat_execution_lanes",
+        "exportName": "chatExecutionLanes",
+        "implementation": [
+          "cantrip_server_rs/src/native_commands/mod.rs",
+          "cantrip_server_rs/src/chats/execution_lanes/mod.rs"
+        ],
+        "status": "partial",
+        "evidence": [
+          "cantrip_server_rs/tests/native_command_contracts.rs",
+          "scripts/server-rust/native-command-admission-compatibility.mjs",
+          "scripts/server-rust/execution-lane-repository-compatibility.mjs",
+          "scripts/server-rust/native-event-context-cases.mjs",
+          "scripts/server-rust/native-event-races.mjs",
+          "scripts/server-rust/managed-queue-races.mjs"
+        ],
+        "remaining": [
+          "Core repository behavior is ported and compared with actual Node repositories on all three local storage backends, including restart and same/mixed-runtime PostgreSQL races. Full command/queue HTTP orchestration, event HTTP integration, canonical history ingestion and recovery services remain unfinished.",
+          "The HTTP/Live flows use the production Node worker transport and production worker encryption/read/update/account-default helpers with a controlled native RPC runtime. Complete native command admission/dispatch/history integration and existing full app/worker acceptance remain required.",
+          "Supported-platform acceptance, Redis/multi-instance coordination, migration/post-write rollback, packaging and default cutover remain unfinished."
+        ]
+      },
+      {
+        "tableName": "project_branch_leases",
+        "exportName": "projectBranchLeases",
+        "implementation": [
+          "cantrip_server_rs/src/native_commands/mod.rs",
+          "cantrip_server_rs/src/chats/execution_lanes/mod.rs"
+        ],
+        "status": "partial",
+        "evidence": [
+          "cantrip_server_rs/tests/native_command_contracts.rs",
+          "scripts/server-rust/native-command-admission-compatibility.mjs",
+          "scripts/server-rust/execution-lane-repository-compatibility.mjs",
+          "scripts/server-rust/native-event-context-cases.mjs",
+          "scripts/server-rust/native-event-races.mjs",
+          "scripts/server-rust/managed-queue-races.mjs"
+        ],
+        "remaining": [
+          "Core repository behavior is ported and compared with actual Node repositories on all three local storage backends, including restart and same/mixed-runtime PostgreSQL races. Full command/queue HTTP orchestration, event HTTP integration, canonical history ingestion and recovery services remain unfinished.",
+          "The HTTP/Live flows use the production Node worker transport and production worker encryption/read/update/account-default helpers with a controlled native RPC runtime. Complete native command admission/dispatch/history integration and existing full app/worker acceptance remain required.",
+          "Supported-platform acceptance, Redis/multi-instance coordination, migration/post-write rollback, packaging and default cutover remain unfinished."
+        ]
+      },
+      {
+        "tableName": "chat_runtime_sessions",
+        "exportName": "chatRuntimeSessions",
+        "implementation": [
+          "cantrip_server_rs/src/native_commands/mod.rs",
+          "cantrip_server_rs/src/chats/execution_lanes/mod.rs"
+        ],
+        "status": "partial",
+        "evidence": [
+          "cantrip_server_rs/tests/native_command_contracts.rs",
+          "scripts/server-rust/native-command-admission-compatibility.mjs",
+          "scripts/server-rust/execution-lane-repository-compatibility.mjs",
+          "scripts/server-rust/native-event-context-cases.mjs",
+          "scripts/server-rust/native-event-races.mjs",
+          "scripts/server-rust/managed-queue-races.mjs"
+        ],
+        "remaining": [
+          "Core repository behavior is ported and compared with actual Node repositories on all three local storage backends, including restart and same/mixed-runtime PostgreSQL races. Full command/queue HTTP orchestration, event HTTP integration, canonical history ingestion and recovery services remain unfinished.",
+          "The HTTP/Live flows use the production Node worker transport and production worker encryption/read/update/account-default helpers with a controlled native RPC runtime. Complete native command admission/dispatch/history integration and existing full app/worker acceptance remain required.",
+          "Supported-platform acceptance, Redis/multi-instance coordination, migration/post-write rollback, packaging and default cutover remain unfinished."
+        ]
+      },
+      {
+        "tableName": "agent_interaction_requests",
+        "exportName": "agentInteractionRequests",
+        "implementation": "cantrip_server_rs/src/agent_interactions/",
+        "status": "partial",
+        "evidence": [
+          "scripts/server-rust/agent-interaction-cases.mjs",
+          "scripts/server-rust/agent-interaction-response-cases.mjs",
+          "scripts/server-rust/agent-interaction-races.mjs",
+          "scripts/server-rust/native-event-context-cases.mjs",
+          "cantrip_server_rs/tests/native_command_contracts.rs",
+          "scripts/server-rust/native-event-http-compatibility.mjs",
+          "scripts/server-rust/native-event-http-setup.mjs",
+          "scripts/server-rust/native-event-http-content.mjs",
+          "scripts/server-rust/native-event-http-special-cases.mjs",
+          "cantrip_server_rs/tests/native_command_contracts.rs"
+        ],
+        "remaining": [
+          "The current Agent-project managed admission and event flow is compared against Node on all three database and authentication modes, using the unchanged worker transport and production endpoint crypto. Historical Task event fanout, actual SQL failure rollback and HTTP lock/commit fencing are verified on external PostgreSQL. Task/standalone managed admission retains the Source rejection behavior; full product Task/Goal and standalone execution are separate acceptance requirements.",
+          "Full native command/GUI queue orchestration, canonical history ingestion, background delivery/recovery, supported-platform and app/worker acceptance, Redis/multi-instance, upgrade/post-write rollback, packaging, Winterhold rehearsal and default cutover remain required."
         ]
       }
     ]
@@ -5689,6 +6325,198 @@
           "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
           "Supported-platform results, Redis coordination and packaging/default cutover remain required."
         ]
+      },
+      {
+        "method": "recordAgentInteractionRequest",
+        "implementation": "cantrip_server_rs/src/agent_interactions/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/agent-interaction-cases.mjs",
+          "scripts/server-rust/agent-interaction-response-cases.mjs",
+          "scripts/server-rust/agent-interaction-races.mjs",
+          "scripts/server-rust/native-event-context-cases.mjs",
+          "cantrip_server_rs/tests/native_command_contracts.rs"
+        ],
+        "remaining": [
+          "The current Agent-project managed admission and event flow is compared against Node on all three database and authentication modes, using the unchanged worker transport and production endpoint crypto. Historical Task event fanout, actual SQL failure rollback and HTTP lock/commit fencing are verified on external PostgreSQL. Task/standalone managed admission retains the Source rejection behavior; full product Task/Goal and standalone execution are separate acceptance requirements.",
+          "Full native command/GUI queue orchestration, canonical history ingestion, background delivery/recovery, supported-platform and app/worker acceptance, Redis/multi-instance, upgrade/post-write rollback, packaging, Winterhold rehearsal and default cutover remain required."
+        ]
+      },
+      {
+        "method": "recordEncryptedAgentInteractionRequest",
+        "implementation": "cantrip_server_rs/src/agent_interactions/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/agent-interaction-cases.mjs",
+          "scripts/server-rust/agent-interaction-response-cases.mjs",
+          "scripts/server-rust/agent-interaction-races.mjs",
+          "scripts/server-rust/native-event-context-cases.mjs",
+          "cantrip_server_rs/tests/native_command_contracts.rs"
+        ],
+        "remaining": [
+          "The current Agent-project managed admission and event flow is compared against Node on all three database and authentication modes, using the unchanged worker transport and production endpoint crypto. Historical Task event fanout, actual SQL failure rollback and HTTP lock/commit fencing are verified on external PostgreSQL. Task/standalone managed admission retains the Source rejection behavior; full product Task/Goal and standalone execution are separate acceptance requirements.",
+          "Full native command/GUI queue orchestration, canonical history ingestion, background delivery/recovery, supported-platform and app/worker acceptance, Redis/multi-instance, upgrade/post-write rollback, packaging, Winterhold rehearsal and default cutover remain required."
+        ]
+      },
+      {
+        "method": "listAgentInteractionRequests",
+        "implementation": "cantrip_server_rs/src/agent_interactions/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/agent-interaction-cases.mjs",
+          "scripts/server-rust/agent-interaction-response-cases.mjs",
+          "scripts/server-rust/agent-interaction-races.mjs",
+          "scripts/server-rust/native-event-context-cases.mjs",
+          "cantrip_server_rs/tests/native_command_contracts.rs"
+        ],
+        "remaining": [
+          "The current Agent-project managed admission and event flow is compared against Node on all three database and authentication modes, using the unchanged worker transport and production endpoint crypto. Historical Task event fanout, actual SQL failure rollback and HTTP lock/commit fencing are verified on external PostgreSQL. Task/standalone managed admission retains the Source rejection behavior; full product Task/Goal and standalone execution are separate acceptance requirements.",
+          "Full native command/GUI queue orchestration, canonical history ingestion, background delivery/recovery, supported-platform and app/worker acceptance, Redis/multi-instance, upgrade/post-write rollback, packaging, Winterhold rehearsal and default cutover remain required."
+        ]
+      },
+      {
+        "method": "getAgentInteractionRequest",
+        "implementation": "cantrip_server_rs/src/agent_interactions/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/agent-interaction-cases.mjs",
+          "scripts/server-rust/agent-interaction-response-cases.mjs",
+          "scripts/server-rust/agent-interaction-races.mjs",
+          "scripts/server-rust/native-event-context-cases.mjs",
+          "cantrip_server_rs/tests/native_command_contracts.rs"
+        ],
+        "remaining": [
+          "The current Agent-project managed admission and event flow is compared against Node on all three database and authentication modes, using the unchanged worker transport and production endpoint crypto. Historical Task event fanout, actual SQL failure rollback and HTTP lock/commit fencing are verified on external PostgreSQL. Task/standalone managed admission retains the Source rejection behavior; full product Task/Goal and standalone execution are separate acceptance requirements.",
+          "Full native command/GUI queue orchestration, canonical history ingestion, background delivery/recovery, supported-platform and app/worker acceptance, Redis/multi-instance, upgrade/post-write rollback, packaging, Winterhold rehearsal and default cutover remain required."
+        ]
+      },
+      {
+        "method": "getAgentInteractionRequestByKey",
+        "implementation": "cantrip_server_rs/src/agent_interactions/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/agent-interaction-cases.mjs",
+          "scripts/server-rust/agent-interaction-response-cases.mjs",
+          "scripts/server-rust/agent-interaction-races.mjs",
+          "scripts/server-rust/native-event-context-cases.mjs",
+          "cantrip_server_rs/tests/native_command_contracts.rs"
+        ],
+        "remaining": [
+          "The current Agent-project managed admission and event flow is compared against Node on all three database and authentication modes, using the unchanged worker transport and production endpoint crypto. Historical Task event fanout, actual SQL failure rollback and HTTP lock/commit fencing are verified on external PostgreSQL. Task/standalone managed admission retains the Source rejection behavior; full product Task/Goal and standalone execution are separate acceptance requirements.",
+          "Full native command/GUI queue orchestration, canonical history ingestion, background delivery/recovery, supported-platform and app/worker acceptance, Redis/multi-instance, upgrade/post-write rollback, packaging, Winterhold rehearsal and default cutover remain required."
+        ]
+      },
+      {
+        "method": "resolveAgentInteractionRequest",
+        "implementation": "cantrip_server_rs/src/agent_interactions/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/agent-interaction-cases.mjs",
+          "scripts/server-rust/agent-interaction-response-cases.mjs",
+          "scripts/server-rust/agent-interaction-races.mjs",
+          "scripts/server-rust/native-event-context-cases.mjs",
+          "cantrip_server_rs/tests/native_command_contracts.rs"
+        ],
+        "remaining": [
+          "The current Agent-project managed admission and event flow is compared against Node on all three database and authentication modes, using the unchanged worker transport and production endpoint crypto. Historical Task event fanout, actual SQL failure rollback and HTTP lock/commit fencing are verified on external PostgreSQL. Task/standalone managed admission retains the Source rejection behavior; full product Task/Goal and standalone execution are separate acceptance requirements.",
+          "Full native command/GUI queue orchestration, canonical history ingestion, background delivery/recovery, supported-platform and app/worker acceptance, Redis/multi-instance, upgrade/post-write rollback, packaging, Winterhold rehearsal and default cutover remain required."
+        ]
+      },
+      {
+        "method": "validateAgentInteractionResolution",
+        "implementation": "cantrip_server_rs/src/agent_interactions/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/agent-interaction-cases.mjs",
+          "scripts/server-rust/agent-interaction-response-cases.mjs",
+          "scripts/server-rust/agent-interaction-races.mjs",
+          "scripts/server-rust/native-event-context-cases.mjs",
+          "cantrip_server_rs/tests/native_command_contracts.rs"
+        ],
+        "remaining": [
+          "The current Agent-project managed admission and event flow is compared against Node on all three database and authentication modes, using the unchanged worker transport and production endpoint crypto. Historical Task event fanout, actual SQL failure rollback and HTTP lock/commit fencing are verified on external PostgreSQL. Task/standalone managed admission retains the Source rejection behavior; full product Task/Goal and standalone execution are separate acceptance requirements.",
+          "Full native command/GUI queue orchestration, canonical history ingestion, background delivery/recovery, supported-platform and app/worker acceptance, Redis/multi-instance, upgrade/post-write rollback, packaging, Winterhold rehearsal and default cutover remain required."
+        ]
+      },
+      {
+        "method": "resolveEncryptedAgentInteractionRequest",
+        "implementation": "cantrip_server_rs/src/agent_interactions/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/agent-interaction-cases.mjs",
+          "scripts/server-rust/agent-interaction-response-cases.mjs",
+          "scripts/server-rust/agent-interaction-races.mjs",
+          "scripts/server-rust/native-event-context-cases.mjs",
+          "cantrip_server_rs/tests/native_command_contracts.rs"
+        ],
+        "remaining": [
+          "The current Agent-project managed admission and event flow is compared against Node on all three database and authentication modes, using the unchanged worker transport and production endpoint crypto. Historical Task event fanout, actual SQL failure rollback and HTTP lock/commit fencing are verified on external PostgreSQL. Task/standalone managed admission retains the Source rejection behavior; full product Task/Goal and standalone execution are separate acceptance requirements.",
+          "Full native command/GUI queue orchestration, canonical history ingestion, background delivery/recovery, supported-platform and app/worker acceptance, Redis/multi-instance, upgrade/post-write rollback, packaging, Winterhold rehearsal and default cutover remain required."
+        ]
+      },
+      {
+        "method": "validateEncryptedAgentInteractionResolution",
+        "implementation": "cantrip_server_rs/src/agent_interactions/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/agent-interaction-cases.mjs",
+          "scripts/server-rust/agent-interaction-response-cases.mjs",
+          "scripts/server-rust/agent-interaction-races.mjs",
+          "scripts/server-rust/native-event-context-cases.mjs",
+          "cantrip_server_rs/tests/native_command_contracts.rs"
+        ],
+        "remaining": [
+          "The current Agent-project managed admission and event flow is compared against Node on all three database and authentication modes, using the unchanged worker transport and production endpoint crypto. Historical Task event fanout, actual SQL failure rollback and HTTP lock/commit fencing are verified on external PostgreSQL. Task/standalone managed admission retains the Source rejection behavior; full product Task/Goal and standalone execution are separate acceptance requirements.",
+          "Full native command/GUI queue orchestration, canonical history ingestion, background delivery/recovery, supported-platform and app/worker acceptance, Redis/multi-instance, upgrade/post-write rollback, packaging, Winterhold rehearsal and default cutover remain required."
+        ]
+      },
+      {
+        "method": "expireAgentInteractionRequests",
+        "implementation": "cantrip_server_rs/src/agent_interactions/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/agent-interaction-cases.mjs",
+          "scripts/server-rust/agent-interaction-response-cases.mjs",
+          "scripts/server-rust/agent-interaction-races.mjs",
+          "scripts/server-rust/native-event-context-cases.mjs",
+          "cantrip_server_rs/tests/native_command_contracts.rs"
+        ],
+        "remaining": [
+          "The current Agent-project managed admission and event flow is compared against Node on all three database and authentication modes, using the unchanged worker transport and production endpoint crypto. Historical Task event fanout, actual SQL failure rollback and HTTP lock/commit fencing are verified on external PostgreSQL. Task/standalone managed admission retains the Source rejection behavior; full product Task/Goal and standalone execution are separate acceptance requirements.",
+          "Full native command/GUI queue orchestration, canonical history ingestion, background delivery/recovery, supported-platform and app/worker acceptance, Redis/multi-instance, upgrade/post-write rollback, packaging, Winterhold rehearsal and default cutover remain required."
+        ]
+      },
+      {
+        "method": "interruptAgentInteractionRequests",
+        "implementation": "cantrip_server_rs/src/agent_interactions/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/agent-interaction-cases.mjs",
+          "scripts/server-rust/agent-interaction-response-cases.mjs",
+          "scripts/server-rust/agent-interaction-races.mjs",
+          "scripts/server-rust/native-event-context-cases.mjs",
+          "cantrip_server_rs/tests/native_command_contracts.rs"
+        ],
+        "remaining": [
+          "The current Agent-project managed admission and event flow is compared against Node on all three database and authentication modes, using the unchanged worker transport and production endpoint crypto. Historical Task event fanout, actual SQL failure rollback and HTTP lock/commit fencing are verified on external PostgreSQL. Task/standalone managed admission retains the Source rejection behavior; full product Task/Goal and standalone execution are separate acceptance requirements.",
+          "Full native command/GUI queue orchestration, canonical history ingestion, background delivery/recovery, supported-platform and app/worker acceptance, Redis/multi-instance, upgrade/post-write rollback, packaging, Winterhold rehearsal and default cutover remain required."
+        ]
+      },
+      {
+        "method": "terminalizeAgentInteractionRequestFromWorker",
+        "implementation": "cantrip_server_rs/src/agent_interactions/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/agent-interaction-cases.mjs",
+          "scripts/server-rust/agent-interaction-response-cases.mjs",
+          "scripts/server-rust/agent-interaction-races.mjs",
+          "scripts/server-rust/native-event-context-cases.mjs",
+          "cantrip_server_rs/tests/native_command_contracts.rs"
+        ],
+        "remaining": [
+          "The current Agent-project managed admission and event flow is compared against Node on all three database and authentication modes, using the unchanged worker transport and production endpoint crypto. Historical Task event fanout, actual SQL failure rollback and HTTP lock/commit fencing are verified on external PostgreSQL. Task/standalone managed admission retains the Source rejection behavior; full product Task/Goal and standalone execution are separate acceptance requirements.",
+          "Full native command/GUI queue orchestration, canonical history ingestion, background delivery/recovery, supported-platform and app/worker acceptance, Redis/multi-instance, upgrade/post-write rollback, packaging, Winterhold rehearsal and default cutover remain required."
+        ]
       }
     ]
   },
@@ -5915,6 +6743,62 @@
         "remaining": [
           "Full client/worker filesystem acceptance, actual existing-client integration, managed-share failure probes, lock/interruption faults, supported platforms, Redis coordination and packaged operation remain required.",
           "General messages, execution queues, history, Tasks and Goal/automation continuity remain unfinished; protected forks have additional scoped acceptance in the fork milestone."
+        ]
+      },
+      {
+        "resource": "chat-message",
+        "status": "partial",
+        "implementation": "cantrip_server_rs/src/http/native_events/publication.rs",
+        "evidence": [
+          "scripts/server-rust/native-event-http-compatibility.mjs",
+          "scripts/server-rust/native-event-http-special-cases.mjs",
+          "scripts/server-rust/chat-message-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Protected native event publications and current Agent-project flows are compared through real HTTP/Live on all three local storage/authentication modes. Historical Task message/plan/interaction project fanout and commit/rollback fences are verified on external PostgreSQL.",
+          "Other domain publishers, client/worker native execution, complete Task/Goal orchestration, shared coordination, supported platforms and packaged acceptance remain required."
+        ]
+      },
+      {
+        "resource": "chat-plan",
+        "status": "partial",
+        "implementation": "cantrip_server_rs/src/http/native_events/publication.rs",
+        "evidence": [
+          "scripts/server-rust/native-event-http-compatibility.mjs",
+          "scripts/server-rust/native-event-http-special-cases.mjs",
+          "scripts/server-rust/chat-message-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Protected native event publications and current Agent-project flows are compared through real HTTP/Live on all three local storage/authentication modes. Historical Task message/plan/interaction project fanout and commit/rollback fences are verified on external PostgreSQL.",
+          "Other domain publishers, client/worker native execution, complete Task/Goal orchestration, shared coordination, supported platforms and packaged acceptance remain required."
+        ]
+      },
+      {
+        "resource": "agent-interaction",
+        "status": "partial",
+        "implementation": "cantrip_server_rs/src/http/native_events/publication.rs",
+        "evidence": [
+          "scripts/server-rust/native-event-http-compatibility.mjs",
+          "scripts/server-rust/native-event-http-special-cases.mjs",
+          "scripts/server-rust/chat-message-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Protected native event publications and current Agent-project flows are compared through real HTTP/Live on all three local storage/authentication modes. Historical Task message/plan/interaction project fanout and commit/rollback fences are verified on external PostgreSQL.",
+          "Other domain publishers, client/worker native execution, complete Task/Goal orchestration, shared coordination, supported platforms and packaged acceptance remain required."
+        ]
+      },
+      {
+        "resource": "task",
+        "status": "partial",
+        "implementation": "cantrip_server_rs/src/http/native_events/publication.rs",
+        "evidence": [
+          "scripts/server-rust/native-event-http-compatibility.mjs",
+          "scripts/server-rust/native-event-http-special-cases.mjs",
+          "scripts/server-rust/chat-message-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Protected native event publications and current Agent-project flows are compared through real HTTP/Live on all three local storage/authentication modes. Historical Task message/plan/interaction project fanout and commit/rollback fences are verified on external PostgreSQL.",
+          "Other domain publishers, client/worker native execution, complete Task/Goal orchestration, shared coordination, supported platforms and packaged acceptance remain required."
         ]
       }
     ]
@@ -7395,6 +8279,61 @@
         "Full client/worker integration, additional interruption boundaries, canonical history ingestion and execution remain in scope."
       ],
       "validatedLocally": "macOS with official Node 24.22.1: 407 utility cases; 52 repository operations and 87 full snapshots per backend on all three stores, each with a 1 MiB fixture stack. Actual HTTP/Live and production worker reprotection/decryption pass all nine backend/auth combinations. The original Linux/PGlite failure reproduces locally before the fix. Platform CI acceptance remains pending."
+    },
+    "nativeCommandLifecycle": {
+      "status": "partial",
+      "implementation": [
+        "cantrip_server_rs/src/native_commands/mod.rs",
+        "cantrip_server_rs/src/native_commands/transaction.rs",
+        "cantrip_server_rs/src/chats/execution_lanes/mod.rs",
+        "cantrip_server_rs/src/agent_interactions/mod.rs",
+        "cantrip_server_rs/src/http/native_admission.rs",
+        "cantrip_server_rs/src/http/native_events.rs",
+        "cantrip_server_rs/src/native_commands/events.rs"
+      ],
+      "evidence": [
+        "cantrip_server_rs/tests/native_command_contracts.rs",
+        "scripts/server-rust/native-command-admission-compatibility.mjs",
+        "scripts/server-rust/execution-lane-repository-compatibility.mjs",
+        "scripts/server-rust/native-event-context-cases.mjs",
+        "scripts/server-rust/native-event-races.mjs",
+        "scripts/server-rust/managed-queue-races.mjs",
+        "cantrip_server_rs/tests/native_command_contracts.rs",
+        "scripts/server-rust/native-settings-http-compatibility.mjs",
+        "scripts/server-rust/native-settings-http-fixture.mjs",
+        "scripts/server-rust/native-settings-repository-cases.mjs",
+        "scripts/server-rust/native-model-inventory-http-compatibility.mjs",
+        "scripts/server-rust/native-model-inventory-http-races.mjs",
+        "scripts/server-rust/native-model-inventory-cases.mjs",
+        "scripts/server-rust/agent-interaction-cases.mjs",
+        "scripts/server-rust/agent-interaction-response-cases.mjs",
+        "scripts/server-rust/agent-interaction-races.mjs",
+        "scripts/server-rust/native-event-context-cases.mjs",
+        "cantrip_server_rs/tests/native_command_contracts.rs",
+        "scripts/server-rust/native-event-http-compatibility.mjs",
+        "scripts/server-rust/native-event-http-setup.mjs",
+        "scripts/server-rust/native-event-http-content.mjs",
+        "scripts/server-rust/native-event-http-special-cases.mjs",
+        "cantrip_server_rs/tests/native_command_contracts.rs",
+        "scripts/server-rust/native-coordination-http-compatibility.mjs",
+        "scripts/server-rust/native-coordination-http-cases.mjs",
+        "cantrip_server_rs/tests/native_command_contracts.rs"
+      ],
+      "implemented": [
+        "Durable native command admission, immutable receipts, preparation, dispatch, settlement, recovery, settings and permission synchronization, observed turns, logical input continuations and completion delivery records.",
+        "Execution lanes, branch leases, worktree transitions and encrypted/legacy prompt repositories. Canonical managed queue mutations, claims, retained encrypted inputs, native import/acknowledgment, start receipts and notification delivery records.",
+        "withEventContext preserves the command captured before the Chat lock and supplies actual transaction-bound encrypted Agent/Task message and plan writers. Callback failure rolls back the outer transaction; caught nested encrypted-writer SQL failure preserves the outer transaction.",
+        "Six native settings/account-default HTTP routes with authenticated worker calls and post-commit live invalidation; all three database and authentication modes verified with the unchanged worker transport and production endpoint encryption helpers.",
+        "Native model inventory helper and GET route preserve account/worker availability, locale sorting, disabled bound-route lookup and binding/provider revalidation after the inventory read. All three database/authentication modes and eight real PostgreSQL lock-witness HTTP read races compared against the Node source.",
+        "All twelve public interaction repository operations and their actual transaction-bound native event collaborators: visible/protected request recording, reads and global expiry, validation/resolution, secret-answer redaction, interruption and accepted worker terminal replies. Sixteen real PostgreSQL resolution races include all same/mixed Node/Rust caller pairings. Interaction/event HTTP orchestration remains separate.",
+        "Admission, bind-preparation, dispatch and event HTTP routes with worker credential scope, exact computer-use authority, eight-event validation and actual transaction writers. After-commit Live publication covers protected messages, plan/interaction invalidations and historical Task project fanout; SQL failure and blocked-transaction HTTP proof are retained.",
+        "Permission-transition, pending, continuation and settings-evidence HTTP routes preserve their distinct validation/errors, post-commit settings invalidation, exact settings binding checks and activation fences. Three storage and authentication modes compare approval registration/consumption, applied permission revision and actual continuation to a new activation; stored opaque requests/evidence decrypt with their original worker AAD and keyed digests."
+      ],
+      "remaining": [
+        "Protected settings/default HTTP flows use the unchanged worker transport and production encryption helpers with controlled native RPC. Internal admission/preparation/dispatch/event HTTP now uses real durable commands; complete GUI/native runtime execution/history integration and existing full app/worker acceptance remain required.",
+        "Supported-platform acceptance, full app/worker native execution, Redis/multi-instance coordination, migration/post-write rollback, packaging and default cutover remain unfinished.",
+        "Receipt handling with actual queue notification/wake/recovery, GUI command/managed queue orchestration and complete background recovery/delivery remain required. Canonical history ingestion must be implemented separately; no fake canonical history writers are used."
+      ]
     }
   },
   "remainingAcceptance": [

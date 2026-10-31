@@ -7,22 +7,26 @@ use anyhow::{Result, bail};
 
 #[derive(Debug)]
 pub struct NativeCommandError {
-    pub code: &'static str,
-    pub message: &'static str,
+    pub code: String,
+    pub message: String,
     pub status: u16,
 }
 impl NativeCommandError {
-    pub(super) fn conflict(code: &'static str) -> Self {
+    pub fn new(code: impl Into<String>, message: Option<&str>, status: u16) -> Self {
+        let code = code.into();
         Self {
+            message: message.map(str::to_owned).unwrap_or_else(|| code.clone()),
             code,
-            message: code,
-            status: 409,
+            status,
         }
+    }
+    pub(super) fn conflict(code: &'static str) -> Self {
+        Self::new(code, None, 409)
     }
 }
 impl std::fmt::Display for NativeCommandError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.message)
+        f.write_str(&self.message)
     }
 }
 impl std::error::Error for NativeCommandError {}
@@ -37,12 +41,7 @@ pub async fn lock_chat(tx: &Transaction<'_>, owner: &str, chat: &str) -> Result<
         .await?
         .is_empty()
     {
-        return Err(NativeCommandError {
-            code: "chat-not-found",
-            message: "Chat not found.",
-            status: 404,
-        }
-        .into());
+        return Err(NativeCommandError::new("chat-not-found", Some("Chat not found."), 404).into());
     }
     Ok(())
 }

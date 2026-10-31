@@ -17,6 +17,19 @@ on:
       - cantrip_server/src/db/policies.ts
       - cantrip_server/src/db/repository/settings.ts
       - cantrip_server/src/db/repository.ts
+      - cantrip_server/src/db/repository/native*.ts
+      - cantrip_server/src/db/repository/managed-queue*.ts
+      - cantrip_server/src/db/repository/queued-prompts.ts
+      - cantrip_server/src/db/repository/agent-interactions.ts
+      - cantrip_server/src/db/repository/chat-execution-lanes.ts
+      - cantrip_server/src/app/routes/*native*.ts
+      - cantrip_server/src/app/runtime/computer-use-agent-events.ts
+      - cantrip_server/src/app/runtime/clear-agent-interaction.ts
+      - cantrip_server/src/app/runtime/live-mutation-runtime.ts
+      - cantrip_worker/src/native*.ts
+      - cantrip_worker/src/interaction-encryption.ts
+      - cantrip_worker/src/chat-message-encryption.ts
+      - cantrip_worker/src/chat-plan-encryption.ts
       - cantrip_server/src/db/repository/browsers.ts
       - cantrip_server/src/db/repository/file-documents.ts
       - cantrip_server/src/db/workspace-layouts.ts
@@ -1002,6 +1015,153 @@ jobs:
           name: rust-server-conversions-${{ matrix.os }}
           path: .qa/rust-server/
 
+  native-commands:
+    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.conversion_lifetime_diagnostic && !inputs.discovery_lifetime_diagnostic) }}
+    # Native command policy, durable execution, queues and protected HTTP/Live.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.93.0
+          components: rustfmt, clippy
+      - name: Windows native PGlite toolchain
+        if: runner.os == 'Windows'
+        id: mingw
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-zlib mingw-w64-x86_64-openssl
+      - name: Windows Rust target and PostgreSQL
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          CANTRIP_MINGW_BIN: ${{ steps.mingw.outputs.msys2-location }}\mingw64\bin
+        run: |
+          rustup target add x86_64-pc-windows-gnu
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "CARGO_BUILD_TARGET=x86_64-pc-windows-gnu" >> $env:GITHUB_ENV
+          "$env:CANTRIP_MINGW_BIN" >> $env:GITHUB_PATH
+          "CANTRIP_TEST_POSTGRES_BIN_DIR=$env:PGBIN" >> $env:GITHUB_ENV
+      - name: Linux PostgreSQL
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql libssl-dev
+          echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(pg_config --bindir)" >> "$GITHUB_ENV"
+      - name: macOS PostgreSQL
+        if: runner.os == 'macOS'
+        run: |
+          brew install postgresql@18
+          echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(brew --prefix postgresql@18)/bin" >> "$GITHUB_ENV"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol --filter @cantrip/crypto --filter @cantrip/glitch -r build
+      - name: Native policy and state unit compatibility
+        run: node scripts/server-rust/cargo.mjs test --lib native_commands -- --nocapture
+      - name: Native method policy matches the TypeScript authority
+        run: node --import tsx scripts/server-rust/native-command-policy-manifest.mjs --check
+      - name: Native command protocol compatibility
+        run: node scripts/server-rust/cargo.mjs test --test native_command_contracts -- --nocapture
+      - name: native-settings-repository with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-repository-compatibility.mjs --database pglite --report .qa/rust-server/native-settings-repository-pglite.json
+      - name: execution-lanes with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/execution-lane-repository-compatibility.mjs --database pglite --report .qa/rust-server/execution-lanes-pglite.json
+      - name: native-command-kernel with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --database pglite --report .qa/rust-server/native-command-kernel-pglite.json
+      - name: native-settings-http with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-settings-http-compatibility.mjs --database pglite --report .qa/rust-server/native-settings-http-pglite.json
+      - name: native-model-inventory-http with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-model-inventory-http-compatibility.mjs --database pglite --report .qa/rust-server/native-model-inventory-http-pglite.json
+      - name: native-event-http with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-event-http-compatibility.mjs --database pglite --report .qa/rust-server/native-event-http-pglite.json
+      - name: native-coordination-http with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-coordination-http-compatibility.mjs --database pglite --report .qa/rust-server/native-coordination-http-pglite.json
+      - name: execution-lanes with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/execution-lane-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/execution-lanes-bundled-postgres.json
+      - name: native-settings-repository with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/native-settings-repository-bundled-postgres.json
+      - name: native-command-kernel with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --database bundled-postgres --report .qa/rust-server/native-command-kernel-bundled-postgres.json
+      - name: native-settings-http with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-settings-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/native-settings-http-bundled-postgres.json
+      - name: native-model-inventory-http with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-model-inventory-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/native-model-inventory-http-bundled-postgres.json
+      - name: native-event-http with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-event-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/native-event-http-bundled-postgres.json
+      - name: native-coordination-http with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-coordination-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/native-coordination-http-bundled-postgres.json
+      - name: execution-lanes with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/execution-lane-repository-compatibility.mjs --database postgres --report .qa/rust-server/execution-lanes-postgres.json
+      - name: native-settings-repository with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-repository-compatibility.mjs --database postgres --report .qa/rust-server/native-settings-repository-postgres.json
+      - name: native-command-kernel with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --database postgres --report .qa/rust-server/native-command-kernel-postgres.json
+      - name: native-settings-http with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-settings-http-compatibility.mjs --database postgres --report .qa/rust-server/native-settings-http-postgres.json
+      - name: native-model-inventory-http with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-model-inventory-http-compatibility.mjs --database postgres --report .qa/rust-server/native-model-inventory-http-postgres.json
+      - name: native-event-http with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-event-http-compatibility.mjs --database postgres --report .qa/rust-server/native-event-http-postgres.json
+      - name: native-coordination-http with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-coordination-http-compatibility.mjs --database postgres --report .qa/rust-server/native-coordination-http-postgres.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rust-server-native-commands-${{ matrix.os }}
+          path: .qa/rust-server/
   chat-messages:
     if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.conversion_lifetime_diagnostic && !inputs.discovery_lifetime_diagnostic) }}
     # Compare protected message writes and archive reads through real sockets.

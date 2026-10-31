@@ -1,3 +1,4 @@
+pub mod agent_interactions;
 pub mod auth;
 pub mod browsers;
 pub mod chats;
@@ -12,6 +13,7 @@ pub mod http;
 pub mod live;
 pub mod managed_postgres;
 pub mod migrations;
+pub mod native_commands;
 pub mod operations;
 pub mod pane_layouts;
 pub mod policies;

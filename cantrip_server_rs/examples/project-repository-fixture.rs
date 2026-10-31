@@ -5,6 +5,8 @@ use cantrip_server::{
     migrations::migrate, projects::repository::ProjectRepository, wire::Value,
 };
 use clap::Parser;
+#[path = "support/agent_interactions.rs"]
+mod agent_interactions;
 #[path = "support/browsers.rs"]
 mod browsers;
 #[path = "support/chat_console.rs"]
@@ -17,12 +19,28 @@ mod chat_messages;
 mod conversions;
 #[path = "support/discovery.rs"]
 mod discovery;
+#[path = "support/execution_lane_rest.rs"]
+mod execution_lane_rest;
+#[path = "support/execution_lanes.rs"]
+mod execution_lanes;
 #[path = "support/file_documents.rs"]
 mod file_documents;
+#[path = "support/managed_queue.rs"]
+mod managed_queue;
+#[path = "support/native_commands.rs"]
+mod native_commands;
+#[path = "support/native_events.rs"]
+mod native_events;
+#[path = "support/native_logical.rs"]
+mod native_logical;
+#[path = "support/native_settings.rs"]
+mod native_settings;
 #[path = "support/pane_layouts.rs"]
 mod pane_layouts;
 #[path = "support/project_surfaces.rs"]
 mod project_surfaces;
+#[path = "support/queued_prompts.rs"]
+mod queued_prompts;
 #[path = "support/replicas.rs"]
 mod replicas;
 #[path = "support/repository_operations.rs"]
@@ -136,6 +154,13 @@ async fn run() -> Result<()> {
                 chat_messages::run(database.clone(), &request).boxed().await
             } else if request["op"]
                 .as_str()
+                .is_some_and(|op| op.starts_with("native-command-"))
+            {
+                native_commands::run(database.clone(), &request)
+                    .boxed()
+                    .await
+            } else if request["op"]
+                .as_str()
                 .is_some_and(|op| op.starts_with("scratch-"))
             {
                 scratch_roots::run(database.clone(), &request).boxed().await
@@ -210,6 +235,27 @@ async fn run() -> Result<()> {
             Ok(value) => reply["value"] = value,
             Err(error) => {
                 reply["diagnostic"] = Value::String(error.to_string().into());
+                if error.is::<cantrip_server::agent_interactions::Conflict>() {
+                    reply["interactionError"] =
+                        Value::String("AgentInteractionConflictError".into());
+                }
+                if request["op"]
+                    .as_str()
+                    .is_some_and(|op| op.starts_with("native-command-lane-"))
+                    && let Some(error) =
+                        error.downcast_ref::<cantrip_server::chats::execution_lanes::LaneError>()
+                {
+                    reply["laneError"] = Value::String(error.class_name().into());
+                }
+                if request["op"]
+                    .as_str()
+                    .is_some_and(|op| op.starts_with("native-command-"))
+                    && let Some(error) =
+                        error.downcast_ref::<cantrip_server::native_commands::CommandError>()
+                {
+                    reply["commandError"] = Value::String(error.code.as_str().into());
+                    reply["commandStatus"] = Value::from_serialize(&error.status);
+                }
                 if let Some(error) =
                     error.downcast_ref::<cantrip_server::chats::message_writes::HistoryError>()
                 {
@@ -322,6 +368,7 @@ async fn run() -> Result<()> {
                         || op.starts_with("scratch-")
                         || op.starts_with("fork-")
                         || op.starts_with("message-")
+                        || op.starts_with("native-command-")
                 }) {
                     for cause in error.chain() {
                         if let Some(pg) = cause.downcast_ref::<tokio_postgres::Error>()
@@ -374,10 +421,13 @@ async fn run() -> Result<()> {
                         reply["failure"] = failure.0.clone();
                     }
                 }
-                if let Some(error) =
-                    error.downcast_ref::<cantrip_server::chats::guard::NativeCommandError>()
+                if !request["op"]
+                    .as_str()
+                    .is_some_and(|op| op.starts_with("native-command-"))
+                    && let Some(error) =
+                        error.downcast_ref::<cantrip_server::chats::guard::NativeCommandError>()
                 {
-                    reply["code"] = Value::String(error.code.into());
+                    reply["code"] = Value::String(error.code.as_str().into());
                 }
                 if let Some(error) =
                     error.downcast_ref::<cantrip_server::projects::folders::FolderError>()

@@ -80,6 +80,9 @@ pub(super) fn transform(
     result: &mut Parsed,
     path: &[Value],
 ) -> Result<(), ValidationError> {
+    if tag == "native-event-identity" {
+        return Ok(());
+    }
     let (max_bytes, max_string_length) = match tag {
         "live-json-object" => (768 * 1024, 300000),
         "bounded-json-object" => (1000000, 100000),
