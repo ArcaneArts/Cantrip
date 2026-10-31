@@ -47,7 +47,7 @@ function BarSetting({
 }
 export function TabDisplaySettings() {
   return (
-    <section className="grid gap-4 border-b pb-5">
+    <section className="grid gap-4">
       <h3 className="text-sm font-semibold">Tab bar display</h3>
       <BarSetting bar="top" label="Top tab bar" />
       <BarSetting bar="bottom" label="Bottom rail" />

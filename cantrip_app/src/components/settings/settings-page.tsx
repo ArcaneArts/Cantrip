@@ -1730,7 +1730,9 @@ export function SettingsPage({
                   </p>
                 ) : null}
 
-                <div className="min-w-0 divide-y overflow-hidden border-y">
+                <div
+                  className={`min-w-0 overflow-hidden ${section === "appearance" ? "" : "divide-y border-y"}`}
+                >
                   {section === "appearance" &&
                   matchesSetting(
                     "appearance",
@@ -1741,9 +1743,9 @@ export function SettingsPage({
                     "tab-display",
                     "file-change",
                   ) ? (
-                    <section>
+                    <section className="grid gap-6 px-3 py-3">
                       {matchesSetting("tab-display", "file-change") ? (
-                        <div className="px-3 py-3">
+                        <div className="grid gap-6">
                           {matchesSetting("tab-display") ? (
                             <TabDisplaySettings />
                           ) : null}
@@ -1752,7 +1754,19 @@ export function SettingsPage({
                           ) : null}
                         </div>
                       ) : null}
-                      <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-3">
+                      <div
+                        className={
+                          matchesSetting(
+                            "appearance",
+                            "high-contrast",
+                            "content-gutters",
+                            "elite-mode",
+                            "pro-mode",
+                          )
+                            ? "flex flex-wrap items-center justify-between gap-2"
+                            : "hidden"
+                        }
+                      >
                         {!searchResults ? (
                           <div className="flex min-w-0 items-center gap-2.5">
                             <Palette className="size-4 shrink-0 text-muted-foreground" />
