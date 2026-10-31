@@ -2,6 +2,7 @@ import {
   mutateManagedGuiQueue,
   lookupManagedGuiQueue,
 } from "../../cantrip_server/src/app/runtime/managed-queue-input.ts";
+import { queueDeliveryFixture } from "./queue-delivery-node-fixture.mjs";
 export async function managedQueueFixture(repository, input) {
   const { owner, chat, worker, session, claimId: id, content } = input,
     queue = repository.managedQueue;
@@ -17,6 +18,8 @@ export async function managedQueueFixture(repository, input) {
     )(repository, owner, context, content, input.options ?? {});
   }
   switch (input.action) {
+    case "deliver":
+      return queueDeliveryFixture(repository, input);
     case "snapshot":
       return queue.snapshot(owner, chat);
     case "read":

@@ -8291,7 +8291,9 @@
         "cantrip_server_rs/src/http/native_events.rs",
         "cantrip_server_rs/src/native_commands/events.rs",
         "cantrip_server_rs/src/native_commands/runtime/receipts.rs",
-        "cantrip_server_rs/src/native_commands/runtime/gui_queue.rs"
+        "cantrip_server_rs/src/native_commands/runtime/gui_queue.rs",
+        "cantrip_server_rs/src/native_commands/runtime/delivery.rs",
+        "cantrip_server_rs/src/native_commands/runtime/delivery/native.rs"
       ],
       "evidence": [
         "cantrip_server_rs/tests/native_command_contracts.rs",
@@ -8317,7 +8319,12 @@
         "scripts/server-rust/native-coordination-http-cases.mjs",
         "scripts/server-rust/native-queue-receipts-oracle.mjs",
         "cantrip_server_rs/src/native_commands/runtime/receipts/tests.rs",
-        "scripts/server-rust/gui-queue-cases.mjs"
+        "scripts/server-rust/gui-queue-cases.mjs",
+        "cantrip_server_rs/src/native_commands/runtime/delivery/tests.rs",
+        "scripts/server-rust/queue-delivery-oracle.mjs",
+        "scripts/server-rust/queue-delivery-cases.mjs",
+        "scripts/server-rust/queue-delivery-node-fixture.mjs",
+        "cantrip_server_rs/examples/support/queue_delivery.rs"
       ],
       "implemented": [
         "Durable native command admission, immutable receipts, preparation, dispatch, settlement, recovery, settings and permission synchronization, observed turns, logical input continuations and completion delivery records.",
@@ -8329,12 +8336,13 @@
         "Admission, bind-preparation, dispatch and event HTTP routes with worker credential scope, exact computer-use authority, eight-event validation and actual transaction writers. After-commit Live publication covers protected messages, plan/interaction invalidations and historical Task project fanout; SQL failure and blocked-transaction HTTP proof are retained.",
         "Permission-transition, pending, continuation and settings-evidence HTTP routes preserve their distinct validation/errors, post-commit settings invalidation, exact settings binding checks and activation fences. Three storage and authentication modes compare approval registration/consumption, applied permission revision and actual continuation to a new activation; stored opaque requests/evidence decrypt with their original worker AAD and keyed digests.",
         "Native receipt notification/wait primitive preserves notices during reads, exact 750ms durable polling, original UTF16 Chat keys, completed-read/abort ordering and subscription cleanup. Fifteen scenarios execute the unchanged Node waiter; the native public method reads the real managed queue repository. HTTP dispatch consumers remain separate.",
-        "Native GUI queue preparation/mutation/lookup use real snapshot, control, retained encrypted input and mutation repositories. Twenty GUI cases per database preserve original JSON digests, nullish options, resume/revision behavior, immutable rejected receipts, deleted-input lookup, administrative input fences and tenant/placement rejection. No receipt or GUI dispatch HTTP consumer is stubbed."
+        "Native GUI queue preparation/mutation/lookup use real snapshot, control, retained encrypted input and mutation repositories. Twenty GUI cases per database preserve original JSON digests, nullish options, resume/revision behavior, immutable rejected receipts, deleted-input lookup, administrative input fences and tenant/placement rejection. No receipt or GUI dispatch HTTP consumer is stubbed.",
+        "Native queue delivery/recovery service preserves independent recovery, coalesced sweeps, eight workers per group, publish/request/acknowledge ordering, durable defer, early Promise.all failure without cancelling other workers, and permanent stop. Twenty-four scenarios compare the unchanged Node service. The real three-storage-mode/worker-admission/wire-bridge fixture verifies acknowledgment, no repeated delivery and five-second defer after actual worker rejection."
       ],
       "remaining": [
         "Protected settings/default HTTP flows use the unchanged worker transport and production encryption helpers with controlled native RPC. Internal admission/preparation/dispatch/event HTTP now uses real durable commands; complete GUI/native runtime execution/history integration and existing full app/worker acceptance remain required.",
         "Supported-platform acceptance, full app/worker native execution, Redis/multi-instance coordination, migration/post-write rollback, packaging and default cutover remain unfinished.",
-        "Receipt HTTP and real background queue notification/delivery/wake/recovery, GUI turn dispatch and complete history integration remain required. Receipt waiting and GUI queue mutation preparation are now native helpers with Source parity evidence; their actual product consumers remain unfinished. Canonical history ingestion must be implemented separately; no fake canonical history writers are used."
+        "Receipt HTTP, production queue notification/delivery/wake/recovery registration, GUI turn dispatch and complete history integration remain required. Native receipt waiting, GUI queue mutation preparation and the delivery service now have Source parity evidence; product consumers still require the real GUI dispatcher. Canonical history ingestion remains separate; no fake canonical history writers or production no-op dispatch are used."
       ]
     }
   },

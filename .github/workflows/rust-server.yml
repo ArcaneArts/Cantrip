@@ -27,6 +27,8 @@ on:
       - cantrip_server/src/app/runtime/clear-agent-interaction.ts
       - cantrip_server/src/app/runtime/live-mutation-runtime.ts
       - cantrip_server/src/app/runtime/managed-queue-receipts.ts
+      - cantrip_server/src/app/runtime/managed-queue-delivery.ts
+      - cantrip_server/src/app/runtime/managed-queue-input.ts
       - cantrip_worker/src/native*.ts
       - cantrip_worker/src/interaction-encryption.ts
       - cantrip_worker/src/chat-message-encryption.ts

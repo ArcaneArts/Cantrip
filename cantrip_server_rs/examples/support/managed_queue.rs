@@ -19,6 +19,9 @@ pub async fn run(database: Arc<Database>, input: &Value) -> Result<Value> {
     let chat = input.get("chat").map(text).transpose()?.unwrap_or_default();
     let empty = Value::object([] as [(&str, Value); 0]);
     let content = &input["content"];
+    if input["action"] == "deliver" {
+        return super::queue_delivery::run(database, input).boxed().await;
+    }
     if matches!(
         input["action"].as_str(),
         Some("gui-mutate" | "gui-lookup" | "gui-context")

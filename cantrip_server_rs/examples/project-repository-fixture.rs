@@ -39,6 +39,8 @@ mod native_settings;
 mod pane_layouts;
 #[path = "support/project_surfaces.rs"]
 mod project_surfaces;
+#[path = "support/queue_delivery.rs"]
+mod queue_delivery;
 #[path = "support/queued_prompts.rs"]
 mod queued_prompts;
 #[path = "support/replicas.rs"]

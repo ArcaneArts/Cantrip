@@ -69,6 +69,18 @@ rejection with the unchanged Source helper. Their surrounding managed queue
 corpus also retains restart checks and 20 same/mixed-runtime PostgreSQL races.
 These helpers do not complete GUI turn dispatch or its HTTP consumers.
 
+Native queue delivery now uses the durable notification repository and admitted
+worker command bus. Its recovery group runs independently of notification
+sweeps; each group has eight workers, retries retain their durable cursor, and
+stop prevents late acknowledgment or defer. Twenty-four controlled scenarios
+execute the unchanged Node service, including coalesced callers, errors at each
+boundary, independently running recovery, early rejection with other workers
+still active, and interval/stop behavior. Real repository/worker-wire comparisons
+on all three storage modes also verify successful acknowledgment, no duplicate
+delivery and a five-second defer after an actual worker rejection. Product
+registration still requires the real GUI dispatcher; no production no-op
+dispatch is supplied.
+
 PR #2384's Windows native command job failed its first fresh GUI admission on
 the original 1 MiB fixture thread with stack overflow (`3221225725`). The
 `native_stack_diagnostic` workflow input runs that same repository suite under
@@ -81,8 +93,11 @@ lease acquisition while the PGlite engine thread is idle. The follow-up capture
 measured 214,064 bytes retained by the native fixture dispatcher and 242,720 by
 its outer dispatcher. The native selector now returns an individual boxed future
 for each operation before it is polled. The original 1 MiB PGlite workload passes
-locally with all 1,523 original cases plus 20 GUI cases; Windows revalidation is
-still required.
+locally with all 1,523 original cases plus 20 GUI cases. Windows run
+`41226706489` now passes that same 1 MiB workload, including 1,337 snapshots and
+10 reopen checks. The earlier full platform run separately failed an execution
+target repository fixture with stack overflow; run `41228493161` captures that
+unchanged workload under GDB. This does not establish full Windows acceptance.
 
 Restart recovery deliberately suspends existing execution lanes. The HTTP
 fixtures therefore admit and dispatch through real routes after server startup;
