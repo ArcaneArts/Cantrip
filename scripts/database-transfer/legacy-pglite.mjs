@@ -7,7 +7,7 @@ import { constants } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { pgDump } from "@electric-sql/pglite-tools/pg_dump";
+import { pgDumpRaw, removeDumpGuards } from "./pg-dump.mjs";
 
 const { PGlite } = createRequire(
   import.meta.resolve("@electric-sql/pglite-tools/pg_dump"),
@@ -31,7 +31,7 @@ export async function exportLegacyPglite({ source, output }) {
     database = await PGlite.create(copy);
     const version = (await database.query("SELECT version() AS version"))
       .rows[0].version;
-    const file = await pgDump({
+    const raw = await pgDumpRaw({
       pg: database,
       args: ["--no-owner", "--no-privileges"],
     });
@@ -41,7 +41,8 @@ export async function exportLegacyPglite({ source, output }) {
     const prelude =
       /^((?:--[^\n]*\n|\n)*SET statement_timeout = 0;\nSET lock_timeout = 0;\nSET idle_in_transaction_session_timeout = 0;\n)SET transaction_timeout = 0;\n/;
     let portableTransactionTimeout = false;
-    const sql = (await file.text()).replace(prelude, (_match, prefix) => {
+    const prepared = removeDumpGuards(raw);
+    const sql = prepared.sql.replace(prelude, (_match, prefix) => {
       portableTransactionTimeout = true;
       // Try the actual setting. Only an absent setting is harmless on older
       // PostgreSQL; permission failures and every other error still propagate.
@@ -57,6 +58,7 @@ export async function exportLegacyPglite({ source, output }) {
       sourceRuntime: "@electric-sql/pglite@0.5.4",
       dumpRuntime: "@electric-sql/pglite-tools@0.4.4",
       portableTransactionTimeout,
+      psqlGuardsRemoved: prepared.guardsRemoved,
       version,
       bytes: bytes.length,
       sha256: createHash("sha256").update(bytes).digest("hex"),

@@ -46,6 +46,7 @@ export async function databaseTransferRace({
     const snapshot = await observe();
     assert.deepEqual(snapshot.tables, expected.tables);
     assert.deepEqual(snapshot.sequences, expected.sequences);
+    assert.deepEqual(snapshot.probe, expected.probe);
     return { waiting, results, snapshot };
   } finally {
     if (!released) await held.unsafe("ROLLBACK");

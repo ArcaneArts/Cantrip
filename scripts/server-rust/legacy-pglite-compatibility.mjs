@@ -29,6 +29,8 @@ import {
 const { PGlite } = createRequire(
   import.meta.resolve("@electric-sql/pglite-tools/pg_dump"),
 )("@electric-sql/pglite");
+const dumpLiteral =
+  "before\n\\restrict CantripDumpGuardTest42\nmiddle\n\\unrestrict CantripDumpGuardTest42\nafter";
 const root = await mkdtemp(path.join(tmpdir(), "cantrip-logical-transfer-"));
 const source = path.join(root, "legacy");
 Object.assign(process.env, fixtureEnvironment(source));
@@ -83,7 +85,19 @@ async function snapshot(pg) {
         `SELECT last_value::text AS value,is_called AS called FROM ${quote(schema)}.${quote(name)}`,
       )
     ).rows[0];
-  return { tables, sequences };
+  const probe = tables["public.migration_probe"]
+    ? {
+        functionValue: (
+          await pg.query("SELECT public.migration_literal_probe() AS value")
+        ).rows[0].value,
+        nullKinds: (
+          await pg.query(
+            "SELECT jsonb_agg(jsonb_build_object('id',id,'sqlNull',metadata IS NULL,'jsonType',jsonb_typeof(metadata)) ORDER BY id)::text AS value FROM public.migration_probe",
+          )
+        ).rows[0].value,
+      }
+    : null;
+  return { tables, sequences, probe };
 }
 async function run(executable, args, environment, witness) {
   const child = spawn(executable, args, {
@@ -165,6 +179,16 @@ SET transaction_timeout = 0;
     decode('000102ff','hex'),9007199254740993,123456789012345678901234567890.12345,
     '2026-10-30T12:34:56.123456Z',ARRAY['NULL',NULL,'quoted"value']);
     SELECT setval('public.migration_probe_id_seq',101,false);`);
+  await legacy.query(
+    "INSERT INTO public.migration_probe(id,content) VALUES(2,$1)",
+    [dumpLiteral],
+  );
+  await legacy.exec(
+    "INSERT INTO public.migration_probe(id,content,metadata) VALUES(3,'JSON null sentinel','null'::jsonb)",
+  );
+  await legacy.exec(
+    `CREATE FUNCTION public.migration_literal_probe() RETURNS text LANGUAGE sql AS $body$ SELECT $literal$${dumpLiteral}$literal$::text $body$`,
+  );
   report.expected = await snapshot(legacy);
   await legacy.close();
   legacy = undefined;
@@ -175,6 +199,7 @@ SET transaction_timeout = 0;
     output: dump,
   });
   assert.equal(report.export.portableTransactionTimeout, true);
+  assert.equal(report.export.psqlGuardsRemoved, 2);
   const after = await files(source);
   assert.deepEqual(
     after,
@@ -263,6 +288,7 @@ SET transaction_timeout = 0;
       "late failure rolls back every imported table",
     );
     assert.deepEqual(rolledBack.sequences, {});
+    assert.equal(rolledBack.probe, null);
     if (historicalCount) {
       const failedUpgrade = path.join(root, "failed-upgrade-" + mode + ".sql");
       await writeFile(
@@ -339,6 +365,7 @@ SET transaction_timeout = 0;
     result.snapshot = await observe();
     assert.deepEqual(result.snapshot.tables, report.expected.tables);
     assert.deepEqual(result.snapshot.sequences, report.expected.sequences);
+    assert.deepEqual(result.snapshot.probe, report.expected.probe);
     result.rejectedReplay = await restore(dump);
     assert.notEqual(
       result.rejectedReplay.code,

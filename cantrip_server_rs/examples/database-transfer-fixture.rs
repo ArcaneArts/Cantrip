@@ -90,13 +90,21 @@ async fn main() -> Result<()> {
             json!({"value":row.get::<String>(0)?,"called":row.get::<bool>(1)?}),
         );
     }
+    let probe = if snapshot.contains_key("public.migration_probe") {
+        Some(json!({
+            "functionValue": database.query("SELECT public.migration_literal_probe()", &[]).await?[0].get::<String>(0)?,
+            "nullKinds": database.query("SELECT jsonb_agg(jsonb_build_object('id',id,'sqlNull',metadata IS NULL,'jsonType',jsonb_typeof(metadata)) ORDER BY id)::text FROM public.migration_probe", &[]).await?[0].get::<String>(0)?
+        }))
+    } else {
+        None
+    };
     database.close().await?;
     if let Some(managed) = managed {
         managed.close().await?;
     }
     println!(
         "\n{}",
-        json!({"version":version,"migrationsApplied":migrations,"tables":snapshot,"sequences":sequence_snapshot})
+        json!({"version":version,"migrationsApplied":migrations,"tables":snapshot,"sequences":sequence_snapshot,"probe":probe})
     );
     Ok(())
 }

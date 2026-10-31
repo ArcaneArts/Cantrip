@@ -2761,6 +2761,29 @@ or product-flow acceptance matrix.
 
 ## Legacy PGlite logical export and transactional restore
 
+An actual round trip found that the upstream dump wrapper removed lines beginning
+with `\\restrict` or `\\unrestrict` from multiline row values and SQL function
+bodies. The converter now obtains SQL directly from the pinned package's generated
+WASM factory, before that global cleanup. It removes only the matching generated
+header and footer commands. The unmodified factory, license and provenance are
+retained under `scripts/database-transfer/third-party`; the matching WASM remains
+in the pinned dependency. Native serving never imports this bounded converter.
+
+The regression fixture uses the same guard key inside actual text and a SQL
+function, restores the real dump, and checks both values exactly. It also invokes
+an actual invalid dump option, checks ordinary error redaction and explicitly
+retained private diagnostics, and verifies the original session/search path still
+works. The complete current and historical transfer fixtures now retain SQL NULL
+versus JSON null, multiline guard text and the function result alongside the full
+table and sequence snapshots. Their all-store interruption/retry suites pass
+locally; supported-platform results remain required.
+
+The expanded current/historical fixtures also pass against real PostgreSQL
+16.15. Strict all-target Clippy and native database contracts pass. The broad
+repository check exits 1 with 1,662 source-server tests passing, 57 skipped and
+the previously reproduced provider-routing assertion failing at
+`local-foundation.test.ts:7218`. This is not a green repository-wide check.
+
 A bounded offline JavaScript tool now opens a private copy of the stopped legacy
 PGlite database and exports ordinary PostgreSQL SQL with the pinned, matching
 [PGlite/pg_dump packages](https://pglite.dev/docs/pglite-tools). It never opens the original database for execution and
