@@ -353,6 +353,9 @@ export const contractRoots = [
   "encryptedChatComposerDraftUpdateSchema",
   "standaloneChatScratchArchiveResultSchema",
   "standaloneChatFileWireRequestSchema",
+  "encryptedChatForkSchema",
+  "chatMessageOpaqueSummarySchema",
+  "chatMessageOpaqueContentListSchema",
 ];
 
 // Resolve the actual source schemas, including their separate protocol modules.
@@ -508,6 +511,7 @@ registerChecks(protocol.encryptedStandaloneChatCreateSchema, [
 registerChecks(protocol.encryptedChatUpdateSchema, [
   "worker-command-chat-title",
 ]);
+registerChecks(protocol.encryptedChatForkSchema, ["worker-command-chat-title"]);
 registerChecks(protocol.standaloneChatScratchArchiveResultSchema, [
   "worker-command-scratch-archive-result",
 ]);

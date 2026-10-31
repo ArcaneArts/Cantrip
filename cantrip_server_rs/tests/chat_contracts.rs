@@ -23,6 +23,9 @@ fn contextual_chat_contracts_match_actual_protocol() -> Result<()> {
         "encryptedChatComposerDraftUpdateSchema",
         "standaloneChatScratchArchiveResultSchema",
         "standaloneChatFileWireRequestSchema",
+        "encryptedChatForkSchema",
+        "chatMessageOpaqueSummarySchema",
+        "chatMessageOpaqueContentListSchema",
     ] {
         let output = Command::new("node")
             .args([

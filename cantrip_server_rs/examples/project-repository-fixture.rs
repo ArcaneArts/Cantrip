@@ -9,6 +9,8 @@ use clap::Parser;
 mod browsers;
 #[path = "support/chat_console.rs"]
 mod chat_console;
+#[path = "support/chat_forks.rs"]
+mod chat_forks;
 #[path = "support/conversions.rs"]
 mod conversions;
 #[path = "support/discovery.rs"]
@@ -120,6 +122,13 @@ async fn run() -> Result<()> {
                 ]))
             } else if request["op"]
                 .as_str()
+                .is_some_and(|op| op.starts_with("fork-"))
+            {
+                chat_forks::run(database.clone(), &request, console_trace.clone())
+                    .boxed()
+                    .await
+            } else if request["op"]
+                .as_str()
                 .is_some_and(|op| op.starts_with("scratch-"))
             {
                 scratch_roots::run(database.clone(), &request).boxed().await
@@ -194,6 +203,27 @@ async fn run() -> Result<()> {
             Ok(value) => reply["value"] = value,
             Err(error) => {
                 reply["diagnostic"] = Value::String(error.to_string().into());
+                if request["op"]
+                    .as_str()
+                    .is_some_and(|op| op.starts_with("fork-"))
+                {
+                    reply["causes"] = Value::Array(
+                        error
+                            .chain()
+                            .skip(1)
+                            .map(|cause| Value::String(cause.to_string().into()))
+                            .collect(),
+                    );
+                    reply["trace"] = Value::Array(console_trace.lock().unwrap().clone());
+                    if error.is::<cantrip_server::chats::forks::Conflict>() {
+                        reply["forkError"] = Value::String("ExecutionLaneConflictError".into());
+                    }
+                    if let Some(c) =
+                        error.downcast_ref::<cantrip_server::chats::catalog::StatementFailure>()
+                    {
+                        reply["duplicateMessage"] = Value::Bool(c.duplicate_message);
+                    }
+                }
                 if error.is::<cantrip_server::chats::catalog::StandaloneUnavailable>() {
                     reply["scratchError"] =
                         Value::String("StandaloneChatPlacementUnavailableError".into());
@@ -277,6 +307,7 @@ async fn run() -> Result<()> {
                         || op.starts_with("workspace-")
                         || op.starts_with("layout-")
                         || op.starts_with("scratch-")
+                        || op.starts_with("fork-")
                 }) {
                     for cause in error.chain() {
                         if let Some(pg) = cause.downcast_ref::<tokio_postgres::Error>()

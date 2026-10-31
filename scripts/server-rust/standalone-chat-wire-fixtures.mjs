@@ -29,6 +29,58 @@ export function standaloneChatWireFixtures(timestamp) {
     completedAt: null,
   };
   return {
+    encryptedChatForkSchema: [
+      { id: job.id, titleProtection },
+      {
+        id: job.id,
+        titleProtection,
+        attachToTabLayout: false,
+        messageId: "through-message",
+        worktreeId: "destination",
+        worktreeMode: "pinned",
+      },
+    ],
+    chatMessageOpaqueContentListSchema: [
+      [],
+      [
+        {
+          id: job.id,
+          classification: {
+            role: "assistant",
+            mode: "default",
+            attachmentIds: [],
+          },
+          protectedContent: titleProtection.protectedLabel,
+          reasoningEffort: null,
+          idempotencyKey: "fork:original",
+        },
+      ],
+    ],
+    chatMessageOpaqueSummarySchema: ["project", "standalone"].map(
+      (contextKind) => ({
+        id: "original",
+        chatId: job.chatId,
+        contextKind,
+        worktreeId: contextKind === "project" ? "tree" : null,
+        scratchRootId: contextKind === "standalone" ? job.rootId : null,
+        executionLaneId: null,
+        sequence: 1,
+        role: "assistant",
+        mode: "default",
+        attachmentIds: [],
+        protectedContent: titleProtection.protectedLabel,
+        modelId: null,
+        modelRouteId: null,
+        providerId: null,
+        providerName: null,
+        providerModelName: null,
+        reasoningEffort: null,
+        appliedReasoningEffort: null,
+        reasoningAdjusted: false,
+        idempotencyKey: null,
+        createdAt: timestamp,
+      }),
+    ),
     conversationRestoreSchema: [
       {},
       { attachToTabLayout: false },

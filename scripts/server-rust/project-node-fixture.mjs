@@ -16,6 +16,7 @@ import { worktreeCoordinatorFixture } from "./worktree-coordinator-node-fixture.
 import { conversionFixture } from "./conversion-node-fixture.mjs";
 import { discoveryFixture } from "./discovery-node-fixture.mjs";
 import { scratchRootFixture } from "./scratch-root-node-fixture.mjs";
+import { chatForkFixture } from "./chat-fork-node-fixture.mjs";
 console.error(JSON.stringify({ event: "repository-fixture.database.opening" }));
 const database = await connectDatabase(readServerConfig());
 console.error(JSON.stringify({ event: "repository-fixture.database.ready" }));
@@ -41,6 +42,14 @@ try {
           consoleTrace,
         );
         value = { result: value, trace: consoleTrace };
+      } else if (request.op.startsWith("fork-")) {
+        value = await chatForkFixture(
+          database.repository,
+          request,
+          consoleTrace,
+          (statement) =>
+            database.repository.projects.database.execute(sql.raw(statement)),
+        );
       } else if (request.op.startsWith("scratch-")) {
         value = await scratchRootFixture(
           database.repository.standaloneChatRootJobs,
@@ -855,6 +864,19 @@ try {
         JSON.stringify({
           id: request.id,
           rejected: true,
+          ...(request.op.startsWith("fork-")
+            ? {
+                trace: consoleTrace,
+                ...(error.constructor.name === "ExecutionLaneConflictError"
+                  ? { forkError: error.constructor.name }
+                  : {}),
+                ...(error.cause?.code
+                  ? {
+                      duplicateMessage: /unique|duplicate/i.test(error.message),
+                    }
+                  : {}),
+              }
+            : {}),
           ...((request.op === "sql" ||
             request.op.startsWith("project-surface-") ||
             request.op.startsWith("discovery-") ||
@@ -863,7 +885,8 @@ try {
             request.op.startsWith("document-") ||
             request.op.startsWith("workspace-") ||
             request.op.startsWith("layout-") ||
-            request.op.startsWith("scratch-")) &&
+            request.op.startsWith("scratch-") ||
+            request.op.startsWith("fork-")) &&
           error.cause?.code
             ? { databaseCode: error.cause.code }
             : {}),
