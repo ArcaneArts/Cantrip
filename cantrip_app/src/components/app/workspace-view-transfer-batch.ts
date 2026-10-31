@@ -1,4 +1,8 @@
 import {
+  validateWorkspacePanelTransfer,
+  type WorkspacePanelTransfer,
+} from "./workspace-panel-transfer";
+import {
   prepareExplorerTransferBatch,
   stageExplorerTransferBatch,
   type ExplorerTransferEntry,
@@ -69,6 +73,7 @@ export function stageWorkspaceViewTransferBatch(
   browsers: readonly Omit<BrowserTransferEntry, "lifecycle">[] = [],
   chats: readonly ChatTransferOwner[] = [],
   desktops: readonly RemoteDesktopTransferOwner[] = [],
+  panels: readonly WorkspacePanelTransfer[] = [],
 ) {
   const editorStates = stageExplorerTransferBatch(bytes, editors);
   const payload = JSON.parse(
@@ -152,12 +157,27 @@ export function stageWorkspaceViewTransferBatch(
       state: parseRemoteDesktopViewState(matches[0].state, expected),
     };
   });
+  const incomingPanels: unknown = payload.panels ?? [];
+  if (!Array.isArray(incomingPanels) || incomingPanels.length !== panels.length)
+    throw new Error("Invalid panel transfer batch.");
+  const panelStates = panels.map((expected) => {
+    if (ids.has(expected.tabId))
+      throw new Error("Duplicate transfer tab identity.");
+    ids.add(expected.tabId);
+    const matches = incomingPanels.filter(
+      (item) =>
+        item && typeof item === "object" && item.tabId === expected.tabId,
+    );
+    if (matches.length !== 1) throw new Error("Invalid panel transfer batch.");
+    return validateWorkspacePanelTransfer(matches[0], expected);
+  });
   return {
     editors: editorStates,
     terminals: terminalStates,
     browsers: browserStates,
     chats: chatStates,
     desktops: desktopStates,
+    panels: panelStates,
   };
 }
 
@@ -168,6 +188,7 @@ export function prepareWorkspaceViewTransferBatch(
   browsers: readonly BrowserTransferEntry[] = [],
   chats: readonly ChatTransferEntry[] = [],
   desktops: readonly RemoteDesktopTransferEntry[] = [],
+  panels: readonly WorkspacePanelTransfer[] = [],
 ) {
   const entries = terminals.map((entry) => ({ ...entry }));
   const browserEntries = browsers.map((entry) => ({ ...entry }));
@@ -185,6 +206,12 @@ export function prepareWorkspaceViewTransferBatch(
       throw new Error("Duplicate transfer tab identity.");
     ids.add(entry.tabId);
   }
+  const panelStates = panels.map((panel) => {
+    if (!panel.tabId || ids.has(panel.tabId))
+      throw new Error("Duplicate transfer tab identity.");
+    ids.add(panel.tabId);
+    return validateWorkspacePanelTransfer(panel, panel);
+  });
   const editorBatch = prepareExplorerTransferBatch(editors);
   const releases: (() => void)[] = [];
   const retired = new Set<string>();
@@ -292,6 +319,7 @@ export function prepareWorkspaceViewTransferBatch(
           browsers: browserStates,
           chats: chatStates,
           desktops: desktopStates,
+          panels: panelStates,
         }),
       );
     },

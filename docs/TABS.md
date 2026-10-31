@@ -180,6 +180,14 @@ windows and generations, and message purpose. Editor, terminal, browser, chat,
 and remote-desktop state have adapters. A handoff must not create concurrent
 interactive renderers of the transferred view.
 
+Tasks, built-in Git/GitHub tools, and entity-backed History, Graph, Issues, Pull
+Requests, and Actions panels also support tab and whole-pane pop-out/return.
+Their resource identities and saved built-in worktree state are checked against
+the authorized reservation, then rebuilt from committed workspace ownership.
+Run configuration output uses the same workspace-backed panel path; it does not
+require an interactive PTY adapter or restart the worker's run. Mixed panes keep
+live editor/runtime snapshots in the same protected transfer envelope.
+
 Closing a popout tab closes only that tab. Closing its last tab closes the empty
 native window. Closing the native window instead returns its surviving panes
 before destruction. Failed return keeps the window/state recoverable. Closed

@@ -1,3 +1,8 @@
+import {
+  isWorkspacePanelResource,
+  workspacePanelTransfer,
+  type WorkspacePanelTransfer,
+} from "./workspace-panel-transfer";
 import { workspacePaneViews } from "@cantrip/protocol";
 import type { ExplorerLifecycleActions } from "@/components/explorer/explorer-view";
 import type { ExplorerTransferEntry } from "@/components/explorer/explorer-transfer-batch";
@@ -24,8 +29,8 @@ import { focusWorkspaceNativeWindow } from "@/lib/desktop-popout";
 import type { WorkspaceCommandClient } from "@/lib/workspace-command-client";
 import { detachWorkspaceViews } from "@/lib/workspace-transfer-source";
 
-/** Source adapter for document-backed, terminal, and browser surfaces. Other live surfaces must
- * supply their own transfer adapters before they can use this path. */
+/** Transfer a complete pane or one view, preserving live runtime handoffs while
+ * allowing workspace-backed panels to rebuild from their committed placement. */
 export async function detachWorkspaceEditors(
   input: {
     controller: WorkspaceCommandClient;
@@ -85,11 +90,27 @@ export async function detachWorkspaceEditors(
         const browserEntries: BrowserTransferEntry[] = [];
         const chatEntries: ChatTransferEntry[] = [];
         const desktopEntries: RemoteDesktopTransferEntry[] = [];
+        const panels: WorkspacePanelTransfer[] = [];
         for (const tabId of tabIds) {
           const tab = pane
             ? workspacePaneViews(pane).find(({ id }) => id === tabId)
             : undefined;
           const surface = input.surfaces.get(tabId);
+          if (tab && isWorkspacePanelResource(tab.resource)) {
+            panels.push(workspacePanelTransfer(tab, layout.projectId));
+            continue;
+          }
+          if (
+            tab?.resource.kind === "entity" &&
+            tab.resource.definitionId === "project.terminal" &&
+            surface?.kind === "terminal" &&
+            surface.entity.kind === "run-configuration" &&
+            surface.entity.id === tab.resource.resourceId &&
+            surface.entity.projectId === layout.projectId
+          ) {
+            panels.push(workspacePanelTransfer(tab, layout.projectId));
+            continue;
+          }
           if (
             !tab ||
             tab.resource.kind !== "entity" ||
@@ -220,6 +241,7 @@ export async function detachWorkspaceEditors(
           browserEntries,
           chatEntries,
           desktopEntries,
+          panels,
         );
         return {
           capture: batch.captureBytes,

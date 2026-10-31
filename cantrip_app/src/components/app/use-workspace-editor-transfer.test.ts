@@ -143,7 +143,7 @@ async function mount(returning = false) {
       vi
         .mocked(controller.subscribe)
         .mock.calls.forEach(([listener]) => listener()),
-    restore: vi.mocked(startWorkspaceTransferDestination).mock.calls[0]![0]
+    restore: vi.mocked(startWorkspaceTransferDestination).mock.calls.at(-1)![0]
       .restore,
   };
 }
@@ -692,5 +692,108 @@ it("reannounces readiness for a late source subscriber only while the reservatio
   } finally {
     await act(async () => f.renderer.unmount());
     vi.useRealTimers();
+  }
+});
+
+it.each([
+  "project.tasks",
+  "git.history",
+  "git.graph",
+  "github.issues",
+  "github.pull-requests",
+  "github.actions",
+  "project.git-history",
+  "project.git-graph",
+  "project.github-issues",
+  "project.github-pull-requests",
+  "project.github-actions",
+])(
+  "restores workspace-backed %s panels for detach and return",
+  async (definitionId) => {
+    for (const returning of [false, true]) {
+      const f = await mount(returning);
+      const builtin =
+        !definitionId.startsWith("project.git-") &&
+        !definitionId.startsWith("project.github-");
+      const resource = builtin
+        ? { kind: "builtin", definitionId }
+        : { kind: "entity", definitionId, resourceId: "panel-entity" };
+      const builtInState = builtin
+        ? { definitionId, worktreeId: "tree" }
+        : null;
+      Object.assign(f.layout.windows[0]!.panes[0]!.tabs[0]!, {
+        resource,
+        builtInState,
+      });
+      vi.mocked(stageExplorerTransferBatch).mockReturnValue([]);
+      const payload = new TextEncoder().encode(
+        JSON.stringify({
+          version: 1,
+          editors: [],
+          panels: [
+            { tabId: "tab", projectId: "project", resource, builtInState },
+          ],
+        }),
+      );
+      try {
+        await act(async () => {
+          await f.restore(payload);
+        });
+        expect(f.onError).not.toHaveBeenCalled();
+        expect(getChats).not.toHaveBeenCalled();
+        expect(getTerminals).not.toHaveBeenCalled();
+        expect(f.value().incomingExplorerViews).toEqual([]);
+        expect(f.value().incomingTerminalViews).toEqual([]);
+        f.layout.pendingTransfers = [];
+        f.layout.windows[0]!.id = "destination";
+        await act(async () => f.notify());
+        expect(f.layout.windows[0]!.panes[0]!.tabs[0]!.resource).toEqual(
+          resource,
+        );
+      } finally {
+        await act(async () => f.renderer.unmount());
+      }
+    }
+  },
+);
+
+it("restores Run output without staging it as an interactive terminal", async () => {
+  const f = await mount();
+  const resource = {
+    kind: "entity",
+    definitionId: "project.terminal",
+    resourceId: "runtime",
+  };
+  Object.assign(f.layout.windows[0]!.panes[0]!.tabs[0]!, {
+    resource,
+    builtInState: null,
+  });
+  vi.mocked(getTerminals).mockResolvedValue([
+    { id: "runtime", projectId: "project", kind: "run-configuration" },
+  ] as never);
+  vi.mocked(stageExplorerTransferBatch).mockReturnValue([]);
+  const payload = new TextEncoder().encode(
+    JSON.stringify({
+      version: 1,
+      editors: [],
+      panels: [
+        { tabId: "tab", projectId: "project", resource, builtInState: null },
+      ],
+    }),
+  );
+  try {
+    await act(async () => {
+      await f.restore(payload);
+    });
+    expect(f.value().incomingTerminalViews).toEqual([]);
+    expect(getTerminals).toHaveBeenCalledWith("project");
+    vi.mocked(getTerminals).mockResolvedValue([
+      { id: "runtime", projectId: "project", kind: "shell" },
+    ] as never);
+    await expect(f.restore(payload)).rejects.toThrow(
+      "Invalid terminal transfer batch",
+    );
+  } finally {
+    await act(async () => f.renderer.unmount());
   }
 });

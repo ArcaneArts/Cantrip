@@ -1,3 +1,7 @@
+import {
+  isWorkspacePanelResource,
+  workspacePanelTransfer,
+} from "./workspace-panel-transfer";
 import { workspacePaneViews } from "@cantrip/protocol";
 import {
   useEffect,
@@ -319,8 +323,12 @@ export function useWorkspaceEditorTransfer({
             ({ resource }) =>
               resource.definitionId === "project.remote-desktop",
           );
+          const panelTabs = tabs.filter(({ resource }) =>
+            isWorkspacePanelResource(resource),
+          );
           if (
-            editorTabs.length +
+            panelTabs.length +
+              editorTabs.length +
               terminalTabs.length +
               browserTabs.length +
               chatTabs.length +
@@ -407,7 +415,25 @@ export function useWorkspaceEditorTransfer({
               },
             };
           });
-          const expectedTerminals = terminalTabs.map((tab) => {
+          const panels = panelTabs.map((tab) =>
+            workspacePanelTransfer(tab, layout.projectId),
+          );
+          const runtimeTerminalTabs = terminalTabs.filter((tab) => {
+            const resource = tab.resource;
+            const terminal =
+              resource.kind === "entity"
+                ? terminals.find(({ id }) => id === resource.resourceId)
+                : undefined;
+            if (
+              terminal?.projectId === layout.projectId &&
+              terminal.kind === "run-configuration"
+            ) {
+              panels.push(workspacePanelTransfer(tab, layout.projectId));
+              return false;
+            }
+            return true;
+          });
+          const expectedTerminals = runtimeTerminalTabs.map((tab) => {
             const resource = tab.resource;
             const entity =
               resource.kind === "entity"
@@ -484,6 +510,7 @@ export function useWorkspaceEditorTransfer({
             expectedBrowsers,
             expectedChats,
             expectedDesktops,
+            panels,
           );
           const explorerStates = new Map<string, ExplorerTransferState>();
           const codeStates = new Map<string, ExplorerTransferState>();
