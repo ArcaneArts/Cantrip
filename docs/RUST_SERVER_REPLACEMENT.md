@@ -12,6 +12,13 @@ feature set.
 
 Status: **implementation in progress; not a deployable replacement**.
 
+The production logical-completion milestone's `pnpm check` exited 1 with 1,662
+server tests passing, one failing and 57 skipped. The same provider-pooling
+assertion at `local-foundation.test.ts:7218` fails in a fresh focused run on clean
+Primary `75e4b68f7`. All 41 Rust library tests, strict all-target Clippy and a
+release-mode library check pass. Reports use
+`.qa/rust-server/execution-completion-*`; the broad check is not green.
+
 The queue runtime milestone's fresh `pnpm check` exited 1 with 1,662 server
 tests passing, one failing and 57 skipped. The provider-pooling assertion at
 `local-foundation.test.ts:7218` also fails in a fresh focused run on clean
@@ -88,6 +95,35 @@ delivery and a five-second defer after an actual worker rejection. Product
 registration still requires the real GUI dispatcher; no production no-op
 dispatch is supplied.
 
+Logical completion delivery is now registered in the production Rust server.
+It starts with the server, reads up to 64 due closures, uses eight independent
+workers, and retries at the Source exponential delay capped at 30 seconds. The
+next timer starts after the current sweep finishes. Shutdown stops admission
+before closing the worker bridge and drains owned delivery before the database.
+Exact owner, worker, Chat, root and generation identities fence acknowledgment
+and retry writes; private worker/SQL errors remain outside the warning payload.
+
+Thirty-one scenarios execute the unchanged Node completion service and compare
+coalescing, concurrency, retry clocks, timer behavior and shutdown races. Real
+production entrypoints and the unchanged worker transport pass all nine
+database/authentication combinations: worker rejection retries without user or
+reconnect input, successful acknowledgment deletes the durable row, shutdown
+retains an unresolved root, and restart independently redelivers it. Shared
+PostgreSQL additionally passes Node-to-Rust and Rust-to-Node restart handoff in
+every authentication mode, preserving the generation and server identity.
+Worker acknowledgment outcomes are controlled; complete native GUI/worker
+execution remains required.
+
+The native `finishManagedGui` equivalent commits logical closure before sending
+the exact worker release and preserves the outbox if that acknowledgment fails.
+Nineteen added repository cases per backend include a worker-side read proving
+the closure committed before release, actual acknowledgment/closure SQL faults,
+replay, and generation rejection. The surrounding PGlite corpus retains all
+previous cases and passes 1,569 comparisons. Opt-in persistence observations
+follow the real SQL result; native observations are absent from release builds.
+Full GUI turn dispatch, receipt HTTP and canonical history composition remain
+unfinished.
+
 PR #2384's Windows native command job failed its first fresh GUI admission on
 the original 1 MiB fixture thread with stack overflow (`3221225725`). The
 `native_stack_diagnostic` workflow input runs that same repository suite under
@@ -111,6 +147,11 @@ pass locally, with no cases removed or assertions changed. Windows run
 `41229647423` now passes the same 1 MiB admission workload (1,550 cases, 1,345
 snapshots and 10 reopens) and all 431 target cases under GDB. Full Windows
 platform acceptance remains pending beyond those two suites.
+
+The production completion milestone's Windows diagnostic `41235358597` also
+passes the original 1 MiB fixture thread: 1,569 admission cases, 1,354 snapshots,
+10 reopens and all 431 target cases. The retained GDB logs report normal exits.
+This focused diagnostic does not run the complete platform matrix.
 
 Restart recovery deliberately suspends existing execution lanes. The HTTP
 fixtures therefore admit and dispatch through real routes after server startup;

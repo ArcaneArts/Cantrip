@@ -90,6 +90,8 @@ pub struct AuthService {
     pub worktrees: Arc<crate::projects::worktrees::Service>,
     pub run_configuration_observations: Arc<crate::run_configurations::observations::Service>,
     pub managed_console: Arc<crate::chats::managed_console::ManagedConsole>,
+    pub logical_completion_delivery:
+        Arc<crate::native_commands::runtime::logical_delivery::LogicalDelivery>,
     rate_limit: Mutex<AuthRateLimiter>,
 }
 
@@ -306,6 +308,11 @@ impl AuthService {
             model_routing.clone(),
             workers.commands.clone(),
         );
+        let logical_completion_delivery =
+            crate::native_commands::runtime::logical_delivery::LogicalDelivery::new(
+                repository.database.clone(),
+                workers.commands.clone(),
+            );
         let quotas = workers.relay_quotas.clone();
         let broker = crate::tunnels::broker::Broker::new(crate::tunnels::broker::Options {
             consume: Arc::new(move |owner, worker, bytes| {
@@ -377,6 +384,7 @@ impl AuthService {
             transport_metrics: Arc::new(Default::default()),
             model_routing,
             managed_console,
+            logical_completion_delivery,
             project_operations,
             worktrees,
             run_configuration_observations,

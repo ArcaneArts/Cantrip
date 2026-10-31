@@ -7,6 +7,11 @@ use cantrip_server::{
 use futures::FutureExt;
 use std::sync::Arc;
 pub async fn run(database: Arc<Database>, input: &Value) -> Result<Value> {
+    if input["op"] == "native-command-logical-managed-finish" {
+        return super::managed_gui_finish::run(database, input)
+            .boxed()
+            .await;
+    }
     let repository = Repository::new(database.clone());
     let owner = input["owner"].as_str().context("Command fixture owner")?;
     let worker = input["worker"].as_str().unwrap_or("");

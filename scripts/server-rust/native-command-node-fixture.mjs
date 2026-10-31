@@ -13,8 +13,11 @@ import { queuedPromptFixture } from "./queued-prompt-node-fixture.mjs";
 import { managedQueueFixture } from "./managed-queue-node-fixture.mjs";
 import { nativeEventFixture } from "./native-event-node-fixture.mjs";
 import { interactionFixture } from "./agent-interaction-node-fixture.mjs";
+import { managedGuiFinishFixture } from "./managed-gui-finish-node-fixture.mjs";
 
 export async function nativeCommandFixture(repository, input) {
+  if (input.op === "native-command-logical-managed-finish")
+    return managedGuiFinishFixture(repository, input);
   if (input.op === "native-command-interaction")
     return interactionFixture(repository, input);
   const { owner, worker, operation, generation, chat } = input;

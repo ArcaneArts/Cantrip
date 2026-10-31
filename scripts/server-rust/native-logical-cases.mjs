@@ -6,6 +6,7 @@ import { runLogicalCompletionCases } from "./native-logical-completion-cases.mjs
 import { runLogicalOutcomeCases } from "./native-logical-outcome-cases.mjs";
 import { runTurnObservationCases } from "./native-turn-observation-cases.mjs";
 import { runLogicalQueueCases } from "./native-logical-queue-cases.mjs";
+import { runManagedGuiFinishCases } from "./managed-gui-finish-cases.mjs";
 export async function runLogicalCases(h) {
   const { reset, seed, observe, snapshot, command } = h;
   const session = {
@@ -98,4 +99,5 @@ export async function runLogicalCases(h) {
   await runLogicalQueueCases(helpers);
   await runLogicalOutcomeCases(helpers);
   await runTurnObservationCases(helpers);
+  await runManagedGuiFinishCases(helpers);
 }

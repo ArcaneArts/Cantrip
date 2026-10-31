@@ -25,6 +25,8 @@ mod execution_lane_rest;
 mod execution_lanes;
 #[path = "support/file_documents.rs"]
 mod file_documents;
+#[path = "support/managed_gui_finish.rs"]
+mod managed_gui_finish;
 #[path = "support/managed_queue.rs"]
 mod managed_queue;
 #[path = "support/native_commands.rs"]

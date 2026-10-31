@@ -8293,7 +8293,10 @@
         "cantrip_server_rs/src/native_commands/runtime/receipts.rs",
         "cantrip_server_rs/src/native_commands/runtime/gui_queue.rs",
         "cantrip_server_rs/src/native_commands/runtime/delivery.rs",
-        "cantrip_server_rs/src/native_commands/runtime/delivery/native.rs"
+        "cantrip_server_rs/src/native_commands/runtime/delivery/native.rs",
+        "cantrip_server_rs/src/native_commands/runtime/logical_delivery.rs",
+        "cantrip_server_rs/src/native_commands/runtime/logical_delivery/native.rs",
+        "cantrip_server_rs/src/native_commands/runtime/finish_gui.rs"
       ],
       "evidence": [
         "cantrip_server_rs/tests/native_command_contracts.rs",
@@ -8324,7 +8327,12 @@
         "scripts/server-rust/queue-delivery-oracle.mjs",
         "scripts/server-rust/queue-delivery-cases.mjs",
         "scripts/server-rust/queue-delivery-node-fixture.mjs",
-        "cantrip_server_rs/examples/support/queue_delivery.rs"
+        "cantrip_server_rs/examples/support/queue_delivery.rs",
+        "scripts/server-rust/completion-delivery-oracle.mjs",
+        "scripts/server-rust/completion-delivery-cases.mjs",
+        "cantrip_server_rs/src/native_commands/runtime/logical_delivery/tests.rs",
+        "scripts/server-rust/completion-http-compatibility.mjs",
+        "scripts/server-rust/managed-gui-finish-cases.mjs"
       ],
       "implemented": [
         "Durable native command admission, immutable receipts, preparation, dispatch, settlement, recovery, settings and permission synchronization, observed turns, logical input continuations and completion delivery records.",
@@ -8337,12 +8345,31 @@
         "Permission-transition, pending, continuation and settings-evidence HTTP routes preserve their distinct validation/errors, post-commit settings invalidation, exact settings binding checks and activation fences. Three storage and authentication modes compare approval registration/consumption, applied permission revision and actual continuation to a new activation; stored opaque requests/evidence decrypt with their original worker AAD and keyed digests.",
         "Native receipt notification/wait primitive preserves notices during reads, exact 750ms durable polling, original UTF16 Chat keys, completed-read/abort ordering and subscription cleanup. Fifteen scenarios execute the unchanged Node waiter; the native public method reads the real managed queue repository. HTTP dispatch consumers remain separate.",
         "Native GUI queue preparation/mutation/lookup use real snapshot, control, retained encrypted input and mutation repositories. Twenty GUI cases per database preserve original JSON digests, nullish options, resume/revision behavior, immutable rejected receipts, deleted-input lookup, administrative input fences and tenant/placement rejection. No receipt or GUI dispatch HTTP consumer is stubbed.",
-        "Native queue delivery/recovery service preserves independent recovery, coalesced sweeps, eight workers per group, publish/request/acknowledge ordering, durable defer, early Promise.all failure without cancelling other workers, and permanent stop. Twenty-four scenarios compare the unchanged Node service. The real three-storage-mode/worker-admission/wire-bridge fixture verifies acknowledgment, no repeated delivery and five-second defer after actual worker rejection."
+        "Native queue delivery/recovery service preserves independent recovery, coalesced sweeps, eight workers per group, publish/request/acknowledge ordering, durable defer, early Promise.all failure without cancelling other workers, and permanent stop. Twenty-four scenarios compare the unchanged Node service. The real three-storage-mode/worker-admission/wire-bridge fixture verifies acknowledgment, no repeated delivery and five-second defer after actual worker rejection.",
+        "Production logical completion delivery starts with Rust, retries durable due rows independently of GUI/reconnect input, preserves exact root/generation fencing, stops before bridge close and drains before database close.31 Source scenarios; all9 storage/authentication combinations through real main/worker transport; held-reply shutdown and restart; shared PostgreSQL Node-to-Rust/Rust-to-Node handoff in all3 authentication modes. Native GUI finish commits before worker release and keeps failed acknowledgment in the outbox;19 additional repository cases per store exercise actual SQL faults and generation rejection. Full GUI runtime/history consumers remain unfinished."
       ],
       "remaining": [
         "Protected settings/default HTTP flows use the unchanged worker transport and production encryption helpers with controlled native RPC. Internal admission/preparation/dispatch/event HTTP now uses real durable commands; complete GUI/native runtime execution/history integration and existing full app/worker acceptance remain required.",
         "Supported-platform acceptance, full app/worker native execution, Redis/multi-instance coordination, migration/post-write rollback, packaging and default cutover remain unfinished.",
         "Receipt HTTP, production queue notification/delivery/wake/recovery registration, GUI turn dispatch and complete history integration remain required. Native receipt waiting, GUI queue mutation preparation and the delivery service now have Source parity evidence; product consumers still require the real GUI dispatcher. Canonical history ingestion remains separate; no fake canonical history writers or production no-op dispatch are used."
+      ]
+    },
+    "nativeLogicalCompletionDelivery": {
+      "status": "implemented-pending-platform-acceptance",
+      "implementation": [
+        "cantrip_server_rs/src/native_commands/runtime/logical_delivery.rs",
+        "cantrip_server_rs/src/native_commands/runtime/logical_delivery/native.rs",
+        "cantrip_server_rs/src/native_commands/runtime/finish_gui.rs",
+        "cantrip_server_rs/src/auth/service.rs",
+        "cantrip_server_rs/src/main.rs"
+      ],
+      "evidence": [
+        "scripts/server-rust/completion-http-compatibility.mjs",
+        "scripts/server-rust/completion-delivery-oracle.mjs",
+        "scripts/server-rust/managed-gui-finish-cases.mjs"
+      ],
+      "remaining": [
+        "Linux/macOS/Windows matrix against this milestone source is required. Complete product GUI/native execution, canonical history and full replacement acceptance remain separate requirements."
       ]
     }
   },
