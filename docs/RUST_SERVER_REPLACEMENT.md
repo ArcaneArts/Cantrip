@@ -12,6 +12,17 @@ feature set.
 
 Status: **implementation in progress; not a deployable replacement**.
 
+The canonical-history milestone's fresh `pnpm check` exited 1 with 1,662
+server tests passing, one failing and 57 skipped. The provider-pooling assertion
+at `local-foundation.test.ts:7218` also fails in a fresh focused run on clean
+Primary `6e0fe9bc4`. Root formatting fails on 12 unchanged tracked files; a
+fresh Primary run reports those same 12 plus 196 generated CUA target artifacts.
+The initial worker command expanded into the full suite and timed out one
+large-history encryption test; that exact case subsequently passed on this
+branch and clean Primary with its original timeout and assertions. Focused
+worker/server/app checks and the app build pass. These observations do not make
+the broad check green. Evidence uses `.qa/rust-server/canonical-history-*`.
+
 The production logical-completion milestone's `pnpm check` exited 1 with 1,662
 server tests passing, one failing and 57 skipped. The same provider-pooling
 assertion at `local-foundation.test.ts:7218` fails in a fresh focused run on clean
@@ -40,6 +51,55 @@ Clippy passed. Root Prettier checking still fails on 12 unchanged files; the
 same 12 failures were reproduced on clean Primary. These results do not make
 the broad checks green. Logs and exit records use the
 `.qa/rust-server/native-kernel-*` prefix and are preserved with milestone evidence.
+
+## Canonical native history
+
+The Rust history domain owns worker-authenticated binding open, item resolution,
+ingestion, and the three pinned archive endpoints. Historical bindings preserve
+the original worker and placement without acquiring execution authority.
+Canonical reservations retain proven command, queue, Goal, observed-input and
+output aliases, original protected GUI input, attachment references and child
+thread ancestry.
+
+Ingestion commits the actual protected messages, attachment replicas, turn
+headers, usage projection, immutable receipt, stream checkpoint and publication
+record in one transaction. Canonical revision conflicts retain an immutable
+rejection after rolling back the attempted writer savepoint. Retrying an
+accepted record returns its original receipt. Archive pages retain complete
+endpoint-encrypted item evidence, every bound writer's turn candidates, accepted
+source batches and legacy missing-source markers; pagination pins their shared
+committed stream heads.
+
+Confirmed chat-message invalidations use the durable publication outbox.
+Scheduling starts with the server, retries independently of worker input and
+stops before live transport teardown. Shutdown drains owned publication work
+before closing the database. Acknowledgment and defer recheck the binding,
+worker, chat and owner instead of consuming unrelated work.
+
+Local real HTTP comparisons pass for native PGlite, private PostgreSQL and
+external PostgreSQL in anonymous, password and account modes. They use the
+unchanged worker client and encryption/recovery helpers, decrypt complete
+archived evidence, compare immutable responses, exercise a real SQL failure on
+publication acknowledgment and verify durable retry and restart recovery.
+External PostgreSQL also preserves accepted history and pending publication
+through Node-to-Rust and Rust-to-Node handoffs. Reports use
+`.qa/rust-server/canonical-history-http-*`.
+
+The complete repository corpus also passes all three storage modes, including
+publication identity fences, due ordering, limits, attempts, mismatched legacy
+owners, acknowledgment/replay and restart. All 42 Rust library tests pass,
+including 62 publication lifecycle scenarios from the unchanged Node service.
+Twenty additional PostgreSQL ingestion races cover all four same/mixed runtime
+pairings. Actual SQL lock witnesses force overlapping writes before release;
+accepted replay, receipt mismatch, canonical CAS, immutable rejection replay
+and competing streams preserve exactly one canonical message and receipt.
+Strict all-target Clippy and a release-mode library check pass. The focused
+worker/server/app worktree suites and app build pass.
+
+This domain still requires current-head supported-platform acceptance. Full
+GUI/native dispatch, receipt HTTP consumers, Tasks/Goals/scheduling and the
+remaining replacement requirements continue separately. Normal app and server
+builds still launch Node; the worker remains Node by design.
 
 ## Native command kernel and protected internal APIs
 

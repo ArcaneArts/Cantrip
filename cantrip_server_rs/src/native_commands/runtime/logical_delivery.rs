@@ -21,7 +21,7 @@ use tokio::sync::{Notify, oneshot, watch};
 type Sweep = Shared<BoxFuture<'static, ()>>;
 type Reporter = Arc<dyn Fn(anyhow::Error, Option<Value>) + Send + Sync>;
 type Clock = Arc<dyn Fn() -> i64 + Send + Sync>;
-trait Backend: Send + Sync {
+pub(crate) trait Backend: Send + Sync {
     fn pending(&self) -> BoxFuture<'_, Result<Vec<Value>>>;
     fn request(&self, entry: Value) -> BoxFuture<'_, Result<()>>;
     fn acknowledge(&self, entry: Value) -> BoxFuture<'_, Result<()>>;
@@ -45,6 +45,7 @@ pub struct LogicalDelivery {
     stop: watch::Sender<bool>,
     changed: Notify,
 }
+pub(crate) use LogicalDelivery as DurableDelivery;
 struct Work {
     service: Arc<LogicalDelivery>,
     id: u64,
@@ -65,7 +66,7 @@ impl Drop for Work {
     }
 }
 impl LogicalDelivery {
-    fn with_backend(
+    pub(crate) fn with_backend(
         backend: Arc<dyn Backend>,
         report: Reporter,
         clock: Clock,

@@ -6,10 +6,12 @@ import { WorkerBridge } from "../../cantrip_server/src/workers/bridge.ts";
 import { installWorkerIngressFixture } from "./worker-ingress-node-fixture.mjs";
 import { startOperationClock } from "./operation-clock.mjs";
 import { observeCompletionPersistence } from "./completion-persistence-observer.mjs";
+import { observeHistoryPersistence } from "./history-persistence-observer.mjs";
 
 const config = readServerConfig();
 const database = await connectDatabase(config);
 observeCompletionPersistence(database);
+observeHistoryPersistence(database);
 const drainAuthNotifications = process.argv.includes(
   "--drain-auth-notifications",
 );

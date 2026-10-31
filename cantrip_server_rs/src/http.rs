@@ -31,6 +31,7 @@ mod middleware;
 mod native_admission;
 mod native_coordination;
 mod native_events;
+mod native_history;
 mod native_settings;
 mod on_response;
 mod pane_layouts;
@@ -163,6 +164,7 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(native_settings::routes())
         .merge(native_events::routes())
         .merge(native_admission::routes())
+        .merge(native_history::routes())
         .merge(native_coordination::routes())
         .merge(github_import::routes())
         .merge(github_conversion::routes())

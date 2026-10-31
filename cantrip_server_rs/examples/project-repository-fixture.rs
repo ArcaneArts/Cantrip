@@ -33,6 +33,8 @@ mod managed_queue;
 mod native_commands;
 #[path = "support/native_events.rs"]
 mod native_events;
+#[path = "support/native_history.rs"]
+mod native_history;
 #[path = "support/native_logical.rs"]
 mod native_logical;
 #[path = "support/native_settings.rs"]
@@ -177,6 +179,13 @@ async fn run() -> Result<()> {
                     reply["historyError"] = Value::String(error.code.into());
                     reply["historyStatus"] = Value::from_serialize(&error.status_code);
                 }
+                if let Some(error) =
+                    error.downcast_ref::<cantrip_server::native_history::BatchRejection>()
+                {
+                    reply["historyError"] = error.rejection["code"].clone();
+                    reply["historyStatus"] = Value::from_serialize(&409);
+                    reply["rejection"] = error.rejection.clone();
+                }
                 if request["op"]
                     .as_str()
                     .is_some_and(|op| op.starts_with("fork-"))
@@ -284,6 +293,7 @@ async fn run() -> Result<()> {
                         || op.starts_with("fork-")
                         || op.starts_with("message-")
                         || op.starts_with("native-command-")
+                        || op.starts_with("native-history-")
                 }) {
                     for cause in error.chain() {
                         if let Some(pg) = cause.downcast_ref::<tokio_postgres::Error>()

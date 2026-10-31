@@ -359,54 +359,69 @@
     "taskMessageOpaqueContentSchema": 1628,
     "nativeHistoryTurnReadRequestSchema": 8355,
     "nativeHistoryTurnReadResponseSchema": 8361,
+    "nativeHistoryBindingOpenSchema": 8378,
+    "nativeHistoryBindingSchema": 8393,
+    "nativeHistoryResolveSchema": 8401,
+    "nativeHistoryItemMappingSchema": 8440,
+    "nativeHistoryIngestSchema": 8448,
+    "nativeHistoryPreparedBatchSchema": 8453,
+    "nativeHistoryCommitReceiptSchema": 8473,
+    "nativeHistoryBatchRejectionSchema": 8479,
+    "nativeHistoryArchiveReadSchema": 8487,
+    "nativeHistoryArchivePageSchema": 8496,
+    "nativeHistoryTurnArchiveReadSchema": 8508,
+    "nativeHistoryTurnArchivePageSchema": 8513,
+    "nativeHistoryBatchArchiveReadSchema": 8519,
+    "nativeHistoryBatchArchivePageSchema": 8527,
+    "nativeTurnModelAttributionSchema": 1441,
     "chatPlanOpaqueStateSchema": 1706,
-    "nativeSettingsRefreshRequestSchema": 8378,
-    "nativeSettingsUpdateRequestSchema": 8380,
-    "nativeSettingsUpdateReceiptSchema": 8382,
+    "nativeSettingsRefreshRequestSchema": 8535,
+    "nativeSettingsUpdateRequestSchema": 8537,
+    "nativeSettingsUpdateReceiptSchema": 8539,
     "nativeAccountDefaultsRequestSchema": 4594,
-    "nativeAccountDefaultsResponseSchema": 8386,
-    "nativeModelInventoryRequestSchema": 8388,
-    "nativeCommandEventSchema": 8392,
-    "nativePermissionTransitionResolveSchema": 8400,
+    "nativeAccountDefaultsResponseSchema": 8543,
+    "nativeModelInventoryRequestSchema": 8545,
+    "nativeCommandEventSchema": 8549,
+    "nativePermissionTransitionResolveSchema": 8557,
     "cuaPreviewAuthoritySchema": 2146,
-    "nativeModelInventorySchema": 8413,
-    "nativeChatModelInventoryQuerySchema": 8417,
-    "nativeChatModelInventorySchema": 8419,
-    "nativeCommandSessionSchema": 8401,
-    "nativeCommandAdmissionSchema": 8420,
-    "nativeCommandIntentSchema": 8431,
+    "nativeModelInventorySchema": 8570,
+    "nativeChatModelInventoryQuerySchema": 8574,
+    "nativeChatModelInventorySchema": 8576,
+    "nativeCommandSessionSchema": 8558,
+    "nativeCommandAdmissionSchema": 8577,
+    "nativeCommandIntentSchema": 8588,
     "nativeCommandReceiptSchema": 4848,
-    "nativeCommandDispatchSchema": 8460,
-    "nativeCommandContinuationSchema": 8462,
-    "nativePendingRequestSchema": 8477,
-    "nativeSettingsStateSchema": 8481,
-    "nativeSettingsIntentSchema": 8484,
+    "nativeCommandDispatchSchema": 8617,
+    "nativeCommandContinuationSchema": 8619,
+    "nativePendingRequestSchema": 8634,
+    "nativeSettingsStateSchema": 8638,
+    "nativeSettingsIntentSchema": 8641,
     "nativeSettingsBindingSchema": 4587,
     "nativeSettingsReadScopeSchema": 4616,
-    "protectedNativeSettingsSnapshotSchema": 8502,
-    "nativeSettingsVersionSchema": 8504,
-    "nativeSettingsObservationRequestSchema": 8520,
-    "nativeSettingsObservationReceiptSchema": 8522,
-    "nativeSettingsEvidenceSchema": 8524,
-    "nativeSettingsEvidenceResultSchema": 8534,
-    "nativeCommandSettlementSchema": 8539,
-    "nativeCommandTerminalEvidenceSchema": 8567,
+    "protectedNativeSettingsSnapshotSchema": 8659,
+    "nativeSettingsVersionSchema": 8661,
+    "nativeSettingsObservationRequestSchema": 8677,
+    "nativeSettingsObservationReceiptSchema": 8679,
+    "nativeSettingsEvidenceSchema": 8681,
+    "nativeSettingsEvidenceResultSchema": 8691,
+    "nativeCommandSettlementSchema": 8696,
+    "nativeCommandTerminalEvidenceSchema": 8724,
     "queuedPromptOpaqueContentSchema": 5113,
-    "encryptedQueuedPromptSchema": 8570,
-    "nativeTurnRecoveryObservationSchema": 8581,
-    "managedQueueClaimSchema": 8585,
-    "managedQueueReadSchema": 8604,
-    "managedQueueSnapshotSchema": 8606,
-    "managedQueueMutationSchema": 8617,
-    "managedQueueMutateSchema": 8635,
-    "managedQueueMutationResultSchema": 8637,
-    "managedQueueStartReceiptSchema": 8641,
-    "managedQueueStartReceiptResultSchema": 8643,
-    "managedQueueImportSchema": 8646,
-    "managedQueueImportAckSchema": 8652,
-    "managedQueueImportResultSchema": 8659,
-    "managedQueueLookupSchema": 8666,
-    "managedQueueLookupResultSchema": 8668
+    "encryptedQueuedPromptSchema": 8727,
+    "nativeTurnRecoveryObservationSchema": 8738,
+    "managedQueueClaimSchema": 8742,
+    "managedQueueReadSchema": 8761,
+    "managedQueueSnapshotSchema": 8763,
+    "managedQueueMutationSchema": 8774,
+    "managedQueueMutateSchema": 8792,
+    "managedQueueMutationResultSchema": 8794,
+    "managedQueueStartReceiptSchema": 8798,
+    "managedQueueStartReceiptResultSchema": 8800,
+    "managedQueueImportSchema": 8803,
+    "managedQueueImportAckSchema": 8809,
+    "managedQueueImportResultSchema": 8816,
+    "managedQueueLookupSchema": 8823,
+    "managedQueueLookupResultSchema": 8825
   },
   "nodes": [
     {
@@ -49075,9 +49090,874 @@
     { "type": "never", "checks": [] },
     {
       "type": "object",
+      "name": "nativeHistoryBindingOpenSchema",
+      "shape": {
+        "workerId": 8365,
+        "chatId": 8365,
+        "threadId": 8365,
+        "provenance": 8379
+      },
+      "catchall": 8392,
+      "checks": []
+    },
+    {
+      "type": "union",
+      "options": [8380, 8383, 8386, 8389],
+      "discriminator": "kind",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "kind": 8381 },
+      "catchall": 8382,
+      "checks": []
+    },
+    { "type": "literal", "values": ["current"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "kind": 8384,
+        "operationId": 8365,
+        "operationGeneration": 8365
+      },
+      "catchall": 8385,
+      "checks": []
+    },
+    { "type": "literal", "values": ["command"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "kind": 8387, "bindingId": 8365 },
+      "catchall": 8388,
+      "checks": []
+    },
+    { "type": "literal", "values": ["binding"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "kind": 8390, "parentBindingId": 8365 },
+      "catchall": 8391,
+      "checks": []
+    },
+    { "type": "literal", "values": ["child"], "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "nativeHistoryBindingSchema",
+      "shape": {
+        "id": 8365,
+        "chatId": 8365,
+        "workerId": 8365,
+        "threadId": 8365,
+        "projectId": 8365,
+        "worktreeId": 8365,
+        "modelRouteId": 8394,
+        "providerAccountId": 8395,
+        "createdFromOperationId": 8396,
+        "ancestorThreadIds": 8397,
+        "createdAt": 8399
+      },
+      "catchall": 8400,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 8365, "checks": [] },
+    { "type": "nullable", "innerType": 8365, "checks": [] },
+    { "type": "nullable", "innerType": 8365, "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 8398,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 8365,
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 31, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "nativeHistoryResolveSchema",
+      "shape": {
+        "workerId": 8365,
+        "chatId": 8365,
+        "bindingId": 8365,
+        "items": 8402
+      },
+      "catchall": 8439,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 8403,
+      "checks": [{ "check": "max_length", "maximum": 512, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "shape": { "identity": 8404, "association": 8407 },
+      "catchall": 8438,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "nativeHistoryItemIdentitySchema",
+      "shape": {
+        "threadId": 8365,
+        "turnId": 8365,
+        "itemId": 8365,
+        "component": 8365,
+        "identityKind": 8405
+      },
+      "catchall": 8406,
+      "checks": []
+    },
+    { "type": "enum", "values": ["canonical", "legacy"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "union",
+      "options": [8408, 8411, 8414, 8417, 8421, 8424, 8428, 8432, 8435],
+      "discriminator": "kind",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "kind": 8409, "clientUserMessageId": 8365 },
+      "catchall": 8410,
+      "checks": []
+    },
+    { "type": "literal", "values": ["observed-input"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "kind": 8412 },
+      "catchall": 8413,
+      "checks": []
+    },
+    { "type": "literal", "values": ["existing"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "kind": 8415 },
+      "catchall": 8416,
+      "checks": []
+    },
+    { "type": "literal", "values": ["observed-output"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "kind": 8418, "rootTurnId": 8419 },
+      "catchall": 8420,
+      "checks": []
+    },
+    { "type": "literal", "values": ["output"], "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 8365,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "kind": 8422 },
+      "catchall": 8423,
+      "checks": []
+    },
+    { "type": "literal", "values": ["native"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "kind": 8425,
+        "operationId": 8365,
+        "operationGeneration": 8365,
+        "claimId": 8365,
+        "promptRevision": 8426
+      },
+      "catchall": 8427,
+      "checks": []
+    },
+    { "type": "literal", "values": ["queue-goal"], "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "kind": 8429,
+        "operationId": 8365,
+        "operationGeneration": 8365,
+        "claimId": 8365,
+        "promptRevision": 8430,
+        "clientUserMessageId": 8365
+      },
+      "catchall": 8431,
+      "checks": []
+    },
+    { "type": "literal", "values": ["queue-input"], "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "kind": 8433,
+        "operationId": 8365,
+        "operationGeneration": 8365,
+        "clientUserMessageId": 8365
+      },
+      "catchall": 8434,
+      "checks": []
+    },
+    { "type": "literal", "values": ["command-input"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "kind": 8436,
+        "operationId": 8365,
+        "operationGeneration": 8365
+      },
+      "catchall": 8437,
+      "checks": []
+    },
+    { "type": "literal", "values": ["command-output"], "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "nativeHistoryItemMappingSchema",
+      "shape": {
+        "key": 8441,
+        "identity": 8404,
+        "messageId": 8442,
+        "idempotencyKey": 8443,
+        "preservedInput": 8444,
+        "attachments": 8445
+      },
+      "catchall": 8447,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[a-f0-9]{64}$",
+          "flags": "u",
+          "displayPattern": "/^[a-f0-9]{64}$/u"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 1569, "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 8446,
+      "checks": []
+    },
+    { "type": "array", "element": 0, "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "nativeHistoryIngestSchema",
+      "shape": {
+        "workerId": 8365,
+        "chatId": 8365,
+        "bindingId": 8365,
+        "streamId": 8449,
+        "sequence": 8366,
+        "recordId": 8450,
+        "digest": 8451,
+        "previousDigest": 8452,
+        "batch": 8453
+      },
+      "catchall": 8472,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[a-f0-9]{64}$",
+          "flags": "u",
+          "displayPattern": "/^[a-f0-9]{64}$/u"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 8451, "checks": [] },
+    {
+      "type": "object",
+      "name": "nativeHistoryPreparedBatchSchema",
+      "shape": { "items": 8454, "turns": 8466, "snapshot": 8467 },
+      "catchall": 8471,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 8455,
+      "checks": [{ "check": "max_length", "maximum": 512, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "identity": 8404,
+        "revision": 8366,
+        "expectedRevision": 8456,
+        "state": 8457,
+        "order": 8458,
+        "message": 1569,
+        "attachments": 8460,
+        "evidence": 8461
+      },
+      "catchall": 8465,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "native-history-evidence-revision",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 8367,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": ["started", "completed", "unknown"],
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "turn": 8367, "item": 8367, "component": 8367 },
+      "catchall": 8459,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    { "type": "array", "element": 0, "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 8462,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "nativeHistoryItemEvidenceSchema",
+      "shape": {
+        "version": 8463,
+        "bindingId": 8365,
+        "workerId": 8365,
+        "revision": 8366,
+        "content": 53
+      },
+      "catchall": 8464,
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "array",
+      "element": 8364,
+      "checks": [{ "check": "max_length", "maximum": 512, "when": "length" }]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 8468,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "readBarrierSequence": 8367, "complete": 8469 },
+      "catchall": 8470,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "nativeHistoryCommitReceiptSchema",
+      "shape": {
+        "committed": 8474,
+        "streamId": 8475,
+        "sequence": 8366,
+        "recordId": 8476,
+        "digest": 8451,
+        "commitId": 8477
+      },
+      "catchall": 8478,
+      "checks": []
+    },
+    { "type": "literal", "values": [true], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "nativeHistoryBatchRejectionSchema",
+      "shape": {
+        "rejected": 8480,
+        "rejectionId": 8481,
+        "workerId": 8365,
+        "chatId": 8365,
+        "bindingId": 8365,
+        "streamId": 8482,
+        "sequence": 8366,
+        "recordId": 8483,
+        "digest": 8451,
+        "previousDigest": 8484,
+        "payloadDigest": 8451,
+        "code": 8485
+      },
+      "catchall": 8486,
+      "checks": []
+    },
+    { "type": "literal", "values": [true], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 8451, "checks": [] },
+    {
+      "type": "enum",
+      "values": ["item-revision-conflict", "turn-revision-conflict"],
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "nativeHistoryArchiveReadSchema",
+      "shape": {
+        "workerId": 8365,
+        "chatId": 8365,
+        "bindingId": 8365,
+        "limit": 8488,
+        "cursor": 8490,
+        "snapshotId": 8494
+      },
+      "catchall": 8495,
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 8489,
+      "defaultValue": 64,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 1, "inclusive": true },
+        { "check": "less_than", "value": 128, "inclusive": true }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 8491,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 8492, "checks": [] },
+    {
+      "type": "object",
+      "shape": { "snapshotId": 8451, "key": 8451 },
+      "catchall": 8493,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 8451,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "nativeHistoryArchivePageSchema",
+      "shape": {
+        "binding": 8393,
+        "snapshotId": 8451,
+        "items": 8497,
+        "nextCursor": 8506
+      },
+      "catchall": 8507,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 8498,
+      "checks": [{ "check": "max_length", "maximum": 128, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "key": 8451,
+        "identity": 8404,
+        "messageId": 8499,
+        "attachments": 8500,
+        "revision": 8366,
+        "state": 8501,
+        "order": 8502,
+        "evidence": 8504
+      },
+      "catchall": 8505,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "native-history-archive-evidence",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "array", "element": 0, "checks": [] },
+    {
+      "type": "enum",
+      "values": ["started", "completed", "unknown"],
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "turn": 8367, "item": 8367, "component": 8367 },
+      "catchall": 8503,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    { "type": "nullable", "innerType": 8462, "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "nullable", "innerType": 8492, "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "nativeHistoryTurnArchiveReadSchema",
+      "shape": {
+        "workerId": 8365,
+        "chatId": 8365,
+        "bindingId": 8365,
+        "limit": 8488,
+        "snapshotId": 8494,
+        "cursor": 8509
+      },
+      "catchall": 8495,
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 8510,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 8511, "checks": [] },
+    {
+      "type": "object",
+      "shape": { "snapshotId": 8451, "bindingId": 8365, "turnId": 8365 },
+      "catchall": 8512,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "nativeHistoryTurnArchivePageSchema",
+      "shape": {
+        "binding": 8393,
+        "snapshotId": 8451,
+        "turns": 8514,
+        "nextCursor": 8517
+      },
+      "catchall": 8518,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 8515,
+      "checks": [{ "check": "max_length", "maximum": 128, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "shape": { "bindingId": 8365, "workerId": 8365, "turn": 8364 },
+      "catchall": 8516,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    { "type": "nullable", "innerType": 8511, "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "nativeHistoryBatchArchiveReadSchema",
+      "shape": {
+        "workerId": 8365,
+        "chatId": 8365,
+        "bindingId": 8365,
+        "snapshotId": 8494,
+        "cursor": 8520,
+        "limit": 8525
+      },
+      "catchall": 8495,
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 8521,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 8522, "checks": [] },
+    {
+      "type": "object",
+      "shape": { "snapshotId": 8451, "streamId": 8523, "sequence": 8366 },
+      "catchall": 8524,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 8526,
+      "defaultValue": 4,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 1, "inclusive": true },
+        { "check": "less_than", "value": 16, "inclusive": true }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "nativeHistoryBatchArchivePageSchema",
+      "shape": {
+        "binding": 8393,
+        "snapshotId": 8451,
+        "batches": 8528,
+        "nextCursor": 8533
+      },
+      "catchall": 8534,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 8529,
+      "checks": [{ "check": "max_length", "maximum": 16, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "bindingId": 8365,
+        "workerId": 8365,
+        "receipt": 8473,
+        "payloadDigest": 8451,
+        "previousDigest": 8530,
+        "batch": 8531
+      },
+      "catchall": 8532,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 8451, "checks": [] },
+    { "type": "nullable", "innerType": 8453, "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "nullable", "innerType": 8522, "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
       "name": "nativeSettingsRefreshRequestSchema",
       "shape": { "workerId": 4588, "chatId": 4588 },
-      "catchall": 8379,
+      "catchall": 8536,
       "checks": []
     },
     { "type": "never", "checks": [] },
@@ -49085,15 +49965,15 @@
       "type": "object",
       "name": "nativeSettingsUpdateRequestSchema",
       "shape": { "operationId": 4604, "bindingId": 4604, "protectedPatch": 53 },
-      "catchall": 8381,
+      "catchall": 8538,
       "checks": []
     },
     { "type": "never", "checks": [] },
     {
       "type": "object",
       "name": "nativeSettingsUpdateReceiptSchema",
-      "shape": { "operationId": 4604, "submissionId": 8383, "status": 8384 },
-      "catchall": 8385,
+      "shape": { "operationId": 4604, "submissionId": 8540, "status": 8541 },
+      "catchall": 8542,
       "checks": []
     },
     { "type": "nullable", "innerType": 4604, "checks": [] },
@@ -49111,7 +49991,7 @@
         "bindingId": 4597,
         "protectedResult": 53
       },
-      "catchall": 8387,
+      "catchall": 8544,
       "checks": []
     },
     { "type": "never", "checks": [] },
@@ -49119,11 +49999,11 @@
       "type": "object",
       "name": "nativeModelInventoryRequestSchema",
       "shape": {
-        "workerId": 8389,
-        "providerId": 8389,
-        "providerAccountId": 8390
+        "workerId": 8546,
+        "providerId": 8546,
+        "providerAccountId": 8547
       },
-      "catchall": 8391,
+      "catchall": 8548,
       "checks": []
     },
     {
@@ -49133,18 +50013,18 @@
         { "check": "max_length", "maximum": 255, "when": "length" }
       ]
     },
-    { "type": "nullable", "innerType": 8389, "checks": [] },
+    { "type": "nullable", "innerType": 8546, "checks": [] },
     { "type": "never", "checks": [] },
     {
       "type": "object",
       "name": "nativeCommandEventSchema",
       "shape": {
-        "workerId": 8393,
-        "operationId": 8394,
-        "operationGeneration": 8395,
-        "event": 8396
+        "workerId": 8550,
+        "operationId": 8551,
+        "operationGeneration": 8552,
+        "event": 8553
       },
-      "catchall": 8399,
+      "catchall": 8556,
       "checks": []
     },
     {
@@ -49168,7 +50048,7 @@
         { "check": "max_length", "maximum": 255, "when": "length" }
       ]
     },
-    { "type": "pipe", "in": 8397, "out": 8398, "checks": [] },
+    { "type": "pipe", "in": 8554, "out": 8555, "checks": [] },
     {
       "type": "union",
       "options": [
@@ -49195,8 +50075,8 @@
     {
       "type": "object",
       "name": "nativePermissionTransitionResolveSchema",
-      "shape": { "workerId": 4851, "session": 8401, "selectedId": 8410 },
-      "catchall": 8412,
+      "shape": { "workerId": 4851, "session": 8558, "selectedId": 8567 },
+      "catchall": 8569,
       "checks": []
     },
     {
@@ -49204,16 +50084,16 @@
       "name": "nativeCommandSessionSchema",
       "shape": {
         "chatId": 4851,
-        "threadId": 8402,
-        "contextKind": 8403,
-        "projectId": 8404,
+        "threadId": 8559,
+        "contextKind": 8560,
+        "projectId": 8561,
         "placementId": 4851,
-        "modelRouteId": 8405,
-        "providerAccountId": 8406,
-        "runtimeGeneration": 8407,
-        "connectionId": 8408
+        "modelRouteId": 8562,
+        "providerAccountId": 8563,
+        "runtimeGeneration": 8564,
+        "connectionId": 8565
       },
-      "catchall": 8409,
+      "catchall": 8566,
       "checks": []
     },
     { "type": "nullable", "innerType": 4851, "checks": [] },
@@ -49224,7 +50104,7 @@
     { "type": "nullable", "innerType": 4851, "checks": [] },
     { "type": "nullable", "innerType": 4851, "checks": [] },
     { "type": "never", "checks": [] },
-    { "type": "nullable", "innerType": 8411, "checks": [] },
+    { "type": "nullable", "innerType": 8568, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -49237,23 +50117,23 @@
       "type": "object",
       "name": "nativeModelInventorySchema",
       "shape": {
-        "workerId": 8389,
-        "providerId": 8389,
-        "providerAccountId": 8414,
+        "workerId": 8546,
+        "providerId": 8546,
+        "providerAccountId": 8571,
         "providerKind": 4157,
-        "models": 8415
+        "models": 8572
       },
-      "catchall": 8416,
+      "catchall": 8573,
       "checks": []
     },
-    { "type": "nullable", "innerType": 8389, "checks": [] },
+    { "type": "nullable", "innerType": 8546, "checks": [] },
     { "type": "array", "element": 4117, "checks": [] },
     { "type": "never", "checks": [] },
     {
       "type": "object",
       "name": "nativeChatModelInventoryQuerySchema",
-      "shape": { "bindingId": 8389 },
-      "catchall": 8418,
+      "shape": { "bindingId": 8546 },
+      "catchall": 8575,
       "checks": []
     },
     { "type": "never", "checks": [] },
@@ -49261,14 +50141,14 @@
       "type": "object",
       "name": "nativeChatModelInventorySchema",
       "shape": {
-        "workerId": 8389,
-        "providerId": 8389,
-        "providerAccountId": 8414,
+        "workerId": 8546,
+        "providerId": 8546,
+        "providerAccountId": 8571,
         "providerKind": 4157,
-        "models": 8415,
-        "bindingId": 8389
+        "models": 8572,
+        "bindingId": 8546
       },
-      "catchall": 8416,
+      "catchall": 8573,
       "checks": []
     },
     {
@@ -49277,18 +50157,18 @@
       "shape": {
         "workerId": 4851,
         "operationId": 4851,
-        "goalQueueHandoff": 8421,
-        "queueClaim": 8424,
-        "origin": 8428,
-        "session": 8401,
-        "method": 8429,
+        "goalQueueHandoff": 8578,
+        "queueClaim": 8581,
+        "origin": 8585,
+        "session": 8558,
+        "method": 8586,
         "payloadDigest": 4869,
         "protectedPayload": 53,
-        "expectedActivationGeneration": 8430,
-        "intent": 8431,
-        "reply": 8454
+        "expectedActivationGeneration": 8587,
+        "intent": 8588,
+        "reply": 8611
       },
-      "catchall": 8459,
+      "catchall": 8616,
       "checks": [
         {
           "check": "refinement",
@@ -49301,7 +50181,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 8422,
+      "innerType": 8579,
       "checks": []
     },
     {
@@ -49312,7 +50192,7 @@
         "operationGeneration": 4851,
         "goalEpoch": 4851
       },
-      "catchall": 8423,
+      "catchall": 8580,
       "checks": []
     },
     { "type": "never", "checks": [] },
@@ -49320,13 +50200,13 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 8425,
+      "innerType": 8582,
       "checks": []
     },
     {
       "type": "object",
-      "shape": { "id": 4851, "promptRevision": 8426 },
-      "catchall": 8427,
+      "shape": { "id": 4851, "promptRevision": 8583 },
+      "catchall": 8584,
       "checks": []
     },
     {
@@ -49354,21 +50234,21 @@
       "type": "object",
       "name": "nativeCommandIntentSchema",
       "shape": {
-        "scope": 8432,
-        "nativeSettingsOperationId": 8433,
-        "nativeClientUserMessageId": 8434,
-        "settingsBindingId": 8435,
-        "resumeAutonomy": 8436,
-        "paused": 8438,
-        "goalStatus": 8440,
-        "settingKeys": 8442,
-        "expectedTurnId": 8445,
-        "permissionProfileId": 8447,
-        "permissionTransition": 8448,
-        "configTarget": 8449,
-        "pathsWithinPlacement": 8451
+        "scope": 8589,
+        "nativeSettingsOperationId": 8590,
+        "nativeClientUserMessageId": 8591,
+        "settingsBindingId": 8592,
+        "resumeAutonomy": 8593,
+        "paused": 8595,
+        "goalStatus": 8597,
+        "settingKeys": 8599,
+        "expectedTurnId": 8602,
+        "permissionProfileId": 8604,
+        "permissionTransition": 8605,
+        "configTarget": 8606,
+        "pathsWithinPlacement": 8608
       },
-      "catchall": 8453,
+      "catchall": 8610,
       "checks": []
     },
     { "type": "enum", "values": ["thread", "account-defaults"], "checks": [] },
@@ -49397,7 +50277,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 8437,
+      "innerType": 8594,
       "checks": []
     },
     { "type": "boolean", "checks": [] },
@@ -49405,7 +50285,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 8439,
+      "innerType": 8596,
       "checks": []
     },
     { "type": "boolean", "checks": [] },
@@ -49413,20 +50293,20 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 8441,
+      "innerType": 8598,
       "checks": []
     },
     { "type": "enum", "values": ["active", "paused"], "checks": [] },
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 8443,
+      "innerType": 8600,
       "defaultValue": [],
       "checks": []
     },
     {
       "type": "array",
-      "element": 8444,
+      "element": 8601,
       "checks": [{ "check": "max_length", "maximum": 64, "when": "length" }]
     },
     {
@@ -49439,7 +50319,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 8446,
+      "innerType": 8603,
       "defaultValue": null,
       "checks": []
     },
@@ -49462,7 +50342,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 8450,
+      "innerType": 8607,
       "checks": []
     },
     { "type": "literal", "values": ["account-defaults"], "checks": [] },
@@ -49470,7 +50350,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 8452,
+      "innerType": 8609,
       "checks": []
     },
     { "type": "boolean", "checks": [] },
@@ -49479,17 +50359,17 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 8455,
+      "innerType": 8612,
       "checks": []
     },
     {
       "type": "object",
       "shape": {
         "nativeRequestId": 4851,
-        "requestMethod": 8456,
-        "turnId": 8457
+        "requestMethod": 8613,
+        "turnId": 8614
       },
-      "catchall": 8458,
+      "catchall": 8615,
       "checks": []
     },
     {
@@ -49510,9 +50390,9 @@
         "operationId": 4851,
         "operationGeneration": 4851,
         "payloadDigest": 4869,
-        "session": 8401
+        "session": 8558
       },
-      "catchall": 8461,
+      "catchall": 8618,
       "checks": []
     },
     { "type": "never", "checks": [] },
@@ -49527,12 +50407,12 @@
         "operationId": 4851,
         "payloadDigest": 4869,
         "protectedPayload": 53,
-        "session": 8401,
-        "reason": 8463,
-        "failure": 8464,
-        "handoff": 8473
+        "session": 8558,
+        "reason": 8620,
+        "failure": 8621,
+        "handoff": 8630
       },
-      "catchall": 8476,
+      "catchall": 8633,
       "checks": []
     },
     {
@@ -49542,18 +50422,18 @@
     },
     {
       "type": "union",
-      "options": [8465, 8468],
+      "options": [8622, 8625],
       "discriminator": "kind",
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "kind": 8466,
+        "kind": 8623,
         "nativeTurnId": 4851,
         "runtimeGeneration": 4851
       },
-      "catchall": 8467,
+      "catchall": 8624,
       "checks": []
     },
     { "type": "literal", "values": ["native-terminal"], "checks": [] },
@@ -49561,12 +50441,12 @@
     {
       "type": "object",
       "shape": {
-        "kind": 8469,
-        "method": 8470,
-        "code": 8471,
+        "kind": 8626,
+        "method": 8627,
+        "code": 8628,
         "runtimeGeneration": 4851
       },
-      "catchall": 8472,
+      "catchall": 8629,
       "checks": []
     },
     { "type": "literal", "values": ["native-rejected"], "checks": [] },
@@ -49582,13 +50462,13 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 8474,
+      "innerType": 8631,
       "checks": []
     },
     {
       "type": "object",
       "shape": { "expectedThreadId": 4851, "replacementThreadId": 4851 },
-      "catchall": 8475,
+      "catchall": 8632,
       "checks": []
     },
     { "type": "never", "checks": [] },
@@ -49598,13 +50478,13 @@
       "name": "nativePendingRequestSchema",
       "shape": {
         "workerId": 4851,
-        "session": 8401,
+        "session": 8558,
         "activationGeneration": 4851,
         "nativeRequestId": 4851,
-        "requestMethod": 8478,
-        "turnId": 8479
+        "requestMethod": 8635,
+        "turnId": 8636
       },
-      "catchall": 8480,
+      "catchall": 8637,
       "checks": []
     },
     {
@@ -49621,16 +50501,16 @@
       "name": "nativeSettingsStateSchema",
       "shape": {
         "chatId": 4588,
-        "revision": 8482,
-        "desiredRevision": 8482,
-        "desired": 8483,
-        "desiredStatus": 8493,
-        "pending": 8495,
-        "binding": 8500,
-        "effective": 8501,
-        "permissionPolicy": 8514
+        "revision": 8639,
+        "desiredRevision": 8639,
+        "desired": 8640,
+        "desiredStatus": 8650,
+        "pending": 8652,
+        "binding": 8657,
+        "effective": 8658,
+        "permissionPolicy": 8671
       },
-      "catchall": 8519,
+      "catchall": 8676,
       "checks": []
     },
     {
@@ -49645,20 +50525,20 @@
         }
       ]
     },
-    { "type": "nullable", "innerType": 8484, "checks": [] },
+    { "type": "nullable", "innerType": 8641, "checks": [] },
     {
       "type": "object",
       "name": "nativeSettingsIntentSchema",
       "shape": {
         "operationId": 4588,
         "operationGeneration": 4588,
-        "origin": 8485,
-        "source": 8486,
-        "permissionTransition": 8490,
+        "origin": 8642,
+        "source": 8643,
+        "permissionTransition": 8647,
         "protectedContent": 53,
-        "payloadDigest": 8491
+        "payloadDigest": 8648
       },
-      "catchall": 8492,
+      "catchall": 8649,
       "checks": []
     },
     {
@@ -49670,10 +50550,10 @@
       "type": "object",
       "shape": {
         "workerId": 4588,
-        "threadId": 8487,
-        "runtimeGeneration": 8488
+        "threadId": 8644,
+        "runtimeGeneration": 8645
       },
-      "catchall": 8489,
+      "catchall": 8646,
       "checks": []
     },
     { "type": "nullable", "innerType": 4588, "checks": [] },
@@ -49699,23 +50579,23 @@
       ]
     },
     { "type": "never", "checks": [] },
-    { "type": "nullable", "innerType": 8494, "checks": [] },
+    { "type": "nullable", "innerType": 8651, "checks": [] },
     {
       "type": "enum",
       "values": ["accepted", "dispatched", "applied", "rejected", "uncertain"],
       "checks": []
     },
-    { "type": "array", "element": 8496, "checks": [] },
+    { "type": "array", "element": 8653, "checks": [] },
     {
       "type": "object",
       "name": "nativeSettingsPendingSchema",
       "shape": {
-        "intent": 8484,
-        "desiredRevision": 8482,
-        "bindingId": 8497,
-        "status": 8498
+        "intent": 8641,
+        "desiredRevision": 8639,
+        "bindingId": 8654,
+        "status": 8655
       },
-      "catchall": 8499,
+      "catchall": 8656,
       "checks": []
     },
     { "type": "nullable", "innerType": 4588, "checks": [] },
@@ -49726,17 +50606,17 @@
     },
     { "type": "never", "checks": [] },
     { "type": "nullable", "innerType": 4587, "checks": [] },
-    { "type": "nullable", "innerType": 8502, "checks": [] },
+    { "type": "nullable", "innerType": 8659, "checks": [] },
     {
       "type": "object",
       "name": "protectedNativeSettingsSnapshotSchema",
       "shape": {
-        "context": 8503,
-        "contentFingerprint": 8508,
-        "modelAttribution": 8509,
+        "context": 8660,
+        "contentFingerprint": 8665,
+        "modelAttribution": 8666,
         "protectedContent": 53
       },
-      "catchall": 8513,
+      "catchall": 8670,
       "checks": []
     },
     {
@@ -49747,16 +50627,16 @@
         "workerId": 4588,
         "threadId": 4588,
         "runtimeGeneration": 4588,
-        "settingsVersion": 8504
+        "settingsVersion": 8661
       },
-      "catchall": 8507,
+      "catchall": 8664,
       "checks": []
     },
     {
       "type": "object",
       "name": "nativeSettingsVersionSchema",
-      "shape": { "epoch": 4588, "revision": 8505 },
-      "catchall": 8506,
+      "shape": { "epoch": 4588, "revision": 8662 },
+      "catchall": 8663,
       "checks": []
     },
     {
@@ -49794,14 +50674,14 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 8510,
+      "innerType": 8667,
       "checks": []
     },
     {
       "type": "object",
       "name": "authenticatedNativeModelAttributionSchema",
-      "shape": { "selection": 1447, "fingerprint": 8511 },
-      "catchall": 8512,
+      "shape": { "selection": 1447, "fingerprint": 8668 },
+      "catchall": 8669,
       "checks": []
     },
     {
@@ -49821,11 +50701,11 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 8515,
+      "innerType": 8672,
       "defaultValue": null,
       "checks": []
     },
-    { "type": "nullable", "innerType": 8516, "checks": [] },
+    { "type": "nullable", "innerType": 8673, "checks": [] },
     {
       "type": "object",
       "name": "nativePermissionPolicySchema",
@@ -49833,13 +50713,13 @@
         "selectedId": 4610,
         "resolvedSelectedId": 4459,
         "effectiveId": 4459,
-        "revision": 8482,
+        "revision": 8639,
         "operationId": 4588,
         "operationGeneration": 4588,
-        "source": 8517,
-        "settingsVersion": 8504
+        "source": 8674,
+        "settingsVersion": 8661
       },
-      "catchall": 8518,
+      "catchall": 8675,
       "checks": []
     },
     {
@@ -49862,16 +50742,16 @@
     {
       "type": "object",
       "name": "nativeSettingsObservationRequestSchema",
-      "shape": { "workerId": 4588, "bindingId": 4588, "snapshot": 8502 },
-      "catchall": 8521,
+      "shape": { "workerId": 4588, "bindingId": 4588, "snapshot": 8659 },
+      "catchall": 8678,
       "checks": []
     },
     { "type": "never", "checks": [] },
     {
       "type": "object",
       "name": "nativeSettingsObservationReceiptSchema",
-      "shape": { "bindingId": 4588, "revision": 8482, "settingsVersion": 8504 },
-      "catchall": 8523,
+      "shape": { "bindingId": 4588, "revision": 8639, "settingsVersion": 8661 },
+      "catchall": 8680,
       "checks": []
     },
     { "type": "never", "checks": [] },
@@ -49882,18 +50762,18 @@
         "workerId": 4861,
         "operationId": 4861,
         "operationGeneration": 4861,
-        "eventId": 8525,
+        "eventId": 8682,
         "threadId": 4861,
         "runtimeGeneration": 4861,
         "nativeOperationId": 4861,
-        "submissionId": 8526,
-        "kind": 8527,
-        "resultDigest": 8528,
+        "submissionId": 8683,
+        "kind": 8684,
+        "resultDigest": 8685,
         "protectedResult": 53,
-        "permissionPolicy": 8529,
-        "recoveryBindingId": 8532
+        "permissionPolicy": 8686,
+        "recoveryBindingId": 8689
       },
-      "catchall": 8533,
+      "catchall": 8690,
       "checks": [
         {
           "check": "refinement",
@@ -49943,14 +50823,14 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 8530,
+      "innerType": 8687,
       "checks": []
     },
     {
       "type": "object",
       "name": "nativePermissionPolicyClaimSchema",
-      "shape": { "effectiveId": 4459, "settingsVersion": 8504 },
-      "catchall": 8531,
+      "shape": { "effectiveId": 4459, "settingsVersion": 8661 },
+      "catchall": 8688,
       "checks": []
     },
     { "type": "never", "checks": [] },
@@ -49968,11 +50848,11 @@
       "shape": {
         "operationId": 4861,
         "operationGeneration": 4861,
-        "eventId": 8535,
+        "eventId": 8692,
         "application": 4860,
-        "permissionPolicyPublished": 8536
+        "permissionPolicyPublished": 8693
       },
-      "catchall": 8538,
+      "catchall": 8695,
       "checks": []
     },
     {
@@ -49992,7 +50872,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 8537,
+      "innerType": 8694,
       "checks": []
     },
     { "type": "boolean", "checks": [] },
@@ -50004,19 +50884,19 @@
         "workerId": 4851,
         "operationId": 4851,
         "operationGeneration": 4851,
-        "status": 8540,
-        "resultDigest": 8541,
-        "protectedResult": 8542,
-        "goalEpoch": 8543,
-        "terminalResult": 8544,
-        "deferred": 8549,
-        "decline": 8557,
-        "rejectionCode": 8560,
-        "executionComplete": 8562,
-        "executionStatus": 8564,
-        "reconciliation": 8566
+        "status": 8697,
+        "resultDigest": 8698,
+        "protectedResult": 8699,
+        "goalEpoch": 8700,
+        "terminalResult": 8701,
+        "deferred": 8706,
+        "decline": 8714,
+        "rejectionCode": 8717,
+        "executionComplete": 8719,
+        "executionStatus": 8721,
+        "reconciliation": 8723
       },
-      "catchall": 8569,
+      "catchall": 8726,
       "checks": []
     },
     {
@@ -50037,13 +50917,13 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 8545,
+      "innerType": 8702,
       "checks": []
     },
     {
       "type": "object",
-      "shape": { "resultDigest": 8546, "protectedResult": 8547 },
-      "catchall": 8548,
+      "shape": { "resultDigest": 8703, "protectedResult": 8704 },
+      "catchall": 8705,
       "checks": []
     },
     { "type": "nullable", "innerType": 4869, "checks": [] },
@@ -50053,20 +50933,20 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 8550,
+      "innerType": 8707,
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "reason": 8551,
-        "inputConsumed": 8552,
+        "reason": 8708,
+        "inputConsumed": 8709,
         "threadId": 4851,
         "runtimeGeneration": 4851,
-        "retainedPrompt": 8553,
-        "attachments": 8554
+        "retainedPrompt": 8710,
+        "attachments": 8711
       },
-      "catchall": 8556,
+      "catchall": 8713,
       "checks": [
         {
           "check": "refinement",
@@ -50089,7 +50969,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 8555,
+      "innerType": 8712,
       "checks": []
     },
     { "type": "array", "element": 0, "checks": [] },
@@ -50098,7 +50978,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 8558,
+      "innerType": 8715,
       "checks": []
     },
     {
@@ -50109,11 +50989,11 @@
         "runnerGeneration": 4851,
         "attemptId": 4851
       },
-      "catchall": 8559,
+      "catchall": 8716,
       "checks": []
     },
     { "type": "never", "checks": [] },
-    { "type": "nullable", "innerType": 8561, "checks": [] },
+    { "type": "nullable", "innerType": 8718, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -50129,7 +51009,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 8563,
+      "innerType": 8720,
       "defaultValue": false,
       "checks": []
     },
@@ -50138,7 +51018,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 8565,
+      "innerType": 8722,
       "checks": []
     },
     { "type": "enum", "values": ["idle", "failed"], "checks": [] },
@@ -50146,13 +51026,13 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 8567,
+      "innerType": 8724,
       "checks": []
     },
     {
       "type": "object",
       "shape": { "nativeTurnId": 4851, "runtimeGeneration": 4851 },
-      "catchall": 8568,
+      "catchall": 8725,
       "checks": []
     },
     { "type": "never", "checks": [] },
@@ -50177,15 +51057,15 @@
         "frozen": 5146,
         "idempotencyKey": 5148,
         "pendingMessage": 1569,
-        "revision": 8571,
-        "state": 8573,
-        "chatId": 8575,
-        "attachments": 8576,
-        "position": 8577,
-        "createdAt": 8578,
-        "updatedAt": 8579
+        "revision": 8728,
+        "state": 8730,
+        "chatId": 8732,
+        "attachments": 8733,
+        "position": 8734,
+        "createdAt": 8735,
+        "updatedAt": 8736
       },
-      "catchall": 8580,
+      "catchall": 8737,
       "checks": [
         {
           "check": "refinement",
@@ -50197,7 +51077,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 8572,
+      "innerType": 8729,
       "defaultValue": 0,
       "checks": []
     },
@@ -50211,7 +51091,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 8574,
+      "innerType": 8731,
       "defaultValue": "pending",
       "checks": []
     },
@@ -50273,12 +51153,12 @@
         "threadId": 4851,
         "runtimeGeneration": 4851,
         "turnId": 4851,
-        "status": 8582
+        "status": 8739
       },
-      "catchall": 8584,
+      "catchall": 8741,
       "checks": []
     },
-    { "type": "nullable", "innerType": 8583, "checks": [] },
+    { "type": "nullable", "innerType": 8740, "checks": [] },
     {
       "type": "enum",
       "values": ["inProgress", "completed", "failed", "interrupted"],
@@ -50289,22 +51169,22 @@
       "type": "object",
       "name": "managedQueueClaimSchema",
       "shape": {
-        "id": 8586,
-        "chatId": 8586,
-        "promptId": 8586,
-        "promptRevision": 8587,
-        "awaitingGoal": 8588,
-        "goalEpoch": 8590,
-        "goalOperationId": 8592,
-        "goalOperationGeneration": 8594,
-        "requestOperationId": 8596,
-        "status": 8598,
-        "operationId": 8599,
-        "operationGeneration": 8600,
-        "nativeTurnId": 8601,
-        "createdAt": 8602
+        "id": 8743,
+        "chatId": 8743,
+        "promptId": 8743,
+        "promptRevision": 8744,
+        "awaitingGoal": 8745,
+        "goalEpoch": 8747,
+        "goalOperationId": 8749,
+        "goalOperationGeneration": 8751,
+        "requestOperationId": 8753,
+        "status": 8755,
+        "operationId": 8756,
+        "operationGeneration": 8757,
+        "nativeTurnId": 8758,
+        "createdAt": 8759
       },
-      "catchall": 8603,
+      "catchall": 8760,
       "checks": []
     },
     {
@@ -50324,7 +51204,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 8589,
+      "innerType": 8746,
       "defaultValue": false,
       "checks": []
     },
@@ -50332,35 +51212,35 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 8591,
+      "innerType": 8748,
       "defaultValue": null,
       "checks": []
     },
-    { "type": "nullable", "innerType": 8586, "checks": [] },
+    { "type": "nullable", "innerType": 8743, "checks": [] },
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 8593,
+      "innerType": 8750,
       "defaultValue": null,
       "checks": []
     },
-    { "type": "nullable", "innerType": 8586, "checks": [] },
+    { "type": "nullable", "innerType": 8743, "checks": [] },
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 8595,
+      "innerType": 8752,
       "defaultValue": null,
       "checks": []
     },
-    { "type": "nullable", "innerType": 8586, "checks": [] },
+    { "type": "nullable", "innerType": 8743, "checks": [] },
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 8597,
+      "innerType": 8754,
       "defaultValue": null,
       "checks": []
     },
-    { "type": "nullable", "innerType": 8586, "checks": [] },
+    { "type": "nullable", "innerType": 8743, "checks": [] },
     {
       "type": "enum",
       "values": [
@@ -50374,9 +51254,9 @@
       ],
       "checks": []
     },
-    { "type": "nullable", "innerType": 8586, "checks": [] },
-    { "type": "nullable", "innerType": 8586, "checks": [] },
-    { "type": "nullable", "innerType": 8586, "checks": [] },
+    { "type": "nullable", "innerType": 8743, "checks": [] },
+    { "type": "nullable", "innerType": 8743, "checks": [] },
+    { "type": "nullable", "innerType": 8743, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -50393,8 +51273,8 @@
     {
       "type": "object",
       "name": "managedQueueReadSchema",
-      "shape": { "workerId": 8586, "session": 8401 },
-      "catchall": 8605,
+      "shape": { "workerId": 8743, "session": 8558 },
+      "catchall": 8762,
       "checks": []
     },
     { "type": "never", "checks": [] },
@@ -50402,43 +51282,43 @@
       "type": "object",
       "name": "managedQueueSnapshotSchema",
       "shape": {
-        "revision": 8587,
-        "paused": 8607,
-        "items": 8608,
-        "claims": 8609,
-        "pendingImports": 8611
+        "revision": 8744,
+        "paused": 8764,
+        "items": 8765,
+        "claims": 8766,
+        "pendingImports": 8768
       },
-      "catchall": 8616,
+      "catchall": 8773,
       "checks": []
     },
     { "type": "boolean", "checks": [] },
-    { "type": "array", "element": 8570, "checks": [] },
+    { "type": "array", "element": 8727, "checks": [] },
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 8610,
+      "innerType": 8767,
       "defaultValue": [],
       "checks": []
     },
-    { "type": "array", "element": 8585, "checks": [] },
+    { "type": "array", "element": 8742, "checks": [] },
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 8612,
+      "innerType": 8769,
       "defaultValue": [],
       "checks": []
     },
-    { "type": "array", "element": 8613, "checks": [] },
+    { "type": "array", "element": 8770, "checks": [] },
     {
       "type": "object",
       "name": "managedQueuePendingImportSchema",
       "shape": {
-        "importId": 8586,
-        "nativeItemId": 8586,
-        "status": 8614,
-        "prompt": 8570
+        "importId": 8743,
+        "nativeItemId": 8743,
+        "status": 8771,
+        "prompt": 8727
       },
-      "catchall": 8615,
+      "catchall": 8772,
       "checks": []
     },
     {
@@ -50451,14 +51331,14 @@
     {
       "type": "union",
       "name": "managedQueueMutationSchema",
-      "options": [8618, 8621, 8624, 8627, 8631],
+      "options": [8775, 8778, 8781, 8784, 8788],
       "discriminator": "kind",
       "checks": []
     },
     {
       "type": "object",
-      "shape": { "kind": 8619, "prompt": 5113, "attachments": 4663 },
-      "catchall": 8620,
+      "shape": { "kind": 8776, "prompt": 5113, "attachments": 4663 },
+      "catchall": 8777,
       "checks": []
     },
     { "type": "literal", "values": ["add"], "checks": [] },
@@ -50466,42 +51346,42 @@
     {
       "type": "object",
       "shape": {
-        "kind": 8622,
-        "id": 8586,
-        "expectedItemRevision": 8587,
+        "kind": 8779,
+        "id": 8743,
+        "expectedItemRevision": 8744,
         "prompt": 5113,
         "attachments": 4663
       },
-      "catchall": 8623,
+      "catchall": 8780,
       "checks": []
     },
     { "type": "literal", "values": ["update"], "checks": [] },
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "kind": 8625, "id": 8586, "expectedItemRevision": 8587 },
-      "catchall": 8626,
+      "shape": { "kind": 8782, "id": 8743, "expectedItemRevision": 8744 },
+      "catchall": 8783,
       "checks": []
     },
     { "type": "literal", "values": ["delete"], "checks": [] },
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "kind": 8628, "ids": 8629 },
-      "catchall": 8630,
+      "shape": { "kind": 8785, "ids": 8786 },
+      "catchall": 8787,
       "checks": []
     },
     { "type": "literal", "values": ["reorder"], "checks": [] },
     {
       "type": "array",
-      "element": 8586,
+      "element": 8743,
       "checks": [{ "check": "max_length", "maximum": 1000, "when": "length" }]
     },
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "kind": 8632, "id": 8633 },
-      "catchall": 8634,
+      "shape": { "kind": 8789, "id": 8790 },
+      "catchall": 8791,
       "checks": []
     },
     { "type": "literal", "values": ["start"], "checks": [] },
@@ -50509,7 +51389,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 8586,
+      "innerType": 8743,
       "checks": []
     },
     { "type": "never", "checks": [] },
@@ -50517,11 +51397,11 @@
       "type": "object",
       "name": "managedQueueMutateSchema",
       "shape": {
-        "admission": 8420,
-        "expectedRevision": 8587,
-        "mutation": 8617
+        "admission": 8577,
+        "expectedRevision": 8744,
+        "mutation": 8774
       },
-      "catchall": 8636,
+      "catchall": 8793,
       "checks": []
     },
     { "type": "never", "checks": [] },
@@ -50529,38 +51409,38 @@
       "type": "object",
       "name": "managedQueueMutationResultSchema",
       "shape": {
-        "revision": 8587,
-        "paused": 8607,
-        "items": 8608,
-        "claims": 8609,
-        "pendingImports": 8611,
+        "revision": 8744,
+        "paused": 8764,
+        "items": 8765,
+        "claims": 8766,
+        "pendingImports": 8768,
         "receipt": 4848,
-        "acceptedItem": 8638,
-        "claim": 8639
+        "acceptedItem": 8795,
+        "claim": 8796
       },
-      "catchall": 8640,
+      "catchall": 8797,
       "checks": []
     },
     {
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 8570,
+      "innerType": 8727,
       "checks": []
     },
     {
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 8585,
+      "innerType": 8742,
       "checks": []
     },
     { "type": "never", "checks": [] },
     {
       "type": "object",
       "name": "managedQueueStartReceiptSchema",
-      "shape": { "workerId": 8586, "session": 8401, "claimId": 8586 },
-      "catchall": 8642,
+      "shape": { "workerId": 8743, "session": 8558, "claimId": 8743 },
+      "catchall": 8799,
       "checks": []
     },
     { "type": "never", "checks": [] },
@@ -50568,12 +51448,12 @@
       "type": "object",
       "name": "managedQueueStartReceiptResultSchema",
       "shape": {
-        "claim": 8585,
+        "claim": 8742,
         "receipt": 4848,
         "protectedResult": 53,
-        "resultDigest": 8644
+        "resultDigest": 8801
       },
-      "catchall": 8645,
+      "catchall": 8802,
       "checks": []
     },
     {
@@ -50593,29 +51473,29 @@
       "type": "object",
       "name": "managedQueueImportSchema",
       "shape": {
-        "workerId": 8586,
-        "session": 8401,
-        "runnerGeneration": 8586,
-        "items": 8647
+        "workerId": 8743,
+        "session": 8558,
+        "runnerGeneration": 8743,
+        "items": 8804
       },
-      "catchall": 8651,
+      "catchall": 8808,
       "checks": []
     },
     {
       "type": "array",
-      "element": 8648,
+      "element": 8805,
       "checks": [{ "check": "max_length", "maximum": 1000, "when": "length" }]
     },
     {
       "type": "object",
       "shape": {
-        "nativeItemId": 8586,
-        "sourceDigest": 8649,
+        "nativeItemId": 8743,
+        "sourceDigest": 8806,
         "protectedSource": 53,
         "prompt": 5113,
         "attachments": 4663
       },
-      "catchall": 8650,
+      "catchall": 8807,
       "checks": []
     },
     {
@@ -50636,14 +51516,14 @@
       "type": "object",
       "name": "managedQueueImportAckSchema",
       "shape": {
-        "workerId": 8586,
-        "session": 8401,
-        "runnerGeneration": 8586,
-        "importId": 8586,
-        "sourceDigest": 8653,
-        "receipt": 8654
+        "workerId": 8743,
+        "session": 8558,
+        "runnerGeneration": 8743,
+        "importId": 8743,
+        "sourceDigest": 8810,
+        "receipt": 8811
       },
-      "catchall": 8658,
+      "catchall": 8815,
       "checks": []
     },
     {
@@ -50660,8 +51540,8 @@
     },
     {
       "type": "object",
-      "shape": { "deleted": 8655, "conflict": 8656 },
-      "catchall": 8657,
+      "shape": { "deleted": 8812, "conflict": 8813 },
+      "catchall": 8814,
       "checks": []
     },
     { "type": "boolean", "checks": [] },
@@ -50672,30 +51552,30 @@
       "type": "object",
       "name": "managedQueueImportResultSchema",
       "shape": {
-        "revision": 8587,
-        "paused": 8607,
-        "items": 8608,
-        "claims": 8609,
-        "pendingImports": 8611,
-        "imports": 8660
+        "revision": 8744,
+        "paused": 8764,
+        "items": 8765,
+        "claims": 8766,
+        "pendingImports": 8768,
+        "imports": 8817
       },
-      "catchall": 8665,
+      "catchall": 8822,
       "checks": []
     },
-    { "type": "array", "element": 8661, "checks": [] },
+    { "type": "array", "element": 8818, "checks": [] },
     {
       "type": "object",
       "name": "managedQueueImportRecordSchema",
       "shape": {
-        "importId": 8586,
-        "nativeItemId": 8586,
-        "sourceDigest": 8662,
+        "importId": 8743,
+        "nativeItemId": 8743,
+        "sourceDigest": 8819,
         "protectedSource": 53,
-        "nativeDeleteOperationId": 8586,
-        "promptId": 8586,
-        "status": 8663
+        "nativeDeleteOperationId": 8743,
+        "promptId": 8743,
+        "status": 8820
       },
-      "catchall": 8664,
+      "catchall": 8821,
       "checks": []
     },
     { "type": "string", "checks": [] },
@@ -50709,21 +51589,21 @@
     {
       "type": "object",
       "name": "managedQueueLookupSchema",
-      "shape": { "admission": 8420 },
-      "catchall": 8667,
+      "shape": { "admission": 8577 },
+      "catchall": 8824,
       "checks": []
     },
     { "type": "never", "checks": [] },
     {
       "type": "union",
       "name": "managedQueueLookupResultSchema",
-      "options": [8669, 8672],
+      "options": [8826, 8829],
       "checks": []
     },
     {
       "type": "object",
-      "shape": { "found": 8670 },
-      "catchall": 8671,
+      "shape": { "found": 8827 },
+      "catchall": 8828,
       "checks": []
     },
     { "type": "literal", "values": [false], "checks": [] },
@@ -50731,17 +51611,17 @@
     {
       "type": "object",
       "shape": {
-        "revision": 8587,
-        "paused": 8607,
-        "items": 8608,
-        "claims": 8609,
-        "pendingImports": 8611,
+        "revision": 8744,
+        "paused": 8764,
+        "items": 8765,
+        "claims": 8766,
+        "pendingImports": 8768,
         "receipt": 4848,
-        "acceptedItem": 8638,
-        "claim": 8639,
-        "found": 8673
+        "acceptedItem": 8795,
+        "claim": 8796,
+        "found": 8830
       },
-      "catchall": 8674,
+      "catchall": 8831,
       "checks": []
     },
     { "type": "literal", "values": [true], "checks": [] },

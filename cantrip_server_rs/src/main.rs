@@ -325,6 +325,7 @@ async fn main() -> Result<()> {
         let listener = tokio::net::TcpListener::bind((config.host.as_str(), port)).await?;
         service.usage.start();
         service.logical_completion_delivery.start();
+        service.history_publication_delivery.start();
         use std::io::Write;
         writeln!(
             parent_output,
@@ -352,6 +353,7 @@ async fn main() -> Result<()> {
         .with_graceful_shutdown(async move {
             tokio::select! { _=shutdown()=>{}, _=receiver, if watch_parent=>{} }
             eprintln!("{}", json!({"event":"server.shutdown.started"}));
+            shutdown_service.history_publication_delivery.stop();
             shutdown_service.live.transports.pre_close();
             shutdown_service.workers.pre_close();
         })
@@ -376,6 +378,10 @@ async fn main() -> Result<()> {
         shutdown_step!("project-shares", service.project_shares.close().await);
         service.tunnel_runtime.close();
         service.live.close();
+        shutdown_step!(
+            "native-history-publications",
+            service.history_publication_delivery.drained().await
+        );
         shutdown_step!(
             "direct-attachments-close",
             service.direct_attachments.close().await

@@ -14,6 +14,7 @@ pub mod live;
 pub mod managed_postgres;
 pub mod migrations;
 pub mod native_commands;
+pub mod native_history;
 pub mod operations;
 pub mod pane_layouts;
 pub mod policies;

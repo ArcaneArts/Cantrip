@@ -7,6 +7,7 @@ import { usageQueryCases } from "./usage-wire-fixtures.mjs";
 import { settingsWireCases } from "./settings-wire-fixtures.mjs";
 import { nativeSettingsWireCases } from "./native-settings-fixtures.mjs";
 import { nativeEventWireCases } from "./native-event-http-wire-fixtures.mjs";
+import { nativeHistoryWireCases } from "./native-history-wire-fixtures.mjs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -59,6 +60,7 @@ export function* vectorCases(name, samples = securityFixtures[name]) {
   for (const input of settingsWireCases(name)) yield prepare(input);
   for (const input of nativeSettingsWireCases(name)) yield prepare(input);
   for (const input of nativeEventWireCases(name)) yield prepare(input);
+  for (const input of nativeHistoryWireCases(name)) yield prepare(input);
   for (const input of [null, [], {}, false, 42, ""]) yield prepare(input);
   for (const sample of samples) {
     const baseline = schema.parse(sample);

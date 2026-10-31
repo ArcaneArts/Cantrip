@@ -51,6 +51,34 @@ pub(super) fn apply(
         .as_ref()
         .ok_or(ValidationError::Operation)?
         .clone();
+    if matches!(
+        tag,
+        "native-history-archive-evidence" | "native-history-evidence-revision"
+    ) {
+        let invalid = super::coercion::truthy(value.get("evidence"))
+            && if tag == "native-history-archive-evidence" {
+                value["evidence"]["revision"]
+                    .as_f64()
+                    .zip(value["revision"].as_f64())
+                    .is_some_and(|(e, r)| e > r)
+            } else {
+                value["evidence"]["revision"] != value["revision"]
+            };
+        if invalid {
+            let message = if tag == "native-history-archive-evidence" {
+                "Archived evidence cannot be newer than the committed item."
+            } else {
+                "Native item evidence must match the prepared item revision."
+            };
+            let mut at = path.to_vec();
+            at.extend([json!("evidence"), json!("revision")]);
+            // Zod's explicit addIssue path precedes its message in Error.message.
+            result
+                .issues
+                .push(json!({"code":"custom","path":at,"message":message}));
+        }
+        return Ok(());
+    }
     let mut custom = |suffix: &[&str], message: &str| {
         let mut at = path.to_vec();
         at.extend(suffix.iter().map(|v| json!(v)));
