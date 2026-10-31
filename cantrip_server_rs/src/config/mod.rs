@@ -73,7 +73,8 @@ pub enum SameSite {
     None,
     Strict,
 }
-#[derive(Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+#[derive(Clone, Copy, PartialEq, Eq, clap::ValueEnum, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum DatabaseMode {
     Pglite,
     BundledPostgres,
@@ -162,6 +163,18 @@ pub struct ServerConfig {
 }
 
 impl ServerConfig {
+    pub fn data_directory(environment: &Environment, cwd: &Path) -> PathBuf {
+        value::resolve(
+            cwd,
+            Path::new(
+                environment
+                    .get("CANTRIP_DATA_DIR")
+                    .map(String::as_str)
+                    .unwrap_or("../.cantrip/dev"),
+            ),
+        )
+    }
+
     pub fn read(environment: &Environment, cwd: &Path) -> Result<Self> {
         let e = Reader(environment);
         let host = e.text("CANTRIP_SERVER_HOST", "127.0.0.1");
@@ -469,10 +482,7 @@ impl ServerConfig {
                 60_000,
                 24 * 60 * 60_000,
             )?,
-            data_directory: value::resolve(
-                cwd,
-                Path::new(e.get("CANTRIP_DATA_DIR").unwrap_or("../.cantrip/dev")),
-            ),
+            data_directory: Self::data_directory(environment, cwd),
             database_url,
             deployment_mode,
             agent_model: e.text("CANTRIP_AGENT_MODEL", "gemma4:26b"),
