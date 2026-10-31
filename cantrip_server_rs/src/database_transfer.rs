@@ -1,6 +1,10 @@
 //! Offline logical SQL restore. No JavaScript participates in the native path.
+mod export;
+pub mod native_pglite;
+pub(crate) mod native_postgres;
 use crate::{database::Database, migrations::migrate_transaction};
 use anyhow::{Context, Result};
+pub use export::{ExportReceipt, PreparedDump, export_sql, prepare_sql};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::path::Path;
