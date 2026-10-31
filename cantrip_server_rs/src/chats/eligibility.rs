@@ -40,6 +40,13 @@ fn display(value: &Value) -> String {
         .into_owned()
 }
 pub fn route_availability(runtime: &Value, availability: &[Value], worker: &str) -> Value {
+    route_availability_for_worker(runtime, availability, &json!(worker))
+}
+pub fn route_availability_for_worker(
+    runtime: &Value,
+    availability: &[Value],
+    worker: &Value,
+) -> Value {
     let provider = &runtime["provider"];
     let model = &runtime["model"];
     let reason = if model.get("providerModelId") == Some(&Value::Null)
@@ -49,7 +56,7 @@ pub fn route_availability(runtime: &Value, availability: &[Value], worker: &str)
     } else if provider["kind"] == "ollama" {
         (!availability
             .iter()
-            .find(|entry| entry["workerId"] == worker)
+            .find(|entry| entry.get("workerId") == Some(worker))
             .is_some_and(|entry| entry["state"] == "available"))
         .then(|| {
             format!(

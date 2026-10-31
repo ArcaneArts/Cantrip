@@ -1,6 +1,7 @@
 pub mod coordinator;
 pub mod observations;
 pub mod placement;
+pub mod replicas;
 pub mod repository;
 pub mod repository_operation;
 pub mod targets;
@@ -29,3 +30,6 @@ pub(crate) fn capabilities(origin: &str, git: bool, github: bool) -> Capabilitie
     }
 }
 pub mod folders;
+pub mod github_conversion;
+pub mod workspace_discovery;
+pub mod workspaces;

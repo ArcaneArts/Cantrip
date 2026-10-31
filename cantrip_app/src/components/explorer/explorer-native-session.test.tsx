@@ -369,6 +369,53 @@ describe("native Explorer document integration", () => {
     }
   });
 
+  it("keeps the refresh control idle during background reads and busy during an explicit reload", async () => {
+    await render();
+    let finish!: (value: unknown) => void;
+    api.getExplorerFile.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    let background!: Promise<unknown>;
+    await act(async () => {
+      background = client.refetchQueries({ queryKey: ["explorer-file"] });
+    });
+    expect(header().isFetching).toBe(false);
+    await act(async () => {
+      finish({
+        path: "source.ts",
+        content: "original\n",
+        version: "v1",
+        markdown: false,
+      });
+      await background;
+    });
+    expect(header().isFetching).toBe(false);
+    api.getExplorerFile.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    let reload!: Promise<unknown>;
+    await act(async () => {
+      reload = Promise.resolve(header().refresh());
+    });
+    expect(header().isFetching).toBe(true);
+    await act(async () => {
+      finish({
+        path: "source.ts",
+        content: "original\n",
+        version: "v1",
+        markdown: false,
+      });
+      await reload;
+    });
+    expect(header().isFetching).toBe(false);
+  });
+
   it("does not discard edits made after approval while the replacement file is loading", async () => {
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
     try {

@@ -70,6 +70,7 @@ export class HttpFixture {
     this.workerCredentials = new Map();
     this.workerCodes = new Map();
     this.enrollmentExpirations = new Set();
+    this.chatArchiveExpirations = new Set();
     this.enrollments = new Map();
     this.auditEffects = new Map();
     this.auditOffsets = new Map();
@@ -133,6 +134,11 @@ export class HttpFixture {
     if (this.workerCodes.has(value)) return this.workerCodes.get(value);
     if (key === "expiresAt" && this.enrollmentExpirations.has(value))
       return "<enrollment-code-expiry>";
+    if (
+      ["expiresAt", "archiveExpiresAt"].includes(key) &&
+      this.chatArchiveExpirations.has(value)
+    )
+      return "<chat-archive-expiry>";
     if (this.requests.has(value))
       return `<request:${this.requests.get(value)}>`;
     if (uuid.test(value)) {

@@ -5,20 +5,50 @@ use cantrip_server::{
     migrations::migrate, projects::repository::ProjectRepository, wire::Value,
 };
 use clap::Parser;
+#[path = "support/agent_interactions.rs"]
+mod agent_interactions;
 #[path = "support/browsers.rs"]
 mod browsers;
 #[path = "support/chat_console.rs"]
 mod chat_console;
+#[path = "support/chat_forks.rs"]
+mod chat_forks;
+#[path = "support/chat_messages.rs"]
+mod chat_messages;
+#[path = "support/conversions.rs"]
+mod conversions;
+#[path = "support/discovery.rs"]
+mod discovery;
+#[path = "support/execution_lane_rest.rs"]
+mod execution_lane_rest;
+#[path = "support/execution_lanes.rs"]
+mod execution_lanes;
 #[path = "support/file_documents.rs"]
 mod file_documents;
+#[path = "support/managed_queue.rs"]
+mod managed_queue;
+#[path = "support/native_commands.rs"]
+mod native_commands;
+#[path = "support/native_events.rs"]
+mod native_events;
+#[path = "support/native_logical.rs"]
+mod native_logical;
+#[path = "support/native_settings.rs"]
+mod native_settings;
 #[path = "support/pane_layouts.rs"]
 mod pane_layouts;
 #[path = "support/project_surfaces.rs"]
 mod project_surfaces;
+#[path = "support/queued_prompts.rs"]
+mod queued_prompts;
+#[path = "support/replicas.rs"]
+mod replicas;
 #[path = "support/repository_operations.rs"]
 mod repository_operations;
 #[path = "support/run_configurations.rs"]
 mod run_configurations;
+#[path = "support/scratch_roots.rs"]
+mod scratch_roots;
 #[path = "support/tunnels.rs"]
 mod tunnels;
 #[path = "support/workspaces.rs"]
@@ -112,6 +142,45 @@ async fn run() -> Result<()> {
                 ]))
             } else if request["op"]
                 .as_str()
+                .is_some_and(|op| op.starts_with("fork-"))
+            {
+                chat_forks::run(database.clone(), &request, console_trace.clone())
+                    .boxed()
+                    .await
+            } else if request["op"]
+                .as_str()
+                .is_some_and(|op| op.starts_with("message-"))
+            {
+                chat_messages::run(database.clone(), &request).boxed().await
+            } else if request["op"]
+                .as_str()
+                .is_some_and(|op| op.starts_with("native-command-"))
+            {
+                native_commands::run(database.clone(), &request)
+                    .boxed()
+                    .await
+            } else if request["op"]
+                .as_str()
+                .is_some_and(|op| op.starts_with("scratch-"))
+            {
+                scratch_roots::run(database.clone(), &request).boxed().await
+            } else if request["op"]
+                .as_str()
+                .is_some_and(|op| op.starts_with("discovery-"))
+            {
+                discovery::run(database.clone(), &request).boxed().await
+            } else if request["op"]
+                .as_str()
+                .is_some_and(|op| op.starts_with("conversion-"))
+            {
+                conversions::run(database.clone(), &request).boxed().await
+            } else if request["op"]
+                .as_str()
+                .is_some_and(|op| op.starts_with("replica-"))
+            {
+                replicas::run(database.clone(), &request).boxed().await
+            } else if request["op"]
+                .as_str()
                 .is_some_and(|op| op.starts_with("tunnel-"))
             {
                 tunnels::run(database.clone(), &request).boxed().await
@@ -166,13 +235,140 @@ async fn run() -> Result<()> {
             Ok(value) => reply["value"] = value,
             Err(error) => {
                 reply["diagnostic"] = Value::String(error.to_string().into());
+                if error.is::<cantrip_server::agent_interactions::Conflict>() {
+                    reply["interactionError"] =
+                        Value::String("AgentInteractionConflictError".into());
+                }
+                if request["op"]
+                    .as_str()
+                    .is_some_and(|op| op.starts_with("native-command-lane-"))
+                    && let Some(error) =
+                        error.downcast_ref::<cantrip_server::chats::execution_lanes::LaneError>()
+                {
+                    reply["laneError"] = Value::String(error.class_name().into());
+                }
+                if request["op"]
+                    .as_str()
+                    .is_some_and(|op| op.starts_with("native-command-"))
+                    && let Some(error) =
+                        error.downcast_ref::<cantrip_server::native_commands::CommandError>()
+                {
+                    reply["commandError"] = Value::String(error.code.as_str().into());
+                    reply["commandStatus"] = Value::from_serialize(&error.status);
+                }
+                if let Some(error) =
+                    error.downcast_ref::<cantrip_server::chats::message_writes::HistoryError>()
+                {
+                    reply["historyError"] = Value::String(error.code.into());
+                    reply["historyStatus"] = Value::from_serialize(&error.status_code);
+                }
+                if request["op"]
+                    .as_str()
+                    .is_some_and(|op| op.starts_with("fork-"))
+                {
+                    reply["causes"] = Value::Array(
+                        error
+                            .chain()
+                            .skip(1)
+                            .map(|cause| Value::String(cause.to_string().into()))
+                            .collect(),
+                    );
+                    reply["trace"] = Value::Array(console_trace.lock().unwrap().clone());
+                    if error.is::<cantrip_server::chats::forks::Conflict>() {
+                        reply["forkError"] = Value::String("ExecutionLaneConflictError".into());
+                    }
+                    if let Some(c) =
+                        error.downcast_ref::<cantrip_server::chats::catalog::StatementFailure>()
+                    {
+                        reply["duplicateMessage"] = Value::Bool(c.duplicate_message);
+                    }
+                }
+                if error.is::<cantrip_server::chats::catalog::StandaloneUnavailable>() {
+                    reply["scratchError"] =
+                        Value::String("StandaloneChatPlacementUnavailableError".into());
+                }
+                if let Some(error) =
+                    error.downcast_ref::<cantrip_server::chats::roots::RootJobError>()
+                {
+                    reply["scratchError"] = Value::String(
+                        match error {
+                            cantrip_server::chats::roots::RootJobError::Conflict(_) => {
+                                "StandaloneChatRootJobConflictError"
+                            }
+                            cantrip_server::chats::roots::RootJobError::Stale(_) => {
+                                "StandaloneChatRootJobStaleAttemptError"
+                            }
+                        }
+                        .into(),
+                    );
+                }
+                if error.is::<cantrip_server::projects::workspaces::WorkspaceInvariant>() {
+                    reply["discoveryError"] =
+                        Value::String("ProjectWorkspaceInvariantError".into());
+                }
+                if let Some(error) = error
+                    .downcast_ref::<cantrip_server::projects::workspace_discovery::DiscoveryError>(
+                ) {
+                    use cantrip_server::projects::workspace_discovery::DiscoveryError;
+                    reply["discoveryError"] = Value::String(
+                        match error {
+                            DiscoveryError::Invariant(_) => {
+                                "WorkspaceRepositoryDiscoveryInvariantError"
+                            }
+                            DiscoveryError::Stale(_) => {
+                                "WorkspaceRepositoryDiscoveryStaleAttemptError"
+                            }
+                            DiscoveryError::ImportStale(_) => {
+                                "WorkspaceRepositoryImportStaleAttemptError"
+                            }
+                        }
+                        .into(),
+                    );
+                }
+                if let Some(error) = error
+                    .downcast_ref::<cantrip_server::projects::github_conversion::ConversionError>(
+                ) {
+                    use cantrip_server::projects::github_conversion::ConversionError;
+                    reply["conversionError"] = Value::String(
+                        match error {
+                            ConversionError::NotFound => "ProjectGithubConversionJobNotFoundError",
+                            ConversionError::Conflict(_) => {
+                                "ProjectGithubConversionJobConflictError"
+                            }
+                            ConversionError::Stale(_) => {
+                                "ProjectGithubConversionJobStaleAttemptError"
+                            }
+                        }
+                        .into(),
+                    );
+                }
+                if let Some(error) =
+                    error.downcast_ref::<cantrip_server::projects::replicas::ReplicaError>()
+                {
+                    use cantrip_server::projects::replicas::ReplicaError;
+                    reply["replicaError"] = Value::String(
+                        match error {
+                            ReplicaError::Conflict(_) => "ProjectReplicaJobConflictError",
+                            ReplicaError::NotFound(_) => "ProjectReplicaJobNotFoundError",
+                            ReplicaError::Stale(_) => "ProjectReplicaJobStaleAttemptError",
+                        }
+                        .into(),
+                    );
+                }
+
                 if request["op"].as_str().is_some_and(|op| {
-                    op.starts_with("project-surface-")
+                    op == "sql"
+                        || op.starts_with("project-surface-")
+                        || op.starts_with("discovery-")
                         || op.starts_with("tunnel-")
                         || op.starts_with("browser-")
                         || op.starts_with("document-")
                         || op.starts_with("workspace-")
                         || op.starts_with("layout-")
+                        || op.starts_with("scratch-")
+                        || op.starts_with("fork-")
+                        || op.starts_with("message-")
+                        || op.starts_with("native-command-")
                 }) {
                     for cause in error.chain() {
                         if let Some(pg) = cause.downcast_ref::<tokio_postgres::Error>()
@@ -225,10 +421,13 @@ async fn run() -> Result<()> {
                         reply["failure"] = failure.0.clone();
                     }
                 }
-                if let Some(error) =
-                    error.downcast_ref::<cantrip_server::chats::guard::NativeCommandError>()
+                if !request["op"]
+                    .as_str()
+                    .is_some_and(|op| op.starts_with("native-command-"))
+                    && let Some(error) =
+                        error.downcast_ref::<cantrip_server::chats::guard::NativeCommandError>()
                 {
-                    reply["code"] = Value::String(error.code.into());
+                    reply["code"] = Value::String(error.code.as_str().into());
                 }
                 if let Some(error) =
                     error.downcast_ref::<cantrip_server::projects::folders::FolderError>()

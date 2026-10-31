@@ -305,12 +305,14 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "argon2",
+ "async-compression",
  "axum",
  "base64 0.22.1",
  "chrono",
  "clap",
  "deadpool",
  "ed25519-dalek",
+ "flate2",
  "futures",
  "futures-util",
  "getrandom 0.3.4",
@@ -1601,8 +1603,6 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 [[package]]
 name = "pglite-rs"
 version = "0.2.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce51c5797f88bf0e5f11764118d5392bef6aae38b668947e3b9dcc0dcd42f047"
 dependencies = [
  "bytes",
  "fallible-iterator",

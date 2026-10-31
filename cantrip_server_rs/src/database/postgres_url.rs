@@ -39,7 +39,20 @@ pub(super) fn parse(value: &str) -> Result<(Config, MakeTlsConnector)> {
         .collect();
     url.set_query(None);
     if !retained.is_empty() {
-        url.query_pairs_mut().extend_pairs(retained);
+        // URLSearchParams decodes '+' as a space; tokio-postgres's URI decoder
+        // only percent-decodes. Re-encode decoded values with %20, otherwise
+        // accepted startup options such as '-c role=...' reach PostgreSQL as
+        // '-c+role=...' and fail with an unrecognized '+role' setting.
+        let escape = |value: &str| {
+            percent_encoding::utf8_percent_encode(value, percent_encoding::NON_ALPHANUMERIC)
+                .to_string()
+        };
+        let query = retained
+            .iter()
+            .map(|(key, value)| format!("{}={}", escape(key), escape(value)))
+            .collect::<Vec<_>>()
+            .join("&");
+        url.set_query(Some(&query));
     }
     let mut configuration: Config = url
         .as_str()

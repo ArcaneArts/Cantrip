@@ -90,6 +90,7 @@
   "devDependencies": {
     "@babel/parser": "7.29.8",
     "@babel/traverse": "7.29.8",
+    "@electric-sql/pglite-tools": "0.4.4",
     "@types/node": "^26.1.2",
     "concurrently": "^10.0.4",
     "cross-env": "^10.1.0",

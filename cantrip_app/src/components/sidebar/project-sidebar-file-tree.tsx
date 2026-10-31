@@ -40,6 +40,10 @@ import {
 import { cn } from "@/lib/utils";
 import { useFileChangeActivity } from "./use-file-change-activity";
 import { useSidebarFolderExpansion } from "./use-sidebar-folder-expansion";
+import {
+  useSidebarFileDrop,
+  type SidebarFileImporter,
+} from "./sidebar-file-drop";
 import { requestGitFileHistory } from "@/lib/git-history-navigation";
 import { FileTypeIcon } from "@/components/files/file-type-icon";
 import {
@@ -71,6 +75,30 @@ export type ExplorerFileMutationAuthorization = {
   isCurrent(): boolean;
 };
 
+function useFileNameMenuAction() {
+  const pendingAction = useRef<(() => void) | null>(null);
+  useEffect(
+    () => () => {
+      pendingAction.current = null;
+    },
+    [],
+  );
+  return {
+    afterClose(action: () => void) {
+      pendingAction.current = action;
+    },
+    onCloseAutoFocus(event: { preventDefault(): void }) {
+      const action = pendingAction.current;
+      if (!action) return;
+      pendingAction.current = null;
+      event.preventDefault();
+      // Mount the input after the menu releases its focus trap. Focusing it
+      // during selection can blur it immediately and submit the default name.
+      action();
+    },
+  };
+}
+
 function SidebarFilesContextMenu({
   children,
   createPending,
@@ -89,7 +117,7 @@ function SidebarFilesContextMenu({
   revealLabel?: string;
 }) {
   const revealLocalFolder = useRef(false);
-  const keepNewFileInputFocused = useRef(false);
+  const fileNameAction = useFileNameMenuAction();
   if ((!onOpenNative || !revealLabel) && !onCreateFolder && !onCreateFile)
     return children;
   return (
@@ -98,11 +126,7 @@ function SidebarFilesContextMenu({
       <ContextMenu.Portal>
         <StyledContextMenuContent
           className="min-w-48"
-          onCloseAutoFocus={(event) => {
-            if (!keepNewFileInputFocused.current) return;
-            keepNewFileInputFocused.current = false;
-            event.preventDefault();
-          }}
+          onCloseAutoFocus={fileNameAction.onCloseAutoFocus}
         >
           {onOpenNative && revealLabel ? (
             <StyledContextMenuItem
@@ -127,10 +151,7 @@ function SidebarFilesContextMenu({
             <StyledContextMenuItem
               aria-label="Create file in project root"
               disabled={createPending}
-              onSelect={() => {
-                keepNewFileInputFocused.current = true;
-                onCreateFile();
-              }}
+              onSelect={() => fileNameAction.afterClose(onCreateFile)}
             >
               <FilePlus2 className="size-4" /> New File
             </StyledContextMenuItem>
@@ -139,7 +160,7 @@ function SidebarFilesContextMenu({
             <StyledContextMenuItem
               aria-label="Create folder in project root"
               disabled={createPending}
-              onSelect={onCreateFolder}
+              onSelect={() => fileNameAction.afterClose(onCreateFolder)}
             >
               {createPending ? (
                 <Loader2 className="size-4 animate-spin" />
@@ -208,7 +229,7 @@ function SidebarFileRow({
   const renameInputRef = useRef<HTMLInputElement>(null);
   const rowRef = useRef<HTMLDivElement>(null);
   const cancelRenameOnBlurRef = useRef(false);
-  const keepRenameInputFocusedRef = useRef(false);
+  const fileNameAction = useFileNameMenuAction();
   const revealLocalFolder = useRef(false);
   useEffect(() => {
     if (!editing) return;
@@ -225,9 +246,12 @@ function SidebarFileRow({
       aria-expanded={entry.kind === "directory" ? expanded : undefined}
       aria-level={depth + 1}
       data-elite-global
+      data-sidebar-drop-folder={
+        entry.kind === "directory" ? entry.path : undefined
+      }
       data-elite-ignore={editing ? "" : undefined}
       className={cn(
-        "flex h-7 w-full min-w-0 items-center gap-1 rounded px-1 text-left text-xs text-muted-foreground outline-none hover:bg-muted/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50",
+        "flex h-7 w-full min-w-0 items-center gap-1 rounded px-1 text-left text-xs text-muted-foreground outline-none hover:bg-muted/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50 data-[file-drop-target]:bg-primary/15 data-[file-drop-target]:ring-1 data-[file-drop-target]:ring-primary",
         active && "bg-muted text-foreground",
         !openable &&
           !editing &&
@@ -332,11 +356,7 @@ function SidebarFileRow({
       <ContextMenu.Portal>
         <StyledContextMenuContent
           className="min-w-48"
-          onCloseAutoFocus={(event) => {
-            if (!keepRenameInputFocusedRef.current) return;
-            keepRenameInputFocusedRef.current = false;
-            event.preventDefault();
-          }}
+          onCloseAutoFocus={fileNameAction.onCloseAutoFocus}
         >
           {entry.kind === "file" && onOpenHistory ? (
             <StyledContextMenuItem onSelect={onOpenHistory}>
@@ -378,10 +398,7 @@ function SidebarFileRow({
             <StyledContextMenuItem
               aria-label={`Create file in ${entry.path}`}
               disabled={createPending}
-              onSelect={() => {
-                keepRenameInputFocusedRef.current = true;
-                onCreateFile();
-              }}
+              onSelect={() => fileNameAction.afterClose(onCreateFile)}
             >
               <FilePlus2 className="size-4" /> New File
             </StyledContextMenuItem>
@@ -390,7 +407,7 @@ function SidebarFileRow({
             <StyledContextMenuItem
               aria-label={`Create folder in ${entry.path}`}
               disabled={createPending}
-              onSelect={onCreateFolder}
+              onSelect={() => fileNameAction.afterClose(onCreateFolder)}
             >
               <FolderPlus className="size-4" />
               New Folder
@@ -405,10 +422,7 @@ function SidebarFileRow({
             <ContextMenu.Separator className="my-1 h-px bg-border" />
           ) : null}
           <StyledContextMenuItem
-            onSelect={() => {
-              keepRenameInputFocusedRef.current = true;
-              onRename();
-            }}
+            onSelect={() => fileNameAction.afterClose(onRename)}
           >
             <Pencil className="size-4" />
             Rename
@@ -684,6 +698,7 @@ export function ProjectSidebarFileTree({
   loading,
   onCreateFolder,
   onCreateFile,
+  onImportFiles,
   onDelete,
   onOpenGraph,
   onOpenNative,
@@ -703,6 +718,7 @@ export function ProjectSidebarFileTree({
   error?: string | null;
   explorer: ExplorerSummary | null;
   loading: boolean;
+  onImportFiles?: SidebarFileImporter;
   onCreateFolder(
     parentPath: string,
     authorization: ExplorerFileMutationAuthorization,
@@ -880,6 +896,15 @@ export function ProjectSidebarFileTree({
     authorize: currentMutationAuthorization,
     onCreate: onCreateFile,
   });
+  const fileDrop = useSidebarFileDrop({
+    scope: mutationBindingKey,
+    enabled: visible && Boolean(explorer),
+    authorize: currentMutationAuthorization,
+    onImport: onImportFiles,
+    onExpand: (path) => {
+      if (path) setExpandedPaths((current) => new Set([...current, path]));
+    },
+  });
   const beginRename = (entry: ExplorerEntry) => {
     if (newFile.pending) return;
     newFile.cancel();
@@ -997,9 +1022,40 @@ export function ProjectSidebarFileTree({
     <>
       <section
         ref={activityRef}
-        className="flex min-h-0 flex-1 flex-col"
+        className="relative flex min-h-0 flex-1 flex-col data-[file-drop-target]:ring-1 data-[file-drop-target]:ring-inset data-[file-drop-target]:ring-primary"
         aria-label="Files"
+        onDragOver={fileDrop.onDragOver}
+        onDragLeave={fileDrop.onDragLeave}
+        onDrop={fileDrop.onDrop}
       >
+        {visible && fileDrop.error ? (
+          <p role="alert" className="px-2 py-1 text-xs text-destructive">
+            {fileDrop.error}
+          </p>
+        ) : null}
+        {visible && fileDrop.progress ? (
+          <div
+            role="status"
+            className="px-2 py-1 text-xs text-muted-foreground"
+          >
+            Adding {fileDrop.progress.index + 1} of {fileDrop.progress.count}:{" "}
+            {fileDrop.progress.name} (
+            {fileDrop.progress.total
+              ? Math.round(
+                  (100 * fileDrop.progress.completed) / fileDrop.progress.total,
+                )
+              : 0}
+            %)
+          </div>
+        ) : null}
+        {visible && fileDrop.target !== null ? (
+          <div
+            role="status"
+            className="pointer-events-none absolute inset-x-1 bottom-1 z-10 rounded border bg-popover px-2 py-1 text-xs text-popover-foreground"
+          >
+            Drop files into {fileDrop.target || "project root"}
+          </div>
+        ) : null}
         {visible && pinningPath ? (
           <Loader2
             className="m-2 size-3 animate-spin"

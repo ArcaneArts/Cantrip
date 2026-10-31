@@ -161,6 +161,25 @@ pub(super) fn refine(
                 > 50
         }
         "scratch-archive" => !later(&value["archiveExpiresAt"], &value["archivedAt"]),
+        "scratch-archive-result" => {
+            if value["archivedAt"].is_null() != value["archiveExpiresAt"].is_null() {
+                issue!(
+                    &[],
+                    "Archive timestamps must both be present or both be absent."
+                );
+            } else if truth(value.get("archivedAt"))
+                && truth(value.get("archiveExpiresAt"))
+                && super::live::datetime_millis(&value["archiveExpiresAt"])
+                    .zip(super::live::datetime_millis(&value["archivedAt"]))
+                    .is_some_and(|(expiry, at)| expiry <= at)
+            {
+                issue!(
+                    &[],
+                    "Archive expiry must be later than the archive timestamp."
+                );
+            }
+            false
+        }
         "scratch-reconcile" => {
             value["archivedAt"].is_null() != value["archiveExpiresAt"].is_null()
                 || truth(value.get("archivedAt"))

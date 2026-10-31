@@ -355,7 +355,7 @@ export async function downloadStandaloneChatFiles(
   }
 }
 
-async function executeExplorerOperation(
+export async function executeExplorerOperation(
   explorerId: string,
   content: ExplorerOperationRequestContent,
   operationId = crypto.randomUUID(),

@@ -327,6 +327,7 @@ import { handleExternalHistoryCommand } from "./commands/external-history.js";
 import { handleSurfaceCommand } from "./commands/surface.js";
 import { handleDiagnosticsCommand } from "./commands/diagnostics.js";
 import { handleExplorerCommand } from "./commands/explorer.js";
+import { ExplorerFileImports } from "./explorer-file-imports.js";
 import { handleSkillsCommand } from "./commands/skills.js";
 import { handleCustomizationCommand } from "./commands/customization.js";
 
@@ -677,6 +678,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     }
   };
   const surfaceStreamReplay = new SurfaceStreamReplayGuard();
+  const explorerFileImports = new ExplorerFileImports();
   const repositoryOperationReplay = new RepositoryOperationReplayGuard();
   const customizationContentReplay = new CustomizationContentReplayGuard();
   const repositoryManagedOperations = new RepositoryManagedOperationStore(
@@ -1018,61 +1020,86 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   });
   const codegraphInvocation = codegraphRuntime?.launcherInvocation() ?? null;
   let codegraphProjects: CodeGraphProjectSupervisor | null = null;
+  if (codegraphRuntime && codegraphInvocation) {
+    codegraphProjects = new CodeGraphProjectSupervisor({
+      authorize: async (sourcePath, worktreePaths, rootKind) => {
+        if (rootKind === "folder-root") {
+          const canonicalSource = await realpath(sourcePath);
+          const sourceEntry = await lstat(canonicalSource);
+          if (!sourceEntry.isDirectory()) {
+            throw new Error("CodeGraph folder source is not a directory.");
+          }
+          return Promise.all(
+            worktreePaths.map(async (worktreePath) => {
+              const root = await realpath(worktreePath);
+              if (root !== canonicalSource) {
+                throw new Error(
+                  "CodeGraph folder root does not match its project source.",
+                );
+              }
+              return { gitCommonDir: null, root };
+            }),
+          );
+        }
+        const authorized = await worktrees.authorizeTargets(
+          sourcePath,
+          worktreePaths,
+        );
+        return authorized.map(({ inventory, worktree }) => ({
+          gitCommonDir: inventory.gitCommonDir,
+          root: worktree.path,
+        }));
+      },
+      command: codegraphInvocation.command,
+      commandArguments: codegraphInvocation.arguments,
+      environment: codegraphRuntime.childEnvironment(),
+      onStatus: (status) =>
+        codegraphNotificationEmitter?.({
+          type: "codegraph.status.observed",
+          status,
+        }),
+    });
+  }
   const activateCodeGraphProjects = async (
     targets: CodeGraphObservationTarget[],
   ): Promise<void> => {
-    if (
-      !codegraphRuntime ||
-      !codegraphInvocation ||
-      codegraphRuntime.status().cliAvailable !== true
-    ) {
+    if (!codegraphProjects || codegraphRuntime?.status().cliAvailable !== true)
       return;
-    }
-    if (!codegraphProjects) {
-      codegraphProjects = new CodeGraphProjectSupervisor({
-        authorize: async (sourcePath, worktreePaths, rootKind) => {
-          if (rootKind === "folder-root") {
-            const canonicalSource = await realpath(sourcePath);
-            const sourceEntry = await lstat(canonicalSource);
-            if (!sourceEntry.isDirectory()) {
-              throw new Error("CodeGraph folder source is not a directory.");
-            }
-            return Promise.all(
-              worktreePaths.map(async (worktreePath) => {
-                const root = await realpath(worktreePath);
-                if (root !== canonicalSource) {
-                  throw new Error(
-                    "CodeGraph folder root does not match its project source.",
-                  );
-                }
-                return { gitCommonDir: null, root };
-              }),
-            );
-          }
-          const authorized = await worktrees.authorizeTargets(
-            sourcePath,
-            worktreePaths,
-          );
-          return authorized.map(({ inventory, worktree }) => ({
-            gitCommonDir: inventory.gitCommonDir,
-            root: worktree.path,
-          }));
-        },
-        command: codegraphInvocation.command,
-        commandArguments: codegraphInvocation.arguments,
-        environment: codegraphRuntime.childEnvironment(),
-        onStatus: (status) =>
-          codegraphNotificationEmitter?.({
-            type: "codegraph.status.observed",
-            status,
-          }),
-      });
-    }
     await codegraphProjects.configure(targets);
   };
   const codegraphObservations = new CodeGraphObservationCoordinator(
     activateCodeGraphProjects,
   );
+  github.setReplicaRemovalLifecycle(async (root, remove) => {
+    let removed = false;
+    try {
+      const result = codegraphProjects
+        ? await codegraphProjects.withRetiredIndex(root, remove)
+        : await remove();
+      removed = result.status === "removed";
+      if (removed) {
+        codegraphObservations.forgetPath(root);
+        codegraphProjects?.detach(root);
+      }
+      return result;
+    } finally {
+      if (!removed)
+        await codegraphObservations.refresh().catch((error) => {
+          workerLogger.event(
+            "warn",
+            "CodeGraph observation did not resume after replica removal",
+            {
+              event: "codegraph.project.resume-failed",
+              subsystem: "codegraph",
+              operation: "configure-worktrees",
+              status: "degraded",
+              reasonCode: "configuration-failed",
+              error: workerLogError(error),
+            },
+          );
+        });
+    }
+  });
   const ensureCodeGraphCommandTarget = async (command: {
     projectId: string;
     worktreeId: string;
@@ -4061,6 +4088,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       case "explorer.operation":
       case "file-document.operation":
         return handleExplorerCommand(command, {
+          fileImports: explorerFileImports,
           surfaceStreamReplay,
           workerEncryption,
         });
@@ -6658,6 +6686,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     if (stopping) return;
 
     stopping = true;
+    await explorerFileImports.dispose().catch(() => undefined);
     // Abort downloads/probes together before awaiting the other shutdown owners.
     const managedRuntimesClosed = Promise.allSettled([
       playwrightRuntime.close(),

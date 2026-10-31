@@ -57,6 +57,7 @@ export function DockResizeControl({
       className={cn(
         "group relative z-30 touch-none outline-none",
         direction === "vertical" ? "cursor-col-resize" : "cursor-row-resize",
+        mode === "closed" && "focus-visible:bg-ring/30",
       )}
       data-dock-resize-mode={mode}
       onDoubleClick={onDoubleClick}
@@ -74,6 +75,8 @@ export function DockResizeControl({
         aria-hidden="true"
         className={cn(
           "absolute bg-border opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-active:opacity-100 motion-reduce:transition-none",
+          // The collapsed rail draws this edge; keep only the resize hit area.
+          mode === "closed" && "hidden",
           direction === "vertical"
             ? "inset-y-0 left-1/2 w-px -translate-x-1/2 group-has-[[data-dock-region=right]:hover]/workspace-docks:opacity-100"
             : "inset-x-0 top-1/2 h-px -translate-y-1/2 group-has-[[data-dock-region=bottom]:hover]/workspace-docks:opacity-100",

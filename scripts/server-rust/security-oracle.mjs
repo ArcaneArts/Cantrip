@@ -1,10 +1,12 @@
 // Only development tests invoke this process. Expectations execute the actual
 // exported protocol schemas, not the native manifest or its interpreter.
 import * as protocol from "../../packages/protocol/dist/index.js";
-import { buildContractManifest } from "./contracts.mjs";
+import { buildContractManifest, sourceContractSchema } from "./contracts.mjs";
 import { securityFixtures } from "./security-fixtures.mjs";
 import { usageQueryCases } from "./usage-wire-fixtures.mjs";
 import { settingsWireCases } from "./settings-wire-fixtures.mjs";
+import { nativeSettingsWireCases } from "./native-settings-fixtures.mjs";
+import { nativeEventWireCases } from "./native-event-http-wire-fixtures.mjs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -39,7 +41,7 @@ function mutate(input, path, value, remove = false) {
   return result;
 }
 export function* vectorCases(name, samples = securityFixtures[name]) {
-  const schema = protocol[name];
+  const schema = sourceContractSchema(name);
   if (!schema || !samples) throw new Error(`Missing oracle fixture ${name}`);
   function prepare(input, present = true) {
     const canonical = present ? JSON.parse(JSON.stringify(input)) : undefined;
@@ -55,6 +57,8 @@ export function* vectorCases(name, samples = securityFixtures[name]) {
   yield prepare(undefined, false);
   for (const input of usageQueryCases(name)) yield prepare(input);
   for (const input of settingsWireCases(name)) yield prepare(input);
+  for (const input of nativeSettingsWireCases(name)) yield prepare(input);
+  for (const input of nativeEventWireCases(name)) yield prepare(input);
   for (const input of [null, [], {}, false, 42, ""]) yield prepare(input);
   for (const sample of samples) {
     const baseline = schema.parse(sample);

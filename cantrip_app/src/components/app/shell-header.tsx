@@ -1,7 +1,6 @@
 import {
   ArrowLeft,
   FolderOpen,
-  GitBranch,
   PanelLeftOpen,
   Plus,
   Settings,
@@ -14,13 +13,13 @@ import { MobileAppModeSwitch } from "@/components/mobile/mobile-app-mode-switch"
 import { MobileProjectHeader } from "@/components/mobile/mobile-project-header";
 import { ProjectCreateMenu } from "@/components/projects/project-create-menu";
 import { WorktreeControl } from "@/components/worktrees/worktree-control";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TooltipButton } from "@/components/ui/tooltip";
 import { desktopPopoutTitlebarLeftInset } from "@/lib/desktop-popout";
 import { sidebarFileName } from "@/lib/sidebar-file-tabs";
 import { cn } from "@/lib/utils";
 import { useMouseBack } from "./use-mouse-back";
+import { windowHeaderBindings } from "./window-header-bindings";
 type ShellHeaderBindings = Readonly<Record<string, any>>;
 
 export function navigateMobileSettingsBack(
@@ -35,7 +34,12 @@ export function navigateMobileSettingsBack(
   exitSettings();
 }
 
-export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
+export function ShellHeader({
+  bindings: sourceBindings,
+}: {
+  bindings: ShellHeaderBindings;
+}) {
+  const bindings = windowHeaderBindings(sourceBindings);
   const {
     activeChat,
     activeExplorerHeader,
@@ -50,11 +54,8 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
     codeHeader,
     compactManagedHeader,
     compactShell,
-    contentScrolled,
     desktopSidebarDrawer,
-    displayedGitProject,
     explorerDisplayPath,
-    gitHistoryHeader,
     gitHistoryProject,
     isPopout,
     linkedConsoleChat,
@@ -106,6 +107,7 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
     worktreeActionError,
     worktreeStatuses,
     worktrees,
+    windowContentEmpty,
   } = bindings;
   useMouseBack(
     showSettings
@@ -122,6 +124,15 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
       : appMode === "ide"
         ? switchToChat
         : switchToIde;
+  const activeFilePath =
+    selectedFileDocument?.path ??
+    (selectedCodeTab
+      ? codeHeader?.explorer?.selectedPath
+      : selectedExplorer
+        ? activeExplorerHeader
+          ? activeExplorerHeader.selectedPath
+          : selectedExplorer.selectedPath
+        : null);
   if (
     ((showSettings || showProjectSettings) && !compactShell) ||
     showProjectOverview
@@ -306,54 +317,62 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
                 className="truncate"
                 data-tauri-drag-region={overlayTitlebar ? "" : undefined}
               >
-                {showImporter
-                  ? "GitHub repositories"
-                  : showSettings
-                    ? "Settings"
-                    : showArchivedStandaloneChats
-                      ? "Archived chats"
-                      : showServerAdmin
-                        ? "Server administration"
-                        : appMode === "chat"
-                          ? (selectedStandaloneChat?.title ?? "Chat")
-                          : showProjectSettings
-                            ? "Project settings"
-                            : projectOverviewSelected && selectedProject
-                              ? selectedProject.name
-                              : gitHistoryProject
-                                ? (selectedProjectView?.title ?? "Git")
-                                : selectedProjectView?.kind === "remote-desktop"
-                                  ? selectedProjectView.title
-                                  : selectedCodeTab
-                                    ? selectedCodeTab.title
-                                    : selectedBrowser
-                                      ? selectedBrowser.title
-                                      : selectedFileDocument
-                                        ? sidebarFileName(
-                                            selectedFileDocument.path,
-                                          )
-                                        : selectedExplorer
-                                          ? selectedExplorer.title
-                                          : selectedTerminal
-                                            ? selectedTerminal.linkedChatId
-                                              ? (linkedConsoleChat?.title ??
-                                                "Agent")
-                                              : selectedTerminal.title
-                                            : selectedChat
-                                              ? selectedChat.title
-                                              : (selectedProject?.github
-                                                  ?.nameWithOwner ?? "Cantrip")}
+                {windowContentEmpty
+                  ? null
+                  : showImporter
+                    ? "GitHub repositories"
+                    : showSettings
+                      ? "Settings"
+                      : showArchivedStandaloneChats
+                        ? "Archived chats"
+                        : showServerAdmin
+                          ? "Server administration"
+                          : appMode === "chat"
+                            ? (selectedStandaloneChat?.title ?? "Chat")
+                            : showProjectSettings
+                              ? "Project settings"
+                              : projectOverviewSelected && selectedProject
+                                ? selectedProject.name
+                                : gitHistoryProject
+                                  ? (selectedProjectView?.title ?? "Git")
+                                  : selectedProjectView?.kind ===
+                                      "remote-desktop"
+                                    ? selectedProjectView.title
+                                    : selectedCodeTab
+                                      ? activeFilePath
+                                        ? sidebarFileName(activeFilePath)
+                                        : selectedCodeTab.title
+                                      : selectedBrowser
+                                        ? selectedBrowser.title
+                                        : selectedFileDocument
+                                          ? sidebarFileName(
+                                              selectedFileDocument.path,
+                                            )
+                                          : selectedExplorer
+                                            ? activeFilePath
+                                              ? sidebarFileName(activeFilePath)
+                                              : selectedExplorer.title
+                                            : selectedTerminal
+                                              ? selectedTerminal.linkedChatId
+                                                ? (linkedConsoleChat?.title ??
+                                                  "Agent")
+                                                : selectedTerminal.title
+                                              : selectedChat
+                                                ? selectedChat.title
+                                                : (selectedProject?.github
+                                                    ?.nameWithOwner ??
+                                                  "Cantrip")}
               </span>
-              {appMode === "ide" &&
+              {!windowContentEmpty &&
+              appMode === "ide" &&
               !showImporter &&
               !showSettings &&
               !showServerAdmin &&
               activeWorktreeTarget &&
               activeWorktreeId &&
               selectedProject?.capabilities.worktrees &&
-              (!gitHistoryProject ||
-                gitHistoryHeader?.section === "history" ||
-                gitHistoryHeader?.section === "graph") ? (
+              !gitHistoryProject &&
+              !projectOverviewSelected ? (
                 <WorktreeControl
                   currentWorktreeId={activeWorktreeId}
                   projectId={selectedProject.id}
@@ -401,25 +420,6 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
                   }}
                 />
               ) : null}
-              {appMode === "ide" &&
-              gitHistoryProject &&
-              (gitHistoryHeader?.section === "history" ||
-                gitHistoryHeader?.section === "graph") ? (
-                <>
-                  <Badge
-                    variant="secondary"
-                    className="hidden shrink-0 gap-1 font-mono font-normal sm:flex"
-                  >
-                    <GitBranch className="size-3" />
-                    {gitHistoryHeader.branch || "detached HEAD"}
-                  </Badge>
-                  {gitHistoryHeader.head ? (
-                    <code className="hidden shrink-0 text-[11px] font-normal text-muted-foreground sm:block">
-                      @ {gitHistoryHeader.head.slice(0, 8)}
-                    </code>
-                  ) : null}
-                </>
-              ) : null}
             </div>
             <p
               className={cn(
@@ -430,79 +430,62 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
               )}
               data-tauri-drag-region={overlayTitlebar ? "" : undefined}
             >
-              {showImporter ? (
-                "Add a worker-owned source"
-              ) : showSettings ? (
-                "Account preferences"
-              ) : showArchivedStandaloneChats ? (
-                "Recover or permanently delete conversations"
-              ) : showServerAdmin ? (
-                "Account access and server policy"
-              ) : appMode === "chat" ? (
-                selectedStandaloneChat ? (
-                  `Standalone conversation · ${selectedStandaloneChat.status}`
-                ) : (
-                  "Your standalone conversations"
-                )
-              ) : showProjectSettings ? (
-                (selectedProject?.github?.nameWithOwner ??
-                selectedProject?.name ??
-                "Project preferences")
-              ) : projectOverviewSelected && selectedProject ? (
-                activeProjectOverviewSection === "overview" ? (
-                  "Project overview"
-                ) : (
-                  `Project ${projectOverviewSectionLabel(activeProjectOverviewSection).toLowerCase()}`
-                )
-              ) : gitHistoryProject ? (
-                <>
-                  {gitHistoryProject.github?.nameWithOwner ??
-                    gitHistoryProject.name}
-                  {gitHistoryHeader ? (
-                    gitHistoryHeader.section === "graph" ? (
-                      ` · ${gitHistoryHeader.graphNodes.toLocaleString()} repository nodes`
-                    ) : gitHistoryHeader.section === "actions" ? (
-                      ` · ${gitHistoryHeader.actionRunCount ?? "…"} workflow runs${gitHistoryHeader.activeActionRunCount ? ` · ${gitHistoryHeader.activeActionRunCount} active` : ""}`
-                    ) : gitHistoryHeader.section !== "history" ? (
-                      ` · ${gitHistoryHeader.issueCount ?? "…"} ${gitHistoryHeader.issueState} ${gitHistoryHeader.section === "prs" ? "PRs" : "issues"}`
-                    ) : (
-                      <>
-                        <span className="sm:hidden">
-                          {` · ${gitHistoryHeader.branch || "detached HEAD"}${gitHistoryHeader.head ? ` @ ${gitHistoryHeader.head.slice(0, 8)}` : ""}`}
-                        </span>
-                        {` · ${gitHistoryHeader.commitsLoaded} commits loaded`}
-                      </>
-                    )
-                  ) : null}
-                </>
-              ) : selectedProjectView?.kind === "remote-desktop" ? (
-                "Managed project-worker desktop"
-              ) : selectedCodeTab ? (
-                (activeWorktree?.displayPath ??
-                selectedProject?.source?.displayPath ??
-                "Code")
-              ) : selectedBrowser ? (
-                selectedBrowser.url
-              ) : selectedExplorer || selectedFileDocument ? (
-                explorerDisplayPath
-              ) : selectedTerminal ? (
-                selectedTerminal.linkedChatId ? (
-                  (activeWorktree?.displayPath ??
-                  selectedProject?.source?.displayPath ??
-                  "Agent")
-                ) : (
-                  (activeWorktree?.displayPath ??
-                  selectedProject?.source?.displayPath ??
-                  "Terminal")
-                )
-              ) : selectedChat ? (
-                (activeWorktree?.displayPath ??
-                selectedProject?.source?.displayPath ??
-                "Agent")
-              ) : (
-                (selectedProject?.source?.displayPath ??
-                "Choose a project to begin")
-              )}
+              {windowContentEmpty
+                ? null
+                : showImporter
+                  ? "Add a worker-owned source"
+                  : showSettings
+                    ? "Account preferences"
+                    : showArchivedStandaloneChats
+                      ? "Recover or permanently delete conversations"
+                      : showServerAdmin
+                        ? "Account access and server policy"
+                        : appMode === "chat"
+                          ? selectedStandaloneChat
+                            ? `Standalone conversation · ${selectedStandaloneChat.status}`
+                            : "Your standalone conversations"
+                          : showProjectSettings
+                            ? (selectedProject?.github?.nameWithOwner ??
+                              selectedProject?.name ??
+                              "Project preferences")
+                            : projectOverviewSelected && selectedProject
+                              ? activeProjectOverviewSection === "overview"
+                                ? "Project overview"
+                                : `Project ${projectOverviewSectionLabel(activeProjectOverviewSection).toLowerCase()}`
+                              : gitHistoryProject
+                                ? null
+                                : selectedProjectView?.kind === "remote-desktop"
+                                  ? "Managed project-worker desktop"
+                                  : selectedCodeTab
+                                    ? activeFilePath
+                                      ? null
+                                      : (activeWorktree?.displayPath ??
+                                        selectedProject?.source?.displayPath ??
+                                        "Code")
+                                    : selectedBrowser
+                                      ? selectedBrowser.url
+                                      : selectedExplorer || selectedFileDocument
+                                        ? activeFilePath
+                                          ? null
+                                          : explorerDisplayPath
+                                        : selectedTerminal
+                                          ? selectedTerminal.linkedChatId
+                                            ? (activeWorktree?.displayPath ??
+                                              selectedProject?.source
+                                                ?.displayPath ??
+                                              "Agent")
+                                            : (activeWorktree?.displayPath ??
+                                              selectedProject?.source
+                                                ?.displayPath ??
+                                              "Terminal")
+                                          : selectedChat
+                                            ? (activeWorktree?.displayPath ??
+                                              selectedProject?.source
+                                                ?.displayPath ??
+                                              "Agent")
+                                            : (selectedProject?.source
+                                                ?.displayPath ??
+                                              "Choose a project to begin")}
             </p>
           </div>
           <div
@@ -592,15 +575,6 @@ export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
               ? renderProjectRunConfigurationControl(overlayTitlebar)
               : null}
           </div>
-          <span
-            aria-hidden="true"
-            className={cn(
-              "pointer-events-none absolute inset-x-0 bottom-0 h-px bg-border transition-opacity duration-200",
-              contentScrolled && !displayedGitProject
-                ? "opacity-100"
-                : "opacity-0",
-            )}
-          />
         </header>
       ) : null}
     </>

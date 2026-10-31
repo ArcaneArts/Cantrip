@@ -1,4 +1,5 @@
 use super::Repository;
+use crate::database::Executor;
 use crate::wire::{Value, coercion::truthy, value::json};
 use anyhow::{Result, bail};
 
@@ -45,8 +46,14 @@ fn permission_projection(state: &Value, source: Value) -> Result<Value> {
 
 impl Repository {
     pub async fn execution_context(&self, owner: &str, chat_id: &str) -> Result<Option<Value>> {
-        let identity = self
-            .database
+        Self::execution_context_with(Executor::Database(&self.database), owner, chat_id).await
+    }
+    pub(crate) async fn execution_context_with(
+        executor: Executor<'_, '_>,
+        owner: &str,
+        chat_id: &str,
+    ) -> Result<Option<Value>> {
+        let identity = executor
             .query(
                 "SELECT context_kind FROM chats WHERE id=$1 AND owner_id=$2 LIMIT 1",
                 &[&chat_id, &owner],
@@ -63,7 +70,7 @@ impl Repository {
         } else {
             "SELECT jsonb_build_object('chat',to_jsonb(c),'lane',to_jsonb(l),'project',to_jsonb(p),'settings',to_jsonb(s),'nativeSettings',to_jsonb(n),'root',to_jsonb(w),'runtime',to_jsonb(r))::text FROM chats c LEFT JOIN native_settings_states n ON n.chat_id=c.id INNER JOIN projects p ON p.id=c.project_id AND p.owner_id=$2 LEFT JOIN user_settings s ON s.user_id=p.owner_id INNER JOIN project_worktrees w ON w.id=c.active_worktree_id LEFT JOIN chat_runtime_sessions r ON r.chat_id=c.id AND r.worker_id=w.worker_id AND r.worktree_id=w.id LEFT JOIN chat_execution_lanes l ON l.chat_id=c.id AND l.state='active' WHERE c.id=$1 AND c.archived_at IS NULL LIMIT 1"
         };
-        let rows = self.database.query(sql, &[&chat_id, &owner]).await?;
+        let rows = executor.query(sql, &[&chat_id, &owner]).await?;
         let Some(row) = rows.first() else {
             return Ok(None);
         };

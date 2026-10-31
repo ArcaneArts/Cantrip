@@ -1,6 +1,7 @@
 // Compatibility entry point. Domain clients share api-client request/error handling
 // and the existing encryption/session singletons; internal helpers stay in their domains.
 export { CantripApiError } from "@/lib/api-client";
+export { importExplorerFile } from "./api/explorer-import";
 export {
   getSystemHealth,
   getServerBootstrap,

@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { SyntaxToken } from "./syntax/types";
 import type {
   EditorDocumentSession,
   EditorSelection,
@@ -12,12 +13,37 @@ import {
   editorViewport,
 } from "./viewport";
 import { useSyntaxHighlighting } from "./use-syntax-highlighting";
+import { useCodeEditorLineNumbers } from "@/lib/code-editor-preferences";
 import "./native-code-editor.css";
 
 const selection = (input: HTMLTextAreaElement): EditorSelection => ({
   start: input.selectionStart,
   end: input.selectionEnd,
   direction: input.selectionDirection,
+});
+
+const NO_TOKENS: SyntaxToken[] = [];
+const PaintedLine = memo(function PaintedLine({
+  line,
+  number,
+  tokens,
+}: {
+  line: string;
+  number: number;
+  tokens: SyntaxToken[];
+}) {
+  return (
+    <div className="cantrip-editor-line" data-editor-line={number}>
+      {tokens.length
+        ? tokens.map((token) => (
+            <span className={`syntax-${token.kind}`} key={token.from}>
+              {line.slice(token.from, token.to)}
+            </span>
+          ))
+        : line}
+      {line.length === 0 ? "\u200b" : null}
+    </div>
+  );
 });
 
 export function NativeCodeEditor({
@@ -40,6 +66,7 @@ export function NativeCodeEditor({
   onReady?(session: EditorDocumentSession): void;
   onViewStateChange?(): void;
 }) {
+  const showLineNumbers = useCodeEditorLineNumbers();
   const input = useRef<HTMLTextAreaElement>(null);
   const codePaint = useRef<HTMLDivElement>(null);
   const gutterPaint = useRef<HTMLDivElement>(null);
@@ -84,10 +111,18 @@ export function NativeCodeEditor({
       EDITOR_VERTICAL_PADDING +
       paintedViewport.current.first * EDITOR_LINE_HEIGHT -
       session.scrollTop;
-    if (codePaint.current)
-      codePaint.current.style.transform = `translate(${-session.scrollLeft}px, ${y}px)`;
-    if (gutterPaint.current)
-      gutterPaint.current.style.transform = `translateY(${y}px)`;
+    const codeTransform = `translate(${-session.scrollLeft}px, ${y}px)`;
+    const gutterTransform = `translateY(${y}px)`;
+    if (
+      codePaint.current &&
+      codePaint.current.style.transform !== codeTransform
+    )
+      codePaint.current.style.transform = codeTransform;
+    if (
+      gutterPaint.current &&
+      gutterPaint.current.style.transform !== gutterTransform
+    )
+      gutterPaint.current.style.transform = gutterTransform;
   };
   const flushScrollCheckpoint = () => {
     if (scrollCheckpoint.current === null) return;
@@ -223,20 +258,25 @@ export function NativeCodeEditor({
       data-native-code-editor="true"
       style={{ "--editor-gutter-width": gutterWidth } as React.CSSProperties}
     >
-      <div className="cantrip-editor-gutter" aria-hidden="true">
-        <div
-          ref={gutterPaint}
-          style={{
-            transform: `translateY(${EDITOR_VERTICAL_PADDING + viewport.first * EDITOR_LINE_HEIGHT - session.scrollTop}px)`,
-          }}
-        >
-          {lines.slice(viewport.first, viewport.last).map((_, offset) => (
-            <div className="cantrip-editor-line" key={viewport.first + offset}>
-              {viewport.first + offset + 1}
-            </div>
-          ))}
+      {showLineNumbers ? (
+        <div className="cantrip-editor-gutter" aria-hidden="true">
+          <div
+            ref={gutterPaint}
+            style={{
+              transform: `translateY(${EDITOR_VERTICAL_PADDING + viewport.first * EDITOR_LINE_HEIGHT - session.scrollTop}px)`,
+            }}
+          >
+            {lines.slice(viewport.first, viewport.last).map((_, offset) => (
+              <div
+                className="cantrip-editor-line"
+                key={viewport.first + offset}
+              >
+                {viewport.first + offset + 1}
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      ) : null}
       <div className="cantrip-editor-body">
         <div className="cantrip-editor-paint" aria-hidden="true">
           <div
@@ -248,25 +288,14 @@ export function NativeCodeEditor({
           >
             {lines.slice(viewport.first, viewport.last).map((line, offset) => {
               const cached = highlighted.get(viewport.first + offset + 1);
-              const tokens = cached?.text === line ? cached.tokens : [];
+              const tokens = cached?.text === line ? cached.tokens : NO_TOKENS;
               return (
-                <div
-                  className="cantrip-editor-line"
-                  data-editor-line={viewport.first + offset + 1}
+                <PaintedLine
+                  line={line}
+                  number={viewport.first + offset + 1}
+                  tokens={tokens}
                   key={viewport.first + offset}
-                >
-                  {tokens.length
-                    ? tokens.map((token) => (
-                        <span
-                          className={`syntax-${token.kind}`}
-                          key={token.from}
-                        >
-                          {line.slice(token.from, token.to)}
-                        </span>
-                      ))
-                    : line}
-                  {line.length === 0 ? "\u200b" : null}
-                </div>
+                />
               );
             })}
           </div>
@@ -286,7 +315,6 @@ export function NativeCodeEditor({
           spellCheck={false}
           wrap="off"
           className="cantrip-editor-input"
-          defaultValue={session.text}
           onScroll={(event) => {
             if (!activeRef.current) return;
             if (

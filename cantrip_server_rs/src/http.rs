@@ -16,17 +16,28 @@ mod audit;
 mod body;
 mod browser_discovery;
 mod browsers;
+mod chat_catalogs;
+mod chat_forks;
+mod chat_lifecycle;
+mod chat_messages;
 mod direct_attachments;
 mod encryption;
 mod file_documents;
 mod folders;
+mod github_conversion;
+mod github_import;
 mod live_socket;
 mod middleware;
+mod native_admission;
+mod native_coordination;
+mod native_events;
+mod native_settings;
 mod on_response;
 mod pane_layouts;
 mod policies;
 mod project_shares;
 mod project_surfaces;
+mod project_workspaces;
 mod projects;
 mod provider_accounts;
 mod provider_catalogs;
@@ -34,6 +45,7 @@ mod provider_credentials;
 mod provider_management;
 mod provider_quota;
 mod provider_telemetry;
+mod replicas;
 mod repository_operations;
 mod run_configurations;
 mod run_definitions;
@@ -144,6 +156,18 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(policies::routes())
         .merge(projects::routes())
         .merge(folders::routes())
+        .merge(chat_catalogs::routes())
+        .merge(chat_lifecycle::routes())
+        .merge(chat_forks::routes())
+        .merge(chat_messages::routes())
+        .merge(native_settings::routes())
+        .merge(native_events::routes())
+        .merge(native_admission::routes())
+        .merge(native_coordination::routes())
+        .merge(github_import::routes())
+        .merge(github_conversion::routes())
+        .merge(project_workspaces::routes())
+        .merge(replicas::routes())
         .merge(file_documents::routes())
         .merge(pane_layouts::routes())
         .merge(project_surfaces::routes())

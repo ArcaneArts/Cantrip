@@ -157,6 +157,7 @@
       "cantrip_server/src/app/runtime/interactive-surface-runtime.ts",
       "cantrip_server/src/app/runtime/live-infrastructure-runtime.ts",
       "cantrip_server/src/app/runtime/live-mutation-runtime.ts",
+      "cantrip_server/src/app/runtime/managed-chat-account-failover.ts",
       "cantrip_server/src/app/runtime/managed-chat-preparation.ts",
       "cantrip_server/src/app/runtime/managed-chat-turn-runtime.ts",
       "cantrip_server/src/app/runtime/managed-queue-delivery.ts",
@@ -2135,7 +2136,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-runtime-handoffs.ts",
-      "line": 20,
+      "line": 23,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/runtime-handoffs",
@@ -2148,7 +2149,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-runtime-handoffs.ts",
-      "line": 76,
+      "line": 79,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/runtime-handoffs",
@@ -2161,7 +2162,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-runtime-handoffs.ts",
-      "line": 101,
+      "line": 104,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/runtime-handoffs/:operationId",
@@ -2174,7 +2175,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-runtime-handoffs.ts",
-      "line": 126,
+      "line": 129,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/runtime-handoffs/:operationId/cancel",
@@ -2187,7 +2188,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/chat-runtime-handoffs.ts",
-      "line": 112,
+      "line": 115,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/runtime-handoffs/:operationId/retry",

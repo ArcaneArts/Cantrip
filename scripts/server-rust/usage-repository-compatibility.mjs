@@ -128,6 +128,25 @@ try {
       `INSERT INTO users(id,kind,role,status,display_name,email,normalized_email,created_at,updated_at) VALUES(${literal(id)},'account','member','active','Fixture user','usage-${index}@example.invalid','usage-${index}@example.invalid',${literal(stamp)},${literal(stamp)});`,
     );
   await compare("actual logical row measurement", { op: "measure" });
+  for (const principal of [owner, other])
+    await seed(
+      `INSERT INTO conversation_usage_clients(owner_id,client_id,sequence) VALUES(${literal(principal)},'same-client',1);`,
+    );
+  const conversationUsage = await compare(
+    "conversation usage clients contribute to their own account storage",
+    { op: "measure" },
+  );
+  for (const principal of [owner, other]) {
+    const row = conversationUsage.find(
+      (row) =>
+        row.ownerId === principal &&
+        row.storageClass === "server" &&
+        row.category === "conversations",
+    );
+    assert.ok(row, "owner has a conversation storage measurement");
+    assert.equal(row.rowCount, "1");
+    assert.ok(BigInt(row.logicalBytes) > 0n);
+  }
   await compare("empty current projection", { op: "current", owner });
   const entries = [
     entry(owner),

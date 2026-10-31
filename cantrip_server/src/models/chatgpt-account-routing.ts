@@ -38,7 +38,7 @@ export function updateRuntimeAccountCredits(
 export async function resolveAccountProviderRuntimes(input: {
   ownerId: string;
   preferredAccountId?: string | null;
-  repository: ServerRepository;
+  repository: Pick<ServerRepository, "listModelProviderAccountRuntimes">;
   runtime: ModelRuntime;
   workerId: string;
 }): Promise<AccountProviderRoutingResult> {

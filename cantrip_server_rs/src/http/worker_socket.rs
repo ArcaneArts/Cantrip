@@ -286,6 +286,10 @@ async fn run(
         .worktree_observations
         .schedule_worker(owner.clone(), worker.clone());
     service.folder_setup.worker_connected(worker.clone());
+    service.project_replicas.worker_connected(worker.clone());
+    service.github_conversion.worker_connected(worker.clone());
+    service.workspace_discovery.worker_connected(worker.clone());
+    service.scratch_roots.worker_connected(worker.clone());
     service.worker_maintenance.worker_connected(
         ctx.principal.user.as_ref().map(|user| user.id.clone()),
         worker.clone(),

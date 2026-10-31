@@ -1,4 +1,7 @@
-import { nativeRuntimeHandoffRequestSchema } from "@cantrip/protocol";
+import {
+  nativeRuntimeHandoffRequestSchema,
+  type NativeRuntimeHandoffRequest,
+} from "@cantrip/protocol";
 import type { FastifyInstance } from "fastify";
 import type { ServerRepository } from "../../db/repository.js";
 import { NativeCommandError } from "../../db/repository/native-command-errors.js";
@@ -149,6 +152,33 @@ export function installChatRuntimeHandoffRoutes(
     },
   );
   return {
+    async beginAndWait(
+      ownerId: string,
+      chatId: string,
+      input: NativeRuntimeHandoffRequest,
+    ) {
+      const state = await repository.nativeRuntimeHandoffs.begin(
+        ownerId,
+        chatId,
+        input,
+      );
+      dependencies.publishChatInvalidation(chatId, "chat");
+      await dispatch(ownerId, state);
+      // A worker reply (or a transport error recorded by dispatch) is not
+      // proof that it selected the destination. Read its durable acknowledgement
+      // before admitting any input against the replacement account.
+      const settled = await repository.nativeRuntimeHandoffs.get(
+        ownerId,
+        chatId,
+        state.operationId,
+      );
+      if (settled?.phase !== "completed")
+        throw new NativeCommandError(
+          settled?.errorCode ?? "handoff-not-completed",
+          "The account switch did not complete. Retry the account transfer before sending this message.",
+        );
+      return settled;
+    },
     async workerConnected(ownerId: string, workerId: string) {
       // Called after the authenticated socket is command-visible. Read durable
       // reservations rather than guessing from stale readiness or process flags.

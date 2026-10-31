@@ -15,3 +15,6 @@ skill_templates/
 
 # Keep the previously committed architecture plan's compact tables unchanged.
 docs/PLAN.md
+
+# Preserve the generated upstream pg_dump factory verbatim.
+scripts/database-transfer/third-party/pglite-pg-dump/pg_dump.mjs

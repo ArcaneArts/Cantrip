@@ -1,4 +1,10 @@
+import {
+  actualProjectReplicas,
+  replicaProductJobEvents,
+} from "./actual-project-replicas.mjs";
 import { actualProjectWorktrees } from "./actual-project-worktrees.mjs";
+import { actualGithubConversion } from "./actual-github-conversion.mjs";
+import { actualWorkspaceDiscovery } from "./actual-workspace-discovery.mjs";
 import {
   actualWorkerProjectSurfaces,
   retainedWorkerProjectSurfaces,
@@ -89,7 +95,7 @@ const report = {
   databaseMode,
   completeReplacement: false,
   scope:
-    "Existing browser account encryption, project and protected repository APIs; full worker startup, real managed/existing folders, failure/retry, reconnect and retained server state. Optional --worktrees exercises actual local Git create/lock/unlock/reconcile/remove/prune, retained identity and real Run process retirement before deletion, with only disposable catalog classification seeded. Not whole UI, packaging or multi-instance acceptance.",
+    "Existing browser account encryption, project and protected repository APIs; full worker startup, real managed/existing folders, failure/retry, reconnect and retained server state. Optional --worktrees exercises actual local Git create/lock/unlock/reconcile/remove/prune, retained identity and real Run process retirement before deletion, with only disposable catalog classification seeded. Optional --replicas uses two full workers for direct local Git attachment, replay, restart and detach; --github-replicas adds real public gh clone/fetch and managed checkout deletion. Optional --github-conversion uses the existing encrypted APIs and full worker to link matching public history in a fresh managed folder, preserve dirty bytes and identities, and restart without SQL seeding or command substitutions. Not whole UI, packaging or multi-instance acceptance.",
   runtimes: [],
 };
 let vite, browser, postgres, failure, surfaceRepositoryBinary;
@@ -104,6 +110,7 @@ async function flow(
   const page = await context.newPage();
   const errors = [],
     requests = [];
+  result.requests = requests;
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("request", (request) => {
     const pathname = new URL(request.url()).pathname;
@@ -131,6 +138,9 @@ async function flow(
       cliBinary,
       enrollmentCode,
       workerId,
+      traceShutdown:
+        process.argv.includes("--replicas") ||
+        process.argv.includes("--worktrees"),
       ...(process.argv.includes("--surfaces")
         ? {
             chromiumExecutable: chromium.executablePath(),
@@ -144,8 +154,11 @@ async function flow(
     if (!worker) return;
     const current = worker;
     worker = undefined;
-    result.workerStops.push(await current.close());
-    result.workerDiagnostics.push(current.diagnostics());
+    try {
+      result.workerStops.push(await current.close());
+    } finally {
+      result.workerDiagnostics.push(current.diagnostics());
+    }
   };
   const workers = () => page.evaluate(() => window.folderWorkers.getWorkers());
   const job = (id) =>
@@ -206,7 +219,8 @@ async function flow(
     );
     if (
       process.argv.includes("--project-surfaces") ||
-      process.argv.includes("--worktrees")
+      process.argv.includes("--worktrees") ||
+      process.argv.includes("--replicas")
     ) {
       execFileSync("git", ["init", "--initial-branch=main", existingPath]);
       execFileSync("git", ["-C", existingPath, "add", "retained.txt"]);
@@ -384,7 +398,8 @@ async function flow(
       names[1],
       normalizeProjectSourcePath(await realpath(existingPath)),
       process.argv.includes("--project-surfaces") ||
-        process.argv.includes("--worktrees")
+        process.argv.includes("--worktrees") ||
+        process.argv.includes("--replicas")
         ? "git"
         : "folder",
     );
@@ -591,7 +606,10 @@ async function flow(
       projectShares ||
       fileDocuments ||
       projectSurfaces ||
-      process.argv.includes("--worktrees")
+      process.argv.includes("--worktrees") ||
+      process.argv.includes("--replicas") ||
+      process.argv.includes("--github-conversion") ||
+      process.argv.includes("--workspace-discovery")
         ? Number(new URL(fixture.server.origin).port)
         : 0;
     // Retain a generous diagnostic deadline for both implementations. Earlier
@@ -671,7 +689,8 @@ async function flow(
       tunnel ||
       projectShares ||
       fileDocuments ||
-      projectSurfaces
+      projectSurfaces ||
+      process.argv.includes("--replicas")
     ) {
       await startWorker();
       if (projectSurfaces)
@@ -737,6 +756,18 @@ async function flow(
       ownershipKind: project.source.ownershipKind,
       capabilities: project.capabilities,
     }));
+    if (process.argv.includes("--replicas"))
+      await actualProjectReplicas({
+        page,
+        fixture,
+        root,
+        projectId: attached.id,
+        directory: normalizeProjectSourcePath(await realpath(existingPath)),
+        startWorker,
+        stopWorker,
+        cliBinary,
+        result,
+      });
     if (process.argv.includes("--worktrees"))
       await actualProjectWorktrees({
         page,
@@ -745,6 +776,26 @@ async function flow(
         executable: surfaceRepositoryBinary,
         projectId: attached.id,
         directory: normalizeProjectSourcePath(await realpath(existingPath)),
+        startWorker,
+        stopWorker,
+        result,
+      });
+    if (process.argv.includes("--workspace-discovery"))
+      await actualWorkspaceDiscovery({
+        page,
+        fixture,
+        dataDirectory,
+        workerId,
+        startWorker,
+        stopWorker,
+        result,
+      });
+    if (process.argv.includes("--github-conversion"))
+      await actualGithubConversion({
+        page,
+        fixture,
+        dataDirectory,
+        workerId,
         startWorker,
         stopWorker,
         result,
@@ -848,6 +899,21 @@ try {
     }
     const result = { kind, steps: [], workerStops: [], workerDiagnostics: [] };
     report.runtimes.push(result);
+    const close = fixture.close.bind(fixture);
+    fixture.close = async (...args) => {
+      const server = fixture.server;
+      try {
+        return await close(...args);
+      } finally {
+        if (server)
+          (result.serverShutdowns ??= []).push({
+            stages: server.events.filter(
+              (event) => event.event === "server.shutdown.stage",
+            ),
+            diagnostics: server.diagnostics(),
+          });
+      }
+    };
     try {
       await fixture.start();
       await flow(
@@ -863,6 +929,30 @@ try {
   }
   assert.deepEqual(report.runtimes[1].steps, report.runtimes[0].steps);
   assert.deepEqual(report.runtimes[1].projects, report.runtimes[0].projects);
+  if (
+    process.argv.includes("--github-conversion") ||
+    process.argv.includes("--workspace-discovery")
+  )
+    assert.deepEqual(
+      report.runtimes[1].githubConversionSummary,
+      report.runtimes[0].githubConversionSummary,
+    );
+  if (process.argv.includes("--workspace-discovery"))
+    assert.deepEqual(
+      report.runtimes[1].workspaceDiscoverySummary,
+      report.runtimes[0].workspaceDiscoverySummary,
+    );
+  if (process.argv.includes("--github-replicas"))
+    assert.deepEqual(
+      report.runtimes[1].githubReplicaSummary,
+      report.runtimes[0].githubReplicaSummary,
+    );
+  if (process.argv.includes("--replicas")) {
+    assert.deepEqual(
+      replicaProductJobEvents(report.runtimes[1]),
+      replicaProductJobEvents(report.runtimes[0]),
+    );
+  }
 } catch (error) {
   failure = error;
   report.failure = { message: error.message, stack: error.stack };

@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useSyntaxHighlighting } from "./use-syntax-highlighting";
 import type { SyntaxRequest, SyntaxResponse } from "./syntax/worker-protocol";
+import { initialSyntaxState } from "./syntax/tokenizer";
 
 (
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -16,7 +17,13 @@ class SyntaxWorker {
   constructor() {
     SyntaxWorker.instances.push(this);
   }
-  reply(first: number, last: number, documentId = "file", revision = 0) {
+  reply(
+    first: number,
+    last: number,
+    documentId = "file",
+    revision = 0,
+    firstText = "const value = 1;",
+  ) {
     this.onmessage?.({
       data: {
         documentId,
@@ -24,8 +31,10 @@ class SyntaxWorker {
         first,
         lines: Array.from({ length: last - first }, (_, i) => ({
           number: first + i + 1,
-          text: "const value = 1;",
+          text: first + i === 0 ? firstText : "const value = 1;",
           tokens: [{ kind: "keyword", from: 0, to: 5 }],
+          from: (first + i) * 17,
+          state: initialSyntaxState("typescript"),
         })),
       },
     } as MessageEvent<SyntaxResponse>);
@@ -41,7 +50,7 @@ async function fixture() {
   const root = createRoot(node);
   const props = {
     documentId: "file",
-    text: "const value = 1;",
+    text: Array(4000).fill("const value = 1;").join("\n"),
     revision: 0,
     first: 0,
     last: 40,
@@ -58,7 +67,7 @@ async function fixture() {
       props.active,
     );
     return (
-      <output data-count={lines.size}>
+      <output data-count={lines.size} data-first-text={lines.get(1)?.text}>
         {Array.from({ length: props.last - props.first }, (_, i) =>
           lines.get(props.first + i + 1)?.tokens.length ? "1" : "0",
         ).join("")}
@@ -100,19 +109,27 @@ it("retains cached colors while scrolling and accepts useful replies for an earl
     await act(async () => f.root.unmount());
   }
 });
-it("never reuses tokens from an older edit or another document", async () => {
+it("keeps current colors during an edit while rejecting stale worker replies and other documents", async () => {
   const f = await fixture();
   try {
     await act(async () => f.worker.reply(0, 256));
-    Object.assign(f.props, { text: "const value = 2;", revision: 1 });
+    Object.assign(f.props, {
+      text: f.props.text.replace("1;", "2;"),
+      revision: 1,
+    });
     await f.render();
     expect(f.worker.postMessage).toHaveBeenLastCalledWith(
       expect.objectContaining({ type: "edit", baseRevision: 0, revision: 1 }),
     );
-    expect(f.node.textContent).toBe("0".repeat(40));
+    expect(f.node.textContent).toBe("1".repeat(40));
     await act(async () => f.worker.reply(0, 256));
-    expect(f.node.textContent).toBe("0".repeat(40));
-    await act(async () => f.worker.reply(0, 256, "file", 1));
+    expect(f.node.textContent).toBe("1".repeat(40));
+    expect(f.node.querySelector("output")!.dataset.firstText).toBe(
+      "const value = 2;",
+    );
+    await act(async () =>
+      f.worker.reply(0, 256, "file", 1, "const value = 2;"),
+    );
     expect(f.node.textContent).toBe("1".repeat(40));
     f.props.documentId = "other";
     await f.render();

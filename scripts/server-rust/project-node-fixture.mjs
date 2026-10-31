@@ -13,6 +13,15 @@ import { assertNativeRuntimeWritable } from "../../cantrip_server/src/db/reposit
 import { managedConsoleFixture } from "./managed-console-node-fixture.mjs";
 import { gitManagedOperationContext } from "../../cantrip_server/src/app/shared/git-managed-operations.ts";
 import { worktreeCoordinatorFixture } from "./worktree-coordinator-node-fixture.mjs";
+import { conversionFixture } from "./conversion-node-fixture.mjs";
+import { discoveryFixture } from "./discovery-node-fixture.mjs";
+import { scratchRootFixture } from "./scratch-root-node-fixture.mjs";
+import { chatForkFixture } from "./chat-fork-node-fixture.mjs";
+import { chatMessageFixture } from "./chat-message-node-fixture.mjs";
+import { nativeCommandFixture } from "./native-command-node-fixture.mjs";
+import { NativeCommandError } from "../../cantrip_server/src/db/repository/native-command-errors.ts";
+import { ExecutionLaneConflictError } from "../../cantrip_server/src/db/repository/chat-execution-lanes.ts";
+import { AgentInteractionConflictError } from "../../cantrip_server/src/db/repository/agent-interactions.ts";
 console.error(JSON.stringify({ event: "repository-fixture.database.opening" }));
 const database = await connectDatabase(readServerConfig());
 console.error(JSON.stringify({ event: "repository-fixture.database.ready" }));
@@ -38,6 +47,155 @@ try {
           consoleTrace,
         );
         value = { result: value, trace: consoleTrace };
+      } else if (request.op.startsWith("fork-")) {
+        value = await chatForkFixture(
+          database.repository,
+          request,
+          consoleTrace,
+          (statement) =>
+            database.repository.projects.database.execute(sql.raw(statement)),
+        );
+      } else if (request.op.startsWith("message-")) {
+        value = await chatMessageFixture(database.repository, request);
+      } else if (request.op.startsWith("native-command-")) {
+        value = await nativeCommandFixture(database.repository, request);
+      } else if (request.op.startsWith("scratch-")) {
+        value = await scratchRootFixture(
+          database.repository.standaloneChatRootJobs,
+          request,
+          database.repository,
+        );
+      } else if (request.op.startsWith("discovery-")) {
+        value = await discoveryFixture(
+          database.repository.workspaceRepositoryDiscoveryJobs,
+          request,
+          database.repository,
+        );
+      } else if (request.op.startsWith("conversion-")) {
+        value = await conversionFixture(
+          database.repository.projectGithubConversionJobs,
+          request,
+        );
+      } else if (request.op.startsWith("replica-")) {
+        const repo = database.repository.projectReplicaJobs;
+        const {
+          owner,
+          job,
+          command,
+          attempt,
+          revision,
+          update,
+          error,
+          worker,
+        } = request;
+        switch (request.op) {
+          case "replica-provision":
+            value = await repo.createProvision(
+              owner,
+              request.project,
+              request.input,
+            );
+            break;
+          case "replica-synchronize":
+            value = await repo.createSynchronize(
+              owner,
+              request.project,
+              request.replica,
+              request.input,
+            );
+            break;
+          case "replica-remove":
+            value = await repo.createRemove(
+              owner,
+              request.project,
+              request.replica,
+              request.input,
+            );
+            break;
+          case "replica-context":
+            value = await repo.operationContext(job, command);
+            break;
+          case "replica-repair-context":
+            value = await repo.linkRepairContext(
+              owner,
+              request.project,
+              request.replica,
+            );
+            break;
+          case "replica-removal-blocker":
+            value = await repo.removalBlocker(request.replica, job);
+            break;
+          case "replica-removal-start":
+            value = await repo.markRemovalStarted(request.replica);
+            break;
+          case "replica-removal-restore":
+            await repo.restoreRemovalReady(request.replica);
+            value = null;
+            break;
+          case "replica-complete-provision":
+            value = await repo.completeProvision(job, command, request.result);
+            break;
+          case "replica-complete-synchronize":
+            value = await repo.completeSynchronize(
+              job,
+              command,
+              request.result,
+            );
+            break;
+          case "replica-complete-remove":
+            value = await repo.completeRemove(job, command, request.result);
+            break;
+          case "replica-provision-race":
+            value = (
+              await Promise.allSettled([
+                repo.createProvision(owner, request.project, request.input),
+                repo.createProvision(owner, request.project, request.input),
+              ])
+            ).map((r) =>
+              r.status === "fulfilled"
+                ? { ok: r.value }
+                : { error: r.reason.message, kind: r.reason.constructor.name },
+            );
+            break;
+          case "replica-get":
+            value = await repo.get(owner, job);
+            break;
+          case "replica-list":
+            value = await repo.list(owner, request.project);
+            break;
+          case "replica-claim":
+            value = await repo.claimNext();
+            break;
+          case "replica-renew":
+            value = await repo.renewLease(job, command, attempt);
+            break;
+          case "replica-progress":
+            value = await repo.updateProgress(job, command, attempt, update);
+            break;
+          case "replica-block":
+            value = await repo.block(job, command, error);
+            break;
+          case "replica-fail":
+            value = await repo.fail(job, command, error);
+            break;
+          case "replica-retry":
+            value = await repo.retry(owner, job, revision);
+            break;
+          case "replica-cancel":
+            value = await repo.cancel(owner, job, revision);
+            break;
+          case "replica-recover":
+            value = await repo.recoverInterrupted(
+              request.force,
+              new Date(request.now),
+            );
+            break;
+          case "replica-requeue":
+            value = await repo.requeueRetryableForWorker(worker);
+            break;
+          default:
+            throw new Error("Unknown replica fixture operation");
+        }
       } else if (request.op.startsWith("browser-")) {
         const repo = database.repository;
         switch (request.op) {
@@ -715,12 +873,46 @@ try {
         JSON.stringify({
           id: request.id,
           rejected: true,
-          ...((request.op.startsWith("project-surface-") ||
+          ...(error instanceof AgentInteractionConflictError
+            ? { interactionError: "AgentInteractionConflictError" }
+            : {}),
+          ...(request.op.startsWith("native-command-lane-") &&
+          error instanceof ExecutionLaneConflictError
+            ? { laneError: error.constructor.name }
+            : {}),
+          ...(request.op.startsWith("native-command-") &&
+          error instanceof NativeCommandError
+            ? { commandError: error.code, commandStatus: error.statusCode }
+            : {}),
+          ...(request.op.startsWith("message-") &&
+          error.name === "NativeHistoryError"
+            ? { historyError: error.code, historyStatus: error.statusCode }
+            : {}),
+          ...(request.op.startsWith("fork-")
+            ? {
+                trace: consoleTrace,
+                ...(error.constructor.name === "ExecutionLaneConflictError"
+                  ? { forkError: error.constructor.name }
+                  : {}),
+                ...(error.cause?.code
+                  ? {
+                      duplicateMessage: /unique|duplicate/i.test(error.message),
+                    }
+                  : {}),
+              }
+            : {}),
+          ...((request.op === "sql" ||
+            request.op.startsWith("project-surface-") ||
+            request.op.startsWith("discovery-") ||
             request.op.startsWith("tunnel-") ||
             request.op.startsWith("browser-") ||
             request.op.startsWith("document-") ||
             request.op.startsWith("workspace-") ||
-            request.op.startsWith("layout-")) &&
+            request.op.startsWith("layout-") ||
+            request.op.startsWith("scratch-") ||
+            request.op.startsWith("fork-") ||
+            request.op.startsWith("message-") ||
+            request.op.startsWith("native-command-")) &&
           error.cause?.code
             ? { databaseCode: error.cause.code }
             : {}),
@@ -749,6 +941,18 @@ try {
             request.op.startsWith("layout-")
               ? error.message
               : (error.cause?.message ?? error.message),
+          ...(request.op.startsWith("replica-")
+            ? { replicaError: error.constructor.name }
+            : {}),
+          ...(request.op.startsWith("conversion-")
+            ? { conversionError: error.constructor.name }
+            : {}),
+          ...(request.op.startsWith("scratch-")
+            ? { scratchError: error.constructor.name }
+            : {}),
+          ...(request.op.startsWith("discovery-")
+            ? { discoveryError: error.constructor.name }
+            : {}),
           ...(request.op.startsWith("folder-")
             ? { folderError: error.constructor.name }
             : {}),

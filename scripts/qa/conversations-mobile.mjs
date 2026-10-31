@@ -76,7 +76,7 @@ try {
   await page
     .getByRole("textbox", { name: "Edit qa.txt", exact: true })
     .waitFor();
-  await page.getByRole("tab", { name: "Conversations", exact: true }).click();
+  await page.getByRole("tab", { name: "Chats", exact: true }).click();
   const desktopBefore = await page.evaluate(() =>
     window.__qaRepositoryFixture.workspace(),
   );
@@ -103,7 +103,7 @@ try {
     await mobile
       .getByRole("button", { name: "Open sidebar", exact: true })
       .click({ timeout: 90000 });
-    await mobile.getByRole("tab", { name: "Conversations", exact: true }).tap();
+    await mobile.getByRole("tab", { name: "Chats", exact: true }).tap();
   };
   // A fresh installation may render its shell before restoring the selected
   // project. Select the fixture project through the drawer before using it.
@@ -119,7 +119,7 @@ try {
     .tap();
   await openSidebar();
   await mobile
-    .getByRole("button", { name: "New agent conversation", exact: true })
+    .getByRole("button", { name: "New agent chat", exact: true })
     .tap();
   const composer = mobile.locator('textarea[aria-autocomplete="list"]');
   await composer.waitFor({ state: "visible", timeout: 30000 });

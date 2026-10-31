@@ -2028,7 +2028,18 @@ function actionsRunCheckoutIdentity(run: GithubActionsRun): {
   };
 }
 
+type ReplicaRemovalLifecycle = (
+  root: string,
+  remove: () => Promise<ProjectReplicaRemoveResult>,
+) => Promise<ProjectReplicaRemoveResult>;
+
 export class GithubClient {
+  private replicaRemovalLifecycle: ReplicaRemovalLifecycle | null = null;
+
+  setReplicaRemovalLifecycle(lifecycle: ReplicaRemovalLifecycle): void {
+    this.replicaRemovalLifecycle = lifecycle;
+  }
+
   private readonly replicaOperationQueues = new Map<string, Promise<void>>();
   private readonly placementManager: ProjectReplicaPlacementManager;
 
@@ -5585,154 +5596,169 @@ export class GithubClient {
         ownershipReleased: customPlacement,
       });
     }
-    reportProgress({
-      stage: "inspecting",
-      percent: 30,
-    });
-    const status = (
-      await execFileAsync(
-        "git",
-        ["-C", target, "status", "--porcelain=v1", "--untracked-files=normal"],
-        { maxBuffer: 4 * 1024 * 1024 },
-      )
-    ).stdout.trim();
-    const ignored = (
-      await execFileAsync(
-        "git",
-        [
-          "-C",
-          target,
-          "ls-files",
-          "--others",
-          "--ignored",
-          "--exclude-standard",
-          "--directory",
-        ],
-        { maxBuffer: 4 * 1024 * 1024 },
-      )
-    ).stdout.trim();
-    if (status || ignored) {
-      return blocked(
-        "worktree-dirty",
-        "The replica contains changed, untracked, or ignored files and was not deleted.",
-        false,
-      );
-    }
-    const worktrees = (
-      await execFileAsync(
-        "git",
-        ["-C", target, "worktree", "list", "--porcelain"],
-        {
-          maxBuffer: 4 * 1024 * 1024,
-        },
-      )
-    ).stdout
-      .split("\n")
-      .filter((line) => line.startsWith("worktree "));
-    if (worktrees.length !== 1) {
-      return blocked(
-        "policy-denied",
-        "The replica has additional Git worktrees and was not deleted.",
-        false,
-      );
-    }
-    try {
-      await execFileAsync("git", ["-C", target, "fetch", "origin", "--prune"], {
-        maxBuffer: 32 * 1024 * 1024,
+    const removeFiles = async (): Promise<ProjectReplicaRemoveResult> => {
+      reportProgress({
+        stage: "inspecting",
+        percent: 30,
       });
-    } catch (error) {
-      return blocked(
-        "remote-unavailable",
-        customPlacement
-          ? "Could not verify published history for the selected worker checkout."
-          : `Could not verify published history: ${(error as Error).message}`,
-        true,
-      );
-    }
-    const head = await this.revisionAt(target, "HEAD");
-    const remoteContaining = (
-      await execFileAsync(
-        "git",
-        [
-          "-C",
-          target,
-          "for-each-ref",
-          "--format=%(refname)",
-          "--contains",
-          head,
-          "refs/remotes/origin",
-        ],
-        { maxBuffer: 4 * 1024 * 1024 },
-      )
-    ).stdout.trim();
-    if (!remoteContaining) {
-      return blocked(
-        "unpushed-commits",
-        "The replica HEAD is not contained in a fetched origin reference and was not deleted.",
-        false,
-      );
-    }
-    reportProgress({
-      stage: "removing",
-      percent: 80,
-    });
-    if (
-      customPlacement &&
-      placement &&
-      gitCommonDir &&
-      input.repositoryFingerprint
-    ) {
-      try {
-        await this.placementManager.verifyPlacementOwnership({
-          canonicalPath: canonicalTarget,
-          gitCommonDir,
-          linkPath: placement.linkPath,
-          mode: placementMode,
-          ownership: placement.ownership,
-          projectId: input.projectId,
-          repositoryFingerprint: input.repositoryFingerprint,
-        });
-      } catch (error) {
-        if (error instanceof ProjectReplicaPlacementError) {
-          return blockedFromPlacementError(error);
-        }
-        throw error;
+      const status = (
+        await execFileAsync(
+          "git",
+          [
+            "-C",
+            target,
+            "status",
+            "--porcelain=v1",
+            "--untracked-files=normal",
+          ],
+          { maxBuffer: 4 * 1024 * 1024 },
+        )
+      ).stdout.trim();
+      const ignored = (
+        await execFileAsync(
+          "git",
+          [
+            "-C",
+            target,
+            "ls-files",
+            "--others",
+            "--ignored",
+            "--exclude-standard",
+            "--directory",
+          ],
+          { maxBuffer: 4 * 1024 * 1024 },
+        )
+      ).stdout.trim();
+      if (status || ignored) {
+        return blocked(
+          "worktree-dirty",
+          "The replica contains changed, untracked, or ignored files and was not deleted.",
+          false,
+        );
       }
-    }
-    await rm(target, { recursive: true, force: false });
-    let linkRemoved = false;
-    let warning: string | null = null;
-    if (
-      placementMode === "managed-link" &&
-      placement?.linkPath &&
-      input.repositoryFingerprint
-    ) {
-      const link = await this.placementManager.removeManagedLinkIfMatching({
-        canonicalPath: canonicalTarget,
-        linkPath: placement.linkPath,
+      const worktrees = (
+        await execFileAsync(
+          "git",
+          ["-C", target, "worktree", "list", "--porcelain"],
+          {
+            maxBuffer: 4 * 1024 * 1024,
+          },
+        )
+      ).stdout
+        .split("\n")
+        .filter((line) => line.startsWith("worktree "));
+      if (worktrees.length !== 1) {
+        return blocked(
+          "policy-denied",
+          "The replica has additional Git worktrees and was not deleted.",
+          false,
+        );
+      }
+      try {
+        await execFileAsync(
+          "git",
+          ["-C", target, "fetch", "origin", "--prune"],
+          {
+            maxBuffer: 32 * 1024 * 1024,
+          },
+        );
+      } catch (error) {
+        return blocked(
+          "remote-unavailable",
+          customPlacement
+            ? "Could not verify published history for the selected worker checkout."
+            : `Could not verify published history: ${(error as Error).message}`,
+          true,
+        );
+      }
+      const head = await this.revisionAt(target, "HEAD");
+      const remoteContaining = (
+        await execFileAsync(
+          "git",
+          [
+            "-C",
+            target,
+            "for-each-ref",
+            "--format=%(refname)",
+            "--contains",
+            head,
+            "refs/remotes/origin",
+          ],
+          { maxBuffer: 4 * 1024 * 1024 },
+        )
+      ).stdout.trim();
+      if (!remoteContaining) {
+        return blocked(
+          "unpushed-commits",
+          "The replica HEAD is not contained in a fetched origin reference and was not deleted.",
+          false,
+        );
+      }
+      reportProgress({
+        stage: "removing",
+        percent: 80,
       });
-      linkRemoved = link.removed;
-      warning = link.warning;
-      await this.placementManager.forgetPlacement(
-        input.projectId,
-        canonicalTarget,
-      );
-    } else if (placementMode === "direct") {
-      await this.placementManager.forgetPlacement(
-        input.projectId,
-        canonicalTarget,
-      );
-    }
-    return projectReplicaRemoveResultSchema.parse({
-      status: "removed",
-      jobId: input.jobId,
-      attempt: input.attempt,
-      path: target,
-      localFilesDeleted: true,
-      linkRemoved,
-      ownershipReleased: customPlacement,
-      warning,
-    });
+      if (
+        customPlacement &&
+        placement &&
+        gitCommonDir &&
+        input.repositoryFingerprint
+      ) {
+        try {
+          await this.placementManager.verifyPlacementOwnership({
+            canonicalPath: canonicalTarget,
+            gitCommonDir,
+            linkPath: placement.linkPath,
+            mode: placementMode,
+            ownership: placement.ownership,
+            projectId: input.projectId,
+            repositoryFingerprint: input.repositoryFingerprint,
+          });
+        } catch (error) {
+          if (error instanceof ProjectReplicaPlacementError) {
+            return blockedFromPlacementError(error);
+          }
+          throw error;
+        }
+      }
+      await rm(target, { recursive: true, force: false });
+      let linkRemoved = false;
+      let warning: string | null = null;
+      if (
+        placementMode === "managed-link" &&
+        placement?.linkPath &&
+        input.repositoryFingerprint
+      ) {
+        const link = await this.placementManager.removeManagedLinkIfMatching({
+          canonicalPath: canonicalTarget,
+          linkPath: placement.linkPath,
+        });
+        linkRemoved = link.removed;
+        warning = link.warning;
+        await this.placementManager.forgetPlacement(
+          input.projectId,
+          canonicalTarget,
+        );
+      } else if (placementMode === "direct") {
+        await this.placementManager.forgetPlacement(
+          input.projectId,
+          canonicalTarget,
+        );
+      }
+      return projectReplicaRemoveResultSchema.parse({
+        status: "removed",
+        jobId: input.jobId,
+        attempt: input.attempt,
+        path: target,
+        localFilesDeleted: true,
+        linkRemoved,
+        ownershipReleased: customPlacement,
+        warning,
+      });
+    };
+    return this.replicaRemovalLifecycle
+      ? this.replicaRemovalLifecycle(canonicalTarget, removeFiles)
+      : removeFiles();
   }
 
   private async withReplicaOperation<T>(

@@ -12,6 +12,145 @@ feature set.
 
 Status: **implementation in progress; not a deployable replacement**.
 
+The native command milestone's current-main `pnpm check` exited 1: 1,645 server
+tests passed, 18 failed and 57 were skipped. One failure is the pooled-provider
+assertion at `local-foundation.test.ts:7218`; the other 17 are unchanged 5-second
+test timeouts. A fresh run of the eight failing files on clean Primary
+`a1b125544` reproduced 15 failures, including the provider assertion; the other
+three timeout cases passed there. The full app suite passed 4,112 tests with one
+timeout, and the full worker suite passed 2,558 with four timeouts. Those exact
+five cases subsequently passed on both the milestone branch and clean Primary
+with one test worker and their original timeouts. The app production build,
+current native/worker wire comparisons, Rust formatting and strict all-target
+Clippy passed. Root Prettier checking still fails on 12 unchanged files; the
+same 12 failures were reproduced on clean Primary. These results do not make
+the broad checks green. Logs and exit records use the
+`.qa/rust-server/native-kernel-*` prefix and are preserved with milestone evidence.
+
+## Native command kernel and protected internal APIs
+
+The additive native kernel implements command admission, immutable receipts,
+preparation/dispatch, observed turns, logical continuations and completion
+records, execution lanes/leases, encrypted prompts and managed queue authority.
+Visible/protected interaction storage, accepted worker replies, expiry,
+permission state/evidence and transaction-bound Agent/Task message and plan
+writes retain the Node repository's transaction and idempotency behavior.
+
+Native HTTP now handles admission, bind-preparation, dispatch, protected events,
+permission transitions, pending requests, continuations and settings evidence.
+Settings refresh/update/observation, account defaults and native model inventory
+also execute natively. Real HTTP/Live comparisons cover native PGlite, private
+PostgreSQL and external PostgreSQL in anonymous, password and account modes,
+using the unchanged worker transport and production endpoint encryption helpers.
+Stored command requests and native settings evidence decrypt using their
+original associated data and retain the keyed worker digest. PostgreSQL fault
+injection additionally verifies event rollback, actual row-lock waits and
+historical Task chat/project notification ordering.
+
+The coordination HTTP comparisons also reject missing, mismatched,
+insufficient-scope, revoked and expired worker credentials for each new route.
+In account mode, a second account enrolls a real worker and cannot access the
+first account's command or Chat state. Rejected calls publish no Live events.
+
+Restart recovery deliberately suspends existing execution lanes. The HTTP
+fixtures therefore admit and dispatch through real routes after server startup;
+they do not disable recovery or weaken event fencing. Current managed command
+admission preserves Node's Agent-project eligibility. Task and standalone
+managed admissions retain `managed-session-ineligible`; their complete product
+execution paths remain separate work in the replacement goal.
+
+The dedicated `native-commands` workflow job runs protocol/policy comparisons,
+the repository suites with a 1 MiB fixture stack, and settings/model/event/
+coordination HTTP suites across all three databases on Linux, macOS and Windows.
+Registration of that job is not platform acceptance. Receipt HTTP with actual
+queue notifications and dispatch/recovery, GUI orchestration, canonical history
+ingestion, complete Task/Goal execution, Redis coordination, supported-platform
+packaging, data-preserving upgrades/rollback and Winterhold rehearsal remain
+required. Normal development, desktop and standalone entrypoints still use Node.
+
+## Controlled conversion caller connection ownership
+
+Linux conversion run `41160107203` reset the first status request after the
+fixture restarted its server on the same port. An optional diagnostic workflow
+repeats the original scenarios on isolated external PostgreSQL databases and
+stops at the first failed iteration. It retains actual TCP connection and send
+times without collecting credentials, query parameters or request bodies.
+
+Diagnostic run `41165810079` failed at iteration four. Socket 53 connected at
+`1793418880326`, while process 9018 was shutting down. That process exited at
+`1793418880366`. The socket remained unused until the first status GET to the
+restarted process 9033 at `1793418880741`, then reset one millisecond later.
+The connection belonged to the previous server process: aborting the controlled
+global-fetch caller had opened an unused replacement connection.
+
+The controlled admission caller now uses the existing single-socket streaming
+HTTP helper. Its abort closes that socket without opening a replacement. The
+original database locks, admitted-write, shutdown, restart, recovery, revision
+and worker-command assertions remain in place. The repeat harness additionally
+checks actual TCP connection times for post-restart status reads. Resets and
+incomplete HTTP responses still fail without retrying. All eight focused
+streaming-client and trace tests pass, including the new actual abort/connection
+ownership test. Two corrected local repeats pass all three auth modes for both
+implementations on Node 24.22.1, including the actual post-restart connection
+checks. Linux diagnostic run `41167479583` at code head `9412d6565` passes all
+20 repetitions. Its verified artifact contains 120 completed restart scenarios
+(three auth modes and both implementations per repetition), with each actual
+post-restart GET using a connection established after the prior process exited.
+The artifact ZIP SHA256 is
+`579fb182432dc55adbafb30a38ebbf089b4c7dce046f393927fb9c312e625086`.
+This is focused Linux lifetime evidence; diagnostic dispatch does not replace
+the full platform matrix or packaged acceptance.
+
+## Platform recovery observations and PostgreSQL 16 transfer
+
+PR #2361 platform run `41129609392` exposed two observation races. The macOS
+external-PostgreSQL discovery check read an imported candidate with parent
+revision 11 and returned before asserting the required revision 12. Both
+production implementations read the job and candidates through separate queries,
+so a completion can commit between those reads. The recovery poll now waits for
+all expected fields together and retains each raw snapshot. Exact final revisions
+and ordered recovery events still have their original assertions.
+
+The Windows external-PostgreSQL terminal report shows the startup reconciliation
+command arriving after service creation and enabling, producing an extra terminal
+invalidation during the later restart check. The fixture now observes the actual
+empty startup reconciliation before creating the service. It keeps exact event
+counts, order, scope and payload checks, and retains raw Live traces and failed
+fixture roots for diagnosis.
+
+PR #2362 Linux migration run `41138651367` reached the native storage contracts,
+then PostgreSQL 16 rejected pg_dump 18's generated `transaction_timeout` setting.
+An isolated PostgreSQL 16.15 container reproduced that error. The bounded exporter
+now adapts only the generated leading prelude: it attempts the real setting in a
+DO block and tolerates only an absent setting. Permission errors and other SQL
+failures still propagate. Function bodies and exported multiline values are never
+searched or rewritten. PostgreSQL's [cross-version dump notes](https://www.postgresql.org/docs/18/app-pgdump.html#APP-PGDUMP-NOTES)
+explain why older destinations can require SQL adaptation.
+
+Local current and genuine 233-migration transfers pass into PostgreSQL 16.15,
+native PGlite 17.5 and private PostgreSQL 17.9 with identical 115-table snapshots
+and four sequence states. The fixture includes a multiline row containing the
+same setting text to verify that data remains unchanged. The optional test-only
+`--postgres-url` creates isolated random databases on a supplied PostgreSQL test
+server and removes only those databases afterward. These backend results do not
+prove the Rust executable's Linux or Windows acceptance.
+
+The local discovery lifecycle suite passes on all three stores and all three auth
+modes; terminal HTTP/Live passes on all three stores and both auth modes. A retained
+PostgreSQL recovery trace actually includes `(revision 11, imported)` followed by
+`(revision 12, imported)`. Current and historical transfer interruption checks also
+pass on all stores. The original Windows migration job passes with SQL-written
+SIGKILL witnesses and successful retries; the follow-up head still needs CI results.
+
+The broad repository check ran and failed with 21 source-server test failures,
+1,628 passing and 71 skipped under concurrent validation. Sequential reruns of all
+16 failing files on both clean baseline and this branch each pass 49 tests and
+reproduce only the existing provider-routing assertion in
+`local-foundation.test.ts:7218`. No deadlines or assertions were changed, and this
+does not make the broad check green. The local startup stalls were separately
+sampled in tsx disk-cache eviction before application entry; the reruns disable
+that shared cache without deleting it.
+
 ## Removed plaintext GitHub catalog
 
 The root Node request policy disables every `/api/github/` route, including the
@@ -70,6 +209,43 @@ PostgreSQL, private PostgreSQL and native PGlite pass all nine local
 storage/authentication combinations with unchanged 116/120/127 recorded
 observations per runtime. Reports: `observation-order-http-*-v1.json`. Platform
 verification remains pending for this adjustment.
+
+## Product acceptance observation boundaries
+
+The acceptance driver now waits for the real Run child's exit witness and its
+actual `ESRCH` result before asserting retirement. Linux platform traces show a
+PTY shell-group PID distinct from the Node child PID. A bounded Linux reproduction
+using the unchanged production process-tree controller confirmed five cases where
+the shell exited before a child flushed its witness 150 ms later. This timing
+reproduction does not replace whole-worker Linux acceptance. The existing child
+identity, worktree-directory ordering, secret hash and durable-runtime assertions
+remain intact.
+
+The browser-discovery fixture now serves its HTTP listener in a separately
+supervised process. In the macOS failure, both services hosted by the browser/Vite
+driver disappeared from the fleet reply while independently served ports remained.
+An actual worker-probe reproduction stalls the driver for 1.1 seconds: the inline
+listener misses the unchanged 750 ms probe deadline, while the isolated listener
+responds. Only candidate addresses are supplied in this bounded timing experiment;
+the full product flow still uses the production OS listener inventory. Both client
+APIs must still find the exact listener, title, worker and placement, and the
+fixture retains the real request/response events.
+
+Local Run product checks pass 25 steps per Node/Rust runtime on PGlite, private
+PostgreSQL and external PostgreSQL. The full encrypted resource flow passes 35
+steps per runtime on each store, including actual fleet discovery, terminals,
+WorkerLink/direct routing, tunnels, protected shares, file documents and workspaces.
+It retains exact tunnel-byte assertions. These host-wide OS discovery flows must run serially when
+sharing a machine: one validation run's HTTP/TLS probes otherwise reach another
+run's raw TCP peer. No traffic is filtered out to make that assertion pass.
+
+Current-head supported-platform and packaged acceptance remain required. A separate
+Windows conversion job in run `41141260086` timed out during native PGlite opening;
+its logs and artifact are retained rather than counted as a pass. The serialized
+standard `pnpm check` for this milestone finishes with 1,662 source-server tests
+passing, 57 skipped and only the previously reproduced provider-routing assertion
+at `local-foundation.test.ts:7218` failing. No assertions or deadlines were changed;
+the broad check remains non-green.
 
 ## Actual Run product acceptance
 
@@ -1825,6 +2001,57 @@ All 2,072 compared Node server, worker, shared and dependency files are identica
 to that baseline; the earlier baseline receipts also retain both failing tests.
 The repository-wide check is not reported as passing.
 
+## Workspace catalog, repository discovery and imports
+
+The native server now implements all eight workspace catalog, attached-root,
+scan and import routes. Encrypted names, active key revisions, default promotion,
+immutable worker/root bindings, revision conflicts, candidate classification,
+checkout/GitHub conflicts and file-preserving workspace removal use native
+repositories. Import completion creates the user-owned direct project, external
+Primary and workspace membership in one transaction. Late constraint failures
+roll back the whole completion; retrying the identical completion succeeds.
+
+Discovery scans and imports share one executor slot, with scans taking priority.
+The unchanged worker receives protected routing handles over its existing
+command socket. Scan requests have no fixed command deadline; import validation
+retains its 60-second deadline. Both retain the production two-minute lease,
+30-second renewal/recovery and bounded retries for actual command quota errors.
+Caller disconnect does not cancel an admitted mutation. Shutdown drains admitted
+work while the database remains open, and startup/worker reconnect recovers
+unfinished scans and imports with the existing attempt/revision fences.
+
+Local macOS evidence covers all three stores: 241 repository observations and
+73 SQL snapshots each, 6,590 exact source validation cases across 18 roots, and
+all three authentication modes with 68/68/72 HTTP observations per runtime when
+lifecycle cases are enabled. Real worker reconnect, missing capability, explicit
+retry and shutdown recovery match the reference. Separate tests hold scans
+through the real lease deadline and reject a stale attempt before actual expiry
+and sweep recovery; production clocks and SQL lease timestamps are unchanged.
+
+Admitted root attachment survives a real HTTP client abort on every store.
+External PostgreSQL tests use actual blocking SQL and backend identities to
+prove concurrent same-revision admission returns one 202 and one 409, and that
+an admitted catalog insert survives client disconnect and shutdown. Raw
+pg_stat_activity witnesses are retained separately from normalized comparisons.
+
+The actual encrypted browser APIs and full built worker attach a disposable
+root, discover/import a local Git checkout, and link its existing public GitHub
+origin without pushing. Project/source/Primary identities, Git refs and dirty
+bytes survive conversion and server restart. Removing the workspace while the
+worker is offline removes catalog records and preserves every worker file.
+This flow passes for PGlite, private PostgreSQL and external PostgreSQL without
+seeding project catalog rows or substituting worker commands.
+
+The generic source oracle now supplies baselines for all 324 registered native
+roots, including 69 previously missing Run/worktree/provisioning roots. A real
+empty-revision Run refinement mismatch was corrected to preserve JavaScript
+truthiness; all 112 dedicated definition cases pass. The full generic suite now
+passes 296,220 exact source comparisons and 69,648 ECMAScript JSON round trips
+locally. Discovery CI is configured for Linux, macOS and Windows;
+this milestone has not yet run there. Full managed execution/removal consumers,
+shared coordination, packaging, migration and final default cutover remain open.
+Normal app/server packaging still selects the Node server and Node worker.
+
 ## Managed-folder provisioning
 
 Native folder creation now includes default workspace/storage bootstrap,
@@ -1884,6 +2111,233 @@ Repeat with `--database bundled-postgres` and `--database postgres`. The actual
 client suite uses the same built worker, CLI and Chromium setup as the catalog
 flow below. Configured CI is not passing platform evidence; the coverage ledger
 records the accepted scope.
+
+## GitHub conversion execution in progress
+
+The native conversion repository, two-job executor and all four preflight,
+start/status/retry routes are implemented. Protected repository and commit
+handles remain opaque. Preflight binds the chosen source and worker rather than
+trusting worker-supplied response identities. Admission, retry, lease renewal,
+restart recovery, completion fences and the existing Live publications preserve
+the source behavior. Completion updates the existing source, Primary worktree,
+project origin and job in one transaction; user ownership and identities remain.
+
+Local macOS repository comparisons pass 124 cases and 44 snapshots on all three
+stores. They cover actual last-write constraint failure and rollback, stale
+attempts, source ownership/path/Primary drift and repository collisions. HTTP
+comparisons now pass all nine storage/auth combinations: 67 observations per
+runtime in anonymous/password mode and 72 in account mode, with nine base worker
+commands and eight base job Live invalidations each. Malformed worker preflight
+results return matching 502 bodies.
+Managed folders are created through real HTTP/worker materialization. For the
+external Git branch, existing workspace-discovery ownership metadata is prepared
+with the server stopped: legacy from-folder attachment currently records Cantrip
+ownership in the reference and cannot stand in for a user-owned discovery import.
+This fixture boundary is explicit; it is not proof of the actual external-source
+discovery flow. The separate managed-folder product flow below uses the full client
+and worker without catalog seeding.
+
+The capacity and active-command shutdown extension also passes every combination.
+It records five additional execution commands: three conversions admit two held
+running jobs and one queued job, releasing one slot dispatches the third once,
+and all complete on attempt one. Shutdown retains an interrupted conversion as
+the same blocked worker-offline job at attempt one/revision three. Restart and
+worker reconnect complete it once at attempt two/revision six, with one recovery
+Live invalidation. Strict all-target Clippy/format checks,
+large-file checks and four focused reference tests pass. Current reports are
+`conversion-repository-pglite-v6.json`, `conversion-repository-{postgres,bundled}-v2.json`
+and `conversion-all-auth-{pglite,postgres,bundled}-v1.json` under `.qa/rust-server/`.
+
+Production lease tests now pass on all three stores without fake clocks or SQL
+lease mutation. A held worker command remains attempt one/revision two beyond its
+original two-minute lease, and is dispatched once. A stale ready result remains
+running until the real sweep recovers it; attempt two succeeds at revision five.
+Both jobs publish exactly their expected job Live revisions.
+
+Actual external PostgreSQL lock tests pass anonymous, password and account modes.
+Two same-project starts return 202/409; distinct projects claiming one repository
+return 202/500 with the reference private error contract. Each race persists one
+job. The joined `SKIP LOCKED` claim can skip the first job while the losing
+admission retains its project lock in either runtime; a following admission is
+the real dispatcher wake-up used by this test. The harness records this behavior
+instead of asserting immediate dispatch. A disconnected caller retains the same
+blocked INSERT. Shutdown waits for its commit, leaving queued attempt zero/
+revision one; restart blocks offline at attempt one/revision three and reconnect
+completes the same job at attempt two/revision six.
+
+The existing encrypted browser APIs and full worker now complete a real GitHub
+conversion on all three stores, with 12 product steps per runtime. A fresh managed
+folder receives matching public GitHub history in its disposable worker directory.
+Preflight selects `remoteAction=link`; execution preserves uncommitted file bytes,
+remote refs and the project/source/Primary identities, publishes job revisions
+`[1, 3]`, and retains the converted state through server and worker restart. There
+are no SQL fixtures or command substitutions in this flow. It performs public
+reads and linking, without repository creation or push. Actual external user-source
+discovery and managed-folder push/initial-commit product flows remain required.
+
+The macOS and Windows replica CI jobs also exposed a pending-observation shutdown
+wait. An unanswered real observation command reproduces the Rust failure locally
+at the original 15-second deadline. Shutdown now stops observation admission,
+closes the worker bridge, then drains their owned persistence tasks before storage
+closes. The same regression passes on all three stores without extending its
+deadline or cancelling work. The platform matrix still must verify this fix.
+The Linux contracts job separately failed because the real Run retirement probe
+did not produce its termination marker under Node; its cause remains unresolved.
+
+```sh
+node --import tsx scripts/server-rust/conversion-http-compatibility.mjs --database pglite --profile none --leases --report .qa/rust-server/conversion-real-leases-pglite.json
+node --import tsx scripts/server-rust/conversion-http-compatibility.mjs --database postgres --lifetimes --report .qa/rust-server/conversion-http-lifetimes.json
+node --import tsx scripts/server-rust/conversion-http-compatibility.mjs --database pglite --profile none --lifecycle --observation-shutdown --report .qa/rust-server/conversion-observation-shutdown-pglite.json
+node --import tsx scripts/server-rust/actual-folder-client.mjs --database pglite --github-conversion --report .qa/rust-server/actual-github-conversion-pglite.json
+```
+
+Repeat the lease, observation and product suites with `--database postgres` and
+`--database bundled-postgres`. The independent conversion CI job configures the
+three supported operating systems and all stores; configuration is not evidence
+that those jobs passed. Further source/failure cases, supported-platform results,
+packaging, migration/rollback and multi-instance acceptance remain required.
+
+PR #2348 Windows CI stopped in a project-surface test probe when its blocker
+count matched but `wait_event_type` was null. The surface and workspace probes
+now poll for the complete count-plus-Lock witness before releasing their real
+SQL lock, retaining every assertion and the ten-second deadline. Both complete
+local concurrency/shutdown suites pass. This is not Windows acceptance; the
+platform matrix must still run the updated probes.
+
+## Project replica execution in progress
+
+The native replica domain now includes durable admission, payload fingerprints,
+revision and command fences, source/worktree completion, lease scheduling,
+worker reconnect, and the catalog/job/retry/cancel/link-repair routes. Protected
+GitHub import retains opaque repository handles and the existing separate
+project-creation and job-admission transactions.
+
+Local macOS comparisons pass all three stores for repository lifecycle
+(52 cases/9 snapshots), admission (72/7), and completion (39/19). The HTTP
+validation and offline-import suites each pass 18 observations per runtime and
+authentication profile. Connected transport plus failure recovery passes 43 HTTP
+observations, eight worker commands and 21 job Live events per runtime/profile.
+It holds a command while checking durable progress, rejects stale progress,
+provisions and synchronizes replicas, repairs a managed link, removes a second
+replica, protects the final source, and recovers a worker-blocked job through a
+failed retry and successful retry. Both anonymous and account profiles run.
+
+The reconnect extension passes all three stores: 47 HTTP observations, nine
+worker commands and 25 job Live events per runtime/profile, including exactly
+one dispatch after an offline attempt resumes on reconnect. Real-time renewal
+and stale-completion recovery also pass all three stores: 53 HTTP observations,
+12 commands and 32 job Live events per runtime/profile. A held command stays on
+attempt one beyond its original lease; a stale completion expires and recovers
+exactly once on attempt two. Active-command shutdown/restart passes all three
+stores in both auth profiles: the held first attempt survives as a retryable
+worker-offline job, then reconnect completes attempt two with exact Live revisions.
+A second-account extension passes all three stores with 61 account-profile HTTP
+observations (50 in anonymous mode), including all ten replica/job routes denying
+foreign access, unchanged owner state and no extra worker dispatch.
+Repository removal comparisons also cover extra worktrees, chats, terminals,
+Explorer and Code tabs, project views, and active/released execution lanes.
+Converted-folder retention and deletion pass all three stores in both auth
+profiles (56 anonymous/67 account HTTP observations, 12 commands). Completed
+conversion records are seeded while the server is stopped; production routes
+then detach without a worker command or run folder deletion through failure and
+retry. Restarted database reads confirm source retirement, missing worktrees and
+matching deletion timestamps, including an already absent folder. A real worker
+heartbeat is sent on reconnect; command sockets alone do not refresh presence.
+The capacity comparison also passes all three stores: five admitted jobs yield
+four held running attempts and one queued attempt, releasing one slot dispatches
+the fifth once, and all five finish on attempt one. It records 57 anonymous/68
+account HTTP observations per runtime. Controlled handlers return distinct
+worker paths; a copied-database reproduction retains the real source-path
+ownership rejection from the initial fixture.
+An actual encrypted browser/two-full-worker local Git flow now passes on all
+three stores (12 product steps per runtime). It uses real direct checkout
+attachment, exact admission replay, retained replica identity after server and
+worker restart, refused user-checkout deletion, and detach with Git files intact.
+No catalog, repository or worker handler is seeded for this flow. The existing
+AppLiveClient receives the same per-job sequences from both servers, including
+unchanged completion revisions published by exact admission replay. The comparison
+function also passes against all six saved runtime reports.
+
+The first PGlite run timed out during Node startup before product steps; an
+isolated same-mode startup passed in 6.3 seconds, without proving the cause.
+A second run completed the Node flow but killed a full worker 30 seconds after
+SIGTERM in the Rust case, despite its shutdown-completed log at 853 ms. No worker
+handle trace was available for that failure. A later traced run identified the
+late-observation watcher defect fixed below; attribution of the earlier untraced
+hang remains unproven. Test-only handle tracing and complete server shutdown-stage
+retention support further investigation. The startup timeout remains unresolved.
+
+The managed GitHub extension uses real public `octocat/Hello-World` reads and
+clones through `gh`, the encrypted browser API, and both full workers. The latest
+comparison passes 17 product steps per runtime on all three stores: import,
+exact-revision second replica, synchronization, ignored-user-file rejection, and
+retry/removal with the primary retained. Both dirty and ignored checks remain
+unchanged. The initial PGlite failure is retained: its ignored CodeGraph cache
+blocked removal despite clean Git status.
+
+Worker replica deletion now invokes CodeGraph retirement only after existing
+checkout path/ownership checks. Retirement fences reconfiguration, aborts and
+drains the current CLI through actual process close, and executes managed
+`uninit --force` before the existing Git checks. It also works before first
+observation after restart. Cleanup failure does not replace the filesystem
+operation's result; the actual dirty/ignored checks still run. A blocked removal
+resumes observation. A successful removal forgets the retired path. No ignored
+file allowlist or force-delete bypass was added.
+
+The v4 PGlite/Rust run observes two real retirement events in the previously
+failing cache case. Latest v5 also records real retirements on Node/PostgreSQL
+and Rust/private PostgreSQL; all six runtime/store flows preserve the injected
+ignored user file, then remove only the secondary checkout on attempt two.
+Forty-six focused CodeGraph/Git safety tests and the worker build pass, including
+real delayed-SIGTERM process drain, reconfiguration fencing, cleanup before first
+observation, optional-tool failure, symlink preservation and denial before the
+removal lifecycle. The 11 worktree tests also pass.
+
+The extended run also captures two referenced filesystem watchers on a retiring
+checkout and `.git` after the worker logged shutdown completion. WorktreeManager
+accepted a late observation configuration after close. A child-process regression
+first proves configuration completed and then reproduces both persistent watcher
+handles; a permanent observation-close flag fixes that lifetime defect. All 11
+worker worktree tests and the full worker build pass. Earlier trial regressions
+that timed out before configuration completed are retained as invalid leak
+proof; the measured failing/passing process regression is the evidence. Server
+shutdown deadlines and the worker's 30-second shutdown assertion are unchanged.
+
+Controlled HTTP admission and lifetime comparisons now pass on external
+PostgreSQL for Node and Rust in anonymous and account modes. Five forced races
+cover identical provision keys, competing keys for one worker, a reused key with
+different worker payloads, and identical/distinct synchronization keys. Both
+requests reach the actual blocked INSERT or source-row lock before release;
+each case verifies exact conflict bodies, one durable job and exact later replay.
+The PostgreSQL activity view truncates the reference's long SELECT projection,
+so its actual blocker PID and lock wait establish the source-row boundary.
+Synchronization's unsafe cancellation is refused; normal worker reconnect then
+completes its second attempt. A disconnected admission still commits, and an
+admission disconnected during shutdown retains one queued job at attempt zero,
+revision one. Restart dispatches that same job once and replay returns its
+canonical blocked result. Evidence: `replica-http-lifetimes-v5.json`. These
+cross-session lock cases deliberately use external PostgreSQL; the other suites
+continue to exercise all three storage modes.
+
+Remaining placement/failure product flows and supported-platform acceptance
+remain required before completing this domain.
+Existing platform CI shutdown failures remain unresolved; local comparisons do not prove
+packaged or Winterhold readiness. Fixed native shutdown-stage diagnostics now
+record drain names, start/completion and elapsed time without changing ordering
+or timeouts. Full-worker catalog reports retain these stages on success and
+failure to locate stalled drains. The default server remains Node.
+
+```sh
+node --import tsx scripts/server-rust/replica-import-http-compatibility.mjs --connected --faults --reconnect --report .qa/rust-server/replica-connected-pglite.json
+node --import tsx scripts/server-rust/replica-import-http-compatibility.mjs --connected --faults --reconnect --lease-recovery --report .qa/rust-server/replica-lease-pglite.json
+node --import tsx scripts/server-rust/replica-http-lifetimes.mjs --report .qa/rust-server/replica-http-lifetimes.json
+node --import tsx scripts/server-rust/actual-folder-client.mjs --replicas --report .qa/rust-server/actual-replica-product-pglite.json
+```
+
+Repeat with `--database postgres` and `--database bundled-postgres`. The lease
+scenario uses the production two-minute expiry and 30-second timers without
+clock substitution. The Live test client sends ordinary heartbeat pings throughout
+the wait. These local results do not establish supported-platform acceptance.
 
 ## Project catalog and execution placement
 
@@ -2394,6 +2848,349 @@ against the Node service over actual sockets. Rust formatting and Clippy with
 warnings denied passed. These are foundation results, not the complete server
 or product-flow acceptance matrix.
 
+## Legacy PGlite logical export and transactional restore
+
+An actual round trip found that the upstream dump wrapper removed lines beginning
+with `\\restrict` or `\\unrestrict` from multiline row values and SQL function
+bodies. The converter now obtains SQL directly from the pinned package's generated
+WASM factory, before that global cleanup. It removes only the matching generated
+header and footer commands. The unmodified factory, license and provenance are
+retained under `scripts/database-transfer/third-party`; the matching WASM remains
+in the pinned dependency. Native serving never imports this bounded converter.
+
+The regression fixture uses the same guard key inside actual text and a SQL
+function, restores the real dump, and checks both values exactly. It also invokes
+an actual invalid dump option, checks ordinary error redaction and explicitly
+retained private diagnostics, and verifies the original session/search path still
+works. The complete current and historical transfer fixtures now retain SQL NULL
+versus JSON null, multiline guard text and the function result alongside the full
+table and sequence snapshots. Their all-store interruption/retry suites pass
+locally; supported-platform results remain required.
+
+The expanded current/historical fixtures also pass against real PostgreSQL
+16.15. Strict all-target Clippy and native database contracts pass. The broad
+repository check exits 1 with 1,662 source-server tests passing, 57 skipped and
+the previously reproduced provider-routing assertion failing at
+`local-foundation.test.ts:7218`. This is not a green repository-wide check.
+
+A bounded offline JavaScript tool now opens a private copy of the stopped legacy
+PGlite database and exports ordinary PostgreSQL SQL with the pinned, matching
+[PGlite/pg_dump packages](https://pglite.dev/docs/pglite-tools). It never opens the original database for execution and
+creates the export exclusively with private file permissions. Native serving
+and background work do not import or invoke this converter.
+
+The Rust executable accepts trusted INSERT-format exports through `--restore-sql`
+with `--migrate-only`. Restore DDL,
+data and pending migrations execute in one transaction on the selected native
+PGlite, private PostgreSQL or external PostgreSQL backend. The original Drizzle
+journal and migration SQL hashes remain authoritative. Deferred checks are
+resolved before upgrade DDL so valid circular chat/root relationships do not
+leave PostgreSQL 17 trigger events pending during the conversation backfill.
+An offline restore also preserves the existing local-user timestamps instead
+of running the ordinary migrate-only local-user refresh.
+
+For a stopped source and a separate destination, the SQL transfer components
+can be exercised with:
+
+```shell
+node scripts/database-transfer/legacy-pglite.mjs /old/profile/server-db /backup/export.sql
+/absolute/path/to/cantrip-server --database pglite --data-dir /new/profile \
+  --migrate-only --restore-sql /backup/export.sql
+```
+
+Local macOS checks transfer actual PostgreSQL 18.3 WASM PGlite data into native
+PostgreSQL 17.5 PGlite and both PostgreSQL deployment modes. All 115 table
+snapshots and four sequence states match, including the real migration journal,
+large integers, precise numerics, JSONB, bytea, arrays, generated columns,
+Unicode and microsecond timestamps. Snapshot queries explicitly use UTC on
+both sides to compare stored instants. Every one of the source profile's 1,665
+original files retains its bytes and permissions.
+
+A second fixture applies the actual first 233 migrations, seeds a valid
+worker/chat/root cycle and then exports it. The native restore applies the
+three pending migrations and matches a separate copy upgraded by the actual
+Node migrator. Late import errors, a failure after earlier pending upgrades,
+and replay into an existing destination leave destination state intact.
+Actual invalid-value errors expose SQLSTATE without logging exported values.
+A failed private PostgreSQL load closes its postmaster before returning, so an
+immediate retry does not race parent-death shutdown. Two concurrent native
+restores share the startup migration transaction lock: actual blocked-query
+witnesses prove serialization, one succeeds and the other rejects the existing
+destination while the retained snapshot stays identical.
+
+Interruption tests kill the native command only after a SQL-written filesystem
+witness proves execution. The historical case pauses inside the conversation
+migration after earlier upgrades execute. Restart observes no partially
+committed application state, and an identical retry succeeds on all stores.
+An external PostgreSQL backend may retain the interrupted query until it
+finishes and detects the lost connection; these checks include that eventual
+rollback instead of inferring it from the client's exit alone.
+
+These are SQL transfer components. The complete-profile components described
+below add file/key transfer, persistent backend selection and representative
+post-write reverse conversion. Packaged upgrade integration and full product
+rollback remain unfinished. Normal builds continue to select the Node server
+and Node worker.
+
+## Native logical export and representative post-write rollback
+
+The Rust executable now accepts `--migrate-only --export-sql <new file>` for
+native PGlite, private PostgreSQL and external PostgreSQL. It opens the selected
+database, obtains a real native pg_dump export, and exits before migrations,
+local-user refresh or HTTP/background services start. Supply `--pg-dump-path`,
+or use the configured PostgreSQL binary directory or PATH. Bundling those native
+client/runtime assets remains packaging work.
+
+```shell
+/absolute/path/to/cantrip-server --database pglite --data-dir /native/profile \
+  --migrate-only --export-sql /backup/native.sql \
+  --pg-dump-path /absolute/path/to/pg_dump
+```
+
+Native PGlite exposes an exclusive wire-session guard through a small local
+pglite-rs patch. It retains the existing session mutex without issuing BEGIN;
+pg_dump establishes its own snapshot and transaction settings. Dropping the guard
+queues rollback before another caller can proceed. A real SQL-written filesystem
+witness verifies cancellation during execution. Upstream source, MIT license and
+patch provenance are retained under `cantrip_server_rs/third-party/pglite-rs`.
+
+PostgreSQL exports use a temporary loopback relay authenticated by a random
+startup token. Rust opens the actual backend connection with its existing TLS
+connector and forwards the PostgreSQL protocol. The client retains configured
+login credentials, startup options, host choices and session-attribute selection.
+The TLS matrix uses a held relation lock to identify the actual pg_dump backend
+and checks `pg_stat_ssl` while that backend is blocked. Eleven SSL-on/off and
+omitted/empty/disable/prefer/require/verification cases pass locally. Wider URL
+option and supported-platform acceptance remain required. A real startup-role
+case found that URL form encoding sent spaces as literal plus signs to the Rust
+PostgreSQL driver. Retained query values now use percent-only encoding; role,
+login identity and space/plus/Unicode application-name results match the actual
+Node driver. Export uses the configured login identity while preserving startup role
+and session-authorization options. The final eleven-case TLS regression also passes after this correction.
+
+The SQL preparer removes only matching generated header/footer guard commands and
+adapts only the generated transaction-timeout prelude for older destinations.
+An actual native 17.9 dump with its guard key inside multiline TEXT and a SQL
+function restores exactly, including CRLF guard variants, large numbers, bytea,
+SQL NULL and JSON null. A private staging file is synced and published without
+overwriting an existing path. Actual missing-executable and restricted-role SQL
+failures leave no published file. Default error rendering stays redacted; an
+explicit diagnostic consumer verifies that the original SQL failure is retained.
+
+Current-schema and genuine 233-migration fixtures pass logical transfer into all
+three Rust backends and back into JavaScript PGlite. Every one of 115 table
+snapshots, four sequence states, the literal function result and NULL distinctions
+matches. The expanded scenario signs into Rust with password authentication,
+initializes protection records, creates a workspace and promotes it with a
+revision fence. After native export and restore, the actual Node server accepts
+the Rust-issued session and CSRF token, reports the same server ID, returns the
+complete workspace and commits the next revision. This passes on all three
+stores for both schema histories. A mixed-version follow-up also passes with
+pg_dump 18.6, private PostgreSQL 18.6, external PostgreSQL 16.15 and native
+PGlite 17.5. The 146-test native regression passes across 64 groups without
+ignored tests before the final role/URI correction; the role and TLS suites
+exercise the corrected connection path afterward.
+
+An instrumented native client pauses only after the real pg_dump emits an INSERT
+for the fixture table. Killing the server at that boundary publishes no partial
+file; the observer and real dump client exit, private staging is identified and
+removed, the original state reopens, and a normal export/reverse restore succeeds.
+This is an actual export interruption scenario, alongside the existing SQL import
+and pending-migration SIGKILL/retry checks.
+
+The final strict all-target Clippy check passes. The broad `pnpm check` exits 1
+with 1,661 source-server tests passing, 57 skipped and two failures: the existing
+provider-routing assertion at `local-foundation.test.ts:7218`, and a five-second
+account-resource-usage timeout. The latter passes unchanged in isolation on both
+this branch and clean Primary, with actual test durations of 2.28 and 2.29 seconds.
+No deadline or assertion was relaxed, and the broad check remains non-green.
+
+These results establish a representative database rollback subset. The
+complete-profile components below extend it to file/key transfer and persisted
+backend selection. Packaged upgrades and full product rollback remain unfinished.
+The normal desktop, development and standalone paths continue to use the Node
+server and Node worker.
+
+## Early upload rejection lifetime
+
+The Windows file-document comparison in run `41141260086` failed with
+`ECONNRESET` while uploading the request above the 4 MiB operation limit. The
+native parser dropped its unread request body on overflow. Hyper can then close
+with unread TCP bytes before the peer receives the complete error response.
+
+The parser now bounds collection itself, sends the existing 413 response with
+the Node parser's `Connection: close`, and discards remaining frames without
+collecting them. An abandoned rejected upload is released after five seconds.
+Neither response delivery nor advertised-length rejection waits for upload EOF.
+The limit, error contract, authorization and worker dispatch behavior remain in
+place. Unsupported oversized media types retain their existing 415 selection.
+
+Native tests exercise an actual bounded-channel upload, an advertised-length
+rejection without sending body bytes, cleanup with a paused clock, and a real
+loopback HTTP connection that receives its complete response before finishing
+the upload. The real Node/Rust file-document fixture retains its original cases
+and adds an 8 MiB streamed request plus exact connection-close assertions.
+The client still fails on TCP resets and incomplete responses without retrying.
+Local comparisons pass 40 anonymous and 42 account observations per runtime
+on each of native PGlite, private PostgreSQL and external PostgreSQL, with six
+worker commands per profile. All 31 native library tests, the JSON/WS comparison,
+the five upload-client tests and strict all-target Clippy pass. The three new
+lifetime/loopback tests compile and fail against the original parser, then pass
+with the fix. Supported-platform results remain required; local evidence alone
+does not close the Windows failure.
+
+Run `41157035912` also exposed a Windows compiler error in native SQL export:
+the TCP connection future inferred its error type only from a Unix-only branch.
+Its TCP result now explicitly uses `std::io::Error` on every platform. This fixes
+the diagnosed inference path; actual Windows compilation and export acceptance
+must be observed in the subsequent platform run.
+
+## Native dump byte preservation on Windows
+
+Run `41157865174` passed the native upload tests on Windows, then its migration
+job caught a distinct native export defect: LF bytes became CRLF inside both
+stored text and SQL function bodies during the reverse transfer. Artifact
+`13025514562` was retained with its verified uploaded ZIP SHA256
+`eca40b2852e6d92570e9705aa494c4959e14d64a7baa765656cc1672a49ca0ff`.
+The exact table/function comparisons remain in place.
+
+Native pg_dump now produces gzip-compressed plain SQL on stdout. PostgreSQL's
+[Windows output setup](https://github.com/postgres/postgres/blob/REL_17_9/src/bin/pg_dump/pg_backup_archiver.c)
+explicitly selects binary stdout for compressed plain output. Rust decodes the
+gzip stream and publishes the existing plain SQL export. It does not rewrite
+newlines in SQL or row values. The added Rust dependencies were already resolved
+in the lockfile; no package versions change.
+
+The dump-row interruption observer decodes the real child's gzip stream before
+recognizing the actual fixture INSERT, then forwards gzip from Rust's binary
+stdout. Its real-row witness, process cleanup and unpublished-destination
+assertions remain. The shared transfer fixture additionally contains original
+CRLF and bare CR beside LF and Unicode in its SQL function value. A dedicated
+actual pg_dump test restores in a fresh process and compares exact mixed-newline
+bytes in both the table value and function result. PGlite cannot reopen after
+close in one process, so this test uses the same process boundary as the CLI.
+
+Local current and historical-schema (233 of 236 migrations) all-store transfers,
+password-authenticated Rust writes,
+Node post-write rollback, real-row interruption/retry, eleven TLS cases and
+restricted-role redaction pass with compressed transport. Current supported-platform outcomes must be observed separately. No complete profile,
+packaged migration or full replacement acceptance follows from this fix.
+
+## Logical profile transfer and durable backend selection
+
+The native CLI can export a stopped installation's database and opaque files
+as one directory bundle, then restore it into a new profile root. The bundle
+contains logical SQL, a versioned manifest and copied files with SHA256/length
+records. It retains unknown regular files, materializes file references and
+preserves empty directories, executable bits and file modification times.
+Physical `server-db` and `postgres` engine directories are excluded. Paths use
+portable forward slashes; unsafe paths, duplicates, directory cycles and changed
+SQL/assets fail without publishing the destination.
+
+```shell
+# Stop the source server before exporting its database and files.
+node scripts/database-transfer/legacy-profile.mjs /old/profile /backup/profile-bundle /absolute/path/to/cantrip-server
+/absolute/path/to/cantrip-server --data-dir /new/profile --database pglite \
+  --migrate-only --restore-profile /backup/profile-bundle
+
+# After Rust has accepted writes, export its current database and files.
+/absolute/path/to/cantrip-server --data-dir /new/profile --migrate-only \
+  --export-profile /backup/after-rust --pg-dump-path /absolute/path/to/pg_dump
+node scripts/database-transfer/legacy-profile.mjs --restore /backup/after-rust /rollback/profile /absolute/path/to/cantrip-server
+```
+
+Use `--database bundled-postgres --postgres-bin-dir <directory>` or an explicit
+`DATABASE_URL` to restore into the other backends. A bundle carries its source
+mode as the default; external PostgreSQL credentials must be supplied separately.
+Successful restore writes private `server-database.json` and profile-receipt
+files. Normal Rust startup reads the stored backend, connection and binary path.
+Explicit backend inputs retain precedence. `--migrate-only --remember-database`
+records a selection only after the actual database setup succeeds; a failed
+open leaves the previous selection intact. No metadata capability probe replaces
+the real open. Stored external URLs contain credentials and require the same
+protection as the installation's existing key/configuration files.
+
+Restore copies verified files and creates local storage inside a private stage
+in the destination's parent. Database restore and pending migrations commit
+together with a manifest-specific import receipt. It closes sessions and owned
+postmasters, restores the launch working directory, syncs the profile and
+publishes the directory exclusively. Even an existing empty destination is
+preserved. Unix staging directories are explicitly restricted to owner access
+before any profile data is written, independent of the native engine's umask.
+The JavaScript reverse converter is an offline bounded operation; native serving
+and background work never invoke it.
+
+Local macOS tests pass the complete Node-profile → each Rust backend → Node-profile
+path. All 115 table snapshots, four sequence states, SQL functions, mixed newline
+bytes, SQL NULL versus JSON null, large integers, precise numerics and opaque
+file bytes match. The original session/CSRF, server UUID, encryption key and
+encrypted workspace survive. Rust commits workspace revision 2; the actual Node
+server reads that state and commits revision 3. Original source files and bundle
+bytes remain unchanged. Restart tests verify all three remembered backend modes,
+explicit external overrides and retention of the prior selection after a real
+missing-executable setup failure.
+
+Fault cases kill the importer only after an actual SQL filesystem witness. No
+partial profile appears, the private postmaster exits after its owner dies, and
+retry succeeds against the same destination/external database. A PostgreSQL
+protocol proxy holds the actual COMMIT acknowledgement after a direct database
+query confirms the durable import receipt. The killed importer publishes no
+profile. A separate Rust server then accepts a real HTTP write; retrying the
+original bundle preserves that newer write and publishes the profile. Late SQL
+exceptions roll back the load, retain SQLSTATE/private diagnostics and expose no
+fixture SQL values in ordinary native or legacy-converter diagnostics.
+
+The local complete-profile suite passes in 94.73 seconds; eleven native profile
+file/configuration tests and strict all-target Clippy also pass. Linux/macOS/
+Windows migration jobs now include these profile checks, but this milestone's
+new platform outcomes still require observation. Earlier Windows raw-SQL
+current/historical/reverse-transfer reports from run `41160107203` were downloaded,
+checked against uploaded ZIP SHA256
+`4bff8c251e44489c948bacae50cea021bd482b38aa37cb7907a02f674b78ad96`
+and inspected successfully; they do not validate the newer profile publisher.
+
+The final complete-profile regression passes in 100.81 seconds after wrapping
+converter setup/cleanup failures in the same private diagnostic boundary.
+Stored-backend restart checks also cover an empty `DATABASE_URL` environment
+template: it retains the saved external connection. All 977 actual Node/Rust
+configuration cases match. The broad `pnpm check` exits 1 after 500.85 seconds
+with 1,662 source-server tests passing, 57 skipped and the retained provider
+selection assertion failing at `local-foundation.test.ts:7218`. Server, worker,
+shared package and dependency sources are unchanged from the merged baseline;
+the repository-wide check is not green.
+
+This CLI component requires stopped sources, trusted logical bundles and new
+destination directories. It does not yet activate an existing installation in
+the desktop launcher. A crash after final publication may leave a completed
+profile without the command's acknowledgement; a retry refuses the existing
+directory and preserves it. Hard-killed imports can leave private temporary
+directories that need owned-stage cleanup. Historical physical PGlite runtime
+versions, packaged upgrade/rollback supervision, all product flows and full
+supported-platform acceptance remain required. Normal development, standalone
+and desktop builds still use the Node server and worker.
+
+The complete Windows migration job in run `41163777652` passes at profile head
+`40bdce5e58884d72928037b8c2c238d32fb009e1`. All six uploaded JSON reports were
+inspected after checking ZIP SHA256
+`748fac193d59fd521c6143c6b1cab5a846249dc9f35a100057f09c12d1c7f0fe`.
+This includes exact 115-table/four-sequence profile transfer and reverse
+comparison, original sessions/keys/files, actual Node revision 3, real process
+interruption/private-postmaster cleanup and the held-COMMIT-acknowledgement case.
+It validates the Windows profile publisher at that head, not packaged activation.
+
+That run's Linux profile test failed during native PGlite export: the new
+harness ignored `CANTRIP_TEST_PG_DUMP_PATH` and selected the configured PostgreSQL
+16 server directory's client. It now passes the requested dump-client path to
+the existing CLI option, independently of the database server directory. There
+is no version probe or fallback. An actual source-built pg_dump 16.15 reproduces
+the failure against native PGlite 17.5 while the requested client 18 is left
+unused. Follow-up tests keep that incompatible default client present and use
+the explicitly configured native client for the export. The corrected all-store
+profile suite passes in 94.64 seconds with the same default client still present;
+an actual wrapper witness records all three exports invoking pg_dump 18.6. All
+table/sequence/function/file comparisons and interruption/rollback assertions
+remain. Linux verification of this follow-up is still required.
+
 ## Remaining delivery sequence
 
 1. Establish cross-platform foundation results and legacy PGlite logical
@@ -2647,3 +3444,377 @@ The reference notification-order and authentication-shutdown fixtures give cold
 WASM, full migrations and application initialization the same 60-second startup
 budget as the real-server harness, and report their actual setup durations. The
 connection/shutdown test bodies and behavioral polling deadlines stay unchanged.
+
+## Standalone Chat catalogs and scratch jobs (in progress)
+
+Rust now implements standalone creation and active/archived catalogs through
+`POST /api/chats`, `GET /api/chats?context=standalone` and
+`GET /api/chats/archived?context=standalone`. Creation keeps the opaque title,
+locale-sorted compatible worker choice, online preferred worker, inherited model
+and reasoning settings, archived positions, and the transaction containing the
+Chat, scratch root, runtime session, suspended execution lane and provision job.
+
+The scratch repository retains identity-sensitive admission, separate commits
+for deletion enqueue and failure settlement, leases, fenced completions,
+interrupted recovery, retryable reconnect, reconciliation targets, missing roots,
+archive expiry and durable deletion tombstones. Its executor is connected to
+startup, worker reconnects and shutdown draining; it dispatches at most four jobs,
+renews leases every 30 seconds, uses the existing worker command bus and emits
+owner-scoped Chat invalidations after durable transitions. Interruption, expiry and shutdown-fault
+acceptance remains required.
+
+Local Node/Rust comparisons pass 114 repository operations and 89 state snapshots
+on native PGlite, private PostgreSQL and external PostgreSQL. Real trigger failures
+check partial commits and rollback of all five creation records. Concurrent
+claims retain unique job and command ownership, and reopening each backend retains
+its exact state. A failing native prototype committed provision completion before
+DTO validation; the retained failing report demonstrated that mismatch. Provision,
+deletion and purge now validate inside their original transactions.
+
+The HTTP/Live suite passes all nine local database/authentication combinations:
+26 anonymous, 27 password and 28 account observations per implementation, with
+four provision outcomes, an actual worker reconciliation and eight ordered Chat events per profile.
+It retains complete creation/executor state and verifies invalid result,
+worker-error and routing-handle rejection. Source ordinary duplicate creation
+returns 500 because its regex sees Drizzle's top-level statement/parameter message,
+rather than the PostgreSQL cause. Rust preserves that behavior and the 409 case
+when those rendered parameters contain the matched words, without logging opaque
+parameters. The separate PGlite message-predicate comparison also passes.
+The protocol oracle passes 12,149 exact cases across nine Chat/scratch schemas.
+
+Actual external-PostgreSQL lease probes pass both implementations in all three
+auth modes: a held job renews after about 30 seconds, extends the stored lease
+by another two minutes and retains its command, attempt, revision and start time.
+The six-job capacity probe also passes all auth modes: four jobs run while two
+remain queued, each released slot dispatches the next job, and all six complete
+once with their original identities and ordered invalidations.
+
+The broad `pnpm check` finishes with 1,662 source-server tests passing, 57 skipped
+and the existing provider-selection assertion at `local-foundation.test.ts:7218`
+failing. Server, worker, shared package and dependency sources are unchanged.
+This does not make the broad check green.
+
+This milestone does not finish Chat behavior. The lifecycle and metadata port
+is described below; forks, messages, execution queues, history, Tasks and
+Goal/automation continuity remain required. Actual client/full worker scratch
+filesystem tests, lease expiry and interruption faults, supported platforms, Redis
+coordination, packaged activation and default cutover are also unfinished.
+Normal desktop, development and standalone builds still select the Node server.
+
+## Chat lifecycle and metadata (pending platform acceptance)
+
+The native Chat repository and HTTP routes now implement explicit project Agent
+archive, legacy project deletion, standalone archive/restore/permanent deletion,
+runtime selection, encrypted title updates, completion acknowledgments, composer
+drafts, file references and opaque standalone file operations. Empty project
+Chats are deleted by the legacy route; history-bearing Chats are archived, and
+explicit Agent archival retains empty conversations. Standalone archival retains
+the Chat and root for 90 days; permanent deletion creates the existing durable
+scratch deletion tombstone before cascading Chat-owned rows.
+
+The repository comparison executes the actual source and native implementations
+on separate databases: 66 operations and 98 snapshots pass on native PGlite,
+private PostgreSQL and external PostgreSQL. It checks running/approval conflicts,
+tenant boundaries, task behavior, archived idempotency, all three layout profiles,
+anchor/label updates, removal from multiple owned windows, cancellation of a
+pending detach, opaque draft retention and exact backend reopen state. The IDE
+profile restores Chat tabs into the right dock; hybrid and agent profiles use
+the center. Other resource placement retains its existing behavior.
+
+Transaction boundaries remain observable. Invalid archive/restore DTOs roll back
+both Chat and scratch-root writes; invalid project restore DTOs also roll back
+legacy placement/revision changes. By contrast, a title update whose response
+fails validation retains its already committed write, matching the source.
+Completion acknowledgments change only the unread flag, and composer drafts do
+not change the Chat's general update timestamp. Seventeen Chat/scratch protocol
+schemas match 13,777 source parsing, issue and rendered-error cases. The archive
+result refinement also retains JavaScript's behavior when invalid dates produce
+NaN rather than an additional ordering error.
+
+`standalone-chat-http-compatibility.mjs --lifecycle` extends the catalog/executor
+suite with actual project and standalone HTTP flows, unchanged worker transport,
+stored-state comparisons and ordered Live observations. It checks archive and
+restore after worker error or invalid output, archived access restrictions,
+foreign users, stale file bindings, offline workers, encrypted drafts and
+permanent deletion completion. A controlled delete command separates the durable
+tombstone response from the worker's completion. A separate archive command is
+held until its actual HTTP caller disconnects, then released; the archive
+publication and later restore prove that admitted work survives the caller.
+
+The source's successful-response invalidation hook is preserved in addition to
+direct publications, including duplicate completion invalidations. Draft writes
+do not publish metadata changes; successful write/remove operations publish two
+Chat-scoped file invalidations. Each authentication profile retains 43 standalone
+Chat events, 25 project lifecycle events and 16 lifecycle worker commands for
+comparison. Running/approval HTTP probes establish state after startup through
+the disposable external PostgreSQL connection, since source startup recovers
+preexisting running rows. Repository probes cover both conflicts on all three
+storage modes; no second process opens a live PGlite database.
+
+All nine local storage/authentication combinations pass the expanded HTTP suite.
+PGlite and private PostgreSQL compare 101 anonymous, 102 password and 113 account
+observations per implementation; external PostgreSQL adds the four actual
+post-startup running/approval conflict responses per profile. Project HTTP state
+is read back after shutdown and compared alongside the earlier standalone state.
+Strict all-target Clippy, generated-manifest equality, formatting, large-file and
+server-boundary checks pass. The broad `pnpm check` finishes in 501 seconds with
+the same existing provider-selection failure at `local-foundation.test.ts:7218`
+(1,662 source-server tests pass, 57 skip, one fails). Source server, worker, shared
+package and dependency files remain unchanged; the broad check is not green.
+
+Actual existing-client/full-worker filesystem acceptance, managed-share failure
+probes, additional lock/interruption boundaries, supported-platform artifacts,
+Redis coordination and packaged activation remain required. Forks, messages,
+execution, queues, history, Tasks and Goal/automation continuity are unfinished.
+This milestone does not switch the normal Node server build or packaging paths.
+
+## Protected Chat forks (pending platform acceptance)
+
+The native server now serves `POST /api/chats/:chatId/fork` for project and
+standalone Chats. It preserves encrypted title validation, Task relocation errors,
+offline and missing-source responses, message-prefix selection, 201/202 response
+differences, placement and post-response invalidations. Source messages stay
+opaque to the server. The existing worker reprotects them for new message IDs in
+batches of at most 100, with the existing `fork:<source-id>` idempotency keys.
+
+Project forks read their source in a transaction, release it before worker
+dispatch and compare a fresh read in the write transaction. The comparison
+includes source Chat, destination worktree and selected messages. It retains
+JavaScript millisecond Date equality. The current maintained Node 24.22 reference
+compares invalid Dates as equal; the follow-up below corrects the earlier local
+24.14 behavior. The original failing prototype rejected infinite timestamps
+before invoking the callback; both paths now preserve the source's order.
+Creation of the Chat, runtime session, suspended lane, optional legacy placement,
+messages and behavior fork count shares the original transaction. Archived Chat
+positions count toward ordering, nonprimary worktrees retain exclusive suspended
+lanes and starting heads, and copied metadata retains its original attribution.
+
+Standalone forks keep their different commit model. They call the existing
+standalone creator after reprotection, then copy settings and messages separately.
+Later failures delete the new Chat; its already committed provision job remains.
+If cleanup itself fails, its SQL error wins and the earlier records remain,
+matching the source. Both paths keep the parameterized bulk message insertion,
+SQL NULL behavior and actual driver failures for oversized parameter lists.
+
+The real repository comparison passes 48 operations and 82 snapshots per backend
+on native PGlite, private PostgreSQL and external PostgreSQL. It checks ownership,
+history prefixes, non-opaque refusal, source/destination changes during the worker
+callback, Date precision, classifications, attribution, layout/lane state, forced
+SQL failures, cleanup failures and exact reopen state. A 4,000-message copy
+actually attempts the oversized bulk operation and checks rollback and continued
+database usability. No capability probe substitutes for that operation. Twenty
+Chat/scratch/fork schemas match 15,980 protocol, issue and rendered-error cases.
+
+The HTTP suite passes all nine local backend/authentication combinations using
+the unchanged worker transport and production `protectChatMessage` and
+`reprotectChatMessages` functions with a test-owned endpoint key provider. The
+key stays outside both servers. Each implementation/profile compares 25 anonymous,
+26 password or 27 account HTTP observations, 14 reprotection commands, 516
+decryption/binding proofs and eight ordered Chat events. It checks a 205-message
+history, 100-message batching, prefix copies, ordinary duplicate inserts, worker
+errors/invalid results, Task/owner/offline rejection, standalone provisioning and
+an admitted fork whose HTTP caller disconnects. Every stored copied message is
+decrypted under its new ID, retains its expected plaintext and rejects the old
+ID binding. Raw encrypted commands/state are retained alongside compared metadata;
+the server diagnostic output contains no test plaintext sentinel.
+
+A separate actual-source HTTP oracle verifies command-budget failures: the Rust
+route preserves `429`, the error body and `Retry-After`, including the source
+route's earlier duplicate-message classification when both conditions apply.
+
+The broad `pnpm check` again finishes with the existing source provider-selection
+failure at `local-foundation.test.ts:7218` (1,662 pass, 57 skip, one fails;
+483 seconds). Source server, worker, shared package and dependency files are
+unchanged. The separate Linux workspace-disconnect suite also has an unresolved
+`ECONNRESET` failure in run `41170859141`, job `124448318451`; its uploaded
+artifact was downloaded and SHA-256 verified for a separate follow-up. These
+results do not establish a green broad check or platform acceptance.
+
+The same run's Windows contracts job `124448318427` also exits during the PGlite
+execution-target repository suite: the Rust fixture exits with code `3221225725`
+while resolving a project. Its artifact and log are retained for investigation;
+this fork milestone does not claim a Windows pass.
+
+Full client/full-worker key provisioning and filesystem integration, supported
+platforms, further interruption boundaries, Redis coordination and packaging
+remain required. General messages, native history ingestion, execution queues,
+Tasks, Goal/automation continuity and default cutover remain unfinished. Normal
+builds still use the Node server.
+
+## Controlled workspace admission caller connections
+
+The Linux diagnostic reproduces the earlier workspace restart reset on iteration
+nine of run `41176923583`, job `124466282896`. Its SHA-256-verified artifact
+`13032917940` retains all eight successful iterations and the partial failing
+password/Rust iteration. Socket 25 connected to the old server 41 milliseconds
+before that process closed. After a new process started on the same port, the
+shared global fetch pool reused that socket for the unchanged worker's heartbeat
+125 milliseconds later and received `ECONNRESET`.
+
+The controlled test caller now uses the existing `streamingHttpRequest` helper
+with its own socket. Production servers and worker heartbeat behavior are
+unchanged. Actual caller aborts, SQL lock/PID witnesses, durable admissions,
+revisions, worker commands and same-port restart assertions remain in place.
+Partial lifecycle evidence and optional HTTP connection tracing are retained
+even when a scenario fails. The repeat driver stops at the first failure and
+does not retry failed requests or scenarios.
+
+Two local PostgreSQL iterations pass all twelve authentication/runtime scenarios;
+the anonymous PGlite and private PostgreSQL lifetime suites also pass. Corrected
+Linux run `41178019278`, job `124469506406`, passes all twenty iterations and
+120 authentication/runtime restart scenarios. Its SHA-256-verified artifact
+`13033962863` also proves that all 240 post-restart heartbeat and catalog requests
+use connections established after the old process closed. The tested source
+head is `5713c2f66bd30ea91c2733819f005d413ca5220f`. The required broad `pnpm check`
+completes in 430 seconds with the existing provider-selection failure at
+`local-foundation.test.ts:7218` (1,662 pass, 57 skip, one fails). This work does
+not establish a green broad check, Windows acceptance or packaged activation.
+
+## Protected messages and persisted turn reads (pending platform acceptance)
+
+The native server now handles message listing, turn-aware pagination, encrypted
+Agent appends and persisted native-history turn reads. The archive endpoint is
+read-only: it neither dispatches to a worker nor requires a live history binding,
+and it emits no mutation invalidation. An owner can read an archived Chat's
+persisted turns. Multiple owned bindings for the same turn remain separate
+candidates in binding order; a larger revision does not hide another binding.
+
+The repository port includes plain, Task and encrypted append/upsert operations,
+idempotency lookup, route attribution, headers, latest protected user lookup and
+turn trimming. Agent writes retain the project/Chat locks and atomic message,
+touch and DTO boundary. Plain and Task writes preserve their separately committed
+steps, including the inserted row surviving a later touch or DTO error. SQL NULL
+and JSON null retain their distinct attribution behavior. Committed canonical
+history mappings return the existing message and reject conflicting identities;
+reservations at revision zero do not claim canonical ownership.
+
+The Source Agent idempotency comparison uses raw stored JSON ordering, while the
+Task path parses its stored envelope before comparing. Tests retain that
+observable difference rather than changing the protocol during the port. Input
+validation, missing/foreign/archived lookup precedence, page-query errors, Task
+write refusal and typed canonical-history errors are compared against real Node
+HTTP responses. Turn pages retain the source's backward user boundary and
+500-header search limit.
+
+Local macOS repository checks compare 46 query operations and nine snapshots,
+then 62 write/archive operations and eight snapshots per backend. Both suites
+run their Rust fixture with a 1 MiB thread stack. The expanded state snapshots
+include archive bindings and turns, and the actual backend reopen also checks
+the complete archive response. Twenty-eight Chat schemas match 20,341 actual
+protocol/issue/rendered-error cases.
+
+Local macOS repository and actual HTTP/Live comparisons pass on native PGlite,
+private PostgreSQL and external PostgreSQL. The HTTP suite exercises anonymous,
+password and account authentication, production worker endpoint encryption and
+actual endpoint decryption with test-owned keys outside both servers. Returned,
+published and reopened Agent messages retain their expected content and reject a
+wrong message-ID binding; server diagnostics contain no plaintext sentinel.
+Task envelope persistence is checked separately and does not establish Task
+endpoint encryption or ingestion acceptance.
+
+External PostgreSQL additionally holds real project/Chat locks and observes the
+blocked backend PIDs before disconnecting callers, admitting competing writes
+or archiving the Chat. Admitted writes commit after their callers disconnect;
+competing duplicate appends retain the source's one-success/one-error result.
+Late archival refuses the write. A real trigger failure after INSERT rolls back
+both the Agent message and Chat touch without publishing a message event. Actual
+Live ordering is compared after these races as well as ordinary responses.
+
+The current broad `pnpm check` exits 1 after 454 seconds: 1,662 source-server
+tests pass, 57 skip and the provider-selection assertion at
+`local-foundation.test.ts:7218` fails. A fresh focused run on clean Primary
+`584a14af9` reproduces that same failure. This is retained baseline evidence,
+not a green broad check. The Source server/worker implementation and dependency
+files are unchanged by this milestone. The separate full formatting check
+also reports 12 unchanged baseline files; focused formatting of this milestone
+is checked separately.
+
+Run the suites from the repository root, replacing DATABASE with pglite,
+bundled-postgres or postgres:
+
+```sh
+node scripts/server-rust/cargo.mjs test --test chat_contracts -- --nocapture
+node --import tsx scripts/server-rust/chat-message-repository-compatibility.mjs --database DATABASE
+node --import tsx scripts/server-rust/chat-message-write-repository-compatibility.mjs --database DATABASE
+node --import tsx scripts/server-rust/chat-message-http-compatibility.mjs --database DATABASE
+```
+
+The dedicated CI job runs these checks on Linux, macOS and Windows. Configuration
+of those jobs is not platform acceptance. Canonical history ingestion, native
+command execution, streaming, queues, approvals, Tasks, Goal continuation,
+complete client/full-worker integration, Redis coordination, packaged activation
+and default cutover remain required. Ordinary builds still use the Node server.
+
+## Fork snapshot Date equality on the maintained reference runtime
+
+Linux run `41179568205`, contracts job `124474015015`, exposed a real Source/Rust
+mismatch. For a Chat with `updated_at = infinity`, Source Node 24.22.1 completed
+reprotection and created the fork; Rust returned a conflict. Artifact
+`13035533686` was downloaded and its ZIP SHA-256 verified as
+`26de0e7f6b9bb4cf4325e81b82849750c73d3476fa092d59cab6282571a800bb`.
+The same unmodified repository case fails locally under the exact CI runtime.
+
+The earlier local reference was Node 24.14.0. Its `isDeepStrictEqual` rejects two
+invalid Date instances. The official Node 24.22.1 executable instead considers
+them equal, as does its
+[Date comparison implementation](https://github.com/nodejs/node/blob/v24.22.1/lib/internal/util/comparisons.js).
+The downloaded Darwin ARM64 runtime matches its official SHA-256,
+`654ba79de6155647e22321932b45f2a1ccb705976cc337c9b8e278beb085a628`.
+This corrects the earlier claim about Node 24 as a whole: the reference version
+matters, and older 24.14 behavior differs at this boundary.
+
+Rust now uses a private invalid-Date marker for the fork reread snapshot. It is
+distinct from SQL null and valid timestamps, stays out of responses and stored
+messages, and requires no Node runtime. Finite timestamps still compare at
+JavaScript millisecond precision. A new oracle executes the actual reference
+utility against 407 row comparisons, including null, both PostgreSQL infinity
+values, Date range boundaries, offset-equivalent instants, submillisecond
+precision, property ordering and changed JSON metadata. All comparisons match
+Node 24.22.1 locally. Running the same oracle on 24.14 records 27 differing
+comparisons rather than disguising the reference-version difference.
+
+The expanded repository suite explicitly requires successful complete forks
+for unchanged positive/negative infinity and for a change between two invalid
+Dates. Valid-to-invalid and invalid-to-valid changes still reject after exactly
+one reprotection callback. Complete table/sequence snapshots prove that only the
+controlled callback timestamp mutation survives those conflicts. Existing
+source/destination/message changes, encryption classification checks, SQL
+failures, cleanup behavior and reopen assertions remain in the suite.
+
+The new snapshot oracle is part of the Linux/macOS/Windows contract jobs.
+Local checks do not establish platform or packaged acceptance, and the full
+server replacement remains unfinished.
+
+## Complete SQL lock witnesses in controlled message races
+
+Windows message run `41183089946`, job `124484345954`, passed all three
+query/write repository pairs and both PGlite/private PostgreSQL HTTP matrices.
+The external PostgreSQL Source/password late-archive probe reached its expected
+blocking-PID count, then failed because a sampled wait-event field was null.
+Artifact `13036340964` was downloaded and its ZIP SHA-256 verified as
+`0a4c68041870a2e7bfaf1431d1c14461de1c0833f0825ed7d177f7b786d8d67e`.
+The failure occurred while collecting the complete lock witness.
+
+The test observer now continues until both the expected blocker count and every
+`Lock` wait event are present in the returned sample. It retains matching-count
+samples with incomplete wait fields for diagnosis. The deadline, held SQL locks,
+actual blocking PIDs, both final assertions, single HTTP attempts, caller-abort,
+commit, rollback, encryption and ordered Live checks remain in place. This change
+is confined to the controlled test caller; production behavior is unchanged.
+A fresh Windows job must establish acceptance.
+
+The current broad `pnpm check` runs for 523 seconds and again reports the Source
+provider-selection failure at `local-foundation.test.ts:7218`: 1,662 tests pass,
+57 skip and one fails. A fresh Node 24.22.1 run on clean Primary `c749612c0`
+reproduces that assertion. Full formatting reports 12 unchanged baseline files;
+changed-file Prettier passes. The earlier intermediate formatting run also
+caught the edited ledger before its final formatting; the ledger is now fixed.
+These results do not establish a green broad check or a deployable replacement.
+
+Linux's dedicated message job in that run passes all three storage modes and all
+nine authentication/backend profiles. Artifact `13035975785` contains nine JSON
+reports, all inspected after verifying ZIP SHA-256
+`ac61057e3a2fe2a7bd10d02eb00a24fa9e283650313861e2a42503bb06df14ff`.
+The corrected observer also passes the fresh local external PostgreSQL matrix,
+including all five races per runtime/auth profile. This scoped evidence does not
+establish a Windows pass or packaged readiness.

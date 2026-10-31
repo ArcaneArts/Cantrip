@@ -24,7 +24,7 @@ function add(schema, input) {
 add("runConfigurationGetResponseSchema", base);
 for (const status of ["ready", "invalid", "unsupported"])
   for (const document of [null, base.result.entry.document])
-    for (const revision of [null, "a".repeat(64)]) {
+    for (const revision of [null, "", "a".repeat(64)]) {
       const value = structuredClone(base);
       Object.assign(value.result.entry, { status, document, revision });
       add("runConfigurationGetResponseSchema", value);

@@ -14,7 +14,7 @@ fn controls(value: &JsString) -> bool {
         .iter()
         .any(|unit| matches!(*unit, 0..=31 | 127..=159))
 }
-fn uuid(value: &Value) -> bool {
+pub(super) fn uuid(value: &Value) -> bool {
     static PATTERN: OnceLock<regress::Regex> = OnceLock::new();
     value.as_js_string().is_some_and(|value| {
         PATTERN.get_or_init(|| regress::Regex::new(

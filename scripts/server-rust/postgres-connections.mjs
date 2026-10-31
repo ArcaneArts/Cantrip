@@ -19,6 +19,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { buildRustServer, repositoryRoot } from "./build.mjs";
 import { fixtureEnvironment, startServer } from "./process.mjs";
+import { nativeExportTls } from "./native-export-tls.mjs";
 
 const require = createRequire(
   new URL("../../cantrip_server/package.json", import.meta.url),
@@ -352,6 +353,15 @@ try {
           );
         if (mode === "verify-full")
           assert.match(entry.rust.message, /TLS|certificate|trust|handshake/i);
+        entry.export = await nativeExportTls({
+          executable,
+          url: url.href,
+          root,
+          binary,
+          postgres,
+          accepted: entry.node.connected,
+          ssl: entry.node.ssl,
+        });
         console.log(JSON.stringify(entry));
       }
     }

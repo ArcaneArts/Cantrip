@@ -24,9 +24,11 @@ import {
   Target,
   Trash2,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Markdown } from "@/components/chat/markdown";
+import { AgentLatestThought } from "@/components/chat/agent-latest-thought";
+import { buildAgentInspectorProjectionSource } from "@/components/chat/inspect-model";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -275,6 +277,14 @@ export function TaskImplementationDashboard({
       active ? 1_000 : 5_000,
     ),
   });
+
+  const latestThought = useMemo(
+    () =>
+      visible && active
+        ? buildAgentInspectorProjectionSource(messages.data).thought
+        : null,
+    [active, messages.data, visible],
+  );
 
   useEffect(() => {
     if (dashboard.data?.task) {
@@ -601,6 +611,8 @@ export function TaskImplementationDashboard({
             </div>
           </section>
         ) : null}
+
+        <AgentLatestThought thought={latestThought} className="border-b py-4" />
 
         <section className="py-6" aria-labelledby="task-plan-heading">
           <h3

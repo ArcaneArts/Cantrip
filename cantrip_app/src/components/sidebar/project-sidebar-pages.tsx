@@ -75,7 +75,7 @@ export function ProjectSidebarPages({
               document.getElementById(`${id}-${next}-tab`)?.focus();
             }}
           >
-            {value === "files" ? "Files" : "Conversations"}
+            {value === "files" ? "Files" : "Chats"}
           </button>
         ))}
       </div>

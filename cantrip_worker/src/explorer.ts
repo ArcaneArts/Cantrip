@@ -222,7 +222,10 @@ async function resolveMutableEntry(root: string, relativePath: string) {
   return { metadata, parentPath, targetPath };
 }
 
-async function resolveMutableDirectory(root: string, relativePath: string) {
+export async function resolveMutableDirectory(
+  root: string,
+  relativePath: string,
+) {
   const rootPath = await realpath(root);
   const directoryPath = await realpath(
     path.resolve(rootPath, ...pathSegments(relativePath)),

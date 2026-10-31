@@ -3,10 +3,12 @@ import { EventEmitter } from "node:events";
 import type { FSWatcher } from "node:fs";
 import {
   mkdir,
+  lstat,
   mkdtemp,
   readFile,
   realpath,
   rm,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -127,6 +129,119 @@ function codeGraphTarget(
 }
 
 describe("CodeGraph project supervisor", () => {
+  it("retires an index only after its aborted process closes and fences reconfiguration", async () => {
+    const project = await gitProject("cantrip-codegraph-retire-process-");
+    const script = path.join(project.root, "fake-codegraph.cjs");
+    const pidFile = path.join(project.root, "index-pid");
+    const closedFile = path.join(project.root, "index-closed");
+    const cache = path.join(project.root, ".codegraph-cantrip");
+    await writeFile(
+      script,
+      `
+      const fs = require("node:fs"), path = require("node:path");
+      const [operation, ...rest] = process.argv.slice(2), root = rest.at(-1);
+      if (operation === "status") process.stdout.write(JSON.stringify({ initialized: false, projectPath: root }));
+      else if (operation === "init") {
+        fs.mkdirSync(path.join(root, ".codegraph-cantrip"), { recursive: true });
+        process.on("SIGTERM", () => setTimeout(() => { fs.writeFileSync(${JSON.stringify(closedFile)}, "closed"); process.exit(0); }, 300));
+        fs.writeFileSync(${JSON.stringify(pidFile)}, String(process.pid));
+        setInterval(() => {}, 1000);
+      } else if (operation === "uninit") fs.rmSync(path.join(root, ".codegraph-cantrip"), { recursive: true, force: true });
+    `,
+    );
+    const supervisor = new CodeGraphProjectSupervisor({
+      authorize: async () => [project],
+      command: process.execPath,
+      commandArguments: [script],
+    });
+    let finish!: () => void;
+    const held = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    try {
+      await supervisor.configure([codeGraphTarget(project.root)]);
+      await expect
+        .poll(() => readFile(pidFile, "utf8").catch(() => ""))
+        .not.toBe("");
+      const pid = Number(await readFile(pidFile, "utf8"));
+      let entered = false;
+      const retirement = supervisor.withRetiredIndex(project.root, async () => {
+        entered = true;
+        expect(() => process.kill(pid, 0)).toThrow();
+        if (process.platform !== "win32")
+          expect(await readFile(closedFile, "utf8")).toBe("closed");
+        await expect(lstat(cache)).rejects.toMatchObject({ code: "ENOENT" });
+        await held;
+        return "removed";
+      });
+      retirement.catch(() => {});
+      await expect.poll(() => entered).toBe(true);
+      await supervisor.configure([codeGraphTarget(project.root)]);
+      expect(supervisor.statuses()).toEqual([]);
+      finish();
+      await expect(retirement).resolves.toBe("removed");
+    } finally {
+      finish();
+      supervisor.close();
+    }
+  });
+
+  it("attempts index cleanup before first observation, preserves links and continues real removal checks on failure", async () => {
+    const project = await gitProject("cantrip-codegraph-retire-failure-");
+    const fake = fakeCodeGraph();
+    const calls: string[] = [];
+    const supervisor = new CodeGraphProjectSupervisor({
+      authorize: async () => [project],
+      command: "codegraph",
+      execute: async (command, args, options) => {
+        calls.push(args[0]!);
+        if (args[0] === "uninit")
+          return { code: 1, stdout: "", stderr: "cannot remove index" };
+        return fake.execute(command, args, options);
+      },
+    });
+    try {
+      const cache = path.join(project.root, ".codegraph-cantrip");
+      await mkdir(cache);
+      await writeFile(path.join(cache, "data"), "derived");
+      let removed = false;
+      await supervisor.withRetiredIndex(project.root, async () => {
+        removed = true;
+      });
+      expect(removed).toBe(true);
+      expect(calls).toEqual(["uninit"]);
+      await supervisor.configure([codeGraphTarget(project.root)]);
+      await expect.poll(() => supervisor.statuses()[0]?.state).toBe("ready");
+      await supervisor.withRetiredIndex(project.root, async () => {
+        expect(await readFile(path.join(cache, "data"), "utf8")).toBe(
+          "derived",
+        );
+        return "worktree-dirty";
+      });
+      expect(calls).toContain("uninit");
+      await rm(cache, { recursive: true });
+      const privateDirectory = path.join(project.root, "private-directory");
+      await mkdir(privateDirectory);
+      await writeFile(path.join(privateDirectory, "private.txt"), "user data");
+      await symlink(
+        privateDirectory,
+        cache,
+        process.platform === "win32" ? "junction" : "dir",
+      );
+      calls.length = 0;
+      await supervisor.withRetiredIndex(project.root, async () => {
+        expect(
+          await readFile(path.join(privateDirectory, "private.txt"), "utf8"),
+        ).toBe("user data");
+      });
+      expect(calls).not.toContain("uninit");
+      await supervisor.configure([codeGraphTarget(project.root)]);
+      await expect.poll(() => supervisor.statuses()[0]?.state).toBe("ready");
+    } finally {
+      supervisor.close();
+    }
+  });
+
   it.each([false, true])(
     "initializes a nested worktree after ancestor discovery and validates the result (stale after init: %s)",
     async (staleAfterInit) => {

@@ -60,6 +60,9 @@ export interface ChatRecoveryRuntimeDependencies
   app: Pick<FastifyInstance, "log">;
   applicationOwnerId: () => string;
   beginTurn: BeginChatTurn;
+  prepareQueuedAccount?: (
+    context: ChatExecutionContext,
+  ) => Promise<ChatExecutionContext>;
   continueTaskGoalInWorktree?: (
     context: ChatExecutionContext,
     input: { text: string; idempotencyKey: string },
@@ -93,6 +96,7 @@ export function createChatRecoveryRuntime({
   applicationOwnerId,
   availableModelRuntimes,
   beginTurn,
+  prepareQueuedAccount,
   continueTaskGoalInWorktree,
   recoverTaskExecution,
   reconcileTaskExecutions,
@@ -333,6 +337,19 @@ export function createChatRecoveryRuntime({
       )
         return;
       const managed = managedConsoleSessionContext(context) !== undefined;
+      // Transfer an exhausted account before a queue claim takes ownership of
+      // its next input. The native handoff and claim serialize on the chat lock.
+      if (
+        managed &&
+        prepareQueuedAccount &&
+        (
+          await repository.listEncryptedQueuedPrompts(
+            applicationOwnerId(),
+            chatId,
+          )
+        ).some((prompt) => !prompt.frozen)
+      )
+        context = await prepareQueuedAccount(context);
       managedClaim = managed
         ? await repository.managedQueue.claimNext(applicationOwnerId(), chatId)
         : null;

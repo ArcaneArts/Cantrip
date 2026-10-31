@@ -98,7 +98,6 @@ import {
   useShellAppearanceState,
 } from "@/components/app/shell-appearance";
 import {
-  useContentScrollChrome,
   useShellChromeState,
   useSidebarResizeController,
   useSidebarWidthPersistence,
@@ -489,11 +488,7 @@ export function App() {
   const [showCustomizations, setShowCustomizations] = useState(false);
   const [chatRelocationOpen, setChatRelocationOpen] = useState(false);
   const {
-    contentRootRef,
-    contentScrolled,
     desktopSidebarDrawerOpen,
-    scrolledContentRef,
-    setContentScrolled,
     setDesktopSidebarDrawerOpen,
     setSidebarCollapsed,
     setSidebarResizing,
@@ -1735,17 +1730,6 @@ export function App() {
     popOutPane,
     popOutProjectOverviewView,
   } = desktopPopout;
-  const activeContentKey = showImporter
-    ? "importer"
-    : showSettings
-      ? "settings"
-      : showServerAdmin
-        ? "server-admin"
-        : showProjectSettings
-          ? `project-settings:${selectedProjectId ?? "none"}`
-          : currentSurface
-            ? `${currentSurface.tabKey}:${gitHistoryHeader?.section ?? "content"}`
-            : `project:${selectedProjectId ?? "none"}:${activeProjectOverviewSection}`;
   useEffect(() => {
     setChatRelocationOpen(false);
   }, [activeChat?.id]);
@@ -1758,13 +1742,6 @@ export function App() {
     model: desktopPopout,
     projectOverviewPopoutTarget,
     selectedProject,
-  });
-  useContentScrollChrome({
-    activeContentKey,
-    contentRootRef,
-    isPopout,
-    scrolledContentRef,
-    setContentScrolled,
   });
   const {
     beginSidebarResize,
@@ -2031,6 +2008,7 @@ export function App() {
   const {
     createSidebarFolder,
     createSidebarFile,
+    importSidebarFiles,
     deleteSidebarFileEntry,
     openSidebarFilePreview,
     openSidebarFilePreviewPath,
@@ -2185,7 +2163,7 @@ export function App() {
     bindWorktreeMutation, bootstrap, browsers, chatRelocationOpen, chatRelocations,
     chatConsoleOpenChats, chats, closeCompactProject, closeProjectTask, codeAppearance,
     codeHeader, codeTabs, stagedExplorerTransfers, stagedCodeTransfers, stagedTerminalTransfers, incomingTerminalViews, incomingExplorerViews, incomingFileDocumentViews, incomingCodeViews, incomingBrowserViews, incomingChatViews, incomingRemoteDesktopViews, commandBarOpen, compactManagedHeader, compactShell,
-    contentRootRef, contentScrolled, createProjectSurface, createSidebarExplorerMutation, createSidebarFolder, createSidebarFile,
+    createProjectSurface, createSidebarExplorerMutation, createSidebarFolder, createSidebarFile, importSidebarFiles,
     createWorkspaceMutation, createWorktreeMutation, creatingSurfaceKinds, currentRelocation, deleteBrowserMutation, dockPresentationMutation,
     deleteChatMutation, deleteCodeTabMutation, deleteExplorerMutation, deleteProjectViewMutation, deleteSidebarFileEntry,
     closeSurfaceView, keepSurfaceOpen, deleteSurfaceResource, deleteTerminalMutation, desktopRuntime, desktopSidebarDrawer,

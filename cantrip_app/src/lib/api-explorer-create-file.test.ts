@@ -4,6 +4,7 @@ import path from "node:path";
 import { generateAccountMasterKey } from "@cantrip/crypto";
 import { afterEach, expect, it, vi } from "vitest";
 import { handleExplorerCommand } from "../../../cantrip_worker/src/commands/explorer";
+import { ExplorerFileImports } from "../../../cantrip_worker/src/explorer-file-imports";
 import { SurfaceStreamReplayGuard } from "../../../cantrip_worker/src/surface-stream-encryption";
 import type { WorkerEncryptionService } from "../../../cantrip_worker/src/worker-encryption";
 import { createExplorerFile } from "./api/files";
@@ -85,7 +86,11 @@ it("creates the named file through the encrypted API/worker operation and return
         explorerId: "explorer-file",
         serverId: identity.serverId,
       },
-      { workerEncryption, surfaceStreamReplay },
+      {
+        workerEncryption,
+        surfaceStreamReplay,
+        fileImports: new ExplorerFileImports(),
+      },
     );
     expect(JSON.stringify(result)).not.toContain("SENTINEL");
     expect(JSON.stringify(result)).not.toContain("already exists");

@@ -21,9 +21,10 @@ import {
   ShieldQuestion,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import {
   getProjectWorktreeCommit,
   getProjectWorktreeCommitSignature,
@@ -447,6 +448,7 @@ export function GitCommitInspector({
   revision: string;
   worktreeId: string;
 }) {
+  const returnFocus = useRef<HTMLElement | null>(null);
   const [parentIndex, setParentIndex] = useState(0);
   const [diffContextLines, setDiffContextLines] = useState(3);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
@@ -503,19 +505,28 @@ export function GitCommitInspector({
   });
 
   return (
-    <aside className="absolute inset-y-0 right-0 z-20 flex w-full max-w-4xl border-l bg-background shadow-2xl md:relative md:z-auto md:w-[min(58vw,64rem)] md:shadow-none">
-      <section
-        className={cn(
-          "flex min-h-0 min-w-0 flex-1 flex-col",
-          selectedPath && "hidden md:flex md:max-w-[26rem]",
-        )}
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent
+        aria-describedby={undefined}
+        className="flex h-[min(88svh,900px)] max-w-6xl flex-col gap-0 overflow-hidden p-0"
+        showClose={false}
+        onOpenAutoFocus={() => {
+          returnFocus.current =
+            document.activeElement instanceof HTMLElement
+              ? document.activeElement
+              : null;
+        }}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          if (returnFocus.current?.isConnected) returnFocus.current.focus();
+        }}
       >
         <div className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
           <GitCommitHorizontal className="size-4 text-muted-foreground" />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-xs font-medium">
+            <DialogTitle className="truncate text-xs font-medium">
               {detail.data?.subject ?? "Commit details"}
-            </p>
+            </DialogTitle>
             <p className="truncate font-mono text-[10px] text-muted-foreground">
               {detail.data?.hash ?? revision}
             </p>
@@ -545,57 +556,66 @@ export function GitCommitInspector({
             <span className="sr-only">Close commit inspector</span>
           </Button>
         </div>
-        {detail.isLoading ? (
-          <div className="grid min-h-0 flex-1 place-items-center text-muted-foreground">
-            <Loader2 className="size-5 animate-spin" />
-          </div>
-        ) : detail.isError ? (
-          <div className="grid min-h-0 flex-1 place-items-center p-6 text-center text-sm text-destructive">
-            {detail.error instanceof Error
-              ? detail.error.message
-              : "Commit details could not be loaded."}
-          </div>
-        ) : detail.data ? (
-          <CommitOverview
-            commit={detail.data}
-            onNavigate={onNavigate}
-            onFilter={onFilter}
-            onParentChange={(index) => {
-              setParentIndex(index);
-              setSelectedPath(null);
-            }}
-            parentIndex={parentIndex}
-            selectedPath={selectedPath}
-            setSelectedPath={setSelectedPath}
-            signature={signature.data ?? detail.data.signature}
-            signatureError={signature.error}
-            signatureLoading={signature.isLoading}
-          />
-        ) : null}
-      </section>
-      {selectedPath ? (
-        <GitPatchView
-          error={fileDiff.error}
-          loading={fileDiff.isLoading}
-          newFile={fileDiff.data?.newFile}
-          newLabel={detail.data?.shortHash ?? "Commit"}
-          oldLabel={detail.data?.baseHash?.slice(0, 10) ?? "Empty tree"}
-          onClose={() => setSelectedPath(null)}
-          onContextLinesChange={setDiffContextLines}
-          onOpenFile={
-            onOpenFile && selectedFile?.status !== "deleted"
-              ? () => onOpenFile(selectedPath)
-              : undefined
-          }
-          oldFile={fileDiff.data?.oldFile}
-          originalPath={selectedFile?.originalPath}
-          patch={fileDiff.data?.patch}
-          path={selectedPath}
-          subtitle={`${commitFileStatusLabel(selectedFile?.status ?? "unknown")} · revision patch`}
-          truncated={fileDiff.data?.truncated ?? false}
-          binary={fileDiff.data?.binary ?? selectedFile?.binary}
-        />
-      ) : null}
-    </aside>
+        <div className="flex min-h-0 min-w-0 flex-1">
+          <section
+            className={cn(
+              "flex min-h-0 min-w-0 flex-1 flex-col",
+              selectedPath && "hidden md:flex md:max-w-[26rem] md:border-r",
+            )}
+          >
+            {detail.isLoading ? (
+              <div className="grid min-h-0 flex-1 place-items-center text-muted-foreground">
+                <Loader2 className="size-5 animate-spin" />
+              </div>
+            ) : detail.isError ? (
+              <div className="grid min-h-0 flex-1 place-items-center p-6 text-center text-sm text-destructive">
+                {detail.error instanceof Error
+                  ? detail.error.message
+                  : "Commit details could not be loaded."}
+              </div>
+            ) : detail.data ? (
+              <CommitOverview
+                commit={detail.data}
+                onNavigate={onNavigate}
+                onFilter={onFilter}
+                onParentChange={(index) => {
+                  setParentIndex(index);
+                  setSelectedPath(null);
+                }}
+                parentIndex={parentIndex}
+                selectedPath={selectedPath}
+                setSelectedPath={setSelectedPath}
+                signature={signature.data ?? detail.data.signature}
+                signatureError={signature.error}
+                signatureLoading={signature.isLoading}
+              />
+            ) : null}
+          </section>
+          {selectedPath ? (
+            <GitPatchView
+              error={fileDiff.error}
+              loading={fileDiff.isLoading}
+              newFile={fileDiff.data?.newFile}
+              newLabel={detail.data?.shortHash ?? "Commit"}
+              oldLabel={detail.data?.baseHash?.slice(0, 10) ?? "Empty tree"}
+              onClose={() => setSelectedPath(null)}
+              onContextLinesChange={setDiffContextLines}
+              onOpenFile={
+                onOpenFile && selectedFile?.status !== "deleted"
+                  ? () => onOpenFile(selectedPath)
+                  : undefined
+              }
+              oldFile={fileDiff.data?.oldFile}
+              originalPath={selectedFile?.originalPath}
+              patch={fileDiff.data?.patch}
+              path={selectedPath}
+              subtitle={`${commitFileStatusLabel(selectedFile?.status ?? "unknown")} · revision patch`}
+              truncated={fileDiff.data?.truncated ?? false}
+              binary={fileDiff.data?.binary ?? selectedFile?.binary}
+            />
+          ) : null}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

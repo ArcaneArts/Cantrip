@@ -8,6 +8,17 @@ import { policyWireFixtures } from "./policy-wire-fixtures.mjs";
 import { settingsWireFixtures } from "./settings-wire-fixtures.mjs";
 import { placementWireFixtures } from "./placement-wire-fixtures.mjs";
 import { folderWireFixtures } from "./folder-wire-fixtures.mjs";
+import { standaloneChatWireFixtures } from "./standalone-chat-wire-fixtures.mjs";
+import { nativeCommandWireFixtures } from "./native-command-wire-fixtures.mjs";
+import { nativeSettingsWireFixtures } from "./native-settings-fixtures.mjs";
+import { settlementWireFixtures } from "./native-settlement-fixtures.mjs";
+import { deferredAttachment } from "./native-settlement-fixtures.mjs";
+import { managedQueueWireFixtures } from "./managed-queue-wire-fixtures.mjs";
+import { eventPlan } from "./native-event-fixtures.mjs";
+import { nativeSettingsHttpWireFixtures } from "./native-settings-http-wire-fixtures.mjs";
+import { nativeModelInventoryWireFixtures } from "./native-model-inventory-fixtures.mjs";
+import { nativeEventWireFixtures } from "./native-event-http-wire-fixtures.mjs";
+import { agentInteractionWireFixtures } from "./agent-interaction-fixtures.mjs";
 import { terminalWireFixtures } from "./terminal-wire-fixtures.mjs";
 import { browserWireFixtures } from "./browser-wire-fixtures.mjs";
 import { projectShareWireFixtures } from "./project-share-wire-fixtures.mjs";
@@ -18,6 +29,10 @@ import { workspaceLayoutWireFixtures } from "./workspace-layout-wire-fixtures.mj
 import { paneWireFixtures } from "./pane-wire-fixtures.mjs";
 import { workerLinkWireFixtures } from "./worker-link-wire-fixtures.mjs";
 import { directAttachmentWireFixtures } from "./direct-attachment-wire-fixtures.mjs";
+import { discoveryWireFixtures } from "./discovery-wire-fixtures.mjs";
+import { runWireFixtures } from "./run-wire-fixtures.mjs";
+import { worktreeWireFixtures } from "./worktree-wire-fixtures.mjs";
+import { provisioningWireFixtures } from "./provisioning-wire-fixtures.mjs";
 
 export const owner = "11111111-1111-4111-8111-111111111111";
 export const clientId = "22222222-2222-4222-8222-222222222222";
@@ -248,6 +263,12 @@ export const projectWire = {
   updatedAt: timestamp,
 };
 export const securityFixtures = {
+  ...nativeEventWireFixtures(),
+  ...nativeModelInventoryWireFixtures(),
+  ...agentInteractionWireFixtures(),
+  ...nativeSettingsHttpWireFixtures(),
+  chatPlanOpaqueStateSchema: [eventPlan],
+  chatAttachmentOpaqueSummarySchema: [deferredAttachment()],
   modelConfigurationSchema: [
     { modelId: null },
     {
@@ -660,6 +681,11 @@ export const securityFixtures = {
   ...settingsWireFixtures,
   ...placementWireFixtures(projectLabel),
   ...folderWireFixtures(projectLabel),
+  ...standaloneChatWireFixtures(timestamp),
+  ...nativeCommandWireFixtures(timestamp),
+  ...nativeSettingsWireFixtures(),
+  ...settlementWireFixtures(timestamp),
+  ...managedQueueWireFixtures(timestamp),
   ...terminalWireFixtures(projectLabel),
   ...browserWireFixtures(projectLabel),
   ...projectSurfaceWireFixtures(projectLabel),
@@ -671,6 +697,10 @@ export const securityFixtures = {
   ...paneWireFixtures(projectLabel),
   ...workerLinkWireFixtures,
   ...directAttachmentWireFixtures,
+  ...discoveryWireFixtures(projectLabel),
+  ...runWireFixtures(projectLabel.protectedLabel),
+  ...worktreeWireFixtures(),
+  ...provisioningWireFixtures(projectLabel),
   workerRequestEnvelopeSchema: [
     ...workerCommands.commands.map((item) => item.input),
     ...commandRefinements.cases.map((item) => item.input),

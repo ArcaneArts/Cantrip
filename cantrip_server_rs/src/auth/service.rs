@@ -72,7 +72,11 @@ pub struct AuthService {
     pub provider_accounts: Arc<crate::settings::account_service::AccountService>,
     pub provider_catalogs: Arc<crate::settings::catalog_runtime::CatalogRuntime>,
     pub mutation_audits: Arc<super::audit::AuditService>,
+    pub project_replicas: Arc<crate::projects::replicas::service::ReplicaService>,
+    pub github_conversion: Arc<crate::projects::github_conversion::service::ConversionService>,
+    pub workspace_discovery: Arc<crate::projects::workspace_discovery::service::DiscoveryService>,
     pub folder_setup: Arc<crate::projects::folders::service::FolderService>,
+    pub scratch_roots: Arc<crate::chats::roots::service::Service>,
     pub worker_maintenance: Arc<crate::workers::maintenance::Service>,
     pub worker_links: Arc<crate::worker_links::service::Service>,
     pub direct_attachments: Arc<crate::direct_attachments::Coordinator>,
@@ -244,6 +248,36 @@ impl AuthService {
             workers.commands.clone(),
             &live,
         );
+        let project_replicas = crate::projects::replicas::service::ReplicaService::new(
+            repository.database.clone(),
+            workers.commands.clone(),
+            workers.bridge.clone(),
+            live.clone(),
+            worktree_observations.clone(),
+        );
+        project_replicas.start().await?;
+        let github_conversion = crate::projects::github_conversion::service::ConversionService::new(
+            repository.database.clone(),
+            workers.commands.clone(),
+            workers.bridge.clone(),
+            live.clone(),
+            worktree_observations.clone(),
+        );
+        github_conversion.start().await?;
+        let workspace_discovery =
+            crate::projects::workspace_discovery::service::DiscoveryService::new(
+                repository.database.clone(),
+                workers.commands.clone(),
+                workers.bridge.clone(),
+                live.clone(),
+            );
+        workspace_discovery.start().await?;
+        let scratch_roots = crate::chats::roots::service::Service::new(
+            repository.database.clone(),
+            workers.clone(),
+            live.clone(),
+        );
+        scratch_roots.start(true).await?;
         let observations = worktree_observations.clone();
         let project_operations =
             crate::projects::coordinator::Coordinator::new(Arc::new(move |owner, project| {
@@ -330,6 +364,10 @@ impl AuthService {
             provider_catalogs,
             mutation_audits,
             folder_setup,
+            project_replicas,
+            github_conversion,
+            workspace_discovery,
+            scratch_roots,
             worker_maintenance,
             worker_links,
             direct_attachments,

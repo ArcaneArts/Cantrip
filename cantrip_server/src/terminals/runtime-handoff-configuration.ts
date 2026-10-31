@@ -76,6 +76,7 @@ export async function runtimeHandoffConfiguration(
         ...runtime.provider,
         accountId: account.accountId,
         credentialHomeKey: account.credentialHomeKey,
+        credits: account.credits,
       },
     };
   } else if (accountId !== null) {

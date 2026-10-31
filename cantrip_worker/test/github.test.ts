@@ -1370,10 +1370,56 @@ describe("GitHub project files", () => {
       "--hard",
       "origin/main",
     ]);
+
+    const derivedIndex = path.join(managed, ".codegraph-cantrip");
+    await mkdir(derivedIndex);
+    await writeFile(path.join(derivedIndex, "graph.db"), "derived index");
+    await writeFile(
+      path.join(managed, ".git", "info", "exclude"),
+      "/.codegraph-cantrip/\n",
+    );
+    await writeFile(path.join(managed, "secret.tmp"), "ignored user data\n");
+    let retirementCalls = 0;
+    github.setReplicaRemovalLifecycle(async (root, remove) => {
+      expect(root).toBe(await realpath(managed));
+      retirementCalls += 1;
+      await rm(derivedIndex, { recursive: true, force: true });
+      return remove();
+    });
     await expect(
       github.removeReplica({
         jobId: operation.jobId,
         attempt: 5,
+        nameWithOwner: null,
+        sourcePath: managed,
+        deleteLocalFiles: true,
+      }),
+    ).resolves.toMatchObject({
+      status: "blocked",
+      error: { code: "policy-denied" },
+    });
+    expect(retirementCalls).toBe(0);
+    await expect(
+      github.removeReplica({
+        jobId: operation.jobId,
+        attempt: 5,
+        nameWithOwner: operation.nameWithOwner,
+        sourcePath: managed,
+        deleteLocalFiles: true,
+      }),
+    ).resolves.toMatchObject({
+      status: "blocked",
+      error: { code: "worktree-dirty" },
+    });
+    expect(await readFile(path.join(managed, "secret.tmp"), "utf8")).toBe(
+      "ignored user data\n",
+    );
+    expect(retirementCalls).toBe(1);
+    await rm(path.join(managed, "secret.tmp"));
+    await expect(
+      github.removeReplica({
+        jobId: operation.jobId,
+        attempt: 6,
         nameWithOwner: operation.nameWithOwner,
         sourcePath: managed,
         deleteLocalFiles: true,

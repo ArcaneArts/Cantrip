@@ -137,6 +137,80 @@ function layout(tabbedExplorerIds: string[]): ProjectTabLayoutSummary {
 }
 
 describe("sidebar Explorer ownership commands", () => {
+  it("imports each dropped file with its checkout binding and refreshes the tree", async () => {
+    const upload = vi
+      .spyOn(api, "importExplorerFile")
+      .mockImplementation(async (_id, _path, file, _binding, options) => {
+        options.onProgress(file.size);
+        return { ...entry, name: file.name, size: file.size };
+      });
+    const { commands, queryClient } = commandHarness({ layout: layout([]) });
+    const files = [new File(["abc"], "one.bin"), new File(["d"], "two.bin")];
+    const onProgress = vi.fn();
+    const authorization = { bindingKey: "current", isCurrent: () => true };
+    await commands.importSidebarFiles(
+      previewOwner,
+      "src",
+      files,
+      authorization,
+      onProgress,
+    );
+    expect(upload).toHaveBeenCalledTimes(2);
+    expect(upload).toHaveBeenNthCalledWith(
+      1,
+      previewOwner.id,
+      "src",
+      files[0],
+      {
+        projectId: previewOwner.projectId,
+        worktreeId: previewOwner.worktreeId,
+        workerId: previewOwner.activeWorkerId,
+      },
+      expect.objectContaining({ isCurrent: authorization.isCurrent }),
+    );
+    expect(onProgress.mock.calls.map(([value]) => value.completed)).toEqual([
+      3, 4,
+    ]);
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: [
+        "explorer-directory",
+        previewOwner.projectId,
+        previewOwner.worktreeId,
+      ],
+    });
+  });
+
+  it("refreshes files already added before a later import fails", async () => {
+    const upload = vi
+      .spyOn(api, "importExplorerFile")
+      .mockResolvedValueOnce(entry)
+      .mockRejectedValueOnce(new Error("already exists"));
+    const { commands, queryClient } = commandHarness({ layout: layout([]) });
+    await expect(
+      commands.importSidebarFiles(
+        previewOwner,
+        "",
+        [
+          new File(["a"], "first"),
+          new File(["b"], "second"),
+          new File(["c"], "third"),
+        ],
+        { bindingKey: "current", isCurrent: () => true },
+        () => {},
+      ),
+    ).rejects.toThrow(
+      "Could not add second: already exists 1 file was already added.",
+    );
+    expect(upload).toHaveBeenCalledTimes(2);
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: [
+        "explorer-directory",
+        previewOwner.projectId,
+        previewOwner.worktreeId,
+      ],
+    });
+  });
+
   it("creates a named file through the selected Explorer and refreshes its worktree entries", async () => {
     const create = vi.spyOn(api, "createExplorerFile").mockResolvedValue(entry);
     const { commands, queryClient } = commandHarness({ layout: layout([]) });

@@ -7,6 +7,12 @@ pub(super) fn apply(
     path: &[Value],
     message: Option<&str>,
 ) -> Result<(), ValidationError> {
+    if super::agent_interactions::refine(tag, result, path)? {
+        return Ok(());
+    }
+    if super::workspace_discovery::refine(tag, result, path)? {
+        return Ok(());
+    }
     if super::run_configurations::refine(tag, result, path)? {
         return Ok(());
     }
@@ -50,6 +56,90 @@ pub(super) fn apply(
         at.extend(suffix.iter().map(|v| json!(v)));
         result.issue(json!({"code":"custom"}), &at, message.into(), false);
     };
+    if tag == "native-command-event" {
+        if !matches!(
+            value["type"].as_str(),
+            Some(
+                "agent.protected-message"
+                    | "agent.protected-task-message"
+                    | "agent.interaction.requested.protected"
+                    | "agent.interaction.cleared"
+                    | "agent.interaction.expired"
+                    | "agent.plan.protected"
+                    | "computer-use.approval.request"
+                    | "computer-use.approval.terminal"
+            )
+        ) {
+            custom(&[], "Only protected native operation events are accepted.");
+        }
+        return Ok(());
+    } else if tag == "native-command-admission" {
+        let session = &value["session"];
+        if value["origin"] != "gui"
+            && ["threadId", "runtimeGeneration", "connectionId"]
+                .iter()
+                .any(|field| !super::coercion::truthy(session.get(field)))
+        {
+            custom(&[], "Terminal commands require a bound native session.");
+        }
+        if (session["contextKind"] == "standalone") != session["projectId"].is_null() {
+            custom(&[], "The placement context is inconsistent.");
+        }
+        return Ok(());
+    }
+    if tag == "native-settings-evidence" {
+        use super::coercion::truthy;
+        if truthy(value.get("recoveryBindingId"))
+            && (value["kind"] != "applied" || !truthy(value.get("permissionPolicy")))
+        {
+            custom(
+                &[],
+                "Recovery binding requires applied permission evidence.",
+            );
+        }
+        if truthy(value.get("permissionPolicy")) && value["kind"] != "applied" {
+            custom(&[], "Permission policy requires applied native evidence.");
+        }
+        if matches!(value["kind"].as_str(), Some("queued" | "applied"))
+            && !truthy(value.get("submissionId"))
+        {
+            custom(
+                &[],
+                "Native queue/application evidence requires a submission identity.",
+            );
+        }
+        return Ok(());
+    }
+    if tag == "native-deferred-pair" {
+        if super::coercion::truthy(value.get("retainedPrompt"))
+            != super::coercion::truthy(value.get("attachments"))
+        {
+            custom(
+                &[],
+                "Retained prompt and attachments must be supplied together.",
+            );
+        }
+        return Ok(());
+    }
+    if tag == "native-settings-version" {
+        let valid = value.as_str().is_some_and(|s| {
+            !s.is_empty()
+                && s.len() <= 20
+                && (s == "0" || !s.starts_with('0'))
+                && s.bytes().all(|b| b.is_ascii_digit())
+                && s.parse::<u64>().is_ok()
+        });
+        if !valid {
+            custom(&[], message.unwrap_or("Invalid input"));
+        }
+        return Ok(());
+    }
+    if tag == "conversion-source-pair" {
+        if value.get("projectSourceId").is_some() != value.get("workerId").is_some() {
+            custom(&[], "Conversion source fields must be provided together.");
+        }
+        return Ok(());
+    }
     if tag == "worktree-create-mutation-failure" {
         let outcome = value["mutation"]["outcome"].as_str().unwrap_or_default();
         let suffix = match outcome {

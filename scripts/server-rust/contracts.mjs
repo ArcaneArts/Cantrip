@@ -1,10 +1,13 @@
 // Development-time export of the real protocol definitions. The native server
 // embeds this data and implements every registered operation in Rust.
 import * as protocol from "../../packages/protocol/dist/index.js";
+import * as computerUsePreview from "../../packages/protocol/dist/computer-use-preview.js";
+import * as attachmentContent from "../../packages/protocol/dist/attachment-content.js";
 import * as runDefinitions from "../../packages/protocol/dist/run-configuration-definitions.js";
 import * as runSecrets from "../../packages/protocol/dist/run-configuration-secrets.js";
 import * as runConfigurationOperations from "../../packages/protocol/dist/run-configuration-operations.js";
 import * as runConfigurationRuntime from "../../packages/protocol/dist/run-configuration-runtime.js";
+import { repositoryRoutingHandleSchema } from "../../packages/protocol/dist/repository-operation.js";
 import { cuaCursorPreferenceRecordSchema } from "../../packages/protocol/dist/computer-use-preferences.js";
 import { mkdir, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -14,6 +17,7 @@ import { registerWorkerContracts } from "./worker-contracts.mjs";
 import { registerWorkerCommandContracts } from "./worker-command-contracts.mjs";
 
 export const contractRoots = [
+  "chatAttachmentOpaqueSummarySchema",
   "accountRegistrationSchema",
   "authLoginSchema",
   "authReauthenticationSchema",
@@ -70,6 +74,14 @@ export const contractRoots = [
   "contextualChatWireSummarySchema",
   "modelConfigurationSchema",
   "agentInteractionProvenanceSchema",
+  "agentInteractionRequestCreateSchema",
+  "encryptedAgentInteractionRequestCreateSchema",
+  "agentInteractionRequestSchema",
+  "encryptedAgentInteractionRequestSchema",
+  "agentInteractionResolutionCreateSchema",
+  "encryptedAgentInteractionResolutionCreateSchema",
+  "agentInteractionRequestQuerySchema",
+  "agentInteractionRequestWireListSchema",
   "workerServerEnvelopeSchema",
   "workerRequestEnvelopeSchema",
   "accountResourceUsageSchema",
@@ -299,9 +311,148 @@ export const contractRoots = [
   "directCapabilityPrepareResultSchema",
   "directCapabilityRenewResultSchema",
   "directTransportTelemetrySchema",
+  "projectReplicaJobSummarySchema",
+  "projectReplicaJobListSchema",
+  "projectReplicaProvisionResultSchema",
+  "projectReplicaSynchronizeResultSchema",
+  "projectReplicaRemoveResultSchema",
+  "managedFolderDeleteResultSchema",
+  "encryptedProjectReplicaProvisionCreateSchema",
+  "encryptedProjectReplicaSynchronizeCreateSchema",
+  "encryptedProjectReplicaRemoveCreateSchema",
+  "projectReplicaJobRetrySchema",
+  "projectReplicaJobCancelSchema",
+  "projectReplicaLinkRepairResultSchema",
+  "projectReplicaListSchema",
+  "projectReplicaSummarySchema",
+  "encryptedGithubProjectCreateSchema",
+  "encryptedProjectGithubConversionPreflightRequestSchema",
+  "encryptedProjectGithubConversionStartSchema",
+  "projectGithubConversionRetrySchema",
+  "projectGithubConversionPreflightResultSchema",
+  "projectGithubConversionExecutionResultSchema",
+  "projectGithubConversionJobSummarySchema",
+  "workspaceRepositoryDiscoveryJobSummarySchema",
+  "repositoryRoutingHandleSchema",
+  "workspaceRepositoryDiscoveryCountsSchema",
+  "workspaceRepositoryDiscoveryProgressSchema",
+  "workspaceRepositoryCandidateSummarySchema",
+  "workspaceRepositoryCandidateClassificationSchema",
+  "workspaceRepositoryCandidateDiagnosticCodeSchema",
+  "workspaceRepositoryDiscoverySnapshotSchema",
+  "workspaceRepositoryDiscoveryStartSchema",
+  "workspaceRepositoryImportStartSchema",
+  "workspaceRepositoryDiscoveryWorkerResultSchema",
+  "workspaceRepositoryImportValidationResultSchema",
+  "encryptedProjectWorkspaceCreateSchema",
+  "encryptedAttachedProjectWorkspaceCreateSchema",
+  "encryptedAttachedProjectWorkspaceCreateResultSchema",
+  "encryptedProjectWorkspaceUpdateSchema",
+  "projectWorkspaceWireSummarySchema",
+  "projectWorkspaceWireListSchema",
+  "standaloneChatRootJobSummarySchema",
+  "standaloneChatScratchProvisionResultSchema",
+  "standaloneChatScratchDeleteResultSchema",
+  "standaloneChatScratchReconciliationResultSchema",
+  "encryptedStandaloneChatCreateSchema",
+  "archivedStandaloneChatWireSummarySchema",
+  "conversationRestoreSchema",
+  "encryptedChatUpdateSchema",
+  "chatRuntimeSelectionSchema",
+  "chatComposerDraftOpaqueStateSchema",
+  "encryptedChatComposerDraftWireStateSchema",
+  "encryptedChatComposerDraftUpdateSchema",
+  "standaloneChatScratchArchiveResultSchema",
+  "standaloneChatFileWireRequestSchema",
+  "encryptedChatForkSchema",
+  "chatMessageOpaqueSummarySchema",
+  "chatMessageOpaqueContentListSchema",
+  "taskMessageOpaqueSummarySchema",
+  "chatMessagePageQuerySchema",
+  "chatMessageWireListSchema",
+  "chatMessageWirePageSchema",
+  "chatMessageOpaqueContentSchema",
+  "taskMessageOpaqueContentSchema",
+  "nativeHistoryTurnReadRequestSchema",
+  "nativeHistoryTurnReadResponseSchema",
+  "chatPlanOpaqueStateSchema",
+  "nativeSettingsRefreshRequestSchema",
+  "nativeSettingsUpdateRequestSchema",
+  "nativeSettingsUpdateReceiptSchema",
+  "nativeAccountDefaultsRequestSchema",
+  "nativeAccountDefaultsResponseSchema",
+  "nativeModelInventoryRequestSchema",
+  "nativeCommandEventSchema",
+  "nativePermissionTransitionResolveSchema",
+  "cuaPreviewAuthoritySchema",
+  "nativeModelInventorySchema",
+  "nativeChatModelInventoryQuerySchema",
+  "nativeChatModelInventorySchema",
+  "nativeCommandSessionSchema",
+  "nativeCommandAdmissionSchema",
+  "nativeCommandIntentSchema",
+  "nativeCommandReceiptSchema",
+  "nativeCommandDispatchSchema",
+  "nativeCommandContinuationSchema",
+  "nativePendingRequestSchema",
+  "nativeSettingsStateSchema",
+  "nativeSettingsIntentSchema",
+  "nativeSettingsBindingSchema",
+  "nativeSettingsReadScopeSchema",
+  "protectedNativeSettingsSnapshotSchema",
+  "nativeSettingsVersionSchema",
+  "nativeSettingsObservationRequestSchema",
+  "nativeSettingsObservationReceiptSchema",
+  "nativeSettingsEvidenceSchema",
+  "nativeSettingsEvidenceResultSchema",
+  "nativeCommandSettlementSchema",
+  "nativeCommandTerminalEvidenceSchema",
+  "queuedPromptOpaqueContentSchema",
+  "encryptedQueuedPromptSchema",
+  "nativeTurnRecoveryObservationSchema",
+  "managedQueueClaimSchema",
+  "managedQueueReadSchema",
+  "managedQueueSnapshotSchema",
+  "managedQueueMutationSchema",
+  "managedQueueMutateSchema",
+  "managedQueueMutationResultSchema",
+  "managedQueueStartReceiptSchema",
+  "managedQueueStartReceiptResultSchema",
+  "managedQueueImportSchema",
+  "managedQueueImportAckSchema",
+  "managedQueueImportResultSchema",
+  "managedQueueLookupSchema",
+  "managedQueueLookupResultSchema",
 ];
 
+// Resolve the actual source schemas, including their separate protocol modules.
+// Compatibility oracles use this registry, never the generated native manifest.
+export function sourceContractSchema(name) {
+  return (
+    protocol[name] ??
+    computerUsePreview[name] ??
+    attachmentContent[name] ??
+    runConfigurationRuntime[name] ??
+    runConfigurationOperations[name] ??
+    runDefinitions[name] ??
+    (name === "nativeCommandTerminalEvidenceSchema"
+      ? protocol.nativeCommandSettlementSchema.shape.reconciliation.unwrap()
+      : undefined) ??
+    (name === "repositoryRoutingHandleSchema"
+      ? repositoryRoutingHandleSchema
+      : undefined)
+  );
+}
+
 const refinements = new Map([
+  [
+    protocol.encryptedProjectGithubConversionPreflightRequestSchema,
+    "conversion-source-pair",
+  ],
+  [
+    protocol.encryptedProjectGithubConversionStartSchema,
+    "conversion-source-pair",
+  ],
   [
     runDefinitions.runConfigurationRepositoryEntrySchema,
     "run-repository-entry",
@@ -364,6 +515,46 @@ function registerChecks(schema, tags) {
     );
   tags.forEach((tag, index) => registerCustom(schema, index, tag));
 }
+registerChecks(protocol.nativeSettingsVersionSchema.shape.revision, [
+  "native-settings-version",
+]);
+registerChecks(protocol.nativeCommandAdmissionSchema, [
+  "native-command-admission",
+]);
+registerChecks(protocol.nativeSettingsEvidenceSchema, [
+  "native-settings-evidence",
+]);
+registerChecks(protocol.nativeCommandSettlementSchema.shape.deferred.unwrap(), [
+  "native-deferred-pair",
+]);
+for (const schema of [
+  protocol.workspaceRepositoryDiscoveryJobSummarySchema,
+  protocol.workspaceRepositoryDiscoveryWorkerResultSchema,
+])
+  registerChecks(schema, ["discovery-truncation"]);
+registerChecks(protocol.workspaceRepositoryCandidateSummarySchema, [
+  "discovery-candidate-summary",
+]);
+registerChecks(protocol.workspaceRepositoryImportValidationResultSchema, [
+  "discovery-import-classification",
+]);
+registerChecks(
+  protocol.workspaceRepositoryDiscoveryWorkerResultSchema.shape.candidates
+    .element,
+  ["discovery-worker-classification"],
+);
+registerChecks(protocol.workspaceRepositoryImportStartSchema.shape.candidates, [
+  "discovery-import-unique",
+]);
+registerChecks(protocol.encryptedProjectWorkspaceNameSchema, [
+  "project-workspace-name",
+]);
+registerChecks(protocol.encryptedProjectWorkspaceNameSchema.shape.envelope, [
+  "project-workspace-name-bytes",
+]);
+registerChecks(protocol.encryptedProjectWorkspaceUpdateSchema, [
+  "project-workspace-update",
+]);
 registerChecks(protocol.repositoryOperationWireRequestSchema, [
   "repository-agent-model",
 ]);
@@ -398,6 +589,19 @@ registerChecks(protocol.projectWireSummarySchema, ["project-wire-summary"]);
 registerChecks(protocol.chatWireSummarySchema, ["chat-title-kind"]);
 registerChecks(protocol.projectChatWireSummarySchema, ["chat-title-kind"]);
 registerChecks(protocol.standaloneChatWireSummarySchema, ["chat-title-kind"]);
+registerChecks(protocol.encryptedStandaloneChatCreateSchema, [
+  "worker-command-chat-title",
+]);
+registerChecks(protocol.encryptedChatUpdateSchema, [
+  "worker-command-chat-title",
+]);
+registerChecks(protocol.encryptedChatForkSchema, ["worker-command-chat-title"]);
+registerChecks(protocol.standaloneChatScratchArchiveResultSchema, [
+  "worker-command-scratch-archive-result",
+]);
+registerChecks(protocol.archivedStandaloneChatWireSummarySchema, [
+  "worker-command-chat-title",
+]);
 registerChecks(protocol.githubAgentWorkflowContextSchema, [
   "github-agent-workflow-context",
 ]);
@@ -459,6 +663,16 @@ registerChecks(protocol.providerAuthLiveStatusSchema, [
   "provider-auth-live-kind",
 ]);
 const recursiveJson = registerWorkerContracts(registerChecks);
+registerChecks(protocol.agentInteractionRequestCreateSchema, [
+  "interaction-payload-owner",
+  "worker-wire-interaction-storage",
+]);
+registerChecks(protocol.agentInteractionRequestSchema, [
+  "interaction-visible-row",
+]);
+registerChecks(protocol.encryptedAgentInteractionRequestSchema, [
+  "interaction-protected-row",
+]);
 registerChecks(runDefinitions.runConfigurationProviderValidationSchema, [
   "run-provider-validation",
 ]);
@@ -575,7 +789,14 @@ registerChecks(protocol.legacyProjectTabLayoutWireSummarySchema, [
   "legacy-project-layout",
 ]);
 const commandContracts = registerWorkerCommandContracts(registerCustom);
+registerChecks(protocol.nativeCommandEventSchema.shape.event._zod.def.in, [
+  "native-command-event",
+]);
 const transforms = new Map([
+  [
+    protocol.nativeCommandEventSchema.shape.event._zod.def.out,
+    "native-event-identity",
+  ],
   [protocol.appLiveEventPayloadSchema._zod.def.out, "live-json-object"],
   ...commandContracts.transforms,
 ]);
@@ -790,13 +1011,7 @@ export function buildContractManifest() {
     roots: Object.fromEntries(
       contractRoots.map((name) => [
         name,
-        visit(
-          protocol[name] ??
-            runConfigurationRuntime[name] ??
-            runConfigurationOperations[name] ??
-            runDefinitions[name],
-          name,
-        ),
+        visit(sourceContractSchema(name), name),
       ]),
     ),
     nodes,

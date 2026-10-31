@@ -135,14 +135,42 @@ setInterval(() => {}, 1000);
       await assert.rejects(readFile(definitionPath), { code: "ENOENT" });
     }
 
-    const exited = JSON.parse(await readFile(exitPath, "utf8"));
+    // The PTY shell can exit before its Node descendant flushes this witness.
+    // Linux traces show different shell-group and script PIDs. Observe the
+    // child's own result before checking ordering; do not infer it from the
+    // server's completed request or from the shell's exit alone.
+    let witnessReads = 0;
+    const exited = JSON.parse(
+      await eventually(
+        () => {
+          witnessReads++;
+          return readFile(exitPath, "utf8").catch((error) => {
+            if (error.code === "ENOENT") return null;
+            throw error;
+          });
+        },
+        (value) => assert.ok(value !== null),
+      ),
+    );
     assert.equal(exited.pid, Number(pid));
     assert.equal(
       exited.directoryPresent,
       true,
       "Run receives termination before its worktree directory disappears",
     );
-    assert.throws(() => process.kill(Number(pid), 0), { code: "ESRCH" });
+    await eventually(
+      () => {
+        try {
+          process.kill(Number(pid), 0);
+          return "running";
+        } catch (error) {
+          if (error.code !== "ESRCH") throw error;
+          return "exited";
+        }
+      },
+      (state) => assert.equal(state, "exited"),
+    );
+    evidence.exitObservation = { witnessReads };
     const remaining = await page.evaluate(
       async ({ projectId, configurationId, worktreeId }) => {
         const api = await import("/src/lib/run-configuration-api.ts");

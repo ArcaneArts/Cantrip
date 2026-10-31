@@ -122,7 +122,8 @@ pub(super) fn refine(
         }
         "run-repository-entry" => {
             if value["status"] == "ready"
-                && (value["document"].is_null() || value["revision"].is_null())
+                && (!super::coercion::truthy(value.get("document"))
+                    || !super::coercion::truthy(value.get("revision")))
             {
                 issue(&[], "Ready entries require a document and revision.");
             }
@@ -134,7 +135,9 @@ pub(super) fn refine(
                     "Non-ready entries require at least one diagnostic.",
                 );
             }
-            if !value["document"].is_null() && value["id"] != value["document"]["id"] {
+            if super::coercion::truthy(value.get("document"))
+                && value["id"] != value["document"]["id"]
+            {
                 issue(&[json!("id")], "Entry identity must match its document.");
             }
         }
