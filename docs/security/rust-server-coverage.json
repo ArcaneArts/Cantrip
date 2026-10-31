@@ -7363,7 +7363,38 @@
         "Supported-platform results, Redis coordination and packaging/default cutover remain required.",
         "Canonical history ingestion, native command admission, queues, approvals and durable execution consumers are not ported by this milestone.",
         "Actual Task endpoint encryption/ingestion, complete client/worker product flows and additional crash/shutdown boundaries remain required."
-      ]
+      ],
+      "lockWaitObservation": {
+        "failureRun": 41183089946,
+        "failureJob": 124484345954,
+        "artifact": 13036340964,
+        "artifactZipSha256": "0a4c68041870a2e7bfaf1431d1c14461de1c0833f0825ed7d177f7b786d8d67e",
+        "scope": "Windows Source/password late-archive probe reached the expected blocking-PID count while a sampled wait event was null. The controlled observer now awaits the complete count plus Lock wait-event witness within its existing deadline and retains incomplete matching-count samples. Both assertions remain after observation; server writes are never retried. Fresh Windows acceptance is required.",
+        "validatedLocally": "Fresh external PostgreSQL HTTP/Live comparison passes all three authentication profiles and five fault/race scenarios per runtime, preserving blocker counts, Lock witnesses, commits, exact rollback, encryption and event ordering."
+      }
+    },
+    "chatForkSnapshotEquality": {
+      "status": "partial",
+      "implementation": ["cantrip_server_rs/src/chats/forks/mod.rs"],
+      "evidence": [
+        "cantrip_server_rs/src/chats/forks/tests.rs",
+        "scripts/server-rust/chat-fork-snapshot-oracle.mjs",
+        "scripts/server-rust/chat-fork-repository-compatibility.mjs",
+        "scripts/server-rust/chat-fork-http-compatibility.mjs"
+      ],
+      "scope": "Fork reread snapshots follow Source Node 24.22.1 invalid-Date equality. Private markers remain distinct from SQL NULL and finite millisecond timestamps. No wire values or persisted opaque data change, and no runtime Node dependency is introduced. The actual utility oracle compares 407 rows; separately recorded 24.14 behavior differs on 27 invalid-Date comparisons. The old unchanged-infinity conflict expectation was incorrect for the current CI runtime. Expanded real repository cases require successful complete forks and exact rollback for valid/invalid transitions.",
+      "failureEvidence": {
+        "run": 41179568205,
+        "job": 124474015015,
+        "artifact": 13035533686,
+        "artifactZipSha256": "26de0e7f6b9bb4cf4325e81b82849750c73d3476fa092d59cab6282571a800bb",
+        "localReproduction": "Exact unmodified repository scenario fails under official Node24.22.1; Node accepts the fork and Rust rejects it."
+      },
+      "remaining": [
+        "Supported-platform CI results and packaged artifacts require actual verification.",
+        "Full client/worker integration, additional interruption boundaries, canonical history ingestion and execution remain in scope."
+      ],
+      "validatedLocally": "macOS with official Node 24.22.1: 407 utility cases; 52 repository operations and 87 full snapshots per backend on all three stores, each with a 1 MiB fixture stack. Actual HTTP/Live and production worker reprotection/decryption pass all nine backend/auth combinations. The original Linux/PGlite failure reproduces locally before the fix. Platform CI acceptance remains pending."
     }
   },
   "remainingAcceptance": [
@@ -7488,6 +7519,15 @@
       "scope": "Controlled test callers own their sockets, preserving the production worker and server behavior. All 240 post-restart heartbeat/catalog requests use connections established after the old process closes. Original Linux run 41176923583 fails at iteration 9 with a heartbeat reusing an unused replacement connection to the old process. Actual SQL lock/PID, revision, durable state, caller-abort and same-port restart assertions remain intact. This is scoped Linux diagnostic evidence, not a full platform, packaged or replacement pass.",
       "artifactId": 13033962863,
       "artifactZipSha256": "4f65a7a82a8e42213e236d7d96c54adf3b9549c66f46d1f9e4288abe6484ed63"
+    },
+    {
+      "observedHead": "2d31511bf6e5e1b26df2002b4cd56bd9d5792af1",
+      "observedRun": "https://github.com/ArcaneArts/Cantrip/actions/runs/41183089946",
+      "platforms": ["ubuntu-24.04"],
+      "conclusion": "Dedicated message job passed; all nine uploaded JSON reports inspected after ZIP SHA-256 verification.",
+      "scope": "Source/Rust message queries (46 operations/9 snapshots) and writes/archive reads (62/8) on all three stores with a 1 MiB fixture stack; HTTP/Live compares three authentication profiles per backend, endpoint encryption, restart state and external PostgreSQL fault/lock races. This is scoped Linux message evidence, not native execution/history ingestion, all-platform, packaged or full-replacement acceptance.",
+      "artifactId": 13035975785,
+      "artifactZipSha256": "ac61057e3a2fe2a7bd10d02eb00a24fa9e283650313861e2a42503bb06df14ff"
     }
   ]
 }

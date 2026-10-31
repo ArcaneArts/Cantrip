@@ -41,6 +41,7 @@ const fixed = new Set([
 ]);
 const report = {
   suite: "actual-protected-chat-fork-repositories",
+  nodeVersion: process.version,
   databaseMode,
   completeReplacement: false,
   cases: [],
@@ -452,11 +453,67 @@ try {
     trace: 1,
   });
   await snapshot("submillisecond change accepted");
+  for (const value of ["infinity", "-infinity"]) {
+    await seed(`UPDATE chats SET updated_at=${literal(value)} WHERE id='chat'`);
+    const input = request();
+    await observe("unchanged invalid Date accepts fork " + value, input, {
+      trace: 1,
+    });
+    const states = await snapshot(
+      "invalid Date retains source and complete fork " + value,
+    );
+    for (const state of states) {
+      assert.equal(state.chats.find((c) => c.id === "chat").updated_at, value);
+      assert.ok(state.chats.some((c) => c.id === input.input.id));
+      assert.equal(
+        state.chat_messages.filter((m) => m.chat_id === input.input.id).length,
+        3,
+      );
+    }
+  }
   await seed("UPDATE chats SET updated_at='infinity' WHERE id='chat'");
-  await unchanged("invalid JS Date conflicts after reprotection", request(), {
-    error: conflict,
-    trace: 1,
+  const invalidMutation = request("project", {
+    mutations: ["UPDATE chats SET updated_at='-infinity' WHERE id='chat'"],
   });
+  await observe(
+    "different invalid timestamps compare as invalid Dates",
+    invalidMutation,
+    { trace: 1 },
+  );
+  await snapshot("different invalid timestamps accept complete fork");
+  for (const [before, after] of [
+    ["infinity", stamp],
+    [stamp, "-infinity"],
+  ]) {
+    await seed(
+      `UPDATE chats SET updated_at=${literal(before)} WHERE id='chat'`,
+    );
+    const original = await snapshot("before Date transition " + before);
+    const changed = request("project", {
+      mutations: [
+        `UPDATE chats SET updated_at=${literal(after)} WHERE id='chat'`,
+      ],
+    });
+    await observe("valid and invalid Date conflict " + before, changed, {
+      error: conflict,
+      trace: 1,
+    });
+    const states = await snapshot(
+      "Date conflict retains only callback mutation " + before,
+    );
+    const expected = structuredClone(original);
+    for (const [i, state] of states.entries()) {
+      const timestamp = state.chats.find((c) => c.id === "chat").updated_at;
+      if (after === "-infinity") assert.equal(timestamp, after);
+      else assert.equal(Date.parse(timestamp), Date.parse(after));
+      expected[i].chats.find((c) => c.id === "chat").updated_at = timestamp;
+    }
+    assert.deepEqual(
+      states,
+      expected,
+      "failed fork changes only the callback timestamp",
+    );
+  }
   await seed(
     "UPDATE chats SET updated_at='2026-10-25T00:00:00.123Z' WHERE id='chat'",
   );

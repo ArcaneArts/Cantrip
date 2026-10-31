@@ -3524,9 +3524,10 @@ batches of at most 100, with the existing `fork:<source-id>` idempotency keys.
 Project forks read their source in a transaction, release it before worker
 dispatch and compare a fresh read in the write transaction. The comparison
 includes source Chat, destination worktree and selected messages. It retains
-JavaScript millisecond Date equality, including the Node 24 invalid-Date conflict
-after reprotection. The retained failing prototype rejected infinite timestamps
-before invoking the callback; the corrected port preserves the source's order.
+JavaScript millisecond Date equality. The current maintained Node 24.22 reference
+compares invalid Dates as equal; the follow-up below corrects the earlier local
+24.14 behavior. The original failing prototype rejected infinite timestamps
+before invoking the callback; both paths now preserve the source's order.
 Creation of the Chat, runtime session, suspended lane, optional legacy placement,
 messages and behavior fork count shares the original transaction. Archived Chat
 positions count toward ordering, nonprimary worktrees retain exclusive suspended
@@ -3687,3 +3688,77 @@ of those jobs is not platform acceptance. Canonical history ingestion, native
 command execution, streaming, queues, approvals, Tasks, Goal continuation,
 complete client/full-worker integration, Redis coordination, packaged activation
 and default cutover remain required. Ordinary builds still use the Node server.
+
+## Fork snapshot Date equality on the maintained reference runtime
+
+Linux run `41179568205`, contracts job `124474015015`, exposed a real Source/Rust
+mismatch. For a Chat with `updated_at = infinity`, Source Node 24.22.1 completed
+reprotection and created the fork; Rust returned a conflict. Artifact
+`13035533686` was downloaded and its ZIP SHA-256 verified as
+`26de0e7f6b9bb4cf4325e81b82849750c73d3476fa092d59cab6282571a800bb`.
+The same unmodified repository case fails locally under the exact CI runtime.
+
+The earlier local reference was Node 24.14.0. Its `isDeepStrictEqual` rejects two
+invalid Date instances. The official Node 24.22.1 executable instead considers
+them equal, as does its
+[Date comparison implementation](https://github.com/nodejs/node/blob/v24.22.1/lib/internal/util/comparisons.js).
+The downloaded Darwin ARM64 runtime matches its official SHA-256,
+`654ba79de6155647e22321932b45f2a1ccb705976cc337c9b8e278beb085a628`.
+This corrects the earlier claim about Node 24 as a whole: the reference version
+matters, and older 24.14 behavior differs at this boundary.
+
+Rust now uses a private invalid-Date marker for the fork reread snapshot. It is
+distinct from SQL null and valid timestamps, stays out of responses and stored
+messages, and requires no Node runtime. Finite timestamps still compare at
+JavaScript millisecond precision. A new oracle executes the actual reference
+utility against 407 row comparisons, including null, both PostgreSQL infinity
+values, Date range boundaries, offset-equivalent instants, submillisecond
+precision, property ordering and changed JSON metadata. All comparisons match
+Node 24.22.1 locally. Running the same oracle on 24.14 records 27 differing
+comparisons rather than disguising the reference-version difference.
+
+The expanded repository suite explicitly requires successful complete forks
+for unchanged positive/negative infinity and for a change between two invalid
+Dates. Valid-to-invalid and invalid-to-valid changes still reject after exactly
+one reprotection callback. Complete table/sequence snapshots prove that only the
+controlled callback timestamp mutation survives those conflicts. Existing
+source/destination/message changes, encryption classification checks, SQL
+failures, cleanup behavior and reopen assertions remain in the suite.
+
+The new snapshot oracle is part of the Linux/macOS/Windows contract jobs.
+Local checks do not establish platform or packaged acceptance, and the full
+server replacement remains unfinished.
+
+## Complete SQL lock witnesses in controlled message races
+
+Windows message run `41183089946`, job `124484345954`, passed all three
+query/write repository pairs and both PGlite/private PostgreSQL HTTP matrices.
+The external PostgreSQL Source/password late-archive probe reached its expected
+blocking-PID count, then failed because a sampled wait-event field was null.
+Artifact `13036340964` was downloaded and its ZIP SHA-256 verified as
+`0a4c68041870a2e7bfaf1431d1c14461de1c0833f0825ed7d177f7b786d8d67e`.
+The failure occurred while collecting the complete lock witness.
+
+The test observer now continues until both the expected blocker count and every
+`Lock` wait event are present in the returned sample. It retains matching-count
+samples with incomplete wait fields for diagnosis. The deadline, held SQL locks,
+actual blocking PIDs, both final assertions, single HTTP attempts, caller-abort,
+commit, rollback, encryption and ordered Live checks remain in place. This change
+is confined to the controlled test caller; production behavior is unchanged.
+A fresh Windows job must establish acceptance.
+
+The current broad `pnpm check` runs for 523 seconds and again reports the Source
+provider-selection failure at `local-foundation.test.ts:7218`: 1,662 tests pass,
+57 skip and one fails. A fresh Node 24.22.1 run on clean Primary `c749612c0`
+reproduces that assertion. Full formatting reports 12 unchanged baseline files;
+changed-file Prettier passes. The earlier intermediate formatting run also
+caught the edited ledger before its final formatting; the ledger is now fixed.
+These results do not establish a green broad check or a deployable replacement.
+
+Linux's dedicated message job in that run passes all three storage modes and all
+nine authentication/backend profiles. Artifact `13035975785` contains nine JSON
+reports, all inspected after verifying ZIP SHA-256
+`ac61057e3a2fe2a7bd10d02eb00a24fa9e283650313861e2a42503bb06df14ff`.
+The corrected observer also passes the fresh local external PostgreSQL matrix,
+including all five races per runtime/auth profile. This scoped evidence does not
+establish a Windows pass or packaged readiness.
