@@ -3438,9 +3438,76 @@ and the existing provider-selection assertion at `local-foundation.test.ts:7218`
 failing. Server, worker, shared package and dependency sources are unchanged.
 This does not make the broad check green.
 
-This milestone does not finish Chat behavior: archive/restore/delete/fork HTTP
-lifecycle, metadata, drafts, files, messages, execution queues, history, Tasks and
+This milestone does not finish Chat behavior. The lifecycle and metadata port
+is described below; forks, messages, execution queues, history, Tasks and
 Goal/automation continuity remain required. Actual client/full worker scratch
 filesystem tests, lease expiry and interruption faults, supported platforms, Redis
 coordination, packaged activation and default cutover are also unfinished.
 Normal desktop, development and standalone builds still select the Node server.
+
+## Chat lifecycle and metadata (pending platform acceptance)
+
+The native Chat repository and HTTP routes now implement explicit project Agent
+archive, legacy project deletion, standalone archive/restore/permanent deletion,
+runtime selection, encrypted title updates, completion acknowledgments, composer
+drafts, file references and opaque standalone file operations. Empty project
+Chats are deleted by the legacy route; history-bearing Chats are archived, and
+explicit Agent archival retains empty conversations. Standalone archival retains
+the Chat and root for 90 days; permanent deletion creates the existing durable
+scratch deletion tombstone before cascading Chat-owned rows.
+
+The repository comparison executes the actual source and native implementations
+on separate databases: 66 operations and 98 snapshots pass on native PGlite,
+private PostgreSQL and external PostgreSQL. It checks running/approval conflicts,
+tenant boundaries, task behavior, archived idempotency, all three layout profiles,
+anchor/label updates, removal from multiple owned windows, cancellation of a
+pending detach, opaque draft retention and exact backend reopen state. The IDE
+profile restores Chat tabs into the right dock; hybrid and agent profiles use
+the center. Other resource placement retains its existing behavior.
+
+Transaction boundaries remain observable. Invalid archive/restore DTOs roll back
+both Chat and scratch-root writes; invalid project restore DTOs also roll back
+legacy placement/revision changes. By contrast, a title update whose response
+fails validation retains its already committed write, matching the source.
+Completion acknowledgments change only the unread flag, and composer drafts do
+not change the Chat's general update timestamp. Seventeen Chat/scratch protocol
+schemas match 13,777 source parsing, issue and rendered-error cases. The archive
+result refinement also retains JavaScript's behavior when invalid dates produce
+NaN rather than an additional ordering error.
+
+`standalone-chat-http-compatibility.mjs --lifecycle` extends the catalog/executor
+suite with actual project and standalone HTTP flows, unchanged worker transport,
+stored-state comparisons and ordered Live observations. It checks archive and
+restore after worker error or invalid output, archived access restrictions,
+foreign users, stale file bindings, offline workers, encrypted drafts and
+permanent deletion completion. A controlled delete command separates the durable
+tombstone response from the worker's completion. A separate archive command is
+held until its actual HTTP caller disconnects, then released; the archive
+publication and later restore prove that admitted work survives the caller.
+
+The source's successful-response invalidation hook is preserved in addition to
+direct publications, including duplicate completion invalidations. Draft writes
+do not publish metadata changes; successful write/remove operations publish two
+Chat-scoped file invalidations. Each authentication profile retains 43 standalone
+Chat events, 25 project lifecycle events and 16 lifecycle worker commands for
+comparison. Running/approval HTTP probes establish state after startup through
+the disposable external PostgreSQL connection, since source startup recovers
+preexisting running rows. Repository probes cover both conflicts on all three
+storage modes; no second process opens a live PGlite database.
+
+All nine local storage/authentication combinations pass the expanded HTTP suite.
+PGlite and private PostgreSQL compare 101 anonymous, 102 password and 113 account
+observations per implementation; external PostgreSQL adds the four actual
+post-startup running/approval conflict responses per profile. Project HTTP state
+is read back after shutdown and compared alongside the earlier standalone state.
+Strict all-target Clippy, generated-manifest equality, formatting, large-file and
+server-boundary checks pass. The broad `pnpm check` finishes in 501 seconds with
+the same existing provider-selection failure at `local-foundation.test.ts:7218`
+(1,662 source-server tests pass, 57 skip, one fails). Source server, worker, shared
+package and dependency files remain unchanged; the broad check is not green.
+
+Actual existing-client/full-worker filesystem acceptance, managed-share failure
+probes, additional lock/interruption boundaries, supported-platform artifacts,
+Redis coordination and packaged activation remain required. Forks, messages,
+execution, queues, history, Tasks and Goal/automation continuity are unfinished.
+This milestone does not switch the normal Node server build or packaging paths.

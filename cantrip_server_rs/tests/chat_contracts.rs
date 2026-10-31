@@ -15,6 +15,14 @@ fn contextual_chat_contracts_match_actual_protocol() -> Result<()> {
         "standaloneChatScratchReconciliationResultSchema",
         "encryptedStandaloneChatCreateSchema",
         "archivedStandaloneChatWireSummarySchema",
+        "conversationRestoreSchema",
+        "encryptedChatUpdateSchema",
+        "chatRuntimeSelectionSchema",
+        "chatComposerDraftOpaqueStateSchema",
+        "encryptedChatComposerDraftWireStateSchema",
+        "encryptedChatComposerDraftUpdateSchema",
+        "standaloneChatScratchArchiveResultSchema",
+        "standaloneChatFileWireRequestSchema",
     ] {
         let output = Command::new("node")
             .args([

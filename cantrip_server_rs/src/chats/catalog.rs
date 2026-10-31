@@ -41,7 +41,7 @@ fn statement_failure(cause: anyhow::Error, parameters: &[&str]) -> anyhow::Error
     }
     .into()
 }
-fn raw(row: &crate::database::Row) -> Result<Value> {
+pub(super) fn raw(row: &crate::database::Row) -> Result<Value> {
     Ok(serde_json::from_str(&row.get::<String>(0)?)?)
 }
 fn text(value: &Value) -> Result<String> {
@@ -58,7 +58,7 @@ fn optional(value: &Value) -> Result<Option<String>> {
         text(value).map(Some)
     }
 }
-fn iso(value: &Value) -> Result<Value> {
+pub(super) fn iso(value: &Value) -> Result<Value> {
     let millis = value
         .as_js_string()
         .and_then(crate::wire::date_milliseconds)
@@ -73,11 +73,9 @@ impl Repository {
     }
     pub async fn list_archived_standalone(&self, owner: &str) -> Result<Vec<Value>> {
         let rows=self.database.query("SELECT to_jsonb(c)::text,(SELECT count(*)::int FROM chat_messages m WHERE m.chat_id=c.id) FROM chats c WHERE owner_id=$1 AND context_kind='standalone' AND archived_at IS NOT NULL ORDER BY archived_at DESC",&[&owner]).await?;
-        rows.iter().map(|r|{
-            let c=raw(r)?;let at=c["archived_at"].as_js_string().and_then(crate::wire::date_milliseconds).context("Cannot summarize an active Chat as archived.")?;
-            let expiry=crate::wire::date_iso_milliseconds(at+90*24*60*60*1000).context("Invalid time value")?;
-            crate::settings::parse_response("archivedStandaloneChatWireSummarySchema",Some(&json!({"id":c["id"],"contextKind":"standalone","projectId":Value::Null,"titleProtection":c["protected_label"],"experience":"agent","messageCount":r.get::<i32>(1)?,"archivedAt":iso(&c["archived_at"])? ,"expiresAt":expiry,"createdAt":iso(&c["created_at"])? ,"updatedAt":iso(&c["updated_at"])?})))
-        }).collect()
+        rows.iter()
+            .map(|r| super::archive::archived_summary(&raw(r)?, r.get::<i32>(1)?))
+            .collect()
     }
     pub async fn create_standalone(
         &self,

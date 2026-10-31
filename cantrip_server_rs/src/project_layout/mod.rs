@@ -93,18 +93,19 @@ pub async fn attach_resource(
             region.to_owned()
         } else {
             let rows=tx.query("SELECT u.workspace_layout_profile FROM projects p INNER JOIN user_settings u ON u.user_id=p.owner_id WHERE p.id=$1 LIMIT 1",&[&project]).await?;
-            if rows
+            let profile = rows
                 .first()
                 .map(|row| row.get::<Option<String>>(0))
                 .transpose()?
-                .flatten()
-                .as_deref()
-                == Some("agent")
-            {
-                "center".into()
-            } else {
-                if kind == "browser" { "right" } else { "bottom" }.into()
+                .flatten();
+            match (profile.as_deref(), kind) {
+                (Some("agent"), _) => "center",
+                (Some("ide"), "chat") => "right",
+                (_, "chat") => "center",
+                (_, "browser") => "right",
+                _ => "bottom",
             }
+            .into()
         };
         supports(kind, &region)?;
         let panes=tx.query("SELECT id,position FROM tab_groups WHERE project_id=$1 AND region=$2 ORDER BY position ASC,id ASC",&[&project,&region]).await?;

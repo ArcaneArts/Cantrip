@@ -29,6 +29,57 @@ export function standaloneChatWireFixtures(timestamp) {
     completedAt: null,
   };
   return {
+    conversationRestoreSchema: [
+      {},
+      { attachToTabLayout: false },
+      { attachToTabLayout: true },
+    ],
+    encryptedChatUpdateSchema: [{ titleProtection }],
+    chatRuntimeSelectionSchema: [
+      { modelRouteId: null, providerAccountId: null },
+      { modelRouteId: "route", providerAccountId: "account" },
+    ],
+    chatComposerDraftOpaqueStateSchema: [
+      { protectedContent: titleProtection.protectedLabel },
+    ],
+    encryptedChatComposerDraftWireStateSchema: [
+      { chatId: job.chatId, state: null, updatedAt: null },
+      {
+        chatId: job.chatId,
+        state: { protectedContent: titleProtection.protectedLabel },
+        updatedAt: timestamp,
+      },
+    ],
+    encryptedChatComposerDraftUpdateSchema: [
+      { state: null },
+      { state: { protectedContent: titleProtection.protectedLabel } },
+    ],
+    standaloneChatScratchArchiveResultSchema: [
+      {
+        rootId: job.rootId,
+        chatId: job.chatId,
+        archivedAt: null,
+        archiveExpiresAt: null,
+      },
+      {
+        rootId: job.rootId,
+        chatId: job.chatId,
+        archivedAt: timestamp,
+        archiveExpiresAt: "2027-01-01T00:00:00.000Z",
+      },
+    ],
+    standaloneChatFileWireRequestSchema: [
+      {
+        intent: "read",
+        operationId: job.id,
+        sequence: 1,
+        protectedRequest: {
+          formatVersion: 1,
+          keyRevision: 1,
+          envelope: titleProtection.protectedLabel.envelope,
+        },
+      },
+    ],
     encryptedStandaloneChatCreateSchema: [
       { id: job.chatId, titleProtection },
       { id: job.chatId, titleProtection, autoTitle: true },

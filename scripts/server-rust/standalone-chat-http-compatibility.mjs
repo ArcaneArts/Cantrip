@@ -14,6 +14,12 @@ import { heartbeat, projectLabel, password } from "./security-fixtures.mjs";
 import { WorkerConnection } from "../../cantrip_worker/src/transport.ts";
 import { saveWorkerCredential } from "../../cantrip_worker/src/credential-store.ts";
 import { hashPassword } from "../../cantrip_server/src/auth/service.ts";
+import {
+  chatLifecycleHttpCases,
+  chatLifecycleWorkerResult,
+  chatLifecycleProjectSeedSql,
+  chatLifecycleProjectHttpCases,
+} from "./chat-lifecycle-http-cases.mjs";
 import { createRequire } from "node:module";
 const postgres = createRequire(
   new URL("../../cantrip_server/package.json", import.meta.url),
@@ -31,6 +37,7 @@ const report = {
   workerId,
   leaseRenewal: process.argv.includes("--lease-renewal"),
   capacity: process.argv.includes("--capacity"),
+  lifecycle: process.argv.includes("--lifecycle"),
   completeReplacement: false,
   profiles: [],
 };
@@ -97,6 +104,7 @@ try {
         observations: [],
         commands: [],
         reconciliations: [],
+        lifecycleCommands: [],
         events: [],
       };
       // The URL is created by this test's disposable PostgreSQL owner. Passing
@@ -106,6 +114,10 @@ try {
           ? postgres(new URL(url).href, { max: 2 })
           : undefined;
       outputs.push(result);
+      const projectControl =
+        report.lifecycle && databaseMode === "postgres"
+          ? postgres(new URL(url).href, { max: 1 })
+          : undefined;
       let worker,
         live,
         foreign,
@@ -202,7 +214,16 @@ try {
                   reconcile: true,
                   routingHandles: true,
                 },
-                files: heartbeat.standaloneChat.files,
+                files: report.lifecycle
+                  ? {
+                      list: true,
+                      read: true,
+                      write: true,
+                      remove: true,
+                      download: true,
+                      archive: true,
+                    }
+                  : heartbeat.standaloneChat.files,
               },
             },
           },
@@ -250,7 +271,13 @@ try {
               };
             }
             if (command.type !== "chat.scratch.provision")
-              throw new Error("Controlled metadata command is unsupported");
+              return chatLifecycleWorkerResult({
+                command,
+                result,
+                modes,
+                fixture,
+                gates,
+              });
             result.commands.push(command);
             await new Promise((resolve) => gates.set(command.chatId, resolve));
             const mode = modes.get(command.chatId);
@@ -454,6 +481,22 @@ try {
             0,
           );
         }
+        if (report.lifecycle)
+          await chatLifecycleHttpCases({
+            fixture,
+            visit,
+            result,
+            live,
+            foreign,
+            worker,
+            modes,
+            gates,
+            until,
+            ids,
+            workerId,
+            profile,
+            titleProtection,
+          });
         await live.ping("final scratch events");
         result.rawEvents = live.history.filter(
           (e) => e.type === "event" && e.resource === "chat",
@@ -476,6 +519,10 @@ try {
             )
           : result.commands;
         result.commands = compared.map((c) => fixture.normalize(c));
+        result.rawLifecycleCommands = result.lifecycleCommands;
+        result.lifecycleCommands = result.lifecycleCommands.map((c) =>
+          fixture.normalize(c),
+        );
         worker.close();
         worker = undefined;
         await live.close();
@@ -548,6 +595,37 @@ try {
                 ? (assert.ok(Number.isFinite(Date.parse(v))), "<timestamp>")
                 : fixture.normalize(v, key);
         result.state = normalize(state.value);
+        if (report.lifecycle) {
+          for (const sql of chatLifecycleProjectSeedSql(
+            state.value.chats[0].owner_id,
+          ))
+            await repository.seed(sql);
+          await repository.close();
+          repository = undefined;
+          await fixture.start();
+          await chatLifecycleProjectHttpCases({
+            fixture,
+            visit,
+            result,
+            profile,
+            titleProtection,
+            projectControl,
+          });
+          await fixture.close();
+          repository = await repositoryFixture({
+            kind,
+            executable: repositoryExecutable,
+            root: path.join(root, profile),
+            databaseMode,
+            databaseUrl: url,
+          });
+          const projectState = await repository.request({
+            op: "query-json",
+            sql: "SELECT jsonb_build_object('chats',(SELECT jsonb_agg(to_jsonb(c) ORDER BY id) FROM chats c WHERE context_kind='project'),'messages',(SELECT jsonb_agg(to_jsonb(m) ORDER BY id) FROM chat_messages m),'projects',(SELECT jsonb_agg(to_jsonb(p) ORDER BY id) FROM projects p),'groups',(SELECT jsonb_agg(to_jsonb(g) ORDER BY project_id,region,position) FROM tab_groups g),'members',(SELECT jsonb_agg(to_jsonb(m) ORDER BY tab_key) FROM tab_group_members m)) result",
+          });
+          assert.equal(projectState.rejected, false, projectState.diagnostic);
+          result.projectState = normalize(projectState.value);
+        }
       } catch (error) {
         runtimeFailure = error;
         result.failure = { message: error.message, stack: error.stack };
@@ -562,6 +640,7 @@ try {
           () => fixture.close(),
           () => repository?.close(),
           () => leaseControl?.end({ timeout: 5 }),
+          () => projectControl?.end({ timeout: 5 }),
         ]) {
           try {
             await cleanup();
@@ -598,6 +677,35 @@ try {
       outputs[0].state,
       profile + ": complete creation and executor state",
     );
+    assert.deepEqual(
+      outputs[1].lifecycleCommands,
+      outputs[0].lifecycleCommands,
+      profile + ": lifecycle worker commands",
+    );
+    if (report.lifecycle)
+      assert.deepEqual(
+        outputs[1].fileEvents,
+        outputs[0].fileEvents,
+        profile + ": scoped Chat file invalidations",
+      );
+    if (report.lifecycle)
+      assert.deepEqual(
+        outputs[1].disconnectedArchive,
+        outputs[0].disconnectedArchive,
+        profile + ": admitted archive survives its HTTP caller",
+      );
+    if (report.lifecycle) {
+      assert.deepEqual(
+        outputs[1].projectEvents,
+        outputs[0].projectEvents,
+        profile + ": project lifecycle events",
+      );
+      assert.deepEqual(
+        outputs[1].projectState,
+        outputs[0].projectState,
+        profile + ": complete project lifecycle state",
+      );
+    }
   }
   report.passed = true;
 } catch (error) {

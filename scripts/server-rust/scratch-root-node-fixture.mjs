@@ -24,6 +24,34 @@ export async function scratchRootFixture(repo, request, catalog) {
       );
     case "scratch-chat-list":
       return catalog.listStandaloneChats(owner);
+    case "scratch-chat-archive-agent":
+      return catalog.archiveAgentConversation(owner, request.chat);
+    case "scratch-chat-delete":
+      return catalog.deleteChat(owner, request.chat);
+    case "scratch-chat-archive":
+      return catalog.archiveStandaloneChat(owner, request.chat);
+    case "scratch-chat-restore":
+      return catalog.restoreStandaloneChat(owner, request.chat);
+    case "scratch-chat-deletion-root":
+      return catalog.getStandaloneChatRootForDeletion(owner, request.chat);
+    case "scratch-chat-restore-project":
+      return catalog.restoreArchivedChat(owner, request.chat, input);
+    case "scratch-chat-permanent":
+      return catalog.permanentlyDeleteArchivedChat(owner, request.chat);
+    case "scratch-chat-purge-project":
+      return catalog.purgeExpiredArchivedChats(owner, new Date(now));
+    case "scratch-chat-update":
+      return catalog.updateChat(owner, request.chat, input);
+    case "scratch-chat-draft-get":
+      return catalog.getChatComposerDraftWireState(owner, request.chat);
+    case "scratch-chat-draft-put":
+      return catalog.updateChatComposerDraft(
+        owner,
+        request.chat,
+        request.state,
+      );
+    case "scratch-chat-ack":
+      return catalog.acknowledgeChatCompletion(owner, request.chat);
     case "scratch-chat-archived":
       return catalog.listArchivedStandaloneChats(owner);
     case "scratch-enqueue-provision":

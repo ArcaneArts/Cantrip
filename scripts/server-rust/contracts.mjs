@@ -345,6 +345,14 @@ export const contractRoots = [
   "standaloneChatScratchReconciliationResultSchema",
   "encryptedStandaloneChatCreateSchema",
   "archivedStandaloneChatWireSummarySchema",
+  "conversationRestoreSchema",
+  "encryptedChatUpdateSchema",
+  "chatRuntimeSelectionSchema",
+  "chatComposerDraftOpaqueStateSchema",
+  "encryptedChatComposerDraftWireStateSchema",
+  "encryptedChatComposerDraftUpdateSchema",
+  "standaloneChatScratchArchiveResultSchema",
+  "standaloneChatFileWireRequestSchema",
 ];
 
 // Resolve the actual source schemas, including their separate protocol modules.
@@ -496,6 +504,12 @@ registerChecks(protocol.projectChatWireSummarySchema, ["chat-title-kind"]);
 registerChecks(protocol.standaloneChatWireSummarySchema, ["chat-title-kind"]);
 registerChecks(protocol.encryptedStandaloneChatCreateSchema, [
   "worker-command-chat-title",
+]);
+registerChecks(protocol.encryptedChatUpdateSchema, [
+  "worker-command-chat-title",
+]);
+registerChecks(protocol.standaloneChatScratchArchiveResultSchema, [
+  "worker-command-scratch-archive-result",
 ]);
 registerChecks(protocol.archivedStandaloneChatWireSummarySchema, [
   "worker-command-chat-title",

@@ -57,6 +57,7 @@ export function registerWorkerContracts(register) {
     protocol.encryptedInteractionRequestContentSchema,
     protocol.encryptedChatPlanProtectedContentSchema,
     protocol.encryptedChatMessageProtectedContentSchema,
+    protocol.encryptedChatComposerDraftProtectedContentSchema,
   ])
     register(schema, ["worker-wire-communication-envelope"]);
   register(protocol.encryptedTaskMessageProtectedContentSchema, [
