@@ -1109,6 +1109,8 @@ jobs:
           node -e "require('node:fs').mkdirSync('.qa/rust-server', { recursive: true })"
       - name: Native SQL migration and transaction contracts
         run: node scripts/server-rust/cargo.mjs test --test database_contract
+      - name: Legacy dump preserves literal guard lines and redacts real failures
+        run: node scripts/server-rust/legacy-export-literals.mjs --report .qa/rust-server/legacy-export-literals.json
       - name: Legacy PGlite export and native restore, rollback, restart and redaction on all stores
         run: node --import tsx scripts/server-rust/legacy-pglite-compatibility.mjs --interrupt --report .qa/rust-server/migration-current.json
       - name: Historical schema upgrades and interrupted migration recovery on all stores
