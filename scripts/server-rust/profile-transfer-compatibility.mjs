@@ -342,7 +342,14 @@ try {
     const reverseBundle = path.join(root, "reverse-bundle-" + mode);
     const exported = await run(
       executable,
-      ["--migrate-only", "--export-profile", reverseBundle],
+      [
+        "--migrate-only",
+        "--export-profile",
+        reverseBundle,
+        ...(process.env.CANTRIP_TEST_PG_DUMP_PATH
+          ? ["--pg-dump-path", process.env.CANTRIP_TEST_PG_DUMP_PATH]
+          : []),
+      ],
       environment(data),
     );
     assert.ok(

@@ -6148,7 +6148,17 @@
         "Historical physical PGlite runtime versions and complete product post-write rollback.",
         "Native/client runtime asset packaging, standalone/container artifacts and Winterhold rehearsal."
       ],
-      "validationLimits": "Offline CLI component uses stopped sources, trusted bundles and new destinations. A kill may leave private temporary directories; final publication without acknowledgement preserves completed target and retry refuses overwrite. Normal development/app/standalone launchers still select Node; no full replacement or packaged activation claim. Finalcompleteprofilesuitepasses100.81s afterconvertersetup/cleanupredactionwrapper. EmptyDATABASE_URL retainsstoredexternalconnection inactualrestarttests(all3storespass35.05s); 977actualNode/Rustconfigcases match. FinalstrictalltargetClippypass45.84s. Standardpnpmcheck exits1after500.85s:1662source-serverpass57skip1knownproviderselectionassertionfailureatlocal-foundation.test.ts7218. ExistingNode/worker/shared/dependencysourcesareidenticaltomergedbaseline; nobroadgreenclaim."
+      "validationLimits": "Offline CLI component uses stopped sources, trusted bundles and new destinations. A kill may leave private temporary directories; final publication without acknowledgement preserves completed target and retry refuses overwrite. Normal development/app/standalone launchers still select Node; no full replacement or packaged activation claim. Finalcompleteprofilesuitepasses100.81s afterconvertersetup/cleanupredactionwrapper. EmptyDATABASE_URL retainsstoredexternalconnection inactualrestarttests(all3storespass35.05s); 977actualNode/Rustconfigcases match. FinalstrictalltargetClippypass45.84s. Standardpnpmcheck exits1after500.85s:1662source-serverpass57skip1knownproviderselectionassertionfailureatlocal-foundation.test.ts7218. ExistingNode/worker/shared/dependencysourcesareidenticaltomergedbaseline; nobroadgreenclaim.",
+      "windowsAcceptance": {
+        "run": 41163777652,
+        "job": 124426820873,
+        "observedHead": "40bdce5e58884d72928037b8c2c238d32fb009e1",
+        "artifact": 13029171435,
+        "verifiedZipSha256": "748fac193d59fd521c6143c6b1cab5a846249dc9f35a100057f09c12d1c7f0fe",
+        "reports": 6,
+        "scope": "All actual Windows migration/profile checks pass: exact 115 tables and four sequences; functions and NULL kinds; sessions, CSRF, server UUID, keys and files; Node post-write revision 3; SQL SIGKILL/retry with private-postmaster exit; and a held real COMMIT acknowledgement followed by a newer HTTP write and retry. This does not establish packaged activation or acceptance on other platforms."
+      },
+      "linuxExportClientFollowup": "Linux run 41163777652 failed because the profile harness ignored CANTRIP_TEST_PG_DUMP_PATH pointing to client 18 and selected the configured PostgreSQL 16 server directory client for native PGlite 17. The existing CLI accepts --pg-dump-path; the harness now passes that requested client without version gates or fallbacks. Actual source-built pg_dump 16.15 reproduces a server-17.5 version mismatch while configured client 18 remains unused. The same all-three-store fixture passes after the fix in 94.64 seconds with an actual wrapper witness confirming all three exports invoked client 18.6. All 115-table/four-sequence, profile-file, HTTP post-write and interruption/lost-ack assertions remain. Current Linux follow-up CI remains required."
     }
   },
   "remainingAcceptance": [
@@ -6255,6 +6265,15 @@
       "platforms": ["ubuntu-24.04", "macos-15", "windows-2025"],
       "conclusion": "Replica and conversion jobs pass on all three platforms; overall workflow failed in separate contracts jobs.",
       "scope": "Six passing replica/conversion job artifacts downloaded with exact uploaded ZIP SHA256 verification and all 132 JSON reports parsed for failures. This establishes the scoped provisioning/conversion tests at that head. Linux contracts still failed actual Run-definition retirement with a missing child exit marker; later current-head generic/full contracts, workspace discovery, packaging and final replacement acceptance remain open."
+    },
+    {
+      "pullRequest": "https://github.com/ArcaneArts/Cantrip/pull/2369",
+      "commit": "0280345ada9a2fdb2c2dc17fdce3e56c31c4c7d1",
+      "observedHead": "40bdce5e58884d72928037b8c2c238d32fb009e1",
+      "observedRun": "https://github.com/ArcaneArts/Cantrip/actions/runs/41163777652",
+      "platforms": ["windows-2025"],
+      "conclusion": "Windows migration job passed. Artifact 13029171435 ZIP SHA256 748fac193d59fd521c6143c6b1cab5a846249dc9f35a100057f09c12d1c7f0fe verified; all six JSON reports inspected.",
+      "scope": "Current/historical SQL migration, native byte preservation, reverse transfer, redaction and complete profile transfer on all three stores, including HTTP post-write rollback, process interruption and real lost-COMMIT-acknowledgement recovery. Linux failed because the profile harness ignored the configured client 18 override; macOS was queued at observation. This is not all-platform, packaged or full-replacement acceptance."
     }
   ]
 }
