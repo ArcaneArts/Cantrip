@@ -25,12 +25,14 @@ import type { SurfaceStreamReplayGuard } from "../surface-stream-encryption.js";
 import type { WorkerEncryptionService } from "../worker-encryption.js";
 import { decodeSurfacePrivateStateForWorker } from "../surface-private-state-encryption.js";
 import { fileDocumentPrivateStateProtectedContentSchema } from "@cantrip/protocol/surface-private-state";
+import type { ExplorerFileImports } from "../explorer-file-imports.js";
 
 export type ExplorerCommand = Extract<
   WorkerCommand,
   { type: "explorer.operation" | "file-document.operation" }
 >;
 export interface ExplorerCommandDependencies {
+  fileImports: ExplorerFileImports;
   surfaceStreamReplay: Pick<SurfaceStreamReplayGuard, "reserve" | "accept">;
   workerEncryption: WorkerEncryptionService;
 }
@@ -102,6 +104,40 @@ export async function handleExplorerCommand(
           }
         }
         switch (request.type) {
+          case "explorer.file.import": {
+            const value = await dependencies.fileImports.write(
+              JSON.stringify([
+                command.serverId,
+                streamContext.surfaceId,
+                command.operationId,
+              ]),
+              command.root,
+              command.sequence,
+              request,
+            );
+            complete = request.eof;
+            outcome = {
+              ok: true,
+              result: { type: "explorer.file.imported", value },
+            };
+            break;
+          }
+          case "explorer.file.import.cancel":
+            await dependencies.fileImports.cancel(
+              JSON.stringify([
+                command.serverId,
+                streamContext.surfaceId,
+                command.operationId,
+              ]),
+            );
+            outcome = {
+              ok: true,
+              result: {
+                type: "explorer.file.imported",
+                value: { offset: 0, entry: null },
+              },
+            };
+            break;
           case "explorer.directory.list":
             outcome = {
               ok: true as const,

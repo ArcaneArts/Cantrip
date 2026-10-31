@@ -103,6 +103,7 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
     createSidebarExplorerMutation,
     createSidebarFolder,
     createSidebarFile,
+    importSidebarFiles,
     deleteSidebarFileEntry,
     desktopSidebarDrawer,
     desktopSidebarDrawerOpen,
@@ -507,6 +508,7 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                         onFilePin={pinSidebarFile}
                         onFileCreateFolder={createSidebarFolder}
                         onFileCreateFile={createSidebarFile}
+                        onFileImport={importSidebarFiles}
                         onFileDelete={deleteSidebarFileEntry}
                         onFileOpenGraph={openSidebarFolderGraph}
                         onFileOpenNative={openSidebarFolderNative}

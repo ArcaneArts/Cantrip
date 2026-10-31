@@ -18,6 +18,7 @@ import type { ExplorerFileMutationAuthorization } from "@/components/sidebar/pro
 import {
   createExplorerDirectory,
   createExplorerFile,
+  importExplorerFile,
   deleteExplorerEntry,
   renameExplorerEntry,
   updateExplorerViewState,
@@ -29,6 +30,7 @@ import {
   sidebarFileTargetPaneId,
   sidebarPathAtOrBelow,
 } from "@/lib/sidebar-file-tabs";
+import type { SidebarFileImportProgress } from "@/components/sidebar/sidebar-file-drop";
 
 interface MutationOperation<Input> {
   isPending?: boolean;
@@ -284,6 +286,51 @@ export function createSidebarExplorerCommands({
     await refreshSidebarExplorerEntries(explorer);
     return created;
   };
+  const importSidebarFiles = async (
+    explorer: ExplorerSummary,
+    parentPath: string,
+    files: File[],
+    authorization: ExplorerFileMutationAuthorization,
+    onProgress: (progress: SidebarFileImportProgress) => void,
+  ) => {
+    const total = files.reduce((sum, file) => sum + file.size, 0);
+    let completed = 0;
+    try {
+      for (const [index, file] of files.entries()) {
+        try {
+          await importExplorerFile(
+            explorer.id,
+            parentPath,
+            file,
+            {
+              projectId: explorer.projectId,
+              worktreeId: explorer.worktreeId,
+              workerId: explorer.activeWorkerId,
+            },
+            {
+              isCurrent: authorization.isCurrent,
+              onProgress: (bytes) =>
+                onProgress({
+                  name: file.name,
+                  index,
+                  count: files.length,
+                  total,
+                  completed: completed + bytes,
+                }),
+            },
+          );
+          completed += file.size;
+        } catch (error) {
+          throw new Error(
+            `Could not add ${file.name}: ${errorText(error)}${index ? ` ${index} file${index === 1 ? " was" : "s were"} already added.` : ""}`,
+          );
+        }
+      }
+    } finally {
+      if (authorization.isCurrent())
+        await refreshSidebarExplorerEntries(explorer);
+    }
+  };
   const deleteSidebarFileEntry = async (
     explorer: ExplorerSummary,
     entry: ExplorerEntry,
@@ -382,6 +429,7 @@ export function createSidebarExplorerCommands({
   return {
     createSidebarFolder,
     createSidebarFile,
+    importSidebarFiles,
     deleteSidebarFileEntry,
     openSidebarFilePreview,
     openSidebarFilePreviewPath,

@@ -10,6 +10,7 @@ import {
   ProjectSidebarFileTree,
   type ExplorerFileMutationAuthorization,
 } from "@/components/sidebar/project-sidebar-file-tree";
+import type { SidebarFileImporter } from "./sidebar-file-drop";
 
 export function ProjectChatList({
   filesVisible = true,
@@ -26,6 +27,7 @@ export function ProjectChatList({
   onFilePin,
   onFileCreateFolder,
   onFileCreateFile,
+  onFileImport,
   onFileDelete,
   onFileOpenGraph,
   onFileOpenNative,
@@ -45,6 +47,10 @@ export function ProjectChatList({
   selectedProjectId,
 }: {
   filesVisible?: boolean;
+  onFileImport?: (
+    explorer: ExplorerSummary,
+    ...args: Parameters<SidebarFileImporter>
+  ) => Promise<void>;
   fileExplorer: ExplorerSummary | null;
   filePreviewPath: string | null;
   fileTreeError?: string | null;
@@ -117,6 +123,11 @@ export function ProjectChatList({
                     error={fileTreeError}
                     explorer={fileExplorer}
                     loading={fileTreeLoading}
+                    onImportFiles={
+                      fileExplorer && onFileImport
+                        ? (...args) => onFileImport(fileExplorer, ...args)
+                        : undefined
+                    }
                     onCreateFile={(parentPath, name, authorization) => {
                       if (!fileExplorer)
                         return Promise.reject(
