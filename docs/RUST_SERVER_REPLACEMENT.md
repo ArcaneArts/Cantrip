@@ -101,6 +101,33 @@ GUI/native dispatch, receipt HTTP consumers, Tasks/Goals/scheduling and the
 remaining replacement requirements continue separately. Normal app and server
 builds still launch Node; the worker remains Node by design.
 
+## Platform compatibility observations
+
+Worktree state comparisons observe wall and monotonic clocks inside each
+repository process. Returned update/scan timestamps must fall within those
+strict producer boundaries and equal the actual persisted row. Parent-process
+clock windows remain diagnostic; the Windows reference process has produced a
+valid timestamp one millisecond before that independent window.
+
+The streaming HTTP fixture waits for each chunk's write callback and an incoming
+I/O opportunity before scheduling more output. A real Fastify parser reproduces
+the earlier `EPIPE` while closing an oversized chunked upload. The regression
+requires twenty complete 413 responses, twenty connections, limit-crossing
+bytes and rejection before the full upload; reset, incomplete-response and abort
+checks remain enforced. File-document HTTP comparisons pass all three stores.
+
+Terminal deletion comparisons require cancellation of the affected tab's pending
+transfer, exact retention of an unrelated transfer and removal of deleted views
+from every window. All three store suites preserve complete relational/layout
+snapshots. Evidence uses `.qa/rust-server/platform-contracts-*`.
+
+The fresh broad check still fails the provider-pooling assertion at
+`local-foundation.test.ts:7218` (1,662 server tests pass, one fails and 57 skip).
+The same focused case fails on clean Primary `10484f06e`. Root formatting still
+reports 12 unchanged files. Focused protocol/worker/server/app suites, app build,
+strict all-target Clippy, clock/HTTP regression tests and changed-file formatting
+pass; the broad check remains unsuccessful.
+
 ## Native command kernel and protected internal APIs
 
 The additive native kernel implements command admission, immutable receipts,

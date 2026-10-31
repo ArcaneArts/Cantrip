@@ -20,6 +20,7 @@ import { chatForkFixture } from "./chat-fork-node-fixture.mjs";
 import { chatMessageFixture } from "./chat-message-node-fixture.mjs";
 import { nativeCommandFixture } from "./native-command-node-fixture.mjs";
 import { nativeHistoryFixture } from "./native-history-node-fixture.mjs";
+import { startOperationClock } from "./operation-clock.mjs";
 import { NativeCommandError } from "../../cantrip_server/src/db/repository/native-command-errors.ts";
 import { ExecutionLaneConflictError } from "../../cantrip_server/src/db/repository/chat-execution-lanes.ts";
 import { AgentInteractionConflictError } from "../../cantrip_server/src/db/repository/agent-interactions.ts";
@@ -37,6 +38,8 @@ try {
   for await (const line of createInterface({ input: process.stdin })) {
     const request = JSON.parse(line);
     const consoleTrace = [];
+    const finishClock =
+      request.observeOperationClock === true ? startOperationClock() : null;
     try {
       // Seeding owns only this disposable fixture. Runtime TS private storage is
       // used solely to exercise the actual connector on both PostgreSQL and PGlite.
@@ -870,12 +873,20 @@ try {
                   )
                 : false;
       } else value = await database.repository.listProjects(request.owner);
-      console.log(JSON.stringify({ id: request.id, rejected: false, value }));
+      console.log(
+        JSON.stringify({
+          id: request.id,
+          rejected: false,
+          value,
+          ...(finishClock ? { operationClock: finishClock() } : {}),
+        }),
+      );
     } catch (error) {
       console.log(
         JSON.stringify({
           id: request.id,
           rejected: true,
+          ...(finishClock ? { operationClock: finishClock() } : {}),
           ...(error instanceof AgentInteractionConflictError
             ? { interactionError: "AgentInteractionConflictError" }
             : {}),

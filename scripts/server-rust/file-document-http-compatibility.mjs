@@ -107,6 +107,7 @@ try {
             (e) => e.type === "event" && e.resource === "file-document",
           );
         const before = live ? documentEvents().length : 0;
+        result.pendingRequest = { name, method, url };
         const observed = await fixture.observe(name, method, url, {
           csrf:
             !["GET", "HEAD"].includes(method) &&
@@ -114,6 +115,7 @@ try {
           ...options,
         });
         result.observations.push({ name, ...observed });
+        delete result.pendingRequest;
         if (live) {
           const created =
             method === "POST" &&

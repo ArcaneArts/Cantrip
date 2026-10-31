@@ -68,6 +68,7 @@ use std::{
     io::{self, BufRead, Write},
     path::PathBuf,
     sync::Arc,
+    time::Instant,
 };
 
 #[derive(Parser)]
@@ -144,10 +145,16 @@ async fn run() -> Result<()> {
     for line in io::BufReader::new(input).lines() {
         let request: Value = serde_json::from_str(&line?)?;
         let console_trace = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let clock = (request["observeOperationClock"] == true)
+            .then(|| (chrono::Utc::now().timestamp_millis(), Instant::now()));
         let outcome = dispatcher.run(&request, console_trace.clone()).await;
+        let clock = clock.map(|(before, started)| serde_json::json!({"before":before,"after":chrono::Utc::now().timestamp_millis(),"elapsedNanoseconds":started.elapsed().as_nanos().to_string()}));
         let mut reply: Value = serde_json::from_value(
             serde_json::json!({"id":request["id"],"rejected":outcome.is_err()}),
         )?;
+        if let Some(clock) = clock {
+            reply["operationClock"] = Value::from_serialize(&clock);
+        }
         match outcome {
             Ok(value) => reply["value"] = value,
             Err(error) => {

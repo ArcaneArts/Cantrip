@@ -3,10 +3,14 @@ import http from "node:http";
 import net from "node:net";
 import { once } from "node:events";
 import { test } from "node:test";
+import { createRequire } from "node:module";
 import {
   streamingHttpRequest,
   headersOnlyHttpRequest,
 } from "./streaming-http-request.mjs";
+const require = createRequire(
+  new URL("../../cantrip_server/package.json", import.meta.url),
+);
 
 test("retains the actual early HTTP rejection and cookies without finishing the upload", async () => {
   const body = "x".repeat(4 * 1024 * 1024);
@@ -90,6 +94,58 @@ test("sends the complete actual body with chunked framing when the peer reads it
   } finally {
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("retains Fastify's complete mid-upload 413 when it closes the connection", async () => {
+  const fastify = require("fastify");
+  const server = fastify({ bodyLimit: 4 * 1024 * 1024, logger: false });
+  let connections = 0;
+  const rejectedAt = [];
+  server.server.on("connection", () => connections++);
+  server.addHook("onError", async (request, _reply, error) => {
+    assert.equal(error.code, "FST_ERR_CTP_BODY_TOO_LARGE");
+    rejectedAt.push(request.raw.socket.bytesRead);
+  });
+  server.post("/limit", async () => {
+    throw new Error("oversized upload reached handler");
+  });
+  await server.listen({ host: "127.0.0.1", port: 0 });
+  const body = JSON.stringify({ padding: "x".repeat(8 * 1024 * 1024) });
+  try {
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const response = await streamingHttpRequest(
+        `http://127.0.0.1:${server.server.address().port}/limit`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body,
+          signal: AbortSignal.timeout(5000),
+        },
+      );
+      assert.equal(response.status, 413);
+      assert.equal(response.headers.get("connection"), "close");
+      assert.equal((await response.json()).code, "FST_ERR_CTP_BODY_TOO_LARGE");
+    }
+    assert.equal(
+      connections,
+      20,
+      "one actual connection per request; no retries",
+    );
+    assert.equal(rejectedAt.length, 20);
+    for (const bytes of rejectedAt) {
+      assert.ok(
+        bytes > 4 * 1024 * 1024,
+        "actual parser receives the limit-crossing bytes",
+      );
+      assert.ok(
+        bytes < Buffer.byteLength(body),
+        "parser rejects before the upload finishes",
+      );
+    }
+  } finally {
+    server.server.closeAllConnections();
+    await server.close();
   }
 });
 

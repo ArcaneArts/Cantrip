@@ -758,6 +758,24 @@ try {
       for (const tab of pane.tabs)
         if (tab.resource.resourceId === "terminal")
           tab.resource.resourceId = ids[1];
+  const unrelatedTransfer = {
+    ...structuredClone(pendingLayout.pendingTransfers[0]),
+    id: "unrelated-transfer",
+    destinationWindowId: "unrelated-destination",
+    tabIds: ["b"],
+    sourcePlacement: {
+      ...structuredClone(pendingLayout.pendingTransfers[0].sourcePlacement),
+      tabPosition: 1,
+    },
+    destinationPaneId: "unrelated-destination-pane",
+  };
+  pendingLayout.windows.push({
+    ...structuredClone(
+      pendingLayout.windows.find((window) => window.id === "destination"),
+    ),
+    id: unrelatedTransfer.destinationWindowId,
+  });
+  pendingLayout.pendingTransfers.push(unrelatedTransfer);
   await seed(
     `INSERT INTO workspace_layouts(owner_id,project_id,workspace_id,layout) VALUES(${literal(owner)},'github','workspace-pending',${json(pendingLayout)})`,
   );
@@ -765,15 +783,35 @@ try {
     await remove("delete remaining dock terminal " + index, ids[index]);
     await snapshot("dock membership cleanup " + index);
   }
-  assert.deepEqual(
-    (
-      await snapshot(
-        "resource removal retains source pending-transfer semantics",
-      )
-    )[0].workspaces.find((w) => w.workspace_id === "workspace-pending").layout
-      .pendingTransfers,
-    pendingLayout.pendingTransfers,
+  const removedPending = await snapshot(
+    "resource removal cancels affected transfers and preserves unrelated work",
   );
+  for (const state of removedPending) {
+    const layout = state.workspaces.find(
+      (w) => w.workspace_id === "workspace-pending",
+    ).layout;
+    assert.deepEqual(
+      layout.pendingTransfers,
+      [unrelatedTransfer],
+      "only the affected tab's transfer is cancelled",
+    );
+    const tabs = layout.windows.flatMap((window) =>
+      window.panes.flatMap((pane) => pane.tabs),
+    );
+    assert.equal(
+      tabs.some((tab) => ["a", "c", "detached-tab"].includes(tab.id)),
+      false,
+      "deleted terminal views are removed from every window",
+    );
+    assert.equal(
+      tabs.some(
+        (tab) =>
+          tab.id === "b" && tab.resource.resourceId === "retained-terminal",
+      ),
+      true,
+      "unrelated retained view remains available for transfer",
+    );
+  }
   assert.equal(
     (await snapshot("last dock membership removes empty groups"))[0].groups
       .length,
