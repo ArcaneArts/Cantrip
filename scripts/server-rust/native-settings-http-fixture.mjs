@@ -61,6 +61,9 @@ export async function settingsHttpFixture({
   passwordHash,
   result,
   configure,
+  prepare,
+  onLogicalCompletion,
+  observeCompletions = false,
 }) {
   const fixture = new HttpFixture({
     kind,
@@ -71,6 +74,9 @@ export async function settingsHttpFixture({
     environment: {
       CANTRIP_AUTH_MODE: profile,
       CANTRIP_REGISTRATION_ENABLED: "true",
+      ...(observeCompletions
+        ? { CANTRIP_TEST_COMPLETION_OBSERVATIONS: "true" }
+        : {}),
       ...(profile === "password"
         ? { CANTRIP_PASSWORD_HASH: passwordHash }
         : {}),
@@ -276,6 +282,7 @@ export async function settingsHttpFixture({
     ];
     const seeded = await repository.request({ op: "transaction", statements });
     assert.equal(seeded.rejected, false, seeded.diagnostic);
+    await prepare?.({ owner, scope, repository });
     await repository.close();
     repository = null;
     await fixture.start();
@@ -303,6 +310,11 @@ export async function settingsHttpFixture({
     worker = new WorkerConnection(
       config,
       async (command) => {
+        if (
+          command.type === "chat.native-logical.complete" &&
+          onLogicalCompletion
+        )
+          return onLogicalCompletion(command);
         if (command.type === "chat.scratch.reconcile")
           return {
             retainedRootIds: command.roots.map((r) => r.rootId),
@@ -380,6 +392,7 @@ export async function settingsHttpFixture({
         hold = null;
       },
       credential: enrollment.credential,
+      connectionCount: () => connections,
       diagnostics: () => fixture.server?.diagnostics() ?? "",
     };
   } catch (error) {

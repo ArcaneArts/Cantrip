@@ -324,6 +324,7 @@ async fn main() -> Result<()> {
         let port = arguments.port.unwrap_or(config.port as u16);
         let listener = tokio::net::TcpListener::bind((config.host.as_str(), port)).await?;
         service.usage.start();
+        service.logical_completion_delivery.start();
         use std::io::Write;
         writeln!(
             parent_output,
@@ -358,6 +359,7 @@ async fn main() -> Result<()> {
         // Pre-close interrupts sockets with their normal disconnect semantics.
         // Finish active HTTP requests before permanently closing the bridge,
         // disabling publications, or draining service/database owners.
+        service.logical_completion_delivery.stop();
         service.folder_setup.stop();
         service.project_replicas.stop();
         service.github_conversion.stop();
@@ -380,6 +382,10 @@ async fn main() -> Result<()> {
         );
         shutdown_step!("worker-links-close", service.worker_links.close().await);
         shutdown_step!("worker-bridge-close", service.workers.close());
+        shutdown_step!(
+            "logical-completions",
+            service.logical_completion_delivery.drained().await
+        );
         // Observation commands are background work, and may still be awaiting
         // a worker's normal reconnect grace after socket pre-close. As in the
         // reference shutdown, close the bridge before waiting for those

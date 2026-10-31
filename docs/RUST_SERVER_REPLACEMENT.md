@@ -88,6 +88,35 @@ delivery and a five-second defer after an actual worker rejection. Product
 registration still requires the real GUI dispatcher; no production no-op
 dispatch is supplied.
 
+Logical completion delivery is now registered in the production Rust server.
+It starts with the server, reads up to 64 due closures, uses eight independent
+workers, and retries at the Source exponential delay capped at 30 seconds. The
+next timer starts after the current sweep finishes. Shutdown stops admission
+before closing the worker bridge and drains owned delivery before the database.
+Exact owner, worker, Chat, root and generation identities fence acknowledgment
+and retry writes; private worker/SQL errors remain outside the warning payload.
+
+Thirty-one scenarios execute the unchanged Node completion service and compare
+coalescing, concurrency, retry clocks, timer behavior and shutdown races. Real
+production entrypoints and the unchanged worker transport pass all nine
+database/authentication combinations: worker rejection retries without user or
+reconnect input, successful acknowledgment deletes the durable row, shutdown
+retains an unresolved root, and restart independently redelivers it. Shared
+PostgreSQL additionally passes Node-to-Rust and Rust-to-Node restart handoff in
+every authentication mode, preserving the generation and server identity.
+Worker acknowledgment outcomes are controlled; complete native GUI/worker
+execution remains required.
+
+The native `finishManagedGui` equivalent commits logical closure before sending
+the exact worker release and preserves the outbox if that acknowledgment fails.
+Nineteen added repository cases per backend include a worker-side read proving
+the closure committed before release, actual acknowledgment/closure SQL faults,
+replay, and generation rejection. The surrounding PGlite corpus retains all
+previous cases and passes 1,569 comparisons. Opt-in persistence observations
+follow the real SQL result; native observations are absent from release builds.
+Full GUI turn dispatch, receipt HTTP and canonical history composition remain
+unfinished.
+
 PR #2384's Windows native command job failed its first fresh GUI admission on
 the original 1 MiB fixture thread with stack overflow (`3221225725`). The
 `native_stack_diagnostic` workflow input runs that same repository suite under

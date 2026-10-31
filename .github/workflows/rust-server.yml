@@ -29,6 +29,8 @@ on:
       - cantrip_server/src/app/runtime/managed-queue-receipts.ts
       - cantrip_server/src/app/runtime/managed-queue-delivery.ts
       - cantrip_server/src/app/runtime/managed-queue-input.ts
+      - cantrip_server/src/app/runtime/native-logical-completion-delivery.ts
+      - cantrip_server/src/app/runtime/finish-managed-gui.ts
       - cantrip_worker/src/native*.ts
       - cantrip_worker/src/interaction-encryption.ts
       - cantrip_worker/src/chat-message-encryption.ts
@@ -1160,6 +1162,10 @@ jobs:
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"
         run: node --import tsx scripts/server-rust/native-coordination-http-compatibility.mjs --database pglite --report .qa/rust-server/native-coordination-http-pglite.json
+      - name: Logical completion delivery, retry and restart with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/completion-http-compatibility.mjs --database pglite --report .qa/rust-server/logical-completion-http-pglite.json
       - name: execution-lanes with bundled-postgres
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"
@@ -1188,6 +1194,10 @@ jobs:
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"
         run: node --import tsx scripts/server-rust/native-coordination-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/native-coordination-http-bundled-postgres.json
+      - name: Logical completion delivery, retry and restart with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/completion-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/logical-completion-http-bundled-postgres.json
       - name: execution-lanes with postgres
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"
@@ -1216,6 +1226,10 @@ jobs:
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"
         run: node --import tsx scripts/server-rust/native-coordination-http-compatibility.mjs --database postgres --report .qa/rust-server/native-coordination-http-postgres.json
+      - name: Logical completion delivery, retry and restart with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/completion-http-compatibility.mjs --database postgres --report .qa/rust-server/logical-completion-http-postgres.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
