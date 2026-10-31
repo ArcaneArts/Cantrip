@@ -52,6 +52,23 @@ insufficient-scope, revoked and expired worker credentials for each new route.
 In account mode, a second account enrolls a real worker and cannot access the
 first account's command or Chat state. Rejected calls publish no Live events.
 
+The next runtime layer includes a native receipt notification/wait primitive.
+It retains notices received during a database read, polls durable receipts every
+750 milliseconds when a notice is lost, preserves original UTF-16 Chat keys,
+and removes subscriptions on completion or cancellation. Fifteen controlled
+read/timer scenarios compare the unchanged Node waiter directly with Rust,
+including concurrent abort/read outcomes and multiple listeners. The public
+native method reads the actual managed queue repository. Receipt and queue HTTP
+routes still require their real GUI dispatch and recovery consumers.
+
+PR #2384's Windows native command job failed its first fresh GUI admission on
+the original 1 MiB fixture thread with stack overflow (`3221225725`). The
+`native_stack_diagnostic` workflow input runs that same repository suite under
+MinGW GDB and retains native thread stacks/registers. It changes neither the
+requested stack nor the suite's assertions and is separate from platform
+acceptance. The optional `CANTRIP_FIXTURE_GDB` launcher affects only disposable
+Rust repository fixtures; ordinary launches retain their existing command line.
+
 Restart recovery deliberately suspends existing execution lanes. The HTTP
 fixtures therefore admit and dispatch through real routes after server startup;
 they do not disable recovery or weaken event fencing. Current managed command
