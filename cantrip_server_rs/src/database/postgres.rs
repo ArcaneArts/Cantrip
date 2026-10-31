@@ -159,6 +159,27 @@ pub(super) struct Postgres {
 }
 
 impl Postgres {
+    pub(super) async fn dump_sql(&self, executable: &std::path::Path) -> Result<String> {
+        // Startup options may select another role. Authentication still uses
+        // the original login identity and its configured password.
+        let rows = self
+            .query("SELECT session_user::text,current_database()::text", &[])
+            .await?;
+        let user: String = match self.factory.configuration.get_user() {
+            Some(user) => user.to_owned(),
+            None => rows[0].get(0)?,
+        };
+        let database: String = rows[0].get(1)?;
+        crate::database_transfer::native_postgres::dump_sql(
+            &self.factory.configuration,
+            self.factory.tls.clone(),
+            &user,
+            &database,
+            executable,
+        )
+        .await
+    }
+
     pub(super) async fn open(
         configuration: Config,
         tls: MakeTlsConnector,

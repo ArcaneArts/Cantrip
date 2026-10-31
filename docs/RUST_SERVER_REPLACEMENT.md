@@ -2843,6 +2843,84 @@ and packaged upgrade integration remain unfinished. Cross-platform jobs are
 configured for this milestone and still require observed results. Normal
 builds continue to select the Node server and Node worker.
 
+## Native logical export and representative post-write rollback
+
+The Rust executable now accepts `--migrate-only --export-sql <new file>` for
+native PGlite, private PostgreSQL and external PostgreSQL. It opens the selected
+database, obtains a real native pg_dump export, and exits before migrations,
+local-user refresh or HTTP/background services start. Supply `--pg-dump-path`,
+or use the configured PostgreSQL binary directory or PATH. Bundling those native
+client/runtime assets remains packaging work.
+
+```shell
+/absolute/path/to/cantrip-server --database pglite --data-dir /native/profile \
+  --migrate-only --export-sql /backup/native.sql \
+  --pg-dump-path /absolute/path/to/pg_dump
+```
+
+Native PGlite exposes an exclusive wire-session guard through a small local
+pglite-rs patch. It retains the existing session mutex without issuing BEGIN;
+pg_dump establishes its own snapshot and transaction settings. Dropping the guard
+queues rollback before another caller can proceed. A real SQL-written filesystem
+witness verifies cancellation during execution. Upstream source, MIT license and
+patch provenance are retained under `cantrip_server_rs/third-party/pglite-rs`.
+
+PostgreSQL exports use a temporary loopback relay authenticated by a random
+startup token. Rust opens the actual backend connection with its existing TLS
+connector and forwards the PostgreSQL protocol. The client retains configured
+login credentials, startup options, host choices and session-attribute selection.
+The TLS matrix uses a held relation lock to identify the actual pg_dump backend
+and checks `pg_stat_ssl` while that backend is blocked. Eleven SSL-on/off and
+omitted/empty/disable/prefer/require/verification cases pass locally. Wider URL
+option and supported-platform acceptance remain required. A real startup-role
+case found that URL form encoding sent spaces as literal plus signs to the Rust
+PostgreSQL driver. Retained query values now use percent-only encoding; role,
+login identity and space/plus/Unicode application-name results match the actual
+Node driver. Export uses the configured login identity while preserving startup role
+and session-authorization options. The final eleven-case TLS regression also passes after this correction.
+
+The SQL preparer removes only matching generated header/footer guard commands and
+adapts only the generated transaction-timeout prelude for older destinations.
+An actual native 17.9 dump with its guard key inside multiline TEXT and a SQL
+function restores exactly, including CRLF guard variants, large numbers, bytea,
+SQL NULL and JSON null. A private staging file is synced and published without
+overwriting an existing path. Actual missing-executable and restricted-role SQL
+failures leave no published file. Default error rendering stays redacted; an
+explicit diagnostic consumer verifies that the original SQL failure is retained.
+
+Current-schema and genuine 233-migration fixtures pass logical transfer into all
+three Rust backends and back into JavaScript PGlite. Every one of 115 table
+snapshots, four sequence states, the literal function result and NULL distinctions
+matches. The expanded scenario signs into Rust with password authentication,
+initializes protection records, creates a workspace and promotes it with a
+revision fence. After native export and restore, the actual Node server accepts
+the Rust-issued session and CSRF token, reports the same server ID, returns the
+complete workspace and commits the next revision. This passes on all three
+stores for both schema histories. A mixed-version follow-up also passes with
+pg_dump 18.6, private PostgreSQL 18.6, external PostgreSQL 16.15 and native
+PGlite 17.5. The 146-test native regression passes across 64 groups without
+ignored tests before the final role/URI correction; the role and TLS suites
+exercise the corrected connection path afterward.
+
+An instrumented native client pauses only after the real pg_dump emits an INSERT
+for the fixture table. Killing the server at that boundary publishes no partial
+file; the observer and real dump client exit, private staging is identified and
+removed, the original state reopens, and a normal export/reverse restore succeeds.
+This is an actual export interruption scenario, alongside the existing SQL import
+and pending-migration SIGKILL/retry checks.
+
+The final strict all-target Clippy check passes. The broad `pnpm check` exits 1
+with 1,661 source-server tests passing, 57 skipped and two failures: the existing
+provider-routing assertion at `local-foundation.test.ts:7218`, and a five-second
+account-resource-usage timeout. The latter passes unchanged in isolation on both
+this branch and clean Primary, with actual test durations of 2.28 and 2.29 seconds.
+No deadline or assertion was relaxed, and the broad check remains non-green.
+
+These results establish a representative database rollback subset. Complete
+profile activation, server-managed file/key transfer, persisted backend selection,
+packaged upgrades and full product rollback remain unfinished. The normal desktop,
+development and standalone paths continue to use the Node server and Node worker.
+
 ## Remaining delivery sequence
 
 1. Establish cross-platform foundation results and legacy PGlite logical

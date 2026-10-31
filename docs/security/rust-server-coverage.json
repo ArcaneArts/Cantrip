@@ -4833,14 +4833,15 @@
       "remaining": [
         "Preserve database settings and complete representative profile/key activation before claiming a complete installation upgrade.",
         "Transfer and activate server-managed files, encryption keys, server profile and selected database mode.",
-        "Implement explicit backend changes and data-preserving reverse migration after Rust writes.",
+        "Integrate tested native SQL reverse migration with complete profile activation, explicit backend changes and product-wide post-write rollback.",
         "Bundle the bounded conversion tool and required runtime assets; prove real installation upgrades and packaged Windows/Linux/macOS artifacts.",
-        "Observe the configured platform jobs; SQL transfer is not the complete server replacement."
+        "Observe the configured platform jobs; SQL transfer is not the complete server replacement.",
+        "Verify representative older physical PGlite runtime/PostgreSQL-major profiles with matching bounded conversion; older SQL history alone does not prove runtime format compatibility."
       ]
     },
     "fullPostWriteRollback": {
-      "status": "unimplemented",
-      "limitedEvidence": "Auth and encryption suites exercise sequential Node/Rust/Node retained state on disposable external PostgreSQL. Encryption uses actual client HPKE/password wrappers. Full-server rollback and legacy PGlite conversion remain unimplemented. The policy milestone additionally exercises Node/Rust/Node writes on one external database, retaining encrypted policy updates, assignment sources and version counters. Existing PGlite conversion and full-server rollback remain unfinished."
+      "status": "partial",
+      "limitedEvidence": "Existing auth/encryption/policy/workspace suites retain selected writes across Node/Rust/Node on external PostgreSQL. Native SQL export now adds current/historical all-store database rollback after real password-authenticated Rust workspace/protection writes. Actual Node consumes the restored SQL, retains Rust-issued session/CSRF/server identity, reads the exact workspace and writes its next revision. Full profile activation, server-managed files/keys, persisted backend selection and product-wide rollback remain incomplete."
     },
     "desktopPackaging": {
       "status": "unported"
@@ -6078,6 +6079,34 @@
         "Full managed runtime and automation deletion consumers.",
         "Observe and inspect platform job artifacts; configured CI is not passing evidence."
       ]
+    },
+    "nativeLogicalExport": {
+      "status": "partial",
+      "implementation": [
+        "cantrip_server_rs/src/database_transfer/export.rs",
+        "cantrip_server_rs/src/database_transfer/native_pglite.rs",
+        "cantrip_server_rs/src/database_transfer/native_postgres.rs",
+        "cantrip_server_rs/src/database.rs",
+        "cantrip_server_rs/src/main.rs",
+        "cantrip_server_rs/third-party/pglite-rs"
+      ],
+      "evidence": [
+        "cantrip_server_rs/tests/native_wire_session.rs",
+        "cantrip_server_rs/tests/native_sql_dump.rs",
+        "scripts/server-rust/native-export-roundtrip.mjs",
+        "scripts/server-rust/native-export-http-writes.mjs",
+        "scripts/server-rust/native-export-interruption.mjs",
+        "scripts/server-rust/native-export-tls.mjs",
+        "scripts/server-rust/native-export-redaction.mjs"
+      ],
+      "validatedSubset": "Local macOS: production --export-sql --migrate-only uses real native pg_dump for all3stores, skipping migrations/identity refresh/background startup. Full current/historical115table4sequence reverse transfers preserve function literals and SQL NULL versus JSON null. Actual password-authenticated Rust writes initialize protection records, create/promote a workspace, then actual Node accepts the retained session/CSRF, identical server UUID and workspace, and commits revision3. Native same-key multiline/function and CRLF guard variants restore exactly. Real SQL execution witnesses verify raw-session cancellation/serialization. A real dump-row observer drives SIGKILL before publication; owned dump processes exit and normal retry retains the source. Eleven actual TLS cases include pg_dump-specific blocked-query/pg_stat_ssl witnesses. Real restricted-role SQL failures retain private diagnostics while ordinary rendering is redacted and no partial file is published. Final role/URI and mixed-version results are included below; current supported-platform/package acceptance remains required. Mixed-version follow-up passes current/historical transfers with native pg_dump18.6, private PostgreSQL18.6 and external PostgreSQL16.15 alongside nativePGlite17.5. Ubuntu24.04/arm64 official PGDG client setup actually executed successfully; this is not Linux Rust server acceptance. Startup-role testing reproduced Rust failing an actual Node-accepted options=-c+role URL. Retained query parameters now use percent-only re-encoding; actual role and login identities plus space/literal-plus/Unicode application-name results match the Node driver, and export preserves the original configured login identity through startup role/session-authorization changes. Final11-case TLS regression passes after that fix. The146-test/64-group native regression passes with zero failures/ignored before the final role/URI correction; focused role/TLS tests verify that correction.",
+      "remaining": [
+        "Complete profile/files/keys/backend activation and full product post-write rollback.",
+        "Package native pg_dump and required database assets; verify desktop and standalone artifacts on supported platforms.",
+        "Finish URL/connection-policy variant coverage and observe current-head platform jobs.",
+        "Measure representative large-profile export memory/throughput and complete whole-server performance acceptance."
+      ],
+      "validationLimits": "Final strict all-target Clippy passes. Broad pnpm check exits1 with1661source tests passing57skipped, known provider assertion at local-foundation.test.ts:7218 and a5000ms account-resource-usage timeout. The latter passes unchanged in isolation on current and cleanPrimary, actual test durations2.28/2.29s. No deadlines/assertions changed; no broad-green claim. Linux client setup success is not Linux Rust acceptance; current platform/package results remain required."
     }
   },
   "remainingAcceptance": [

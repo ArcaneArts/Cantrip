@@ -18,6 +18,7 @@ import { fixtureEnvironment } from "./process.mjs";
 import { buildRustExample, buildRustServer } from "./build.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
 import { databaseTransferRace } from "./database-transfer-race.mjs";
+import { nativeExportRoundtrip } from "./native-export-roundtrip.mjs";
 import { exportLegacyPglite } from "../database-transfer/legacy-pglite.mjs";
 import { readServerConfig } from "../../cantrip_server/src/config.ts";
 import { connectDatabase } from "../../cantrip_server/src/db/index.ts";
@@ -378,6 +379,17 @@ SET transaction_timeout = 0;
       result.snapshot,
       "failed replay retains all destination state",
     );
+    result.nativeExport = await nativeExportRoundtrip({
+      run,
+      snapshot,
+      executable,
+      environment,
+      data,
+      mode,
+      root,
+      expected: report.expected,
+      observe,
+    });
     if (mode === "postgres") {
       const raceEnvironment = {
         ...environment,

@@ -44,6 +44,12 @@ struct Arguments {
     /// Restore trusted INSERT-format pg_dump SQL and pending migrations, then exit.
     #[arg(long, requires = "migrate_only")]
     restore_sql: Option<PathBuf>,
+    /// Export the selected database without migrations or identity writes, then exit.
+    #[arg(long, requires = "migrate_only", conflicts_with = "restore_sql")]
+    export_sql: Option<PathBuf>,
+    /// Native pg_dump executable; otherwise use PostgreSQL's bin directory or PATH.
+    #[arg(long, requires = "export_sql")]
+    pg_dump_path: Option<PathBuf>,
     #[arg(long)]
     shutdown_on_stdin_close: bool,
 }
@@ -119,6 +125,23 @@ async fn main() -> Result<()> {
         .transpose()
         .context("resolve SQL export path")?;
     let restoring = restore_sql.is_some();
+    let export_sql = arguments
+        .export_sql
+        .map(std::path::absolute)
+        .transpose()
+        .context("resolve SQL export destination")?;
+    let pg_dump = arguments
+        .pg_dump_path
+        .map(std::path::absolute)
+        .transpose()
+        .context("resolve native pg_dump path")?
+        .or_else(|| {
+            config
+                .postgres_bin_directory
+                .as_ref()
+                .map(|directory| directory.join(format!("pg_dump{}", std::env::consts::EXE_SUFFIX)))
+        })
+        .unwrap_or_else(|| PathBuf::from("pg_dump"));
     // Native PostgreSQL changes its process stdio during single-user startup.
     // Keep independent handles to the launcher's pipes before initializing it.
     let mut parent_output = os_pipe::dup_stdout()?;
@@ -152,6 +175,12 @@ async fn main() -> Result<()> {
     };
     let database = Arc::new(database);
     let prepared: Result<()> = async {
+        if let Some(file) = export_sql {
+            let receipt = cantrip_server::database_transfer::export_sql(&database, &file, &pg_dump).await?;
+            use std::io::Write;
+            writeln!(parent_output,"\n{}",json!({"event":"database.export.completed","databaseEngine":database.engine(),"receipt":receipt}))?;
+            return Ok(());
+        }
         if let Some(file) = restore_sql {
             let receipt = cantrip_server::database_transfer::restore_sql(&database, &file).await?;
             use std::io::Write;

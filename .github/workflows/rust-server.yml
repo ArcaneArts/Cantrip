@@ -1097,6 +1097,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y postgresql libssl-dev
           echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(pg_config --bindir)" >> "$GITHUB_ENV"
+          # Keep the distro server as a cross-version target; use a newer
+          # native dump client for PGlite 17 and external PostgreSQL 18.
+          # https://www.postgresql.org/download/linux/ubuntu/
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-18
+          echo "CANTRIP_TEST_PG_DUMP_PATH=/usr/lib/postgresql/18/bin/pg_dump" >> "$GITHUB_ENV"
       - name: macOS PostgreSQL
         if: runner.os == 'macOS'
         run: |
@@ -1107,8 +1114,13 @@ jobs:
       - name: Create migration evidence directory
         run: |
           node -e "require('node:fs').mkdirSync('.qa/rust-server', { recursive: true })"
-      - name: Native SQL migration and transaction contracts
-        run: node scripts/server-rust/cargo.mjs test --test database_contract
+      - name: Native SQL migration, cancellation and lossless dump contracts
+        run: |
+          node scripts/server-rust/cargo.mjs test --test database_contract
+          node scripts/server-rust/cargo.mjs test --test native_wire_session
+          node scripts/server-rust/cargo.mjs test --test native_sql_dump
+      - name: Real restricted SQL export failures retain private diagnostics without publishing partial files
+        run: node scripts/server-rust/native-export-redaction.mjs --report .qa/rust-server/native-export-redaction.json
       - name: Legacy dump preserves literal guard lines and redacts real failures
         run: node scripts/server-rust/legacy-export-literals.mjs --report .qa/rust-server/legacy-export-literals.json
       - name: Legacy PGlite export and native restore, rollback, restart and redaction on all stores

@@ -174,6 +174,18 @@ impl Database {
         self.engine
     }
 
+    /// Offline logical export; callers must stop HTTP/background services first.
+    pub async fn dump_sql(&self, executable: &Path) -> Result<String> {
+        match &self.backend {
+            Backend::Pglite(database) => {
+                let guard = database.lock().await;
+                let database = guard.as_ref().context("database is closed")?;
+                crate::database_transfer::native_pglite::dump_sql(database, executable).await
+            }
+            Backend::Postgres(database) => database.dump_sql(executable).await,
+        }
+    }
+
     pub async fn execute(&self, sql: &str) -> Result<()> {
         match &self.backend {
             Backend::Pglite(database) => {
