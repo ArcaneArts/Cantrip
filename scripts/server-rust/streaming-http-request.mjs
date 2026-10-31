@@ -61,7 +61,7 @@ function httpRequest(url, { method, headers, body, signal }, sendBody) {
       request.destroy();
       reject(error);
     }
-    request.once("error", (error) => {
+    request.on("error", (error) => {
       // Once headers arrive, the incoming stream determines whether the reply
       // is complete. A write failure must not discard that actual response.
       if (!responseStarted) fail(error);
@@ -69,25 +69,22 @@ function httpRequest(url, { method, headers, body, signal }, sendBody) {
     async function upload() {
       for (let at = 0; at < bytes.length; at += 16 * 1024) {
         if (settled || responseStarted) return;
-        if (!request.write(bytes.subarray(at, at + 16 * 1024))) {
-          await new Promise((resolve) => {
-            const done = () => {
-              request.off("drain", done);
-              request.off("close", done);
-              request.off("response", done);
-              resolve();
-            };
-            request.once("drain", done);
-            request.once("close", done);
-            request.once("response", done);
-          });
-        }
-        // Give the socket's real response a turn before the next body write.
+        await new Promise((resolve, reject) => {
+          request.write(bytes.subarray(at, at + 16 * 1024), (error) =>
+            error ? reject(error) : resolve(),
+          );
+        });
+        // A write completion can queue an immediate in the current check phase.
+        // Yield another poll turn so an early reply wins over the next write.
+        await nextTurn();
         await nextTurn();
       }
       if (!settled && !responseStarted) request.end();
     }
-    if (sendBody) upload().catch(fail);
+    if (sendBody)
+      upload().catch((error) => {
+        if (!responseStarted) fail(error);
+      });
     else request.flushHeaders();
   });
 }
