@@ -468,3 +468,100 @@ it("aborts a waiting coordinator on logout and rejects later preparation", async
     f.cleanup();
   }
 });
+
+it.each([
+  "project.tasks",
+  "git.history",
+  "git.graph",
+  "github.issues",
+  "github.pull-requests",
+  "github.actions",
+  "project.git-history",
+  "project.git-graph",
+  "project.github-issues",
+  "project.github-pull-requests",
+  "project.github-actions",
+])(
+  "includes %s in mixed panes without needing a live runtime adapter",
+  async (definitionId) => {
+    const f = fixture();
+    const builtin =
+      !definitionId.startsWith("project.git-") &&
+      !definitionId.startsWith("project.github-");
+    const panel = {
+      id: "panel",
+      resource: builtin
+        ? { kind: "builtin", definitionId }
+        : { kind: "entity", definitionId, resourceId: "panel-entity" },
+      builtInState: builtin ? { definitionId, worktreeId: "tree" } : null,
+    };
+    const pane =
+      f.input.controller.getSnapshot().authoritative.windows[0]!.panes[0]!;
+    pane.tabs.push(panel as never);
+    try {
+      await detachWorkspaceEditors(f.input, async (options) => {
+        const lease = await options.prepare(["file", "panel"]);
+        const payload = JSON.parse(
+          new TextDecoder().decode(await lease.capture()),
+        );
+        expect(payload.panels).toEqual([
+          {
+            tabId: "panel",
+            projectId: "project",
+            resource: panel.resource,
+            builtInState: panel.builtInState,
+          },
+        ]);
+        expect(payload.editors).toHaveLength(1);
+        await lease.retire();
+        await lease.resume();
+        return "destination";
+      });
+      expect(f.events).toEqual(["suspend:file", "retire:file", "resume:file"]);
+    } finally {
+      f.cleanup();
+    }
+  },
+);
+
+it("moves a Run configuration output without requiring a live PTY adapter", async () => {
+  const f = fixture();
+  const tab = {
+    id: "run",
+    resource: {
+      kind: "entity",
+      definitionId: "project.terminal",
+      resourceId: "runtime",
+    },
+    builtInState: null,
+  };
+  f.input.controller
+    .getSnapshot()
+    .authoritative.windows[0]!.panes[0]!.tabs.push(tab as never);
+  f.input.surfaces.set("run", {
+    kind: "terminal",
+    entity: { id: "runtime", projectId: "project", kind: "run-configuration" },
+  } as ProjectSurface);
+  try {
+    await detachWorkspaceEditors(f.input, async (options) => {
+      const lease = await options.prepare(["run"]);
+      const payload = JSON.parse(
+        new TextDecoder().decode(await lease.capture()),
+      );
+      expect(payload.panels).toEqual([
+        {
+          tabId: "run",
+          projectId: "project",
+          resource: tab.resource,
+          builtInState: null,
+        },
+      ]);
+      await lease.retire();
+      await lease.resume();
+      return "destination";
+    });
+    expect(f.events).toEqual([]);
+  } finally {
+    f.cleanup();
+  }
+});
