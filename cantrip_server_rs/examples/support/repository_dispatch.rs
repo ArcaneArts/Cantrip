@@ -39,6 +39,9 @@ impl Dispatcher<'_> {
         if operation.starts_with("native-command-") {
             return native_commands::run(self.database.clone(), request);
         }
+        if operation.starts_with("native-history-") {
+            return native_history::run(self.database.clone(), request).boxed();
+        }
         if operation.starts_with("scratch-") {
             return scratch_roots::run(self.database.clone(), request).boxed();
         }

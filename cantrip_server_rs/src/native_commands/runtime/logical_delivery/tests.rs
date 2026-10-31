@@ -30,6 +30,7 @@ impl Control {
         drop(counts);
         let root = args["command"]["rootOperationId"]
             .as_str()
+            .or_else(|| args["entry"]["commitId"].as_str())
             .or_else(|| {
                 args["identity"]
                     .as_array()
@@ -91,6 +92,14 @@ impl Backend for Control {
         async move { Ok(p.await?.as_array().context("Completion rows")?.clone()) }.boxed()
     }
     fn request(&self, entry: Value) -> BoxFuture<'_, Result<()>> {
+        if self.input["publication"] == true {
+            let p = self.issue("publish", json!({"entry":entry}));
+            return async move {
+                p.await?;
+                Ok(())
+            }
+            .boxed();
+        }
         let command = json!({"type":"chat.native-logical.complete","chatId":entry["chatId"],"rootOperationId":entry["rootOperationId"],"rootOperationGeneration":entry["rootOperationGeneration"]});
         let options = json!({"ownerId":entry["ownerId"],"timeoutMs":10000});
         let p = self.issue(
@@ -104,7 +113,12 @@ impl Backend for Control {
         .boxed()
     }
     fn acknowledge(&self, entry: Value) -> BoxFuture<'_, Result<()>> {
-        let p = self.issue("ack", json!({"identity":identity(&entry)}));
+        let args = if self.input["publication"] == true {
+            json!({"entry":entry})
+        } else {
+            json!({"identity":identity(&entry)})
+        };
+        let p = self.issue("ack", args);
         async move {
             p.await?;
             Ok(())
@@ -112,7 +126,12 @@ impl Backend for Control {
         .boxed()
     }
     fn defer(&self, entry: Value, at: i64) -> BoxFuture<'_, Result<()>> {
-        let p = self.issue("defer", json!({"identity":identity(&entry),"at":at}));
+        let args = if self.input["publication"] == true {
+            json!({"entry":entry,"at":at})
+        } else {
+            json!({"identity":identity(&entry),"at":at})
+        };
+        let p = self.issue("defer", args);
         async move {
             p.await?;
             Ok(())
@@ -227,12 +246,17 @@ async fn run(input: &Value) -> Result<Value> {
 }
 #[tokio::test(start_paused = true)]
 async fn logical_completion_delivery_matches_unchanged_source() -> Result<()> {
+    compare_source("completion-delivery-oracle.mjs").await
+}
+#[tokio::test(start_paused = true)]
+async fn history_publication_delivery_matches_unchanged_source() -> Result<()> {
+    // Production publication reports suppress stdio failures. The Source oracle
+    // also injects throwing diagnostics; both keep the same durable scheduling.
+    compare_source("history-delivery-oracle.mjs").await
+}
+async fn compare_source(script: &str) -> Result<()> {
     let output = Command::new("node")
-        .args([
-            "--import",
-            "tsx",
-            "scripts/server-rust/completion-delivery-oracle.mjs",
-        ])
+        .args(["--import", "tsx", &format!("scripts/server-rust/{script}")])
         .current_dir(PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap())
         .output()?;
     anyhow::ensure!(
@@ -250,7 +274,7 @@ async fn logical_completion_delivery_matches_unchanged_source() -> Result<()> {
         );
     }
     println!(
-        "{} unchanged Source logical completion scenarios matched",
+        "{} unchanged Source delivery scenarios matched ({script})",
         cases.as_array().unwrap().len()
     );
     Ok(())

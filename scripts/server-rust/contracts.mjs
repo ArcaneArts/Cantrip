@@ -375,6 +375,21 @@ export const contractRoots = [
   "taskMessageOpaqueContentSchema",
   "nativeHistoryTurnReadRequestSchema",
   "nativeHistoryTurnReadResponseSchema",
+  "nativeHistoryBindingOpenSchema",
+  "nativeHistoryBindingSchema",
+  "nativeHistoryResolveSchema",
+  "nativeHistoryItemMappingSchema",
+  "nativeHistoryIngestSchema",
+  "nativeHistoryPreparedBatchSchema",
+  "nativeHistoryCommitReceiptSchema",
+  "nativeHistoryBatchRejectionSchema",
+  "nativeHistoryArchiveReadSchema",
+  "nativeHistoryArchivePageSchema",
+  "nativeHistoryTurnArchiveReadSchema",
+  "nativeHistoryTurnArchivePageSchema",
+  "nativeHistoryBatchArchiveReadSchema",
+  "nativeHistoryBatchArchivePageSchema",
+  "nativeTurnModelAttributionSchema",
   "chatPlanOpaqueStateSchema",
   "nativeSettingsRefreshRequestSchema",
   "nativeSettingsUpdateRequestSchema",
@@ -520,6 +535,12 @@ registerChecks(protocol.nativeSettingsVersionSchema.shape.revision, [
 ]);
 registerChecks(protocol.nativeCommandAdmissionSchema, [
   "native-command-admission",
+]);
+registerChecks(protocol.nativeHistoryPreparedBatchSchema.shape.items.element, [
+  "native-history-evidence-revision",
+]);
+registerChecks(protocol.nativeHistoryArchivePageSchema.shape.items.element, [
+  "native-history-archive-evidence",
 ]);
 registerChecks(protocol.nativeSettingsEvidenceSchema, [
   "native-settings-evidence",

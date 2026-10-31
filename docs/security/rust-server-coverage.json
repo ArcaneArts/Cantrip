@@ -3476,6 +3476,84 @@
           "Real HTTP/Live flows across all three local database/authentication modes verify pending request consumption, exact permission binding/errors, encrypted settings evidence and continuation activation replacement using unchanged worker transport and production endpoint crypto. Native RPC execution remains controlled.",
           "Receipts with actual queue wake/delivery, GUI orchestration, canonical history ingestion, full app/worker/runtime acceptance, supported platforms, shared coordination, upgrade/post-write rollback, packaging, Winterhold rehearsal and cutover remain required."
         ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/internal/native-history/open",
+        "implementation": "cantrip_server_rs/src/http/native_history.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/native-history-compatibility.mjs",
+          "scripts/server-rust/native-history-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Current-head Linux/macOS/Windows platform and packaged acceptance; full product dispatch/Tasks/Goals integration and the remaining server-replacement objective."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/internal/native-history/resolve",
+        "implementation": "cantrip_server_rs/src/http/native_history.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/native-history-compatibility.mjs",
+          "scripts/server-rust/native-history-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Current-head Linux/macOS/Windows platform and packaged acceptance; full product dispatch/Tasks/Goals integration and the remaining server-replacement objective."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/internal/native-history/ingest",
+        "implementation": "cantrip_server_rs/src/http/native_history.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/native-history-compatibility.mjs",
+          "scripts/server-rust/native-history-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Current-head Linux/macOS/Windows platform and packaged acceptance; full product dispatch/Tasks/Goals integration and the remaining server-replacement objective."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/internal/native-history/archive",
+        "implementation": "cantrip_server_rs/src/http/native_history.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/native-history-compatibility.mjs",
+          "scripts/server-rust/native-history-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Current-head Linux/macOS/Windows platform and packaged acceptance; full product dispatch/Tasks/Goals integration and the remaining server-replacement objective."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/internal/native-history/archive-turns",
+        "implementation": "cantrip_server_rs/src/http/native_history.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/native-history-compatibility.mjs",
+          "scripts/server-rust/native-history-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Current-head Linux/macOS/Windows platform and packaged acceptance; full product dispatch/Tasks/Goals integration and the remaining server-replacement objective."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/internal/native-history/archive-batches",
+        "implementation": "cantrip_server_rs/src/http/native_history.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/native-history-compatibility.mjs",
+          "scripts/server-rust/native-history-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Current-head Linux/macOS/Windows platform and packaged acceptance; full product dispatch/Tasks/Goals integration and the remaining server-replacement objective."
+        ]
       }
     ]
   },
@@ -4373,57 +4451,40 @@
       {
         "tableName": "native_history_bindings",
         "exportName": "nativeHistoryBindings",
-        "implementation": ["cantrip_server_rs/src/chats/native_history.rs"],
-        "status": "partial",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/native_history/",
         "evidence": [
-          "cantrip_server_rs/tests/chat_contracts.rs",
-          "scripts/server-rust/chat-message-repository-compatibility.mjs",
-          "scripts/server-rust/chat-message-write-repository-compatibility.mjs",
-          "scripts/server-rust/chat-message-http-compatibility.mjs",
-          "scripts/server-rust/chat-message-http-races.mjs"
+          "scripts/server-rust/native-history-compatibility.mjs",
+          "scripts/server-rust/native-history-http-compatibility.mjs"
         ],
         "remaining": [
-          "Only owner-authorized persisted reads and canonical legacy-write ownership are ported; ingestion, receipts, publication recovery and durable execution remain unfinished.",
-          "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
-          "Supported-platform results, Redis coordination and packaging/default cutover remain required."
+          "Current-head Linux/macOS/Windows platform and packaged acceptance; full product dispatch/Tasks/Goals integration and the remaining server-replacement objective."
         ]
       },
       {
         "tableName": "native_history_turns",
         "exportName": "nativeHistoryTurns",
-        "implementation": ["cantrip_server_rs/src/chats/native_history.rs"],
-        "status": "partial",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/native_history/",
         "evidence": [
-          "cantrip_server_rs/tests/chat_contracts.rs",
-          "scripts/server-rust/chat-message-repository-compatibility.mjs",
-          "scripts/server-rust/chat-message-write-repository-compatibility.mjs",
-          "scripts/server-rust/chat-message-http-compatibility.mjs",
-          "scripts/server-rust/chat-message-http-races.mjs"
+          "scripts/server-rust/native-history-compatibility.mjs",
+          "scripts/server-rust/native-history-http-compatibility.mjs"
         ],
         "remaining": [
-          "Only owner-authorized persisted reads and canonical legacy-write ownership are ported; ingestion, receipts, publication recovery and durable execution remain unfinished.",
-          "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
-          "Supported-platform results, Redis coordination and packaging/default cutover remain required."
+          "Current-head Linux/macOS/Windows platform and packaged acceptance; full product dispatch/Tasks/Goals integration and the remaining server-replacement objective."
         ]
       },
       {
         "tableName": "native_history_items",
         "exportName": "nativeHistoryItems",
-        "implementation": [
-          "cantrip_server_rs/src/chats/message_writes/canonical.rs"
-        ],
-        "status": "partial",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/native_history/",
         "evidence": [
-          "cantrip_server_rs/tests/chat_contracts.rs",
-          "scripts/server-rust/chat-message-repository-compatibility.mjs",
-          "scripts/server-rust/chat-message-write-repository-compatibility.mjs",
-          "scripts/server-rust/chat-message-http-compatibility.mjs",
-          "scripts/server-rust/chat-message-http-races.mjs"
+          "scripts/server-rust/native-history-compatibility.mjs",
+          "scripts/server-rust/native-history-http-compatibility.mjs"
         ],
         "remaining": [
-          "Only owner-authorized persisted reads and canonical legacy-write ownership are ported; ingestion, receipts, publication recovery and durable execution remain unfinished.",
-          "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
-          "Supported-platform results, Redis coordination and packaging/default cutover remain required."
+          "Current-head Linux/macOS/Windows platform and packaged acceptance; full product dispatch/Tasks/Goals integration and the remaining server-replacement objective."
         ]
       },
       {
@@ -4776,6 +4837,58 @@
         "remaining": [
           "The current Agent-project managed admission and event flow is compared against Node on all three database and authentication modes, using the unchanged worker transport and production endpoint crypto. Historical Task event fanout, actual SQL failure rollback and HTTP lock/commit fencing are verified on external PostgreSQL. Task/standalone managed admission retains the Source rejection behavior; full product Task/Goal and standalone execution are separate acceptance requirements.",
           "Full native command/GUI queue orchestration, canonical history ingestion, background delivery/recovery, supported-platform and app/worker acceptance, Redis/multi-instance, upgrade/post-write rollback, packaging, Winterhold rehearsal and default cutover remain required."
+        ]
+      },
+      {
+        "tableName": "native_history_publications",
+        "exportName": "nativeHistoryPublications",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/native_history/",
+        "evidence": [
+          "scripts/server-rust/native-history-compatibility.mjs",
+          "scripts/server-rust/native-history-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Current-head Linux/macOS/Windows platform and packaged acceptance; full product dispatch/Tasks/Goals integration and the remaining server-replacement objective."
+        ]
+      },
+      {
+        "tableName": "native_history_receipts",
+        "exportName": "nativeHistoryReceipts",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/native_history/",
+        "evidence": [
+          "scripts/server-rust/native-history-compatibility.mjs",
+          "scripts/server-rust/native-history-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Current-head Linux/macOS/Windows platform and packaged acceptance; full product dispatch/Tasks/Goals integration and the remaining server-replacement objective."
+        ]
+      },
+      {
+        "tableName": "native_history_rejections",
+        "exportName": "nativeHistoryRejections",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/native_history/",
+        "evidence": [
+          "scripts/server-rust/native-history-compatibility.mjs",
+          "scripts/server-rust/native-history-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Current-head Linux/macOS/Windows platform and packaged acceptance; full product dispatch/Tasks/Goals integration and the remaining server-replacement objective."
+        ]
+      },
+      {
+        "tableName": "native_history_streams",
+        "exportName": "nativeHistoryStreams",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/native_history/",
+        "evidence": [
+          "scripts/server-rust/native-history-compatibility.mjs",
+          "scripts/server-rust/native-history-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Current-head Linux/macOS/Windows platform and packaged acceptance; full product dispatch/Tasks/Goals integration and the remaining server-replacement objective."
         ]
       }
     ]
@@ -6752,7 +6865,9 @@
         "evidence": [
           "scripts/server-rust/native-event-http-compatibility.mjs",
           "scripts/server-rust/native-event-http-special-cases.mjs",
-          "scripts/server-rust/chat-message-http-compatibility.mjs"
+          "scripts/server-rust/chat-message-http-compatibility.mjs",
+          "scripts/server-rust/native-history-compatibility.mjs",
+          "scripts/server-rust/native-history-http-compatibility.mjs"
         ],
         "remaining": [
           "Protected native event publications and current Agent-project flows are compared through real HTTP/Live on all three local storage/authentication modes. Historical Task message/plan/interaction project fanout and commit/rollback fences are verified on external PostgreSQL.",
@@ -8370,6 +8485,27 @@
       ],
       "remaining": [
         "Linux/macOS/Windows matrix against this milestone source is required. Complete product GUI/native execution, canonical history and full replacement acceptance remain separate requirements."
+      ]
+    },
+    "nativeCanonicalHistory": {
+      "status": "implemented-pending-platform-acceptance",
+      "implementation": [
+        "cantrip_server_rs/src/native_history/",
+        "cantrip_server_rs/src/http/native_history.rs",
+        "cantrip_server_rs/src/auth/service.rs",
+        "cantrip_server_rs/src/main.rs"
+      ],
+      "evidence": [
+        "scripts/server-rust/native-history-compatibility.mjs",
+        "scripts/server-rust/native-history-http-compatibility.mjs",
+        "scripts/server-rust/history-delivery-oracle.mjs",
+        "cantrip_server_rs/src/native_commands/runtime/logical_delivery/tests.rs",
+        "scripts/server-rust/native-history-races.mjs"
+      ],
+      "validatedSubset": "Local macOS actual Node/Rust production HTTP comparisons pass all3storage x3authentication modes. Unchanged worker client and protection/recovery helpers verify complete encrypted item/turn evidence, pinned archives, immutable receipts/rejection, actual SQL acknowledgment failure with durable defer/retry/ack, exact App Live commit invalidation, restart without worker input and external PostgreSQL Node/Rust handoff in both directions. Complete repository corpus passes all3stores, including canonical aliases, actual transaction writers, model/usage capture, savepoint rollback, pinned multi-writer archives, publication due/limit/attempt semantics, every ownership identity fence, mismatched legacy binding owners, retained receipts, unrelated pending work and process restart.Twenty actual PostgreSQL ingestion contention scenarios cover Node/Node, Rust/Rust, Node/Rust and Rust/Node writers; pg_stat_activity proves first one and then both are blocked on real SQL locks before release. Exact accepted replay, receipt mismatch, canonical CAS, immutable rejection replay and stream conflicts preserve one canonical message/receipt and permanent decisions.62 unchanged Source history publication lifecycle scenarios match the reused native scheduling engine, including stopped in-flight publication, concurrent/coalesced sweeps, eight delivery slots, bounded backoff and failing diagnostics; all42 library tests, strict all-target Clippy and release-library checking pass. Configured CI is not platform acceptance.",
+      "remaining": [
+        "Current-head Linux/macOS/Windows platform and packaged acceptance; full product dispatch/Tasks/Goals integration and the remaining server-replacement objective.",
+        "Full GUI/native runtime consumers and receipt HTTP orchestration, Tasks/Goals/scheduling, Redis/multi-instance, full upgrade/post-write rollback, desktop/container artifacts, Winterhold rehearsal, default cutover and production Node removal."
       ]
     }
   },

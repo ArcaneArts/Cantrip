@@ -1166,6 +1166,14 @@ jobs:
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"
         run: node --import tsx scripts/server-rust/completion-http-compatibility.mjs --database pglite --report .qa/rust-server/logical-completion-http-pglite.json
+      - name: Canonical native history, archives and publication ownership with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-history-compatibility.mjs --database pglite --report .qa/rust-server/native-history-repository-pglite.json
+      - name: Native history HTTP, publication retry and restart with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-history-http-compatibility.mjs --database pglite --report .qa/rust-server/native-history-http-pglite.json
       - name: execution-lanes with bundled-postgres
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"
@@ -1198,6 +1206,14 @@ jobs:
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"
         run: node --import tsx scripts/server-rust/completion-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/logical-completion-http-bundled-postgres.json
+      - name: Canonical native history, archives and publication ownership with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-history-compatibility.mjs --database bundled-postgres --report .qa/rust-server/native-history-repository-bundled-postgres.json
+      - name: Native history HTTP, publication retry and restart with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-history-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/native-history-http-bundled-postgres.json
       - name: execution-lanes with postgres
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"
@@ -1230,6 +1246,14 @@ jobs:
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"
         run: node --import tsx scripts/server-rust/completion-http-compatibility.mjs --database postgres --report .qa/rust-server/logical-completion-http-postgres.json
+      - name: Canonical native history, archives and publication ownership with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-history-compatibility.mjs --database postgres --report .qa/rust-server/native-history-repository-postgres.json
+      - name: Native history HTTP, publication retry and restart with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-history-http-compatibility.mjs --database postgres --report .qa/rust-server/native-history-http-postgres.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -112,7 +112,7 @@ pub(super) fn claim_value(row: &Value) -> Result<Value> {
     result["createdAt"] = super::receipt::iso(&row["created_at"])?;
     parse("managedQueueClaimSchema", &result)
 }
-pub(super) async fn retain_input(
+pub(crate) async fn retain_input(
     tx: &Transaction<'_>,
     claim: &str,
     prompt: &Value,

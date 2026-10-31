@@ -92,6 +92,7 @@ pub struct AuthService {
     pub managed_console: Arc<crate::chats::managed_console::ManagedConsole>,
     pub logical_completion_delivery:
         Arc<crate::native_commands::runtime::logical_delivery::LogicalDelivery>,
+    pub history_publication_delivery: Arc<crate::native_history::delivery::PublicationDelivery>,
     rate_limit: Mutex<AuthRateLimiter>,
 }
 
@@ -313,6 +314,11 @@ impl AuthService {
                 repository.database.clone(),
                 workers.commands.clone(),
             );
+        let history_publication_delivery =
+            crate::native_history::delivery::PublicationDelivery::new(
+                repository.database.clone(),
+                live.hub.clone(),
+            );
         let quotas = workers.relay_quotas.clone();
         let broker = crate::tunnels::broker::Broker::new(crate::tunnels::broker::Options {
             consume: Arc::new(move |owner, worker, bytes| {
@@ -385,6 +391,7 @@ impl AuthService {
             model_routing,
             managed_console,
             logical_completion_delivery,
+            history_publication_delivery,
             project_operations,
             worktrees,
             run_configuration_observations,

@@ -16,7 +16,7 @@ impl HistoryError {
         Self { code, status_code }
     }
 }
-pub(super) fn event_id(chat: &str, key: &str) -> String {
+pub(crate) fn event_id(chat: &str, key: &str) -> String {
     let mut hash = Sha256::new();
     hash.update(b"cantrip:protected-agent-event\0");
     hash.update(chat.as_bytes());

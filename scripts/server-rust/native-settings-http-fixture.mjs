@@ -64,6 +64,7 @@ export async function settingsHttpFixture({
   prepare,
   onLogicalCompletion,
   observeCompletions = false,
+  environment = {},
 }) {
   const fixture = new HttpFixture({
     kind,
@@ -86,6 +87,7 @@ export async function settingsHttpFixture({
             CANTRIP_POSTGRES_BIN_DIR: process.env.CANTRIP_TEST_POSTGRES_BIN_DIR,
           }
         : {}),
+      ...environment,
     },
   });
   let repository,
