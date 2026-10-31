@@ -17,6 +17,7 @@ mod body;
 mod browser_discovery;
 mod browsers;
 mod chat_catalogs;
+mod chat_lifecycle;
 mod direct_attachments;
 mod encryption;
 mod file_documents;
@@ -150,6 +151,7 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(projects::routes())
         .merge(folders::routes())
         .merge(chat_catalogs::routes())
+        .merge(chat_lifecycle::routes())
         .merge(github_import::routes())
         .merge(github_conversion::routes())
         .merge(project_workspaces::routes())

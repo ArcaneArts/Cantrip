@@ -41,6 +41,53 @@ pub async fn run(database: Arc<Database>, request: &Value) -> Result<Value> {
                 .await?
         }
         "scratch-chat-list" => Value::Array(catalog.list_standalone(text("owner")?).await?),
+        "scratch-chat-archive-agent" => {
+            catalog.archive_agent(text("owner")?, text("chat")?).await?
+        }
+        "scratch-chat-delete" => catalog.delete_chat(text("owner")?, text("chat")?).await?,
+        "scratch-chat-archive" => {
+            catalog
+                .archive_standalone(text("owner")?, text("chat")?)
+                .await?
+        }
+        "scratch-chat-restore" => catalog
+            .restore_standalone(text("owner")?, text("chat")?)
+            .await?
+            .unwrap_or(Value::Null),
+        "scratch-chat-deletion-root" => catalog
+            .standalone_deletion_root(text("owner")?, text("chat")?)
+            .await?
+            .unwrap_or(Value::Null),
+        "scratch-chat-restore-project" => catalog
+            .restore_archived(text("owner")?, text("chat")?, &request["input"])
+            .await?
+            .unwrap_or(Value::Null),
+        "scratch-chat-permanent" => Value::Bool(
+            catalog
+                .permanently_delete_archived(text("owner")?, text("chat")?)
+                .await?,
+        ),
+        "scratch-chat-purge-project" => Value::Number(
+            catalog
+                .purge_expired_project_chats(text("owner")?, text("now")?.parse()?)
+                .await? as f64,
+        ),
+        "scratch-chat-update" => catalog
+            .update_label(text("owner")?, text("chat")?, &request["input"])
+            .await?
+            .unwrap_or(Value::Null),
+        "scratch-chat-draft-get" => catalog
+            .composer_draft(text("owner")?, text("chat")?)
+            .await?
+            .unwrap_or(Value::Null),
+        "scratch-chat-draft-put" => catalog
+            .update_composer_draft(text("owner")?, text("chat")?, &request["state"])
+            .await?
+            .unwrap_or(Value::Null),
+        "scratch-chat-ack" => catalog
+            .acknowledge_completion(text("owner")?, text("chat")?)
+            .await?
+            .unwrap_or(Value::Null),
         "scratch-chat-archived" => {
             Value::Array(catalog.list_archived_standalone(text("owner")?).await?)
         }

@@ -1,4 +1,5 @@
-//! Durable chat execution bindings shared by Live and managed consoles.
+//! Durable Chat catalogs, state, retention and execution bindings.
+mod archive;
 pub mod catalog;
 mod context;
 pub mod eligibility;
@@ -8,6 +9,7 @@ mod mcp;
 pub mod roots;
 pub mod routing;
 mod runtime;
+mod state;
 mod summary;
 pub use runtime::RuntimeUpdate;
 
