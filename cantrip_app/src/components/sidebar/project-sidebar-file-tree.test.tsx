@@ -58,11 +58,13 @@ const runtime = vi.hoisted(() => {
       retry: vi.fn(),
     },
     workerEncryption: vi.fn(),
+    preventMenuFocusRestore: vi.fn(),
   };
 });
 
 vi.mock("@radix-ui/react-context-menu", async () => {
   const React = await import("react");
+  const CloseMenu = React.createContext<(() => void) | undefined>(undefined);
   const Container = React.forwardRef<unknown, { children?: React.ReactNode }>(
     ({ children }, _ref) => React.createElement(React.Fragment, null, children),
   );
@@ -76,7 +78,16 @@ vi.mock("@radix-ui/react-context-menu", async () => {
     React.createElement(
       "context-menu-content",
       { "data-context-menu-content": true, onCloseAutoFocus },
-      children,
+      React.createElement(
+        CloseMenu.Provider,
+        {
+          value: () =>
+            onCloseAutoFocus?.({
+              preventDefault: runtime.preventMenuFocusRestore,
+            }),
+        },
+        children,
+      ),
     ),
   );
   const Item = React.forwardRef<
@@ -92,8 +103,9 @@ vi.mock("@radix-ui/react-context-menu", async () => {
     (
       { "aria-label": ariaLabel, children, disabled, onClick, onSelect },
       _ref,
-    ) =>
-      React.createElement(
+    ) => {
+      const close = React.useContext(CloseMenu);
+      return React.createElement(
         "button",
         {
           "aria-label": ariaLabel,
@@ -101,11 +113,13 @@ vi.mock("@radix-ui/react-context-menu", async () => {
           onClick: (event: { shiftKey: boolean }) => {
             onClick?.(event);
             onSelect?.();
+            close?.();
           },
           type: "button",
         },
         children,
-      ),
+      );
+    },
   );
   return {
     Content,
@@ -292,6 +306,7 @@ describe("project sidebar file tree encryption gate", () => {
     runtime.pendingPaths.clear();
     runtime.entriesByPath.set("", [runtime.entry]);
     runtime.workerEncryption.mockClear();
+    runtime.preventMenuFocusRestore.mockClear();
     runtime.gate.bindingKey = "binding-a";
     runtime.gate.error = null;
     runtime.gate.ready = true;
@@ -1028,20 +1043,10 @@ describe("project sidebar file tree encryption gate", () => {
     const input = renderer.root.findByProps({
       "aria-label": "Rename example.ts",
     });
-    const contextMenu = renderer.root
-      .findAllByProps({ "data-context-menu-content": true })
-      .find(
-        (candidate) => typeof candidate.props.onCloseAutoFocus === "function",
-      );
-    const preventDefault = vi.fn();
-    await act(async () =>
-      contextMenu?.props.onCloseAutoFocus({ preventDefault }),
-    );
-
     expect(input.props.value).toBe("example.ts");
     expect(focus).toHaveBeenCalledTimes(1);
     expect(select).toHaveBeenCalledTimes(1);
-    expect(preventDefault).toHaveBeenCalledTimes(1);
+    expect(runtime.preventMenuFocusRestore).toHaveBeenCalledTimes(1);
     expect(
       renderer.root.findByProps({ role: "treeitem" }).props[
         "data-elite-ignore"
@@ -1275,16 +1280,7 @@ describe("project sidebar file tree encryption gate", () => {
         "Create file in project root",
       ).props.onClick({ shiftKey: false }),
     );
-    const content = renderer.root
-      .findAllByProps({ "data-context-menu-content": true })
-      .find(
-        (node) =>
-          node.findAllByProps({ "aria-label": "Create file in project root" })
-            .length > 0,
-      )!;
-    const preventDefault = vi.fn();
-    content.props.onCloseAutoFocus({ preventDefault });
-    expect(preventDefault).toHaveBeenCalledOnce();
+    expect(runtime.preventMenuFocusRestore).toHaveBeenCalledOnce();
     await act(async () => renderer.unmount());
   });
 

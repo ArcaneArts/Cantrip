@@ -71,6 +71,30 @@ export type ExplorerFileMutationAuthorization = {
   isCurrent(): boolean;
 };
 
+function useFileNameMenuAction() {
+  const pendingAction = useRef<(() => void) | null>(null);
+  useEffect(
+    () => () => {
+      pendingAction.current = null;
+    },
+    [],
+  );
+  return {
+    afterClose(action: () => void) {
+      pendingAction.current = action;
+    },
+    onCloseAutoFocus(event: { preventDefault(): void }) {
+      const action = pendingAction.current;
+      if (!action) return;
+      pendingAction.current = null;
+      event.preventDefault();
+      // Mount the input after the menu releases its focus trap. Focusing it
+      // during selection can blur it immediately and submit the default name.
+      action();
+    },
+  };
+}
+
 function SidebarFilesContextMenu({
   children,
   createPending,
@@ -89,7 +113,7 @@ function SidebarFilesContextMenu({
   revealLabel?: string;
 }) {
   const revealLocalFolder = useRef(false);
-  const keepNewFileInputFocused = useRef(false);
+  const fileNameAction = useFileNameMenuAction();
   if ((!onOpenNative || !revealLabel) && !onCreateFolder && !onCreateFile)
     return children;
   return (
@@ -98,11 +122,7 @@ function SidebarFilesContextMenu({
       <ContextMenu.Portal>
         <StyledContextMenuContent
           className="min-w-48"
-          onCloseAutoFocus={(event) => {
-            if (!keepNewFileInputFocused.current) return;
-            keepNewFileInputFocused.current = false;
-            event.preventDefault();
-          }}
+          onCloseAutoFocus={fileNameAction.onCloseAutoFocus}
         >
           {onOpenNative && revealLabel ? (
             <StyledContextMenuItem
@@ -127,10 +147,7 @@ function SidebarFilesContextMenu({
             <StyledContextMenuItem
               aria-label="Create file in project root"
               disabled={createPending}
-              onSelect={() => {
-                keepNewFileInputFocused.current = true;
-                onCreateFile();
-              }}
+              onSelect={() => fileNameAction.afterClose(onCreateFile)}
             >
               <FilePlus2 className="size-4" /> New File
             </StyledContextMenuItem>
@@ -139,7 +156,7 @@ function SidebarFilesContextMenu({
             <StyledContextMenuItem
               aria-label="Create folder in project root"
               disabled={createPending}
-              onSelect={onCreateFolder}
+              onSelect={() => fileNameAction.afterClose(onCreateFolder)}
             >
               {createPending ? (
                 <Loader2 className="size-4 animate-spin" />
@@ -208,7 +225,7 @@ function SidebarFileRow({
   const renameInputRef = useRef<HTMLInputElement>(null);
   const rowRef = useRef<HTMLDivElement>(null);
   const cancelRenameOnBlurRef = useRef(false);
-  const keepRenameInputFocusedRef = useRef(false);
+  const fileNameAction = useFileNameMenuAction();
   const revealLocalFolder = useRef(false);
   useEffect(() => {
     if (!editing) return;
@@ -332,11 +349,7 @@ function SidebarFileRow({
       <ContextMenu.Portal>
         <StyledContextMenuContent
           className="min-w-48"
-          onCloseAutoFocus={(event) => {
-            if (!keepRenameInputFocusedRef.current) return;
-            keepRenameInputFocusedRef.current = false;
-            event.preventDefault();
-          }}
+          onCloseAutoFocus={fileNameAction.onCloseAutoFocus}
         >
           {entry.kind === "file" && onOpenHistory ? (
             <StyledContextMenuItem onSelect={onOpenHistory}>
@@ -378,10 +391,7 @@ function SidebarFileRow({
             <StyledContextMenuItem
               aria-label={`Create file in ${entry.path}`}
               disabled={createPending}
-              onSelect={() => {
-                keepRenameInputFocusedRef.current = true;
-                onCreateFile();
-              }}
+              onSelect={() => fileNameAction.afterClose(onCreateFile)}
             >
               <FilePlus2 className="size-4" /> New File
             </StyledContextMenuItem>
@@ -390,7 +400,7 @@ function SidebarFileRow({
             <StyledContextMenuItem
               aria-label={`Create folder in ${entry.path}`}
               disabled={createPending}
-              onSelect={onCreateFolder}
+              onSelect={() => fileNameAction.afterClose(onCreateFolder)}
             >
               <FolderPlus className="size-4" />
               New Folder
@@ -405,10 +415,7 @@ function SidebarFileRow({
             <ContextMenu.Separator className="my-1 h-px bg-border" />
           ) : null}
           <StyledContextMenuItem
-            onSelect={() => {
-              keepRenameInputFocusedRef.current = true;
-              onRename();
-            }}
+            onSelect={() => fileNameAction.afterClose(onRename)}
           >
             <Pencil className="size-4" />
             Rename
