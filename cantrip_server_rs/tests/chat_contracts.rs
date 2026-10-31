@@ -9,6 +9,12 @@ fn contextual_chat_contracts_match_actual_protocol() -> Result<()> {
         "projectChatWireSummarySchema",
         "standaloneChatWireSummarySchema",
         "contextualChatWireSummarySchema",
+        "standaloneChatRootJobSummarySchema",
+        "standaloneChatScratchProvisionResultSchema",
+        "standaloneChatScratchDeleteResultSchema",
+        "standaloneChatScratchReconciliationResultSchema",
+        "encryptedStandaloneChatCreateSchema",
+        "archivedStandaloneChatWireSummarySchema",
     ] {
         let output = Command::new("node")
             .args([

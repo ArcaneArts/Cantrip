@@ -339,6 +339,12 @@ export const contractRoots = [
   "encryptedProjectWorkspaceUpdateSchema",
   "projectWorkspaceWireSummarySchema",
   "projectWorkspaceWireListSchema",
+  "standaloneChatRootJobSummarySchema",
+  "standaloneChatScratchProvisionResultSchema",
+  "standaloneChatScratchDeleteResultSchema",
+  "standaloneChatScratchReconciliationResultSchema",
+  "encryptedStandaloneChatCreateSchema",
+  "archivedStandaloneChatWireSummarySchema",
 ];
 
 // Resolve the actual source schemas, including their separate protocol modules.
@@ -488,6 +494,12 @@ registerChecks(protocol.projectWireSummarySchema, ["project-wire-summary"]);
 registerChecks(protocol.chatWireSummarySchema, ["chat-title-kind"]);
 registerChecks(protocol.projectChatWireSummarySchema, ["chat-title-kind"]);
 registerChecks(protocol.standaloneChatWireSummarySchema, ["chat-title-kind"]);
+registerChecks(protocol.encryptedStandaloneChatCreateSchema, [
+  "worker-command-chat-title",
+]);
+registerChecks(protocol.archivedStandaloneChatWireSummarySchema, [
+  "worker-command-chat-title",
+]);
 registerChecks(protocol.githubAgentWorkflowContextSchema, [
   "github-agent-workflow-context",
 ]);

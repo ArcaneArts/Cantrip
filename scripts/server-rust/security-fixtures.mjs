@@ -8,6 +8,7 @@ import { policyWireFixtures } from "./policy-wire-fixtures.mjs";
 import { settingsWireFixtures } from "./settings-wire-fixtures.mjs";
 import { placementWireFixtures } from "./placement-wire-fixtures.mjs";
 import { folderWireFixtures } from "./folder-wire-fixtures.mjs";
+import { standaloneChatWireFixtures } from "./standalone-chat-wire-fixtures.mjs";
 import { terminalWireFixtures } from "./terminal-wire-fixtures.mjs";
 import { browserWireFixtures } from "./browser-wire-fixtures.mjs";
 import { projectShareWireFixtures } from "./project-share-wire-fixtures.mjs";
@@ -664,6 +665,7 @@ export const securityFixtures = {
   ...settingsWireFixtures,
   ...placementWireFixtures(projectLabel),
   ...folderWireFixtures(projectLabel),
+  ...standaloneChatWireFixtures(timestamp),
   ...terminalWireFixtures(projectLabel),
   ...browserWireFixtures(projectLabel),
   ...projectSurfaceWireFixtures(projectLabel),

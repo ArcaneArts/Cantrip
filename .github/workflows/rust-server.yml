@@ -386,6 +386,26 @@ jobs:
         run: node --import tsx scripts/server-rust/folder-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/folder-http-bundled.json
       - name: Managed-folder HTTP, Live, encrypted routing and shutdown with external PostgreSQL
         run: node --import tsx scripts/server-rust/folder-http-compatibility.mjs --database postgres --report .qa/rust-server/folder-http-external.json
+      - name: Standalone Chat and scratch result protocol compatibility
+        run: node scripts/server-rust/cargo.mjs test --test chat_contracts -- --nocapture
+      - name: Standalone Chat catalog and scratch transactions with native PGlite
+        run: node --import tsx scripts/server-rust/scratch-root-repository-compatibility.mjs --database pglite --report .qa/rust-server/scratch-catalog-repository-pglite.json
+      - name: Standalone Chat catalog and scratch transactions with private PostgreSQL
+        run: node --import tsx scripts/server-rust/scratch-root-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/scratch-catalog-repository-bundled.json
+      - name: Standalone Chat catalog and scratch transactions with external PostgreSQL
+        run: node --import tsx scripts/server-rust/scratch-root-repository-compatibility.mjs --database postgres --report .qa/rust-server/scratch-catalog-repository-external.json
+      - name: Standalone Chat HTTP, worker transport and Live with native PGlite
+        run: node --import tsx scripts/server-rust/standalone-chat-http-compatibility.mjs --database pglite --report .qa/rust-server/scratch-chat-http-pglite.json
+      - name: Standalone Chat HTTP, worker transport and Live with private PostgreSQL
+        run: node --import tsx scripts/server-rust/standalone-chat-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/scratch-chat-http-bundled.json
+      - name: Standalone Chat HTTP, worker transport and Live with external PostgreSQL
+        run: node --import tsx scripts/server-rust/standalone-chat-http-compatibility.mjs --database postgres --report .qa/rust-server/scratch-chat-http-external.json
+      - name: Standalone Chat error-message matching uses the source statement parameters
+        run: node --import tsx scripts/server-rust/standalone-chat-http-compatibility.mjs --database postgres --worker-id unique-scratch-worker --report .qa/rust-server/scratch-chat-http-message.json
+      - name: Standalone Chat production lease renewal preserves its current attempt
+        run: node --import tsx scripts/server-rust/standalone-chat-http-compatibility.mjs --database postgres --lease-renewal --report .qa/rust-server/scratch-chat-http-leases.json
+      - name: Standalone Chat executor admits four jobs and retains queued work
+        run: node --import tsx scripts/server-rust/standalone-chat-http-compatibility.mjs --database postgres --capacity --report .qa/rust-server/scratch-chat-http-capacity.json
       - name: Browser repositories, layouts and rollback with native PGlite
         run: node --import tsx scripts/server-rust/browser-repository-compatibility.mjs --report .qa/rust-server/browser-repository-pglite.json
       - name: Browser repositories, layouts and rollback with private PostgreSQL

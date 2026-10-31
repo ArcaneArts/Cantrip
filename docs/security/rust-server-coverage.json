@@ -2949,6 +2949,51 @@
         "remaining": [
           "Observe this milestone on Linux, macOS and Windows; packaged and multi-instance acceptance remains required."
         ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/chats",
+        "implementation": "cantrip_server_rs/src/http/chat_catalogs.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/scratch-root-repository-compatibility.mjs",
+          "scripts/server-rust/standalone-chat-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Actual client and full worker scratch filesystem acceptance, production lease timer/fault scenarios, Linux/macOS/Windows verification, packaged operation and multi-instance coordination remain required.",
+          "Archive/restore/delete/fork HTTP lifecycle, chat metadata/drafts/files and the broader chat execution/queue/history/Task domains remain unported."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/chats",
+        "implementation": "cantrip_server_rs/src/http/chat_catalogs.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/scratch-root-repository-compatibility.mjs",
+          "scripts/server-rust/standalone-chat-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Actual client and full worker scratch filesystem acceptance, production lease timer/fault scenarios, Linux/macOS/Windows verification, packaged operation and multi-instance coordination remain required.",
+          "Archive/restore/delete/fork HTTP lifecycle, chat metadata/drafts/files and the broader chat execution/queue/history/Task domains remain unported."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/chats/archived",
+        "implementation": "cantrip_server_rs/src/http/chat_catalogs.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/scratch-root-repository-compatibility.mjs",
+          "scripts/server-rust/standalone-chat-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Actual client and full worker scratch filesystem acceptance, production lease timer/fault scenarios, Linux/macOS/Windows verification, packaged operation and multi-instance coordination remain required.",
+          "Archive/restore/delete/fork HTTP lifecycle, chat metadata/drafts/files and the broader chat execution/queue/history/Task domains remain unported."
+        ]
       }
     ]
   },
@@ -3349,6 +3394,48 @@
         "remaining": [
           "Observe this milestone on Linux, macOS and Windows; packaged and multi-instance acceptance remains required."
         ]
+      },
+      {
+        "command": "chat.scratch.provision",
+        "implementation": "cantrip_server_rs/src/chats/roots/service.rs",
+        "status": "partial",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/scratch-root-repository-compatibility.mjs",
+          "scripts/server-rust/standalone-chat-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Actual client and full worker scratch filesystem acceptance, production lease timer/fault scenarios, Linux/macOS/Windows verification, packaged operation and multi-instance coordination remain required.",
+          "Archive/restore/delete/fork HTTP lifecycle, chat metadata/drafts/files and the broader chat execution/queue/history/Task domains remain unported."
+        ]
+      },
+      {
+        "command": "chat.scratch.delete",
+        "implementation": "cantrip_server_rs/src/chats/roots/service.rs",
+        "status": "partial",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/scratch-root-repository-compatibility.mjs",
+          "scripts/server-rust/standalone-chat-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Actual client and full worker scratch filesystem acceptance, production lease timer/fault scenarios, Linux/macOS/Windows verification, packaged operation and multi-instance coordination remain required.",
+          "Archive/restore/delete/fork HTTP lifecycle, chat metadata/drafts/files and the broader chat execution/queue/history/Task domains remain unported."
+        ]
+      },
+      {
+        "command": "chat.scratch.reconcile",
+        "implementation": "cantrip_server_rs/src/chats/roots/service.rs",
+        "status": "partial",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/scratch-root-repository-compatibility.mjs",
+          "scripts/server-rust/standalone-chat-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Actual client and full worker scratch filesystem acceptance, production lease timer/fault scenarios, Linux/macOS/Windows verification, packaged operation and multi-instance coordination remain required.",
+          "Archive/restore/delete/fork HTTP lifecycle, chat metadata/drafts/files and the broader chat execution/queue/history/Task domains remain unported."
+        ]
       }
     ]
   },
@@ -3582,6 +3669,42 @@
         ],
         "remaining": [
           "Observe this milestone on Linux, macOS and Windows; packaged and multi-instance acceptance remains required."
+        ]
+      },
+      {
+        "tableName": "standalone_chat_roots",
+        "exportName": "standaloneChatRoots",
+        "implementation": [
+          "cantrip_server_rs/src/chats/catalog.rs",
+          "cantrip_server_rs/src/chats/roots/"
+        ],
+        "status": "partial",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/scratch-root-repository-compatibility.mjs",
+          "scripts/server-rust/standalone-chat-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Actual client and full worker scratch filesystem acceptance, production lease timer/fault scenarios, Linux/macOS/Windows verification, packaged operation and multi-instance coordination remain required.",
+          "Archive/restore/delete/fork HTTP lifecycle, chat metadata/drafts/files and the broader chat execution/queue/history/Task domains remain unported."
+        ]
+      },
+      {
+        "tableName": "standalone_chat_root_jobs",
+        "exportName": "standaloneChatRootJobs",
+        "implementation": [
+          "cantrip_server_rs/src/chats/catalog.rs",
+          "cantrip_server_rs/src/chats/roots/"
+        ],
+        "status": "partial",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/scratch-root-repository-compatibility.mjs",
+          "scripts/server-rust/standalone-chat-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Actual client and full worker scratch filesystem acceptance, production lease timer/fault scenarios, Linux/macOS/Windows verification, packaged operation and multi-instance coordination remain required.",
+          "Archive/restore/delete/fork HTTP lifecycle, chat metadata/drafts/files and the broader chat execution/queue/history/Task domains remain unported."
         ]
       }
     ]
@@ -4545,6 +4668,48 @@
         "remaining": [
           "Observe this milestone on Linux, macOS and Windows; packaged and multi-instance acceptance remains required."
         ]
+      },
+      {
+        "method": "listStandaloneChats",
+        "implementation": "cantrip_server_rs/src/chats/catalog.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/scratch-root-repository-compatibility.mjs",
+          "scripts/server-rust/standalone-chat-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Actual client and full worker scratch filesystem acceptance, production lease timer/fault scenarios, Linux/macOS/Windows verification, packaged operation and multi-instance coordination remain required.",
+          "Archive/restore/delete/fork HTTP lifecycle, chat metadata/drafts/files and the broader chat execution/queue/history/Task domains remain unported."
+        ]
+      },
+      {
+        "method": "listArchivedStandaloneChats",
+        "implementation": "cantrip_server_rs/src/chats/catalog.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/scratch-root-repository-compatibility.mjs",
+          "scripts/server-rust/standalone-chat-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Actual client and full worker scratch filesystem acceptance, production lease timer/fault scenarios, Linux/macOS/Windows verification, packaged operation and multi-instance coordination remain required.",
+          "Archive/restore/delete/fork HTTP lifecycle, chat metadata/drafts/files and the broader chat execution/queue/history/Task domains remain unported."
+        ]
+      },
+      {
+        "method": "createStandaloneChat",
+        "implementation": "cantrip_server_rs/src/chats/catalog.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/scratch-root-repository-compatibility.mjs",
+          "scripts/server-rust/standalone-chat-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Actual client and full worker scratch filesystem acceptance, production lease timer/fault scenarios, Linux/macOS/Windows verification, packaged operation and multi-instance coordination remain required.",
+          "Archive/restore/delete/fork HTTP lifecycle, chat metadata/drafts/files and the broader chat execution/queue/history/Task domains remain unported."
+        ]
       }
     ]
   },
@@ -4733,6 +4898,23 @@
         ],
         "remaining": [
           "Shared coordination, multi-instance replay/recovery and packaged supported-platform acceptance."
+        ]
+      },
+      {
+        "resource": "chat",
+        "implementation": [
+          "cantrip_server_rs/src/http/chat_catalogs.rs",
+          "cantrip_server_rs/src/chats/roots/service.rs"
+        ],
+        "status": "partial",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/scratch-root-repository-compatibility.mjs",
+          "scripts/server-rust/standalone-chat-http-compatibility.mjs"
+        ],
+        "remaining": [
+          "Actual client and full worker scratch filesystem acceptance, production lease timer/fault scenarios, Linux/macOS/Windows verification, packaged operation and multi-instance coordination remain required.",
+          "Archive/restore/delete/fork HTTP lifecycle, chat metadata/drafts/files and the broader chat execution/queue/history/Task domains remain unported."
         ]
       }
     ]

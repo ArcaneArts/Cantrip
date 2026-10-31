@@ -25,6 +25,8 @@ mod replicas;
 mod repository_operations;
 #[path = "support/run_configurations.rs"]
 mod run_configurations;
+#[path = "support/scratch_roots.rs"]
+mod scratch_roots;
 #[path = "support/tunnels.rs"]
 mod tunnels;
 #[path = "support/workspaces.rs"]
@@ -118,6 +120,11 @@ async fn run() -> Result<()> {
                 ]))
             } else if request["op"]
                 .as_str()
+                .is_some_and(|op| op.starts_with("scratch-"))
+            {
+                scratch_roots::run(database.clone(), &request).boxed().await
+            } else if request["op"]
+                .as_str()
                 .is_some_and(|op| op.starts_with("discovery-"))
             {
                 discovery::run(database.clone(), &request).boxed().await
@@ -187,6 +194,25 @@ async fn run() -> Result<()> {
             Ok(value) => reply["value"] = value,
             Err(error) => {
                 reply["diagnostic"] = Value::String(error.to_string().into());
+                if error.is::<cantrip_server::chats::catalog::StandaloneUnavailable>() {
+                    reply["scratchError"] =
+                        Value::String("StandaloneChatPlacementUnavailableError".into());
+                }
+                if let Some(error) =
+                    error.downcast_ref::<cantrip_server::chats::roots::RootJobError>()
+                {
+                    reply["scratchError"] = Value::String(
+                        match error {
+                            cantrip_server::chats::roots::RootJobError::Conflict(_) => {
+                                "StandaloneChatRootJobConflictError"
+                            }
+                            cantrip_server::chats::roots::RootJobError::Stale(_) => {
+                                "StandaloneChatRootJobStaleAttemptError"
+                            }
+                        }
+                        .into(),
+                    );
+                }
                 if error.is::<cantrip_server::projects::workspaces::WorkspaceInvariant>() {
                     reply["discoveryError"] =
                         Value::String("ProjectWorkspaceInvariantError".into());
@@ -250,6 +276,7 @@ async fn run() -> Result<()> {
                         || op.starts_with("document-")
                         || op.starts_with("workspace-")
                         || op.starts_with("layout-")
+                        || op.starts_with("scratch-")
                 }) {
                     for cause in error.chain() {
                         if let Some(pg) = cause.downcast_ref::<tokio_postgres::Error>()

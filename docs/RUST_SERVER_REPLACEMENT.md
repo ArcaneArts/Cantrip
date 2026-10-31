@@ -3388,3 +3388,59 @@ The reference notification-order and authentication-shutdown fixtures give cold
 WASM, full migrations and application initialization the same 60-second startup
 budget as the real-server harness, and report their actual setup durations. The
 connection/shutdown test bodies and behavioral polling deadlines stay unchanged.
+
+## Standalone Chat catalogs and scratch jobs (in progress)
+
+Rust now implements standalone creation and active/archived catalogs through
+`POST /api/chats`, `GET /api/chats?context=standalone` and
+`GET /api/chats/archived?context=standalone`. Creation keeps the opaque title,
+locale-sorted compatible worker choice, online preferred worker, inherited model
+and reasoning settings, archived positions, and the transaction containing the
+Chat, scratch root, runtime session, suspended execution lane and provision job.
+
+The scratch repository retains identity-sensitive admission, separate commits
+for deletion enqueue and failure settlement, leases, fenced completions,
+interrupted recovery, retryable reconnect, reconciliation targets, missing roots,
+archive expiry and durable deletion tombstones. Its executor is connected to
+startup, worker reconnects and shutdown draining; it dispatches at most four jobs,
+renews leases every 30 seconds, uses the existing worker command bus and emits
+owner-scoped Chat invalidations after durable transitions. Interruption, expiry and shutdown-fault
+acceptance remains required.
+
+Local Node/Rust comparisons pass 114 repository operations and 89 state snapshots
+on native PGlite, private PostgreSQL and external PostgreSQL. Real trigger failures
+check partial commits and rollback of all five creation records. Concurrent
+claims retain unique job and command ownership, and reopening each backend retains
+its exact state. A failing native prototype committed provision completion before
+DTO validation; the retained failing report demonstrated that mismatch. Provision,
+deletion and purge now validate inside their original transactions.
+
+The HTTP/Live suite passes all nine local database/authentication combinations:
+26 anonymous, 27 password and 28 account observations per implementation, with
+four provision outcomes, an actual worker reconciliation and eight ordered Chat events per profile.
+It retains complete creation/executor state and verifies invalid result,
+worker-error and routing-handle rejection. Source ordinary duplicate creation
+returns 500 because its regex sees Drizzle's top-level statement/parameter message,
+rather than the PostgreSQL cause. Rust preserves that behavior and the 409 case
+when those rendered parameters contain the matched words, without logging opaque
+parameters. The separate PGlite message-predicate comparison also passes.
+The protocol oracle passes 12,149 exact cases across nine Chat/scratch schemas.
+
+Actual external-PostgreSQL lease probes pass both implementations in all three
+auth modes: a held job renews after about 30 seconds, extends the stored lease
+by another two minutes and retains its command, attempt, revision and start time.
+The six-job capacity probe also passes all auth modes: four jobs run while two
+remain queued, each released slot dispatches the next job, and all six complete
+once with their original identities and ordered invalidations.
+
+The broad `pnpm check` finishes with 1,662 source-server tests passing, 57 skipped
+and the existing provider-selection assertion at `local-foundation.test.ts:7218`
+failing. Server, worker, shared package and dependency sources are unchanged.
+This does not make the broad check green.
+
+This milestone does not finish Chat behavior: archive/restore/delete/fork HTTP
+lifecycle, metadata, drafts, files, messages, execution queues, history, Tasks and
+Goal/automation continuity remain required. Actual client/full worker scratch
+filesystem tests, lease expiry and interruption faults, supported platforms, Redis
+coordination, packaged activation and default cutover are also unfinished.
+Normal desktop, development and standalone builds still select the Node server.
