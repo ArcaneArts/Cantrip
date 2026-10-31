@@ -3184,7 +3184,58 @@
         ],
         "remaining": [
           "Full client/full-worker key provisioning and filesystem integration, supported-platform acceptance, multi-instance coordination and further interruption boundaries remain required.",
-          "General messages, native history ingestion, execution queues, Tasks, Goal/automation continuity and packaging remain unfinished."
+          "Native history ingestion, execution queues, Tasks, Goal/automation continuity and packaging remain unfinished."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/chats/:chatId/messages",
+        "implementation": "cantrip_server_rs/src/http/chat_messages.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/chat-message-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-write-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-races.mjs"
+        ],
+        "remaining": [
+          "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
+          "Supported-platform results, Redis coordination and packaging/default cutover remain required."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/chats/:chatId/messages",
+        "implementation": "cantrip_server_rs/src/http/chat_messages.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/chat-message-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-write-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-races.mjs"
+        ],
+        "remaining": [
+          "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
+          "Supported-platform results, Redis coordination and packaging/default cutover remain required."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/chats/:chatId/native-history/turns/read",
+        "implementation": "cantrip_server_rs/src/http/chat_messages.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/chat-message-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-write-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-races.mjs"
+        ],
+        "remaining": [
+          "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
+          "Supported-platform results, Redis coordination and packaging/default cutover remain required."
         ]
       }
     ]
@@ -4002,17 +4053,22 @@
         "exportName": "chatMessages",
         "implementation": [
           "cantrip_server_rs/src/chats/messages.rs",
-          "cantrip_server_rs/src/chats/forks/"
+          "cantrip_server_rs/src/chats/forks/",
+          "cantrip_server_rs/src/chats/message_queries.rs",
+          "cantrip_server_rs/src/chats/message_writes/"
         ],
         "status": "partial",
         "evidence": [
           "cantrip_server_rs/tests/chat_contracts.rs",
           "scripts/server-rust/chat-fork-repository-compatibility.mjs",
-          "scripts/server-rust/chat-fork-http-compatibility.mjs"
+          "scripts/server-rust/chat-fork-http-compatibility.mjs",
+          "scripts/server-rust/chat-message-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-write-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-compatibility.mjs"
         ],
         "remaining": [
-          "Full client/full-worker key provisioning and filesystem integration, supported-platform acceptance, multi-instance coordination and further interruption boundaries remain required.",
-          "General messages, native history ingestion, execution queues, Tasks, Goal/automation continuity and packaging remain unfinished."
+          "Canonical history ingestion, native command lifecycle, Task execution and complete client/full-worker integration remain unfinished.",
+          "Supported-platform acceptance, Redis coordination and packaged activation remain required."
         ]
       },
       {
@@ -4027,7 +4083,63 @@
         ],
         "remaining": [
           "Full client/full-worker key provisioning and filesystem integration, supported-platform acceptance, multi-instance coordination and further interruption boundaries remain required.",
-          "General messages, native history ingestion, execution queues, Tasks, Goal/automation continuity and packaging remain unfinished."
+          "Native history ingestion, execution queues, Tasks, Goal/automation continuity and packaging remain unfinished."
+        ]
+      },
+      {
+        "tableName": "native_history_bindings",
+        "exportName": "nativeHistoryBindings",
+        "implementation": ["cantrip_server_rs/src/chats/native_history.rs"],
+        "status": "partial",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/chat-message-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-write-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-races.mjs"
+        ],
+        "remaining": [
+          "Only owner-authorized persisted reads and canonical legacy-write ownership are ported; ingestion, receipts, publication recovery and durable execution remain unfinished.",
+          "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
+          "Supported-platform results, Redis coordination and packaging/default cutover remain required."
+        ]
+      },
+      {
+        "tableName": "native_history_turns",
+        "exportName": "nativeHistoryTurns",
+        "implementation": ["cantrip_server_rs/src/chats/native_history.rs"],
+        "status": "partial",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/chat-message-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-write-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-races.mjs"
+        ],
+        "remaining": [
+          "Only owner-authorized persisted reads and canonical legacy-write ownership are ported; ingestion, receipts, publication recovery and durable execution remain unfinished.",
+          "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
+          "Supported-platform results, Redis coordination and packaging/default cutover remain required."
+        ]
+      },
+      {
+        "tableName": "native_history_items",
+        "exportName": "nativeHistoryItems",
+        "implementation": [
+          "cantrip_server_rs/src/chats/message_writes/canonical.rs"
+        ],
+        "status": "partial",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/chat-message-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-write-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-races.mjs"
+        ],
+        "remaining": [
+          "Only owner-authorized persisted reads and canonical legacy-write ownership are ported; ingestion, receipts, publication recovery and durable execution remain unfinished.",
+          "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
+          "Supported-platform results, Redis coordination and packaging/default cutover remain required."
         ]
       }
     ]
@@ -5225,7 +5337,7 @@
         ],
         "remaining": [
           "Full client/full-worker key provisioning and filesystem integration, supported-platform acceptance, multi-instance coordination and further interruption boundaries remain required.",
-          "General messages, native history ingestion, execution queues, Tasks, Goal/automation continuity and packaging remain unfinished."
+          "Native history ingestion, execution queues, Tasks, Goal/automation continuity and packaging remain unfinished."
         ]
       },
       {
@@ -5239,7 +5351,343 @@
         ],
         "remaining": [
           "Full client/full-worker key provisioning and filesystem integration, supported-platform acceptance, multi-instance coordination and further interruption boundaries remain required.",
-          "General messages, native history ingestion, execution queues, Tasks, Goal/automation continuity and packaging remain unfinished."
+          "Native history ingestion, execution queues, Tasks, Goal/automation continuity and packaging remain unfinished."
+        ]
+      },
+      {
+        "method": "listMessages",
+        "implementation": "cantrip_server_rs/src/chats/message_queries.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/chat-message-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-write-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-races.mjs"
+        ],
+        "remaining": [
+          "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
+          "Supported-platform results, Redis coordination and packaging/default cutover remain required."
+        ]
+      },
+      {
+        "method": "listEncryptedMessages",
+        "implementation": "cantrip_server_rs/src/chats/message_queries.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/chat-message-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-write-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-races.mjs"
+        ],
+        "remaining": [
+          "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
+          "Supported-platform results, Redis coordination and packaging/default cutover remain required."
+        ]
+      },
+      {
+        "method": "getLatestEncryptedUserMessage",
+        "implementation": "cantrip_server_rs/src/chats/message_queries.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/chat-message-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-write-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-races.mjs"
+        ],
+        "remaining": [
+          "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
+          "Supported-platform results, Redis coordination and packaging/default cutover remain required."
+        ]
+      },
+      {
+        "method": "listEncryptedMessagePage",
+        "implementation": "cantrip_server_rs/src/chats/message_queries.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/chat-message-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-write-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-races.mjs"
+        ],
+        "remaining": [
+          "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
+          "Supported-platform results, Redis coordination and packaging/default cutover remain required."
+        ]
+      },
+      {
+        "method": "listAgentMessageWire",
+        "implementation": "cantrip_server_rs/src/chats/message_queries.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/chat-message-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-write-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-races.mjs"
+        ],
+        "remaining": [
+          "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
+          "Supported-platform results, Redis coordination and packaging/default cutover remain required."
+        ]
+      },
+      {
+        "method": "listTaskMessages",
+        "implementation": "cantrip_server_rs/src/chats/message_queries.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/chat-message-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-write-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-races.mjs"
+        ],
+        "remaining": [
+          "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
+          "Supported-platform results, Redis coordination and packaging/default cutover remain required."
+        ]
+      },
+      {
+        "method": "listTaskMessagePage",
+        "implementation": "cantrip_server_rs/src/chats/message_queries.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/chat-message-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-write-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-races.mjs"
+        ],
+        "remaining": [
+          "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
+          "Supported-platform results, Redis coordination and packaging/default cutover remain required."
+        ]
+      },
+      {
+        "method": "listMessageHeaders",
+        "implementation": "cantrip_server_rs/src/chats/message_queries.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/chat-message-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-write-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-races.mjs"
+        ],
+        "remaining": [
+          "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
+          "Supported-platform results, Redis coordination and packaging/default cutover remain required."
+        ]
+      },
+      {
+        "method": "appendMessage",
+        "implementation": "cantrip_server_rs/src/chats/message_writes/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/chat-message-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-write-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-races.mjs"
+        ],
+        "remaining": [
+          "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
+          "Supported-platform results, Redis coordination and packaging/default cutover remain required."
+        ]
+      },
+      {
+        "method": "appendEncryptedMessage",
+        "implementation": "cantrip_server_rs/src/chats/message_writes/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/chat-message-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-write-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-races.mjs"
+        ],
+        "remaining": [
+          "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
+          "Supported-platform results, Redis coordination and packaging/default cutover remain required."
+        ]
+      },
+      {
+        "method": "upsertEncryptedMessage",
+        "implementation": "cantrip_server_rs/src/chats/message_writes/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/chat-message-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-write-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-races.mjs"
+        ],
+        "remaining": [
+          "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
+          "Supported-platform results, Redis coordination and packaging/default cutover remain required."
+        ]
+      },
+      {
+        "method": "getEncryptedMessageByIdempotencyKey",
+        "implementation": "cantrip_server_rs/src/chats/message_writes/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/chat-message-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-write-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-races.mjs"
+        ],
+        "remaining": [
+          "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
+          "Supported-platform results, Redis coordination and packaging/default cutover remain required."
+        ]
+      },
+      {
+        "method": "setEncryptedMessageModelRoute",
+        "implementation": "cantrip_server_rs/src/chats/message_writes/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/chat-message-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-write-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-races.mjs"
+        ],
+        "remaining": [
+          "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
+          "Supported-platform results, Redis coordination and packaging/default cutover remain required."
+        ]
+      },
+      {
+        "method": "appendTaskMessage",
+        "implementation": "cantrip_server_rs/src/chats/message_writes/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/chat-message-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-write-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-races.mjs"
+        ],
+        "remaining": [
+          "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
+          "Supported-platform results, Redis coordination and packaging/default cutover remain required."
+        ]
+      },
+      {
+        "method": "upsertTaskMessage",
+        "implementation": "cantrip_server_rs/src/chats/message_writes/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/chat-message-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-write-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-races.mjs"
+        ],
+        "remaining": [
+          "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
+          "Supported-platform results, Redis coordination and packaging/default cutover remain required."
+        ]
+      },
+      {
+        "method": "setTaskMessageModelRoute",
+        "implementation": "cantrip_server_rs/src/chats/message_writes/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/chat-message-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-write-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-races.mjs"
+        ],
+        "remaining": [
+          "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
+          "Supported-platform results, Redis coordination and packaging/default cutover remain required."
+        ]
+      },
+      {
+        "method": "getTaskMessageByIdempotencyKey",
+        "implementation": "cantrip_server_rs/src/chats/message_writes/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/chat-message-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-write-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-races.mjs"
+        ],
+        "remaining": [
+          "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
+          "Supported-platform results, Redis coordination and packaging/default cutover remain required."
+        ]
+      },
+      {
+        "method": "setMessageModelRoute",
+        "implementation": "cantrip_server_rs/src/chats/message_writes/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/chat-message-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-write-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-races.mjs"
+        ],
+        "remaining": [
+          "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
+          "Supported-platform results, Redis coordination and packaging/default cutover remain required."
+        ]
+      },
+      {
+        "method": "upsertMessage",
+        "implementation": "cantrip_server_rs/src/chats/message_writes/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/chat-message-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-write-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-races.mjs"
+        ],
+        "remaining": [
+          "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
+          "Supported-platform results, Redis coordination and packaging/default cutover remain required."
+        ]
+      },
+      {
+        "method": "getMessageByIdempotencyKey",
+        "implementation": "cantrip_server_rs/src/chats/message_writes/",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/chat-message-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-write-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-races.mjs"
+        ],
+        "remaining": [
+          "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
+          "Supported-platform results, Redis coordination and packaging/default cutover remain required."
+        ]
+      },
+      {
+        "method": "trimLatestEncryptedTurn",
+        "implementation": "cantrip_server_rs/src/chats/message_queries.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/chat-message-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-write-repository-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-compatibility.mjs",
+          "scripts/server-rust/chat-message-http-races.mjs"
+        ],
+        "remaining": [
+          "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
+          "Supported-platform results, Redis coordination and packaging/default cutover remain required."
         ]
       }
     ]
@@ -6893,6 +7341,29 @@
         "scope": "All actual Windows migration/profile checks pass: exact 115 tables and four sequences; functions and NULL kinds; sessions, CSRF, server UUID, keys and files; Node post-write revision 3; SQL SIGKILL/retry with private-postmaster exit; and a held real COMMIT acknowledgement followed by a newer HTTP write and retry. This does not establish packaged activation or acceptance on other platforms."
       },
       "linuxExportClientFollowup": "Linux run 41163777652 failed because the profile harness ignored CANTRIP_TEST_PG_DUMP_PATH pointing to client 18 and selected the configured PostgreSQL 16 server directory client for native PGlite 17. The existing CLI accepts --pg-dump-path; the harness now passes that requested client without version gates or fallbacks. Actual source-built pg_dump 16.15 reproduces a server-17.5 version mismatch while configured client 18 remains unused. The same all-three-store fixture passes after the fix in 94.64 seconds with an actual wrapper witness confirming all three exports invoked client 18.6. All 115-table/four-sequence, profile-file, HTTP post-write and interruption/lost-ack assertions remain. Current Linux follow-up CI remains required."
+    },
+    "chatMessagePersistence": {
+      "status": "partial",
+      "implementation": [
+        "cantrip_server_rs/src/chats/message_queries.rs",
+        "cantrip_server_rs/src/chats/message_writes/",
+        "cantrip_server_rs/src/chats/native_history.rs",
+        "cantrip_server_rs/src/http/chat_messages.rs"
+      ],
+      "evidence": [
+        "cantrip_server_rs/tests/chat_contracts.rs",
+        "scripts/server-rust/chat-message-repository-compatibility.mjs",
+        "scripts/server-rust/chat-message-write-repository-compatibility.mjs",
+        "scripts/server-rust/chat-message-http-compatibility.mjs",
+        "scripts/server-rust/chat-message-http-races.mjs"
+      ],
+      "validatedSubset": "Local macOS: protected/plain/Task query and write repositories, canonical committed-history ownership and owner-only archive reads match actual Node operations on native PGlite/private/external PostgreSQL. Actual HTTP/Live compares anonymous/password/account profiles on all three stores using production worker endpoint encryption with test-owned keys outside both servers; each returned, published and stored Agent message is decrypted and rejects a wrong message-ID binding. External PostgreSQL additionally observes real blocking PIDs before caller disconnect, competing idempotency, late archival and post-insert SQL failure; commits, exact rollback and ordered Live remain source-compatible. Query/body error precedence, Task rejection, foreign-owner refusal and read-only archive notification exclusion are verified. Supported-platform jobs are configured, not yet accepted.",
+      "remaining": [
+        "Existing app/full-worker integration, native history ingestion and command recovery remain unfinished.",
+        "Supported-platform results, Redis coordination and packaging/default cutover remain required.",
+        "Canonical history ingestion, native command admission, queues, approvals and durable execution consumers are not ported by this milestone.",
+        "Actual Task endpoint encryption/ingestion, complete client/worker product flows and additional crash/shutdown boundaries remain required."
+      ]
     }
   },
   "remainingAcceptance": [

@@ -3612,3 +3612,78 @@ head is `5713c2f66bd30ea91c2733819f005d413ca5220f`. The required broad `pnpm che
 completes in 430 seconds with the existing provider-selection failure at
 `local-foundation.test.ts:7218` (1,662 pass, 57 skip, one fails). This work does
 not establish a green broad check, Windows acceptance or packaged activation.
+
+## Protected messages and persisted turn reads (pending platform acceptance)
+
+The native server now handles message listing, turn-aware pagination, encrypted
+Agent appends and persisted native-history turn reads. The archive endpoint is
+read-only: it neither dispatches to a worker nor requires a live history binding,
+and it emits no mutation invalidation. An owner can read an archived Chat's
+persisted turns. Multiple owned bindings for the same turn remain separate
+candidates in binding order; a larger revision does not hide another binding.
+
+The repository port includes plain, Task and encrypted append/upsert operations,
+idempotency lookup, route attribution, headers, latest protected user lookup and
+turn trimming. Agent writes retain the project/Chat locks and atomic message,
+touch and DTO boundary. Plain and Task writes preserve their separately committed
+steps, including the inserted row surviving a later touch or DTO error. SQL NULL
+and JSON null retain their distinct attribution behavior. Committed canonical
+history mappings return the existing message and reject conflicting identities;
+reservations at revision zero do not claim canonical ownership.
+
+The Source Agent idempotency comparison uses raw stored JSON ordering, while the
+Task path parses its stored envelope before comparing. Tests retain that
+observable difference rather than changing the protocol during the port. Input
+validation, missing/foreign/archived lookup precedence, page-query errors, Task
+write refusal and typed canonical-history errors are compared against real Node
+HTTP responses. Turn pages retain the source's backward user boundary and
+500-header search limit.
+
+Local macOS repository checks compare 46 query operations and nine snapshots,
+then 62 write/archive operations and eight snapshots per backend. Both suites
+run their Rust fixture with a 1 MiB thread stack. The expanded state snapshots
+include archive bindings and turns, and the actual backend reopen also checks
+the complete archive response. Twenty-eight Chat schemas match 20,341 actual
+protocol/issue/rendered-error cases.
+
+Local macOS repository and actual HTTP/Live comparisons pass on native PGlite,
+private PostgreSQL and external PostgreSQL. The HTTP suite exercises anonymous,
+password and account authentication, production worker endpoint encryption and
+actual endpoint decryption with test-owned keys outside both servers. Returned,
+published and reopened Agent messages retain their expected content and reject a
+wrong message-ID binding; server diagnostics contain no plaintext sentinel.
+Task envelope persistence is checked separately and does not establish Task
+endpoint encryption or ingestion acceptance.
+
+External PostgreSQL additionally holds real project/Chat locks and observes the
+blocked backend PIDs before disconnecting callers, admitting competing writes
+or archiving the Chat. Admitted writes commit after their callers disconnect;
+competing duplicate appends retain the source's one-success/one-error result.
+Late archival refuses the write. A real trigger failure after INSERT rolls back
+both the Agent message and Chat touch without publishing a message event. Actual
+Live ordering is compared after these races as well as ordinary responses.
+
+The current broad `pnpm check` exits 1 after 454 seconds: 1,662 source-server
+tests pass, 57 skip and the provider-selection assertion at
+`local-foundation.test.ts:7218` fails. A fresh focused run on clean Primary
+`584a14af9` reproduces that same failure. This is retained baseline evidence,
+not a green broad check. The Source server/worker implementation and dependency
+files are unchanged by this milestone. The separate full formatting check
+also reports 12 unchanged baseline files; focused formatting of this milestone
+is checked separately.
+
+Run the suites from the repository root, replacing DATABASE with pglite,
+bundled-postgres or postgres:
+
+```sh
+node scripts/server-rust/cargo.mjs test --test chat_contracts -- --nocapture
+node --import tsx scripts/server-rust/chat-message-repository-compatibility.mjs --database DATABASE
+node --import tsx scripts/server-rust/chat-message-write-repository-compatibility.mjs --database DATABASE
+node --import tsx scripts/server-rust/chat-message-http-compatibility.mjs --database DATABASE
+```
+
+The dedicated CI job runs these checks on Linux, macOS and Windows. Configuration
+of those jobs is not platform acceptance. Canonical history ingestion, native
+command execution, streaming, queues, approvals, Tasks, Goal continuation,
+complete client/full-worker integration, Redis coordination, packaged activation
+and default cutover remain required. Ordinary builds still use the Node server.

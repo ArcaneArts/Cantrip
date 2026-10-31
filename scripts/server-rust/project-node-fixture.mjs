@@ -17,6 +17,7 @@ import { conversionFixture } from "./conversion-node-fixture.mjs";
 import { discoveryFixture } from "./discovery-node-fixture.mjs";
 import { scratchRootFixture } from "./scratch-root-node-fixture.mjs";
 import { chatForkFixture } from "./chat-fork-node-fixture.mjs";
+import { chatMessageFixture } from "./chat-message-node-fixture.mjs";
 console.error(JSON.stringify({ event: "repository-fixture.database.opening" }));
 const database = await connectDatabase(readServerConfig());
 console.error(JSON.stringify({ event: "repository-fixture.database.ready" }));
@@ -50,6 +51,8 @@ try {
           (statement) =>
             database.repository.projects.database.execute(sql.raw(statement)),
         );
+      } else if (request.op.startsWith("message-")) {
+        value = await chatMessageFixture(database.repository, request);
       } else if (request.op.startsWith("scratch-")) {
         value = await scratchRootFixture(
           database.repository.standaloneChatRootJobs,
@@ -864,6 +867,10 @@ try {
         JSON.stringify({
           id: request.id,
           rejected: true,
+          ...(request.op.startsWith("message-") &&
+          error.name === "NativeHistoryError"
+            ? { historyError: error.code, historyStatus: error.statusCode }
+            : {}),
           ...(request.op.startsWith("fork-")
             ? {
                 trace: consoleTrace,
@@ -886,7 +893,8 @@ try {
             request.op.startsWith("workspace-") ||
             request.op.startsWith("layout-") ||
             request.op.startsWith("scratch-") ||
-            request.op.startsWith("fork-")) &&
+            request.op.startsWith("fork-") ||
+            request.op.startsWith("message-")) &&
           error.cause?.code
             ? { databaseCode: error.cause.code }
             : {}),
