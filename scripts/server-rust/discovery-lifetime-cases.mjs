@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { LiveProbe, currentUser } from "./live-sockets.mjs";
 import { projectLabel } from "./security-fixtures.mjs";
+import { streamingHttpRequest } from "./streaming-http-request.mjs";
 const postgres = createRequire(
   new URL("../../cantrip_server/package.json", import.meta.url),
 )("postgres");
@@ -104,7 +105,10 @@ export async function discoveryLifetimeCases({
   });
   const call = async (url, body, signal) => {
     const client = fixture.client();
-    const response = await fetch(fixture.server.origin + url, {
+    // The controlled caller owns its socket. The retained Linux trace shows
+    // that aborting global fetch opens an unused replacement connection to the
+    // old process, which its shared pool later reuses for a worker heartbeat.
+    const response = await streamingHttpRequest(fixture.server.origin + url, {
       method: "POST",
       headers: {
         origin: "http://127.0.0.1:5173",
