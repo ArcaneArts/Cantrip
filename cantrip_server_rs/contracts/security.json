@@ -341,7 +341,11 @@
     "standaloneChatFileWireRequestSchema": 8231,
     "encryptedChatForkSchema": 8238,
     "chatMessageOpaqueSummarySchema": 4750,
-    "chatMessageOpaqueContentListSchema": 8249
+    "chatMessageOpaqueContentListSchema": 8249,
+    "taskMessageOpaqueSummarySchema": 8250,
+    "chatMessagePageQuerySchema": 8276,
+    "chatMessageWireListSchema": 8282,
+    "chatMessageWirePageSchema": 8291
   },
   "nodes": [
     {
@@ -48296,6 +48300,292 @@
       "name": "chatMessageOpaqueContentListSchema",
       "element": 1383,
       "checks": [{ "check": "max_length", "maximum": 100000, "when": "length" }]
-    }
+    },
+    {
+      "type": "object",
+      "name": "taskRelocationContextMessageSchema",
+      "shape": {
+        "role": 1445,
+        "mode": 1446,
+        "attachmentIds": 1447,
+        "id": 8251,
+        "chatId": 8252,
+        "worktreeId": 8253,
+        "executionLaneId": 8254,
+        "sequence": 8256,
+        "protectedContent": 1450,
+        "modelId": 8257,
+        "modelRouteId": 8259,
+        "providerId": 8261,
+        "providerName": 8263,
+        "providerModelName": 8265,
+        "reasoningEffort": 8267,
+        "appliedReasoningEffort": 8269,
+        "reasoningAdjusted": 8271,
+        "idempotencyKey": 8272,
+        "createdAt": 8274
+      },
+      "catchall": 8275,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 8255, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    { "type": "nullable", "innerType": 8258, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 8260, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 8262, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 8264, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 500, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 8266, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 500, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 8268, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 8270, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100, "when": "length" }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "nullable", "innerType": 8273, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "chatMessagePageQuerySchema",
+      "shape": { "beforeSequence": 8277, "limit": 8279 },
+      "catchall": 8281,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 8278,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "coerce": true,
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 8280,
+      "defaultValue": 150,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "coerce": true,
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 1, "inclusive": true },
+        { "check": "less_than", "value": 200, "inclusive": true }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "union",
+      "name": "chatMessageWireListSchema",
+      "options": [8283, 8287],
+      "discriminator": "kind",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "kind": 8284, "messages": 8285 },
+      "catchall": 8286,
+      "checks": []
+    },
+    { "type": "literal", "values": ["task-encrypted"], "checks": [] },
+    {
+      "type": "array",
+      "element": 8250,
+      "checks": [{ "check": "max_length", "maximum": 100000, "when": "length" }]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "kind": 8288, "messages": 8289 },
+      "catchall": 8290,
+      "checks": []
+    },
+    { "type": "literal", "values": ["chat-encrypted"], "checks": [] },
+    {
+      "type": "array",
+      "element": 4750,
+      "checks": [{ "check": "max_length", "maximum": 100000, "when": "length" }]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "union",
+      "name": "chatMessageWirePageSchema",
+      "options": [8292, 8306],
+      "discriminator": "kind",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "kind": 8293, "messages": 8294, "page": 8295 },
+      "catchall": 8305,
+      "checks": []
+    },
+    { "type": "literal", "values": ["task-encrypted"], "checks": [] },
+    {
+      "type": "array",
+      "element": 8250,
+      "checks": [{ "check": "max_length", "maximum": 500, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "chatMessagePageInfoSchema",
+      "shape": {
+        "hasMore": 8296,
+        "nextBeforeSequence": 8297,
+        "oldestSequence": 8299,
+        "newestSequence": 8301,
+        "startsAtUserTurn": 8303
+      },
+      "catchall": 8304,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "nullable", "innerType": 8298, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    { "type": "nullable", "innerType": 8300, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    { "type": "nullable", "innerType": 8302, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "kind": 8307, "messages": 8308, "page": 8295 },
+      "catchall": 8309,
+      "checks": []
+    },
+    { "type": "literal", "values": ["chat-encrypted"], "checks": [] },
+    {
+      "type": "array",
+      "element": 4750,
+      "checks": [{ "check": "max_length", "maximum": 500, "when": "length" }]
+    },
+    { "type": "never", "checks": [] }
   ]
 }

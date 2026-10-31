@@ -7,6 +7,7 @@ pub mod forks;
 pub mod guard;
 pub mod managed_console;
 mod mcp;
+pub mod message_queries;
 mod messages;
 pub mod roots;
 pub mod routing;

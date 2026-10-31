@@ -28,7 +28,61 @@ export function standaloneChatWireFixtures(timestamp) {
     startedAt: null,
     completedAt: null,
   };
+  const message = (contextKind = "project") => ({
+    id: "original",
+    chatId: job.chatId,
+    contextKind,
+    worktreeId: contextKind === "project" ? "tree" : null,
+    scratchRootId: contextKind === "standalone" ? job.rootId : null,
+    executionLaneId: null,
+    sequence: 1,
+    role: "assistant",
+    mode: "default",
+    attachmentIds: [],
+    protectedContent: titleProtection.protectedLabel,
+    modelId: null,
+    modelRouteId: null,
+    providerId: null,
+    providerName: null,
+    providerModelName: null,
+    reasoningEffort: null,
+    appliedReasoningEffort: null,
+    reasoningAdjusted: false,
+    idempotencyKey: null,
+    createdAt: timestamp,
+  });
+  const {
+    contextKind: _context,
+    scratchRootId: _scratch,
+    ...taskMessage
+  } = message();
+  const page = {
+    hasMore: false,
+    nextBeforeSequence: null,
+    oldestSequence: null,
+    newestSequence: null,
+    startsAtUserTurn: true,
+  };
   return {
+    taskMessageOpaqueSummarySchema: [taskMessage],
+    chatMessagePageQuerySchema: [
+      {},
+      { limit: 1 },
+      { limit: "200", beforeSequence: "12" },
+    ],
+    chatMessageWireListSchema: [
+      { kind: "chat-encrypted", messages: [] },
+      { kind: "chat-encrypted", messages: [message("standalone")] },
+      { kind: "task-encrypted", messages: [taskMessage] },
+    ],
+    chatMessageWirePageSchema: [
+      { kind: "chat-encrypted", messages: [], page },
+      {
+        kind: "task-encrypted",
+        messages: [taskMessage],
+        page: { ...page, oldestSequence: 1, newestSequence: 1 },
+      },
+    ],
     encryptedChatForkSchema: [
       { id: job.id, titleProtection },
       {
@@ -56,31 +110,7 @@ export function standaloneChatWireFixtures(timestamp) {
         },
       ],
     ],
-    chatMessageOpaqueSummarySchema: ["project", "standalone"].map(
-      (contextKind) => ({
-        id: "original",
-        chatId: job.chatId,
-        contextKind,
-        worktreeId: contextKind === "project" ? "tree" : null,
-        scratchRootId: contextKind === "standalone" ? job.rootId : null,
-        executionLaneId: null,
-        sequence: 1,
-        role: "assistant",
-        mode: "default",
-        attachmentIds: [],
-        protectedContent: titleProtection.protectedLabel,
-        modelId: null,
-        modelRouteId: null,
-        providerId: null,
-        providerName: null,
-        providerModelName: null,
-        reasoningEffort: null,
-        appliedReasoningEffort: null,
-        reasoningAdjusted: false,
-        idempotencyKey: null,
-        createdAt: timestamp,
-      }),
-    ),
+    chatMessageOpaqueSummarySchema: ["project", "standalone"].map(message),
     conversationRestoreSchema: [
       {},
       { attachToTabLayout: false },

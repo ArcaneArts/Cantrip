@@ -356,6 +356,10 @@ export const contractRoots = [
   "encryptedChatForkSchema",
   "chatMessageOpaqueSummarySchema",
   "chatMessageOpaqueContentListSchema",
+  "taskMessageOpaqueSummarySchema",
+  "chatMessagePageQuerySchema",
+  "chatMessageWireListSchema",
+  "chatMessageWirePageSchema",
 ];
 
 // Resolve the actual source schemas, including their separate protocol modules.

@@ -11,6 +11,8 @@ mod browsers;
 mod chat_console;
 #[path = "support/chat_forks.rs"]
 mod chat_forks;
+#[path = "support/chat_messages.rs"]
+mod chat_messages;
 #[path = "support/conversions.rs"]
 mod conversions;
 #[path = "support/discovery.rs"]
@@ -127,6 +129,11 @@ async fn run() -> Result<()> {
                 chat_forks::run(database.clone(), &request, console_trace.clone())
                     .boxed()
                     .await
+            } else if request["op"]
+                .as_str()
+                .is_some_and(|op| op.starts_with("message-"))
+            {
+                chat_messages::run(database.clone(), &request).boxed().await
             } else if request["op"]
                 .as_str()
                 .is_some_and(|op| op.starts_with("scratch-"))
@@ -308,6 +315,7 @@ async fn run() -> Result<()> {
                         || op.starts_with("layout-")
                         || op.starts_with("scratch-")
                         || op.starts_with("fork-")
+                        || op.starts_with("message-")
                 }) {
                     for cause in error.chain() {
                         if let Some(pg) = cause.downcast_ref::<tokio_postgres::Error>()
