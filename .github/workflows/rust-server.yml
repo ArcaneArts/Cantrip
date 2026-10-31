@@ -1061,6 +1061,11 @@ jobs:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"
           CANTRIP_FIXTURE_GDB: gdb
         run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --database pglite --report .qa/rust-server/native-stack-admission-pglite.json
+      - name: Original one MiB execution target suite under GDB
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+          CANTRIP_FIXTURE_GDB: gdb
+        run: node scripts/server-rust/project-target-repository-compatibility.mjs --report .qa/rust-server/target-stack-pglite.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
