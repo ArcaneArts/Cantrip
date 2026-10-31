@@ -101,6 +101,7 @@ async fn dump_inner(database: &pglite::PGlite, executable: &Path) -> Result<Stri
             "--no-privileges",
             "--encoding=UTF8",
         ])
+        .args(super::dump_stream::OPTIONS)
         .env("PGHOST", "127.0.0.1")
         .env("PGHOSTADDR", "127.0.0.1")
         .env("PGPORT", port.to_string())
@@ -137,7 +138,7 @@ async fn dump_inner(database: &pglite::PGlite, executable: &Path) -> Result<Stri
         output.status.code(),
         String::from_utf8_lossy(&output.stderr)
     );
-    String::from_utf8(output.stdout).context("decode UTF-8 dump")
+    super::dump_stream::decode(&output.stdout)
 }
 
 fn packet(tag: u8, body: &[u8]) -> Vec<u8> {

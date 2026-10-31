@@ -31,7 +31,7 @@ const { PGlite } = createRequire(
   import.meta.resolve("@electric-sql/pglite-tools/pg_dump"),
 )("@electric-sql/pglite");
 const dumpLiteral =
-  "before\n\\restrict CantripDumpGuardTest42\nmiddle\n\\unrestrict CantripDumpGuardTest42\nafter";
+  "before\n\\restrict CantripDumpGuardTest42\nmiddle\n\\unrestrict CantripDumpGuardTest42\nafter\r\noriginal CRLF\roriginal bare CR\n😺 e\u0301";
 const root = await mkdtemp(path.join(tmpdir(), "cantrip-logical-transfer-"));
 const source = path.join(root, "legacy");
 Object.assign(process.env, fixtureEnvironment(source));
