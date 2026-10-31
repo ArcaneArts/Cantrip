@@ -74,7 +74,9 @@ export async function repositoryFixture({
         }, requestTimeoutMs);
         waiting.set(id, { resolve, reject, timer });
         server.child.stdin.write(
-          JSON.stringify({ id, ...operation }) + "\n",
+          JSON.stringify({ id, ...operation })
+            .replaceAll("\u2028", "\\u2028")
+            .replaceAll("\u2029", "\\u2029") + "\n",
           (error) => {
             if (error) {
               clearTimeout(timer);

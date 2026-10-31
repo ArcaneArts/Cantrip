@@ -15,6 +15,7 @@ import { gitManagedOperationContext } from "../../cantrip_server/src/app/shared/
 import { worktreeCoordinatorFixture } from "./worktree-coordinator-node-fixture.mjs";
 import { conversionFixture } from "./conversion-node-fixture.mjs";
 import { discoveryFixture } from "./discovery-node-fixture.mjs";
+import { scratchRootFixture } from "./scratch-root-node-fixture.mjs";
 console.error(JSON.stringify({ event: "repository-fixture.database.opening" }));
 const database = await connectDatabase(readServerConfig());
 console.error(JSON.stringify({ event: "repository-fixture.database.ready" }));
@@ -40,6 +41,12 @@ try {
           consoleTrace,
         );
         value = { result: value, trace: consoleTrace };
+      } else if (request.op.startsWith("scratch-")) {
+        value = await scratchRootFixture(
+          database.repository.standaloneChatRootJobs,
+          request,
+          database.repository,
+        );
       } else if (request.op.startsWith("discovery-")) {
         value = await discoveryFixture(
           database.repository.workspaceRepositoryDiscoveryJobs,
@@ -855,7 +862,8 @@ try {
             request.op.startsWith("browser-") ||
             request.op.startsWith("document-") ||
             request.op.startsWith("workspace-") ||
-            request.op.startsWith("layout-")) &&
+            request.op.startsWith("layout-") ||
+            request.op.startsWith("scratch-")) &&
           error.cause?.code
             ? { databaseCode: error.cause.code }
             : {}),
@@ -889,6 +897,9 @@ try {
             : {}),
           ...(request.op.startsWith("conversion-")
             ? { conversionError: error.constructor.name }
+            : {}),
+          ...(request.op.startsWith("scratch-")
+            ? { scratchError: error.constructor.name }
             : {}),
           ...(request.op.startsWith("discovery-")
             ? { discoveryError: error.constructor.name }

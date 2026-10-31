@@ -362,6 +362,7 @@ async fn main() -> Result<()> {
         service.project_replicas.stop();
         service.github_conversion.stop();
         service.workspace_discovery.stop();
+        service.scratch_roots.stop();
         service.worker_maintenance.stop();
         service.tunnel_leases.stop();
         shutdown_step!(
@@ -418,6 +419,7 @@ async fn main() -> Result<()> {
         shutdown_step!("tunnel-leases", service.tunnel_leases.drained().await);
         shutdown_step!("tunnel-runtime", service.tunnel_runtime.drained().await);
         shutdown_step!("folder-jobs", service.folder_setup.drained().await);
+        shutdown_step!("scratch-root-jobs", service.scratch_roots.drained().await);
         shutdown_step!("replica-jobs", service.project_replicas.drained().await);
         shutdown_step!(
             "github-conversion-jobs",
