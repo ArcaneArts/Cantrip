@@ -5,6 +5,7 @@ import { File, Loader2, Save } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Markdown } from "@/components/chat/markdown";
 import { NativeCodeEditor } from "@/components/editor/native-code-editor";
+import { isLogFile } from "@/components/editor/log-file";
 import { isLicenseFile } from "@/components/editor/license-file";
 import { LicenseFileView } from "@/components/editor/license-file-view";
 import type { EditorDocumentSession } from "@/components/editor/document-session";
@@ -200,8 +201,7 @@ export function ChatFilePreview({
     setDocument(next);
     setContent(next.text);
     setVersion(next.version);
-    if (switched)
-      setMode(defaultExplorerFileMode(entry?.path ?? ""));
+    if (switched) setMode(defaultExplorerFileMode(entry?.path ?? ""));
   }, [query.data, documentId, entry?.path]);
   const save = useMutation({
     mutationFn: async () => {
@@ -291,7 +291,9 @@ export function ChatFilePreview({
         >
           {entry.name}
         </span>
-        {entry.markdown || isLicenseFile(entry.path) ? (
+        {entry.markdown ||
+        isLicenseFile(entry.path) ||
+        isLogFile(entry.path) ? (
           <Button
             size="sm"
             variant={mode === "preview" ? "outline" : "ghost"}
@@ -355,6 +357,7 @@ export function ChatFilePreview({
           <NativeCodeEditor
             session={document}
             path={entry.path}
+            readOnly={mode === "preview"}
             onChange={changeContent}
             onSave={() => save.mutate()}
           />

@@ -88,6 +88,13 @@ pub(super) fn refine(
                 "File mode requires a file view.".into(),
             );
         }
+        if value.get("fileViewer").is_some() && value["resource"]["definitionId"] != "project.file"
+        {
+            issue(
+                vec![json!("fileViewer")],
+                "File viewer requires a file view.".into(),
+            );
+        }
         if value["resource"]["kind"] == "builtin" {
             if value["builtInState"].get("definitionId") != value["resource"].get("definitionId") {
                 issue(

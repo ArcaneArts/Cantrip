@@ -449,7 +449,33 @@ const legacyFileImportExports = [
   "workspaceLegacyFileImportRequestSchema",
   "workspaceLegacyFileImportSchema",
 ];
+const logTailExports = [
+  "LOG_TAIL_PAGE_BYTES",
+  "explorerLogTailSchema",
+  "logTailCursorSchema",
+];
+const textPreviewExports = [
+  "TEXT_PREVIEW_BYTES_LIMIT",
+  "TEXT_PREVIEW_PAGE_BYTES",
+  "TEXT_PREVIEW_PAGE_LINES",
+  "explorerTextPreviewPageSchema",
+];
+const binaryFileExports = [
+  "BINARY_FILE_PAGE_BYTES",
+  "explorerBinaryPageSchema",
+  "explorerBinaryReadSchema",
+];
 const explorerFileImportExports = ["EXPLORER_FILE_IMPORT_CHUNK_BYTES"];
+const binaryWriteExports = [
+  "BINARY_WRITE_CHUNK_BYTES",
+  "binaryWriteAbortSchema",
+  "binaryWriteBeginSchema",
+  "binaryWriteChunkSchema",
+  "binaryWriteCommitSchema",
+  "binaryWriteReceiptSchema",
+  "binaryWriteStatusSchema",
+  "binaryWriteVersionSchema",
+];
 
 describe("protocol public surface compatibility", () => {
   it("preserves the root runtime export baseline with reviewed CUA and managed-session additions", () => {
@@ -469,6 +495,10 @@ describe("protocol public surface compatibility", () => {
           !fileDocumentExports.includes(name) &&
           !legacyFileImportExports.includes(name) &&
           !explorerFileImportExports.includes(name) &&
+          !textPreviewExports.includes(name) &&
+          !logTailExports.includes(name) &&
+          !binaryFileExports.includes(name) &&
+          !binaryWriteExports.includes(name) &&
           !conversationCatalogExports.includes(name) &&
           !conversationViewExports.includes(name) &&
           !taskAutomaticRetryExports.includes(name) &&
@@ -483,7 +513,19 @@ describe("protocol public surface compatibility", () => {
     expect(
       exportNames.filter((name) => retiredWorkbenchExports.includes(name)),
     ).toEqual([]);
-    expect(exportNames).toHaveLength(2108);
+    expect(exportNames).toHaveLength(2126);
+    expect(
+      exportNames.filter((name) => binaryWriteExports.includes(name)),
+    ).toEqual(binaryWriteExports);
+    expect(
+      exportNames.filter((name) => binaryFileExports.includes(name)),
+    ).toEqual(binaryFileExports);
+    expect(exportNames.filter((name) => logTailExports.includes(name))).toEqual(
+      logTailExports,
+    );
+    expect(
+      exportNames.filter((name) => textPreviewExports.includes(name)),
+    ).toEqual(textPreviewExports);
     expect(
       exportNames.filter((name) => explorerFileImportExports.includes(name)),
     ).toEqual(explorerFileImportExports);

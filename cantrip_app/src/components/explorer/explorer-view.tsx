@@ -1,3 +1,9 @@
+import { resolveFileViewer } from "@/components/files/file-viewers";
+import { mediaBlobForViewer } from "@/components/files/viewer-media";
+import { LogFileView } from "./log-file-view";
+import { PagedTextPreview } from "./paged-text-preview";
+import { requiresTextPreview, retryFileRead } from "@/lib/file-operation-error";
+import { executeExplorerOperation } from "@/lib/api/files";
 import { PanelToolbar } from "@/components/workspace/panel-toolbar";
 import { usePanelScrollDivider } from "@/lib/use-panel-scroll-divider";
 import { useEditorQuit } from "./use-editor-quit";
@@ -6,7 +12,6 @@ import {
   ExplorerHeaderActions,
 } from "@/components/workspace/content-header-actions";
 import {
-  explorerMediaTypeForPath,
   type CodeAppearance,
   type ExplorerMediaKind,
   type ExplorerEntry,
@@ -41,7 +46,6 @@ import {
   type EditorSessionTransfer,
 } from "@/components/editor/document-session";
 import { NativeCodeEditor } from "@/components/editor/native-code-editor";
-import { isLicenseFile } from "@/components/editor/license-file";
 import { LicenseFileView } from "@/components/editor/license-file-view";
 import { getClientSession } from "@/lib/client-session";
 import { confirmEditorAction } from "@/lib/editor-confirmation";
@@ -49,7 +53,6 @@ import { useExplorerWorkerEncryption } from "@/components/explorer/use-explorer-
 import {
   defaultExplorerFileMode,
   markdownPreviewUsesPlainText,
-  structuredFileFormatForPath,
 } from "@/components/explorer/explorer-file-language";
 import {
   GitRepositoryGraphView,
@@ -82,6 +85,7 @@ function ExplorerMediaView({
   fileAccess,
   kind,
   mimeType,
+  forceType = false,
   path,
   revision,
   onReady,
@@ -91,6 +95,7 @@ function ExplorerMediaView({
   fileAccess?: FileAccess;
   kind: ExplorerMediaKind;
   mimeType: string;
+  forceType?: boolean;
   path: string;
   revision: number;
   onReady?(): void;
@@ -108,8 +113,17 @@ function ExplorerMediaView({
     setFailed(false);
     setSource(null);
     void (
-      fileAccess ? fileAccess.media(path) : loadExplorerMedia(explorerId, path)
+      fileAccess
+        ? forceType
+          ? fileAccess.media(path, { kind, mimeType })
+          : fileAccess.media(path)
+        : forceType
+          ? loadExplorerMedia(explorerId, path, { kind, mimeType })
+          : loadExplorerMedia(explorerId, path)
     )
+      .then((blob) =>
+        forceType ? mediaBlobForViewer(blob, kind, mimeType) : blob,
+      )
       .then((blob) => {
         if (disposed) return;
         objectUrl = URL.createObjectURL(blob);
@@ -122,7 +136,7 @@ function ExplorerMediaView({
       disposed = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [explorerId, path, revision, fileAccess]);
+  }, [explorerId, path, revision, fileAccess, forceType, kind, mimeType]);
   if (failed) {
     return (
       <div className="grid h-full place-items-center p-6">
@@ -171,9 +185,8 @@ function ExplorerMediaView({
         onError={() => setFailed(true)}
         playsInline
         preload="metadata"
-      >
-        <source src={source} type={mimeType} />
-      </video>
+        src={source}
+      />
     </div>
   );
 }
@@ -205,6 +218,7 @@ export interface ExplorerTransferState {
   workerId: string;
   selectedPath: string | null;
   fileMode: ExplorerFileMode;
+  fileViewer?: string | null;
   documents: EditorSessionTransfer;
 }
 
@@ -218,7 +232,7 @@ export interface ExplorerLifecycleActions {
   captureTransfer?(): Promise<ExplorerTransferState>;
   restoreTransfer?(state: ExplorerTransferState): void;
   cancelClose(): void;
-  discard?(): void;
+  discard?(): void | Promise<void>;
   dirty: boolean;
   flushViewState(): Promise<boolean>;
   prepareClose(): Promise<void>;
@@ -276,6 +290,7 @@ export function ExplorerView({
   appearance,
   explorer,
   fileAccess,
+  fileViewer: requestedViewer,
   graphRequest,
   gitStatus,
   onChanged,
@@ -302,6 +317,7 @@ export function ExplorerView({
   appearance: CodeAppearance;
   explorer: ExplorerSummary | FileDocumentEditorView;
   fileAccess?: FileAccess;
+  fileViewer?: string | null;
   graphRequest?: ExplorerGraphRequest | null;
   gitStatus?: GitStatus;
   onChanged?(explorer: ExplorerSummary): void;
@@ -455,6 +471,27 @@ export function ExplorerView({
   const draftRef = useRef(draft);
   const draftVersionRef = useRef(draftVersion);
   const dirtyRef = useRef(false);
+  const [customDocument, setCustomDocument] = useState<{
+    key: string;
+    session: import("@/components/files/file-viewers").FileViewerSession;
+  } | null>(null);
+  const customKey = JSON.stringify([
+    fileAccess?.cacheKey,
+    explorer.projectId,
+    explorer.worktreeId,
+    selectedPath,
+  ]);
+  const customSession =
+    customDocument?.key === customKey ? customDocument.session : null;
+  const customSessionRef = useRef(customSession);
+  customSessionRef.current = customSession;
+  const reportCustomSession = useCallback(
+    (
+      session:
+        import("@/components/files/file-viewers").FileViewerSession | null,
+    ) => setCustomDocument(session ? { key: customKey, session } : null),
+    [customKey],
+  );
   const worktreeIdRef = useRef(explorer.worktreeId);
   const persistedViewStateRef = useRef({
     selectedPath: explorer.selectedPath,
@@ -462,6 +499,7 @@ export function ExplorerView({
   });
   const viewStateQueueRef = useRef<Promise<boolean>>(Promise.resolve(true));
   const [refreshPending, setRefreshPending] = useState(false);
+  const [previewRevision, setPreviewRevision] = useState(0);
   const fileBinding = useMemo(
     () => ({
       workerId: explorer.activeWorkerId,
@@ -470,12 +508,29 @@ export function ExplorerView({
     }),
     [explorer.activeWorkerId, explorer.projectId, explorer.worktreeId],
   );
+  const fileViewer =
+    requestedViewer !== undefined
+      ? requestedViewer
+      : initialTransfer?.fileViewer;
+  const fileViewerRef = useRef(fileViewer);
+  fileViewerRef.current = fileViewer;
+  const readingViewer = selectedPath
+    ? resolveFileViewer(selectedPath, fileViewer)
+    : null;
   const file = useQuery({
-    enabled: Boolean(
-      streamEncryptionReady &&
-      selectedPath &&
-      explorerMediaTypeForPath(selectedPath) === null,
-    ),
+    retry: retryFileRead,
+    // Once the actual full read selects paging, background filesystem events
+    // must not restart it. Refresh explicitly fetches a new snapshot below.
+    enabled: (query) =>
+      Boolean(
+        streamEncryptionReady &&
+        selectedPath &&
+        !readingViewer?.media &&
+        !readingViewer?.custom &&
+        !readingViewer?.unavailable &&
+        !(readingViewer?.log && fileMode === "preview") &&
+        !requiresTextPreview(query.state.error),
+      ),
     queryFn: () =>
       fileAccess
         ? fileAccess.read(selectedPath!)
@@ -579,19 +634,17 @@ export function ExplorerView({
         path: displayedSelectedPath,
       })
     : null;
-  const editableLanguage = displayedSelectedPath
-    ? explorerMediaTypeForPath(displayedSelectedPath) === null
-      ? "text"
-      : null
-    : null;
-  const structuredFormat = displayedSelectedPath
-    ? explorerMediaTypeForPath(displayedSelectedPath) === null
-      ? structuredFileFormatForPath(displayedSelectedPath)
-      : null
-    : null;
-  const mediaType = displayedSelectedPath
-    ? explorerMediaTypeForPath(displayedSelectedPath)
-    : null;
+  const viewer = resolveFileViewer(displayedSelectedPath ?? "", fileViewer);
+  const editableLanguage =
+    !displayedSelectedPath ||
+    viewer.media ||
+    viewer.custom ||
+    viewer.unavailable
+      ? null
+      : "text";
+  const structuredFormat = viewer.unavailable ? null : viewer.structuredFormat;
+  const mediaType = viewer.media;
+  const CustomFileViewer = viewer.custom;
   const graphVisible = graphRootPath !== undefined;
   const surfaceLifecycleState = {
     active,
@@ -607,8 +660,9 @@ export function ExplorerView({
     path: string | null;
     transient: boolean;
   } | null>(null);
-  const dirty =
-    nativeDocument?.id === nativeDocumentId
+  const dirty = customSession
+    ? customSession.dirty || customSession.pending
+    : nativeDocument?.id === nativeDocumentId
       ? nativeDocument.dirty
       : draftVersion !== null && draft !== baselineContent;
   const hasDirtyDocuments = dirty || sessions.current!.hasDirtyDocuments;
@@ -706,6 +760,11 @@ export function ExplorerView({
       transferSuspended ||
       transferInstalling ||
       !file.data ||
+      requiresTextPreview(file.error) ||
+      (selectedPath &&
+        resolveFileViewer(selectedPath, fileViewer).log &&
+        fileMode === "preview" &&
+        !nativeDocument?.dirty) ||
       file.data.path !== selectedPath ||
       file.data.path !== displayedSelectedPath ||
       (draftVersion !== null &&
@@ -734,6 +793,8 @@ export function ExplorerView({
     transferInstalling,
     draftVersion,
     file.data,
+    file.error,
+    fileMode,
     file.isFetchedAfterMount,
     recoveryFetching,
     documentRecovery,
@@ -746,7 +807,8 @@ export function ExplorerView({
   const applyViewState = useCallback(
     (next: { selectedPath: string | null; fileMode: ExplorerFileMode }) => {
       const nextFileMode =
-        next.selectedPath && explorerMediaTypeForPath(next.selectedPath)
+        next.selectedPath &&
+        resolveFileViewer(next.selectedPath, fileViewerRef.current).media
           ? "preview"
           : next.fileMode;
       selectedPathRef.current = next.selectedPath;
@@ -756,6 +818,22 @@ export function ExplorerView({
     },
     [],
   );
+
+  useEffect(() => {
+    // A sidebar Open As command can update an already mounted document owner.
+    // Reconcile presentation only; its live text session and draft stay intact.
+    if (
+      isDocumentView(explorer) &&
+      !transferInstalling &&
+      !transferSuspended &&
+      explorer.fileMode !== fileModeRef.current
+    ) {
+      applyViewState({
+        selectedPath: explorer.selectedPath,
+        fileMode: explorer.fileMode,
+      });
+    }
+  }, [explorer, applyViewState, transferInstalling, transferSuspended]);
 
   const persistViewState = useCallback(
     (next: { selectedPath: string | null; fileMode: ExplorerFileMode }) => {
@@ -813,7 +891,25 @@ export function ExplorerView({
       const previous = nativeDocumentRef.current;
       const approvedRevision = previous?.revision;
       if (!streamEncryptionReadyRef.current || !bindingKey) return;
-      if (explorerMediaTypeForPath(path)) {
+      if (
+        resolveFileViewer(path, fileViewerRef.current).log &&
+        fileModeRef.current === "preview" &&
+        !dirtyRef.current
+      ) {
+        setPreviewRevision((revision) => revision + 1);
+        return;
+      }
+      const refreshViewer = resolveFileViewer(path, fileViewerRef.current);
+      if (refreshViewer.media || refreshViewer.custom) {
+        if (refreshViewer.custom && customSessionRef.current) {
+          if (
+            !discardDraft &&
+            (customSessionRef.current.dirty || customSessionRef.current.pending)
+          )
+            return;
+          await customSessionRef.current.reload();
+          return;
+        }
         setMediaRevision((revision) => revision + 1);
         return;
       }
@@ -827,18 +923,25 @@ export function ExplorerView({
         ],
         refetchType: "none",
       });
-      await queryClient.fetchQuery({
-        queryFn: () =>
-          fileAccess
-            ? fileAccess.read(path)
-            : getExplorerFile(explorer.id, path, fileBinding),
-        queryKey: [
-          "explorer-file",
-          fileAccess?.cacheKey ?? explorer.id,
-          path,
-          bindingKey,
-        ],
-      });
+      let previewRequired = false;
+      try {
+        await queryClient.fetchQuery({
+          retry: retryFileRead,
+          queryFn: () =>
+            fileAccess
+              ? fileAccess.read(path)
+              : getExplorerFile(explorer.id, path, fileBinding),
+          queryKey: [
+            "explorer-file",
+            fileAccess?.cacheKey ?? explorer.id,
+            path,
+            bindingKey,
+          ],
+        });
+      } catch (error) {
+        if (!requiresTextPreview(error)) throw error;
+        previewRequired = true;
+      }
       if (
         !mountedRef.current ||
         transferSuspendedRef.current ||
@@ -848,6 +951,7 @@ export function ExplorerView({
       ) {
         return;
       }
+      if (previewRequired) setPreviewRevision((revision) => revision + 1);
       if (discardDraft && previous) {
         if (
           nativeDocumentRef.current !== previous ||
@@ -919,7 +1023,7 @@ export function ExplorerView({
     applyViewState(nextViewState);
     if (
       nextViewState.selectedPath &&
-      explorerMediaTypeForPath(nextViewState.selectedPath)
+      resolveFileViewer(nextViewState.selectedPath, fileViewerRef.current).media
     ) {
       setMediaRevision((revision) => revision + 1);
     }
@@ -935,6 +1039,7 @@ export function ExplorerView({
   const saveDraft = useCallback(async (): Promise<boolean> => {
     if (transferSuspendedRef.current || transferInstallingRef.current)
       return false;
+    if (customSessionRef.current) return customSessionRef.current.save();
     const bindingKey = streamEncryptionBindingRef.current;
     const path = selectedPathRef.current;
     const version = draftVersionRef.current;
@@ -1128,7 +1233,15 @@ export function ExplorerView({
     const resource = liveTransferResourceRef.current;
     const document = nativeDocumentRef.current;
     const revision = document?.revision;
-    if (dirtyRef.current) {
+    const custom = customSessionRef.current;
+    const customRevision = custom?.revision;
+    if (custom?.saving) {
+      setViewStateError(
+        "Wait for the NBT save to finish before reloading or closing this file.",
+      );
+      return false;
+    }
+    if (dirtyRef.current || custom?.dirty || custom?.pending) {
       try {
         if (!(await confirmEditorAction(message))) return false;
       } catch (error) {
@@ -1149,7 +1262,9 @@ export function ExplorerView({
       !transferSuspendedRef.current &&
       !transferInstallingRef.current &&
       nativeDocumentRef.current === document &&
-      document?.revision === revision
+      document?.revision === revision &&
+      customSessionRef.current?.discard === custom?.discard &&
+      customSessionRef.current?.revision === customRevision
     );
   }, []);
 
@@ -1194,6 +1309,13 @@ export function ExplorerView({
           ? loadFile(selectedPathRef.current, true)
           : Promise.resolve(),
       ]);
+    } catch (error) {
+      setViewStateError(
+        error instanceof Error
+          ? error.message
+          : "The file could not be reloaded.",
+      );
+      throw error;
     } finally {
       setRefreshPending(false);
     }
@@ -1221,12 +1343,32 @@ export function ExplorerView({
       return;
     }
     if (transientFilePath) {
+      try {
+        if (customSessionRef.current) await customSessionRef.current.discard();
+      } catch (error) {
+        setViewStateError(
+          error instanceof Error
+            ? error.message
+            : "The draft could not be discarded.",
+        );
+        return;
+      }
       const document = nativeDocumentRef.current;
       if (dirtyRef.current && document) sessions.current!.discard(document.id);
       transientFileCloseRef.current?.();
       return;
     }
     const document = nativeDocumentRef.current;
+    try {
+      if (customSessionRef.current) await customSessionRef.current.discard();
+    } catch (error) {
+      setViewStateError(
+        error instanceof Error
+          ? error.message
+          : "The draft could not be discarded.",
+      );
+      return;
+    }
     if (dirtyRef.current && document) sessions.current!.discard(document.id);
     setNativeDocument(null);
     setDraft("");
@@ -1248,8 +1390,10 @@ export function ExplorerView({
       const path = selectedPathRef.current;
       if (
         !path ||
-        (mode === "edit" && explorerMediaTypeForPath(path) !== null) ||
-        (mode === "visual" && !structuredFileFormatForPath(path))
+        (mode === "edit" &&
+          resolveFileViewer(path, fileViewer).media !== null) ||
+        (mode === "visual" &&
+          !resolveFileViewer(path, fileViewer).structuredFormat)
       ) {
         return;
       }
@@ -1258,26 +1402,28 @@ export function ExplorerView({
         await persistViewState({ selectedPath: path, fileMode: mode });
       })();
     },
-    [persistViewState],
+    [persistViewState, fileViewer],
   );
 
+  const largeTextPreview = requiresTextPreview(file.error) && !dirty;
   const panelHeader = useMemo<ExplorerHeaderState>(
     () => ({
       backLabel: graphVisible ? "Close graph" : undefined,
       back,
-      canEdit: !graphVisible && editableLanguage !== null,
+      canEdit: !graphVisible && !largeTextPreview && editableLanguage !== null,
       canGoBack:
         !isDocumentView(explorer) && (graphVisible || Boolean(selectedPath)),
-      canVisual: !graphVisible && structuredFormat !== null,
+      canVisual:
+        !graphVisible && !largeTextPreview && structuredFormat !== null,
       directoryPath: graphVisible
         ? (graphRootPath ?? "")
         : (selectedPath ?? ""),
       dirty,
-      fileMode: graphVisible ? "preview" : fileMode,
+      fileMode: graphVisible || largeTextPreview ? "preview" : fileMode,
       isFetching: graphVisible
         ? (graphStatus?.isFetching ?? false)
         : refreshPending,
-      isSaving: saveFilePending,
+      isSaving: saveFilePending || Boolean(customSession?.saving),
       refresh: graphVisible
         ? () => setGraphRefreshEpoch((epoch) => epoch + 1)
         : refreshExplorer,
@@ -1303,6 +1449,7 @@ export function ExplorerView({
       changeFileMode,
       dirty,
       editableLanguage,
+      largeTextPreview,
       explorer.projectId,
       explorer.selectedPath,
       explorer.worktreeId,
@@ -1314,6 +1461,7 @@ export function ExplorerView({
       refreshExplorer,
       saveDraft,
       saveFilePending,
+      customSession?.saving,
       selectedPath,
       structuredFormat,
       transientFilePath,
@@ -1337,8 +1485,17 @@ export function ExplorerView({
       throw new Error("Wait for the editor transfer before closing this view.");
     const resource = liveTransferResourceRef.current;
     const isCurrent = sessions.current!.captureCloseGuard();
+    const custom = customSessionRef.current;
+    const customRevision = custom?.revision;
+    if (custom?.saving)
+      throw new Error(
+        "Wait for the NBT save to finish before closing this view.",
+      );
     if (
-      (dirtyRef.current || sessions.current!.hasDirtyDocuments) &&
+      (dirtyRef.current ||
+        sessions.current!.hasDirtyDocuments ||
+        custom?.dirty ||
+        custom?.pending) &&
       !(await confirmEditorAction(
         "Close this view with unsaved changes? Cancel to keep editing or save your files first.",
       ))
@@ -1349,7 +1506,9 @@ export function ExplorerView({
       resource !== liveTransferResourceRef.current ||
       transferSuspendedRef.current ||
       transferInstallingRef.current ||
-      !isCurrent()
+      !isCurrent() ||
+      customSessionRef.current?.discard !== custom?.discard ||
+      customSessionRef.current?.revision !== customRevision
     )
       throw new Error(
         "Editor changed while confirming close. Try closing again.",
@@ -1378,8 +1537,12 @@ export function ExplorerView({
           transferSuspendedRef.current ||
           transferInstallingRef.current ||
           dirtyRef.current ||
+          customSessionRef.current?.saving ||
+          customSessionRef.current?.dirty ||
+          customSessionRef.current?.pending ||
           sessions.current!.hasDirtyDocuments ||
           (!mediaType &&
+            !customSessionRef.current &&
             (!document ||
               document.id !== nativeDocumentId ||
               document.dirty ||
@@ -1426,6 +1589,14 @@ export function ExplorerView({
         flushSync(() => setTransferRetired(true));
       },
       captureTransfer: async () => {
+        if (
+          customSessionRef.current?.dirty ||
+          customSessionRef.current?.pending ||
+          customSessionRef.current?.saving
+        )
+          throw new Error(
+            "Save this NBT draft before moving or quitting its window.",
+          );
         assertTransferResource();
         await viewStateQueueRef.current;
         assertTransferResource();
@@ -1447,6 +1618,9 @@ export function ExplorerView({
           workerId: explorer.activeWorkerId,
           selectedPath: transientFilePath ?? selectedPathRef.current,
           fileMode: fileModeRef.current,
+          ...(fileViewerRef.current !== undefined
+            ? { fileViewer: fileViewerRef.current }
+            : {}),
           documents,
         };
         await documentRecovery?.checkpoint(state);
@@ -1505,9 +1679,13 @@ export function ExplorerView({
         setDraftVersion(document?.version ?? null);
       },
       cancelClose,
-      discard: () => {
+      discard: async () => {
         if (transferSuspendedRef.current || transferInstallingRef.current)
           return;
+        if (customSessionRef.current) {
+          await customSessionRef.current.discard();
+          return;
+        }
         sessions.current!.discardAll();
         setNativeDocument(null);
         setDraft("");
@@ -1518,7 +1696,10 @@ export function ExplorerView({
       dirty: hasDirtyDocuments,
       flushViewState: () => viewStateQueueRef.current,
       prepareClose,
-      closeCommitted: documentRecovery?.closeCommitted,
+      closeCommitted: async () => {
+        await customSession?.discard();
+        await documentRecovery?.closeCommitted();
+      },
       reconcile,
       save: async () => {
         if (!(await saveDraft())) return false;
@@ -1543,6 +1724,7 @@ export function ExplorerView({
       accountScope,
       cancelClose,
       hasDirtyDocuments,
+      customSession,
       explorer,
       mediaType,
       nativeDocumentId,
@@ -1573,6 +1755,9 @@ export function ExplorerView({
       workerId: explorer.activeWorkerId,
       selectedPath: transientFilePath ?? selectedPathRef.current,
       fileMode: fileModeRef.current,
+      ...(fileViewerRef.current !== undefined
+        ? { fileViewer: fileViewerRef.current }
+        : {}),
       documents: sessions.current!.captureRecovery(),
     };
     // The recovery owner surfaces errors and retains the prior ciphertext.
@@ -1647,14 +1832,30 @@ export function ExplorerView({
   }, []);
   useEffect(() => {
     if (transferInstalling || !transferStaging) return;
-    if (!selectedPath) onTransferredViewReady();
-    else if (!mediaType && file.isError) onTransferredViewError(file.error);
+    if (viewer.unavailable)
+      onTransferredViewError(
+        new Error(`The ${viewer.unavailable} viewer is unavailable.`),
+      );
+    else if (!selectedPath) onTransferredViewReady();
     else if (
       !mediaType &&
+      !viewer.custom &&
+      !(
+        selectedPath &&
+        resolveFileViewer(selectedPath, fileViewer).log &&
+        fileMode === "preview"
+      ) &&
+      file.isError &&
+      !requiresTextPreview(file.error)
+    )
+      onTransferredViewError(file.error);
+    else if (
+      !mediaType &&
+      !viewer.custom &&
       file.data &&
       fileMode !== "edit" &&
       !(fileMode === "visual" && structuredFormat) &&
-      (file.data.markdown || isLicenseFile(file.data.path))
+      (viewer.markdown || viewer.license)
     )
       onTransferredViewReady();
   }, [
@@ -1662,6 +1863,11 @@ export function ExplorerView({
     transferStaging,
     selectedPath,
     mediaType,
+    viewer.custom,
+    viewer.unavailable,
+    viewer.markdown,
+    viewer.license,
+    fileViewer,
     file.isError,
     file.error,
     file.data,
@@ -1712,7 +1918,7 @@ export function ExplorerView({
     setBaselineContent("");
     setDraftVersion(null);
     resetSaveFile();
-    if (explorerMediaTypeForPath(entry.path)) {
+    if (resolveFileViewer(entry.path, fileViewerRef.current).media) {
       setMediaRevision((revision) => revision + 1);
     }
     void persistViewState({
@@ -1861,11 +2067,39 @@ export function ExplorerView({
             />
           ) : selectedPath ? (
             <div className="min-h-0 flex-1 overflow-hidden">
-              {mediaType ? (
+              {viewer.unavailable ? (
+                <p role="alert" className="m-4 text-sm text-destructive">
+                  The {viewer.unavailable} viewer is unavailable in this
+                  version. Choose Open As → Automatic to use the default viewer.
+                </p>
+              ) : CustomFileViewer ? (
+                <CustomFileViewer
+                  path={selectedPath}
+                  explorerId={explorer.id}
+                  documentId={
+                    isDocumentView(explorer) ? explorer.documentId : undefined
+                  }
+                  projectId={explorer.projectId}
+                  worktreeId={explorer.worktreeId}
+                  workerId={explorer.activeWorkerId}
+                  appearance={appearance}
+                  fileAccess={fileAccess}
+                  active={active && !transferSuspended}
+                  readOnly={transferSuspended}
+                  onSessionChange={reportCustomSession}
+                  onOpenDocument={
+                    isDocumentView(explorer) ? explorer.openFile : undefined
+                  }
+                  revision={mediaRevision}
+                  onReady={onTransferredViewReady}
+                  onError={onTransferredViewError}
+                />
+              ) : mediaType ? (
                 <ExplorerMediaView
                   explorerId={explorer.id}
                   fileAccess={fileAccess}
-                  key={`${selectedPath}:${mediaRevision}`}
+                  key={`${selectedPath}:${fileViewer ?? "auto"}:${mediaRevision}`}
+                  forceType={Boolean(fileViewer)}
                   kind={mediaType.kind}
                   mimeType={mediaType.mimeType}
                   path={selectedPath}
@@ -1873,11 +2107,47 @@ export function ExplorerView({
                   onReady={onTransferredViewReady}
                   onError={onTransferredViewError}
                 />
+              ) : resolveFileViewer(selectedPath, fileViewer).log &&
+                (fileMode === "preview" || largeTextPreview) &&
+                !dirty ? (
+                <LogFileView
+                  key={`log:${fileAccess?.cacheKey ?? explorer.id}:${selectedPath}:${streamEncryption.bindingKey}:${previewRevision}`}
+                  path={selectedPath}
+                  active={active && !transferSuspended}
+                  staging={Boolean(transferStaging)}
+                  readTail={async (cursor) => {
+                    if (fileAccess) {
+                      if (!fileAccess.tail)
+                        throw new Error(
+                          "This file source does not support log following.",
+                        );
+                      return fileAccess.tail(selectedPath, cursor);
+                    }
+                    const result = await executeExplorerOperation(
+                      explorer.id,
+                      {
+                        type: "explorer.file.tail",
+                        path: selectedPath,
+                        cursor,
+                      },
+                      undefined,
+                      undefined,
+                      fileBinding,
+                    );
+                    if (result.type !== "explorer.file.tail")
+                      throw new Error("Unexpected log tail result.");
+                    return result.value;
+                  }}
+                  onReady={onTransferredViewReady}
+                  onError={onTransferredViewError}
+                />
               ) : nativeDocument?.id === nativeDocumentId &&
-                fileMode === "edit" ? (
+                fileMode === "edit" &&
+                !largeTextPreview ? (
                 <NativeCodeEditor
                   session={nativeDocument}
                   path={selectedPath}
+                  highlightPath={viewer.syntaxPath}
                   active={active && !transferSuspended}
                   readOnly={transferSuspended}
                   onReady={onTransferredDocumentReady}
@@ -1889,15 +2159,46 @@ export function ExplorerView({
                 <div className="grid h-full place-items-center text-muted-foreground">
                   <Loader2 className="size-5 animate-spin" />
                 </div>
+              ) : file.isError && requiresTextPreview(file.error) ? (
+                <PagedTextPreview
+                  key={`${fileAccess?.cacheKey ?? explorer.id}:${selectedPath}:${streamEncryption.bindingKey}:${previewRevision}`}
+                  path={selectedPath}
+                  highlightPath={viewer.syntaxPath}
+                  active={active && !transferSuspended}
+                  readPage={async (offset, version) => {
+                    if (fileAccess) {
+                      if (!fileAccess.preview)
+                        throw new Error(
+                          "This file source does not support paged previews.",
+                        );
+                      return fileAccess.preview(selectedPath, offset, version);
+                    }
+                    const result = await executeExplorerOperation(
+                      explorer.id,
+                      {
+                        type: "explorer.file.preview",
+                        path: selectedPath,
+                        offset,
+                        version,
+                      },
+                      undefined,
+                      undefined,
+                      fileBinding,
+                    );
+                    if (result.type !== "explorer.file.preview")
+                      throw new Error("Unexpected text preview result.");
+                    return result.value;
+                  }}
+                  onReady={onTransferredViewReady}
+                  onError={onTransferredViewError}
+                />
               ) : file.isError ? (
                 <p className="m-4 border-y border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
                   {file.error instanceof Error
                     ? file.error.message
                     : "File could not be loaded."}
                 </p>
-              ) : file.data &&
-                fileMode === "preview" &&
-                isLicenseFile(file.data.path) ? (
+              ) : file.data && fileMode === "preview" && viewer.license ? (
                 <LicenseFileView
                   content={draftVersion === null ? file.data.content : draft}
                   path={file.data.path}
@@ -1923,7 +2224,7 @@ export function ExplorerView({
                 (fileMode === "preview" ||
                   editableLanguage === null ||
                   fileMode === "visual") ? (
-                file.data.markdown ? (
+                viewer.markdown ? (
                   <div className="h-full overflow-auto">
                     {markdownPreviewUsesPlainText(file.data.path) ? (
                       <pre
@@ -1952,6 +2253,7 @@ export function ExplorerView({
                   <NativeCodeEditor
                     session={nativeDocument}
                     path={file.data.path}
+                    highlightPath={viewer.syntaxPath}
                     active={active && !transferSuspended}
                     readOnly
                     onReady={onTransferredDocumentReady}

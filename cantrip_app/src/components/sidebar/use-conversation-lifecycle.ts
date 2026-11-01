@@ -73,6 +73,15 @@ export function useConversationLifecycle(
         queryClient.invalidateQueries({
           queryKey: ["project-tab-layout", projectId],
         }),
+        ...(action === "restore"
+          ? [
+              "native-settings",
+              "permission-profiles",
+              "chat-runtime-selection",
+            ].map((key) =>
+              queryClient.invalidateQueries({ queryKey: [key, chatId] }),
+            )
+          : []),
         Promise.resolve().then(() => controller?.refresh()),
       ]);
     let mutationAttempted = false;

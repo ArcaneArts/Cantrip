@@ -1,3 +1,4 @@
+import { resolveFileViewer } from "@/components/files/file-viewers";
 import type { QueryClient } from "@tanstack/react-query";
 import {
   createFileDocument,
@@ -23,6 +24,7 @@ export async function openOwnedFile({
   path,
   focusWindow,
   preview = false,
+  viewer,
   reservePreview,
 }: {
   controller: WorkspaceCommandClient;
@@ -32,6 +34,7 @@ export async function openOwnedFile({
   path: string;
   focusWindow: (id: string) => Promise<void>;
   preview?: boolean;
+  viewer?: string | null;
   reservePreview?: (resourceId: string) => (() => void) | null;
 }) {
   const session = JSON.stringify(getClientSessionIdentitySnapshot());
@@ -107,7 +110,16 @@ export async function openOwnedFile({
         definitionId: "project.file",
         resourceId: resource.id,
       },
-      { preview, reservePreview },
+      {
+        preview,
+        reservePreview,
+        ...(viewer !== undefined
+          ? {
+              fileViewer: viewer,
+              fileMode: resolveFileViewer(path, viewer).mode,
+            }
+          : {}),
+      },
     );
     assertCurrent();
     if (receipt.focusWindowId) await focusWindow(receipt.focusWindowId);

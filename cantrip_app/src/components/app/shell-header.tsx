@@ -20,6 +20,10 @@ import { sidebarFileName } from "@/lib/sidebar-file-tabs";
 import { cn } from "@/lib/utils";
 import { useMouseBack } from "./use-mouse-back";
 import { windowHeaderBindings } from "./window-header-bindings";
+import {
+  SelectedPaneTabStrip,
+  selectedPaneTabStripVisible,
+} from "./selected-pane-tab-strip";
 type ShellHeaderBindings = Readonly<Record<string, any>>;
 
 export function navigateMobileSettingsBack(
@@ -61,9 +65,6 @@ export function ShellHeader({
     linkedConsoleChat,
     mobileSettingsSectionOpen,
     narrowViewport,
-    openChatExplorerHere,
-    openChatHistoryHere,
-    openChatTerminalHere,
     openProjectCreateSource,
     openProjectSettings,
     overlayTitlebar,
@@ -133,6 +134,54 @@ export function ShellHeader({
           ? activeExplorerHeader.selectedPath
           : selectedExplorer.selectedPath
         : null);
+  const worktreeControl =
+    !windowContentEmpty &&
+    appMode === "ide" &&
+    !showImporter &&
+    !showSettings &&
+    !showServerAdmin &&
+    activeWorktreeTarget &&
+    activeWorktreeId &&
+    selectedProject?.capabilities.worktrees &&
+    !gitHistoryProject &&
+    !projectOverviewSelected ? (
+      <WorktreeControl
+        currentWorktreeId={activeWorktreeId}
+        projectId={selectedProject.id}
+        worktrees={worktrees.data ?? []}
+        statuses={worktreeStatuses}
+        workers={workers.data ?? []}
+        leaseOwner={activeChat?.title}
+        actions={{
+          branchDisabled:
+            bindWorktreeMutation.isPending ||
+            activeChat?.status === "running" ||
+            selectedTerminal?.status === "running",
+          chatMode: activeChat?.worktreeMode,
+          pending: bindWorktreeMutation.isPending,
+          disabled:
+            bindWorktreeMutation.isPending ||
+            activeChat?.status === "running" ||
+            selectedTerminal?.status === "running" ||
+            (Boolean(selectedCodeTab) && !codeHeader),
+          error: worktreeActionError,
+          onCreate: () => setWorktreeCreateTarget(activeWorktreeTarget),
+          onSelect: (worktreeId) =>
+            void requestBindWorktree({
+              target: activeWorktreeTarget,
+              worktreeId,
+            }),
+          onSetChatMode: activeChat
+            ? (mode) =>
+                bindWorktreeMutation.mutate({
+                  target: activeWorktreeTarget,
+                  worktreeId: activeChat.activeWorktreeId,
+                  mode,
+                })
+            : undefined,
+        }}
+      />
+    ) : null;
   if (
     ((showSettings || showProjectSettings) && !compactShell) ||
     showProjectOverview
@@ -174,6 +223,33 @@ export function ShellHeader({
               ? "Project Settings"
               : "Overview"}
         </span>
+      </header>
+    );
+  }
+  if (isPopout && selectedPaneTabStripVisible(bindings)) {
+    return (
+      <header
+        className="relative z-30 flex h-10 min-w-0 shrink-0 items-stretch gap-1 pr-2"
+        data-slot="content-titlebar"
+        data-popout-tab-titlebar=""
+        data-tauri-drag-region=""
+        style={{
+          paddingLeft: desktopPopoutTitlebarLeftInset(true, overlayTitlebar),
+        }}
+      >
+        <SelectedPaneTabStrip bindings={bindings} titlebar />
+        <div
+          aria-hidden="true"
+          className="w-8 shrink-0"
+          data-tauri-drag-region=""
+        />
+        <div
+          className="flex shrink-0 items-center gap-1"
+          data-tauri-drag-region=""
+        >
+          {worktreeControl}
+          {renderProjectRunConfigurationControl?.(true)}
+        </div>
       </header>
     );
   }
@@ -363,63 +439,7 @@ export function ShellHeader({
                                                     ?.nameWithOwner ??
                                                   "Cantrip")}
               </span>
-              {!windowContentEmpty &&
-              appMode === "ide" &&
-              !showImporter &&
-              !showSettings &&
-              !showServerAdmin &&
-              activeWorktreeTarget &&
-              activeWorktreeId &&
-              selectedProject?.capabilities.worktrees &&
-              !gitHistoryProject &&
-              !projectOverviewSelected ? (
-                <WorktreeControl
-                  currentWorktreeId={activeWorktreeId}
-                  projectId={selectedProject.id}
-                  worktrees={worktrees.data ?? []}
-                  statuses={worktreeStatuses}
-                  workers={workers.data ?? []}
-                  leaseOwner={activeChat?.title}
-                  actions={{
-                    branchDisabled:
-                      bindWorktreeMutation.isPending ||
-                      activeChat?.status === "running" ||
-                      selectedTerminal?.status === "running",
-                    chatMode: activeChat?.worktreeMode,
-                    pending: bindWorktreeMutation.isPending,
-                    disabled:
-                      bindWorktreeMutation.isPending ||
-                      activeChat?.status === "running" ||
-                      selectedTerminal?.status === "running" ||
-                      (Boolean(selectedCodeTab) && !codeHeader),
-                    error: worktreeActionError,
-                    onCreate: () =>
-                      setWorktreeCreateTarget(activeWorktreeTarget),
-                    onSelect: (worktreeId) =>
-                      void requestBindWorktree({
-                        target: activeWorktreeTarget,
-                        worktreeId,
-                      }),
-                    onSetChatMode: activeChat
-                      ? (mode) =>
-                          bindWorktreeMutation.mutate({
-                            target: activeWorktreeTarget,
-                            worktreeId: activeChat.activeWorktreeId,
-                            mode,
-                          })
-                      : undefined,
-                    onOpenTerminal: activeChat
-                      ? () => openChatTerminalHere(activeChat)
-                      : undefined,
-                    onOpenExplorer: activeChat
-                      ? () => openChatExplorerHere(activeChat)
-                      : undefined,
-                    onOpenHistory: activeChat
-                      ? () => openChatHistoryHere(activeChat)
-                      : undefined,
-                  }}
-                />
-              ) : null}
+              {worktreeControl}
             </div>
             <p
               className={cn(

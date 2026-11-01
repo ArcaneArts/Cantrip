@@ -35,7 +35,7 @@ pub(super) fn apply(state: &mut Command, action: &Value) -> Result<()> {
         "home" => state.window["focusedPaneId"] = Value::Null,
         "select" => {
             let (pane, tab) = tab_by_id(&state.window, &action["tabId"])?;
-            focus(&mut state.window, &pane["id"], &tab["id"]);
+            navigate(&state.layout, &mut state.window, &pane["id"], &tab["id"])?;
         }
         "close-tab" => {
             let (pane, tab) = tab_by_id(&state.window, &action["tabId"])?;
@@ -44,7 +44,11 @@ pub(super) fn apply(state: &mut Command, action: &Value) -> Result<()> {
             }
             let focused =
                 state.window["focusedPaneId"] == pane["id"] && selected_view_id(&pane) == tab["id"];
-            take_tab(&mut state.window, &pane, &tab);
+            let mut current = pane.clone();
+            if pane["selection"]["kind"] == "tab" {
+                retire_conversation(&state.layout, &mut current, &selected_view_id(&pane))?;
+            }
+            take_tab(&mut state.window, &current, &tab);
             focus_next(&mut state.window, focused);
         }
         "close-pane" => {
@@ -149,7 +153,7 @@ pub(super) fn apply(state: &mut Command, action: &Value) -> Result<()> {
             tabs(&mut target).insert(position, tab.clone());
             let pane_id = target["id"].clone();
             store_pane(&mut state.window, target);
-            focus(&mut state.window, &pane_id, &tab["id"]);
+            navigate(&state.layout, &mut state.window, &pane_id, &tab["id"])?;
         }
         "move-new-pane" => {
             let (pane, tab) = tab_by_id(&state.window, &action["tabId"])?;
@@ -215,7 +219,7 @@ pub(super) fn apply(state: &mut Command, action: &Value) -> Result<()> {
                     tree::replace_leaf(&state.window["centerRoot"], &anchor["id"], &replacement)
                 };
             }
-            focus(&mut state.window, &target["id"], &tab["id"]);
+            navigate(&state.layout, &mut state.window, &target["id"], &tab["id"])?;
         }
         "split" => {
             let (pane, tab) = tab_by_id(&state.window, &action["tabId"])?;
@@ -253,7 +257,7 @@ pub(super) fn apply(state: &mut Command, action: &Value) -> Result<()> {
                 .unwrap()
                 + usize::from(!new_first);
             panes(&mut state.window).insert(position, new.clone());
-            focus(&mut state.window, &new["id"], &tab["id"]);
+            navigate(&state.layout, &mut state.window, &new["id"], &tab["id"])?;
         }
         "resize" => {
             if !tree::resize(
@@ -281,6 +285,19 @@ fn open(state: &mut Command, action: &Value) -> Result<()> {
                 if action["tab"]["preview"] == false {
                     tab["preview"] = json!(false);
                 }
+                if let Some(viewer) = action["tab"].get("fileViewer") {
+                    let changed = tab.get("fileViewer") != Some(viewer)
+                        || action["tab"]
+                            .get("fileMode")
+                            .is_some_and(|mode| tab["fileMode"] != *mode);
+                    if changed && state.reserved(&tab["id"]) {
+                        return Err(invalid("File view is reserved for a pending transfer."));
+                    }
+                    tab["fileViewer"] = viewer.clone();
+                    if let Some(mode) = action["tab"].get("fileMode") {
+                        tab["fileMode"] = mode.clone();
+                    }
+                }
                 if pane["conversationView"]["id"] == tab["id"] {
                     pane["conversationView"] = tab.clone();
                 } else {
@@ -291,7 +308,7 @@ fn open(state: &mut Command, action: &Value) -> Result<()> {
                     *old = tab.clone();
                 }
                 store_pane(&mut owner, pane.clone());
-                focus(&mut owner, &pane["id"], &tab["id"]);
+                navigate(&state.layout, &mut owner, &pane["id"], &tab["id"])?;
                 if owner["id"] != state.window["id"] {
                     state.focus_window = owner["id"].clone();
                 }
@@ -331,7 +348,7 @@ fn open(state: &mut Command, action: &Value) -> Result<()> {
         }
         let id = target["id"].clone();
         store_pane(&mut state.window, target);
-        focus(&mut state.window, &id, &action["tab"]["id"]);
+        navigate(&state.layout, &mut state.window, &id, &action["tab"]["id"])?;
     } else {
         if truthy(action.get("replacePreviewTabId")) {
             return Err(invalid("Preview replacement requires an existing pane."));
@@ -355,7 +372,12 @@ fn open(state: &mut Command, action: &Value) -> Result<()> {
                 )
             };
         }
-        focus(&mut state.window, &target["id"], &action["tab"]["id"]);
+        navigate(
+            &state.layout,
+            &mut state.window,
+            &target["id"],
+            &action["tab"]["id"],
+        )?;
     }
     Ok(())
 }

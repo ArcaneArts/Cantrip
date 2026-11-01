@@ -379,6 +379,12 @@ export class ChatArchiveLifecycleRepository {
         .update(schema.chats)
         .set({
           archivedAt: null,
+          // Archive's automation hold is not a paused native turn. An idle
+          // Agent returns ready for input; a genuinely active pause is retained.
+          ...(chat.experience === "agent" &&
+          !chatIsExecuting(chat.status as ChatWireSummary["status"])
+            ? { automationPaused: false }
+            : {}),
           updatedAt: now,
           lastUsedAt: now,
           ...(position === undefined ? {} : { position }),

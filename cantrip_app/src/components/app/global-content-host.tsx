@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { Suspense, type ReactNode } from "react";
 import { EmptyWorkspace } from "./empty-workspace";
+import { CantripLoading } from "@/components/ui/cantrip-loading";
 import { RunTerminalView } from "@/components/app/application-shell-surfaces";
 import { ArchivedStandaloneChatsPage } from "@/components/chat/archived-standalone-chats-page";
 import {
@@ -987,10 +988,51 @@ export function GlobalContentHost({
                     />
                   ) : null}
                 </div>
+              ) : bindings.workspaceConnection?.loading ||
+                (isPopout && !tabLayout.isSuccess) ? (
+                <CantripLoading />
               ) : (
                 <EmptyWorkspace projectName={selectedProject?.name} />
               )}
             </ProjectOverviewHost>
+          ) : projects.isError ? (
+            <EmptyState>
+              <EmptyStateContent>
+                <EmptyStateIcon>
+                  <CircleAlert className="size-5" />
+                </EmptyStateIcon>
+                <EmptyStateTitle as="h1">
+                  Could not load projects
+                </EmptyStateTitle>
+                <EmptyStateDescription>
+                  {errorText(projects.error)}
+                </EmptyStateDescription>
+                <EmptyStateActions>
+                  <Button
+                    variant="outline"
+                    onClick={() => void projects.refetch()}
+                  >
+                    <RefreshCw className="size-4" />
+                    Retry
+                  </Button>
+                </EmptyStateActions>
+              </EmptyStateContent>
+            </EmptyState>
+          ) : appMode === null ||
+            projects.isPending ||
+            (!isPopout && (projects.data?.length ?? 0) > 0) ? (
+            <CantripLoading />
+          ) : isPopout ? (
+            <EmptyState>
+              <EmptyStateContent>
+                <EmptyStateTitle as="h1">
+                  Project is unavailable
+                </EmptyStateTitle>
+                <EmptyStateDescription>
+                  This window’s project is no longer available.
+                </EmptyStateDescription>
+              </EmptyStateContent>
+            </EmptyState>
           ) : (
             <EmptyState>
               <EmptyStateContent>

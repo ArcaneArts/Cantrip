@@ -58,6 +58,9 @@ importers:
       "@cantrip/logging":
         specifier: workspace:*
         version: link:../packages/logging
+      "@cantrip/nbt":
+        specifier: workspace:*
+        version: link:../packages/nbt
       "@cantrip/protocol":
         specifier: workspace:*
         version: link:../packages/protocol
@@ -434,6 +437,22 @@ importers:
         version: 4.1.10(@types/node@26.1.2)(jsdom@26.1.0(supports-color@10.2.2))(vite@8.2.0(@types/node@26.1.2)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.9)(yaml@2.9.0))
 
   packages/logging: {}
+
+  packages/nbt:
+    dependencies:
+      "@noble/hashes":
+        specifier: ^2.3.0
+        version: 2.3.0
+      pako:
+        specifier: 3.0.3
+        version: 3.0.3
+    devDependencies:
+      fake-indexeddb:
+        specifier: ^6.2.5
+        version: 6.2.5
+      nbtify:
+        specifier: 2.2.0
+        version: 2.2.0
 
   packages/protocol:
     dependencies:
@@ -9402,6 +9421,24 @@ packages:
         integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==,
       }
 
+  pako@3.0.3:
+    resolution:
+      {
+        integrity: sha512-tmrebBBYI5FOw8QICGwJNqE8fotC8R+gwcxOvoFNv+GKehOI6Lc6YBolNcQNnC4v96l1wt7rh102ifD4kVeZAQ==,
+      }
+
+  nbtify@2.2.0:
+    resolution:
+      {
+        integrity: sha512-xlMI29ZAB4ZCBJRnoa+L8al8uKMTLSwrcx13LbdhFLc3KwJb0sWS4/OcKEN2UcjQOVNyk+CqDWfYvPLOo8of/g==,
+      }
+
+  mutf-8@1.1.4:
+    resolution:
+      {
+        integrity: sha512-zyVV1mk9eO99NOdBq0CR7Wg+hkRcDCpaNsf6hRHYw4LgWTPh9GjJpQxRlRkgEAx+rtcy11SBtjpY70Kt6AosVQ==,
+      }
+
 snapshots:
   "@asamuzakjp/css-color@3.2.0":
     dependencies:
@@ -15096,3 +15133,11 @@ snapshots:
   zod@4.4.3: {}
 
   zwitch@2.0.4: {}
+
+  pako@3.0.3: {}
+
+  nbtify@2.2.0:
+    dependencies:
+      mutf-8: 1.1.4
+
+  mutf-8@1.1.4: {}

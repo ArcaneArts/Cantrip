@@ -1,4 +1,44 @@
+import {
+  binaryWriteBeginSchema,
+  binaryWriteChunkSchema,
+  binaryWriteCommitSchema,
+  binaryWriteStatusSchema,
+  binaryWriteAbortSchema,
+  binaryWriteReceiptSchema,
+} from "./explorer-binary-write.js";
+export * from "./explorer-binary-write.js";
 import { z } from "zod";
+import {
+  explorerBinaryReadSchema,
+  explorerBinaryPageSchema,
+} from "./explorer-binary.js";
+export {
+  BINARY_FILE_PAGE_BYTES,
+  explorerBinaryReadSchema,
+  explorerBinaryPageSchema,
+} from "./explorer-binary.js";
+export type { ExplorerBinaryPage } from "./explorer-binary.js";
+import {
+  logTailCursorSchema,
+  explorerLogTailSchema,
+} from "./explorer-log-tail.js";
+export {
+  LOG_TAIL_PAGE_BYTES,
+  logTailCursorSchema,
+  explorerLogTailSchema,
+} from "./explorer-log-tail.js";
+export type { LogTailCursor, ExplorerLogTail } from "./explorer-log-tail.js";
+import {
+  explorerTextPreviewPageSchema,
+  TEXT_PREVIEW_BYTES_LIMIT,
+} from "./explorer-text-preview.js";
+export {
+  TEXT_PREVIEW_BYTES_LIMIT,
+  TEXT_PREVIEW_PAGE_BYTES,
+  TEXT_PREVIEW_PAGE_LINES,
+  explorerTextPreviewPageSchema,
+} from "./explorer-text-preview.js";
+export type { ExplorerTextPreviewPage } from "./explorer-text-preview.js";
 import {
   explorerFileImportChunkSchema,
   explorerFileImportCancelSchema,
@@ -131,6 +171,11 @@ export const terminalSnapshotContentSchema = z
 export const explorerOperationRequestContentSchema = z.discriminatedUnion(
   "type",
   [
+    binaryWriteBeginSchema,
+    binaryWriteChunkSchema,
+    binaryWriteCommitSchema,
+    binaryWriteStatusSchema,
+    binaryWriteAbortSchema,
     explorerFileImportChunkSchema,
     explorerFileImportCancelSchema,
     z
@@ -149,6 +194,9 @@ export const explorerOperationRequestContentSchema = z.discriminatedUnion(
         path: z.string(),
       })
       .strict(),
+    explorerBinaryReadSchema.safeExtend({
+      type: z.literal("explorer.binary.read"),
+    }),
     z
       .object({
         type: z.literal("explorer.file.read"),
@@ -157,7 +205,29 @@ export const explorerOperationRequestContentSchema = z.discriminatedUnion(
       .strict(),
     z
       .object({
+        type: z.literal("explorer.file.tail"),
+        path: explorerFileWriteSchema.shape.path,
+        cursor: logTailCursorSchema.optional(),
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("explorer.file.preview"),
+        path: explorerFileWriteSchema.shape.path,
+        offset: z.number().int().min(0).max(TEXT_PREVIEW_BYTES_LIMIT),
+        version: explorerTextPreviewPageSchema.shape.version.optional(),
+      })
+      .strict(),
+    z
+      .object({
         type: z.literal("explorer.media.read"),
+        mediaType: z
+          .object({
+            kind: explorerMediaFileChunkSchema.shape.kind,
+            mimeType: explorerMediaFileChunkSchema.shape.mimeType,
+          })
+          .strict()
+          .optional(),
         path: explorerFileWriteSchema.shape.path,
         offset: z.number().int().nonnegative(),
         limit: z
@@ -196,6 +266,12 @@ export const explorerOperationRequestContentSchema = z.discriminatedUnion(
 export const explorerOperationResultContentSchema = z.discriminatedUnion(
   "type",
   [
+    z
+      .object({
+        type: z.literal("explorer.binary.write"),
+        value: binaryWriteReceiptSchema,
+      })
+      .strict(),
     explorerFileImportResultSchema,
     z
       .object({
@@ -213,6 +289,24 @@ export const explorerOperationResultContentSchema = z.discriminatedUnion(
       .object({
         type: z.literal("explorer.directory.commits"),
         value: explorerDirectoryCommitsSchema,
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("explorer.file.tail"),
+        value: explorerLogTailSchema,
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("explorer.binary"),
+        value: explorerBinaryPageSchema,
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("explorer.file.preview"),
+        value: explorerTextPreviewPageSchema,
       })
       .strict(),
     z
@@ -476,6 +570,9 @@ export const surfaceOperationOutcomeContentSchema = z.discriminatedUnion("ok", [
     .object({
       ok: z.literal(false),
       error: z.string().min(1).max(2_000),
+      code: z
+        .enum(["text-preview-required", "file-version-changed"])
+        .optional(),
     })
     .strict(),
 ]);

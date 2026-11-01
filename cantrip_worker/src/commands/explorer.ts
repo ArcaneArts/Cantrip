@@ -1,4 +1,8 @@
 import {
+  BinaryFileWrites,
+  BinaryWriteConflictError,
+} from "../binary-file-writes.js";
+import {
   type SurfaceOperationOutcomeContent,
   explorerOperationRequestContentSchema,
   surfaceOperationOutcomeContentSchema,
@@ -13,6 +17,9 @@ import {
   searchExplorerFiles,
   listExplorerDirectoryCommits,
   readExplorerFile,
+  readExplorerBinaryFile,
+  readExplorerLogTail,
+  readExplorerTextPreview,
   writeExplorerFile,
   createExplorerDirectory,
   createExplorerFile,
@@ -20,6 +27,8 @@ import {
   deleteExplorerEntry,
   readExplorerMediaFile,
 } from "../explorer.js";
+import { BinaryFileChangedError } from "../explorer-binary.js";
+import { TextPreviewRequiredError } from "../explorer-text-preview.js";
 import type { WorkerCommand } from "@cantrip/protocol";
 import type { SurfaceStreamReplayGuard } from "../surface-stream-encryption.js";
 import type { WorkerEncryptionService } from "../worker-encryption.js";
@@ -33,6 +42,7 @@ export type ExplorerCommand = Extract<
 >;
 export interface ExplorerCommandDependencies {
   fileImports: ExplorerFileImports;
+  binaryWrites?: BinaryFileWrites;
   surfaceStreamReplay: Pick<SurfaceStreamReplayGuard, "reserve" | "accept">;
   workerEncryption: WorkerEncryptionService;
 }
@@ -93,7 +103,15 @@ export async function handleExplorerCommand(
             throw new Error("File document checkout binding does not match.");
           }
           if (
-            (request.type !== "explorer.file.read" &&
+            (request.type !== "explorer.binary.write.begin" &&
+              request.type !== "explorer.binary.write.chunk" &&
+              request.type !== "explorer.binary.write.commit" &&
+              request.type !== "explorer.binary.write.status" &&
+              request.type !== "explorer.binary.write.abort" &&
+              request.type !== "explorer.binary.read" &&
+              request.type !== "explorer.file.read" &&
+              request.type !== "explorer.file.preview" &&
+              request.type !== "explorer.file.tail" &&
               request.type !== "explorer.file.write" &&
               request.type !== "explorer.media.read") ||
             request.path !== location.path
@@ -104,6 +122,30 @@ export async function handleExplorerCommand(
           }
         }
         switch (request.type) {
+          case "explorer.binary.write.begin":
+          case "explorer.binary.write.chunk":
+          case "explorer.binary.write.commit":
+          case "explorer.binary.write.status":
+          case "explorer.binary.write.abort": {
+            if (!dependencies.binaryWrites)
+              throw new Error(
+                "This worker does not support streamed binary saves.",
+              );
+            const value = await dependencies.binaryWrites.execute(
+              {
+                serverId: command.serverId,
+                surfaceKind: streamContext.surfaceKind,
+                surfaceId: streamContext.surfaceId,
+                root: command.root,
+              },
+              request,
+            );
+            outcome = {
+              ok: true,
+              result: { type: "explorer.binary.write", value },
+            };
+            break;
+          }
           case "explorer.file.import": {
             const value = await dependencies.fileImports.write(
               JSON.stringify([
@@ -172,12 +214,54 @@ export async function handleExplorerCommand(
               },
             };
             break;
+          case "explorer.binary.read":
+            outcome = {
+              ok: true,
+              result: {
+                type: "explorer.binary",
+                value: await readExplorerBinaryFile(
+                  command.root,
+                  request.path,
+                  request.offset,
+                  request.limit,
+                  request.version,
+                ),
+              },
+            };
+            break;
           case "explorer.file.read":
             outcome = {
               ok: true as const,
               result: {
                 type: "explorer.file" as const,
                 value: await readExplorerFile(command.root, request.path),
+              },
+            };
+            break;
+          case "explorer.file.tail":
+            outcome = {
+              ok: true,
+              result: {
+                type: "explorer.file.tail",
+                value: await readExplorerLogTail(
+                  command.root,
+                  request.path,
+                  request.cursor,
+                ),
+              },
+            };
+            break;
+          case "explorer.file.preview":
+            outcome = {
+              ok: true,
+              result: {
+                type: "explorer.file.preview",
+                value: await readExplorerTextPreview(
+                  command.root,
+                  request.path,
+                  request.offset,
+                  request.version,
+                ),
               },
             };
             break;
@@ -248,6 +332,7 @@ export async function handleExplorerCommand(
               request.path,
               request.offset,
               request.limit,
+              request.mediaType,
             );
             complete = value.eof;
             outcome = {
@@ -260,6 +345,12 @@ export async function handleExplorerCommand(
       } catch (error) {
         outcome = {
           ok: false as const,
+          ...(error instanceof TextPreviewRequiredError
+            ? { code: "text-preview-required" as const }
+            : error instanceof BinaryFileChangedError ||
+                error instanceof BinaryWriteConflictError
+              ? { code: "file-version-changed" as const }
+              : {}),
           error:
             error instanceof Error
               ? error.message.slice(0, 2_000)

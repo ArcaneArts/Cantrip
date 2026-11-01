@@ -239,4 +239,43 @@ describe("durable shared native settings", () => {
       updated!.desiredRevision,
     ]);
   });
+
+  it.each(["applied", "dispatched"] as const)(
+    "restores an idle Agent without inventing or clearing its %s settings outcome",
+    async (status) => {
+      const command = await admit("gui");
+      await dispatch(command);
+      if (status === "applied") await record(event(command, "applied"));
+      const before = await state();
+      const context = await fixture.repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        fixture.chatId,
+      );
+      expect(
+        await fixture.repository.archiveAgentConversation(
+          LOCAL_USER_ID,
+          fixture.chatId,
+        ),
+      ).toBe("archived");
+      const restored = await fixture.repository.restoreArchivedChat(
+        LOCAL_USER_ID,
+        fixture.chatId,
+        { attachToTabLayout: false },
+      );
+      expect(restored).toMatchObject({
+        status: "idle",
+        automationPaused: false,
+      });
+      expect(await state()).toEqual(before);
+      expect(
+        await fixture.repository.getChatExecutionContext(
+          LOCAL_USER_ID,
+          fixture.chatId,
+        ),
+      ).toMatchObject({
+        threadId: context!.threadId,
+        permissionProfileId: context!.permissionProfileId,
+      });
+    },
+  );
 });

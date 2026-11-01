@@ -119,6 +119,7 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
     openProjectSettings,
     openServerAdmin,
     openSidebarFilePreview,
+    openSidebarFileAs,
     openSidebarFolderGraph,
     openSidebarFolderNative,
     openSidebarRootNative,
@@ -515,6 +516,7 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                         onFileOpenNativeRoot={openSidebarRootNative}
                         onFileOpenTerminal={openSidebarFolderTerminal}
                         onFilePreview={openSidebarFilePreview}
+                        onFileOpenAs={openSidebarFileAs}
                         onFileRename={renameSidebarFileEntry}
                         onFileTreeRetry={retrySidebarFileTree}
                         onRemoveProject={(projectId, deleteLocalFiles) =>

@@ -20,6 +20,31 @@ In Pro mode the editor stays transparent over the app's existing backdrop tint.
 Clicking into its text does not add a focus rectangle; the caret and selection
 remain visible.
 
+## Find in the editor
+
+Press Command+F on macOS or Ctrl+F on Windows/Linux to open the compact find
+chip at the top right of an editor in either View or Edit mode. It also works
+from the file sidebar and the focused editor pane's header. A short selected
+single line seeds the query. Find matches literal text without case sensitivity
+and shows the current match number and total. Enter advances, Shift+Enter goes
+backward, and navigation wraps at either end. The arrow buttons offer the same
+controls; Escape closes find and returns focus to the editor.
+
+The current match stays highlighted without replacing syntax colors and is
+revealed vertically and horizontally. Find never changes text or undo history.
+Counts update after edits without moving the typing caret. Search runs in a
+separate worker only while find is open and the editor is active; scrolling
+does not rescan the document. Sparse checkpoints keep dense match lists small.
+
+Searching a paged text preview loads its remaining pages on demand and waits
+for the full snapshot before reporting totals. A failed continuation reports
+an unavailable search rather than a partial count. Log find is scoped to the
+retained recent output, as described by its count tooltip.
+
+Run `node scripts/qa/editor-find.mjs` for Chromium/WebKit desktop and phone
+viewport checks, and `node scripts/qa/large-text-preview.mjs --find` for whole
+10 MiB file searches through the production encrypted app/server/worker path.
+
 ## Syntax highlighting
 
 The first-party lexical engine covers JavaScript, TypeScript, JSX, TSX, Rust,
@@ -70,6 +95,59 @@ Canonical SPDX comparison texts and their pinned source revision live under
 from the production client. Descriptions link to Choose a License references.
 The GPLv3 document alone does not determine whether a project's grant includes
 an "or later" option.
+
+## Log files
+
+`.log` files and numbered rotations such as `.log.1` open in View mode.
+Project log views and popped-out file windows start at the bottom and follow
+new output. Scrolling up pauses both following and live reads; scrolling back
+to the bottom or choosing **Follow log** resumes. **Pause following** also
+works for short logs that do not scroll. Hidden panels and background browser
+windows stop polling and catch up when shown again.
+
+The worker reads a bounded tail and then only new bytes through the existing
+encrypted file operations, once per second while following. This also supports
+logs larger than the ordinary 10 MiB text preview limit. The viewer retains up
+to 10,000 recent lines or 256 Ki characters; older output remains in the file.
+Rotation, truncation, and output that outruns the retained window start a fresh
+tail. Incomplete UTF-8 writes wait for the next read. Read failures keep the
+visible text and offer Retry. Idle reads do not replace the input, recolor the
+whole file, or rerender unchanged output.
+
+Choose Edit to explicitly load an editable full-file buffer within the existing
+editing limit. Dirty drafts remain separate from the live tail and retain the
+normal save/conflict behavior. Standalone Chat log files also default to
+read-only Preview; their scratch-file viewer keeps its existing loading model.
+
+Run `node scripts/qa/log-file-follow.mjs` after building shared packages for
+Chromium/WebKit checks using the production app/server/worker, including large
+logs, following, both pause/resume controls, visibility, rotation/truncation,
+and mode changes. Screenshots and results are written
+to `test-results/log-file-follow/`.
+
+## Large text previews
+
+Project and file-document text previews support UTF-8 files up to 10 MiB.
+Files above the 2 MiB editing limit open as read-only, syntax-highlighted text.
+The first request loads at most 10,000 lines or 256 KiB; scrolling near the end
+loads the next page. **Load more** also works without scrolling, including files
+with very long lines. The renderer paints only the visible rows and overscan,
+and appending text preserves selection and scroll position. Hidden previews do
+not request more pages, and there is no preview polling.
+
+Pages travel through the existing encrypted server relay. A worker revision
+fingerprint prevents combining pages from different versions of a file; use
+Refresh if the file changes. Large Markdown and structured documents use the
+plain text preview rather than eagerly parsing the full document. Partial text
+never enters an editable draft, save, recovery, or transfer buffer. A reopened
+or popped-out large preview loads a fresh snapshot from the beginning.
+
+Run `node scripts/qa/large-text-preview.mjs` after building shared packages to
+exercise the production app/server/worker in Chromium and WebKit with an exact
+10 MiB file, first-page and end-of-file rendering, scroll loading, encrypted
+requests, no idle/hidden page fetches, refresh, changed-file rejection, and the
+upper size limit. Results and screenshots are written under
+`test-results/large-text-preview/`.
 
 ## Drafts and saving
 

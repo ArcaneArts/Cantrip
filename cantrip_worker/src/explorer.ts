@@ -37,7 +37,45 @@ import {
   type ExplorerMediaFile,
   type ExplorerMediaFileChunk,
 } from "@cantrip/protocol";
+import { readLogTail } from "./explorer-log-tail.js";
+import { readBinaryFilePage } from "./explorer-binary.js";
+import type { LogTailCursor } from "@cantrip/protocol/surface-stream";
 import { decodeEditableFileText } from "./editable-file-text.js";
+import { TEXT_PREVIEW_BYTES_LIMIT } from "@cantrip/protocol/surface-stream";
+import {
+  readTextPreviewPage,
+  TextPreviewRequiredError,
+} from "./explorer-text-preview.js";
+
+export async function readExplorerLogTail(
+  root: string,
+  relativePath: string,
+  cursor?: LogTailCursor,
+) {
+  const { targetPath } = await resolveEntry(root, relativePath);
+  return readLogTail(targetPath, relativePath, cursor);
+}
+
+export async function readExplorerTextPreview(
+  root: string,
+  relativePath: string,
+  offset: number,
+  version?: string,
+) {
+  const { targetPath } = await resolveEntry(root, relativePath);
+  return readTextPreviewPage(targetPath, relativePath, offset, version);
+}
+
+export async function readExplorerBinaryFile(
+  root: string,
+  relativePath: string,
+  offset: number,
+  limit: number,
+  version?: string,
+) {
+  const { targetPath } = await resolveEntry(root, relativePath);
+  return readBinaryFilePage(targetPath, relativePath, offset, limit, version);
+}
 
 const DIRECTORY_LIMIT = 1_000;
 const FILE_SIZE_LIMIT = 2 * 1024 * 1024;
@@ -191,6 +229,35 @@ async function resolveEntry(root: string, relativePath: string) {
   const resolvedTarget = await realpath(targetPath);
   const metadata = await lstat(resolvedTarget);
   return { metadata, targetPath: resolvedTarget };
+}
+
+/** Resolve the same logical file semantics used by the binary reader, including deliberate symlinks. */
+export async function resolveBinaryWriteTarget(
+  root: string,
+  relativePath: string,
+) {
+  const rootPath = await realpath(root),
+    segments = pathSegments(relativePath);
+  if (!segments.length) throw new Error("Choose a file path.");
+  const logical = path.resolve(rootPath, ...segments);
+  try {
+    return { ...(await resolveEntry(root, relativePath)), exists: true };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    const existing = await lstat(logical).catch(
+      (reason: NodeJS.ErrnoException) => {
+        if (reason.code === "ENOENT") return null;
+        throw reason;
+      },
+    );
+    if (existing) throw error;
+    const parentPath = await realpath(path.dirname(logical));
+    return {
+      targetPath: path.join(parentPath, path.basename(logical)),
+      metadata: null,
+      exists: false,
+    };
+  }
 }
 
 function pathIsInside(root: string, candidate: string): boolean {
@@ -628,10 +695,11 @@ export async function readExplorerFile(
   if (!metadata.isFile()) {
     throw new Error("This file type is not available for preview.");
   }
-  if (metadata.size > FILE_SIZE_LIMIT) {
-    throw new Error("Text previews are limited to 2 MB.");
-  }
+  if (metadata.size > TEXT_PREVIEW_BYTES_LIMIT)
+    throw new Error("Text previews are limited to 10 MB.");
+  if (metadata.size > FILE_SIZE_LIMIT) throw new TextPreviewRequiredError();
   const bytes = await readFile(targetPath);
+  if (bytes.length > FILE_SIZE_LIMIT) throw new TextPreviewRequiredError();
   const content = decodeEditableFileText(bytes);
   return explorerFileSchema.parse({
     path: relativePath,
@@ -664,6 +732,7 @@ export async function readExplorerMediaFile(
   relativePath: string,
   offset: number,
   limit: number,
+  override?: Pick<ExplorerMediaFile, "kind" | "mimeType">,
 ): Promise<ExplorerMediaFileChunk> {
   if (!Number.isSafeInteger(offset) || offset < 0) {
     throw new Error("The media read offset is invalid.");
@@ -672,7 +741,7 @@ export async function readExplorerMediaFile(
     throw new Error("The media read limit is invalid.");
   }
   const { targetPath } = await resolveEntry(root, relativePath);
-  const mediaType = explorerMediaTypeForPath(targetPath);
+  const mediaType = override ?? explorerMediaTypeForPath(targetPath);
   if (!mediaType) throw new Error("This file type is not available as media.");
   const handle = await open(
     targetPath,

@@ -1,3 +1,4 @@
+import { BinaryFileWrites } from "./binary-file-writes.js";
 import { dispatchRepositoryOperation } from "./repository-operation-dispatch.js";
 import { BrowserSurfaceWebRuntime } from "./browser/surface-web-runtime.js";
 import { generatePrivateLabel } from "./automatic-labeling.js";
@@ -679,6 +680,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   };
   const surfaceStreamReplay = new SurfaceStreamReplayGuard();
   const explorerFileImports = new ExplorerFileImports();
+  const binaryFileWrites = new BinaryFileWrites(
+    config.dataDirectory,
+    workerEncryption,
+  );
   const repositoryOperationReplay = new RepositoryOperationReplayGuard();
   const customizationContentReplay = new CustomizationContentReplayGuard();
   const repositoryManagedOperations = new RepositoryManagedOperationStore(
@@ -4089,6 +4094,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       case "file-document.operation":
         return handleExplorerCommand(command, {
           fileImports: explorerFileImports,
+          binaryWrites: binaryFileWrites,
           surfaceStreamReplay,
           workerEncryption,
         });
@@ -6686,6 +6692,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     if (stopping) return;
 
     stopping = true;
+    await binaryFileWrites.dispose().catch(() => undefined);
     await explorerFileImports.dispose().catch(() => undefined);
     // Abort downloads/probes together before awaiting the other shutdown owners.
     const managedRuntimesClosed = Promise.allSettled([

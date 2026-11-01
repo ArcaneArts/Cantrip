@@ -1,0 +1,28 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>NBT client codec QA</title>
+  </head>
+  <body>
+    <pre id="result">Running browser-only codec in a dedicated worker…</pre>
+    <script type="module">
+      const worker = new Worker(new URL("./worker.ts", import.meta.url), {
+        type: "module",
+      });
+      worker.onmessage = (event) => {
+        window.__nbtResult = event.data;
+        document.querySelector("#result").textContent = JSON.stringify(
+          event.data,
+          null,
+          2,
+        );
+        worker.terminate();
+      };
+      worker.onerror = (event) => {
+        window.__nbtResult = { ok: false, error: event.message };
+      };
+      worker.postMessage("run");
+    </script>
+  </body>
+</html>

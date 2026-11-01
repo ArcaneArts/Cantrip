@@ -481,6 +481,105 @@ export function workspaceCommandModelCases(add) {
     { type: "commit-transfer", transferId: "return" },
     "new-window",
   );
+  for (const scenario of [
+    "ordinary",
+    "legacy",
+    "replacement",
+    "single-view",
+    "last-tab",
+  ]) {
+    const tabId = scenario === "last-tab" ? "c" : "a";
+    const label = "tab bar return " + scenario;
+    let current = step(label + " detach", base, prepare(false, tabId));
+    current = step(
+      label + " destination ready",
+      current,
+      { type: "transfer-ready", transferId: "transfer" },
+      "new-window",
+    );
+    current = step(
+      label + " state ready",
+      current,
+      { type: "transfer-state-ready", transferId: "transfer" },
+      "new-window",
+    );
+    current = step(label + " detach commit", current, {
+      type: "commit-transfer",
+      transferId: "transfer",
+    });
+    if (scenario === "legacy")
+      delete current.windows.find((w) => w.id === "new-window").returnPlacement
+        .detachedPaneId;
+    if (scenario === "replacement") {
+      current = step(label + " close original pane", current, {
+        type: "close-tab",
+        tabId: "b",
+      });
+      current = step(label + " replacement pane", current, {
+        type: "open",
+        tab: workspaceTab("replacement", "replacement-terminal"),
+        target: {
+          kind: "new-pane",
+          paneId: "replacement-pane",
+          region: "center",
+          splitId: "replacement-split",
+        },
+      });
+    }
+    const before = copy(current.windows.find((w) => w.id === "main"));
+    current = step(
+      label + " prepare",
+      current,
+      {
+        type: "prepare-return",
+        transferId: "return",
+        paneId: "new-pane",
+        splitId: "unwanted-split",
+        ...(scenario === "single-view"
+          ? { tabId, destinationPaneId: "return-pane" }
+          : {}),
+      },
+      "new-window",
+    );
+    current = step(label + " app ready", current, {
+      type: "transfer-ready",
+      transferId: "return",
+    });
+    current = step(label + " restored", current, {
+      type: "transfer-state-ready",
+      transferId: "return",
+    });
+    current = step(
+      label + " commit",
+      current,
+      { type: "commit-transfer", transferId: "return" },
+      "new-window",
+    );
+    const main = current.windows.find((w) => w.id === "main");
+    assert.deepEqual(
+      main.centerRoot,
+      before.centerRoot,
+      label + " preserves center geometry",
+    );
+    assert.deepEqual(
+      main.panes.map((p) => p.id),
+      before.panes.map((p) => p.id),
+      label + " adds no pane",
+    );
+    const target = main.panes.find(
+      (p) =>
+        p.id === (scenario === "replacement" ? "replacement-pane" : "center-a"),
+    );
+    assert.deepEqual(
+      target.tabs.map((t) => t.id),
+      scenario === "replacement"
+        ? ["replacement", "a"]
+        : scenario === "last-tab"
+          ? ["a", "b", "c"]
+          : ["a", "b"],
+      label + " restores tab placement",
+    );
+  }
   for (const tabId of ["a", "c"]) {
     let current = step(
       "prepare single tab " + tabId,

@@ -253,7 +253,7 @@ jobs:
           brew install postgresql@18
           echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(brew --prefix postgresql@18)/bin" >> "$GITHUB_ENV"
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol --filter @cantrip/crypto --filter @cantrip/glitch -r build
+      - run: pnpm --filter '@cantrip/app^...' -r build
       - name: Shared resource cleanup SQL matches the actual TypeScript helpers
         run: node --import tsx scripts/server-rust/resource-layout-query-manifest.mjs --check
       - name: Browser query statements match the actual TypeScript repository
@@ -850,7 +850,7 @@ jobs:
           brew install postgresql@18
           echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(brew --prefix postgresql@18)/bin" >> "$GITHUB_ENV"
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol --filter @cantrip/crypto --filter @cantrip/glitch -r build
+      - run: pnpm --filter '@cantrip/app^...' -r build
       - name: Create replica evidence directory
         run: |
           node -e "require('node:fs').mkdirSync('.qa/rust-server', { recursive: true })"
@@ -982,7 +982,7 @@ jobs:
           brew install postgresql@18
           echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(brew --prefix postgresql@18)/bin" >> "$GITHUB_ENV"
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol --filter @cantrip/crypto --filter @cantrip/glitch -r build
+      - run: pnpm --filter '@cantrip/app^...' -r build
       - name: Create conversion evidence directory
         run: |
           node -e "require('node:fs').mkdirSync('.qa/rust-server', { recursive: true })"
@@ -1072,7 +1072,7 @@ jobs:
           "$env:CANTRIP_MINGW_BIN" >> $env:GITHUB_PATH
           "CANTRIP_TEST_POSTGRES_BIN_DIR=$env:PGBIN" >> $env:GITHUB_ENV
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol --filter @cantrip/crypto --filter @cantrip/glitch -r build
+      - run: pnpm --filter '@cantrip/app^...' -r build
       - name: Original one MiB admission suite under GDB
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"
@@ -1140,7 +1140,7 @@ jobs:
           brew install postgresql@18
           echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(brew --prefix postgresql@18)/bin" >> "$GITHUB_ENV"
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol --filter @cantrip/crypto --filter @cantrip/glitch -r build
+      - run: pnpm --filter '@cantrip/app^...' -r build
       - name: Native policy and state unit compatibility
         run: node scripts/server-rust/cargo.mjs test --lib native_commands -- --nocapture
       - name: Native method policy matches the TypeScript authority
@@ -1531,7 +1531,7 @@ jobs:
           brew install postgresql@18
           echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(brew --prefix postgresql@18)/bin" >> "$GITHUB_ENV"
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol --filter @cantrip/crypto --filter @cantrip/glitch -r build
+      - run: pnpm --filter '@cantrip/app^...' -r build
       - name: Protected message validation contracts
         run: node scripts/server-rust/cargo.mjs test --test chat_contracts -- --nocapture
       - name: Message query state with pglite
@@ -1620,7 +1620,7 @@ jobs:
           brew install postgresql@18
           echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(brew --prefix postgresql@18)/bin" >> "$GITHUB_ENV"
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol --filter @cantrip/crypto --filter @cantrip/glitch -r build
+      - run: pnpm --filter '@cantrip/app^...' -r build
       - name: Create discovery evidence directory
         run: |
           node -e "require('node:fs').mkdirSync('.qa/rust-server', { recursive: true })"
@@ -1735,7 +1735,7 @@ jobs:
           brew install postgresql@18
           echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(brew --prefix postgresql@18)/bin" >> "$GITHUB_ENV"
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol --filter @cantrip/crypto --filter @cantrip/glitch -r build
+      - run: pnpm --filter '@cantrip/app^...' -r build
       - name: Create migration evidence directory
         run: |
           node -e "require('node:fs').mkdirSync('.qa/rust-server', { recursive: true })"
@@ -1784,7 +1784,7 @@ jobs:
           sudo apt-get install -y postgresql libssl-dev
           echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(pg_config --bindir)" >> "$GITHUB_ENV"
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol --filter @cantrip/crypto --filter @cantrip/glitch -r build
+      - run: pnpm --filter '@cantrip/app^...' -r build
       - name: Repeated actual admission, disconnect and restart scenarios with socket tracing
         run: |
           node --test scripts/server-rust/streaming-http-request.test.mjs scripts/server-rust/http-connection-trace.test.mjs
@@ -1815,7 +1815,7 @@ jobs:
           sudo apt-get install -y postgresql libssl-dev
           echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(pg_config --bindir)" >> "$GITHUB_ENV"
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol --filter @cantrip/crypto --filter @cantrip/glitch -r build
+      - run: pnpm --filter '@cantrip/app^...' -r build
       - name: Repeated actual workspace admission, disconnect and restart with socket tracing
         run: |
           node --test scripts/server-rust/streaming-http-request.test.mjs scripts/server-rust/http-connection-trace.test.mjs

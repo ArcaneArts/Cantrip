@@ -305,3 +305,26 @@ it("does not attach a late-created resource after its controller is disposed", a
   ).toBeUndefined();
   expect(input.focusWindow).not.toHaveBeenCalled();
 });
+
+it("reopens the same immutable document with an explicit format without changing its path or bytes", async () => {
+  const input = fixture();
+  await openOwnedFile({ ...input, viewer: "json" });
+  let owned =
+    input.controller.getSnapshot().authoritative.windows[0]!.panes[0]!.tabs;
+  expect(owned).toHaveLength(1);
+  expect(owned[0]).toMatchObject({
+    fileViewer: "json",
+    fileMode: "visual",
+    resource: { resourceId: resource.id },
+  });
+  await openOwnedFile(input);
+  expect(
+    input.controller.getSnapshot().authoritative.windows[0]!.panes[0]!.tabs[0]!
+      .fileViewer,
+  ).toBe("json");
+  await openOwnedFile({ ...input, viewer: null });
+  owned =
+    input.controller.getSnapshot().authoritative.windows[0]!.panes[0]!.tabs;
+  expect(owned).toHaveLength(1);
+  expect(owned[0]).toMatchObject({ fileViewer: null, fileMode: "edit" });
+});

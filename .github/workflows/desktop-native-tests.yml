@@ -48,7 +48,7 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol --filter @cantrip/crypto --filter @cantrip/glitch -r build
+      - run: pnpm --filter '@cantrip/app^...' -r build
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.95.0

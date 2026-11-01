@@ -156,3 +156,20 @@ it("routes document links with their project and worktree instead of rebinding t
     "src/lib.rs",
   );
 });
+
+it("defaults new log document views to preview without changing an explicit saved mode", async () => {
+  const log = {
+    ...surface(),
+    entity: { ...document, path: "daemon.log" },
+  } as ProjectSurface;
+  await act(async () => {
+    renderer = create(tree([log]));
+  });
+  expect(renderer!.root.findByType(FileDocumentView).props.mode).toBe(
+    "preview",
+  );
+  await act(async () =>
+    renderer!.root.findByType(FileDocumentView).props.onModeChange("edit"),
+  );
+  expect(renderer!.root.findByType(FileDocumentView).props.mode).toBe("edit");
+});

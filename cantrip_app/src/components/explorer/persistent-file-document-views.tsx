@@ -41,6 +41,7 @@ function RetainedDocumentView({
   active,
   incoming,
   savedMode,
+  fileViewer,
   ...props
 }: Omit<Props, "surfaces" | "placements" | "activeTabId"> & {
   document: FileDocument;
@@ -49,6 +50,7 @@ function RetainedDocumentView({
   active: boolean;
   incoming?: IncomingEditorView<FileDocument>;
   savedMode?: ExplorerFileMode;
+  fileViewer?: string | null;
 }) {
   const [mode, setMode] = useState<ExplorerFileMode>(
     () =>
@@ -88,6 +90,7 @@ function RetainedDocumentView({
         tabId={tabId}
         document={document}
         mode={mode}
+        fileViewer={fileViewer}
         onModeChange={changeMode}
         onOpenFile={openFile}
         appearance={props.appearance}
@@ -157,6 +160,9 @@ export function PersistentFileDocumentViews({
         placement={placement}
         active={active}
         incoming={incomingViews?.find((incoming) => incoming.tabId === tabId)}
+        fileViewer={
+          surfaces.find((surface) => surface.tabKey === tabId)?.fileViewer
+        }
         savedMode={
           surfaces.find((surface) => surface.tabKey === tabId)?.fileMode
         }

@@ -24,13 +24,13 @@ function lifecycle(
 }
 
 describe("Explorer lifecycle preparation", () => {
-  it("never prompts for clean deletion and cancels dirty deletion", () => {
+  it("never prompts for clean deletion and cancels dirty deletion", async () => {
     const confirm = vi.fn().mockReturnValue(false);
-    expect(confirmExplorerDiscard(lifecycle(), confirm)).toBe(true);
+    expect(await confirmExplorerDiscard(lifecycle(), confirm)).toBe(true);
     expect(confirm).not.toHaveBeenCalled();
-    expect(confirmExplorerDiscard(lifecycle({ dirty: true }), confirm)).toBe(
-      false,
-    );
+    expect(
+      await confirmExplorerDiscard(lifecycle({ dirty: true }), confirm),
+    ).toBe(false);
   });
 
   it("flushes view state only after a dirty rebind is confirmed", async () => {
