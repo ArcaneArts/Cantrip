@@ -12,6 +12,7 @@ import {
 } from "@/lib/workspace-selection";
 import { WorkspaceCommandClient } from "@/lib/workspace-command-client";
 import { WorkspacePresentationStore } from "@/lib/workspace-presentation-store";
+import { WorkspaceRecoveryBanner } from "./workspace-recovery-banner";
 import type { bootstrapWorkspace } from "@/lib/workspace-bootstrap";
 import {
   applyWorkspaceCommand,
@@ -34,6 +35,48 @@ beforeEach(() =>
   }),
 );
 afterEach(() => clearClientSession());
+
+it("automatically replaces a disposed window attachment after the banner countdown", async () => {
+  vi.useFakeTimers();
+  const first = connection("a");
+  const replacement = connection("a");
+  const connect = vi
+    .fn<typeof bootstrapWorkspace>()
+    .mockResolvedValueOnce(first)
+    .mockResolvedValueOnce(replacement);
+  let current!: ReturnType<typeof useWorkspaceConnection>;
+  const Probe = () => {
+    current = useWorkspaceConnection(
+      "a",
+      emptyWorkspaceSelection("a"),
+      undefined,
+      connect,
+    );
+    return createElement(WorkspaceRecoveryBanner, { workspace: current });
+  };
+  let renderer: TestRenderer.ReactTestRenderer | undefined;
+  try {
+    await act(async () => {
+      renderer = TestRenderer.create(createElement(Probe));
+    });
+    await act(async () => first.controller.dispose());
+    expect(current.controllerState?.disposed).toBe(true);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4999);
+    });
+    expect(connect).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(connect).toHaveBeenCalledTimes(2);
+    expect(current.connection).toBe(replacement);
+    expect(current.controllerState?.disposed).toBe(false);
+    expect(renderer!.toJSON()).toBeNull();
+  } finally {
+    if (renderer) await act(async () => renderer!.unmount());
+    vi.useRealTimers();
+  }
+});
 
 it("refreshes on interval, focus and reconnect, then removes observers on unmount", async () => {
   vi.useFakeTimers();
