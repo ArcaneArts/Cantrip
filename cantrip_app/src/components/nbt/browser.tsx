@@ -17,6 +17,7 @@ import {
 import type { NbtBinaryTransport } from "@/lib/nbt/save";
 import type { NbtRecoveryVault } from "@/lib/nbt/recovery";
 import { nbtSharedDocument } from "@/lib/nbt/shared-document";
+import { readNbtEditTarget } from "@/lib/nbt/edit-target";
 import type {
   NbtDisplayRow,
   NbtDocumentSource,
@@ -28,7 +29,13 @@ import { NbtTree, type NbtAnchor } from "./tree";
 import { NbtArray } from "./array";
 import { NbtTable } from "./table";
 import { NbtFind } from "./find";
-import { nbtControl, NBT_PROFILES, NBT_TYPE_NAMES } from "./format";
+import {
+  container,
+  numericArray,
+  nbtControl,
+  NBT_PROFILES,
+  NBT_TYPE_NAMES,
+} from "./format";
 import {
   NbtEditSheet,
   type NbtEditAction,
@@ -110,9 +117,16 @@ export function NbtBrowser({
     nonce = useRef(0),
     ready = useRef<unknown>(null),
     initialRoot = useRef<unknown>(null),
-    navigation = useRef<AbortController | null>(null);
+    navigation = useRef<AbortController | null>(null),
+    editOpening = useRef<AbortController | null>(null);
   const generation = status?.shared?.generation ?? 0;
-  const readOnly = externalReadOnly || Boolean(status?.shared?.changing);
+  const readOnly =
+    externalReadOnly ||
+    Boolean(status?.shared?.changing || status?.shared?.unavailable);
+  useEffect(() => {
+    if (!active || readOnly) editOpening.current?.abort();
+    return () => editOpening.current?.abort();
+  }, [client, generation, active, readOnly]);
   const reloading = useRef(false),
     replacement = useRef<{ key: string; release(): void } | null>(null);
   const [interpreting, setInterpreting] = useState(false);
@@ -469,11 +483,13 @@ export function NbtBrowser({
   }, [active, readOnly, editing, client, save]);
   const select = useCallback((row: NbtDisplayRow) => {
     navigation.current?.abort();
+    editOpening.current?.abort();
     setSelected(row);
   }, []);
   const reveal = useCallback(
     async (result: NbtSearchResult, signal?: AbortSignal) => {
       if (!client) return;
+      editOpening.current?.abort();
       navigation.current?.abort();
       const controller = new AbortController();
       navigation.current = controller;
@@ -528,6 +544,7 @@ export function NbtBrowser({
     return () => controller.abort();
   }, [client, active, generation, selected?.node.id, edit?.revision]);
   const open = useCallback((row: NbtDisplayRow, next: "array" | "table") => {
+    editOpening.current?.abort();
     setSelected(row);
     setTarget(row);
     setMode(next);
@@ -538,8 +555,35 @@ export function NbtBrowser({
     row = selected,
     element?: number,
   ) => {
-    if (row && edit && !readOnly)
-      setEditRequest({ action, row, element, revision: edit.revision });
+    if (!client || !row || !edit || readOnly) return;
+    editOpening.current?.abort();
+    const controller = new AbortController();
+    editOpening.current = controller;
+    void readNbtEditTarget(client, row.node.id, controller.signal)
+      .then(({ row, revision }) => {
+        setSelected(row);
+        setTarget((current) =>
+          current?.node.id === row.node.id ? row : current,
+        );
+        if (
+          (action === "value" &&
+            (container(row.node) || numericArray(row.node))) ||
+          (action === "insert" && !container(row.node)) ||
+          (action === "array" && !numericArray(row.node))
+        )
+          throw new Error(
+            "The selected tag changed type. Select an available action for it.",
+          );
+        setEditRequest({ action, row, element, revision });
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted)
+          setNavigationError(
+            error instanceof Error
+              ? error.message
+              : "The NBT tag could not be opened for editing.",
+          );
+      });
   };
   const protectedDraft = Boolean(
     interpreting ||
@@ -886,8 +930,33 @@ export function NbtBrowser({
         >
           {error ?? navigationError ?? status?.error?.message}
           <p className="mt-1 text-muted-foreground">
-            Check the encoding and compression options for this file.
+            {status?.shared?.unavailable
+              ? "The encrypted journal is retained. Recover this document to resume."
+              : "Check the encoding and compression options for this file."}
           </p>
+          {client && status?.shared?.unavailable ? (
+            <button
+              className={nbtControl + " mt-2"}
+              disabled={
+                externalReadOnly ||
+                status.shared.changing ||
+                Boolean(session?.busy)
+              }
+              onClick={() =>
+                void nbtSharedDocument(client)!
+                  .recover()
+                  .catch((error) =>
+                    setNavigationError(
+                      error instanceof Error
+                        ? error.message
+                        : "NBT recovery failed.",
+                    ),
+                  )
+              }
+            >
+              Recover NBT document
+            </button>
+          ) : null}
         </div>
       ) : null}
       {progress?.error ? (

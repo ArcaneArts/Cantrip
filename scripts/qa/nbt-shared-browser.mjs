@@ -87,6 +87,41 @@ try {
         (await b.evaluate(() => window.__nbtSharedQa.results("b")))[0].nodeId,
         "node:2",
       );
+      const workerGeneration = (
+        await a.evaluate(() => window.__nbtSharedQa.status())
+      ).document.shared.generation;
+      await a.evaluate(() => window.__nbtSharedQa.crash());
+      for (const view of [a, b])
+        await view.waitForFunction((previous) => {
+          const status = window.__nbtSharedQa.status().document;
+          return (
+            status?.shared?.generation > previous &&
+            status?.state === "complete" &&
+            !status.shared.changing
+          );
+        }, workerGeneration);
+      assert.equal(
+        await b.evaluate(() => window.__nbtSharedQa.value()),
+        "9223372036854775807",
+      );
+      await a.evaluate(() => window.__nbtSharedQa.crash(true));
+      for (const view of [a, b])
+        await view.waitForFunction(
+          () =>
+            window.__nbtSharedQa.status().document?.shared?.unavailable &&
+            !window.__nbtSharedQa.status().document?.shared?.changing,
+        );
+      await b.evaluate(() => window.__nbtSharedQa.recover());
+      for (const view of [a, b])
+        await view.waitForFunction(
+          () =>
+            window.__nbtSharedQa.status().document?.state === "complete" &&
+            !window.__nbtSharedQa.status().document?.shared?.changing,
+        );
+      assert.equal(
+        await b.evaluate(() => window.__nbtSharedQa.value()),
+        "9223372036854775807",
+      );
       await a.evaluate(() => window.__nbtSharedQa.checkpoint());
       const generation = (await b.evaluate(() => window.__nbtSharedQa.status()))
         .document.shared.generation;
@@ -147,6 +182,8 @@ try {
         sharedEdits: true,
         independentSearches: true,
         abruptOwnerRecovery: true,
+        automaticWorkerRecovery: true,
+        manualRecoveryAfterStorageFailure: true,
         recoveredUndo: true,
         inactiveReplacement: true,
         confirmedSharedClose: true,

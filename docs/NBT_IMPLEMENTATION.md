@@ -31,11 +31,17 @@ reconciles pending writes before clearing recovery. Replacement generations
 fence stale actions and view caches. Hidden views cancel search and page reads,
 while foreground edit/save work can still settle. Transfer/quit checkpoints now
 drain real journal acknowledgements without copying source bytes or parsed trees
-into workspace state. Native pop-out/return qualification, bounded view-state
+into workspace state. A failed document worker reopens the authoritative
+committed journal under the same owner lock, without replaying ambiguous RPCs.
+Actual recovery-storage failures expose a manual retry while retaining the
+journal; repeated crashes before indexing completes do not trigger a retry loop.
+Editors refresh selected tag descriptors before opening, fence concurrent
+changes, and avoid delayed autofocus stealing an already focused field.
+Native pop-out/return qualification, bounded view-state
 transfer, local-file recovery/export, touch qualification and real-phone testing
 are still unfinished; this milestone is not complete.
 
-Current recovery verification: 178 codec/document/edit/recovery tests, 32
+Current recovery verification: 178 codec/document/edit/recovery tests, 48
 focused NBT app tests, Explorer transfer suites, 12 binary-write worker tests,
 and app/worker typechecks pass.
 Production Chromium and WebKit app/server/worker runs restore unsaved drafts,
@@ -55,6 +61,11 @@ and shared broker across real Chromium/WebKit renderer contexts with actual
 Web Locks, BroadcastChannels and IndexedDB. Both engines pass one-worker
 ownership, shared edits, simultaneous independent searches, abrupt owner loss,
 recovered undo, inactive-view replacement and confirmed shared/last-view close.
+Both engines also terminate a real dedicated worker and recover its draft,
+then abort an actual recovery-head transaction and recover through manual retry.
+`CANTRIP_NBT_QA_OWNER_FAULTS=true` enables the corresponding fault injection in
+the full app fixture; Chromium passes that flow. WebKit full-app fault coverage
+is still being rechecked after fixing the edit-sheet autofocus race.
 This isolates the NBT broker; it does not simulate a native workspace window or
 qualify the full native pop-out flow. A second ordinary browser main page waits
 for the app's single main-workspace owner and is not a valid native-pop-out test.

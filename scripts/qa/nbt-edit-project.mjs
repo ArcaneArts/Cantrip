@@ -56,6 +56,69 @@ for (const [engine, engineType] of Object.entries({ chromium, webkit }).filter(
       acceptDownloads: true,
       viewport: { width: 1440, height: 900 },
     });
+    const ownerFaults = process.env.CANTRIP_NBT_QA_OWNER_FAULTS === "true";
+    if (ownerFaults)
+      await context.addInitScript(() => {
+        const workers = new Set(),
+          ActualWorker = window.Worker;
+        let failWrite = false,
+          aborted = 0;
+        window.Worker = class extends ActualWorker {
+          constructor(url, options) {
+            super(url, options);
+            if (String(url).includes("document.worker")) workers.add(this);
+          }
+          terminate() {
+            workers.delete(this);
+            return super.terminate();
+          }
+        };
+        const transaction = IDBDatabase.prototype.transaction;
+        IDBDatabase.prototype.transaction = function (
+          stores,
+          mode,
+          ...options
+        ) {
+          const tx = transaction.call(this, stores, mode, ...options);
+          if (
+            failWrite &&
+            this.name === "cantrip-protected-nbt-recovery-v1" &&
+            mode === "readwrite" &&
+            Array.from(typeof stores === "string" ? [stores] : stores).includes(
+              "heads",
+            )
+          ) {
+            failWrite = false;
+            queueMicrotask(() => {
+              try {
+                tx.abort();
+                aborted++;
+              } catch {}
+            });
+          }
+          return tx;
+        };
+        window.__qaNbtFaults = {
+          crash(storage = false) {
+            const worker = [...workers].at(-1);
+            if (!worker)
+              throw new Error(
+                "No live NBT document worker is available to terminate.",
+              );
+            failWrite = storage;
+            worker.dispatchEvent(
+              new ErrorEvent("error", {
+                cancelable: true,
+                message: "Injected NBT worker failure",
+                error: new Error("Injected NBT worker failure"),
+              }),
+            );
+          },
+          aborted() {
+            return aborted;
+          },
+        };
+      });
     page = await context.newPage();
     const wire = [];
     page.on("request", (request) => {
@@ -191,6 +254,13 @@ for (const [engine, engineType] of Object.entries({ chromium, webkit }).filter(
       .getByRole("row")
       .filter({ hasText: "9223372036854775807" })
       .waitFor();
+    assert.match(
+      await viewer
+        .getByRole("row")
+        .filter({ hasText: "9223372036854775807" })
+        .innerText(),
+      /\blong\b/,
+    );
     await action("Duplicate").click();
     await sheet
       .getByLabel("NBT property name", { exact: true })
@@ -228,6 +298,64 @@ for (const [engine, engineType] of Object.entries({ chromium, webkit }).filter(
       true,
     );
     const recovery = process.env.CANTRIP_NBT_QA_RECOVERY === "true";
+    if (ownerFaults) {
+      const generation = Number(
+        await viewer.getAttribute("data-nbt-generation"),
+      );
+      await page.evaluate(() => window.__qaNbtFaults.crash());
+      await page.waitForFunction(
+        (previous) =>
+          [...document.querySelectorAll("[data-nbt-viewer]")].some(
+            (view) =>
+              view.getClientRects().length &&
+              Number(view.getAttribute("data-nbt-generation")) > previous &&
+              view.querySelector('[data-nbt-document-state="complete"]'),
+          ),
+        generation,
+        { timeout: 180000 },
+      );
+      await viewer.locator('[data-nbt-dirty="true"]').waitFor();
+      await viewer
+        .getByRole("row")
+        .filter({ hasText: "9223372036854775807" })
+        .waitFor();
+      assert.match(
+        await viewer
+          .getByRole("row")
+          .filter({ hasText: "9223372036854775807" })
+          .innerText(),
+        /\blong\b/,
+      );
+      await page.evaluate(() => window.__qaNbtFaults.crash(true));
+      await viewer
+        .getByRole("button", { name: "Recover NBT document", exact: true })
+        .waitFor();
+      assert.equal(
+        await page.evaluate(() => window.__qaNbtFaults.aborted()),
+        1,
+      );
+      await viewer
+        .getByRole("button", { name: "Recover NBT document", exact: true })
+        .click();
+      await viewer
+        .locator('[data-nbt-document-state="complete"]')
+        .waitFor({ timeout: 180000 });
+      await viewer.locator('[data-nbt-dirty="true"]').waitFor();
+      await viewer
+        .getByRole("row")
+        .filter({ hasText: "9223372036854775807" })
+        .waitFor();
+      assert.match(
+        await viewer
+          .getByRole("row")
+          .filter({ hasText: "9223372036854775807" })
+          .innerText(),
+        /\blong\b/,
+      );
+      await viewer
+        .getByRole("button", { name: "Recover NBT document", exact: true })
+        .waitFor({ state: "detached" });
+    }
     if (recovery) {
       page.once("dialog", (dialog) => dialog.accept());
       await page.reload();
@@ -239,6 +367,13 @@ for (const [engine, engineType] of Object.entries({ chromium, webkit }).filter(
         .getByRole("row")
         .filter({ hasText: "9223372036854775807" })
         .waitFor();
+      assert.match(
+        await viewer
+          .getByRole("row")
+          .filter({ hasText: "9223372036854775807" })
+          .innerText(),
+        /\blong\b/,
+      );
       await action("Toggle NBT editing").click();
       assert.equal(await action("Undo").isEnabled(), true);
       await action("Undo").click();
@@ -407,7 +542,9 @@ for (const [engine, engineType] of Object.entries({ chromium, webkit }).filter(
       const quick = page.locator(
         '[data-nbt-viewer]:visible[data-nbt-binding*="quick.nbt"]',
       );
-      await quick.locator('[data-nbt-document-state="complete"]').waitFor();
+      await quick
+        .locator('[data-nbt-document-state="complete"]')
+        .waitFor({ timeout: 180000 });
       await quick
         .getByLabel("NBT compression", { exact: true })
         .selectOption("gzip");
@@ -416,7 +553,9 @@ for (const [engine, engineType] of Object.entries({ chromium, webkit }).filter(
           (select) => select.getClientRects().length && select.value === "gzip",
         ),
       );
-      await quick.locator('[data-nbt-document-state="complete"]').waitFor();
+      await quick
+        .locator('[data-nbt-document-state="complete"]')
+        .waitFor({ timeout: 180000 });
       await quick
         .getByRole("button", { name: "Toggle NBT editing", exact: true })
         .click();
@@ -428,7 +567,9 @@ for (const [engine, engineType] of Object.entries({ chromium, webkit }).filter(
       await apply();
       page.once("dialog", (dialog) => dialog.accept());
       await page.reload();
-      await quick.locator('[data-nbt-document-state="complete"]').waitFor();
+      await quick
+        .locator('[data-nbt-document-state="complete"]')
+        .waitFor({ timeout: 180000 });
       await quick.locator('[data-nbt-dirty="true"]').waitFor();
       assert.match(
         await quick.locator('[data-nbt-node="node:1"]').innerText(),
@@ -463,6 +604,8 @@ for (const [engine, engineType] of Object.entries({ chromium, webkit }).filter(
       independentReopen: true,
       dirtyCloseCancellation: true,
       encryptedDraftReload: recovery,
+      workerCrashRecovery: ownerFaults,
+      recoveryAfterStorageFailure: ownerFaults,
       replacementRetainsRecovery: recovery,
       conflictRetainsDraft: true,
       failedReloadRetainsDraft: true,

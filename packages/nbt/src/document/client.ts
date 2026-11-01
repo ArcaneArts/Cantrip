@@ -45,6 +45,9 @@ export class NbtDocumentClient {
   private searchListeners = new Set<() => void>();
   private closing: Promise<void> | undefined;
   private closed = false;
+  get isClosed() {
+    return this.closed;
+  }
   private constructor(
     private endpoint: NbtMessageEndpoint<
       NbtDocumentResponse,

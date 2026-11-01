@@ -86,11 +86,13 @@ export function NbtEditSheet({
     [loaded, setLoaded] = useState(false),
     [error, setError] = useState<string | null>(null),
     [notice, setNotice] = useState<string | null>(null);
-  const input = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null),
+  const input = useRef<HTMLTextAreaElement | null>(null),
+    nameInput = useRef<HTMLInputElement | null>(null),
     form = useRef<HTMLFormElement>(null);
   const stringPage = action === "value" && row.node.type === NbtTag.String;
   useEffect(() => {
     const controller = new AbortController();
+    let frame: number | undefined;
     setLoading(true);
     setLoaded(false);
     setError(null);
@@ -134,9 +136,17 @@ export function NbtEditSheet({
       controller.signal.throwIfAborted();
       setLoading(false);
       setLoaded(true);
-      requestAnimationFrame(() => {
-        input.current?.focus();
-        input.current?.select();
+      frame = requestAnimationFrame(() => {
+        // A user may already have focused/started typing in another field
+        // between data readiness and this frame. Never steal that input.
+        if (
+          controller.signal.aborted ||
+          form.current?.contains(document.activeElement)
+        )
+          return;
+        const field = nameInput.current ?? input.current;
+        field?.focus();
+        field?.select();
       });
     })().catch((reason) => {
       if (!controller.signal.aborted) {
@@ -144,7 +154,10 @@ export function NbtEditSheet({
         setLoading(false);
       }
     });
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      if (frame !== undefined) cancelAnimationFrame(frame);
+    };
   }, [client, request, stringPage, offsets]);
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
@@ -309,9 +322,7 @@ export function NbtEditSheet({
           <label className="grid gap-1">
             Name
             <input
-              ref={(node) => {
-                input.current = node;
-              }}
+              ref={nameInput}
               aria-label="NBT property name"
               className={inputClass}
               value={name}
@@ -404,9 +415,7 @@ export function NbtEditSheet({
               ? "Values (comma or whitespace separated)"
               : "Value"}
             <textarea
-              ref={(node) => {
-                input.current = node;
-              }}
+              ref={input}
               aria-label="NBT edit value"
               spellCheck={false}
               className="min-h-28 w-full rounded border border-border bg-background p-2 font-mono text-xs outline-none focus:ring-1 focus:ring-ring"

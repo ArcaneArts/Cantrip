@@ -12,6 +12,8 @@ import type { NbtDocumentClient } from "../src/document/index.js";
 import type { NbtSharedFactory } from "../../../cantrip_app/src/lib/nbt/shared-owner";
 
 let client: NbtDocumentClient | undefined,
+  owned: NbtDocumentClient | undefined,
+  failClaim = false,
   workers = 0;
 const frames: Uint8Array[] = [];
 const Channel = globalThis.BroadcastChannel;
@@ -61,6 +63,10 @@ async function open(id: string) {
   const blob = new Blob(parts);
   const factory: NbtSharedFactory = {
     async claim() {
+      if (failClaim) {
+        failClaim = false;
+        throw new Error("Injected recovery storage failure");
+      }
       const log = await NbtRecoveryJournal.open(
         await openIndexedNbtRecovery(id),
         id,
@@ -90,7 +96,10 @@ async function open(id: string) {
           ...(!choice ? { recovery: { id, key } } : {}),
         },
         signal,
-        onCreated,
+        (client) => {
+          owned = client;
+          onCreated(client);
+        },
       );
     },
     async attachRecovery(client) {
@@ -145,6 +154,13 @@ const qa = {
   },
   checkpoint() {
     return nbtSharedDocument(client!)!.checkpoint();
+  },
+  crash(failStorage = false) {
+    failClaim = failStorage;
+    owned!.fail(new Error("Injected document worker crash"));
+  },
+  recover() {
+    return nbtSharedDocument(client!)!.recover();
   },
   search(id: string, text: string) {
     return client!.startSearch(id, {

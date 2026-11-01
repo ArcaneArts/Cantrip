@@ -35,6 +35,7 @@ type Control = { id: string } & (
   | { type: "replace"; choice?: NbtInterpretation }
   | { type: "closeView" }
   | { type: "checkpoint" }
+  | { type: "recover" }
 );
 export interface NbtSharedDocumentOptions {
   id: string;
@@ -206,12 +207,13 @@ export class NbtSharedDocument implements NbtMessageEndpoint<
           (peer, message) => {
             void this.send(peer, "event", message);
           },
-          (_generation, retry) => {
-            void this.send("*", "ready", retry ? "retry" : null);
+          (_generation, reason) => {
+            void this.send("*", "ready", reason);
           },
           () => {
             this.idle = true;
           },
+          this.term,
         );
         this.owner = owner;
         try {
@@ -376,12 +378,19 @@ export class NbtSharedDocument implements NbtMessageEndpoint<
           },
         });
       }
-      if (previous && previous !== this.ownerId) {
-        for (const control of this.controls.values())
+      if (previous) {
+        for (const [id, control] of this.controls) {
+          if (
+            previous === this.ownerId &&
+            ((packet.data === "replace" && control.type === "replace") ||
+              (packet.data === "recover" && control.type === "recover"))
+          )
+            continue;
           control.reject(
             new Error("The NBT owner changed while applying this action."),
           );
-        this.controls.clear();
+          this.controls.delete(id);
+        }
       }
       void this.send("owner", "activity", this.paused);
       for (const pending of this.pending.values())
@@ -427,12 +436,21 @@ export class NbtSharedDocument implements NbtMessageEndpoint<
       rpc?.type === "request" &&
       ["attach", "pause", "close"].includes(rpc.command?.type);
     if (packet.term !== owner.generation && !(packet.term === 0 && initial)) {
-      await this.send(packet.from, "ready", null);
+      await this.send(packet.from, "ready", "owner");
+      if (packet.kind === "control") {
+        const control = packet.data as Control;
+        if (control && uuid.test(control.id))
+          await this.send(packet.from, "control.result", {
+            id: control.id,
+            error:
+              "The NBT document generation changed before this action could run.",
+          });
+      }
       return;
     }
     this.idle = false;
     this.watch(packet.from);
-    if (initial) await this.send(packet.from, "ready", null);
+    if (initial) await this.send(packet.from, "ready", "owner");
     if (packet.kind === "rpc") {
       try {
         await owner.request(packet.from, rpc);
@@ -476,7 +494,8 @@ export class NbtSharedDocument implements NbtMessageEndpoint<
           )
             throw new Error("Unsupported NBT interpretation.");
           await owner.replace(control.choice);
-        } else if (control.type === "checkpoint") await owner.checkpoint();
+        } else if (control.type === "recover") await owner.recover();
+        else if (control.type === "checkpoint") await owner.checkpoint();
         else if (control.type === "closeView")
           await owner.closeView(packet.from);
         else throw new Error("Invalid NBT ownership action.");
@@ -509,7 +528,7 @@ export class NbtSharedDocument implements NbtMessageEndpoint<
     }
   }
   private control(
-    type: "replace" | "closeView" | "checkpoint",
+    type: "replace" | "closeView" | "checkpoint" | "recover",
     choice?: NbtInterpretation,
   ) {
     if (this.closed || this.localClosed)
@@ -532,6 +551,9 @@ export class NbtSharedDocument implements NbtMessageEndpoint<
   }
   checkpoint() {
     return this.control("checkpoint");
+  }
+  recover() {
+    return this.control("recover");
   }
   private stopView() {
     if (this.localClosed) return;

@@ -15,7 +15,12 @@ import type {
 export interface NbtDocumentStatus {
   format?: NbtFormat;
   /** App-origin ownership metadata; the codec host itself does not create it. */
-  shared?: { generation: number; views: number; changing: boolean };
+  shared?: {
+    generation: number;
+    views: number;
+    changing: boolean;
+    unavailable?: boolean;
+  };
   revision?: number;
   state: "indexing" | "paused" | "complete" | "error" | "closed";
   root: string | null;

@@ -12,6 +12,7 @@ export interface NbtInterpretation {
   compression?: string;
   format?: NbtFormat;
 }
+export type NbtOwnerAnnouncement = "owner" | "replace" | "recover" | "retry";
 export interface NbtSharedFactory {
   create(
     choice: NbtInterpretation | undefined,
@@ -51,6 +52,7 @@ const emptyStatus = (): NbtDocumentStatus => ({
 export class NbtSharedOwner {
   private peers = new Map<string, Peer>();
   private controller = new AbortController();
+  private workerController = new AbortController();
   private client?: NbtDocumentClient;
   private opening = true;
   private changing = false;
@@ -64,13 +66,20 @@ export class NbtSharedOwner {
   private suspending = false;
   private retiring = false;
   private foreground = 0;
-  readonly ready: Promise<NbtDocumentClient>;
-  generation = 0;
+  private recovering = false;
+  private recovery?: Promise<NbtDocumentClient>;
+  private failure?: string;
+  private automaticRecovery = true;
+  ready: Promise<NbtDocumentClient>;
   constructor(
     private factory: NbtSharedFactory,
     private send: (peer: string, message: NbtDocumentResponse) => void,
-    private announce: (generation: number, retry?: boolean) => void,
+    private announce: (
+      generation: number,
+      reason: NbtOwnerAnnouncement,
+    ) => void,
     private idle: () => void,
+    public generation = 0,
   ) {
     this.ready = this.start();
     void this.ready.catch(() => {});
@@ -78,25 +87,65 @@ export class NbtSharedOwner {
   private check() {
     if (this.closed) throw new Error("The NBT document owner is closed.");
   }
-  private async start() {
-    this.generation = await this.factory.claim();
-    this.check();
-    this.announce(this.generation);
-    const client = await this.factory.create(
-      undefined,
+  private signal() {
+    return AbortSignal.any([
       this.controller.signal,
-      (client) => this.bind(client),
-    );
-    this.check();
-    this.opening = false;
-    this.publish(undefined, true);
-    return client;
+      this.workerController.signal,
+    ]);
+  }
+  private async start(reason: NbtOwnerAnnouncement = "owner") {
+    try {
+      const generation = await this.factory.claim();
+      this.check();
+      this.generation = generation;
+      this.announce(generation, reason);
+      const client = await this.factory.create(
+        undefined,
+        this.signal(),
+        (client) => this.bind(client),
+      );
+      this.check();
+      this.opening = false;
+      this.failure = undefined;
+      if (client.getSnapshot()?.state === "complete")
+        this.automaticRecovery = true;
+      this.publish(undefined, true);
+      return client;
+    } catch (error) {
+      this.opening = false;
+      this.failure =
+        error instanceof Error
+          ? error.message
+          : "The NBT recovery could not be opened.";
+      // A failed claim must not invent a journal revision. Announce the last
+      // observed generation with an unavailable state so surviving views can
+      // request a real retry instead of waiting indefinitely for a new owner.
+      if (!this.closed) {
+        this.announce(this.generation, reason);
+        this.publish(undefined, true);
+      }
+      throw error;
+    }
   }
   private bind(client: NbtDocumentClient) {
     this.unsubscribe.splice(0).forEach((unsubscribe) => unsubscribe());
     this.client = client;
     this.unsubscribe = [
-      client.subscribe(() => this.publish()),
+      client.subscribe(() => {
+        if (client.getSnapshot()?.state === "error") {
+          // fail() publishes before disposing its endpoint. Observe actual
+          // disposal after that turn; parser diagnostics alone are not crashes.
+          queueMicrotask(() => this.workerFailed(client));
+        } else {
+          if (
+            client.getSnapshot()?.state === "complete" &&
+            !this.opening &&
+            !this.recovering
+          )
+            this.automaticRecovery = true;
+          this.publish();
+        }
+      }),
       client.subscribeEdits(() => {
         this.publish(undefined, true);
         void this.suspendOrphanedSave();
@@ -110,6 +159,75 @@ export class NbtSharedOwner {
       }),
     ];
     this.activity();
+  }
+  private workerFailed(client: NbtDocumentClient) {
+    if (
+      this.closed ||
+      this.client !== client ||
+      this.recovering ||
+      this.opening
+    )
+      return;
+    if (!client.isClosed) {
+      this.publish();
+      return;
+    }
+    this.failure =
+      client.getSnapshot()?.error?.message ??
+      "The NBT document worker stopped.";
+    if (this.automaticRecovery) {
+      this.automaticRecovery = false;
+      void this.recover().catch(() => {});
+    } else this.publish(undefined, true);
+  }
+  /** Reopen the authoritative journal under the existing origin owner lock.
+   * No ambiguous edit or save request is resent into the recovered model. */
+  recover() {
+    if (this.closed)
+      return Promise.reject(new Error("The NBT document owner is closed."));
+    if (this.recovery) return this.recovery;
+    const ready = this.ready,
+      mutations = [...this.mutations];
+    this.recovering = true;
+    this.failure = undefined;
+    this.workerController.abort(new Error("The NBT worker is recovering."));
+    this.publish(undefined, true);
+    const operation = this.controls.then(async () => {
+      await ready.catch(() => {});
+      this.check();
+      this.foreground++;
+      this.activity();
+      try {
+        await Promise.allSettled(mutations);
+        this.unsubscribe.splice(0).forEach((unsubscribe) => unsubscribe());
+        await this.client?.close().catch(() => {});
+      } finally {
+        this.foreground--;
+      }
+      this.check();
+      this.client = undefined;
+      this.saveOwner = undefined;
+      for (const peer of this.peers.values()) {
+        peer.searches.clear();
+        peer.exports.clear();
+      }
+      this.workerController = new AbortController();
+      this.opening = true;
+      return this.start("recover");
+    });
+    const recovery = operation.finally(() => {
+      this.recovering = false;
+      if (this.recovery === recovery) this.recovery = undefined;
+      this.activity();
+      this.publish(undefined, true);
+    });
+    this.ready = this.recovery = recovery;
+    this.controls = recovery.then(
+      () => {},
+      () => {},
+    );
+    void recovery.catch(() => {});
+    return recovery;
   }
   private activity() {
     void this.client
@@ -142,19 +260,29 @@ export class NbtSharedOwner {
     return peer;
   }
   private status() {
-    const status = this.opening
+    const snapshot = this.client?.getSnapshot() ?? emptyStatus();
+    const status = this.failure
       ? {
-          ...(this.client?.getSnapshot() ?? emptyStatus()),
-          state: "indexing" as const,
+          ...snapshot,
+          state: "error" as const,
           root: null,
+          error: { message: this.failure },
         }
-      : (this.client?.getSnapshot() ?? emptyStatus());
+      : this.opening || this.recovering
+        ? {
+            ...snapshot,
+            state: "indexing" as const,
+            root: null,
+            error: undefined,
+          }
+        : (this.client?.getSnapshot() ?? emptyStatus());
     return {
       ...status,
       shared: {
         generation: this.generation,
         views: [...this.peers.values()].filter((peer) => !peer.closing).length,
-        changing: this.changing,
+        changing: this.changing || this.recovering,
+        unavailable: Boolean(this.failure),
       },
     };
   }
@@ -190,6 +318,7 @@ export class NbtSharedOwner {
       throw new Error("A shared NBT view cannot supply worker source bytes.");
     if (peer.requests.has(message.id)) return;
     const command = message.command;
+    const generation = this.generation;
     const controller = new AbortController();
     peer.requests.set(message.id, controller);
     const foreground =
@@ -209,9 +338,17 @@ export class NbtSharedOwner {
         } else if (command.type === "close") {
           value = null;
         } else {
+          if (this.recovering && command.type !== "attach")
+            throw new Error(
+              "The NBT document is recovering. Wait for it to finish.",
+            );
           await this.ready;
           this.check();
           controller.signal.throwIfAborted();
+          if (command.type !== "attach" && generation !== this.generation)
+            throw new Error(
+              "The NBT document generation changed before this request could run.",
+            );
           if (
             command.type === "open" ||
             command.type === "recovery.attach" ||
@@ -367,12 +504,18 @@ export class NbtSharedOwner {
     if (!this.peers.size) this.idle();
   }
   private exclusive<T>(run: () => Promise<T>) {
+    const ready = this.ready,
+      generation = this.generation;
     const operation = this.controls.then(async () => {
       this.foreground++;
       this.activity();
       try {
-        await this.ready;
+        await ready;
         this.check();
+        if (generation !== this.generation || this.recovering)
+          throw new Error(
+            "The NBT document changed before this action could run.",
+          );
         this.changing = true;
         this.publish(undefined, true);
         await Promise.allSettled([...this.mutations]);
@@ -400,21 +543,29 @@ export class NbtSharedOwner {
       const current = this.client!,
         candidate = await this.factory.create(
           choice ?? { format: current.getSnapshot()?.format },
-          this.controller.signal,
+          this.signal(),
           () => {},
         );
-      let adopted = false;
+      let adopted = false,
+        clearing = false;
       try {
-        await this.complete(candidate);
+        await this.complete(candidate, this.signal());
         await this.factory.reconcile(current);
+        clearing = true;
         await current.clearRecovery();
         await current.close();
-        this.generation = await this.factory.claim();
+        const generation = await this.factory.claim();
         await this.factory.attachRecovery(candidate);
+        this.generation = generation;
         this.bind(candidate);
-        this.announce(this.generation);
+        this.announce(this.generation, "replace");
         this.publish();
         adopted = true;
+      } catch (error) {
+        // The clear may have committed even if its reply was lost. Reopen the
+        // actual journal rather than guessing which baseline is authoritative.
+        if (clearing) void this.recover().catch(() => {});
+        throw error;
       } finally {
         if (!adopted) await candidate.close();
       }
@@ -437,7 +588,7 @@ export class NbtSharedOwner {
           await this.client!.clearRecovery();
         } catch (error) {
           this.retiring = false;
-          this.announce(this.generation, true);
+          this.announce(this.generation, "retry");
           throw error;
         }
       }
@@ -447,8 +598,8 @@ export class NbtSharedOwner {
       this.activity();
     });
   }
-  private complete(client: NbtDocumentClient) {
-    this.controller.signal.throwIfAborted();
+  private complete(client: NbtDocumentClient, signal: AbortSignal) {
+    signal.throwIfAborted();
     return new Promise<void>((resolve, reject) => {
       let unsubscribe = () => {};
       const done = () => {
@@ -468,13 +619,13 @@ export class NbtSharedOwner {
       };
       const abort = () => {
         cleanup();
-        reject(this.controller.signal.reason);
+        reject(signal.reason);
       };
       const cleanup = () => {
         unsubscribe();
-        this.controller.signal.removeEventListener("abort", abort);
+        signal.removeEventListener("abort", abort);
       };
-      this.controller.signal.addEventListener("abort", abort, { once: true });
+      signal.addEventListener("abort", abort, { once: true });
       unsubscribe = client.subscribe(done);
       done();
     });
