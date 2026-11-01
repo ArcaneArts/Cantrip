@@ -1,5 +1,15 @@
 import { z } from "zod";
 import {
+  explorerBinaryReadSchema,
+  explorerBinaryPageSchema,
+} from "./explorer-binary.js";
+export {
+  BINARY_FILE_PAGE_BYTES,
+  explorerBinaryReadSchema,
+  explorerBinaryPageSchema,
+} from "./explorer-binary.js";
+export type { ExplorerBinaryPage } from "./explorer-binary.js";
+import {
   logTailCursorSchema,
   explorerLogTailSchema,
 } from "./explorer-log-tail.js";
@@ -170,6 +180,9 @@ export const explorerOperationRequestContentSchema = z.discriminatedUnion(
         path: z.string(),
       })
       .strict(),
+    explorerBinaryReadSchema.safeExtend({
+      type: z.literal("explorer.binary.read"),
+    }),
     z
       .object({
         type: z.literal("explorer.file.read"),
@@ -255,6 +268,12 @@ export const explorerOperationResultContentSchema = z.discriminatedUnion(
       .object({
         type: z.literal("explorer.file.tail"),
         value: explorerLogTailSchema,
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("explorer.binary"),
+        value: explorerBinaryPageSchema,
       })
       .strict(),
     z
@@ -524,7 +543,9 @@ export const surfaceOperationOutcomeContentSchema = z.discriminatedUnion("ok", [
     .object({
       ok: z.literal(false),
       error: z.string().min(1).max(2_000),
-      code: z.literal("text-preview-required").optional(),
+      code: z
+        .enum(["text-preview-required", "file-version-changed"])
+        .optional(),
     })
     .strict(),
 ]);

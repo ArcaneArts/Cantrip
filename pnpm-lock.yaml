@@ -58,6 +58,9 @@ importers:
       "@cantrip/logging":
         specifier: workspace:*
         version: link:../packages/logging
+      "@cantrip/nbt":
+        specifier: workspace:*
+        version: link:../packages/nbt
       "@cantrip/protocol":
         specifier: workspace:*
         version: link:../packages/protocol
@@ -441,6 +444,9 @@ importers:
         specifier: 3.0.3
         version: 3.0.3
     devDependencies:
+      fake-indexeddb:
+        specifier: ^6.2.5
+        version: 6.2.5
       nbtify:
         specifier: 2.2.0
         version: 2.2.0

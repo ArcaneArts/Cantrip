@@ -38,9 +38,10 @@ strings in any JSON-based recovery protocol.
 Byte sources must represent one immutable version, return no more than the
 requested length, and return an empty range only at EOF. Sources may provide
 short reads. Unknown-size sources must wait for requested bytes or definitive
-EOF, allowing a growing disk-backed decompression spool. Cache encryption,
-source version checks, transport, session ownership, and draft recovery belong
-to the subsequent integration milestones, not to the codec's format layer.
+EOF, allowing a growing disk-backed decompression spool. Browser `File`/`Blob`
+objects use `blobNbtSource` without a worker backend. Cantrip's optional
+`FileAccess.binary` opens protected, version-bound remote ranges (up to 256 KiB)
+and supports cancellation/close; every worker range releases its own file handle.
 
 Tests include byte-level golden inputs, comparison with NBTify (test-only),
 fragmented reads, all tag types, integer limits, raw NaN/negative-zero payloads,
@@ -53,3 +54,41 @@ pnpm --filter @cantrip/nbt build
 pnpm --filter @cantrip/nbt test
 node scripts/qa/nbt-codec-browser.mjs
 ```
+
+## Encrypted paged storage
+
+`@cantrip/nbt/storage` provides browser-only storage for byte sources and the
+future disk-backed index:
+
+- `openEncryptedNbtCache(binding, options)` opens OPFS, then IndexedDB, then
+  bounded memory after actual opening/write failures. A failed write migrates
+  existing ciphertext one page at a time before switching backing stores. A
+  failed migration retains the original store and reports the storage error.
+- `EncryptedNbtPageCache` authenticates each 64 KiB page with AES-GCM, binding it
+  to the supplied account/document/revision scope and opaque page identifier.
+  Its decrypted LRU defaults to 16 MiB; reads return caller-owned copies. The
+  default nonextractable key is ephemeral and never persisted. Durable drafts
+  must use the account vault/recovery layer rather than this disposable cache.
+- `NbtByteSpool` appends expanded bytes incrementally and exposes them to the
+  codec while indexing is in progress. Reads wait for bytes, validated EOF, a
+  cancellation, or an explicit failure. Finish only after the decompressor has
+  validated its final checksum. A missing/authentication-failed page is an error,
+  never fabricated document bytes.
+- Close aborts/fences work, clears owned decrypted buffers, disposes the cipher,
+  and removes the backing store. Callers must close their spool/cache when the
+  document lifetime ends and release their own returned byte buffers.
+
+Production browser-worker storage QA runs 100 MiB expanded data through a
+128 KiB decrypted cache with actual OPFS and IndexedDB in Chromium and WebKit.
+It also exercises private-session fallback and an injected write failure:
+
+```sh
+node scripts/qa/nbt-storage-browser.mjs
+node scripts/qa/nbt-binary-transport.mjs
+```
+
+The transport harness uses the normal app/server/worker APIs in a disposable
+repository. Parsing integration, paged indexes, edits, durable recovery, and
+physical-phone qualification remain later milestones in the implementation
+contract. No full document object or giant recovery JSON should be built from
+this storage layer.

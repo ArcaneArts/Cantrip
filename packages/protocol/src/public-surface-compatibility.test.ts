@@ -460,6 +460,11 @@ const textPreviewExports = [
   "TEXT_PREVIEW_PAGE_LINES",
   "explorerTextPreviewPageSchema",
 ];
+const binaryFileExports = [
+  "BINARY_FILE_PAGE_BYTES",
+  "explorerBinaryPageSchema",
+  "explorerBinaryReadSchema",
+];
 const explorerFileImportExports = ["EXPLORER_FILE_IMPORT_CHUNK_BYTES"];
 
 describe("protocol public surface compatibility", () => {
@@ -482,6 +487,7 @@ describe("protocol public surface compatibility", () => {
           !explorerFileImportExports.includes(name) &&
           !textPreviewExports.includes(name) &&
           !logTailExports.includes(name) &&
+          !binaryFileExports.includes(name) &&
           !conversationCatalogExports.includes(name) &&
           !conversationViewExports.includes(name) &&
           !taskAutomaticRetryExports.includes(name) &&
@@ -496,7 +502,10 @@ describe("protocol public surface compatibility", () => {
     expect(
       exportNames.filter((name) => retiredWorkbenchExports.includes(name)),
     ).toEqual([]);
-    expect(exportNames).toHaveLength(2115);
+    expect(exportNames).toHaveLength(2118);
+    expect(
+      exportNames.filter((name) => binaryFileExports.includes(name)),
+    ).toEqual(binaryFileExports);
     expect(exportNames.filter((name) => logTailExports.includes(name))).toEqual(
       logTailExports,
     );

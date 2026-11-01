@@ -30,6 +30,7 @@ type DocumentOperation = Extract<
   ExplorerOperationRequestContent,
   {
     type:
+      | "explorer.binary.read"
       | "explorer.file.read"
       | "explorer.file.preview"
       | "explorer.file.tail"
@@ -43,7 +44,9 @@ export async function executeFileDocumentOperation(
   content: DocumentOperation,
   operationId = crypto.randomUUID(),
   sequence = 0,
+  signal?: AbortSignal,
 ) {
+  signal?.throwIfAborted();
   const captured = identity();
   const context = {
     surfaceKind: "file-document" as const,
@@ -58,17 +61,20 @@ export async function executeFileDocumentOperation(
     schema: explorerOperationRequestContentSchema,
   });
   assertIdentity(captured);
+  signal?.throwIfAborted();
   const wire = surfaceStreamWireResponseSchema.parse(
     await request(
       `/api/file-documents/${encodeURIComponent(documentId)}/operation`,
       {
         method: "POST",
+        signal,
         body: JSON.stringify({ operationId, sequence, protectedRequest }),
       },
       { expectedIdentity: captured },
     ),
   );
   assertIdentity(captured);
+  signal?.throwIfAborted();
   if (wire.operationId !== operationId || wire.sequence !== sequence) {
     throw new Error("File document returned a stale protected operation.");
   }
@@ -78,16 +84,19 @@ export async function executeFileDocumentOperation(
     schema: surfaceOperationOutcomeContentSchema,
   });
   assertIdentity(captured);
+  signal?.throwIfAborted();
   if (!outcome.ok) throw new FileOperationError(outcome.error, outcome.code);
   const result = explorerOperationResultContentSchema.parse(outcome.result);
   const expectedType =
-    content.type === "explorer.media.read"
-      ? "explorer.media"
-      : content.type === "explorer.file.preview"
-        ? "explorer.file.preview"
-        : content.type === "explorer.file.tail"
-          ? "explorer.file.tail"
-          : "explorer.file";
+    content.type === "explorer.binary.read"
+      ? "explorer.binary"
+      : content.type === "explorer.media.read"
+        ? "explorer.media"
+        : content.type === "explorer.file.preview"
+          ? "explorer.file.preview"
+          : content.type === "explorer.file.tail"
+            ? "explorer.file.tail"
+            : "explorer.file";
   if (
     result.type !== expectedType ||
     !("path" in result.value) ||

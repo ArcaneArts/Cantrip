@@ -19,12 +19,14 @@ import { ExplorerFileImports } from "../explorer-file-imports.js";
 
 const files = vi.hoisted(() => ({
   read: vi.fn(),
+  binary: vi.fn(),
   write: vi.fn(),
   preview: vi.fn(),
   tail: vi.fn(),
 }));
 vi.mock("../explorer.js", () => ({
   readExplorerFile: files.read,
+  readExplorerBinaryFile: files.binary,
   readExplorerTextPreview: files.preview,
   readExplorerLogTail: files.tail,
   writeExplorerFile: files.write,
@@ -36,6 +38,7 @@ const service = {
 } as unknown as WorkerEncryptionService;
 beforeEach(() => {
   files.read.mockReset();
+  files.binary.mockReset();
   files.preview.mockReset();
   files.tail.mockReset();
   files.write.mockReset();
@@ -186,6 +189,7 @@ it.each(["projectId", "workerId", "worktreeId"] as const)(
 );
 
 it.each([
+  { type: "explorer.binary.read", path: "another.nbt", offset: 0, limit: 1 },
   { type: "explorer.file.read", path: "another.rs" },
   { type: "explorer.file.preview", path: "another.rs", offset: 0 },
   { type: "explorer.file.tail", path: "another.log" },
@@ -300,4 +304,35 @@ it("keeps log tails encrypted and pinned to the document path", async () => {
     value.path,
     undefined,
   );
+});
+
+it("decrypts scoped binary requests and encrypts their bounded reply", async () => {
+  const value = {
+    path: "src/main.rs",
+    offset: 0,
+    nextOffset: 1,
+    size: 1,
+    eof: true,
+    version: "binary-v1:" + "a".repeat(64),
+    data: "AA==",
+  };
+  files.binary.mockResolvedValue(value);
+  const f = await fixture({
+    type: "explorer.binary.read",
+    path: value.path,
+    offset: 0,
+    limit: 1,
+  });
+  const result = await handleExplorerCommand(f.command, f.dependencies);
+  const wire = surfaceStreamWireResponseSchema.parse(result);
+  const outcome = await openWorkerSurfaceStreamContent({
+    context: { ...f.context, direction: "response" },
+    opaque: wire.protectedResponse,
+    schema: surfaceOperationOutcomeContentSchema,
+    service,
+  });
+  expect(outcome).toEqual({
+    ok: true,
+    result: { type: "explorer.binary", value },
+  });
 });

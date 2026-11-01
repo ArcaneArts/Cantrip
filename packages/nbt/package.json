@@ -7,6 +7,10 @@
     ".": {
       "types": "./src/index.ts",
       "import": "./dist/index.js"
+    },
+    "./storage": {
+      "types": "./src/storage/index.ts",
+      "import": "./dist/storage/index.js"
     }
   },
   "files": [
@@ -21,6 +25,7 @@
     "pako": "3.0.3"
   },
   "devDependencies": {
-    "nbtify": "2.2.0"
+    "nbtify": "2.2.0",
+    "fake-indexeddb": "^6.2.5"
   }
 }

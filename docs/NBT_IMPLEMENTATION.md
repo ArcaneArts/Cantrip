@@ -7,7 +7,7 @@ is a foundation; its presence does not mean the app viewer/editor has shipped.
 | Milestone                              | Current state | Required evidence                                                                           |
 | -------------------------------------- | ------------- | ------------------------------------------------------------------------------------------- |
 | 1. Lossless client codec               | Implemented   | Codec tests, independent fixtures, production browser-worker QA                             |
-| 2. Binary access and encrypted storage | Pending       | Protected range reads, immutable versions, encrypted OPFS/IndexedDB spill and cancellation  |
+| 2. Binary access and encrypted storage | Implemented   | Protected range reads, pinned revisions, encrypted OPFS/IndexedDB spill and cancellation    |
 | 3. Background parser integration       | Pending       | Dedicated document worker, progressive disk-backed indexing, bounded working set            |
 | 4. Tree/table viewer and global search | Pending       | Actual app interactions, unloaded-subtree search, paged grids and responsive navigation     |
 | 5. Typed editing and streamed saves    | Pending       | All edit operations, undo/redo, atomic version-checked saves and interrupted-write receipts |
@@ -28,6 +28,39 @@ array accessed through bounded byte ranges. This proves codec execution and
 range behavior; it does not prove physical-phone or full-app qualification.
 `MemoryNbtIndex` is an explicit small-document/fixture implementation. It must
 not be selected for the large-file app path when that integration is added.
+
+Milestone 2 validation commands:
+
+```sh
+pnpm --filter @cantrip/nbt build
+pnpm --filter @cantrip/nbt exec vitest run --maxWorkers=1
+pnpm --filter @cantrip/protocol exec vitest run src test --exclude 'dist/**' --maxWorkers=4
+pnpm --filter @cantrip/worker exec vitest run test/explorer-binary.test.ts src/commands/file-document.test.ts --maxWorkers=2
+pnpm --filter @cantrip/app exec vitest run src/lib/binary-file-source.test.ts src/lib/file-access.test.ts src/lib/api/file-documents.test.ts --maxWorkers=2
+node scripts/qa/nbt-storage-browser.mjs
+node scripts/qa/nbt-binary-transport.mjs
+```
+
+Storage QA streams 104,857,616 expanded bytes through a 131,072-byte decrypted
+LRU in a dedicated production-built worker. It uses actual OPFS and IndexedDB
+in Chromium and WebKit, confirms early array descriptors and tail reads, and
+migrates encrypted pages after an injected OPFS write failure. An additional
+private-session run attempts OPFS normally and exercises IndexedDB fallback
+when WebKit rejects OPFS opening. These tests use a two-node large-array
+fixture, not a million-node index or a physical phone.
+
+The protected transport QA uses a real app, server, and worker with a sparse
+one-GiB file in its disposable repository. Ranges stay within 256 KiB without
+raising protected message limits or using the text-preview size cap. Reads
+pin the worker's file version, fail on source changes, cancel in-flight reads,
+and close on account changes. No long-lived worker file handles are retained. This is revision
+fencing rather than a physical immutable filesystem snapshot; a changed source
+requires reopening, and cached bytes belong to their original revision.
+
+The default storage key is nonextractable and ephemeral. Durable encrypted
+recovery, crash-orphan cleanup, document ownership, the paged tag index, and
+the actual viewer/editor remain milestones 3–7. Disposable cache removal must
+never be used as draft persistence.
 
 ## Accepted plan
 

@@ -38,6 +38,7 @@ import {
   type ExplorerMediaFileChunk,
 } from "@cantrip/protocol";
 import { readLogTail } from "./explorer-log-tail.js";
+import { readBinaryFilePage } from "./explorer-binary.js";
 import type { LogTailCursor } from "@cantrip/protocol/surface-stream";
 import { decodeEditableFileText } from "./editable-file-text.js";
 import { TEXT_PREVIEW_BYTES_LIMIT } from "@cantrip/protocol/surface-stream";
@@ -63,6 +64,17 @@ export async function readExplorerTextPreview(
 ) {
   const { targetPath } = await resolveEntry(root, relativePath);
   return readTextPreviewPage(targetPath, relativePath, offset, version);
+}
+
+export async function readExplorerBinaryFile(
+  root: string,
+  relativePath: string,
+  offset: number,
+  limit: number,
+  version?: string,
+) {
+  const { targetPath } = await resolveEntry(root, relativePath);
+  return readBinaryFilePage(targetPath, relativePath, offset, limit, version);
 }
 
 const DIRECTORY_LIMIT = 1_000;

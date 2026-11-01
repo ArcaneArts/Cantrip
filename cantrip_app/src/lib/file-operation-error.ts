@@ -3,7 +3,7 @@ import { CantripApiError } from "@/lib/api-client";
 export class FileOperationError extends Error {
   constructor(
     message: string,
-    readonly code?: "text-preview-required",
+    readonly code?: "text-preview-required" | "file-version-changed",
   ) {
     super(message);
   }

@@ -26,6 +26,7 @@
     "@cantrip/crypto": "workspace:*",
     "@cantrip/glitch": "workspace:*",
     "@cantrip/logging": "workspace:*",
+    "@cantrip/nbt": "workspace:*",
     "@cantrip/protocol": "workspace:*",
     "@cantrip/version": "workspace:*",
     "@capacitor/android": "^8.5.0",
