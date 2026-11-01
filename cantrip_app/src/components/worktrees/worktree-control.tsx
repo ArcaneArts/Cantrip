@@ -14,16 +14,13 @@ import {
   ChevronsUpDown,
   CircleAlert,
   Cpu,
-  FolderTree,
   GitBranch,
   GitFork,
-  History,
   Loader2,
   Lock,
   Pin,
   PinOff,
   Plus,
-  SquareTerminal,
 } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 
@@ -290,9 +287,6 @@ export interface WorktreeControlActions {
   error?: string | null;
   pending?: boolean;
   onCreate(): void;
-  onOpenExplorer?(): void;
-  onOpenHistory?(): void;
-  onOpenTerminal?(): void;
   onSelect(worktreeId: string): void;
   onSetChatMode?(mode: "agent-managed" | "pinned"): void;
 }
@@ -608,21 +602,6 @@ export function WorktreeControl({
                     ? "Return to Agent managed"
                     : "Pin to this worktree"}
                 </StyledDropdownMenuItem>
-                {actions.onOpenTerminal ? (
-                  <StyledDropdownMenuItem onSelect={actions.onOpenTerminal}>
-                    <SquareTerminal className="size-4" /> Open Terminal here
-                  </StyledDropdownMenuItem>
-                ) : null}
-                {actions.onOpenExplorer ? (
-                  <StyledDropdownMenuItem onSelect={actions.onOpenExplorer}>
-                    <FolderTree className="size-4" /> Open Explorer here
-                  </StyledDropdownMenuItem>
-                ) : null}
-                {actions.onOpenHistory ? (
-                  <StyledDropdownMenuItem onSelect={actions.onOpenHistory}>
-                    <History className="size-4" /> Open in Git
-                  </StyledDropdownMenuItem>
-                ) : null}
               </>
             ) : null}
             {actions.error ? (
