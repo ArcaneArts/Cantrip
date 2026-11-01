@@ -32,6 +32,7 @@ type DocumentOperation = Extract<
     type:
       | "explorer.file.read"
       | "explorer.file.preview"
+      | "explorer.file.tail"
       | "explorer.file.write"
       | "explorer.media.read";
   }
@@ -84,7 +85,9 @@ export async function executeFileDocumentOperation(
       ? "explorer.media"
       : content.type === "explorer.file.preview"
         ? "explorer.file.preview"
-        : "explorer.file";
+        : content.type === "explorer.file.tail"
+          ? "explorer.file.tail"
+          : "explorer.file";
   if (
     result.type !== expectedType ||
     !("path" in result.value) ||

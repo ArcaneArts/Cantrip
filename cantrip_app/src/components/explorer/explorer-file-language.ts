@@ -4,6 +4,7 @@ import {
   explorerMediaTypeForPath,
   type ExplorerFileMode,
 } from "@cantrip/protocol";
+import { isLogFile } from "@/components/editor/log-file";
 import { isLicenseFile } from "@/components/editor/license-file";
 
 export function textLanguageForPath(path: string): string | null {
@@ -30,7 +31,8 @@ export function structuredFileFormatForPath(
 export function defaultExplorerFileMode(path: string): ExplorerFileMode {
   return explorerMediaTypeForPath(path) ||
     explorerMarkdownFileForPath(path) ||
-    isLicenseFile(path)
+    isLicenseFile(path) ||
+    isLogFile(path)
     ? "preview"
     : "edit";
 }

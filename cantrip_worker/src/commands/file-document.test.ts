@@ -21,10 +21,12 @@ const files = vi.hoisted(() => ({
   read: vi.fn(),
   write: vi.fn(),
   preview: vi.fn(),
+  tail: vi.fn(),
 }));
 vi.mock("../explorer.js", () => ({
   readExplorerFile: files.read,
   readExplorerTextPreview: files.preview,
+  readExplorerLogTail: files.tail,
   writeExplorerFile: files.write,
 }));
 const service = {
@@ -35,6 +37,7 @@ const service = {
 beforeEach(() => {
   files.read.mockReset();
   files.preview.mockReset();
+  files.tail.mockReset();
   files.write.mockReset();
 });
 
@@ -178,12 +181,14 @@ it.each(["projectId", "workerId", "worktreeId"] as const)(
       error: "File document checkout binding does not match.",
     });
     expect(files.read).not.toHaveBeenCalled();
+    expect(files.tail).not.toHaveBeenCalled();
   },
 );
 
 it.each([
   { type: "explorer.file.read", path: "another.rs" },
   { type: "explorer.file.preview", path: "another.rs", offset: 0 },
+  { type: "explorer.file.tail", path: "another.log" },
   { type: "explorer.directory.list", path: "src/main.rs" },
   {
     type: "explorer.file.import",
@@ -204,6 +209,7 @@ it.each([
       error: "The operation does not target this file document.",
     });
     expect(files.read).not.toHaveBeenCalled();
+    expect(files.tail).not.toHaveBeenCalled();
   },
 );
 
@@ -264,4 +270,34 @@ it("returns a typed protected fallback instead of treating a large preview as a 
     ok: false,
     code: "text-preview-required",
   });
+});
+
+it("keeps log tails encrypted and pinned to the document path", async () => {
+  const value = {
+    path: "src/main.rs",
+    content: "SENTINEL output",
+    startOffset: 0,
+    size: 15,
+    reset: true,
+    cursor: { offset: 15, identity: "a".repeat(64), anchor: "b".repeat(64) },
+  };
+  files.tail.mockResolvedValue(value);
+  const f = await fixture({ type: "explorer.file.tail", path: value.path });
+  const response = surfaceStreamWireResponseSchema.parse(
+    await handleExplorerCommand(f.command, f.dependencies),
+  );
+  expect(JSON.stringify(response)).not.toContain("SENTINEL");
+  expect(
+    await openWorkerSurfaceStreamContent({
+      context: { ...f.context, direction: "response" },
+      opaque: response.protectedResponse,
+      schema: surfaceOperationOutcomeContentSchema,
+      service,
+    }),
+  ).toEqual({ ok: true, result: { type: "explorer.file.tail", value } });
+  expect(files.tail).toHaveBeenCalledExactlyOnceWith(
+    "/repo",
+    value.path,
+    undefined,
+  );
 });

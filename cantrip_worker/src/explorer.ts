@@ -37,12 +37,23 @@ import {
   type ExplorerMediaFile,
   type ExplorerMediaFileChunk,
 } from "@cantrip/protocol";
+import { readLogTail } from "./explorer-log-tail.js";
+import type { LogTailCursor } from "@cantrip/protocol/surface-stream";
 import { decodeEditableFileText } from "./editable-file-text.js";
 import { TEXT_PREVIEW_BYTES_LIMIT } from "@cantrip/protocol/surface-stream";
 import {
   readTextPreviewPage,
   TextPreviewRequiredError,
 } from "./explorer-text-preview.js";
+
+export async function readExplorerLogTail(
+  root: string,
+  relativePath: string,
+  cursor?: LogTailCursor,
+) {
+  const { targetPath } = await resolveEntry(root, relativePath);
+  return readLogTail(targetPath, relativePath, cursor);
+}
 
 export async function readExplorerTextPreview(
   root: string,

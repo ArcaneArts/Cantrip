@@ -13,6 +13,7 @@ import {
   searchExplorerFiles,
   listExplorerDirectoryCommits,
   readExplorerFile,
+  readExplorerLogTail,
   readExplorerTextPreview,
   writeExplorerFile,
   createExplorerDirectory,
@@ -97,6 +98,7 @@ export async function handleExplorerCommand(
           if (
             (request.type !== "explorer.file.read" &&
               request.type !== "explorer.file.preview" &&
+              request.type !== "explorer.file.tail" &&
               request.type !== "explorer.file.write" &&
               request.type !== "explorer.media.read") ||
             request.path !== location.path
@@ -181,6 +183,19 @@ export async function handleExplorerCommand(
               result: {
                 type: "explorer.file" as const,
                 value: await readExplorerFile(command.root, request.path),
+              },
+            };
+            break;
+          case "explorer.file.tail":
+            outcome = {
+              ok: true,
+              result: {
+                type: "explorer.file.tail",
+                value: await readExplorerLogTail(
+                  command.root,
+                  request.path,
+                  request.cursor,
+                ),
               },
             };
             break;

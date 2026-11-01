@@ -1,3 +1,5 @@
+import { LogFileView } from "./log-file-view";
+import { isLogFile } from "@/components/editor/log-file";
 import { PagedTextPreview } from "./paged-text-preview";
 import { requiresTextPreview, retryFileRead } from "@/lib/file-operation-error";
 import { executeExplorerOperation } from "@/lib/api/files";
@@ -483,6 +485,7 @@ export function ExplorerView({
         streamEncryptionReady &&
         selectedPath &&
         explorerMediaTypeForPath(selectedPath) === null &&
+        !(isLogFile(selectedPath) && fileMode === "preview") &&
         !requiresTextPreview(query.state.error),
       ),
     queryFn: () =>
@@ -716,6 +719,10 @@ export function ExplorerView({
       transferInstalling ||
       !file.data ||
       requiresTextPreview(file.error) ||
+      (selectedPath &&
+        isLogFile(selectedPath) &&
+        fileMode === "preview" &&
+        !nativeDocument?.dirty) ||
       file.data.path !== selectedPath ||
       file.data.path !== displayedSelectedPath ||
       (draftVersion !== null &&
@@ -745,6 +752,7 @@ export function ExplorerView({
     draftVersion,
     file.data,
     file.error,
+    fileMode,
     file.isFetchedAfterMount,
     recoveryFetching,
     documentRecovery,
@@ -824,6 +832,14 @@ export function ExplorerView({
       const previous = nativeDocumentRef.current;
       const approvedRevision = previous?.revision;
       if (!streamEncryptionReadyRef.current || !bindingKey) return;
+      if (
+        isLogFile(path) &&
+        fileModeRef.current === "preview" &&
+        !dirtyRef.current
+      ) {
+        setPreviewRevision((revision) => revision + 1);
+        return;
+      }
       if (explorerMediaTypeForPath(path)) {
         setMediaRevision((revision) => revision + 1);
         return;
@@ -1670,7 +1686,12 @@ export function ExplorerView({
   useEffect(() => {
     if (transferInstalling || !transferStaging) return;
     if (!selectedPath) onTransferredViewReady();
-    else if (!mediaType && file.isError && !requiresTextPreview(file.error))
+    else if (
+      !mediaType &&
+      !(selectedPath && isLogFile(selectedPath) && fileMode === "preview") &&
+      file.isError &&
+      !requiresTextPreview(file.error)
+    )
       onTransferredViewError(file.error);
     else if (
       !mediaType &&
@@ -1893,6 +1914,40 @@ export function ExplorerView({
                   mimeType={mediaType.mimeType}
                   path={selectedPath}
                   revision={mediaRevision}
+                  onReady={onTransferredViewReady}
+                  onError={onTransferredViewError}
+                />
+              ) : isLogFile(selectedPath) &&
+                (fileMode === "preview" || largeTextPreview) &&
+                !dirty ? (
+                <LogFileView
+                  key={`log:${fileAccess?.cacheKey ?? explorer.id}:${selectedPath}:${streamEncryption.bindingKey}:${previewRevision}`}
+                  path={selectedPath}
+                  active={active && !transferSuspended}
+                  staging={Boolean(transferStaging)}
+                  readTail={async (cursor) => {
+                    if (fileAccess) {
+                      if (!fileAccess.tail)
+                        throw new Error(
+                          "This file source does not support log following.",
+                        );
+                      return fileAccess.tail(selectedPath, cursor);
+                    }
+                    const result = await executeExplorerOperation(
+                      explorer.id,
+                      {
+                        type: "explorer.file.tail",
+                        path: selectedPath,
+                        cursor,
+                      },
+                      undefined,
+                      undefined,
+                      fileBinding,
+                    );
+                    if (result.type !== "explorer.file.tail")
+                      throw new Error("Unexpected log tail result.");
+                    return result.value;
+                  }}
                   onReady={onTransferredViewReady}
                   onError={onTransferredViewError}
                 />
