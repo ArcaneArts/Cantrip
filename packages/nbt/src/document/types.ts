@@ -1,4 +1,8 @@
-import type { NbtEditOperation, NbtEditStatus } from "../edit/types.js";
+import type {
+  NbtEditOperation,
+  NbtEditStatus,
+  NbtSaveTarget,
+} from "../edit/types.js";
 import type { NbtSearchQuery, NbtSearchStatus } from "../search/types.js";
 import type {
   NbtByteSource,
@@ -9,6 +13,16 @@ import type {
 } from "../types.js";
 
 export interface NbtDocumentStatus {
+  format?: NbtFormat;
+  /** Immutable parser baseline; save receipts change edit.version, not IDs. */
+  baselineVersion?: string;
+  /** App-origin ownership metadata; the codec host itself does not create it. */
+  shared?: {
+    generation: number;
+    views: number;
+    changing: boolean;
+    unavailable?: boolean;
+  };
   revision?: number;
   state: "indexing" | "paused" | "complete" | "error" | "closed";
   root: string | null;
@@ -36,15 +50,24 @@ export interface NbtDocumentOpenOptions {
   cacheBytes?: number;
   indexPages?: number;
   fallbackCompression?: boolean;
+  /** Pin original encoded bytes in the encrypted paged cache while reading a
+   * source whose backing journal may be retired after a validated replacement. */
+  retainOriginal?: boolean;
+  /** Vault-wrapped key is unwrapped by the client; no account key enters the parser. */
+  recovery?: { id: string; key: CryptoKey };
 }
 export interface NbtDocumentSource extends NbtByteSource {
   readonly version?: string;
+  readonly retainOriginal?: boolean;
   close?(): void;
 }
 export type NbtDocumentInput =
-  { kind: "blob"; blob: Blob } | { kind: "remote"; size: number };
+  | { kind: "blob"; blob: Blob }
+  | { kind: "remote"; size: number }
+  | { kind: "recovery" };
 export type NbtDocumentCommand =
   | { type: "open"; input: NbtDocumentInput; options: NbtDocumentOpenOptions }
+  | { type: "attach" }
   | { type: "rows"; parent: string | null; offset: number; limit: number }
   | { type: "array"; id: string; offset: number; limit: number }
   | { type: "node"; id: string }
@@ -66,9 +89,20 @@ export type NbtDocumentCommand =
       referenceOrdinal: number;
       reverse: boolean;
     }
-  | { type: "search.start"; id: string; query: NbtSearchQuery }
-  | { type: "search.page"; id: string; offset: number; limit: number }
-  | { type: "search.cancel"; id: string }
+  | {
+      type: "search.start";
+      id: string;
+      query: NbtSearchQuery;
+      context?: string;
+    }
+  | {
+      type: "search.page";
+      id: string;
+      offset: number;
+      limit: number;
+      context?: string;
+    }
+  | { type: "search.cancel"; id: string; context?: string }
   | {
       type: "edit.apply";
       operations: NbtEditOperation[];
@@ -84,9 +118,13 @@ export type NbtDocumentCommand =
       offset: number;
       limit: number;
     }
-  | { type: "save.begin"; saveId: string }
+  | { type: "save.begin"; saveId: string; target?: NbtSaveTarget }
+  | { type: "save.ready"; saveId: string; metadata: NbtSerializationReceipt }
   | { type: "save.ack"; saveId: string; version: string }
   | { type: "save.fail"; saveId: string; uncertain: boolean; retain?: boolean }
+  | { type: "recovery.clear" }
+  | { type: "recovery.checkpoint" }
+  | { type: "recovery.attach"; id: string; key: CryptoKey; replace?: boolean }
   | { type: "pause"; paused: boolean }
   | {
       type: "serialize.begin";

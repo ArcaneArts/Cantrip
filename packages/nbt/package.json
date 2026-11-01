@@ -23,6 +23,10 @@
     "./edit": {
       "types": "./src/edit/index.ts",
       "import": "./dist/edit/index.js"
+    },
+    "./recovery": {
+      "types": "./src/recovery/index.ts",
+      "import": "./dist/recovery/index.js"
     }
   },
   "files": [

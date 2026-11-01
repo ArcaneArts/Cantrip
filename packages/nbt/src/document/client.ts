@@ -1,4 +1,9 @@
-import type { NbtEditOperation, NbtEditStatus } from "../edit/types.js";
+import type {
+  NbtEditOperation,
+  NbtEditStatus,
+  NbtSaveTarget,
+  NbtPendingSave,
+} from "../edit/types.js";
 import type { NbtTreePage, NbtPathEntry, NbtTablePage } from "../view/types.js";
 import type {
   NbtSearchQuery,
@@ -36,9 +41,13 @@ export class NbtDocumentClient {
   private frozen = 0;
   private editListeners = new Set<() => void>();
   private searchStatus: NbtSearchStatus | null = null;
+  private searchContext = crypto.randomUUID();
   private searchListeners = new Set<() => void>();
   private closing: Promise<void> | undefined;
   private closed = false;
+  get isClosed() {
+    return this.closed;
+  }
   private constructor(
     private endpoint: NbtMessageEndpoint<
       NbtDocumentResponse,
@@ -51,29 +60,51 @@ export class NbtDocumentClient {
   }
   static async open(
     endpoint: NbtMessageEndpoint<NbtDocumentResponse, NbtDocumentRequest>,
-    input: Blob | NbtDocumentSource,
+    input: Blob | NbtDocumentSource | null,
     options: NbtDocumentOpenOptions,
     terminate: () => void = () => {},
     signal?: AbortSignal,
+    onCreated?: (client: NbtDocumentClient) => void,
   ) {
     const local = input instanceof Blob,
       client = new NbtDocumentClient(
         endpoint,
-        local ? undefined : input,
+        local || input === null ? undefined : input,
         terminate,
       );
     try {
-      if (!local && input.size === undefined)
+      onCreated?.(client);
+      if (!local && input !== null && input.size === undefined)
         throw new NbtError(0, "Remote NBT source requires a snapshot size");
-      const source: NbtDocumentInput = local
-        ? { kind: "blob", blob: input }
-        : { kind: "remote", size: input.size! };
+      const source: NbtDocumentInput =
+        input === null
+          ? { kind: "recovery" }
+          : local
+            ? { kind: "blob", blob: input }
+            : { kind: "remote", size: input.size! };
       const status = await client.request<NbtDocumentStatus>(
         { type: "open", input: source, options },
         signal,
       );
       // Progress can arrive while the open request is resolving; keep the newer snapshot.
       if (!client.status) client.status = status;
+      return client;
+    } catch (error) {
+      client.dispose(error);
+      throw error;
+    }
+  }
+  /** Attach another view to an existing worker through an app-owned endpoint. */
+  static async attach(
+    endpoint: NbtMessageEndpoint<NbtDocumentResponse, NbtDocumentRequest>,
+    terminate: () => void,
+    signal?: AbortSignal,
+    onCreated?: (client: NbtDocumentClient) => void,
+  ) {
+    const client = new NbtDocumentClient(endpoint, undefined, terminate);
+    try {
+      onCreated?.(client);
+      await client.request({ type: "attach" }, signal);
       return client;
     } catch (error) {
       client.dispose(error);
@@ -244,16 +275,25 @@ export class NbtDocumentClient {
     return this.request<NbtTablePage>({ type: "table", ...input }, signal);
   }
   startSearch(id: string, query: NbtSearchQuery) {
-    return this.request<NbtSearchStatus>({ type: "search.start", id, query });
+    return this.request<NbtSearchStatus>({
+      type: "search.start",
+      id,
+      query,
+      context: this.searchContext,
+    });
   }
   searchResults(id: string, offset: number, limit = 128, signal?: AbortSignal) {
     return this.request<NbtSearchResult[]>(
-      { type: "search.page", id, offset, limit },
+      { type: "search.page", id, offset, limit, context: this.searchContext },
       signal,
     );
   }
   cancelSearch(id: string) {
-    return this.request({ type: "search.cancel", id });
+    return this.request({
+      type: "search.cancel",
+      id,
+      context: this.searchContext,
+    });
   }
   getSearchSnapshot = () => this.searchStatus;
   subscribeSearch = (listener: () => void) => {
@@ -336,11 +376,18 @@ export class NbtDocumentClient {
       truncated: boolean;
     }>({ type: "edit.text", id, field, offset, limit }, signal);
   }
-  beginSave(saveId: string, signal?: AbortSignal) {
-    return this.request<{ id: string; version: string; revision: number }>(
-      { type: "save.begin", saveId },
+  beginSave(saveId: string, signal?: AbortSignal, target?: NbtSaveTarget) {
+    return this.request<NbtPendingSave>(
+      { type: "save.begin", saveId, target },
       signal,
     );
+  }
+  prepareSave(saveId: string, metadata: NbtSerializationReceipt) {
+    return this.request<NbtPendingSave>({
+      type: "save.ready",
+      saveId,
+      metadata,
+    });
   }
   acknowledgeSave(saveId: string, version: string) {
     return this.request<NbtEditStatus>({ type: "save.ack", saveId, version });
@@ -352,6 +399,16 @@ export class NbtDocumentClient {
       uncertain,
       retain,
     });
+  }
+  /** Call only after an explicit discard and pending-write reconciliation. */
+  clearRecovery() {
+    return this.request<null>({ type: "recovery.clear" });
+  }
+  attachRecovery(options: { id: string; key: CryptoKey; replace?: boolean }) {
+    return this.request<null>({ type: "recovery.attach", ...options });
+  }
+  checkpointRecovery(signal?: AbortSignal) {
+    return this.request<NbtEditStatus>({ type: "recovery.checkpoint" }, signal);
   }
   setPaused(paused: boolean) {
     return this.request<NbtDocumentStatus>({ type: "pause", paused });
@@ -433,6 +490,7 @@ export class NbtDocumentClient {
     }
   }
   close() {
+    if (this.closed) return this.closing ?? Promise.resolve();
     return (this.closing ??= (async () => {
       try {
         await this.request({ type: "close" });

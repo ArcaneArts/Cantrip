@@ -3,9 +3,11 @@ import {
   useCallback,
   useEffect,
   useId,
+  useImperativeHandle,
   useRef,
   useState,
   type KeyboardEvent,
+  type Ref,
 } from "react";
 import { ChevronDown, ChevronRight, Grid3X3, Table2 } from "lucide-react";
 import { NbtTag } from "@cantrip/nbt";
@@ -16,6 +18,7 @@ import type {
 } from "@cantrip/nbt/document";
 import { NbtVirtualList, type NbtVirtualHandle } from "./virtual-list";
 import { container, numericArray, NBT_TYPE_NAMES, nbtRowValue } from "./format";
+import type { NbtTreeViewState, NbtViewHandle } from "@/lib/nbt/view-state";
 export interface NbtAnchor {
   id: string;
   center: boolean;
@@ -65,7 +68,7 @@ const TreeRow = memo(function TreeRow({
       <div
         role="gridcell"
         className="flex min-w-0 basis-2/5 items-center gap-1"
-        style={{ paddingLeft: Math.min(item.depth, 24) * 14 }}
+        style={{ paddingLeft: `min(${Math.min(item.depth, 24) * 14}px, 12%)` }}
       >
         {container(row.node) ? (
           <button
@@ -140,6 +143,7 @@ const TreeRow = memo(function TreeRow({
 });
 export function NbtTree({
   client,
+  active = true,
   root,
   nodes,
   revision = 0,
@@ -149,8 +153,12 @@ export function NbtTree({
   onSelected,
   onOpen,
   anchor,
+  initialState,
+  stateRef,
+  complete = true,
 }: {
   client: NbtDocumentClient;
+  active?: boolean;
   root: string | null;
   nodes: number;
   revision?: number;
@@ -160,20 +168,36 @@ export function NbtTree({
   onSelected(row: NbtDisplayRow): void;
   onOpen(row: NbtDisplayRow, mode: "array" | "table"): void;
   anchor: NbtAnchor | null;
+  initialState?: NbtTreeViewState;
+  stateRef?: Ref<NbtViewHandle<NbtTreeViewState>>;
+  complete?: boolean;
 }) {
   const [range, setRange] = useState({ offset: 0, limit: 32 }),
     [page, setPage] = useState<{
       rows: Map<number, NbtTreeRow>;
       total: number;
-    }>({ rows: new Map(), total: 0 }),
+      key: string;
+    }>({ rows: new Map(), total: 0, key: "" }),
     [error, setError] = useState<string | null>(null);
   const idPrefix = useId() + "-nbt-row-",
     grid = useRef<HTMLDivElement>(null);
   const list = useRef<NbtVirtualHandle>(null),
-    rank = useRef(0),
+    rank = useRef(initialState?.rank ?? 0),
     navigation = useRef<AbortController | null>(null),
     expandedIds = [...expanded],
-    expandedKey = JSON.stringify(expandedIds);
+    expandedKey = JSON.stringify(expandedIds),
+    pageKey = JSON.stringify([root, nodes, revision, expandedKey, complete]);
+  useImperativeHandle(
+    stateRef,
+    () => ({
+      capture: () => ({
+        position:
+          list.current?.capturePosition() ?? initialState?.position ?? 0,
+        rank: rank.current,
+      }),
+    }),
+    [initialState],
+  );
   const onRange = useCallback(
     (offset: number, limit: number) =>
       setRange((current) =>
@@ -184,7 +208,7 @@ export function NbtTree({
     [],
   );
   useEffect(() => {
-    if (!root) return;
+    if (!active || !root) return;
     const controller = new AbortController();
     setError(null);
     void (async () => {
@@ -202,15 +226,25 @@ export function NbtTree({
         part.rows.forEach((row) => rows.set(row.index, row));
         if (at >= total) break;
       }
-      if (!controller.signal.aborted) setPage({ rows, total });
+      if (!controller.signal.aborted) setPage({ rows, total, key: pageKey });
     })().catch((reason) => {
       if (!controller.signal.aborted)
         setError(String(reason.message ?? reason));
     });
     return () => controller.abort();
-  }, [client, root, nodes, revision, expandedKey, range.offset, range.limit]);
+  }, [
+    client,
+    active,
+    root,
+    nodes,
+    revision,
+    expandedKey,
+    range.offset,
+    range.limit,
+    pageKey,
+  ]);
   useEffect(() => {
-    if (!anchor) return;
+    if (!active || !anchor) return;
     const controller = new AbortController();
     void client
       .tree(JSON.parse(expandedKey), 0, 0, anchor.id, controller.signal)
@@ -225,7 +259,7 @@ export function NbtTree({
       })
       .catch(() => {});
     return () => controller.abort();
-  }, [client, expandedKey, anchor]);
+  }, [client, active, expandedKey, anchor]);
   useEffect(() => () => navigation.current?.abort(), []);
   const select = useCallback(
     (item: NbtTreeRow) => {
@@ -332,6 +366,8 @@ export function NbtTree({
       ) : null}
       <NbtVirtualList
         ref={list}
+        initialPosition={initialState?.position}
+        complete={complete && page.key === pageKey}
         count={page.total}
         onRange={onRange}
         label="NBT tree rows"

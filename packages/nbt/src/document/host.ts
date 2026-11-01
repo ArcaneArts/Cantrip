@@ -1,6 +1,10 @@
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { NbtDocumentSession, serializeNbtEdits } from "../edit/index.js";
+import {
+  NbtRecoveryJournal,
+  openIndexedNbtRecovery,
+} from "../recovery/index.js";
 import { NbtDocumentSearch } from "../search/search.js";
 import { nbtTreePage, nbtAncestors } from "../view/tree.js";
 import { nbtTablePage } from "../view/table.js";
@@ -18,7 +22,25 @@ export function installNbtDocumentWorker(
   endpoint: NbtMessageEndpoint<NbtDocumentRequest, NbtDocumentResponse>,
 ) {
   let session: NbtDocumentSession | undefined;
-  let search: NbtDocumentSearch | undefined;
+  let pendingPaused = false;
+  let recovery: NbtRecoveryJournal | undefined;
+  const searches = new Map<string, NbtDocumentSearch>();
+  function searchFor(context = "default") {
+    if (!context || context.length > 128)
+      throw new Error("Invalid NBT search context.");
+    let search = searches.get(context);
+    if (!search) {
+      if (searches.size >= 64)
+        throw new Error("Too many active NBT search views.");
+      search = new NbtDocumentSearch(
+        () => session!.view(),
+        engine!.binding + "/" + context,
+        (status) => send({ type: "search.status", status }),
+      );
+      searches.set(context, search);
+    }
+    return search;
+  }
   let engine: NbtDocumentEngine | undefined,
     opening = false,
     sourceSequence = 0,
@@ -132,22 +154,47 @@ export function installNbtDocumentWorker(
           throw new Error("NBT worker already opened a document.");
         opening = true;
         try {
+          if (command.options.recovery) {
+            const { id, key } = command.options.recovery;
+            recovery = await NbtRecoveryJournal.open(
+              await openIndexedNbtRecovery(id),
+              id,
+              key,
+            );
+          }
+          const recovered = recovery?.descriptor();
+          if (command.input.kind === "recovery" && !recovered)
+            throw new NbtError(0, "The NBT recovery baseline is unavailable");
+          if (recovered && command.input.kind !== "recovery")
+            throw new NbtError(
+              0,
+              "An NBT draft is retained; restore it before opening another baseline",
+            );
           const source =
-            command.input.kind === "blob"
-              ? blobNbtSource(command.input.blob)
-              : remoteSource(command.input.size);
+            command.input.kind === "recovery"
+              ? recovery!.source()
+              : command.input.kind === "blob"
+                ? blobNbtSource(command.input.blob)
+                : remoteSource(command.input.size);
           engine = await NbtDocumentEngine.open(
             source,
-            command.options,
+            recovered
+              ? {
+                  ...command.options,
+                  format: recovered.format,
+                  version: recovered.version,
+                }
+              : command.options,
             (status) => send({ type: "status", status }),
           );
+          if (pendingPaused) engine.setPaused(true);
           if (controller.signal.aborted) {
             await engine.close();
             throw controller.signal.reason;
           }
           session = await NbtDocumentSession.open(
             engine,
-            command.options.version ?? "local",
+            recovered?.version ?? command.options.version ?? "local",
             (status) => {
               send({ type: "edit.status", status });
               send({
@@ -158,7 +205,24 @@ export function installNbtDocumentWorker(
                 },
               });
             },
+            recovery
+              ? {
+                  prepare: (signal) =>
+                    recovery!.prepare(
+                      engine!.format,
+                      recovered?.version ?? command.options.version ?? "local",
+                      engine!.serialize(true, signal),
+                      signal,
+                    ),
+                  append: (event) => recovery!.append(event),
+                }
+              : undefined,
           );
+          if (recovered)
+            await session.restore(
+              recovery!.events(controller.signal),
+              controller.signal,
+            );
           if (controller.signal.aborted || closed) {
             await session.close();
             await engine.close();
@@ -168,19 +232,35 @@ export function installNbtDocumentWorker(
             );
           }
           send({ type: "edit.status", status: session.snapshot() });
-          search = new NbtDocumentSearch(
-            () => session!.view(),
-            engine.binding,
-            (status) => send({ type: "search.status", status }),
-          );
           value = engine.snapshot();
+        } catch (error) {
+          await session?.close();
+          await engine?.close();
+          await recovery?.close();
+          throw error;
         } finally {
           opening = false;
+          if (!session) await recovery?.close();
         }
       } else {
+        if (!engine && command.type === "pause") {
+          pendingPaused = command.paused;
+          return send({ type: "result", id, value: null });
+        }
         if (!engine) throw new Error("NBT worker has no open document.");
         const model = session?.view() ?? engine;
         switch (command.type) {
+          case "attach":
+            send({ type: "edit.status", status: session!.snapshot() });
+            send({
+              type: "status",
+              status: {
+                ...model.snapshot(),
+                revision: session!.snapshot().revision,
+              },
+            });
+            value = null;
+            break;
           case "rows": {
             assertRange(command.offset, command.limit);
             if (command.limit > 128)
@@ -235,20 +315,28 @@ export function installNbtDocumentWorker(
             );
             break;
           case "search.start":
-            value = search!.start(command.id, command.query);
+            value = searchFor(command.context).start(command.id, command.query);
             break;
           case "search.page":
-            value = await search!.results(
+            value = await searchFor(command.context).results(
               command.id,
               command.offset,
               command.limit,
               controller.signal,
             );
             break;
-          case "search.cancel":
-            await search!.cancel(command.id);
+          case "search.cancel": {
+            const context = command.context ?? "default",
+              search = searches.get(context);
+            if (search?.currentId === command.id) {
+              // Detach before awaiting cleanup. A new query in this context
+              // gets its own service and cannot be removed by the old cancel.
+              searches.delete(context);
+              await search.cancel(command.id);
+            }
             value = null;
             break;
+          }
           case "array":
             value = await model.array(
               command.id,
@@ -304,7 +392,17 @@ export function installNbtDocumentWorker(
             break;
           }
           case "save.begin":
-            value = await session!.beginSave(command.saveId, controller.signal);
+            value = await session!.beginSave(
+              command.saveId,
+              controller.signal,
+              command.target,
+            );
+            break;
+          case "save.ready":
+            value = await session!.prepareSave(
+              command.saveId,
+              command.metadata,
+            );
             break;
           case "save.ack":
             value = await session!.acknowledgeSave(
@@ -319,7 +417,65 @@ export function installNbtDocumentWorker(
               command.retain,
             );
             break;
+          case "recovery.checkpoint":
+            value = await session!.checkpointRecovery(controller.signal);
+            break;
+          case "recovery.clear":
+            if (session!.snapshot().pendingSaveId)
+              throw new NbtError(
+                0,
+                "Reconcile the pending save before discarding recovery",
+              );
+            await recovery?.clear();
+            value = null;
+            break;
+          case "recovery.attach": {
+            if (recovery)
+              throw new NbtError(0, "This NBT document already owns recovery");
+            const next = await NbtRecoveryJournal.open(
+              await openIndexedNbtRecovery(command.id),
+              command.id,
+              command.key,
+            );
+            try {
+              if (next.descriptor() && !command.replace)
+                throw new NbtError(
+                  0,
+                  "The replacement cannot overwrite a retained NBT draft",
+                );
+              const version = session!.snapshot().version;
+              let prepared = false;
+              session!.attachRecovery({
+                prepare: async (signal) => {
+                  if (command.replace && !prepared) {
+                    await next.replace(
+                      engine!.format,
+                      version,
+                      engine!.serialize(true, signal),
+                      signal,
+                    );
+                    prepared = true;
+                    return;
+                  }
+                  await next.prepare(
+                    engine!.format,
+                    version,
+                    engine!.serialize(true, signal),
+                    signal,
+                  );
+                },
+                append: (event) => next.append(event),
+              });
+              recovery = next;
+            } catch (error) {
+              await next.close();
+              throw error;
+            }
+            value = null;
+            break;
+          }
           case "pause":
+            pendingPaused = command.paused;
             engine.setPaused(command.paused);
             value = engine.snapshot();
             break;
@@ -403,9 +559,13 @@ export function installNbtDocumentWorker(
             serialization?.controller.abort(
               new Error("NBT document is closed."),
             );
-            await search?.close();
+            await Promise.all(
+              [...searches.values()].map((search) => search.close()),
+            );
+            searches.clear();
             await session?.close();
             await engine.close();
+            await recovery?.close();
             await serialization?.iterator.return(undefined);
             serialization?.hash.destroy();
             serialization = undefined;
@@ -438,9 +598,11 @@ export function installNbtDocumentWorker(
     }
     reads.clear();
     serialization?.controller.abort();
-    await search?.close();
+    await Promise.all([...searches.values()].map((search) => search.close()));
+    searches.clear();
     await session?.close();
     await engine?.close();
+    await recovery?.close();
     await serialization?.iterator.return(undefined);
     serialization?.hash.destroy();
   };

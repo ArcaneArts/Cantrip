@@ -1,7 +1,16 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { NbtBrowser } from "../../../cantrip_app/src/components/nbt/browser";
 import "./viewer.css";
+import {
+  NbtRecoveryJournal,
+  openIndexedNbtRecovery,
+} from "../src/recovery/index";
+import {
+  validateNbtViewState,
+  type NbtViewState,
+} from "../../../cantrip_app/src/lib/nbt/view-state";
+import type { FileViewerSession } from "../../../cantrip_app/src/components/files/file-viewers";
 import {
   encodeNbtPayload,
   JAVA_NBT,
@@ -15,6 +24,7 @@ import {
 } from "../src/index";
 
 const statistics = { reads: 0, maxRead: 0, closed: 0 };
+const recoveryEnabled = new URL(location.href).searchParams.has("recovery");
 Object.assign(window, { __nbtViewerStatistics: statistics });
 async function collect(chunks: AsyncIterable<Uint8Array>) {
   const parts: BlobPart[] = [];
@@ -117,11 +127,67 @@ function App() {
     [epoch, setEpoch] = useState(0),
     [active, setActive] = useState(true),
     [name, setName] = useState("large"),
-    [loading, setLoading] = useState(false);
+    [loading, setLoading] = useState(false),
+    [documentId, setDocumentId] = useState(() => crypto.randomUUID()),
+    [viewState, setViewState] = useState<NbtViewState | undefined>();
+  const session = useRef<FileViewerSession | null>(null);
+  const onSession = useCallback((value: FileViewerSession | null) => {
+    session.current = value;
+  }, []);
+  useEffect(() => {
+    Object.assign(window, {
+      __nbtViewerTransfer: {
+        capture: async () => session.current?.checkpoint?.(),
+        restore(value: unknown) {
+          setViewState(validateNbtViewState(value));
+          setEpoch((value) => value + 1);
+        },
+      },
+    });
+  }, []);
+  const openRecovery = useCallback(async () => {
+    // Public fixture key; this entry point is never part of the product build.
+    const key = await crypto.subtle.importKey(
+      "raw",
+      new Uint8Array(32).fill(11),
+      "AES-GCM",
+      false,
+      ["encrypt", "decrypt"],
+    );
+    const log = async () =>
+      NbtRecoveryJournal.open(
+        await openIndexedNbtRecovery(documentId),
+        documentId,
+        key,
+      );
+    return {
+      id: documentId,
+      key,
+      assertCurrent() {},
+      onInvalidate: () => () => {},
+      async claim() {
+        const journal = await log();
+        try {
+          return await journal.claim();
+        } finally {
+          await journal.close();
+        }
+      },
+      async inspect() {
+        const journal = await log();
+        try {
+          return journal.descriptor();
+        } finally {
+          await journal.close();
+        }
+      },
+    };
+  }, [documentId]);
   const open = useCallback(
     async (signal: AbortSignal) => {
       if (!file) throw new Error("Choose a fixture");
       return {
+        version: "qa-source-" + documentId,
         size: file.size,
         async read(offset: number, length: number, abort?: AbortSignal) {
           signal.throwIfAborted();
@@ -137,10 +203,13 @@ function App() {
         },
       };
     },
-    [file],
+    [file, documentId],
   );
   return (
-    <main className="flex h-dvh flex-col bg-background text-foreground">
+    <main
+      data-qa-nbt-epoch={epoch}
+      className="flex h-dvh flex-col bg-background text-foreground"
+    >
       <div className="flex shrink-0 gap-3 p-2 text-xs">
         <select
           aria-label="QA fixture"
@@ -158,6 +227,8 @@ function App() {
             void make(name)
               .then((blob) => {
                 setFile(blob);
+                setViewState(undefined);
+                setDocumentId(crypto.randomUUID());
                 setEpoch((value) => value + 1);
               })
               .finally(() => setLoading(false));
@@ -180,6 +251,9 @@ function App() {
           openSource={open}
           scope={"QA/viewer/" + epoch}
           active={active}
+          openRecovery={recoveryEnabled ? openRecovery : undefined}
+          initialViewState={viewState}
+          onSessionChange={onSession}
           onLocalFile={(file) => {
             setFile(file);
             setEpoch((value) => value + 1);
