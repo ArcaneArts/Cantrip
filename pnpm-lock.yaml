@@ -435,6 +435,16 @@ importers:
 
   packages/logging: {}
 
+  packages/nbt:
+    dependencies:
+      pako:
+        specifier: 3.0.3
+        version: 3.0.3
+    devDependencies:
+      nbtify:
+        specifier: 2.2.0
+        version: 2.2.0
+
   packages/protocol:
     dependencies:
       croner:
@@ -9402,6 +9412,24 @@ packages:
         integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==,
       }
 
+  pako@3.0.3:
+    resolution:
+      {
+        integrity: sha512-tmrebBBYI5FOw8QICGwJNqE8fotC8R+gwcxOvoFNv+GKehOI6Lc6YBolNcQNnC4v96l1wt7rh102ifD4kVeZAQ==,
+      }
+
+  nbtify@2.2.0:
+    resolution:
+      {
+        integrity: sha512-xlMI29ZAB4ZCBJRnoa+L8al8uKMTLSwrcx13LbdhFLc3KwJb0sWS4/OcKEN2UcjQOVNyk+CqDWfYvPLOo8of/g==,
+      }
+
+  mutf-8@1.1.4:
+    resolution:
+      {
+        integrity: sha512-zyVV1mk9eO99NOdBq0CR7Wg+hkRcDCpaNsf6hRHYw4LgWTPh9GjJpQxRlRkgEAx+rtcy11SBtjpY70Kt6AosVQ==,
+      }
+
 snapshots:
   "@asamuzakjp/css-color@3.2.0":
     dependencies:
@@ -15096,3 +15124,11 @@ snapshots:
   zod@4.4.3: {}
 
   zwitch@2.0.4: {}
+
+  pako@3.0.3: {}
+
+  nbtify@2.2.0:
+    dependencies:
+      mutf-8: 1.1.4
+
+  mutf-8@1.1.4: {}
