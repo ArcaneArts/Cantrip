@@ -72,6 +72,7 @@ export async function openNbtViewerClient(
             key + "/" + ("version" in input ? String(input.version) : "local"),
           format,
           version: "version" in input ? input.version : "local",
+          retainOriginal: !(input instanceof Blob) && input.retainOriginal,
           cacheBytes: 4 * 1024 ** 2,
           indexPages: 32,
           ...(vault && !choice

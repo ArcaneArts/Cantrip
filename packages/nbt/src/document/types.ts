@@ -50,11 +50,15 @@ export interface NbtDocumentOpenOptions {
   cacheBytes?: number;
   indexPages?: number;
   fallbackCompression?: boolean;
+  /** Pin original encoded bytes in the encrypted paged cache while reading a
+   * source whose backing journal may be retired after a validated replacement. */
+  retainOriginal?: boolean;
   /** Vault-wrapped key is unwrapped by the client; no account key enters the parser. */
   recovery?: { id: string; key: CryptoKey };
 }
 export interface NbtDocumentSource extends NbtByteSource {
   readonly version?: string;
+  readonly retainOriginal?: boolean;
   close?(): void;
 }
 export type NbtDocumentInput =
@@ -119,6 +123,7 @@ export type NbtDocumentCommand =
   | { type: "save.ack"; saveId: string; version: string }
   | { type: "save.fail"; saveId: string; uncertain: boolean; retain?: boolean }
   | { type: "recovery.clear" }
+  | { type: "recovery.checkpoint" }
   | { type: "recovery.attach"; id: string; key: CryptoKey }
   | { type: "pause"; paused: boolean }
   | {

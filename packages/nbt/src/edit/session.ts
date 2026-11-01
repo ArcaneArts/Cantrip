@@ -173,6 +173,17 @@ export class NbtDocumentSession {
       );
     this.recovery = writer;
   }
+  /** A selected browser File has no durable path to reopen after a reload or
+   * window move. Persist its validated baseline before publishing its reference,
+   * even when the user has not changed a value yet. */
+  checkpointRecovery(signal = new AbortController().signal) {
+    return this.serial(async () => {
+      if (!this.recovery)
+        throw new NbtError(0, "This NBT document has no recovery journal");
+      await this.ready(signal);
+      return this.snapshot();
+    });
+  }
   /** Replay before publishing the session to views. Baseline bytes, node ID
    * reservations, undo roots and saved roots all retain their original meaning. */
   async restore(

@@ -407,6 +407,9 @@ export class NbtDocumentClient {
   attachRecovery(options: { id: string; key: CryptoKey }) {
     return this.request<null>({ type: "recovery.attach", ...options });
   }
+  checkpointRecovery(signal?: AbortSignal) {
+    return this.request<NbtEditStatus>({ type: "recovery.checkpoint" }, signal);
+  }
   setPaused(paused: boolean) {
     return this.request<NbtDocumentStatus>({ type: "pause", paused });
   }

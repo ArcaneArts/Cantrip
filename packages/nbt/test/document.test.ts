@@ -154,6 +154,55 @@ it("does not mutate a borrowed raw source buffer", async () => {
     await engine.close();
   }
 });
+it.each(["none", "gzip"] as const)(
+  "pins %s original bytes in bounded encrypted pages before their backing source is retired",
+  async (compression) => {
+    const length = 2 * 1024 ** 2 + 3,
+      head = Buffer.from([10, 0, 0, 7, 0, 1, 97, 0, 0, 0, 0]);
+    head.writeInt32BE(length, 7);
+    const expanded = Buffer.concat([
+        head,
+        Buffer.alloc(length, 42),
+        Buffer.from([0]),
+      ]),
+      bytes = compression === "gzip" ? gzipSync(expanded) : expanded,
+      expected = Buffer.from(bytes);
+    let retired = false,
+      reads = 0,
+      maxRead = 0;
+    const engine = await NbtDocumentEngine.open(
+      {
+        size: bytes.length,
+        async read(offset, limit, signal) {
+          signal?.throwIfAborted();
+          if (retired) throw new Error("The source journal was retired");
+          reads++;
+          maxRead = Math.max(maxRead, limit);
+          return bytes.subarray(offset, offset + limit);
+        },
+      },
+      {
+        ...options,
+        format: { ...JAVA_NBT, compression },
+        retainOriginal: true,
+      },
+    );
+    try {
+      await engine.completed;
+      const atComplete = reads;
+      retired = true;
+      bytes.fill(0);
+      expect(await collect(engine.serialize(true))).toEqual(expected);
+      expect(reads).toBe(atComplete);
+      expect(maxRead).toBeLessThanOrEqual(65536);
+      expect(engine.snapshot().cacheBytes).toBeLessThanOrEqual(
+        options.cacheBytes,
+      );
+    } finally {
+      await engine.close();
+    }
+  },
+);
 it.each([false, true])(
   "never completes corrupt compressed streams (fallback=%s)",
   async (fallbackCompression) => {

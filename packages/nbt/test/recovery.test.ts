@@ -547,6 +547,82 @@ it("does not accept the first edit until original-byte storage really succeeds",
     await log.close();
   }
 });
+it("checkpoints an unchanged local source and recovers it without a browser File or edit event", async () => {
+  const f = await fixture();
+  let log = await NbtRecoveryJournal.open(
+      await openIndexedNbtRecovery(f.id, f.factory),
+      f.id,
+      f.key,
+    ),
+    document = await model(memoryNbtSource(f.bytes), log);
+  try {
+    expect(log.descriptor()).toBeNull();
+    const before = document.session.snapshot();
+    await document.session.checkpointRecovery();
+    expect(document.session.snapshot()).toEqual(before);
+    expect(log.descriptor()?.events).toBe(0);
+    expect(
+      await collect(
+        (async function* () {
+          const source = log.source();
+          for (let at = 0; at < source.size!; at += 65536)
+            yield await source.read(at, Math.min(65536, source.size! - at));
+        })(),
+      ),
+    ).toEqual(f.bytes);
+    await document.close();
+    await log.close();
+    log = await NbtRecoveryJournal.open(
+      await openIndexedNbtRecovery(f.id, f.factory),
+      f.id,
+      f.key,
+    );
+    document = await model(log.source(), log, true);
+    expect((await rows(document))[1]!.value).toBe(9007199254740993n);
+    expect(document.session.snapshot()).toMatchObject({
+      dirty: false,
+      canUndo: false,
+      canRedo: false,
+    });
+  } finally {
+    await document.close();
+    await log.close();
+  }
+});
+it("reports a real clean-source checkpoint storage failure and allows a successful retry", async () => {
+  const f = await fixture(),
+    inner = await openIndexedNbtRecovery(f.id, f.factory);
+  let fail = true;
+  const log = await NbtRecoveryJournal.open(
+      {
+        ...inner,
+        async put(key, bytes) {
+          if (fail)
+            throw new DOMException(
+              "Local recovery is full",
+              "QuotaExceededError",
+            );
+          await inner.put(key, bytes);
+        },
+      },
+      f.id,
+      f.key,
+    ),
+    document = await model(memoryNbtSource(f.bytes), log);
+  try {
+    await expect(document.session.checkpointRecovery()).rejects.toThrow(
+      /is full/,
+    );
+    expect(log.descriptor()).toBeNull();
+    expect(document.session.snapshot().dirty).toBe(false);
+    fail = false;
+    await document.session.checkpointRecovery();
+    expect(log.descriptor()).toMatchObject({ version: "version-1", events: 0 });
+  } finally {
+    await document.close();
+    await log.close();
+  }
+});
 it("pauses an opening recovered document and resumes replay only when its view becomes active", async () => {
   const f = await fixture();
   function pair() {

@@ -48,7 +48,22 @@ targets. Array edits keep their grid open. Local-file recovery/export, touch
 qualification and real-phone testing
 are still unfinished; this milestone is not complete.
 
-Current recovery verification: 178 codec/document/edit/recovery tests, 59
+Local-source persistence foundations now provide an explicit clean-baseline
+checkpoint: a selected File can become recoverable before its first edit,
+without creating an undo entry or dirtying the document. A separate encrypted
+reference uses the stable view identity, distinct from the project document.
+Its CAS publication reconciles an actual lost write acknowledgement by reading
+the authenticated record; it never overwrites a different owner or treats a
+failed read as an empty reference. These foundations are not yet wired into
+the local-file viewer or OS export flow.
+Recovered originals can also be read as bounded sources without a retained
+browser File. Replacement parsing can pin their exact encoded bytes in its
+encrypted paged cache, keeping original export available after the old journal
+is retired. Tests cover raw/gzip streams larger than the memory cache and
+account-lock/abort cleanup. Pinning also exposed a Buffer aliasing issue in
+queued spool writes; those writes now always own the bytes they clear.
+
+Current recovery verification: 182 codec/document/edit/recovery tests, 72
 focused NBT app tests, Explorer transfer suites, 12 binary-write worker tests,
 and app/worker typechecks pass.
 Production Chromium and WebKit app/server/worker runs restore unsaved drafts,

@@ -40,6 +40,7 @@ export class NbtDocumentEngine implements NbtSerializableModel {
   private controller = new AbortController();
   private gate = new NbtWorkGate();
   private spool: NbtByteSpool;
+  private original: NbtByteSpool | undefined;
   private status: NbtDocumentStatus = {
     state: "indexing",
     root: null,
@@ -66,6 +67,8 @@ export class NbtDocumentEngine implements NbtSerializableModel {
     private onStatus: (status: NbtDocumentStatus) => void,
   ) {
     this.spool = new NbtByteSpool(cache);
+    if (options.retainOriginal)
+      this.original = new NbtByteSpool(cache, "original");
     this.completed = this.run();
     void this.completed.catch(() => {});
   }
@@ -247,12 +250,14 @@ export class NbtDocumentEngine implements NbtSerializableModel {
       if (!bytes.length) {
         if (this.source.size !== undefined && at !== this.source.size)
           throw new NbtError(at, "Truncated source snapshot");
+        await this.original?.finish();
         return;
       }
       at += bytes.length;
       this.status.sourceBytesRead = at;
       if (this.source.size !== undefined && at > this.source.size)
         throw new NbtError(at, "Source exceeded snapshot length");
+      await this.original?.append(bytes);
       yield bytes.slice();
     }
   }
@@ -325,6 +330,7 @@ export class NbtDocumentEngine implements NbtSerializableModel {
       this.controller.abort(error);
       this.gate.setPaused(false);
       this.spool.fail(error);
+      this.original?.fail(error);
       await Promise.allSettled([producer, scanner]);
       if (!this.stopped) {
         this.status.state = "error";
@@ -469,7 +475,7 @@ export class NbtDocumentEngine implements NbtSerializableModel {
     await waitNbtPromise(this.completed, signal);
     this.check(signal);
     if (original) {
-      yield* copyNbtBytes(this.source, signal);
+      yield* copyNbtBytes(this.original ?? this.source, signal);
       return;
     }
     const skip = this.options.format.bedrockLevel ? 8 : 0,
@@ -499,6 +505,7 @@ export class NbtDocumentEngine implements NbtSerializableModel {
       await this.completed.catch(() => {});
       await this.index.dispose();
       await this.spool.close();
+      await this.original?.close();
     })());
   }
 }

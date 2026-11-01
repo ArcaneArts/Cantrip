@@ -1057,3 +1057,38 @@ it("waits for an unloaded transferred selection to be indexed and cancels that w
     await f.close();
   }
 }, 15000);
+it("checkpoints a clean paused view through the shared worker before publishing a local-file reference", async () => {
+  const f = await fixture({ holdTail: true });
+  try {
+    let client = await f.renderer().open();
+    await until(() => Boolean(client.getSnapshot()?.root));
+    await client.setPaused(true);
+    let complete = false;
+    const checkpoint = client.checkpointRecovery().then(() => {
+      complete = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(complete).toBe(false);
+    f.releaseTail();
+    await checkpoint;
+    expect(client.getEditSnapshot()).toMatchObject({
+      dirty: false,
+      canUndo: false,
+    });
+    const journal = await NbtRecoveryJournal.open(
+      await openIndexedNbtRecovery(f.id),
+      f.id,
+      f.key,
+    );
+    expect(journal.descriptor()).toMatchObject({ version: "v1", events: 0 });
+    await journal.close();
+    await client.close();
+    client = await f.renderer().open();
+    await until(() => client.getSnapshot()?.state === "complete");
+    expect((await client.describe("node:4")).value).toBe(42);
+    expect(client.getEditSnapshot()?.dirty).toBe(false);
+    await client.close();
+  } finally {
+    await f.close();
+  }
+}, 15000);

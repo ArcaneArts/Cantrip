@@ -417,6 +417,9 @@ export function installNbtDocumentWorker(
               command.retain,
             );
             break;
+          case "recovery.checkpoint":
+            value = await session!.checkpointRecovery(controller.signal);
+            break;
           case "recovery.clear":
             if (session!.snapshot().pendingSaveId)
               throw new NbtError(

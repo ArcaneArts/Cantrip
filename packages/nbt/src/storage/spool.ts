@@ -39,7 +39,9 @@ export class NbtByteSpool implements NbtByteSource {
       return Promise.reject(
         new NbtStorageError("NBT byte spool is finishing."),
       );
-    const snapshot = bytes.slice();
+    // Buffer is a Uint8Array subtype whose slice() aliases the caller's bytes.
+    // Our queued write clears its own copy after use.
+    const snapshot = new Uint8Array(bytes);
     const operation = this.writing.then(async () => {
       let offset = 0;
       try {
