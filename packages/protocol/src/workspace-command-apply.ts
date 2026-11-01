@@ -716,6 +716,19 @@ export function applyWorkspaceCommand(
           "invalid",
           "Source pane membership changed during transfer preparation.",
         );
+      // Match the pane that is leaving the pop-out, before a single-view
+      // return assigns a new destination pane identity or removes its source.
+      const previous = window.returnPlacement;
+      const original =
+        transfer.returnSplitId &&
+        previous?.sourceWindowId === destination.id &&
+        (previous.detachedPaneId === source.id ||
+          (previous.wholePane && previous.sourcePaneId === source.id) ||
+          (previous.detachedPaneId === undefined &&
+            !previous.wholePane &&
+            window.panes.length === 1))
+          ? previous
+          : undefined;
       let moved: WorkspacePane;
       if (transfer.wholePane) {
         moved = source;
@@ -750,35 +763,42 @@ export function applyWorkspaceCommand(
         };
       }
       if (transfer.returnSplitId) {
-        const previous = window.returnPlacement;
-        const original =
-          previous?.sourceWindowId === destination.id &&
-          (previous.detachedPaneId === moved.id ||
-            (previous.wholePane && previous.sourcePaneId === moved.id))
-            ? previous
-            : undefined;
         const originalPane =
           original &&
           !original.wholePane &&
           (original.sourcePlacement.viewKind === "conversation"
             ? moved.conversationView && moved.tabs.length === 0
             : !moved.conversationView)
-            ? destination.panes.find(
+            ? (destination.panes.find(
                 (p) =>
                   p.id === original.sourcePaneId &&
                   (original.sourcePlacement.viewKind !== "conversation" ||
                     (p.region === "center" && !p.conversationView)),
-              )
+              ) ??
+              // A tab returns to a tab bar, even if its old pane was closed
+              // and recreated while detached. Whole-pane moves keep geometry.
+              (original.sourcePlacement.viewKind !== "conversation"
+                ? (destination.panes.find(
+                    (p) =>
+                      p.id === destination.focusedPaneId &&
+                      p.region === original.sourcePlacement.region,
+                  ) ??
+                  destination.panes.find(
+                    (p) => p.region === original.sourcePlacement.region,
+                  ))
+                : undefined))
             : undefined;
         if (originalPane) {
           if (original!.sourcePlacement.viewKind === "conversation") {
             originalPane.conversationView = moved.conversationView;
           } else
             originalPane.tabs.splice(
-              Math.min(
-                original!.sourcePlacement.tabPosition,
-                originalPane.tabs.length,
-              ),
+              originalPane.id === original!.sourcePaneId
+                ? Math.min(
+                    original!.sourcePlacement.tabPosition,
+                    originalPane.tabs.length,
+                  )
+                : originalPane.tabs.length,
               0,
               ...moved.tabs,
             );
