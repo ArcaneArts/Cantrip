@@ -51,7 +51,7 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol --filter @cantrip/crypto --filter @cantrip/glitch -r build
+      - run: pnpm --filter '@cantrip/app^...' -r build
       - run: node --check scripts/qa/editor-recovery-fixture.mjs
       - run: node --check scripts/qa/editor-repository-fixture.mjs
       - run: node --test scripts/network-tranche-two-acceptance.test.mjs scripts/codex-built-runtime.test.mjs

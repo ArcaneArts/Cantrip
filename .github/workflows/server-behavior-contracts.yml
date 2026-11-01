@@ -38,7 +38,7 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol --filter @cantrip/crypto --filter @cantrip/glitch -r build
+      - run: pnpm --filter '@cantrip/app^...' -r build
       - run: pnpm --filter @cantrip/server typecheck
       - name: Encrypted Task Goal continuity, recovery fencing and lifecycle
         if: ${{ !cancelled() }}

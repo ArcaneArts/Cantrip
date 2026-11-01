@@ -42,7 +42,7 @@ jobs:
           node-version: 24
       - uses: pnpm/action-setup@v4
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol --filter @cantrip/crypto --filter @cantrip/glitch -r build
+      - run: pnpm --filter '@cantrip/app^...' -r build
       - name: App authorization and transport recovery
         run: pnpm --filter @cantrip/app exec vitest run src/lib/lease-renewal.test.ts src/lib/worker-link.test.ts src/lib/terminal-worker-link.test.ts src/lib/remote-surface-worker-link.test.ts src/lib/worker-link-carriers.test.ts src/lib/desktop-tunnel-worker-link.test.ts --maxWorkers=2
       - name: Worker reconnect and authentication

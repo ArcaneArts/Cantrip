@@ -36,7 +36,7 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol --filter @cantrip/crypto --filter @cantrip/glitch -r build
+      - run: pnpm --filter '@cantrip/app^...' -r build
       # Fixture clones must retain their committed bytes on every disposable runner.
       - run: git config --global core.autocrlf false
       - run: pnpm --filter @cantrip/worker typecheck
