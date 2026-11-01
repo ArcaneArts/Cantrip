@@ -4,6 +4,7 @@ import {
   type NbtBinaryTransport,
   type NbtSaveProgress,
 } from "./save";
+import { clearNbtSharedDocuments, nbtSharedDocument } from "./shared-document";
 
 /** Runtime ownership is independent of the React view. Durable recovery is a separate store. */
 export class NbtViewSession {
@@ -15,6 +16,27 @@ export class NbtViewSession {
   private progress: NbtSaveProgress = { phase: "idle", uploaded: 0 };
   private saver?: NbtSaveController;
   private savePath?: string;
+  private generation?: number;
+  private seenRevision?: number;
+  private logicalRevision = 0;
+  observe() {
+    const generation = this.client.getSnapshot()?.shared?.generation;
+    const revision = this.client.getEditSnapshot()?.revision;
+    if (generation !== this.generation || revision !== this.seenRevision)
+      this.logicalRevision++;
+    this.seenRevision = revision;
+    if (generation === this.generation) return;
+    this.generation = generation;
+    this.saver = undefined;
+    this.savePath = undefined;
+    this.copy = undefined;
+    this.progress = { phase: "idle", uploaded: 0 };
+    this.emit();
+  }
+  get revision() {
+    this.observe();
+    return this.logicalRevision;
+  }
   private copy?: {
     path: string;
     transport: NbtBinaryTransport;
@@ -50,6 +72,8 @@ export class NbtViewSession {
   };
   getSnapshot = () => this.progress;
   async save(path: string, transport: NbtBinaryTransport) {
+    this.observe();
+    const generation = this.generation;
     if (this.copying) throw new Error("Wait for Save As to finish.");
     if (this.copy) return this.saveAs(this.copy.path, transport);
     if (this.savePath && path !== this.savePath)
@@ -60,6 +84,8 @@ export class NbtViewSession {
       path,
       transport,
       (progress) => {
+        if (generation !== this.client.getSnapshot()?.shared?.generation)
+          return;
         this.progress = progress;
         for (const listener of this.listeners) listener();
       },
@@ -97,6 +123,8 @@ export class NbtViewSession {
     this.copy = undefined;
   }
   async saveAs(path: string, transport: NbtBinaryTransport) {
+    this.observe();
+    const generation = this.generation;
     if (this.busy) throw new Error("Wait for the current NBT save to finish.");
     if (this.copy && this.copy.path !== path)
       throw new Error(
@@ -122,6 +150,8 @@ export class NbtViewSession {
           path,
           transport,
           (progress) => {
+            if (generation !== this.client.getSnapshot()?.shared?.generation)
+              return;
             this.progress = progress;
             this.emit();
           },
@@ -129,10 +159,14 @@ export class NbtViewSession {
         ),
       };
       const result = await this.copy.controller.save();
-      this.copy = undefined;
+      if (generation === this.generation) this.copy = undefined;
       return result;
     } catch (error) {
-      if (!this.client.getEditSnapshot()?.pendingSaveId) this.copy = undefined;
+      if (
+        generation === this.generation &&
+        !this.client.getEditSnapshot()?.pendingSaveId
+      )
+        this.copy = undefined;
       throw error;
     } finally {
       this.saving--;
@@ -172,15 +206,19 @@ function pause(entry: Entry) {
 }
 function collect(key: string, entry: Entry) {
   if (entry.timer) clearTimeout(entry.timer);
+  entry.timer = undefined;
+  if (entry.leases.size || entry.closed) return;
   entry.timer = setTimeout(() => {
     if (entry.leases.size || entry.closed) return;
     const status = entry.value?.client.getEditSnapshot();
-    // A detached draft or uncertain save still owns its worker and byte pages.
+    // Shared documents retain accepted edits in the durable encrypted journal;
+    // detaching a facade must not keep an otherwise idle renderer worker alive.
+    const shared = entry.value && nbtSharedDocument(entry.value.client);
     if (
-      status?.dirty ||
+      (!shared && status?.dirty) ||
       status?.editing ||
       status?.saving ||
-      status?.pendingSaveId ||
+      (!shared && status?.pendingSaveId) ||
       entry.value?.busy
     )
       return;
@@ -221,10 +259,16 @@ export function acquireNbtSession(
       if (created.closed) {
         return value;
       }
-      const edits = client.subscribeEdits(() => collect(key, created)),
+      const changed = () => {
+        value.observe();
+        collect(key, created);
+      };
+      const document = client.subscribe(changed),
+        edits = client.subscribeEdits(changed),
         saves = value.subscribe(() => collect(key, created));
       created.unsubscribe = () => {
         edits();
+        document();
         saves();
       };
       pause(created);
@@ -263,8 +307,12 @@ export async function discardNbtSession(key: string) {
   const entry = sessions.get(key);
   if (!entry) return;
   const value = await entry.promise;
-  await value.abandon();
-  await value.client.clearRecovery();
+  const shared = nbtSharedDocument(value.client);
+  if (shared) await shared.closeView();
+  else {
+    await value.abandon();
+    await value.client.clearRecovery();
+  }
   await closeEntry(key, entry);
 }
 /** Account invalidation releases plaintext regardless of detached React views. */
@@ -274,4 +322,5 @@ export async function clearNbtSessions() {
   await Promise.allSettled(
     [...sessions].map(([key, entry]) => closeEntry(key, entry)),
   );
+  await clearNbtSharedDocuments();
 }

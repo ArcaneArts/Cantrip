@@ -386,6 +386,14 @@ export class NbtRecoveryJournal {
   clear() {
     return this.serial(() => this.commit(null));
   }
+  /** After acquiring the actual origin-wide owner lock, fence any journal
+   * instance left by the preceding renderer before opening the new worker. */
+  claim() {
+    return this.serial(async () => {
+      await this.commit(this.head);
+      return this.revision;
+    });
+  }
   close() {
     return (this.closing ??= (async () => {
       this.closed = true;

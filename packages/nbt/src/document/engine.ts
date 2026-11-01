@@ -97,6 +97,7 @@ export class NbtDocumentEngine implements NbtSerializableModel {
   snapshot(): NbtDocumentStatus {
     return {
       ...this.status,
+      format: { ...this.options.format },
       availableBytes: this.spool.available,
       nodes: this.index.size,
       cacheBytes: this.cache.retainedBytes,

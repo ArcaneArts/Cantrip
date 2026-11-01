@@ -14,6 +14,8 @@ function client() {
   };
   const listeners = new Set<() => void>();
   const api = {
+    getSnapshot: () => null,
+    subscribe: () => () => {},
     close: vi.fn(async () => {}),
     setPaused: vi.fn(async () => {}),
     getEditSnapshot: () => status,

@@ -22,12 +22,22 @@ requires a durable size/checksum record so reload can reconcile its actual
 receipt. A partial upload without that publication record is cancelled before
 starting a fresh compressed stream. Unit/integration coverage includes storage
 failures, concurrent writers, discarded-draft tombstones and renderer reloads
-during normal saves and Save As. Shared cross-window ownership, transfer/quit
-integration, local export, touch qualification and real-phone testing are still
-unfinished; this milestone is not complete.
+during normal saves and Save As. An origin-wide Web Lock now owns one document
+worker; encrypted BroadcastChannel RPC connects independent views with isolated
+search contexts. Actual view-lifetime lock release allows a surviving renderer
+to claim a new generation and replay the journal after an owner disappears.
+Closing one view preserves the other views' draft; an approved last close
+reconciles pending writes before clearing recovery. Replacement generations
+fence stale actions and view caches. Hidden views cancel search and page reads,
+while foreground edit/save work can still settle. Transfer/quit checkpoints now
+drain real journal acknowledgements without copying source bytes or parsed trees
+into workspace state. Native pop-out/return qualification, bounded view-state
+transfer, local-file recovery/export, touch qualification and real-phone testing
+are still unfinished; this milestone is not complete.
 
-Current recovery verification: 176 codec/document/edit/recovery tests, 24
-focused app tests, 12 binary-write worker tests, and app/worker typechecks pass.
+Current recovery verification: 178 codec/document/edit/recovery tests, 32
+focused NBT app tests, Explorer transfer suites, 12 binary-write worker tests,
+and app/worker typechecks pass.
 Production Chromium and WebKit app/server/worker runs restore unsaved drafts,
 preserve undo and exact Long values, save through a dropped commit reply, and
 retain drafts through conflicts and failed reloads. WebKit completes this flow
@@ -39,6 +49,15 @@ into display-value pages. This is browser evidence, not physical-phone
 qualification. Reproduce with `CANTRIP_NBT_QA_RECOVERY=true node
 scripts/qa/nbt-edit-project.mjs`; `CANTRIP_NBT_QA_MIB=1` selects the smaller
 regression workload.
+
+`node scripts/qa/nbt-shared-browser.mjs` exercises the production document worker
+and shared broker across real Chromium/WebKit renderer contexts with actual
+Web Locks, BroadcastChannels and IndexedDB. Both engines pass one-worker
+ownership, shared edits, simultaneous independent searches, abrupt owner loss,
+recovered undo, inactive-view replacement and confirmed shared/last-view close.
+This isolates the NBT broker; it does not simulate a native workspace window or
+qualify the full native pop-out flow. A second ordinary browser main page waits
+for the app's single main-workspace owner and is not a valid native-pop-out test.
 
 Milestone 1 validation commands:
 

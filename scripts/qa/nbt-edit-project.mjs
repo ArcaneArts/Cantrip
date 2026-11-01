@@ -52,10 +52,11 @@ for (const [engine, engineType] of Object.entries({ chromium, webkit }).filter(
       ),
     ]);
     browser = await engineType.launch({ headless: true });
-    page = await browser.newPage({
+    const context = await browser.newContext({
       acceptDownloads: true,
       viewport: { width: 1440, height: 900 },
     });
+    page = await context.newPage();
     const wire = [];
     page.on("request", (request) => {
       if (
@@ -355,7 +356,7 @@ for (const [engine, engineType] of Object.entries({ chromium, webkit }).filter(
       .click();
     await reopened
       .getByRole("alert")
-      .filter({ hasText: "NBT" })
+      .filter({ hasText: /NBT|compressed input/i })
       .first()
       .waitFor();
     assert.equal(

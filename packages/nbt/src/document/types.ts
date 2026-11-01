@@ -13,6 +13,9 @@ import type {
 } from "../types.js";
 
 export interface NbtDocumentStatus {
+  format?: NbtFormat;
+  /** App-origin ownership metadata; the codec host itself does not create it. */
+  shared?: { generation: number; views: number; changing: boolean };
   revision?: number;
   state: "indexing" | "paused" | "complete" | "error" | "closed";
   root: string | null;
@@ -53,6 +56,7 @@ export type NbtDocumentInput =
   | { kind: "recovery" };
 export type NbtDocumentCommand =
   | { type: "open"; input: NbtDocumentInput; options: NbtDocumentOpenOptions }
+  | { type: "attach" }
   | { type: "rows"; parent: string | null; offset: number; limit: number }
   | { type: "array"; id: string; offset: number; limit: number }
   | { type: "node"; id: string }
@@ -74,9 +78,20 @@ export type NbtDocumentCommand =
       referenceOrdinal: number;
       reverse: boolean;
     }
-  | { type: "search.start"; id: string; query: NbtSearchQuery }
-  | { type: "search.page"; id: string; offset: number; limit: number }
-  | { type: "search.cancel"; id: string }
+  | {
+      type: "search.start";
+      id: string;
+      query: NbtSearchQuery;
+      context?: string;
+    }
+  | {
+      type: "search.page";
+      id: string;
+      offset: number;
+      limit: number;
+      context?: string;
+    }
+  | { type: "search.cancel"; id: string; context?: string }
   | {
       type: "edit.apply";
       operations: NbtEditOperation[];

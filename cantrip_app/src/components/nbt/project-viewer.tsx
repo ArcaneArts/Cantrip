@@ -27,8 +27,9 @@ export function NbtProjectViewer(props: FileViewerProps) {
   const [identity, setIdentity] = useState(getClientSessionIdentitySnapshot),
     [localFile, setLocalFile] = useState<File | null>(null),
     epoch = useRef(0);
-  const access = useRef(props.fileAccess);
-  access.current = props.fileAccess;
+  // An owner may outlive its React view while another window still uses it.
+  // Keep its source and write closures bound to this exact document access.
+  const access = props.fileAccess;
   const encryption = useSyncExternalStore(
     clientEncryption.subscribe,
     clientEncryption.getSnapshot,
@@ -53,8 +54,7 @@ export function NbtProjectViewer(props: FileViewerProps) {
     async (content, signal) => {
       if (!identity || !clientSessionIdentityMatches(identity))
         throw new Error("The NBT document account changed.");
-      if (access.current?.binaryWrite)
-        return access.current.binaryWrite(content, signal);
+      if (access?.binaryWrite) return access.binaryWrite(content, signal);
       const result = await executeExplorerOperation(
         props.explorerId,
         content,
@@ -79,7 +79,7 @@ export function NbtProjectViewer(props: FileViewerProps) {
       props.workerId,
       props.projectId,
       props.worktreeId,
-      props.fileAccess?.cacheKey,
+      access,
     ],
   );
   const saveTarget = useMemo(
@@ -111,7 +111,22 @@ export function NbtProjectViewer(props: FileViewerProps) {
     });
     if (!clientSessionIdentityMatches(identity))
       throw new Error("The NBT recovery account changed.");
-    return vault;
+    return {
+      ...vault,
+      assertCurrent() {
+        vault.assertCurrent();
+        if (!clientSessionIdentityMatches(identity))
+          throw new Error("The NBT recovery account changed.");
+      },
+      onInvalidate(notify: () => void) {
+        const encryption = vault.onInvalidate(notify),
+          session = onClientSessionIdentityChanged(notify);
+        return () => {
+          encryption();
+          session();
+        };
+      },
+    };
   }, [
     identity,
     props.projectId,
@@ -122,6 +137,8 @@ export function NbtProjectViewer(props: FileViewerProps) {
   ]);
   const saveAsTarget = useCallback(
     async (path: string) => {
+      if (!identity || !clientSessionIdentityMatches(identity))
+        throw new Error("The NBT document account changed.");
       const document = await createFileDocument({
         id: surfaceTitleEncryption.fileDocumentId({
           projectId: props.projectId,
@@ -134,17 +151,23 @@ export function NbtProjectViewer(props: FileViewerProps) {
         worktreeId: props.worktreeId,
         path,
       });
-      return documentFileAccess(document).binaryWrite!;
+      if (!clientSessionIdentityMatches(identity))
+        throw new Error("The NBT document account changed.");
+      const write = documentFileAccess(document).binaryWrite!;
+      return ((request, signal) => {
+        if (!clientSessionIdentityMatches(identity))
+          throw new Error("The NBT document account changed.");
+        return write(request, signal);
+      }) satisfies NbtBinaryTransport;
     },
-    [props.projectId, props.workerId, props.worktreeId],
+    [identity, props.projectId, props.workerId, props.worktreeId],
   );
   const openSource = useCallback(
     async (signal: AbortSignal) => {
       if (localFile) return localFile;
       if (!identity || !clientSessionIdentityMatches(identity))
         throw new Error("The NBT document account changed.");
-      if (access.current?.binary)
-        return access.current.binary(props.path, signal);
+      if (access?.binary) return access.binary(props.path, signal);
       return openProtectedBinarySource(
         props.path,
         async (offset, limit, version, requestSignal) => {
@@ -178,7 +201,7 @@ export function NbtProjectViewer(props: FileViewerProps) {
       );
     },
     [
-      props.fileAccess?.cacheKey,
+      access,
       props.path,
       props.explorerId,
       props.workerId,

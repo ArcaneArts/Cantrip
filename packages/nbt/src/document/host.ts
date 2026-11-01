@@ -24,7 +24,23 @@ export function installNbtDocumentWorker(
   let session: NbtDocumentSession | undefined;
   let pendingPaused = false;
   let recovery: NbtRecoveryJournal | undefined;
-  let search: NbtDocumentSearch | undefined;
+  const searches = new Map<string, NbtDocumentSearch>();
+  function searchFor(context = "default") {
+    if (!context || context.length > 128)
+      throw new Error("Invalid NBT search context.");
+    let search = searches.get(context);
+    if (!search) {
+      if (searches.size >= 64)
+        throw new Error("Too many active NBT search views.");
+      search = new NbtDocumentSearch(
+        () => session!.view(),
+        engine!.binding + "/" + context,
+        (status) => send({ type: "search.status", status }),
+      );
+      searches.set(context, search);
+    }
+    return search;
+  }
   let engine: NbtDocumentEngine | undefined,
     opening = false,
     sourceSequence = 0,
@@ -216,11 +232,6 @@ export function installNbtDocumentWorker(
             );
           }
           send({ type: "edit.status", status: session.snapshot() });
-          search = new NbtDocumentSearch(
-            () => session!.view(),
-            engine.binding,
-            (status) => send({ type: "search.status", status }),
-          );
           value = engine.snapshot();
         } catch (error) {
           await session?.close();
@@ -239,6 +250,17 @@ export function installNbtDocumentWorker(
         if (!engine) throw new Error("NBT worker has no open document.");
         const model = session?.view() ?? engine;
         switch (command.type) {
+          case "attach":
+            send({ type: "edit.status", status: session!.snapshot() });
+            send({
+              type: "status",
+              status: {
+                ...model.snapshot(),
+                revision: session!.snapshot().revision,
+              },
+            });
+            value = null;
+            break;
           case "rows": {
             assertRange(command.offset, command.limit);
             if (command.limit > 128)
@@ -293,20 +315,28 @@ export function installNbtDocumentWorker(
             );
             break;
           case "search.start":
-            value = search!.start(command.id, command.query);
+            value = searchFor(command.context).start(command.id, command.query);
             break;
           case "search.page":
-            value = await search!.results(
+            value = await searchFor(command.context).results(
               command.id,
               command.offset,
               command.limit,
               controller.signal,
             );
             break;
-          case "search.cancel":
-            await search!.cancel(command.id);
+          case "search.cancel": {
+            const context = command.context ?? "default",
+              search = searches.get(context);
+            if (search?.currentId === command.id) {
+              // Detach before awaiting cleanup. A new query in this context
+              // gets its own service and cannot be removed by the old cancel.
+              searches.delete(context);
+              await search.cancel(command.id);
+            }
             value = null;
             break;
+          }
           case "array":
             value = await model.array(
               command.id,
@@ -514,7 +544,10 @@ export function installNbtDocumentWorker(
             serialization?.controller.abort(
               new Error("NBT document is closed."),
             );
-            await search?.close();
+            await Promise.all(
+              [...searches.values()].map((search) => search.close()),
+            );
+            searches.clear();
             await session?.close();
             await engine.close();
             await recovery?.close();
@@ -550,7 +583,8 @@ export function installNbtDocumentWorker(
     }
     reads.clear();
     serialization?.controller.abort();
-    await search?.close();
+    await Promise.all([...searches.values()].map((search) => search.close()));
+    searches.clear();
     await session?.close();
     await engine?.close();
     await recovery?.close();

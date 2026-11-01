@@ -2,7 +2,11 @@
 import { Blob as BinaryBlob } from "node:buffer";
 import type { ExplorerEntry, ExplorerSummary } from "@cantrip/protocol";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, createElement } from "react";
+import { act, createElement, useEffect } from "react";
+import type {
+  FileViewerProps,
+  FileViewerSession,
+} from "@/components/files/file-viewers";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as api from "@/lib/api";
@@ -11,6 +15,17 @@ import {
   type ExplorerHeaderState,
   type ExplorerLifecycleActions,
 } from "./explorer-view";
+const nbt = vi.hoisted(() => ({ session: null as FileViewerSession | null }));
+vi.mock("@/components/nbt/file-viewer", () => ({
+  NbtFileViewer: (props: FileViewerProps) => {
+    useEffect(() => {
+      props.onSessionChange?.(nbt.session);
+      props.onReady?.();
+      return () => props.onSessionChange?.(null);
+    }, [props.onSessionChange, props.onReady]);
+    return createElement("div", { "data-nbt-fixture": "" });
+  },
+}));
 vi.mock("@/components/explorer/explorer-file-browser", () => ({
   ExplorerFileBrowser: ({
     onOpenFile,
@@ -70,6 +85,7 @@ afterEach(async () => {
   client?.clear();
   container?.remove();
   vi.clearAllMocks();
+  nbt.session = null;
 });
 const explorer = {
   activeWorkerId: "worker-one",
@@ -149,6 +165,31 @@ async function choose(mode: "preview" | "edit" | "visual") {
   await settle();
   expect(header!.fileMode).toBe(mode);
 }
+it("checkpoints a dirty binary document for transfer without embedding bytes and preserves failures", async () => {
+  const checkpoint = vi.fn(async () => {}),
+    discard = vi.fn(async () => {});
+  nbt.session = {
+    revision: 1,
+    dirty: true,
+    saving: true,
+    pending: true,
+    save: vi.fn(async () => false),
+    discard,
+    reload: vi.fn(async () => {}),
+    checkpoint,
+  };
+  await setup("state.nbt");
+  const state = await lifecycle!.captureTransfer!();
+  expect(checkpoint).toHaveBeenCalledOnce();
+  expect(state.selectedPath).toBe("state.nbt");
+  expect(state.documents.documents).toEqual([]);
+  expect(discard).not.toHaveBeenCalled();
+  checkpoint.mockRejectedValueOnce(new Error("Actual journal storage failure"));
+  await expect(lifecycle!.captureTransfer!()).rejects.toThrow(
+    "Actual journal storage failure",
+  );
+  expect(discard).not.toHaveBeenCalled();
+});
 describe("Explorer renderer modes", () => {
   it("refuses replacement while dirty or saving and permits it after save succeeds", async () => {
     await setup("data/settings.yaml");

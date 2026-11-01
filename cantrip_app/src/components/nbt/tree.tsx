@@ -140,6 +140,7 @@ const TreeRow = memo(function TreeRow({
 });
 export function NbtTree({
   client,
+  active = true,
   root,
   nodes,
   revision = 0,
@@ -151,6 +152,7 @@ export function NbtTree({
   anchor,
 }: {
   client: NbtDocumentClient;
+  active?: boolean;
   root: string | null;
   nodes: number;
   revision?: number;
@@ -184,7 +186,7 @@ export function NbtTree({
     [],
   );
   useEffect(() => {
-    if (!root) return;
+    if (!active || !root) return;
     const controller = new AbortController();
     setError(null);
     void (async () => {
@@ -208,9 +210,18 @@ export function NbtTree({
         setError(String(reason.message ?? reason));
     });
     return () => controller.abort();
-  }, [client, root, nodes, revision, expandedKey, range.offset, range.limit]);
+  }, [
+    client,
+    active,
+    root,
+    nodes,
+    revision,
+    expandedKey,
+    range.offset,
+    range.limit,
+  ]);
   useEffect(() => {
-    if (!anchor) return;
+    if (!active || !anchor) return;
     const controller = new AbortController();
     void client
       .tree(JSON.parse(expandedKey), 0, 0, anchor.id, controller.signal)
@@ -225,7 +236,7 @@ export function NbtTree({
       })
       .catch(() => {});
     return () => controller.abort();
-  }, [client, expandedKey, anchor]);
+  }, [client, active, expandedKey, anchor]);
   useEffect(() => () => navigation.current?.abort(), []);
   const select = useCallback(
     (item: NbtTreeRow) => {

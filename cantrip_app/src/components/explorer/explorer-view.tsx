@@ -1589,11 +1589,9 @@ export function ExplorerView({
         flushSync(() => setTransferRetired(true));
       },
       captureTransfer: async () => {
-        if (
-          customSessionRef.current?.dirty ||
-          customSessionRef.current?.pending ||
-          customSessionRef.current?.saving
-        )
+        const custom = customSessionRef.current;
+        if (custom?.checkpoint) await custom.checkpoint();
+        else if (custom?.dirty || custom?.pending || custom?.saving)
           throw new Error(
             "Save this NBT draft before moving or quitting its window.",
           );
@@ -2084,7 +2082,9 @@ export function ExplorerView({
                   workerId={explorer.activeWorkerId}
                   appearance={appearance}
                   fileAccess={fileAccess}
-                  active={active && !transferSuspended}
+                  active={
+                    Boolean(transferStaging) || (active && !transferSuspended)
+                  }
                   readOnly={transferSuspended}
                   onSessionChange={reportCustomSession}
                   onOpenDocument={

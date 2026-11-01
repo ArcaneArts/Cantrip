@@ -41,6 +41,7 @@ export class NbtDocumentClient {
   private frozen = 0;
   private editListeners = new Set<() => void>();
   private searchStatus: NbtSearchStatus | null = null;
+  private searchContext = crypto.randomUUID();
   private searchListeners = new Set<() => void>();
   private closing: Promise<void> | undefined;
   private closed = false;
@@ -84,6 +85,23 @@ export class NbtDocumentClient {
       );
       // Progress can arrive while the open request is resolving; keep the newer snapshot.
       if (!client.status) client.status = status;
+      return client;
+    } catch (error) {
+      client.dispose(error);
+      throw error;
+    }
+  }
+  /** Attach another view to an existing worker through an app-owned endpoint. */
+  static async attach(
+    endpoint: NbtMessageEndpoint<NbtDocumentResponse, NbtDocumentRequest>,
+    terminate: () => void,
+    signal?: AbortSignal,
+    onCreated?: (client: NbtDocumentClient) => void,
+  ) {
+    const client = new NbtDocumentClient(endpoint, undefined, terminate);
+    try {
+      onCreated?.(client);
+      await client.request({ type: "attach" }, signal);
       return client;
     } catch (error) {
       client.dispose(error);
@@ -254,16 +272,25 @@ export class NbtDocumentClient {
     return this.request<NbtTablePage>({ type: "table", ...input }, signal);
   }
   startSearch(id: string, query: NbtSearchQuery) {
-    return this.request<NbtSearchStatus>({ type: "search.start", id, query });
+    return this.request<NbtSearchStatus>({
+      type: "search.start",
+      id,
+      query,
+      context: this.searchContext,
+    });
   }
   searchResults(id: string, offset: number, limit = 128, signal?: AbortSignal) {
     return this.request<NbtSearchResult[]>(
-      { type: "search.page", id, offset, limit },
+      { type: "search.page", id, offset, limit, context: this.searchContext },
       signal,
     );
   }
   cancelSearch(id: string) {
-    return this.request({ type: "search.cancel", id });
+    return this.request({
+      type: "search.cancel",
+      id,
+      context: this.searchContext,
+    });
   }
   getSearchSnapshot = () => this.searchStatus;
   subscribeSearch = (listener: () => void) => {

@@ -8,12 +8,14 @@ import { NbtVirtualList } from "./virtual-list";
 import { nbtControl, nbtRowValue, NBT_TYPE_NAMES } from "./format";
 export function NbtTable({
   client,
+  active = true,
   row,
   nodes,
   revision = 0,
   onSelect,
 }: {
   client: NbtDocumentClient;
+  active?: boolean;
   row: NbtDisplayRow;
   nodes: number;
   revision?: number;
@@ -41,6 +43,7 @@ export function NbtTable({
     [],
   );
   useEffect(() => {
+    if (!active) return;
     const controller = new AbortController();
     setError(null);
     void (async () => {
@@ -71,6 +74,7 @@ export function NbtTable({
     return () => controller.abort();
   }, [
     client,
+    active,
     row.node.id,
     nodes,
     revision,

@@ -4,6 +4,7 @@ import { NbtVirtualList, type NbtVirtualHandle } from "./virtual-list";
 import { hexValue, nbtControl, NBT_TYPE_NAMES } from "./format";
 export function NbtArray({
   client,
+  active = true,
   row,
   focus,
   availableBytes,
@@ -11,6 +12,7 @@ export function NbtArray({
   onEdit,
 }: {
   client: NbtDocumentClient;
+  active?: boolean;
   row: NbtDisplayRow;
   focus: { index: number; nonce: number } | null;
   availableBytes: number;
@@ -37,14 +39,15 @@ export function NbtArray({
   );
   useEffect(() => {
     const node = host.current;
-    if (!node) return;
+    if (!active || !node) return;
     const observer = new ResizeObserver(() =>
       setColumns(Math.max(1, Math.min(8, Math.floor(node.clientWidth / 150)))),
     );
     observer.observe(node);
     return () => observer.disconnect();
-  }, []);
+  }, [active]);
   useEffect(() => {
+    if (!active) return;
     const controller = new AbortController();
     setError(null);
     void (async () => {
@@ -70,6 +73,7 @@ export function NbtArray({
     return () => controller.abort();
   }, [
     client,
+    active,
     row.node.id,
     total,
     columns,
@@ -79,9 +83,9 @@ export function NbtArray({
     revision,
   ]);
   useEffect(() => {
-    if (focus)
+    if (active && focus)
       list.current?.scrollToIndex(Math.floor(focus.index / columns), "center");
-  }, [focus, columns]);
+  }, [active, focus, columns]);
   return (
     <div
       ref={host}

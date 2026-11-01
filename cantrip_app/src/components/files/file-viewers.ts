@@ -24,6 +24,8 @@ export interface FileViewerSession {
   discard(): Promise<void>;
   /** Load and validate the replacement before retiring an approved draft. */
   reload(): Promise<void>;
+  /** Flush format-specific durable recovery before a handoff or quit. */
+  checkpoint?(): Promise<void>;
 }
 export interface FileViewerProps {
   path: string;

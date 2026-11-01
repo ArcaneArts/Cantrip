@@ -81,6 +81,22 @@ export async function openNbtRecoveryVault(
     id,
     key,
     assertCurrent,
+    onInvalidate: service.subscribe,
+    async claim() {
+      assertCurrent();
+      const log = await NbtRecoveryJournal.open(
+        await openIndexedNbtRecovery(id),
+        id,
+        key,
+      );
+      try {
+        const revision = await log.claim();
+        assertCurrent();
+        return revision;
+      } finally {
+        await log.close();
+      }
+    },
     async inspect() {
       assertCurrent();
       const log = await NbtRecoveryJournal.open(

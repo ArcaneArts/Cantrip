@@ -14,6 +14,7 @@ import type {
 export function NbtFind({
   client,
   open,
+  active = true,
   revision = 0,
   onClose,
   inputRef,
@@ -22,6 +23,7 @@ export function NbtFind({
 }: {
   client: NbtDocumentClient;
   open: boolean;
+  active?: boolean;
   revision?: number;
   onClose(): void;
   inputRef: RefObject<HTMLInputElement | null>;
@@ -58,7 +60,7 @@ export function NbtFind({
     rank.current = -1;
     auto.current = "";
     navigation.current?.abort();
-    if (!open || !text || !fields.length) {
+    if (!active || !open || !text || !fields.length) {
       setJob(null);
       return;
     }
@@ -84,13 +86,13 @@ export function NbtFind({
       navigation.current?.abort();
       void client.cancelSearch(id).catch(() => {});
     };
-  }, [client, open, key]);
+  }, [client, active, open, key]);
   useEffect(() => {
-    if (open) {
+    if (active && open) {
       inputRef.current?.focus();
       inputRef.current?.select();
     }
-  }, [open, inputRef]);
+  }, [active, open, inputRef]);
   useEffect(() => () => navigation.current?.abort(), []);
   const move = async (next: number) => {
     if (!job || !status?.count) return;
