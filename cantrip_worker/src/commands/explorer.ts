@@ -13,6 +13,7 @@ import {
   searchExplorerFiles,
   listExplorerDirectoryCommits,
   readExplorerFile,
+  readExplorerBinaryFile,
   readExplorerLogTail,
   readExplorerTextPreview,
   writeExplorerFile,
@@ -22,6 +23,7 @@ import {
   deleteExplorerEntry,
   readExplorerMediaFile,
 } from "../explorer.js";
+import { BinaryFileChangedError } from "../explorer-binary.js";
 import { TextPreviewRequiredError } from "../explorer-text-preview.js";
 import type { WorkerCommand } from "@cantrip/protocol";
 import type { SurfaceStreamReplayGuard } from "../surface-stream-encryption.js";
@@ -96,7 +98,8 @@ export async function handleExplorerCommand(
             throw new Error("File document checkout binding does not match.");
           }
           if (
-            (request.type !== "explorer.file.read" &&
+            (request.type !== "explorer.binary.read" &&
+              request.type !== "explorer.file.read" &&
               request.type !== "explorer.file.preview" &&
               request.type !== "explorer.file.tail" &&
               request.type !== "explorer.file.write" &&
@@ -173,6 +176,21 @@ export async function handleExplorerCommand(
                 value: await listExplorerDirectoryCommits(
                   command.root,
                   request.path,
+                ),
+              },
+            };
+            break;
+          case "explorer.binary.read":
+            outcome = {
+              ok: true,
+              result: {
+                type: "explorer.binary",
+                value: await readExplorerBinaryFile(
+                  command.root,
+                  request.path,
+                  request.offset,
+                  request.limit,
+                  request.version,
                 ),
               },
             };
@@ -294,7 +312,9 @@ export async function handleExplorerCommand(
           ok: false as const,
           ...(error instanceof TextPreviewRequiredError
             ? { code: "text-preview-required" as const }
-            : {}),
+            : error instanceof BinaryFileChangedError
+              ? { code: "file-version-changed" as const }
+              : {}),
           error:
             error instanceof Error
               ? error.message.slice(0, 2_000)

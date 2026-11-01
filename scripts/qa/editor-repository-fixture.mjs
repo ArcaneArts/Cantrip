@@ -62,6 +62,9 @@ export function editorRepositoryFixturePlugin(seed) {
 import { createProjectWorktree as qaCreateWorktree, getProjectWorktrees as qaGetWorktrees, removeProjectWorktree as qaRemoveWorktree } from '@/lib/api/worktrees';
 import { getExplorers as qaGetExplorers, createExplorer as qaCreateExplorer } from '@/lib/api/explorers';
 import { createCodeTab as qaCreateCode } from '@/lib/api/code';
+import { waitForSurfacePrivateStateWorkerEncryption as qaWaitSurfaceEncryption } from '@/lib/surface-private-state-worker-encryption';
+import { getWorkers as qaGetWorkers } from '@/lib/api/worker-wire';
+import { documentFileAccess as qaDocumentFileAccess } from '@/lib/file-access';
 import { createFileDocument as qaCreateDocument } from '@/lib/api/file-documents';
 import { surfaceTitleEncryption as qaTitles } from '@/lib/surface-title-encryption';
 import { bindLegacyDocument as qaBindDocument, planLegacyDocuments as qaPlanDocuments } from '@/components/explorer/legacy-document-migration';
@@ -79,6 +82,7 @@ import { getExplorerFile as qaReadFile } from '@/lib/api/files';
 import { EditorSessionStore as QaDocumentStore, editorDocumentId as qaDocumentId } from '@/components/editor/document-session';
 import { DocumentRecoverySession as QaRecovery } from '@/lib/document-recovery-session';
 const qaFileBrokers = new Set();
+const qaBinarySources = new Map();
 let qaProjectId = sessionStorage.getItem("__qaRepositoryProjectId");
 async function qaLegacyNativeWindow(withLaunchId) {
   if (!qaProjectId) await globalThis.__qaRepositoryFixture.create();
@@ -157,6 +161,17 @@ if (import.meta.env.VITE_CANTRIP_CODE_MIGRATION_QA === 'true') {
   void import('@tauri-apps/api/window').then(({getCurrentWindow}) => {if (getCurrentWindow().label === 'main') document.body.append(button);});
 }
 globalThis.__qaRepositoryFixture = {
+  async openBinary(path) {
+    const worktree=(await qaGetWorktrees(qaProjectId)).find(worktree=>worktree.isPrimary);
+    if(!worktree)throw new Error('Primary QA worktree is missing.');
+    await qaWaitSurfaceEncryption({attempts:60,loadWorker:async()=>(await qaGetWorkers()).find(worker=>worker.workerId===worktree.workerId)});
+    const document=await qaCreateDocument({id:crypto.randomUUID(),projectId:qaProjectId,workerId:worktree.workerId,worktreeId:worktree.id,path});
+    const source=await qaDocumentFileAccess(document).binary(path);
+    const id=crypto.randomUUID();qaBinarySources.set(id,source);
+    return {id,documentId:document.id,size:source.size,version:source.version};
+  },
+  async readBinary(id,offset,length) {return Array.from(await qaBinarySources.get(id).read(offset,length));},
+  closeBinary(id) {qaBinarySources.get(id)?.close();},
   prepareQuit(id) { return qaQuit.prepare(id); },
   cancelQuit(id) { qaQuit.cancel(id); },
   async useConversation(id) { return qaUseConversation(id, {clientId: crypto.randomUUID(), operationId: crypto.randomUUID(), sequence: 1}); },

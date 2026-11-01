@@ -1,3 +1,12 @@
+import {
+  getClientSessionIdentitySnapshot,
+  clientSessionIdentityMatches,
+  onClientSessionIdentityChanged,
+} from "./client-session";
+import {
+  openProtectedBinarySource,
+  type BinaryFileSource,
+} from "./binary-file-source";
 import type {
   ExplorerLogTail,
   LogTailCursor,
@@ -22,6 +31,7 @@ export interface FileAccess {
   tail?(path: string, cursor?: LogTailCursor): Promise<ExplorerLogTail>;
   save(input: ExplorerFileWrite): Promise<ExplorerFile>;
   media(path: string): Promise<Blob>;
+  binary?(path: string, signal?: AbortSignal): Promise<BinaryFileSource>;
 }
 
 export function documentFileAccess(document: FileDocument): FileAccess {
@@ -31,6 +41,44 @@ export function documentFileAccess(document: FileDocument): FileAccess {
   }
   return {
     cacheKey: `file-document:${document.id}`,
+    async binary(path, signal) {
+      requirePath(path);
+      const identity = getClientSessionIdentitySnapshot();
+      const current = () => {
+        if (!identity || !clientSessionIdentityMatches(identity))
+          throw new Error("The binary document account changed.");
+      };
+      current();
+      const source = await openProtectedBinarySource(
+        path,
+        async (offset, limit, version, requestSignal) => {
+          const result = await executeFileDocumentOperation(
+            document.id,
+            { type: "explorer.binary.read", path, offset, limit, version },
+            undefined,
+            undefined,
+            requestSignal,
+          );
+          if (result.type !== "explorer.binary")
+            throw new Error("Unexpected binary result.");
+          return result.value;
+        },
+        signal,
+        current,
+      );
+      let off = () => {};
+      const close = () => {
+        off();
+        signal?.removeEventListener("abort", close);
+        source.close();
+      };
+      off = onClientSessionIdentityChanged(() => {
+        if (!identity || !clientSessionIdentityMatches(identity)) close();
+      });
+      signal?.addEventListener("abort", close, { once: true });
+      if (signal?.aborted) close();
+      return { ...source, close };
+    },
     async read(path) {
       requirePath(path);
       const result = await executeFileDocumentOperation(document.id, {
