@@ -1,5 +1,15 @@
 import { z } from "zod";
 import {
+  logTailCursorSchema,
+  explorerLogTailSchema,
+} from "./explorer-log-tail.js";
+export {
+  LOG_TAIL_PAGE_BYTES,
+  logTailCursorSchema,
+  explorerLogTailSchema,
+} from "./explorer-log-tail.js";
+export type { LogTailCursor, ExplorerLogTail } from "./explorer-log-tail.js";
+import {
   explorerTextPreviewPageSchema,
   TEXT_PREVIEW_BYTES_LIMIT,
 } from "./explorer-text-preview.js";
@@ -168,6 +178,13 @@ export const explorerOperationRequestContentSchema = z.discriminatedUnion(
       .strict(),
     z
       .object({
+        type: z.literal("explorer.file.tail"),
+        path: explorerFileWriteSchema.shape.path,
+        cursor: logTailCursorSchema.optional(),
+      })
+      .strict(),
+    z
+      .object({
         type: z.literal("explorer.file.preview"),
         path: explorerFileWriteSchema.shape.path,
         offset: z.number().int().min(0).max(TEXT_PREVIEW_BYTES_LIMIT),
@@ -232,6 +249,12 @@ export const explorerOperationResultContentSchema = z.discriminatedUnion(
       .object({
         type: z.literal("explorer.directory.commits"),
         value: explorerDirectoryCommitsSchema,
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("explorer.file.tail"),
+        value: explorerLogTailSchema,
       })
       .strict(),
     z

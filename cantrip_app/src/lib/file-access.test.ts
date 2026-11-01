@@ -56,6 +56,9 @@ it("rejects attempts to repurpose the document for another path", async () => {
   await expect(access.media("other.png")).rejects.toThrow(
     "different file document",
   );
+  await expect(access.tail!("other.log")).rejects.toThrow(
+    "different file document",
+  );
   expect(operation).not.toHaveBeenCalled();
 });
 
@@ -112,5 +115,30 @@ it("requests versioned preview pages through the same protected document", async
     path: document.path,
     offset: 4,
     version: value.version,
+  });
+});
+
+it("pins incremental log reads to the file document identity", async () => {
+  const cursor = {
+    offset: 12,
+    identity: "a".repeat(64),
+    anchor: "b".repeat(64),
+  };
+  const value = {
+    path: document.path,
+    content: "next",
+    startOffset: 12,
+    size: 16,
+    reset: false,
+    cursor: { ...cursor, offset: 16 },
+  };
+  operation.mockResolvedValue({ type: "explorer.file.tail", value });
+  expect(
+    await documentFileAccess(document).tail!(document.path, cursor),
+  ).toEqual(value);
+  expect(operation).toHaveBeenCalledExactlyOnceWith(document.id, {
+    type: "explorer.file.tail",
+    path: document.path,
+    cursor,
   });
 });

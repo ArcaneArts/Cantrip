@@ -1,4 +1,8 @@
-import type { ExplorerTextPreviewPage } from "@cantrip/protocol/surface-stream";
+import type {
+  ExplorerLogTail,
+  LogTailCursor,
+  ExplorerTextPreviewPage,
+} from "@cantrip/protocol/surface-stream";
 import type { ExplorerFile, ExplorerFileWrite } from "@cantrip/protocol";
 import {
   executeFileDocumentOperation,
@@ -15,6 +19,7 @@ export interface FileAccess {
     offset: number,
     version?: string,
   ): Promise<ExplorerTextPreviewPage>;
+  tail?(path: string, cursor?: LogTailCursor): Promise<ExplorerLogTail>;
   save(input: ExplorerFileWrite): Promise<ExplorerFile>;
   media(path: string): Promise<Blob>;
 }
@@ -46,6 +51,17 @@ export function documentFileAccess(document: FileDocument): FileAccess {
       });
       if (result.type !== "explorer.file.preview")
         throw new Error("Unexpected text preview result.");
+      return result.value;
+    },
+    async tail(path, cursor) {
+      requirePath(path);
+      const result = await executeFileDocumentOperation(document.id, {
+        type: "explorer.file.tail",
+        path,
+        cursor,
+      });
+      if (result.type !== "explorer.file.tail")
+        throw new Error("Unexpected log tail result.");
       return result.value;
     },
     async save(input) {

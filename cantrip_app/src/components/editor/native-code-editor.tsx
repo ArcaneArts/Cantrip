@@ -56,6 +56,8 @@ export function NativeCodeEditor({
   onReady,
   onViewStateChange,
   onViewportChange,
+  followEnd = false,
+  onScrollPositionChange,
 }: {
   session: EditorDocumentSession;
   path: string;
@@ -67,6 +69,8 @@ export function NativeCodeEditor({
   onReady?(session: EditorDocumentSession): void;
   onViewStateChange?(): void;
   onViewportChange?(last: number, total: number): void;
+  followEnd?: boolean;
+  onScrollPositionChange?(atBottom: boolean): void;
 }) {
   const showLineNumbers = useCodeEditorLineNumbers();
   const input = useRef<HTMLTextAreaElement>(null);
@@ -78,6 +82,8 @@ export function NativeCodeEditor({
   activeRef.current = active;
   const readOnlyRef = useRef(readOnly);
   readOnlyRef.current = readOnly;
+  const scrollPositionChange = useRef(onScrollPositionChange);
+  scrollPositionChange.current = onScrollPositionChange;
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const onViewStateChangeRef = useRef(onViewStateChange);
@@ -246,6 +252,24 @@ export function NativeCodeEditor({
     node.scrollLeft = session.scrollLeft;
     node.dispatchEvent(new Event("scroll"));
   }, [active]);
+  useLayoutEffect(() => {
+    const node = input.current;
+    if (!active || !followEnd || !node) return;
+    node.scrollTop = node.scrollHeight;
+    session.scrollTop = node.scrollTop;
+    paintScroll();
+    const next = editorViewport(
+      session.scrollTop,
+      node.clientHeight,
+      lines.length,
+      16,
+    );
+    if (
+      next.first !== paintedViewport.current.first ||
+      next.last !== paintedViewport.current.last
+    )
+      redraw((value) => value + 1);
+  }, [active, followEnd, height, session, session.revision]);
   useEffect(() => {
     if (input.current) onReady?.(session);
   }, [session, onReady]);
@@ -329,8 +353,17 @@ export function NativeCodeEditor({
               session.scrollLeft === event.currentTarget.scrollLeft
             )
               return;
+            const verticalChanged =
+              session.scrollTop !== event.currentTarget.scrollTop;
             session.scrollTop = event.currentTarget.scrollTop;
             session.scrollLeft = event.currentTarget.scrollLeft;
+            if (verticalChanged)
+              scrollPositionChange.current?.(
+                event.currentTarget.scrollHeight -
+                  event.currentTarget.clientHeight -
+                  event.currentTarget.scrollTop <=
+                  2,
+              );
             // Align paint immediately with native scrolling. React only needs
             // to replace the buffered line window when its boundaries change.
             paintScroll();
