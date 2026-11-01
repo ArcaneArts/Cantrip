@@ -140,6 +140,29 @@ fn focus(window: &mut Value, pane_id: &Value, tab_id: &Value) {
     window["recentPaneIds"] = front(pane_id, values(window, "recentPaneIds"));
     window["recentTabIds"] = front(tab_id, values(window, "recentTabIds"));
 }
+// Explicit navigation retires the temporary sidebar conversation in this pane.
+fn retire_conversation(layout: &Value, pane: &mut Value, tab_id: &Value) -> Result<()> {
+    if !pane["conversationView"].is_null() && pane["conversationView"]["id"] != *tab_id {
+        if values(layout, "pendingTransfers")
+            .iter()
+            .any(|transfer| values(transfer, "tabIds").contains(&pane["conversationView"]["id"]))
+        {
+            return Err(invalid("Conversation is reserved for a pending transfer."));
+        }
+        pane["conversationView"] = Value::Null;
+    }
+    Ok(())
+}
+fn navigate(layout: &Value, window: &mut Value, pane_id: &Value, tab_id: &Value) -> Result<()> {
+    let pane = panes(window)
+        .iter_mut()
+        .find(|p| p["id"] == *pane_id)
+        .expect("navigation belongs to window");
+    retire_conversation(layout, pane, tab_id)?;
+    focus(window, pane_id, tab_id);
+    Ok(())
+}
+
 fn remove_pane(window: &mut Value, pane: &Value) {
     panes(window).retain(|p| p["id"] != pane["id"]);
     window["centerRoot"] = tree::remove_leaf(&window["centerRoot"], &pane["id"]);

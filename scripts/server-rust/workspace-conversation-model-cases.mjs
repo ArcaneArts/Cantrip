@@ -96,6 +96,54 @@ export function workspaceConversationModelCases(add) {
     },
   ])
     run(JSON.stringify(action), direct, action);
+  const selectedRail = applyWorkspaceCommand(
+    direct,
+    input(direct, {
+      type: "select",
+      tabId: "terminal",
+    }),
+  ).layout;
+  run("closing selected rail does not restore chat", selectedRail, {
+    type: "close-tab",
+    tabId: "terminal",
+  });
+  const hiddenLegacy = structuredClone(direct);
+  hiddenLegacy.windows[0].panes[0].selection = {
+    kind: "tab",
+    tabId: "terminal",
+  };
+  run("closing legacy rail does not restore hidden chat", hiddenLegacy, {
+    type: "close-tab",
+    tabId: "terminal",
+  });
+  for (const definitionId of ["project.file", "project.agent"]) {
+    const action = {
+      type: "open",
+      tab: view("real", definitionId),
+      target: { kind: "pane", paneId: "pane" },
+    };
+    run("real navigation " + definitionId, direct, action);
+    const opened = applyWorkspaceCommand(direct, input(direct, action)).layout;
+    run("close after real navigation " + definitionId, opened, {
+      type: "close-tab",
+      tabId: "real",
+    });
+  }
+  const reservedDirect = applyWorkspaceCommand(
+    direct,
+    input(direct, {
+      type: "prepare-detach",
+      transferId: "pending-conversation",
+      paneId: "pane",
+      tabId: "conversation",
+      destinationWindowId: "reserved-popout",
+      destinationPaneId: "reserved-pane",
+    }),
+  ).layout;
+  run("navigation preserves reserved conversation source", reservedDirect, {
+    type: "select",
+    tabId: "terminal",
+  });
   const closeRail = { type: "close-tab", tabId: "terminal" };
   const only = applyWorkspaceCommand(direct, input(direct, closeRail)).layout;
   run("convert tab-free slot to rail", only, {

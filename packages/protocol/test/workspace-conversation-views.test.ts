@@ -91,7 +91,7 @@ it("migrates legacy pane selection without changing placement or mutating the in
   expect(workspaceOwnershipSchema.parse(next)).toEqual(next);
 });
 
-it("opens directly while retaining real rail tabs and can return to either content", () => {
+it("opens directly while retaining real rail tabs and reopens only on an explicit chat click", () => {
   let layout = open(fixture());
   let pane = layout.windows[0]!.panes[0]!;
   expect(pane.tabs.map(({ id }) => id)).toEqual(["file"]);
@@ -102,6 +102,7 @@ it("opens directly while retaining real rail tabs and can return to either conte
   ]);
   layout = command(layout, { type: "select", tabId: "file" }).layout;
   expect(workspaceSelectedViewId(layout.windows[0]!.panes[0]!)).toBe("file");
+  expect(layout.windows[0]!.panes[0]!.conversationView).toBeNull();
   layout = open(layout);
   pane = layout.windows[0]!.panes[0]!;
   expect(workspaceSelectedViewId(pane)).toBe("conversation");
@@ -184,9 +185,9 @@ function commitPrepared(
     .layout;
 }
 
-it("whole-pane transfer retains an inactive conversation and the selected rail tab", () => {
+it("whole-pane transfer preserves an inactive conversation from a legacy layout", () => {
   let layout = open(fixture());
-  layout = command(layout, { type: "select", tabId: "file" }).layout;
+  layout.windows[0]!.panes[0]!.selection = { kind: "tab", tabId: "file" };
   layout = command(layout, {
     type: "prepare-detach",
     transferId: "detach",
@@ -493,4 +494,104 @@ it("rejects returning a single view into an already-owned pane identity", () => 
       "popout",
     ),
   ).toThrow("new pane identity");
+});
+
+it.each(["project.file", "project.agent", "git.history"] as const)(
+  "opening a %s rail tab retires the sidebar view and closing all tabs leaves home",
+  (definitionId) => {
+    let layout = open(fixture());
+    const tab: WorkspaceTab = {
+      ...view("real"),
+      resource:
+        definitionId === "git.history"
+          ? { kind: "builtin", definitionId }
+          : { kind: "entity", definitionId, resourceId: "real-resource" },
+      builtInState:
+        definitionId === "git.history"
+          ? { definitionId, worktreeId: null }
+          : null,
+    };
+    layout = command(layout, {
+      type: "open",
+      tab,
+      target: { kind: "pane", paneId: "pane" },
+    }).layout;
+    expect(layout.windows[0]!.panes[0]!.conversationView).toBeNull();
+    // Reload persisted ownership before closing, just as a new renderer does.
+    layout = workspaceOwnershipSchema.parse(JSON.parse(JSON.stringify(layout)));
+    for (const tabId of ["real", "file"])
+      layout = command(layout, { type: "close-tab", tabId }).layout;
+    expect(layout.windows[0]!.panes).toEqual([]);
+    expect(layout.windows[0]!.centerRoot).toBeNull();
+    expect(layout.windows[0]!.focusedPaneId).toBeNull();
+    expect(layout.windows[0]!.recentTabIds).toEqual([]);
+    layout = open(layout);
+    expect(workspaceSelectedViewId(layout.windows[0]!.panes[0]!)).toBe(
+      "conversation",
+    );
+  },
+);
+
+it("selecting an existing rail tab retires the sidebar view even if opening reuses that tab", () => {
+  for (const action of [
+    { type: "select", tabId: "file" } as const,
+    {
+      type: "open",
+      tab: view("file", false),
+      target: { kind: "pane", paneId: "pane" },
+    } as const,
+  ]) {
+    let layout = command(open(fixture()), action).layout;
+    expect(layout.windows[0]!.panes[0]!.conversationView).toBeNull();
+    layout = command(layout, { type: "close-tab", tabId: "file" }).layout;
+    expect(layout.windows[0]!.panes).toEqual([]);
+  }
+});
+
+it("closing a legacy selected rail tab cannot resurrect its hidden sidebar chat", () => {
+  const initial = open(fixture());
+  initial.windows[0]!.panes[0]!.selection = { kind: "tab", tabId: "file" };
+  const layout = command(initial, { type: "close-tab", tabId: "file" }).layout;
+  expect(layout.windows[0]!.panes).toEqual([]);
+  expect(initial.windows[0]!.panes[0]!.conversationView?.id).toBe(
+    "conversation",
+  );
+});
+
+it("navigation in a separate pane leaves the visible sidebar chat alone", () => {
+  let layout = open(fixture());
+  layout = command(layout, {
+    type: "open",
+    tab: view("other", false),
+    target: {
+      kind: "new-pane",
+      paneId: "other-pane",
+      region: "right",
+      splitId: "other-split",
+    },
+  }).layout;
+  layout = command(layout, { type: "select", tabId: "other" }).layout;
+  expect(layout.windows[0]!.panes[0]!.conversationView?.id).toBe(
+    "conversation",
+  );
+  expect(workspaceSelectedViewId(layout.windows[0]!.panes[0]!)).toBe(
+    "conversation",
+  );
+});
+
+it("cannot retire a conversation while its pop-out transfer owns the source", () => {
+  const initial = command(open(fixture()), {
+    type: "prepare-detach",
+    transferId: "detach",
+    paneId: "pane",
+    tabId: "conversation",
+    destinationWindowId: "popout",
+    destinationPaneId: "detached",
+  }).layout;
+  expect(() => command(initial, { type: "select", tabId: "file" })).toThrow(
+    "Conversation is reserved for a pending transfer.",
+  );
+  expect(initial.windows[0]!.panes[0]!.conversationView?.id).toBe(
+    "conversation",
+  );
 });

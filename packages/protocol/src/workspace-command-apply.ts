@@ -60,6 +60,36 @@ function focus(
   ];
 }
 
+/** Sidebar conversations are temporary content, not hidden rail-tab fallbacks. */
+function retireConversation(
+  layout: WorkspaceOwnership,
+  pane: WorkspacePane,
+  tabId: string,
+) {
+  if (pane.conversationView && pane.conversationView.id !== tabId) {
+    if (
+      layout.pendingTransfers?.some((transfer) =>
+        transfer.tabIds.includes(pane.conversationView!.id),
+      )
+    )
+      throw new WorkspaceCommandError(
+        "invalid",
+        "Conversation is reserved for a pending transfer.",
+      );
+    pane.conversationView = null;
+  }
+}
+
+function navigate(
+  layout: WorkspaceOwnership,
+  window: WorkspaceWindow,
+  pane: WorkspacePane,
+  tabId: string,
+) {
+  retireConversation(layout, pane, tabId);
+  focus(window, pane, tabId);
+}
+
 function removePane(window: WorkspaceWindow, pane: WorkspacePane) {
   window.panes = window.panes.filter((candidate) => candidate.id !== pane.id);
   window.centerRoot = removeWorkspacePaneLeaf(window.centerRoot, pane.id);
@@ -838,7 +868,7 @@ export function applyWorkspaceCommand(
       break;
     case "select": {
       const { pane, tab } = tabById(action.tabId);
-      focus(window, pane, tab.id);
+      navigate(layout, window, pane, tab.id);
       break;
     }
     case "close-tab": {
@@ -851,6 +881,9 @@ export function applyWorkspaceCommand(
       const wasFocused =
         window.focusedPaneId === pane.id &&
         workspaceSelectedViewId(pane) === tab.id;
+      // Old snapshots may still hide a sidebar chat behind the selected tab.
+      if (pane.selection?.kind === "tab")
+        retireConversation(layout, pane, workspaceSelectedViewId(pane)!);
       takeTab(window, pane, tab);
       const next = window.panes.find(
         (candidate) => candidate.id === window.focusedPaneId,
@@ -987,7 +1020,7 @@ export function applyWorkspaceCommand(
           );
         }
       }
-      focus(window, target, tab.id);
+      navigate(layout, window, target, tab.id);
       break;
     }
     case "reorder": {
@@ -1020,7 +1053,7 @@ export function applyWorkspaceCommand(
         else pane.tabs.splice(pane.tabs.indexOf(tab), 1);
       } else takeTab(window, pane, tab);
       target.tabs.splice(action.position, 0, tab);
-      focus(window, target, tab.id);
+      navigate(layout, window, target, tab.id);
       break;
     }
     case "split": {
@@ -1071,7 +1104,7 @@ export function applyWorkspaceCommand(
         0,
         newPane,
       );
-      focus(window, newPane, tab.id);
+      navigate(layout, window, newPane, tab.id);
       break;
     }
     case "resize": {
@@ -1100,7 +1133,7 @@ export function applyWorkspaceCommand(
         // A permanent open promotes the existing preview in place. A preview
         // open never demotes an already pinned view, including in another window.
         if (!action.tab.preview) existing.tab.preview = false;
-        focus(existing.owner, existing.pane, existing.tab.id);
+        navigate(layout, existing.owner, existing.pane, existing.tab.id);
         if (existing.owner.id !== window.id) focusWindowId = existing.owner.id;
         break;
       }
@@ -1134,7 +1167,7 @@ export function applyWorkspaceCommand(
             );
           target.tabs.splice(target.tabs.indexOf(replacing.tab), 1, action.tab);
         } else target.tabs.push(action.tab);
-        focus(window, target, action.tab.id);
+        navigate(layout, window, target, action.tab.id);
       } else {
         if (action.replacePreviewTabId)
           throw new WorkspaceCommandError(
@@ -1160,7 +1193,7 @@ export function applyWorkspaceCommand(
                 second: { kind: "pane", paneId: target.id },
               }
             : { kind: "pane", paneId: target.id };
-        focus(window, target, action.tab.id);
+        navigate(layout, window, target, action.tab.id);
       }
       break;
     }
