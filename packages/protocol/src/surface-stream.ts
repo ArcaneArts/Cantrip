@@ -1,5 +1,16 @@
 import { z } from "zod";
 import {
+  explorerTextPreviewPageSchema,
+  TEXT_PREVIEW_BYTES_LIMIT,
+} from "./explorer-text-preview.js";
+export {
+  TEXT_PREVIEW_BYTES_LIMIT,
+  TEXT_PREVIEW_PAGE_BYTES,
+  TEXT_PREVIEW_PAGE_LINES,
+  explorerTextPreviewPageSchema,
+} from "./explorer-text-preview.js";
+export type { ExplorerTextPreviewPage } from "./explorer-text-preview.js";
+import {
   explorerFileImportChunkSchema,
   explorerFileImportCancelSchema,
   explorerFileImportResultSchema,
@@ -157,6 +168,14 @@ export const explorerOperationRequestContentSchema = z.discriminatedUnion(
       .strict(),
     z
       .object({
+        type: z.literal("explorer.file.preview"),
+        path: explorerFileWriteSchema.shape.path,
+        offset: z.number().int().min(0).max(TEXT_PREVIEW_BYTES_LIMIT),
+        version: explorerTextPreviewPageSchema.shape.version.optional(),
+      })
+      .strict(),
+    z
+      .object({
         type: z.literal("explorer.media.read"),
         path: explorerFileWriteSchema.shape.path,
         offset: z.number().int().nonnegative(),
@@ -213,6 +232,12 @@ export const explorerOperationResultContentSchema = z.discriminatedUnion(
       .object({
         type: z.literal("explorer.directory.commits"),
         value: explorerDirectoryCommitsSchema,
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("explorer.file.preview"),
+        value: explorerTextPreviewPageSchema,
       })
       .strict(),
     z
@@ -476,6 +501,7 @@ export const surfaceOperationOutcomeContentSchema = z.discriminatedUnion("ok", [
     .object({
       ok: z.literal(false),
       error: z.string().min(1).max(2_000),
+      code: z.literal("text-preview-required").optional(),
     })
     .strict(),
 ]);

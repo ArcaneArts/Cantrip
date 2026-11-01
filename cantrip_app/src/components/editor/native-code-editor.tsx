@@ -55,6 +55,7 @@ export function NativeCodeEditor({
   readOnly = false,
   onReady,
   onViewStateChange,
+  onViewportChange,
 }: {
   session: EditorDocumentSession;
   path: string;
@@ -65,6 +66,7 @@ export function NativeCodeEditor({
   /** Fires after this document's DOM text, selection and scroll are installed. */
   onReady?(session: EditorDocumentSession): void;
   onViewStateChange?(): void;
+  onViewportChange?(last: number, total: number): void;
 }) {
   const showLineNumbers = useCodeEditorLineNumbers();
   const input = useRef<HTMLTextAreaElement>(null);
@@ -106,6 +108,9 @@ export function NativeCodeEditor({
   const lines = lineIndex.current.lines;
   const viewport = editorViewport(session.scrollTop, height, lines.length, 16);
   const paintedViewport = useRef(viewport);
+  useEffect(() => {
+    if (active) onViewportChange?.(viewport.last, lines.length);
+  }, [active, viewport.last, lines.length, onViewportChange]);
   const paintScroll = () => {
     const y =
       EDITOR_VERTICAL_PADDING +
@@ -220,6 +225,8 @@ export function NativeCodeEditor({
     const node = input.current;
     if (node && !composing.current && node.value !== session.text) {
       node.value = session.text;
+      node.scrollTop = session.scrollTop;
+      node.scrollLeft = session.scrollLeft;
       node.setSelectionRange(
         session.selection.start,
         session.selection.end,

@@ -38,6 +38,21 @@ import {
   type ExplorerMediaFileChunk,
 } from "@cantrip/protocol";
 import { decodeEditableFileText } from "./editable-file-text.js";
+import { TEXT_PREVIEW_BYTES_LIMIT } from "@cantrip/protocol/surface-stream";
+import {
+  readTextPreviewPage,
+  TextPreviewRequiredError,
+} from "./explorer-text-preview.js";
+
+export async function readExplorerTextPreview(
+  root: string,
+  relativePath: string,
+  offset: number,
+  version?: string,
+) {
+  const { targetPath } = await resolveEntry(root, relativePath);
+  return readTextPreviewPage(targetPath, relativePath, offset, version);
+}
 
 const DIRECTORY_LIMIT = 1_000;
 const FILE_SIZE_LIMIT = 2 * 1024 * 1024;
@@ -628,10 +643,11 @@ export async function readExplorerFile(
   if (!metadata.isFile()) {
     throw new Error("This file type is not available for preview.");
   }
-  if (metadata.size > FILE_SIZE_LIMIT) {
-    throw new Error("Text previews are limited to 2 MB.");
-  }
+  if (metadata.size > TEXT_PREVIEW_BYTES_LIMIT)
+    throw new Error("Text previews are limited to 10 MB.");
+  if (metadata.size > FILE_SIZE_LIMIT) throw new TextPreviewRequiredError();
   const bytes = await readFile(targetPath);
+  if (bytes.length > FILE_SIZE_LIMIT) throw new TextPreviewRequiredError();
   const content = decodeEditableFileText(bytes);
   return explorerFileSchema.parse({
     path: relativePath,

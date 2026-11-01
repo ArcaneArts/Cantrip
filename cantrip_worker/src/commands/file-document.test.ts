@@ -17,9 +17,14 @@ import type { WorkerEncryptionService } from "../worker-encryption.js";
 import { handleExplorerCommand } from "./explorer.js";
 import { ExplorerFileImports } from "../explorer-file-imports.js";
 
-const files = vi.hoisted(() => ({ read: vi.fn(), write: vi.fn() }));
+const files = vi.hoisted(() => ({
+  read: vi.fn(),
+  write: vi.fn(),
+  preview: vi.fn(),
+}));
 vi.mock("../explorer.js", () => ({
   readExplorerFile: files.read,
+  readExplorerTextPreview: files.preview,
   writeExplorerFile: files.write,
 }));
 const service = {
@@ -29,6 +34,7 @@ const service = {
 } as unknown as WorkerEncryptionService;
 beforeEach(() => {
   files.read.mockReset();
+  files.preview.mockReset();
   files.write.mockReset();
 });
 
@@ -177,6 +183,7 @@ it.each(["projectId", "workerId", "worktreeId"] as const)(
 
 it.each([
   { type: "explorer.file.read", path: "another.rs" },
+  { type: "explorer.file.preview", path: "another.rs", offset: 0 },
   { type: "explorer.directory.list", path: "src/main.rs" },
   {
     type: "explorer.file.import",
@@ -210,4 +217,51 @@ it("rejects an Explorer stream replayed under a document identity", async () => 
   });
   await expect(f.run()).rejects.toThrow("could not be authenticated");
   expect(files.read).not.toHaveBeenCalled();
+});
+
+it("keeps large preview pages encrypted and bound to the document path", async () => {
+  const value = {
+    path: "src/main.rs",
+    content: "private text",
+    size: 12,
+    offset: 0,
+    nextOffset: 12,
+    eof: true,
+    version: "a".repeat(64),
+  };
+  files.preview.mockResolvedValue(value);
+  const f = await fixture({
+    type: "explorer.file.preview",
+    path: value.path,
+    offset: 0,
+  });
+  const response = await handleExplorerCommand(f.command, f.dependencies);
+  expect(JSON.stringify(response)).not.toContain("private text");
+  const wire = surfaceStreamWireResponseSchema.parse(response);
+  const result = await openWorkerSurfaceStreamContent({
+    context: { ...f.context, direction: "response" },
+    opaque: wire.protectedResponse,
+    schema: surfaceOperationOutcomeContentSchema,
+    service,
+  });
+  expect(result).toEqual({
+    ok: true,
+    result: { type: "explorer.file.preview", value },
+  });
+  expect(files.preview).toHaveBeenCalledExactlyOnceWith(
+    "/repo",
+    value.path,
+    0,
+    undefined,
+  );
+});
+it("returns a typed protected fallback instead of treating a large preview as a fatal read", async () => {
+  const { TextPreviewRequiredError } =
+    await import("../explorer-text-preview.js");
+  files.read.mockRejectedValue(new TextPreviewRequiredError());
+  const f = await fixture();
+  expect(await f.run()).toMatchObject({
+    ok: false,
+    code: "text-preview-required",
+  });
 });

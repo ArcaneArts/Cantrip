@@ -71,6 +71,30 @@ from the production client. Descriptions link to Choose a License references.
 The GPLv3 document alone does not determine whether a project's grant includes
 an "or later" option.
 
+## Large text previews
+
+Project and file-document text previews support UTF-8 files up to 10 MiB.
+Files above the 2 MiB editing limit open as read-only, syntax-highlighted text.
+The first request loads at most 10,000 lines or 256 KiB; scrolling near the end
+loads the next page. **Load more** also works without scrolling, including files
+with very long lines. The renderer paints only the visible rows and overscan,
+and appending text preserves selection and scroll position. Hidden previews do
+not request more pages, and there is no preview polling.
+
+Pages travel through the existing encrypted server relay. A worker revision
+fingerprint prevents combining pages from different versions of a file; use
+Refresh if the file changes. Large Markdown and structured documents use the
+plain text preview rather than eagerly parsing the full document. Partial text
+never enters an editable draft, save, recovery, or transfer buffer. A reopened
+or popped-out large preview loads a fresh snapshot from the beginning.
+
+Run `node scripts/qa/large-text-preview.mjs` after building shared packages to
+exercise the production app/server/worker in Chromium and WebKit with an exact
+10 MiB file, first-page and end-of-file rendering, scroll loading, encrypted
+requests, no idle/hidden page fetches, refresh, changed-file rejection, and the
+upper size limit. Results and screenshots are written under
+`test-results/large-text-preview/`.
+
 ## Drafts and saving
 
 Document sessions retain text, selection, scrolling, and undo history across

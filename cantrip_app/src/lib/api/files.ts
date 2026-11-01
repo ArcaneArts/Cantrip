@@ -1,3 +1,4 @@
+import { FileOperationError } from "@/lib/file-operation-error";
 import {
   type StandaloneChatFileOperationIntent,
   type StandaloneChatFileBinding,
@@ -401,7 +402,7 @@ export async function executeExplorerOperation(
     opaque: wire.protectedResponse,
     schema: surfaceOperationOutcomeContentSchema,
   });
-  if (!outcome.ok) throw new Error(outcome.error);
+  if (!outcome.ok) throw new FileOperationError(outcome.error, outcome.code);
   return explorerOperationResultContentSchema.parse(outcome.result);
 }
 

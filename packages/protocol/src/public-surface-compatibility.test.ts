@@ -449,6 +449,12 @@ const legacyFileImportExports = [
   "workspaceLegacyFileImportRequestSchema",
   "workspaceLegacyFileImportSchema",
 ];
+const textPreviewExports = [
+  "TEXT_PREVIEW_BYTES_LIMIT",
+  "TEXT_PREVIEW_PAGE_BYTES",
+  "TEXT_PREVIEW_PAGE_LINES",
+  "explorerTextPreviewPageSchema",
+];
 const explorerFileImportExports = ["EXPLORER_FILE_IMPORT_CHUNK_BYTES"];
 
 describe("protocol public surface compatibility", () => {
@@ -469,6 +475,7 @@ describe("protocol public surface compatibility", () => {
           !fileDocumentExports.includes(name) &&
           !legacyFileImportExports.includes(name) &&
           !explorerFileImportExports.includes(name) &&
+          !textPreviewExports.includes(name) &&
           !conversationCatalogExports.includes(name) &&
           !conversationViewExports.includes(name) &&
           !taskAutomaticRetryExports.includes(name) &&
@@ -483,7 +490,10 @@ describe("protocol public surface compatibility", () => {
     expect(
       exportNames.filter((name) => retiredWorkbenchExports.includes(name)),
     ).toEqual([]);
-    expect(exportNames).toHaveLength(2108);
+    expect(exportNames).toHaveLength(2112);
+    expect(
+      exportNames.filter((name) => textPreviewExports.includes(name)),
+    ).toEqual(textPreviewExports);
     expect(
       exportNames.filter((name) => explorerFileImportExports.includes(name)),
     ).toEqual(explorerFileImportExports);
