@@ -939,3 +939,27 @@ it("fences catalog-only placement after an awaited ownership refresh", async () 
   ).rejects.toThrow("Account changed");
   expect(transport.execute).not.toHaveBeenCalled();
 });
+
+it("optimistically retires a sidebar chat when selecting a real tab and stays empty after close", async () => {
+  const { client, transport, server, setServer } = setup();
+  await client.dispatch(open());
+  await client.openConversation("sidebar-chat");
+  const gate = deferred<WorkspaceReceipt>();
+  vi.mocked(transport.execute).mockImplementationOnce(() => gate.promise);
+  const selection = client.dispatch({ type: "select", tabId: "tab" });
+  const projected = client.getSnapshot().projected.windows[0]!;
+  expect(projected.panes[0]!.conversationView).toBeNull();
+  expect(projected.panes[0]!.selection).toEqual({ kind: "tab", tabId: "tab" });
+  const command = vi.mocked(transport.execute).mock.calls.at(-1)![0];
+  const receipt = result(server(), command);
+  setServer(receipt.layout);
+  gate.resolve(receipt);
+  await selection;
+  await client.dispatch({ type: "close-tab", tabId: "tab" });
+  expect(client.getSnapshot().projected.windows[0]!.panes).toEqual([]);
+  await client.openConversation("sidebar-chat");
+  expect(
+    client.getSnapshot().projected.windows[0]!.panes[0]!.conversationView
+      ?.resource,
+  ).toMatchObject({ resourceId: "sidebar-chat" });
+});
