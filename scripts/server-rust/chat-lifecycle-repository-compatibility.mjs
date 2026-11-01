@@ -289,12 +289,16 @@ try {
     )[0],
     "archived",
   );
-  await observe(
-    "restore without legacy placement",
+  const activeRestore = await observe(
+    "restore without legacy placement preserves actual running pause",
     operation("restore-project", "chat", {
       input: { attachToTabLayout: false },
     }),
   );
+  for (const chat of activeRestore) {
+    assert.equal(chat.status, "running");
+    assert.equal(chat.automationPaused, true);
+  }
   await unchanged(
     "active agent restore without placement returns summary",
     operation("restore-project", "chat", {
@@ -311,10 +315,14 @@ try {
       `UPDATE user_settings SET workspace_layout_profile=${literal(profile)} WHERE user_id=${literal(owner)}`,
     );
     await observe("archive before " + profile, operation("archive-agent"));
-    await observe(
+    const restored = await observe(
       "restore placement " + profile,
       operation("restore-project", "chat", { input: {} }),
     );
+    for (const chat of restored) {
+      assert.equal(chat.status, "idle");
+      assert.equal(chat.automationPaused, false);
+    }
     const state = await snapshot("restored placement " + profile);
     const member = state[0].tab_group_members.find(
       (m) => m.tab_key === "chat:chat",

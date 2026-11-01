@@ -306,9 +306,11 @@ describe.sequential("chat archive API", () => {
       url: `/api/chats/${chat.id}/restore`,
     });
     expect(restoredResponse.statusCode).toBe(200);
-    expect(chatWireSummarySchema.parse(restoredResponse.json()).id).toBe(
-      chat.id,
-    );
+    expect(chatWireSummarySchema.parse(restoredResponse.json())).toMatchObject({
+      id: chat.id,
+      status: "idle",
+      automationPaused: false,
+    });
     expect(
       await database.repository.listMessages(LOCAL_USER_ID, chat.id),
     ).toHaveLength(1);
@@ -433,7 +435,8 @@ describe.sequential("chat archive API", () => {
     expect(restored.statusCode, restored.body).toBe(200);
     expect(chatWireSummarySchema.parse(restored.json())).toMatchObject({
       id: chat.id,
-      automationPaused: true,
+      status: "idle",
+      automationPaused: false,
     });
     expect(await layout()).not.toContain(chat.id);
     // A stale permanent-delete action must not remove a restored active chat.
@@ -486,6 +489,29 @@ describe.sequential("chat archive API", () => {
     }
     await database.repository.setChatStatus(chat.id, "idle");
   });
+
+  it.each(["running", "waiting-for-approval"] as const)(
+    "preserves a genuine %s pause observed while archived",
+    async (status) => {
+      const chat = await createChat("Native pause");
+      await database.repository.archiveAgentConversation(
+        LOCAL_USER_ID,
+        chat.id,
+      );
+      await database.repository.setChatStatus(chat.id, status);
+      const response = await app.inject({
+        method: "POST",
+        url: `/api/chats/${chat.id}/restore`,
+        payload: { attachToTabLayout: false },
+      });
+      expect(response.statusCode, response.body).toBe(200);
+      expect(chatWireSummarySchema.parse(response.json())).toMatchObject({
+        status,
+        automationPaused: true,
+      });
+      await database.repository.setChatStatus(chat.id, "idle");
+    },
+  );
 
   it("pages the complete recent Agent catalog and ignores stale usage retries", async () => {
     const first = await createChat("First conversation");

@@ -31,6 +31,45 @@ const preference = chatPermissionProfileStateSchema.parse({
   forcedByWorktreePolicy: true,
 });
 describe("bound permission presentation", () => {
+  it.each(["applied", "rejected", "uncertain"] as const)(
+    "uses the native %s outcome instead of a cached pending response for the same change",
+    (status) => {
+      const current = session();
+      const transition = {
+        selectedId: ":workspace",
+        resolvedSelectedId: ":workspace",
+        effectiveId: ":workspace",
+        expectedRevision: "0",
+      };
+      current.observed.state = {
+        data: {
+          desired: {
+            operationId: "permission",
+            permissionTransition: transition,
+          },
+          pending: [],
+        },
+      } as unknown as NativeSettingsController["observed"]["state"];
+      current.observed.intents = [
+        {
+          operationId: "permission",
+          status,
+          pending: false,
+          patch: { permissions: ":workspace" },
+        },
+      ];
+      const result = nativePermissionControlState(current, {
+        ...preference,
+        transition: {
+          ...transition,
+          operationId: "permission",
+          status: "dispatched",
+        },
+      });
+      expect(result.status).toBe(status);
+      expect(result.confirmedPresetId).toBe(":workspace");
+    },
+  );
   it.each(["rejected", "uncertain"] as const)(
     "keeps the accepted choice visible after a competing request is %s",
     (status) => {
