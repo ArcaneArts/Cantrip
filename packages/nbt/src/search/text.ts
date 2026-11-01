@@ -72,7 +72,7 @@ export async function* textChunks(
   while (at < span.offset + span.length) {
     signal.throwIfAborted();
     const part = await model.text(
-      { offset: at, length: span.offset + span.length - at },
+      { ...span, offset: at, length: span.offset + span.length - at },
       4096,
       signal,
     );

@@ -10,7 +10,7 @@ is a foundation; its presence does not mean the app viewer/editor has shipped.
 | 2. Binary access and encrypted storage | Implemented          | Protected range reads, pinned revisions, encrypted OPFS/IndexedDB spill and cancellation    |
 | 3. Background parser integration       | Implemented          | Dedicated document worker, progressive disk-backed indexing, bounded working set            |
 | 4. Tree/table viewer and global search | Baseline implemented | Actual app interactions, unloaded-subtree search, paged grids and responsive navigation     |
-| 5. Typed editing and streamed saves    | Pending              | All edit operations, undo/redo, atomic version-checked saves and interrupted-write receipts |
+| 5. Typed editing and streamed saves    | Implemented          | All edit operations, undo/redo, atomic version-checked saves and interrupted-write receipts |
 | 6. Recovery, ownership, and phones     | Pending              | Encrypted recoverable drafts, safe close/pop-out/return, touch editing and phone saves      |
 | 7. Qualification                       | Pending              | Full malformed/concurrency/storage matrix, measured desktop/browser/mobile performance      |
 
@@ -135,12 +135,83 @@ finds its tail value, forces NBT for an unknown extension, and reads the final
 array element. The ordinary local-file input and 390px layout are browser tests,
 not physical iOS/Android qualification.
 
-This milestone reads the immutable baseline. All views and search share the
-`NbtReadModel` boundary; milestone 5 must extend it for typed edit overlays,
-inserted identities, structural changes, and searches that include unsaved edits.
-Those requirements are still mandatory and have not been proved here. Save,
-recovery, shared document ownership, physical-phone testing, and the complete
-qualification matrix remain milestones 5–7.
+Milestone 4 establishes baseline browsing. Milestone 5 extends the same
+`NbtReadModel` with typed edits and logical identities; recovery, shared ownership,
+physical-phone testing, and the complete qualification matrix remain milestones
+6–7.
+
+Milestone 5 validation commands:
+
+```sh
+pnpm --filter @cantrip/nbt build
+pnpm --filter @cantrip/nbt test
+pnpm --filter @cantrip/protocol exec vitest run src test --exclude 'dist/**' --maxWorkers=2
+pnpm --filter @cantrip/worker exec vitest run test/binary-file-writes.test.ts src/commands/file-document.test.ts
+pnpm --filter @cantrip/server exec vitest run test/file-documents.test.ts
+pnpm --filter @cantrip/app exec vitest run src/lib/nbt/save.test.ts src/lib/nbt/session-registry.test.ts src/components/explorer/explorer-lifecycle.test.ts
+pnpm --filter @cantrip/app build
+node scripts/qa/nbt-edit-project.mjs
+```
+
+The project fixture requires the Cantrip CLI and CUA runtimes, as the other
+protected project fixtures do. Existing builds can be selected with
+`CANTRIP_CLI_BIN` and `CANTRIP_CUA_BIN`. `CANTRIP_NBT_QA_ENGINE` selects one
+browser when diagnosing a failure; the default runs Chromium and WebKit.
+
+`NbtDocumentSession` owns a versioned operation journal, persistent edit roots,
+undo/redo, and frozen save snapshots in the dedicated document worker. Values,
+renames, insertion, deletion, duplication, explicit type replacement, numeric
+array splices, and byte-backed string splices are transactions. Exact Longs
+remain decimal strings across RPC and BigInt in the codec. Lists enforce their
+element type; new duplicate compound names are rejected while existing unusual
+entries and raw floating-point payloads remain intact. Duplicating an unopened
+subtree retains source ranges instead of materializing its descendants.
+
+The tree/table/grid and full-document search use the edited logical model.
+String editing loads character-aligned 4 KiB pages. Array edits and pastes use
+bounded batches of up to 4,096 values. These transaction bounds do not impose a
+whole-document size limit. A small edit changes persistent overlay roots and
+its affected descriptors, rather than cloning or serializing the entire tree.
+Journal records and long search identities are split across encrypted 64 KiB
+cache pages. The journal manifest is the transaction commit point.
+
+Saves stream the frozen baseline plus edits through the original encoding and
+compression into protected 256 KiB write chunks. Worker staging chunks and
+write-ahead receipts are encrypted with worker component material. The worker
+checks the output size and SHA-256, syncs a publication temporary beside the
+target, revalidates the expected version, and atomically publishes it. Durable
+prepared/committed receipts reconcile worker restarts and lost responses.
+Concurrent app saves to the same target are serialized; external changes are
+checked immediately before publication. This is revision checking plus atomic
+replacement, not a filesystem compare-and-swap against arbitrary external
+writers. The publication temporary necessarily contains the requested output
+bytes; resumable staging and receipt data remain encrypted.
+
+The UI reports dirty/save state and retains interrupted snapshots for Retry.
+Edits made during a save remain dirty afterward. Conflicts retain the draft and
+offer Retry, Reload, and Save As. Reload validates the actual replacement before
+retiring the current draft, so an unreadable replacement does not destroy it.
+Save As creates a new immutable file document, opens it, and retains the original
+tab's draft. A copy receipt never marks the original path saved.
+
+The production protected app/server/worker QA in Chromium and WebKit edits a
+100 MiB expanded gzip document: string changes, renaming, exact Long insertion,
+duplicate/delete/undo/redo, the final array element, and unsaved search. It
+verifies original bytes remain intact before publication, drops the actual
+commit acknowledgement, reconciles the receipt, and reopens the result with
+both the app and an independent parser. It also checks an external-write
+conflict, an invalid replacement that fails reload without losing the draft,
+and Save As into a new document while preserving the external original.
+
+Live runtime leases retain detached dirty workers and pause inactive parsing.
+Custom-viewer lifecycle state participates in existing save, preview replacement,
+dirty-close, and close-cancellation handling, including edits awaiting their
+worker acknowledgement. This is **not durable draft recovery**: cache keys are
+still ephemeral, journals are not yet reopened after a client restart, and
+runtime ownership is scoped to a view. Until milestone 6 adds shared durable
+ownership, dirty NBT drafts must be saved before moving a window or quitting.
+Encrypted reload recovery, cross-window transfer, local OS export, orphan
+cleanup, and actual phone qualification remain mandatory unfinished work.
 
 ## Accepted plan
 

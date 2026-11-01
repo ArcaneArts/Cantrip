@@ -19,6 +19,10 @@
     "./document": {
       "types": "./src/document/index.ts",
       "import": "./dist/document/index.js"
+    },
+    "./edit": {
+      "types": "./src/edit/index.ts",
+      "import": "./dist/edit/index.js"
     }
   },
   "files": [
@@ -30,10 +34,11 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@noble/hashes": "^2.3.0",
     "pako": "3.0.3"
   },
   "devDependencies": {
-    "nbtify": "2.2.0",
-    "fake-indexeddb": "^6.2.5"
+    "fake-indexeddb": "^6.2.5",
+    "nbtify": "2.2.0"
   }
 }

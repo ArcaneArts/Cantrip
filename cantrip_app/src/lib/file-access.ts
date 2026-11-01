@@ -8,6 +8,8 @@ import {
   type BinaryFileSource,
 } from "./binary-file-source";
 import type {
+  BinaryWriteRequest,
+  BinaryWriteReceipt,
   ExplorerLogTail,
   LogTailCursor,
   ExplorerTextPreviewPage,
@@ -38,6 +40,10 @@ export interface FileAccess {
     path: string,
     mediaType?: { kind: ExplorerMediaKind; mimeType: string },
   ): Promise<Blob>;
+  binaryWrite?(
+    content: BinaryWriteRequest,
+    signal?: AbortSignal,
+  ): Promise<BinaryWriteReceipt>;
   binary?(path: string, signal?: AbortSignal): Promise<BinaryFileSource>;
 }
 
@@ -48,6 +54,19 @@ export function documentFileAccess(document: FileDocument): FileAccess {
   }
   return {
     cacheKey: `file-document:${document.id}`,
+    async binaryWrite(content, signal) {
+      requirePath(content.path);
+      const result = await executeFileDocumentOperation(
+        document.id,
+        content,
+        undefined,
+        undefined,
+        signal,
+      );
+      if (result.type !== "explorer.binary.write")
+        throw new Error("Unexpected binary save result.");
+      return result.value;
+    },
     async binary(path, signal) {
       requirePath(path);
       const identity = getClientSessionIdentitySnapshot();

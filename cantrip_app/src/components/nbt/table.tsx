@@ -10,11 +10,13 @@ export function NbtTable({
   client,
   row,
   nodes,
+  revision = 0,
   onSelect,
 }: {
   client: NbtDocumentClient;
   row: NbtDisplayRow;
   nodes: number;
+  revision?: number;
   onSelect(row: NbtDisplayRow): void;
 }) {
   const [range, setRange] = useState({ offset: 0, limit: 32 }),
@@ -71,6 +73,7 @@ export function NbtTable({
     client,
     row.node.id,
     nodes,
+    revision,
     range.offset,
     range.limit,
     columnOffset,

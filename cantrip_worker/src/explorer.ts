@@ -231,6 +231,35 @@ async function resolveEntry(root: string, relativePath: string) {
   return { metadata, targetPath: resolvedTarget };
 }
 
+/** Resolve the same logical file semantics used by the binary reader, including deliberate symlinks. */
+export async function resolveBinaryWriteTarget(
+  root: string,
+  relativePath: string,
+) {
+  const rootPath = await realpath(root),
+    segments = pathSegments(relativePath);
+  if (!segments.length) throw new Error("Choose a file path.");
+  const logical = path.resolve(rootPath, ...segments);
+  try {
+    return { ...(await resolveEntry(root, relativePath)), exists: true };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    const existing = await lstat(logical).catch(
+      (reason: NodeJS.ErrnoException) => {
+        if (reason.code === "ENOENT") return null;
+        throw reason;
+      },
+    );
+    if (existing) throw error;
+    const parentPath = await realpath(path.dirname(logical));
+    return {
+      targetPath: path.join(parentPath, path.basename(logical)),
+      metadata: null,
+      exists: false,
+    };
+  }
+}
+
 function pathIsInside(root: string, candidate: string): boolean {
   const relative = path.relative(root, candidate);
   return (

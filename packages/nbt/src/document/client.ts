@@ -1,3 +1,4 @@
+import type { NbtEditOperation, NbtEditStatus } from "../edit/types.js";
 import type { NbtTreePage, NbtPathEntry, NbtTablePage } from "../view/types.js";
 import type {
   NbtSearchQuery,
@@ -12,6 +13,7 @@ import type {
   NbtDocumentOpenOptions,
   NbtDocumentRequest,
   NbtDocumentResponse,
+  NbtSerializationReceipt,
   NbtDocumentSource,
   NbtDocumentStatus,
   NbtMessageEndpoint,
@@ -29,6 +31,10 @@ export class NbtDocumentClient {
   private reads = new Map<number, AbortController>();
   private listeners = new Set<() => void>();
   private status: NbtDocumentStatus | null = null;
+  private editStatus: NbtEditStatus | null = null;
+  private mutations = 0;
+  private frozen = 0;
+  private editListeners = new Set<() => void>();
   private searchStatus: NbtSearchStatus | null = null;
   private searchListeners = new Set<() => void>();
   private closing: Promise<void> | undefined;
@@ -126,6 +132,13 @@ export class NbtDocumentClient {
             });
         })
         .finally(() => this.reads.delete(message.id));
+      return;
+    }
+    if (message.type === "edit.status") {
+      if (!this.closed) {
+        this.editStatus = { ...message.status, editing: this.mutations > 0 };
+        for (const listener of this.editListeners) listener();
+      }
       return;
     }
     if (message.type === "search.status") {
@@ -249,25 +262,126 @@ export class NbtDocumentClient {
       this.searchListeners.delete(listener);
     };
   };
+  getEditSnapshot = () => this.editStatus;
+  freezeEdits() {
+    if (this.mutations)
+      throw new Error("Wait for the current NBT edit to finish.");
+    this.frozen++;
+    let released = false;
+    return () => {
+      if (!released) {
+        released = true;
+        this.frozen--;
+      }
+    };
+  }
+  private async mutation<T>(run: () => Promise<T>): Promise<T> {
+    if (this.frozen)
+      throw new Error("NBT editing is suspended while ownership changes.");
+    this.mutations++;
+    const emit = () => {
+      if (this.editStatus)
+        this.editStatus = { ...this.editStatus, editing: this.mutations > 0 };
+      for (const listener of this.editListeners) listener();
+    };
+    emit();
+    try {
+      return await run();
+    } finally {
+      this.mutations--;
+      emit();
+    }
+  }
+  subscribeEdits = (listener: () => void) => {
+    this.editListeners.add(listener);
+    return () => {
+      this.editListeners.delete(listener);
+    };
+  };
+  edit(
+    operations: NbtEditOperation[],
+    revision = this.editStatus?.revision ?? 0,
+    label?: string,
+    signal?: AbortSignal,
+  ) {
+    return this.mutation(() =>
+      this.request<{ selection: string; status: NbtEditStatus }>(
+        { type: "edit.apply", operations, revision, label },
+        signal,
+      ),
+    );
+  }
+  undo(signal?: AbortSignal) {
+    return this.mutation(() =>
+      this.request<NbtEditStatus>({ type: "edit.undo" }, signal),
+    );
+  }
+  redo(signal?: AbortSignal) {
+    return this.mutation(() =>
+      this.request<NbtEditStatus>({ type: "edit.redo" }, signal),
+    );
+  }
+  textPage(
+    id: string,
+    field: "name" | "value",
+    offset = 0,
+    limit = 4096,
+    signal?: AbortSignal,
+  ) {
+    return this.request<{
+      text: string;
+      offset: number;
+      nextOffset: number;
+      totalBytes: number;
+      truncated: boolean;
+    }>({ type: "edit.text", id, field, offset, limit }, signal);
+  }
+  beginSave(saveId: string, signal?: AbortSignal) {
+    return this.request<{ id: string; version: string; revision: number }>(
+      { type: "save.begin", saveId },
+      signal,
+    );
+  }
+  acknowledgeSave(saveId: string, version: string) {
+    return this.request<NbtEditStatus>({ type: "save.ack", saveId, version });
+  }
+  failSave(saveId: string, uncertain: boolean, retain = false) {
+    return this.request<NbtEditStatus>({
+      type: "save.fail",
+      saveId,
+      uncertain,
+      retain,
+    });
+  }
   setPaused(paused: boolean) {
     return this.request<NbtDocumentStatus>({ type: "pause", paused });
   }
   async *serialize(
     original = true,
     signal?: AbortSignal,
-  ): AsyncGenerator<Uint8Array> {
+    saveId?: string,
+  ): AsyncGenerator<Uint8Array, NbtSerializationReceipt> {
     const exportId = crypto.randomUUID();
     try {
       await this.request(
-        { type: "serialize.begin", exportId, original },
+        { type: "serialize.begin", exportId, original, saveId },
         signal,
       );
       for (;;) {
         const result = await this.request<{
           done: boolean;
           bytes?: Uint8Array;
+          size?: number;
+          sha256?: string;
         }>({ type: "serialize.next", exportId }, signal);
-        if (result.done) return;
+        if (result.done) {
+          if (
+            !Number.isSafeInteger(result.size) ||
+            !result.sha256?.match(/^[a-f0-9]{64}$/u)
+          )
+            throw new Error("NBT serialization receipt is invalid.");
+          return { size: result.size!, sha256: result.sha256 };
+        }
         yield result.bytes!;
       }
     } finally {
@@ -295,6 +409,7 @@ export class NbtDocumentClient {
       this.pending.clear();
       this.listeners.clear();
       this.searchListeners.clear();
+      this.editListeners.clear();
       this.terminate();
     }
   }

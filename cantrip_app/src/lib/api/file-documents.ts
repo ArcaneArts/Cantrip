@@ -30,6 +30,11 @@ type DocumentOperation = Extract<
   ExplorerOperationRequestContent,
   {
     type:
+      | "explorer.binary.write.begin"
+      | "explorer.binary.write.chunk"
+      | "explorer.binary.write.commit"
+      | "explorer.binary.write.status"
+      | "explorer.binary.write.abort"
       | "explorer.binary.read"
       | "explorer.file.read"
       | "explorer.file.preview"
@@ -87,8 +92,9 @@ export async function executeFileDocumentOperation(
   signal?.throwIfAborted();
   if (!outcome.ok) throw new FileOperationError(outcome.error, outcome.code);
   const result = explorerOperationResultContentSchema.parse(outcome.result);
-  const expectedType =
-    content.type === "explorer.binary.read"
+  const expectedType = content.type.startsWith("explorer.binary.write.")
+    ? "explorer.binary.write"
+    : content.type === "explorer.binary.read"
       ? "explorer.binary"
       : content.type === "explorer.media.read"
         ? "explorer.media"

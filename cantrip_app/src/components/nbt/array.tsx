@@ -7,11 +7,15 @@ export function NbtArray({
   row,
   focus,
   availableBytes,
+  revision = 0,
+  onEdit,
 }: {
   client: NbtDocumentClient;
   row: NbtDisplayRow;
   focus: { index: number; nonce: number } | null;
   availableBytes: number;
+  revision?: number;
+  onEdit?(index: number): void;
 }) {
   const [columns, setColumns] = useState(4),
     [hex, setHex] = useState(false),
@@ -72,6 +76,7 @@ export function NbtArray({
     range.offset,
     range.limit,
     availableBytes,
+    revision,
   ]);
   useEffect(() => {
     if (focus)
@@ -149,7 +154,11 @@ export function NbtArray({
                 const at = index * columns + column,
                   value = values.get(at);
                 return (
-                  <div
+                  <button
+                    type="button"
+                    disabled={!onEdit || value === undefined}
+                    aria-label={"Edit array element " + at}
+                    onClick={() => onEdit?.(at)}
                     key={at}
                     data-nbt-element={at}
                     className={
@@ -170,7 +179,7 @@ export function NbtArray({
                           ? hexValue(value, row.node.type)
                           : String(value)}
                     </span>
-                  </div>
+                  </button>
                 );
               },
             )}

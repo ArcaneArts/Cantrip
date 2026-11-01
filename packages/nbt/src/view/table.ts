@@ -15,7 +15,8 @@ async function sameName(
   signal: AbortSignal,
 ) {
   if (!a || !b) return a === b;
-  if (a.offset === b.offset && a.length === b.length) return true;
+  if (a.source === b.source && a.offset === b.offset && a.length === b.length)
+    return true;
   let left = a.offset,
     right = b.offset,
     leftText = "",
@@ -30,7 +31,7 @@ async function sameName(
     signal.throwIfAborted();
     if (!leftText && left < a.offset + a.length) {
       const page = await model.text(
-        { offset: left, length: a.offset + a.length - left },
+        { ...a, offset: left, length: a.offset + a.length - left },
         4096,
         signal,
       );
@@ -39,7 +40,7 @@ async function sameName(
     }
     if (!rightText && right < b.offset + b.length) {
       const page = await model.text(
-        { offset: right, length: b.offset + b.length - right },
+        { ...b, offset: right, length: b.offset + b.length - right },
         4096,
         signal,
       );

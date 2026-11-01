@@ -437,3 +437,122 @@ it("serves bounded tree, table, full-value search and ancestor pages through wor
     await dispose();
   }
 });
+it("edits through worker RPC and streams a frozen save snapshot with a verifiable checksum", async () => {
+  const bytes = await fixture(),
+    channel = pair(),
+    dispose = installNbtDocumentWorker(channel.worker),
+    client = await NbtDocumentClient.open(channel.main, new Blob([bytes]), {
+      ...options,
+      version: "v1",
+    });
+  try {
+    await waitFor(() => client.getSnapshot()?.state === "complete");
+    const root = client.getSnapshot()!.root!,
+      rows = await client.rows(root),
+      long = rows[0]!.node.id;
+    await client.edit([{ type: "value", id: long, value: "9007199254740993" }]);
+    expect(client.getEditSnapshot()).toMatchObject({
+      dirty: true,
+      revision: 1,
+    });
+    const save = await client.beginSave("snapshot");
+    expect(save).toMatchObject({ version: "v1", revision: 1 });
+    await client.edit([{ type: "value", id: long, value: "7" }]);
+    const chunks: Uint8Array[] = [],
+      iterator = client.serialize(false, undefined, "snapshot");
+    let receipt;
+    for (;;) {
+      const part = await iterator.next();
+      if (part.done) {
+        receipt = part.value;
+        break;
+      }
+      chunks.push(part.value);
+    }
+    const saved = Buffer.concat(chunks);
+    const { createHash } = await import("node:crypto");
+    expect(receipt).toEqual({
+      size: saved.length,
+      sha256: createHash("sha256").update(saved).digest("hex"),
+    });
+    const reopened = await NbtDocumentEngine.open(
+      memoryNbtSource(saved),
+      options,
+    );
+    try {
+      await reopened.completed;
+      expect(
+        (await reopened.rows(reopened.snapshot().root!, 0, 1))[0]?.value,
+      ).toBe(9007199254740993n);
+    } finally {
+      await reopened.close();
+    }
+    await client.acknowledgeSave("snapshot", "v2");
+    expect(client.getEditSnapshot()).toMatchObject({
+      dirty: true,
+      version: "v2",
+    });
+    await client.undo();
+    expect(client.getEditSnapshot()?.dirty).toBe(false);
+    await expect(
+      client.edit([{ type: "value", id: long, value: "5" }], 0),
+    ).rejects.toThrow("document changed");
+    const inserted = await client.edit([
+      {
+        type: "insert",
+        parent: root,
+        index: 0,
+        name: "draft",
+        value: { type: NbtTag.String, value: "unsaved needle" },
+      },
+    ]);
+    await client.startSearch("draft", {
+      text: "unsaved needle",
+      fields: ["value"],
+      caseSensitive: false,
+      exactNumber: false,
+    });
+    await waitFor(() => client.getSearchSnapshot()?.state === "complete");
+    expect((await client.searchResults("draft", 0, 1))[0]?.nodeId).toBe(
+      inserted.selection,
+    );
+    expect(
+      await client.textPage(inserted.selection, "value", 0, 4096),
+    ).toMatchObject({ text: "unsaved needle", truncated: false });
+  } finally {
+    await client.close();
+    await dispose();
+  }
+});
+it("reports an in-flight edit before acknowledgement and freezes actual mutations during ownership changes", async () => {
+  const endpoints = pair(),
+    dispose = installNbtDocumentWorker(endpoints.worker),
+    client = await NbtDocumentClient.open(
+      endpoints.main,
+      new Blob([new Uint8Array(await fixture())]),
+      options,
+    );
+  try {
+    await waitFor(() => client.getSnapshot()?.state === "complete");
+    const root = client.getSnapshot()!.root!,
+      long = (await client.rows(root, 0, 1))[0]!.node.id;
+    const editing = client.edit([{ type: "value", id: long, value: "7" }]);
+    expect(client.getEditSnapshot()?.editing).toBe(true);
+    expect(() => client.freezeEdits()).toThrow("current NBT edit");
+    await editing;
+    expect(client.getEditSnapshot()).toMatchObject({
+      editing: false,
+      dirty: true,
+    });
+    const release = client.freezeEdits();
+    await expect(client.undo()).rejects.toThrow("suspended");
+    expect((await client.describe(long)).value).toBe(7n);
+    release();
+    release();
+    await client.undo();
+    expect(client.getEditSnapshot()?.dirty).toBe(false);
+  } finally {
+    await client.close();
+    await dispose();
+  }
+});

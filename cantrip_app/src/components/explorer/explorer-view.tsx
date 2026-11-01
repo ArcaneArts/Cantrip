@@ -232,7 +232,7 @@ export interface ExplorerLifecycleActions {
   captureTransfer?(): Promise<ExplorerTransferState>;
   restoreTransfer?(state: ExplorerTransferState): void;
   cancelClose(): void;
-  discard?(): void;
+  discard?(): void | Promise<void>;
   dirty: boolean;
   flushViewState(): Promise<boolean>;
   prepareClose(): Promise<void>;
@@ -471,6 +471,27 @@ export function ExplorerView({
   const draftRef = useRef(draft);
   const draftVersionRef = useRef(draftVersion);
   const dirtyRef = useRef(false);
+  const [customDocument, setCustomDocument] = useState<{
+    key: string;
+    session: import("@/components/files/file-viewers").FileViewerSession;
+  } | null>(null);
+  const customKey = JSON.stringify([
+    fileAccess?.cacheKey,
+    explorer.projectId,
+    explorer.worktreeId,
+    selectedPath,
+  ]);
+  const customSession =
+    customDocument?.key === customKey ? customDocument.session : null;
+  const customSessionRef = useRef(customSession);
+  customSessionRef.current = customSession;
+  const reportCustomSession = useCallback(
+    (
+      session:
+        import("@/components/files/file-viewers").FileViewerSession | null,
+    ) => setCustomDocument(session ? { key: customKey, session } : null),
+    [customKey],
+  );
   const worktreeIdRef = useRef(explorer.worktreeId);
   const persistedViewStateRef = useRef({
     selectedPath: explorer.selectedPath,
@@ -639,8 +660,9 @@ export function ExplorerView({
     path: string | null;
     transient: boolean;
   } | null>(null);
-  const dirty =
-    nativeDocument?.id === nativeDocumentId
+  const dirty = customSession
+    ? customSession.dirty || customSession.pending
+    : nativeDocument?.id === nativeDocumentId
       ? nativeDocument.dirty
       : draftVersion !== null && draft !== baselineContent;
   const hasDirtyDocuments = dirty || sessions.current!.hasDirtyDocuments;
@@ -879,6 +901,15 @@ export function ExplorerView({
       }
       const refreshViewer = resolveFileViewer(path, fileViewerRef.current);
       if (refreshViewer.media || refreshViewer.custom) {
+        if (refreshViewer.custom && customSessionRef.current) {
+          if (
+            !discardDraft &&
+            (customSessionRef.current.dirty || customSessionRef.current.pending)
+          )
+            return;
+          await customSessionRef.current.reload();
+          return;
+        }
         setMediaRevision((revision) => revision + 1);
         return;
       }
@@ -1008,6 +1039,7 @@ export function ExplorerView({
   const saveDraft = useCallback(async (): Promise<boolean> => {
     if (transferSuspendedRef.current || transferInstallingRef.current)
       return false;
+    if (customSessionRef.current) return customSessionRef.current.save();
     const bindingKey = streamEncryptionBindingRef.current;
     const path = selectedPathRef.current;
     const version = draftVersionRef.current;
@@ -1201,7 +1233,15 @@ export function ExplorerView({
     const resource = liveTransferResourceRef.current;
     const document = nativeDocumentRef.current;
     const revision = document?.revision;
-    if (dirtyRef.current) {
+    const custom = customSessionRef.current;
+    const customRevision = custom?.revision;
+    if (custom?.saving) {
+      setViewStateError(
+        "Wait for the NBT save to finish before reloading or closing this file.",
+      );
+      return false;
+    }
+    if (dirtyRef.current || custom?.dirty || custom?.pending) {
       try {
         if (!(await confirmEditorAction(message))) return false;
       } catch (error) {
@@ -1222,7 +1262,9 @@ export function ExplorerView({
       !transferSuspendedRef.current &&
       !transferInstallingRef.current &&
       nativeDocumentRef.current === document &&
-      document?.revision === revision
+      document?.revision === revision &&
+      customSessionRef.current?.discard === custom?.discard &&
+      customSessionRef.current?.revision === customRevision
     );
   }, []);
 
@@ -1267,6 +1309,13 @@ export function ExplorerView({
           ? loadFile(selectedPathRef.current, true)
           : Promise.resolve(),
       ]);
+    } catch (error) {
+      setViewStateError(
+        error instanceof Error
+          ? error.message
+          : "The file could not be reloaded.",
+      );
+      throw error;
     } finally {
       setRefreshPending(false);
     }
@@ -1294,12 +1343,32 @@ export function ExplorerView({
       return;
     }
     if (transientFilePath) {
+      try {
+        if (customSessionRef.current) await customSessionRef.current.discard();
+      } catch (error) {
+        setViewStateError(
+          error instanceof Error
+            ? error.message
+            : "The draft could not be discarded.",
+        );
+        return;
+      }
       const document = nativeDocumentRef.current;
       if (dirtyRef.current && document) sessions.current!.discard(document.id);
       transientFileCloseRef.current?.();
       return;
     }
     const document = nativeDocumentRef.current;
+    try {
+      if (customSessionRef.current) await customSessionRef.current.discard();
+    } catch (error) {
+      setViewStateError(
+        error instanceof Error
+          ? error.message
+          : "The draft could not be discarded.",
+      );
+      return;
+    }
     if (dirtyRef.current && document) sessions.current!.discard(document.id);
     setNativeDocument(null);
     setDraft("");
@@ -1354,7 +1423,7 @@ export function ExplorerView({
       isFetching: graphVisible
         ? (graphStatus?.isFetching ?? false)
         : refreshPending,
-      isSaving: saveFilePending,
+      isSaving: saveFilePending || Boolean(customSession?.saving),
       refresh: graphVisible
         ? () => setGraphRefreshEpoch((epoch) => epoch + 1)
         : refreshExplorer,
@@ -1392,6 +1461,7 @@ export function ExplorerView({
       refreshExplorer,
       saveDraft,
       saveFilePending,
+      customSession?.saving,
       selectedPath,
       structuredFormat,
       transientFilePath,
@@ -1415,8 +1485,17 @@ export function ExplorerView({
       throw new Error("Wait for the editor transfer before closing this view.");
     const resource = liveTransferResourceRef.current;
     const isCurrent = sessions.current!.captureCloseGuard();
+    const custom = customSessionRef.current;
+    const customRevision = custom?.revision;
+    if (custom?.saving)
+      throw new Error(
+        "Wait for the NBT save to finish before closing this view.",
+      );
     if (
-      (dirtyRef.current || sessions.current!.hasDirtyDocuments) &&
+      (dirtyRef.current ||
+        sessions.current!.hasDirtyDocuments ||
+        custom?.dirty ||
+        custom?.pending) &&
       !(await confirmEditorAction(
         "Close this view with unsaved changes? Cancel to keep editing or save your files first.",
       ))
@@ -1427,7 +1506,9 @@ export function ExplorerView({
       resource !== liveTransferResourceRef.current ||
       transferSuspendedRef.current ||
       transferInstallingRef.current ||
-      !isCurrent()
+      !isCurrent() ||
+      customSessionRef.current?.discard !== custom?.discard ||
+      customSessionRef.current?.revision !== customRevision
     )
       throw new Error(
         "Editor changed while confirming close. Try closing again.",
@@ -1456,8 +1537,12 @@ export function ExplorerView({
           transferSuspendedRef.current ||
           transferInstallingRef.current ||
           dirtyRef.current ||
+          customSessionRef.current?.saving ||
+          customSessionRef.current?.dirty ||
+          customSessionRef.current?.pending ||
           sessions.current!.hasDirtyDocuments ||
           (!mediaType &&
+            !customSessionRef.current &&
             (!document ||
               document.id !== nativeDocumentId ||
               document.dirty ||
@@ -1504,6 +1589,14 @@ export function ExplorerView({
         flushSync(() => setTransferRetired(true));
       },
       captureTransfer: async () => {
+        if (
+          customSessionRef.current?.dirty ||
+          customSessionRef.current?.pending ||
+          customSessionRef.current?.saving
+        )
+          throw new Error(
+            "Save this NBT draft before moving or quitting its window.",
+          );
         assertTransferResource();
         await viewStateQueueRef.current;
         assertTransferResource();
@@ -1586,9 +1679,13 @@ export function ExplorerView({
         setDraftVersion(document?.version ?? null);
       },
       cancelClose,
-      discard: () => {
+      discard: async () => {
         if (transferSuspendedRef.current || transferInstallingRef.current)
           return;
+        if (customSessionRef.current) {
+          await customSessionRef.current.discard();
+          return;
+        }
         sessions.current!.discardAll();
         setNativeDocument(null);
         setDraft("");
@@ -1599,7 +1696,10 @@ export function ExplorerView({
       dirty: hasDirtyDocuments,
       flushViewState: () => viewStateQueueRef.current,
       prepareClose,
-      closeCommitted: documentRecovery?.closeCommitted,
+      closeCommitted: async () => {
+        await customSession?.discard();
+        await documentRecovery?.closeCommitted();
+      },
       reconcile,
       save: async () => {
         if (!(await saveDraft())) return false;
@@ -1624,6 +1724,7 @@ export function ExplorerView({
       accountScope,
       cancelClose,
       hasDirtyDocuments,
+      customSession,
       explorer,
       mediaType,
       nativeDocumentId,
@@ -1984,6 +2085,11 @@ export function ExplorerView({
                   appearance={appearance}
                   fileAccess={fileAccess}
                   active={active && !transferSuspended}
+                  readOnly={transferSuspended}
+                  onSessionChange={reportCustomSession}
+                  onOpenDocument={
+                    isDocumentView(explorer) ? explorer.openFile : undefined
+                  }
                   revision={mediaRevision}
                   onReady={onTransferredViewReady}
                   onError={onTransferredViewError}

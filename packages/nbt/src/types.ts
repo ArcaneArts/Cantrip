@@ -47,6 +47,8 @@ export const NETWORK_NBT: Readonly<NbtFormat> = Object.freeze({
   compression: "none",
 });
 export interface NbtSpan {
+  /** Logical edit storage; absent for immutable file byte ranges. */
+  source?: string;
   offset: number;
   length: number;
 }

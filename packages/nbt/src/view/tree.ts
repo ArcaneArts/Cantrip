@@ -58,17 +58,33 @@ export async function nbtTreePage(
       expanded.set(id, { node, extra: node.childCount, children: [] });
     if (i % 128 === 127) await model.work(signal, false);
   }
-  // Baseline IDs are stable preorder sequences, so a child's size is known before its parent.
-  for (const item of [...expanded.values()].sort(
-    (a, b) => Number(b.node.id.slice(5)) - Number(a.node.id.slice(5)),
-  )) {
-    if (item.node.parent === null) continue;
-    const parent = expanded.get(item.node.parent);
+  // Resolve expanded child sizes bottom-up without assuming an ID encodes preorder rank.
+  const remaining = new Map<string, number>();
+  for (const item of expanded.values()) {
+    if (item.node.parent !== null)
+      expanded.get(item.node.parent)?.children.push(item);
+  }
+  const queue: Array<typeof expanded extends Map<string, infer T> ? T : never> =
+    [];
+  for (const item of expanded.values()) {
+    remaining.set(item.node.id, item.children.length);
+    if (!item.children.length) queue.push(item);
+  }
+  let processed = 0;
+  while (queue.length) {
+    const item = queue.pop()!;
+    processed++;
+    const parent =
+      item.node.parent === null ? undefined : expanded.get(item.node.parent);
     if (parent) {
       parent.extra += item.extra;
-      parent.children.push(item);
+      const left = remaining.get(parent.node.id)! - 1;
+      remaining.set(parent.node.id, left);
+      if (!left) queue.push(parent);
     }
   }
+  if (processed !== expanded.size)
+    throw new NbtError(0, "Expanded ancestry contains a cycle");
   for (const item of expanded.values())
     item.children.sort((a, b) => a.node.ordinal - b.node.ordinal);
   const total = 1 + (expanded.get(root.id)?.extra ?? 0);

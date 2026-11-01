@@ -142,6 +142,7 @@ export function NbtTree({
   client,
   root,
   nodes,
+  revision = 0,
   expanded,
   onExpanded,
   selected,
@@ -152,6 +153,7 @@ export function NbtTree({
   client: NbtDocumentClient;
   root: string | null;
   nodes: number;
+  revision?: number;
   expanded: ReadonlySet<string>;
   onExpanded(value: ReadonlySet<string>): void;
   selected: string | null;
@@ -206,7 +208,7 @@ export function NbtTree({
         setError(String(reason.message ?? reason));
     });
     return () => controller.abort();
-  }, [client, root, nodes, expandedKey, range.offset, range.limit]);
+  }, [client, root, nodes, revision, expandedKey, range.offset, range.limit]);
   useEffect(() => {
     if (!anchor) return;
     const controller = new AbortController();

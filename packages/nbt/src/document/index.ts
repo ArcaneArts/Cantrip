@@ -6,3 +6,9 @@ export * from "./client.js";
 export type * from "../view/types.js";
 export type * from "../search/types.js";
 export { NBT_TYPE_NAMES, nbtScalarText } from "../search/text.js";
+
+export type {
+  NbtEditOperation,
+  NbtEditValue,
+  NbtEditStatus,
+} from "../edit/types.js";

@@ -466,6 +466,16 @@ const binaryFileExports = [
   "explorerBinaryReadSchema",
 ];
 const explorerFileImportExports = ["EXPLORER_FILE_IMPORT_CHUNK_BYTES"];
+const binaryWriteExports = [
+  "BINARY_WRITE_CHUNK_BYTES",
+  "binaryWriteAbortSchema",
+  "binaryWriteBeginSchema",
+  "binaryWriteChunkSchema",
+  "binaryWriteCommitSchema",
+  "binaryWriteReceiptSchema",
+  "binaryWriteStatusSchema",
+  "binaryWriteVersionSchema",
+];
 
 describe("protocol public surface compatibility", () => {
   it("preserves the root runtime export baseline with reviewed CUA and managed-session additions", () => {
@@ -488,6 +498,7 @@ describe("protocol public surface compatibility", () => {
           !textPreviewExports.includes(name) &&
           !logTailExports.includes(name) &&
           !binaryFileExports.includes(name) &&
+          !binaryWriteExports.includes(name) &&
           !conversationCatalogExports.includes(name) &&
           !conversationViewExports.includes(name) &&
           !taskAutomaticRetryExports.includes(name) &&
@@ -502,7 +513,10 @@ describe("protocol public surface compatibility", () => {
     expect(
       exportNames.filter((name) => retiredWorkbenchExports.includes(name)),
     ).toEqual([]);
-    expect(exportNames).toHaveLength(2118);
+    expect(exportNames).toHaveLength(2126);
+    expect(
+      exportNames.filter((name) => binaryWriteExports.includes(name)),
+    ).toEqual(binaryWriteExports);
     expect(
       exportNames.filter((name) => binaryFileExports.includes(name)),
     ).toEqual(binaryFileExports);

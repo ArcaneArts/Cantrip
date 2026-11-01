@@ -25,7 +25,7 @@ import type {
   NbtDocumentStatus,
   NbtDisplayRow,
 } from "./types.js";
-import type { NbtReadModel } from "../view/types.js";
+import type { NbtSerializableModel } from "../edit/types.js";
 
 export function nbtDocumentError(error: unknown) {
   return {
@@ -36,7 +36,7 @@ export function nbtDocumentError(error: unknown) {
 }
 const turn = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 /** Owns the only parser, expanded spool, and paged index for one document revision. */
-export class NbtDocumentEngine implements NbtReadModel {
+export class NbtDocumentEngine implements NbtSerializableModel {
   private controller = new AbortController();
   private gate = new NbtWorkGate();
   private spool: NbtByteSpool;
@@ -104,6 +104,59 @@ export class NbtDocumentEngine implements NbtReadModel {
       peakIndexPages: this.index.peakPages,
     };
   }
+  get format() {
+    return this.options.format;
+  }
+  bytes(span: NbtSpan, signal?: AbortSignal) {
+    if (span.source)
+      throw new NbtError(
+        span.offset,
+        "Baseline source does not own edited bytes",
+      );
+    this.check(signal);
+    return this.spool.read(span.offset, span.length, signal);
+  }
+  async count(id: string) {
+    const node = await this.getNode(id);
+    if (!node || node.end === null)
+      throw new NbtError(0, "Subtree index is incomplete");
+    const first = Number(id.slice(5));
+    let low = first + 1,
+      high = this.index.size;
+    while (low < high) {
+      const mid = Math.floor((low + high) / 2),
+        next = await this.getNode("node:" + mid);
+      if (next && next.start < node.end) low = mid + 1;
+      else high = mid;
+    }
+    return low - first;
+  }
+  async raw(
+    id: string,
+    part: "node" | "header" | "payload",
+    signal?: AbortSignal,
+  ) {
+    this.check(signal);
+    const node = await this.getNode(id);
+    if (!node || node.end === null) return undefined;
+    const parent =
+        node.parent === null ? undefined : await this.getNode(node.parent),
+      header: "named" | "unnamed" | "none" =
+        node.parent === null
+          ? this.encoding.namedRoot
+            ? "named"
+            : "unnamed"
+          : parent?.type === NbtTag.List
+            ? "none"
+            : "named";
+    const offset = part === "payload" ? node.payload : node.start,
+      end = part === "header" ? node.payload : node.end;
+    return {
+      model: this as NbtSerializableModel,
+      span: { offset, length: end - offset },
+      header,
+    };
+  }
   get encoding() {
     return this.options.format;
   }
@@ -147,6 +200,7 @@ export class NbtDocumentEngine implements NbtReadModel {
   }
   getNode(id: string) {
     this.check();
+    if (!id.startsWith("node:")) return Promise.resolve(undefined);
     return this.index.get(id);
   }
   getChildren(parent: string, offset: number, limit: number) {

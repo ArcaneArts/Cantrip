@@ -336,3 +336,60 @@ it("decrypts scoped binary requests and encrypts their bounded reply", async () 
     result: { type: "explorer.binary", value },
   });
 });
+it.each([
+  "explorer.binary.write.begin",
+  "explorer.binary.write.chunk",
+  "explorer.binary.write.commit",
+  "explorer.binary.write.status",
+  "explorer.binary.write.abort",
+] as const)("authenticates exact document scope before %s", async (type) => {
+  const uploadId = randomUUID(),
+    path = "src/main.rs",
+    base = { path, uploadId },
+    request = (
+      type === "explorer.binary.write.begin"
+        ? { type, ...base, version: "binary-v1:" + "a".repeat(64) }
+        : type === "explorer.binary.write.chunk"
+          ? { type, ...base, offset: 0, data: "AA==", final: true }
+          : type === "explorer.binary.write.commit"
+            ? { type, ...base, size: 1, sha256: "b".repeat(64) }
+            : { type, ...base }
+    ) as ExplorerOperationRequestContent;
+  const f = await fixture(request),
+    value = {
+      path,
+      uploadId,
+      state: "uploading",
+      offset: 0,
+      size: null,
+      sha256: null,
+      version: null,
+      error: null,
+    },
+    execute = vi.fn(async () => value);
+  Object.assign(f.dependencies, { binaryWrites: { execute } });
+  expect(await f.run()).toEqual({
+    ok: true,
+    result: { type: "explorer.binary.write", value },
+  });
+  expect(execute).toHaveBeenCalledWith(
+    {
+      serverId: "server",
+      surfaceKind: "file-document",
+      surfaceId: f.command.documentId,
+      root: "/repo",
+    },
+    request,
+  );
+  const other = await fixture({
+      ...request,
+      path: "other.nbt",
+    } as ExplorerOperationRequestContent),
+    denied = vi.fn();
+  Object.assign(other.dependencies, { binaryWrites: { execute: denied } });
+  expect(await other.run()).toMatchObject({
+    ok: false,
+    error: "The operation does not target this file document.",
+  });
+  expect(denied).not.toHaveBeenCalled();
+});
