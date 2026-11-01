@@ -46,10 +46,39 @@ vi.mock("@/components/app/application-shell-surfaces", () => ({
 }));
 
 vi.mock("@/components/workspace/project-tab-bar", () => ({
-  ProjectPaneTabStrip: ({ children }: { children?: ReactNode }) => children,
+  ProjectPaneTabStrip: ({ children }: { children?: ReactNode }) => (
+    <div data-pane-tabs="">{children}</div>
+  ),
 }));
 
 describe("persistent surface layer", () => {
+  it.each([false, true])(
+    "leaves popout tabs to the titlebar without duplicating a strip (popout=%s)",
+    async (isPopout) => {
+      (
+        globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+      ).IS_REACT_ACT_ENVIRONMENT = true;
+      let tree!: TestRenderer.ReactTestRenderer;
+      await act(async () => {
+        tree = TestRenderer.create(
+          <PersistentSurfaceLayer
+            bindings={{
+              appMode: "ide",
+              isPopout,
+              selectedProject: { id: "project" },
+              selectedPaneSurfaces: [],
+              openExplorers: [],
+              projectSurfaces: [],
+            }}
+          />,
+        );
+      });
+      expect(
+        tree.root.findAll((node) => node.props["data-pane-tabs"] === ""),
+      ).toHaveLength(isPopout ? 0 : 1);
+      await act(async () => tree.unmount());
+    },
+  );
   it.each(
     [
       "showSettings",
