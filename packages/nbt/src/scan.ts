@@ -48,7 +48,7 @@ export async function scanNbt(
     assertTag(type, start);
     if (type === NbtTag.End) throw new NbtError(start, "End cannot be a value");
     const node: NbtNode = {
-      id: `offset:${start}`,
+      id: `node:${nodes}`,
       parent: parent?.id ?? null,
       ordinal: parent?.childCount ?? 0,
       type,

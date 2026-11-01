@@ -59,6 +59,7 @@ export interface NbtByteSource {
     signal?: AbortSignal,
   ): Promise<Uint8Array>;
 }
+/** IDs are opaque, stable preorder sequences within one immutable document revision. */
 export interface NbtNode {
   id: string;
   parent: string | null;

@@ -58,7 +58,7 @@ node scripts/qa/nbt-codec-browser.mjs
 ## Encrypted paged storage
 
 `@cantrip/nbt/storage` provides browser-only storage for byte sources and the
-future disk-backed index:
+disk-backed index:
 
 - `openEncryptedNbtCache(binding, options)` opens OPFS, then IndexedDB, then
   bounded memory after actual opening/write failures. A failed write migrates
@@ -88,7 +88,58 @@ node scripts/qa/nbt-binary-transport.mjs
 ```
 
 The transport harness uses the normal app/server/worker APIs in a disposable
-repository. Parsing integration, paged indexes, edits, durable recovery, and
-physical-phone qualification remain later milestones in the implementation
-contract. No full document object or giant recovery JSON should be built from
+repository. The paged index and document worker below build on this transport. The app
+viewer, typed edits, durable recovery, and physical-phone qualification remain
+later milestones in the implementation contract. No full document object or giant recovery JSON should be built from
 this storage layer.
+
+## Paged document worker
+
+`@cantrip/nbt/paged` implements `PagedNbtIndex`: descriptors are stored in
+fixed pages addressed by stable preorder IDs (`node:0`, `node:1`, …). Byte
+positions remain separate fields because a headerless compound list item and
+its first property can start at the same byte. IDs belong to one document
+revision; edits must preserve baseline IDs and give inserted nodes separate
+identities rather than identifying nodes by displayed paths.
+
+There is no per-node in-memory map. Descriptor pages and sparse 256-child
+checkpoints share a bounded decoded LRU, then spill through the encrypted
+cache. Checkpoints reference child identities, and descriptor pages hold their byte
+positions, allowing bounded random child pages even for variable-length lists.
+Partial parent counts reflect available children before the parent completes.
+
+`@cantrip/nbt/document` provides the engine, worker host, and main-thread RPC
+client. The app's `openNbtDocument` creates its production dedicated worker for
+either a selected browser `File`/`Blob` or a version-bound remote binary source.
+The worker owns decompression, the expanded spool, indexing, bounded value
+previews, numeric array pages, and baseline serialization. The client brokers
+remote source reads without parsing NBT on the main thread. Long values cross
+the local worker channel as exact `bigint` values.
+
+- Display requests return at most 128 rows; names/string previews use 512-byte
+  pages. Numeric array reads return at most 4,096 values.
+- Progress distinguishes indexing/paused/complete/error. Partial records never
+  imply a valid complete document; completion waits for decompression checksum
+  validation and index flush.
+- Pause stops both indexing and new source reads at bounded work boundaries.
+  Indexed content remains readable. Cancellation removes obsolete waiters;
+  no polling/progress timer continues when complete or paused.
+- `serialize(true)` streams the original source byte-for-byte. `serialize(false)`
+  recompresses the byte-backed baseline with its original format/envelope. This
+  is the baseline serializer, not the typed edit journal or atomic save path.
+- Await `close()` to abort reads/exports, remove encrypted caches, release
+  source ownership, and terminate the worker. Shared view ownership, lock
+  integration, crash recovery and dirty-close behavior belong to milestone 6.
+
+```sh
+pnpm --filter @cantrip/nbt build
+node scripts/qa/nbt-document-browser.mjs
+```
+
+The production-worker QA covers 100 MiB expanded data and 1,050,002 indexed
+nodes in Chromium/WebKit with a 128 KiB byte cache and 16 decoded index pages.
+It checks early rows, pause/cancellation, precise Longs near the end, paging
+without re-reading the source, idle behavior, streamed export, and recompression
+followed by reopen. It records frame gaps only during document work, excluding
+synthetic fixture construction. This is desktop-browser evidence; physical
+phone and full app interaction qualification remains outstanding.
