@@ -153,6 +153,13 @@ export function validateExplorerTransfer(
   );
   const mode = explorerFileModeSchema.safeParse(state.fileMode);
   if (!mode.success) return invalid();
+  if (
+    state.fileViewer !== undefined &&
+    state.fileViewer !== null &&
+    (typeof state.fileViewer !== "string" ||
+      !/^[a-z][a-z0-9-]{0,63}$/u.test(state.fileViewer))
+  )
+    invalid();
   const selectedPath =
     state.selectedPath === null ? null : string(state.selectedPath);
   if (selectedPath === "") invalid();
@@ -163,6 +170,9 @@ export function validateExplorerTransfer(
     workerId: scope.workerId,
     worktreeId: scope.worktreeId,
     fileMode: mode.data,
+    ...(state.fileViewer !== undefined
+      ? { fileViewer: state.fileViewer as string | null }
+      : {}),
     selectedPath,
     documents: { scope: accountScope, documents },
   };

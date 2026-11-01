@@ -12,7 +12,11 @@ import type {
   LogTailCursor,
   ExplorerTextPreviewPage,
 } from "@cantrip/protocol/surface-stream";
-import type { ExplorerFile, ExplorerFileWrite } from "@cantrip/protocol";
+import type {
+  ExplorerFile,
+  ExplorerFileWrite,
+  ExplorerMediaKind,
+} from "@cantrip/protocol";
 import {
   executeFileDocumentOperation,
   type FileDocument,
@@ -30,7 +34,10 @@ export interface FileAccess {
   ): Promise<ExplorerTextPreviewPage>;
   tail?(path: string, cursor?: LogTailCursor): Promise<ExplorerLogTail>;
   save(input: ExplorerFileWrite): Promise<ExplorerFile>;
-  media(path: string): Promise<Blob>;
+  media(
+    path: string,
+    mediaType?: { kind: ExplorerMediaKind; mimeType: string },
+  ): Promise<Blob>;
   binary?(path: string, signal?: AbortSignal): Promise<BinaryFileSource>;
 }
 
@@ -122,15 +129,18 @@ export function documentFileAccess(document: FileDocument): FileAccess {
         throw new Error("Unexpected file result.");
       return result.value;
     },
-    async media(path) {
+    async media(path, mediaType) {
       requirePath(path);
-      return loadProtectedFileMedia(path, (content, operationId, sequence) =>
-        executeFileDocumentOperation(
-          document.id,
-          content,
-          operationId,
-          sequence,
-        ),
+      return loadProtectedFileMedia(
+        path,
+        (content, operationId, sequence) =>
+          executeFileDocumentOperation(
+            document.id,
+            content,
+            operationId,
+            sequence,
+          ),
+        mediaType,
       );
     },
   };

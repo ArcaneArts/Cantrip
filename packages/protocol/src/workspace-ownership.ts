@@ -67,6 +67,13 @@ export const workspaceTabSchema = z
     preview: z.boolean(),
     // Non-content presentation preference, scoped to this view/device layout.
     fileMode: explorerFileModeSchema.optional(),
+    fileViewer: z
+      .string()
+      .min(1)
+      .max(64)
+      .regex(/^[a-z][a-z0-9-]*$/u)
+      .nullable()
+      .optional(),
     titleProtection: privateDisplayLabelOpaqueSchema.nullable(),
     builtInState: projectBuiltInSurfaceStateSchema.nullable(),
     dockPresentation: projectDockPresentationPreferenceSchema.nullable(),
@@ -81,6 +88,16 @@ export const workspaceTabSchema = z
         code: "custom",
         path: ["fileMode"],
         message: "File mode requires a file view.",
+      });
+    }
+    if (
+      tab.fileViewer !== undefined &&
+      tab.resource.definitionId !== "project.file"
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["fileViewer"],
+        message: "File viewer requires a file view.",
       });
     }
     if (tab.resource.kind === "builtin") {

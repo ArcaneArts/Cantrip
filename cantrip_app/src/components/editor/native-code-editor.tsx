@@ -62,6 +62,7 @@ const PaintedLine = memo(function PaintedLine({
 export function NativeCodeEditor({
   session,
   path,
+  highlightPath,
   onChange,
   onSave,
   active = true,
@@ -78,6 +79,7 @@ export function NativeCodeEditor({
 }: {
   session: EditorDocumentSession;
   path: string;
+  highlightPath?: string;
   onChange?(value: string): void;
   onSave?(): void;
   active?: boolean;
@@ -172,7 +174,7 @@ export function NativeCodeEditor({
   };
   const highlighted = useSyntaxHighlighting(
     session.id,
-    path,
+    highlightPath ?? path,
     session.text,
     session.revision,
     viewport.first,

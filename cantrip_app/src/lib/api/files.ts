@@ -36,6 +36,7 @@ import {
 } from "@cantrip/protocol";
 import type {
   ExplorerFileWrite,
+  ExplorerMediaKind,
   ExplorerDirectoryCreate,
   ExplorerEntry,
   ExplorerEntryRename,
@@ -480,9 +481,16 @@ function decodeExplorerMediaBytes(value: string): Uint8Array {
 export async function loadExplorerMedia(
   explorerId: string,
   path: string,
+  mediaType?: {
+    kind: ExplorerMediaKind;
+    mimeType: string;
+  },
 ): Promise<Blob> {
-  return loadProtectedFileMedia(path, (content, operationId, sequence) =>
-    executeExplorerOperation(explorerId, content, operationId, sequence),
+  return loadProtectedFileMedia(
+    path,
+    (content, operationId, sequence) =>
+      executeExplorerOperation(explorerId, content, operationId, sequence),
+    mediaType,
   );
 }
 
@@ -496,6 +504,10 @@ export async function loadProtectedFileMedia(
     operationId: ReturnType<typeof crypto.randomUUID>,
     sequence: number,
   ) => Promise<ExplorerOperationResultContent>,
+  mediaType?: {
+    kind: ExplorerMediaKind;
+    mimeType: string;
+  },
 ): Promise<Blob> {
   const operationId = crypto.randomUUID();
   const parts: BlobPart[] = [];
@@ -508,6 +520,7 @@ export async function loadProtectedFileMedia(
     const result = await read(
       {
         type: "explorer.media.read",
+        ...(mediaType ? { mediaType } : {}),
         path,
         offset,
         limit: 256 * 1_024,

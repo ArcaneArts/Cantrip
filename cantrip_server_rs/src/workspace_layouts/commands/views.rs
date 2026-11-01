@@ -285,6 +285,19 @@ fn open(state: &mut Command, action: &Value) -> Result<()> {
                 if action["tab"]["preview"] == false {
                     tab["preview"] = json!(false);
                 }
+                if let Some(viewer) = action["tab"].get("fileViewer") {
+                    let changed = tab.get("fileViewer") != Some(viewer)
+                        || action["tab"]
+                            .get("fileMode")
+                            .is_some_and(|mode| tab["fileMode"] != *mode);
+                    if changed && state.reserved(&tab["id"]) {
+                        return Err(invalid("File view is reserved for a pending transfer."));
+                    }
+                    tab["fileViewer"] = viewer.clone();
+                    if let Some(mode) = action["tab"].get("fileMode") {
+                        tab["fileMode"] = mode.clone();
+                    }
+                }
                 if pane["conversationView"]["id"] == tab["id"] {
                     pane["conversationView"] = tab.clone();
                 } else {

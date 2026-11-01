@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { Blob as BinaryBlob } from "node:buffer";
 import type { ExplorerEntry, ExplorerSummary } from "@cantrip/protocol";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, createElement } from "react";
@@ -92,6 +93,7 @@ async function settle() {
 async function setup(
   path: string,
   initialExplorer: ExplorerSummary = explorer,
+  fileViewer?: string | null,
 ) {
   await import("./structured-file-visual");
   vi.mocked(api.getExplorerFile).mockImplementation(
@@ -119,6 +121,7 @@ async function setup(
         <QueryClientProvider client={client}>
           <ExplorerView
             appearance="dark"
+            fileViewer={fileViewer}
             explorer={summary}
             onHeaderChange={(state) => {
               header = state;
@@ -138,7 +141,7 @@ async function setup(
     );
     await settle();
   };
-  await render();
+  await render(initialExplorer, fileViewer !== undefined ? null : path);
   return render;
 }
 async function choose(mode: "preview" | "edit" | "visual") {
@@ -471,4 +474,85 @@ describe("Explorer renderer modes", () => {
       expect(api.saveExplorerFile).not.toHaveBeenCalled();
     },
   );
+});
+
+it("renders an unfamiliar filename with the explicitly chosen JSON parser", async () => {
+  contents["opaque.xyz"] = '{"enabled":true,"nested":{"value":42}}';
+  await setup(
+    "opaque.xyz",
+    { ...explorer, selectedPath: "opaque.xyz", fileMode: "visual" },
+    "json",
+  );
+  expect(
+    container.querySelector('[aria-label="Search structured values"]'),
+  ).not.toBeNull();
+  expect(
+    container
+      .querySelector('[aria-label="Edit enabled"]')
+      ?.getAttribute("aria-checked"),
+  ).toBe("true");
+  expect(header!.canVisual).toBe(true);
+  const release = lifecycle!.suspendTransfer!();
+  const captured = await lifecycle!.captureTransfer!();
+  expect(captured.fileViewer).toBe("json");
+  await act(async () => release());
+});
+it("renders Markdown source as text when explicitly requested", async () => {
+  await setup(
+    "README.md",
+    { ...explorer, selectedPath: "README.md", fileMode: "preview" },
+    "text",
+  );
+  expect(container.querySelector("h1")).toBeNull();
+  expect(container.querySelector("textarea")?.value).toBe(
+    contents["README.md"],
+  );
+});
+it("uses protected media bytes for an explicit image instead of trying a text read", async () => {
+  vi.stubGlobal(
+    "URL",
+    Object.assign(class extends URL {}, {
+      createObjectURL: vi.fn(() => "blob:forced-image"),
+      revokeObjectURL: vi.fn(),
+    }),
+  );
+  vi.mocked(api.loadExplorerMedia).mockResolvedValue(
+    new BinaryBlob(["image"], { type: "image/png" }) as unknown as Blob,
+  );
+  await setup(
+    "opaque.xyz",
+    { ...explorer, selectedPath: "opaque.xyz", fileMode: "preview" },
+    "image",
+  );
+  expect(api.getExplorerFile).not.toHaveBeenCalled();
+  expect(api.loadExplorerMedia).toHaveBeenCalledWith(
+    explorer.id,
+    "opaque.xyz",
+    { kind: "image", mimeType: "image/png" },
+  );
+  expect(
+    container.querySelector('img[alt="opaque.xyz"]')?.getAttribute("src"),
+  ).toBe("blob:forced-image");
+});
+
+it("applies an external document mode update to the mounted editor without replacing its session", async () => {
+  const view = {
+    ...explorer,
+    kind: "file-document",
+    documentId: "document",
+    selectedPath: "data/settings.json",
+    fileMode: "visual",
+    setMode: vi.fn(async () => {}),
+    openFile: vi.fn(),
+  } as unknown as ExplorerSummary;
+  const render = await setup("data/settings.json", view, "json");
+  expect(header!.fileMode).toBe("visual");
+  await render({ ...view, fileMode: "edit" }, null);
+  expect(header!.fileMode).toBe("edit");
+  const input = container.querySelector("textarea")!;
+  expect(input.readOnly).toBe(false);
+  await render({ ...view, fileMode: "preview" }, null);
+  expect(header!.fileMode).toBe("preview");
+  expect(container.querySelector("textarea")).toBe(input);
+  expect(input.readOnly).toBe(true);
 });

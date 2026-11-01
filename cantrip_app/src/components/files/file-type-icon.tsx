@@ -127,22 +127,25 @@ const icons: Record<FileIconKind, IconComponent> = {
 export function FileTypeIcon({
   path,
   kind = "file",
+  iconKind,
   expanded = false,
   className,
 }: {
   path: string;
   kind?: "file" | "directory" | "other";
+  iconKind?: FileIconKind;
   expanded?: boolean;
   className?: string;
 }) {
   const type =
-    kind === "directory"
+    iconKind ??
+    (kind === "directory"
       ? expanded
         ? "folder-open"
         : "folder"
       : kind === "other"
         ? "file"
-        : fileIconKindForPath(path);
+        : fileIconKindForPath(path));
   const Icon =
     type === "folder-open"
       ? FolderOpen

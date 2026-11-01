@@ -5,12 +5,14 @@ import { TextPreviewDocument } from "./text-preview-document";
 
 export function PagedTextPreview({
   path,
+  highlightPath,
   active,
   readPage,
   onReady,
   onError,
 }: {
   path: string;
+  highlightPath?: string;
   active: boolean;
   readPage(offset: number, version?: string): Promise<ExplorerTextPreviewPage>;
   onReady?(): void;
@@ -127,6 +129,7 @@ export function PagedTextPreview({
           <NativeCodeEditor
             session={document.session}
             path={path}
+            highlightPath={highlightPath}
             active={active}
             readOnly
             onFindQueryChange={setSearchQuery}

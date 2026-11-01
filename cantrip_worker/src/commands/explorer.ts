@@ -298,6 +298,7 @@ export async function handleExplorerCommand(
               request.path,
               request.offset,
               request.limit,
+              request.mediaType,
             );
             complete = value.eof;
             outcome = {

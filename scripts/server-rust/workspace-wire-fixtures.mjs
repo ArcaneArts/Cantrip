@@ -93,6 +93,17 @@ export function workspaceOwnershipVariants() {
   change((v) => (v.windows[0].centerRoot = workspaceLeaf("missing")));
   change((v) => (v.windows[0].centerRoot.second = workspaceLeaf("center-a")));
   change((v) => (v.windows[0].panes[0].tabs[0].fileMode = "edit"));
+  change((v) => (v.windows[0].panes[0].tabs[0].fileViewer = "json"));
+  for (const viewer of ["json", null, "bad/path", "", "x".repeat(65)])
+    change((v) => {
+      const tab = v.windows[0].panes[0].tabs[0];
+      tab.resource = {
+        kind: "entity",
+        definitionId: "project.file",
+        resourceId: "file-viewer",
+      };
+      tab.fileViewer = viewer;
+    });
   change(
     (v) =>
       (v.windows[0].panes[0].tabs[0].resource.definitionId = "project.tasks"),

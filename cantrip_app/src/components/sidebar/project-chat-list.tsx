@@ -34,6 +34,7 @@ export function ProjectChatList({
   onFileOpenNativeRoot,
   onFileOpenTerminal,
   onFilePreview,
+  onFileOpenAs,
   onFileRename,
   onFileTreeRetry,
   onOpenProjectSettings,
@@ -87,6 +88,11 @@ export function ProjectChatList({
   onFileOpenNativeRoot(explorer: ExplorerSummary, localFolder: boolean): void;
   onFileOpenTerminal(explorer: ExplorerSummary, entry: ExplorerEntry): void;
   onFilePreview(explorer: ExplorerSummary, entry: ExplorerEntry): void;
+  onFileOpenAs?(
+    explorer: ExplorerSummary,
+    entry: ExplorerEntry,
+    viewer: string | null,
+  ): void;
   onFileRename(
     explorer: ExplorerSummary,
     entry: ExplorerEntry,
@@ -191,6 +197,14 @@ export function ProjectChatList({
                     onPin={(entry) => {
                       if (fileExplorer) onFilePin(fileExplorer, entry);
                     }}
+                    onOpenAs={
+                      onFileOpenAs
+                        ? (entry, viewer) => {
+                            if (fileExplorer)
+                              onFileOpenAs(fileExplorer, entry, viewer);
+                          }
+                        : undefined
+                    }
                     onPreview={(entry) => {
                       if (fileExplorer) onFilePreview(fileExplorer, entry);
                     }}

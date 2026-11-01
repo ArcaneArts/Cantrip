@@ -703,6 +703,7 @@ export async function readExplorerMediaFile(
   relativePath: string,
   offset: number,
   limit: number,
+  override?: Pick<ExplorerMediaFile, "kind" | "mimeType">,
 ): Promise<ExplorerMediaFileChunk> {
   if (!Number.isSafeInteger(offset) || offset < 0) {
     throw new Error("The media read offset is invalid.");
@@ -711,7 +712,7 @@ export async function readExplorerMediaFile(
     throw new Error("The media read limit is invalid.");
   }
   const { targetPath } = await resolveEntry(root, relativePath);
-  const mediaType = explorerMediaTypeForPath(targetPath);
+  const mediaType = override ?? explorerMediaTypeForPath(targetPath);
   if (!mediaType) throw new Error("This file type is not available as media.");
   const handle = await open(
     targetPath,
