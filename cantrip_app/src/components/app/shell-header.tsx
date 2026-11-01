@@ -61,9 +61,6 @@ export function ShellHeader({
     linkedConsoleChat,
     mobileSettingsSectionOpen,
     narrowViewport,
-    openChatExplorerHere,
-    openChatHistoryHere,
-    openChatTerminalHere,
     openProjectCreateSource,
     openProjectSettings,
     overlayTitlebar,
@@ -407,15 +404,6 @@ export function ShellHeader({
                             worktreeId: activeChat.activeWorktreeId,
                             mode,
                           })
-                      : undefined,
-                    onOpenTerminal: activeChat
-                      ? () => openChatTerminalHere(activeChat)
-                      : undefined,
-                    onOpenExplorer: activeChat
-                      ? () => openChatExplorerHere(activeChat)
-                      : undefined,
-                    onOpenHistory: activeChat
-                      ? () => openChatHistoryHere(activeChat)
                       : undefined,
                   }}
                 />
