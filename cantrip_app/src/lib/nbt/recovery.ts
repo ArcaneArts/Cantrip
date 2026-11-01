@@ -114,4 +114,9 @@ export async function openNbtRecoveryVault(
     },
   };
 }
-export type NbtRecoveryVault = Awaited<ReturnType<typeof openNbtRecoveryVault>>;
+export type NbtRecoveryVault = Awaited<
+  ReturnType<typeof openNbtRecoveryVault>
+> & {
+  /** A local source's original may exist only in its recovery journal. */
+  preserveBaseline?: boolean;
+};

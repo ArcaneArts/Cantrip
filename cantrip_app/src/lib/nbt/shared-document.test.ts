@@ -1092,3 +1092,75 @@ it("checkpoints a clean paused view through the shared worker before publishing 
     await f.close();
   }
 }, 15000);
+it("keeps a local draft recoverable after an atomically replaced baseline fails before commit", async () => {
+  const f = await fixture();
+  f.factory.replaceRecovery = async (candidate) => {
+    await candidate.attachRecovery({ id: f.id, key: f.key, replace: true });
+    await candidate.checkpointRecovery();
+  };
+  try {
+    const client = await f.renderer().open();
+    await until(() => client.getSnapshot()?.state === "complete");
+    await client.edit([{ type: "value", id: "node:1", value: "42" }]);
+    const generation = client.getSnapshot()?.shared?.generation,
+      replace = vi
+        .spyOn(NbtRecoveryJournal.prototype, "replace")
+        .mockRejectedValueOnce(new Error("Local replacement storage failed"));
+    await expect(nbtSharedDocument(client)!.replace()).rejects.toThrow(
+      /storage failed/,
+    );
+    await until(
+      () =>
+        client.getSnapshot()?.state === "complete" &&
+        client.getSnapshot()?.shared?.generation !== generation,
+    );
+    expect((await client.describe("node:1")).value).toBe(42n);
+    expect(client.getEditSnapshot()?.canUndo).toBe(true);
+    replace.mockRestore();
+    await client.edit([{ type: "value", id: "node:1", value: "43" }]);
+    expect((await client.describe("node:1")).value).toBe(43n);
+    await client.close();
+  } finally {
+    await f.close();
+  }
+}, 15000);
+it("recovers the actual committed local replacement after a lost reply and journals later edits normally", async () => {
+  const f = await fixture();
+  f.factory.replaceRecovery = async (candidate) => {
+    await candidate.attachRecovery({ id: f.id, key: f.key, replace: true });
+    await candidate.checkpointRecovery();
+  };
+  try {
+    const client = await f.renderer().open();
+    await until(() => client.getSnapshot()?.state === "complete");
+    await client.edit([{ type: "value", id: "node:1", value: "42" }]);
+    const generation = client.getSnapshot()?.shared?.generation,
+      original = NbtRecoveryJournal.prototype.replace;
+    vi.spyOn(NbtRecoveryJournal.prototype, "replace").mockImplementationOnce(
+      async function (this: NbtRecoveryJournal, ...args) {
+        await original.apply(this, args);
+        throw new Error("Local replacement reply lost");
+      },
+    );
+    await expect(nbtSharedDocument(client)!.replace()).rejects.toThrow(
+      /reply lost/,
+    );
+    await until(
+      () =>
+        client.getSnapshot()?.state === "complete" &&
+        client.getSnapshot()?.shared?.generation !== generation,
+    );
+    expect((await client.describe("node:1")).value).toBe(9007199254740993n);
+    expect(client.getEditSnapshot()?.dirty).toBe(false);
+    await nbtSharedDocument(client)!.replace();
+    await client.edit([{ type: "value", id: "node:1", value: "1" }]);
+    await client.edit([{ type: "value", id: "node:1", value: "2" }]);
+    await client.undo();
+    expect((await client.describe("node:1")).value).toBe(1n);
+    await client.undo();
+    expect((await client.describe("node:1")).value).toBe(9007199254740993n);
+    await client.close();
+  } finally {
+    await f.close();
+  }
+}, 15000);

@@ -1,7 +1,7 @@
 import "fake-indexeddb/auto";
 import { IDBFactory } from "fake-indexeddb";
 import { expect, it } from "vitest";
-import { gzipSync } from "node:zlib";
+import { gzipSync, gunzipSync } from "node:zlib";
 import * as reference from "nbtify";
 import {
   JAVA_NBT,
@@ -618,6 +618,120 @@ it("reports a real clean-source checkpoint storage failure and allows a successf
     fail = false;
     await document.session.checkpointRecovery();
     expect(log.descriptor()).toMatchObject({ version: "version-1", events: 0 });
+  } finally {
+    await document.close();
+    await log.close();
+  }
+});
+it("retains the prior local baseline and edit journal when replacement streaming or publication fails", async () => {
+  const f = await fixture(),
+    inner = await openIndexedNbtRecovery(f.id, f.factory);
+  let fail = false;
+  const log = await NbtRecoveryJournal.open(
+      {
+        ...inner,
+        async commit(revision, bytes) {
+          if (fail) throw new Error("Replacement publication failed");
+          return inner.commit(revision, bytes);
+        },
+      },
+      f.id,
+      f.key,
+    ),
+    document = await model(memoryNbtSource(f.bytes), log);
+  try {
+    await document.session.apply([
+      { type: "value", id: "node:2", value: "77" },
+    ]);
+    const before = log.descriptor();
+    await expect(
+      log.replace(
+        JAVA_NBT,
+        "replacement",
+        (async function* () {
+          yield new Uint8Array([10]);
+          throw new Error("Replacement stream failed");
+        })(),
+      ),
+    ).rejects.toThrow(/stream failed/);
+    expect(log.descriptor()).toEqual(before);
+    fail = true;
+    await expect(
+      log.replace(
+        JAVA_NBT,
+        "replacement",
+        (async function* () {
+          yield new Uint8Array(gunzipSync(f.bytes));
+        })(),
+      ),
+    ).rejects.toThrow(/publication failed/);
+    expect(log.descriptor()).toEqual(before);
+    expect((await events(log)).length).toBe(1);
+    fail = false;
+    await document.session.apply([
+      { type: "value", id: "node:2", value: "88" },
+    ]);
+    expect((await events(log)).length).toBe(2);
+  } finally {
+    await document.close();
+    await log.close();
+  }
+});
+it("publishes a replacement local baseline atomically even when its committed reply is lost", async () => {
+  const f = await fixture(),
+    inner = await openIndexedNbtRecovery(f.id, f.factory);
+  let lose = false;
+  const log = await NbtRecoveryJournal.open(
+      {
+        ...inner,
+        async commit(revision, bytes) {
+          const result = await inner.commit(revision, bytes);
+          if (lose) {
+            lose = false;
+            throw new Error("Replacement reply lost");
+          }
+          return result;
+        },
+      },
+      f.id,
+      f.key,
+    ),
+    document = await model(memoryNbtSource(f.bytes), log);
+  try {
+    await document.session.apply([
+      { type: "value", id: "node:2", value: "77" },
+    ]);
+    const raw = new Uint8Array(gunzipSync(f.bytes));
+    lose = true;
+    await expect(
+      log.replace(
+        JAVA_NBT,
+        "replacement",
+        (async function* () {
+          yield raw;
+        })(),
+      ),
+    ).rejects.toThrow(/reply lost/);
+    const actual = await NbtRecoveryJournal.open(
+      await openIndexedNbtRecovery(f.id, f.factory),
+      f.id,
+      f.key,
+    );
+    try {
+      expect(actual.descriptor()).toMatchObject({
+        version: "replacement",
+        events: 0,
+        format: JAVA_NBT,
+      });
+      const source = actual.source(),
+        parts = [];
+      for (let at = 0; at < source.size!; at += 65536)
+        parts.push(await source.read(at, Math.min(65536, source.size! - at)));
+      const parsed = await reference.read(new Uint8Array(Buffer.concat(parts)));
+      expect(parsed.data.long).toBe(9007199254740993n);
+    } finally {
+      await actual.close();
+    }
   } finally {
     await document.close();
     await log.close();

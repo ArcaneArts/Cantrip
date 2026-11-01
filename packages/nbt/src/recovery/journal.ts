@@ -226,9 +226,28 @@ export class NbtRecoveryJournal {
     bytes: AsyncIterable<Uint8Array>,
     signal?: AbortSignal,
   ) {
+    return this.writeBaseline(format, version, bytes, signal, false);
+  }
+  /** Publish a fully written replacement in one authenticated CAS head update.
+   * Until that update succeeds, the old baseline and events remain recoverable. */
+  replace(
+    format: NbtFormat,
+    version: string,
+    bytes: AsyncIterable<Uint8Array>,
+    signal?: AbortSignal,
+  ) {
+    return this.writeBaseline(format, version, bytes, signal, true);
+  }
+  private writeBaseline(
+    format: NbtFormat,
+    version: string,
+    bytes: AsyncIterable<Uint8Array>,
+    signal: AbortSignal | undefined,
+    replace: boolean,
+  ) {
     const captured = { ...format };
     return this.serial(async () => {
-      if (this.head) {
+      if (this.head && !replace) {
         if (
           this.head.baselineVersion !== version ||
           (Object.keys(captured) as Array<keyof NbtFormat>).some(

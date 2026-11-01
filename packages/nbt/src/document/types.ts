@@ -124,7 +124,7 @@ export type NbtDocumentCommand =
   | { type: "save.fail"; saveId: string; uncertain: boolean; retain?: boolean }
   | { type: "recovery.clear" }
   | { type: "recovery.checkpoint" }
-  | { type: "recovery.attach"; id: string; key: CryptoKey }
+  | { type: "recovery.attach"; id: string; key: CryptoKey; replace?: boolean }
   | { type: "pause"; paused: boolean }
   | {
       type: "serialize.begin";

@@ -30,6 +30,7 @@ import type {
 import type {
   NbtDisplayRow,
   NbtDocumentSource,
+  NbtDocumentClient,
   NbtSearchResult,
 } from "@cantrip/nbt/document";
 import { openNbtViewerClient, useNbtClient } from "./use-client";
@@ -66,6 +67,9 @@ export function NbtBrowser({
   onOpenDocument,
   openRecovery,
   initialViewState,
+  preparingSource = false,
+  onClientReady,
+  onDiscardSource,
 }: {
   openSource: (signal: AbortSignal) => Promise<Blob | NbtDocumentSource>;
   scope: string;
@@ -73,7 +77,13 @@ export function NbtBrowser({
   label?: string;
   onReady?(): void;
   onError?(error: unknown): void;
-  onLocalFile?(file: File): void;
+  onLocalFile?(file: File): void | Promise<void>;
+  preparingSource?: boolean;
+  onClientReady?(
+    client: NbtDocumentClient,
+    signal: AbortSignal,
+  ): void | Promise<void>;
+  onDiscardSource?(): Promise<void>;
   saveTarget?: { path: string; write: NbtBinaryTransport };
   readOnly?: boolean;
   onSessionChange?(session: FileViewerSession | null): void;
@@ -146,6 +156,8 @@ export function NbtBrowser({
   }>({ nonce: 0 });
   const viewReady =
     !initialViewState || restoredView.input === initialViewState;
+  const sourcePreparing = useRef(preparingSource);
+  sourcePreparing.current = preparingSource;
   const generation = status?.shared?.generation ?? 0;
   const viewKey = generation + "/" + restoredView.nonce;
   captureView.current = () => {
@@ -172,11 +184,28 @@ export function NbtBrowser({
   };
   const readOnly =
     externalReadOnly ||
+    preparingSource ||
     Boolean(status?.shared?.changing || status?.shared?.unavailable);
   useEffect(() => {
     if (!active || readOnly) editOpening.current?.abort();
     return () => editOpening.current?.abort();
   }, [client, generation, active, readOnly]);
+  useEffect(() => {
+    if (!client || !onClientReady) return;
+    const controller = new AbortController();
+    void Promise.resolve(onClientReady(client, controller.signal)).catch(
+      (error) => {
+        if (!controller.signal.aborted)
+          setNavigationError(
+            error instanceof Error
+              ? error.message
+              : "The NBT source could not be prepared.",
+          );
+      },
+    );
+    return () =>
+      controller.abort(new Error("The NBT source view was retired."));
+  }, [client, onClientReady]);
   const reloading = useRef(false),
     replacement = useRef<{ key: string; release(): void } | null>(null);
   const [interpreting, setInterpreting] = useState(false);
@@ -199,7 +228,8 @@ export function NbtBrowser({
     [],
   );
   const save = useCallback(async () => {
-    if (!session || copyOpening.current) return false;
+    if (!session || copyOpening.current || sourcePreparing.current)
+      return false;
     const copy = session.pendingCopyPath;
     if (!copy && !saveTarget) return false;
     try {
@@ -225,14 +255,17 @@ export function NbtBrowser({
     }
   }, [session, saveTarget, client, onOpenDocument]);
   const discard = useCallback(async () => {
+    if (sourcePreparing.current)
+      throw new Error("Wait for the local file to finish opening.");
     const release = client?.freezeEdits();
     try {
-      await discardNbtSession(sessionKey);
-      setEpoch((value) => value + 1);
+      if (client) await discardNbtSession(sessionKey);
+      await onDiscardSource?.();
     } finally {
+      setEpoch((value) => value + 1);
       release?.();
     }
-  }, [sessionKey, client]);
+  }, [sessionKey, client, onDiscardSource]);
   const reload = useCallback(
     async (interpretation?: { profile?: string; compression?: string }) => {
       if (!client || reloading.current)
@@ -371,6 +404,7 @@ export function NbtBrowser({
             },
             get saving() {
               return Boolean(
+                sourcePreparing.current ||
                 client.getEditSnapshot()?.saving ||
                 session?.busy ||
                 copyOpening.current ||
@@ -381,6 +415,7 @@ export function NbtBrowser({
             get pending() {
               const status = client.getEditSnapshot();
               return Boolean(
+                sourcePreparing.current ||
                 status?.pendingSaveId ||
                 status?.editing ||
                 client.getSnapshot()?.shared?.changing,
@@ -392,13 +427,36 @@ export function NbtBrowser({
             ...(nbtSharedDocument(client)
               ? {
                   checkpoint: async () => {
+                    if (sourcePreparing.current)
+                      throw new Error(
+                        "Wait for the local file to finish opening before moving this view.",
+                      );
                     await nbtSharedDocument(client)!.checkpoint();
                     return captureView.current();
                   },
                 }
               : {}),
           }
-        : null,
+        : preparingSource
+          ? {
+              revision: 0,
+              dirty: false,
+              saving: true,
+              pending: true,
+              save: async () => false,
+              discard: async () => {
+                throw new Error("Wait for the local file to finish opening.");
+              },
+              reload: async () => {
+                throw new Error("Wait for the local file to finish opening.");
+              },
+              checkpoint: async () => {
+                throw new Error(
+                  "Wait for the local file to finish opening before moving this view.",
+                );
+              },
+            }
+          : null,
     [
       client,
       edit,
@@ -409,6 +467,7 @@ export function NbtBrowser({
       progress,
       copyPreparing,
       interpreting,
+      preparingSource,
     ],
   );
   useEffect(() => {
@@ -416,14 +475,20 @@ export function NbtBrowser({
   }, [lifecycle, onSessionChange]);
   useEffect(() => () => onSessionChange?.(null), [onSessionChange]);
   useEffect(() => {
-    if (!edit?.dirty && !edit?.pendingSaveId && !edit?.editing) return;
+    if (
+      !edit?.dirty &&
+      !edit?.pendingSaveId &&
+      !edit?.editing &&
+      !preparingSource
+    )
+      return;
     const prevent = (event: BeforeUnloadEvent) => {
       event.preventDefault();
       event.returnValue = "";
     };
     window.addEventListener("beforeunload", prevent);
     return () => window.removeEventListener("beforeunload", prevent);
-  }, [edit?.dirty, edit?.pendingSaveId, edit?.editing]);
+  }, [edit?.dirty, edit?.pendingSaveId, edit?.editing, preparingSource]);
   useEffect(() => {
     setExpanded(new Set());
     setSelected(null);
@@ -542,7 +607,7 @@ export function NbtBrowser({
         initialRoot.current = client;
         setExpanded(new Set([status.root!]));
       }
-      if (ready.current !== client) {
+      if (!preparingSource && ready.current !== client) {
         ready.current = client;
         onReady?.();
       }
@@ -555,6 +620,7 @@ export function NbtBrowser({
     status?.root,
     status?.state,
     viewReady,
+    preparingSource,
     onReady,
     onError,
   ]);
@@ -719,15 +785,18 @@ export function NbtBrowser({
           );
       });
   };
-  const protectedDraft = Boolean(
+  const sourceBusy = Boolean(
+    preparingSource ||
     interpreting ||
     status?.shared?.changing ||
     session?.busy ||
-    edit?.dirty ||
     edit?.editing ||
     edit?.saving ||
     edit?.pendingSaveId,
   );
+  const protectedDraft = sourceBusy || Boolean(edit?.dirty),
+    localOpenBlocked =
+      sourceBusy || readOnly || Boolean(edit?.dirty && !onDiscardSource);
   return (
     <div
       ref={root}
@@ -896,13 +965,37 @@ export function NbtBrowser({
               aria-label="Choose local NBT file"
               onChange={(event) => {
                 const file = event.target.files?.[0];
-                if (file && !protectedDraft) onLocalFile(file);
                 event.target.value = "";
+                if (!file || localOpenBlocked) return;
+                const release = client?.freezeEdits();
+                void Promise.resolve()
+                  .then(async () => {
+                    if (onDiscardSource) {
+                      if (
+                        (client?.getEditSnapshot()?.dirty ||
+                          client?.getEditSnapshot()?.pendingSaveId) &&
+                        !(await confirmEditorAction(
+                          "Open another local file and discard this local file's unsaved changes?",
+                        ))
+                      )
+                        return;
+                      await discard();
+                    }
+                    await onLocalFile(file);
+                  })
+                  .catch((error) =>
+                    setNavigationError(
+                      error instanceof Error
+                        ? error.message
+                        : "The local file could not be opened.",
+                    ),
+                  )
+                  .finally(() => release?.());
               }}
             />
             <button
               className={nbtControl}
-              disabled={protectedDraft}
+              disabled={localOpenBlocked}
               onClick={() => local.current?.click()}
               aria-label="Open local NBT file"
             >
@@ -911,6 +1004,41 @@ export function NbtBrowser({
           </>
         ) : null}
       </div>
+      {preparingSource ? (
+        <div
+          role="status"
+          className="shrink-0 px-3 py-1 text-xs text-muted-foreground"
+        >
+          Preparing local recovery…
+        </div>
+      ) : null}
+      {onDiscardSource ? (
+        <button
+          className={nbtControl + " mx-3 my-1 self-start"}
+          type="button"
+          disabled={readOnly || sourceBusy}
+          onClick={() =>
+            void (async () => {
+              if (
+                (edit?.dirty || edit?.pendingSaveId) &&
+                !(await confirmEditorAction(
+                  "Close this local file and discard its unsaved changes?",
+                ))
+              )
+                return;
+              await discard();
+            })().catch((error) =>
+              setNavigationError(
+                error instanceof Error
+                  ? error.message
+                  : "The local file could not be closed.",
+              ),
+            )
+          }
+        >
+          Return to project file
+        </button>
+      ) : null}
       {saveAsPath !== null && saveAsTarget && session ? (
         <form
           className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border/30 p-3 text-xs"

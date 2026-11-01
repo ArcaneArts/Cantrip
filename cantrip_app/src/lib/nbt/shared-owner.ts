@@ -21,6 +21,7 @@ export interface NbtSharedFactory {
   ): Promise<NbtDocumentClient>;
   claim(): Promise<number>;
   attachRecovery(client: NbtDocumentClient): Promise<void>;
+  replaceRecovery?(client: NbtDocumentClient): Promise<void>;
   reconcile(client: NbtDocumentClient): Promise<void>;
 }
 interface Peer {
@@ -552,17 +553,24 @@ export class NbtSharedOwner {
         await this.complete(candidate, this.signal());
         await this.factory.reconcile(current);
         clearing = true;
-        await current.clearRecovery();
-        await current.close();
-        const generation = await this.factory.claim();
-        await this.factory.attachRecovery(candidate);
+        let generation: number;
+        if (this.factory.replaceRecovery) {
+          generation = await this.factory.claim();
+          await this.factory.replaceRecovery(candidate);
+          await current.close();
+        } else {
+          await current.clearRecovery();
+          await current.close();
+          generation = await this.factory.claim();
+          await this.factory.attachRecovery(candidate);
+        }
         this.generation = generation;
         this.bind(candidate);
         this.announce(this.generation, "replace");
         this.publish();
         adopted = true;
       } catch (error) {
-        // The clear may have committed even if its reply was lost. Reopen the
+        // A fence or baseline update may commit even if its reply is lost. Reopen the
         // actual journal rather than guessing which baseline is authoritative.
         if (clearing) void this.recover().catch(() => {});
         throw error;

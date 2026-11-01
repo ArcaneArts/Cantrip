@@ -438,20 +438,32 @@ export function installNbtDocumentWorker(
               command.key,
             );
             try {
-              if (next.descriptor())
+              if (next.descriptor() && !command.replace)
                 throw new NbtError(
                   0,
                   "The replacement cannot overwrite a retained NBT draft",
                 );
               const version = session!.snapshot().version;
+              let prepared = false;
               session!.attachRecovery({
-                prepare: (signal) =>
-                  next.prepare(
+                prepare: async (signal) => {
+                  if (command.replace && !prepared) {
+                    await next.replace(
+                      engine!.format,
+                      version,
+                      engine!.serialize(true, signal),
+                      signal,
+                    );
+                    prepared = true;
+                    return;
+                  }
+                  await next.prepare(
                     engine!.format,
                     version,
                     engine!.serialize(true, signal),
                     signal,
-                  ),
+                  );
+                },
                 append: (event) => next.append(event),
               });
               recovery = next;

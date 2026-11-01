@@ -44,9 +44,8 @@ References bind to the original parser baseline and encoding, including across
 journal replay after structural saves. Restoration waits for actual indexing
 progress rather than declaring later nodes missing. Stale page counts cannot
 clamp a restored position, and scaled scroll extents retain exact programmatic
-targets. Array edits keep their grid open. Local-file recovery/export, touch
-qualification and real-phone testing
-are still unfinished; this milestone is not complete.
+targets. Array edits keep their grid open. Local OS export, touch qualification
+and real-phone testing are still unfinished; this milestone is not complete.
 
 Local-source persistence foundations now provide an explicit clean-baseline
 checkpoint: a selected File can become recoverable before its first edit,
@@ -54,8 +53,19 @@ without creating an undo entry or dirtying the document. A separate encrypted
 reference uses the stable view identity, distinct from the project document.
 Its CAS publication reconciles an actual lost write acknowledgement by reading
 the authenticated record; it never overwrites a different owner or treats a
-failed read as an empty reference. These foundations are not yet wired into
-the local-file viewer or OS export flow.
+failed read as an empty reference. The viewer now loads that reference before
+choosing a source. Local imports remain browsable but read-only until the
+original and reference both commit; actual failures restore the prior source,
+or keep an uncertain publication read-only until an explicit retry reads it.
+Reference retries are exclusive with new imports. Reloads recover local bytes
+and undo without a retained browser File. Local drafts never inherit the
+project file's Save target: Save As explicitly creates a separate protected
+worker file. Return to project file clears only the approved local draft and
+its reference. Account/encryption changes retire File references and viewer
+leases. Encoding replacement publishes a fully written baseline with a single
+authenticated CAS head update, preserving the old source and edits on failure;
+a lost reply reopens the actual authoritative baseline. Local OS export remains
+unfinished.
 Recovered originals can also be read as bounded sources without a retained
 browser File. Replacement parsing can pin their exact encoded bytes in its
 encrypted paged cache, keeping original export available after the old journal
@@ -63,8 +73,8 @@ is retired. Tests cover raw/gzip streams larger than the memory cache and
 account-lock/abort cleanup. Pinning also exposed a Buffer aliasing issue in
 queued spool writes; those writes now always own the bytes they clear.
 
-Current recovery verification: 182 codec/document/edit/recovery tests, 72
-focused NBT app tests, Explorer transfer suites, 12 binary-write worker tests,
+Current recovery verification: 184 codec/document/edit/recovery tests, 80
+focused NBT app library tests plus component restoration tests, Explorer transfer suites, 12 binary-write worker tests,
 and app/worker typechecks pass.
 Production Chromium and WebKit app/server/worker runs restore unsaved drafts,
 preserve undo and exact Long values, save through a dropped commit reply, and
@@ -83,6 +93,15 @@ and shared broker across real Chromium/WebKit renderer contexts with actual
 Web Locks, BroadcastChannels and IndexedDB. Both engines pass one-worker
 ownership, shared edits, simultaneous independent searches, abrupt owner loss,
 recovered undo, inactive-view replacement and confirmed shared/last-view close.
+`node scripts/qa/nbt-local-project.mjs` drives the real local File input,
+pre-edit encrypted original checkpoint, reload/undo, encoding replacement,
+protected Save As, independent parsing, return to project, and malformed import
+rollback. Chromium passes the 1 MiB expanded regression and WebKit passes a
+100 MiB expanded local document through the same flow. Both engines also pass
+cancelled and confirmed replacement of a dirty local file, including recovery
+of the committed replacement after reload. WebKit reload-only cancelled peer
+signalling fetch errors are retained separately from current-document errors.
+
 Both engines also terminate a real dedicated worker and recover its draft,
 then abort an actual recovery-head transaction and recover through manual retry.
 `CANTRIP_NBT_QA_OWNER_FAULTS=true` enables the corresponding fault injection in

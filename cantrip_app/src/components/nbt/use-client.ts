@@ -101,6 +101,20 @@ export async function openNbtViewerClient(
           vault.assertCurrent();
           await client.attachRecovery({ id: vault.id, key: vault.key });
         },
+        ...(vault.preserveBaseline
+          ? {
+              async replaceRecovery(client: NbtDocumentClient) {
+                vault.assertCurrent();
+                await client.attachRecovery({
+                  id: vault.id,
+                  key: vault.key,
+                  replace: true,
+                });
+                await client.checkpointRecovery();
+                vault.assertCurrent();
+              },
+            }
+          : {}),
         async reconcile(client) {
           const retained = client.getEditSnapshot()?.pendingSave;
           if (!retained) return;

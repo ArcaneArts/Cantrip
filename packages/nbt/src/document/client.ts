@@ -404,7 +404,7 @@ export class NbtDocumentClient {
   clearRecovery() {
     return this.request<null>({ type: "recovery.clear" });
   }
-  attachRecovery(options: { id: string; key: CryptoKey }) {
+  attachRecovery(options: { id: string; key: CryptoKey; replace?: boolean }) {
     return this.request<null>({ type: "recovery.attach", ...options });
   }
   checkpointRecovery(signal?: AbortSignal) {
