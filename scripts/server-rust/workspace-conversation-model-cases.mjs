@@ -144,6 +144,49 @@ export function workspaceConversationModelCases(add) {
     type: "select",
     tabId: "terminal",
   });
+  const fileOpen = {
+    type: "open",
+    tab: {
+      ...view("file-format", "project.file"),
+      fileViewer: "json",
+      fileMode: "visual",
+    },
+    target: { kind: "pane", paneId: "pane" },
+  };
+  run("open explicit file format", direct, fileOpen);
+  const asJson = applyWorkspaceCommand(direct, input(direct, fileOpen)).layout;
+  run("normal reopen preserves explicit format", asJson, {
+    ...fileOpen,
+    tab: view("file-format", "project.file"),
+  });
+  run("replace format in existing tab", asJson, {
+    ...fileOpen,
+    tab: { ...fileOpen.tab, fileViewer: "image", fileMode: "preview" },
+  });
+  run("reset format to automatic", asJson, {
+    ...fileOpen,
+    tab: { ...fileOpen.tab, fileViewer: null, fileMode: "edit" },
+  });
+  const reservedFile = applyWorkspaceCommand(
+    asJson,
+    input(asJson, {
+      type: "prepare-detach",
+      transferId: "format-transfer",
+      paneId: "pane",
+      tabId: "file-format",
+      destinationWindowId: "format-popout",
+      destinationPaneId: "format-moved",
+    }),
+  ).layout;
+  run("reject format change during transfer", reservedFile, {
+    ...fileOpen,
+    tab: { ...fileOpen.tab, fileViewer: "image", fileMode: "preview" },
+  });
+  run(
+    "allow unchanged format while transfer is reserved",
+    reservedFile,
+    fileOpen,
+  );
   const closeRail = { type: "close-tab", tabId: "terminal" };
   const only = applyWorkspaceCommand(direct, input(direct, closeRail)).layout;
   run("convert tab-free slot to rail", only, {

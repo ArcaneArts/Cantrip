@@ -1,5 +1,6 @@
+import { resolveFileViewer } from "@/components/files/file-viewers";
+import { mediaBlobForViewer } from "@/components/files/viewer-media";
 import { LogFileView } from "./log-file-view";
-import { isLogFile } from "@/components/editor/log-file";
 import { PagedTextPreview } from "./paged-text-preview";
 import { requiresTextPreview, retryFileRead } from "@/lib/file-operation-error";
 import { executeExplorerOperation } from "@/lib/api/files";
@@ -11,7 +12,6 @@ import {
   ExplorerHeaderActions,
 } from "@/components/workspace/content-header-actions";
 import {
-  explorerMediaTypeForPath,
   type CodeAppearance,
   type ExplorerMediaKind,
   type ExplorerEntry,
@@ -46,7 +46,6 @@ import {
   type EditorSessionTransfer,
 } from "@/components/editor/document-session";
 import { NativeCodeEditor } from "@/components/editor/native-code-editor";
-import { isLicenseFile } from "@/components/editor/license-file";
 import { LicenseFileView } from "@/components/editor/license-file-view";
 import { getClientSession } from "@/lib/client-session";
 import { confirmEditorAction } from "@/lib/editor-confirmation";
@@ -54,7 +53,6 @@ import { useExplorerWorkerEncryption } from "@/components/explorer/use-explorer-
 import {
   defaultExplorerFileMode,
   markdownPreviewUsesPlainText,
-  structuredFileFormatForPath,
 } from "@/components/explorer/explorer-file-language";
 import {
   GitRepositoryGraphView,
@@ -87,6 +85,7 @@ function ExplorerMediaView({
   fileAccess,
   kind,
   mimeType,
+  forceType = false,
   path,
   revision,
   onReady,
@@ -96,6 +95,7 @@ function ExplorerMediaView({
   fileAccess?: FileAccess;
   kind: ExplorerMediaKind;
   mimeType: string;
+  forceType?: boolean;
   path: string;
   revision: number;
   onReady?(): void;
@@ -113,8 +113,17 @@ function ExplorerMediaView({
     setFailed(false);
     setSource(null);
     void (
-      fileAccess ? fileAccess.media(path) : loadExplorerMedia(explorerId, path)
+      fileAccess
+        ? forceType
+          ? fileAccess.media(path, { kind, mimeType })
+          : fileAccess.media(path)
+        : forceType
+          ? loadExplorerMedia(explorerId, path, { kind, mimeType })
+          : loadExplorerMedia(explorerId, path)
     )
+      .then((blob) =>
+        forceType ? mediaBlobForViewer(blob, kind, mimeType) : blob,
+      )
       .then((blob) => {
         if (disposed) return;
         objectUrl = URL.createObjectURL(blob);
@@ -127,7 +136,7 @@ function ExplorerMediaView({
       disposed = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [explorerId, path, revision, fileAccess]);
+  }, [explorerId, path, revision, fileAccess, forceType, kind, mimeType]);
   if (failed) {
     return (
       <div className="grid h-full place-items-center p-6">
@@ -176,9 +185,8 @@ function ExplorerMediaView({
         onError={() => setFailed(true)}
         playsInline
         preload="metadata"
-      >
-        <source src={source} type={mimeType} />
-      </video>
+        src={source}
+      />
     </div>
   );
 }
@@ -210,6 +218,7 @@ export interface ExplorerTransferState {
   workerId: string;
   selectedPath: string | null;
   fileMode: ExplorerFileMode;
+  fileViewer?: string | null;
   documents: EditorSessionTransfer;
 }
 
@@ -281,6 +290,7 @@ export function ExplorerView({
   appearance,
   explorer,
   fileAccess,
+  fileViewer: requestedViewer,
   graphRequest,
   gitStatus,
   onChanged,
@@ -307,6 +317,7 @@ export function ExplorerView({
   appearance: CodeAppearance;
   explorer: ExplorerSummary | FileDocumentEditorView;
   fileAccess?: FileAccess;
+  fileViewer?: string | null;
   graphRequest?: ExplorerGraphRequest | null;
   gitStatus?: GitStatus;
   onChanged?(explorer: ExplorerSummary): void;
@@ -476,6 +487,15 @@ export function ExplorerView({
     }),
     [explorer.activeWorkerId, explorer.projectId, explorer.worktreeId],
   );
+  const fileViewer =
+    requestedViewer !== undefined
+      ? requestedViewer
+      : initialTransfer?.fileViewer;
+  const fileViewerRef = useRef(fileViewer);
+  fileViewerRef.current = fileViewer;
+  const readingViewer = selectedPath
+    ? resolveFileViewer(selectedPath, fileViewer)
+    : null;
   const file = useQuery({
     retry: retryFileRead,
     // Once the actual full read selects paging, background filesystem events
@@ -484,8 +504,10 @@ export function ExplorerView({
       Boolean(
         streamEncryptionReady &&
         selectedPath &&
-        explorerMediaTypeForPath(selectedPath) === null &&
-        !(isLogFile(selectedPath) && fileMode === "preview") &&
+        !readingViewer?.media &&
+        !readingViewer?.custom &&
+        !readingViewer?.unavailable &&
+        !(readingViewer?.log && fileMode === "preview") &&
         !requiresTextPreview(query.state.error),
       ),
     queryFn: () =>
@@ -591,19 +613,17 @@ export function ExplorerView({
         path: displayedSelectedPath,
       })
     : null;
-  const editableLanguage = displayedSelectedPath
-    ? explorerMediaTypeForPath(displayedSelectedPath) === null
-      ? "text"
-      : null
-    : null;
-  const structuredFormat = displayedSelectedPath
-    ? explorerMediaTypeForPath(displayedSelectedPath) === null
-      ? structuredFileFormatForPath(displayedSelectedPath)
-      : null
-    : null;
-  const mediaType = displayedSelectedPath
-    ? explorerMediaTypeForPath(displayedSelectedPath)
-    : null;
+  const viewer = resolveFileViewer(displayedSelectedPath ?? "", fileViewer);
+  const editableLanguage =
+    !displayedSelectedPath ||
+    viewer.media ||
+    viewer.custom ||
+    viewer.unavailable
+      ? null
+      : "text";
+  const structuredFormat = viewer.unavailable ? null : viewer.structuredFormat;
+  const mediaType = viewer.media;
+  const CustomFileViewer = viewer.custom;
   const graphVisible = graphRootPath !== undefined;
   const surfaceLifecycleState = {
     active,
@@ -720,7 +740,7 @@ export function ExplorerView({
       !file.data ||
       requiresTextPreview(file.error) ||
       (selectedPath &&
-        isLogFile(selectedPath) &&
+        resolveFileViewer(selectedPath, fileViewer).log &&
         fileMode === "preview" &&
         !nativeDocument?.dirty) ||
       file.data.path !== selectedPath ||
@@ -765,7 +785,8 @@ export function ExplorerView({
   const applyViewState = useCallback(
     (next: { selectedPath: string | null; fileMode: ExplorerFileMode }) => {
       const nextFileMode =
-        next.selectedPath && explorerMediaTypeForPath(next.selectedPath)
+        next.selectedPath &&
+        resolveFileViewer(next.selectedPath, fileViewerRef.current).media
           ? "preview"
           : next.fileMode;
       selectedPathRef.current = next.selectedPath;
@@ -775,6 +796,22 @@ export function ExplorerView({
     },
     [],
   );
+
+  useEffect(() => {
+    // A sidebar Open As command can update an already mounted document owner.
+    // Reconcile presentation only; its live text session and draft stay intact.
+    if (
+      isDocumentView(explorer) &&
+      !transferInstalling &&
+      !transferSuspended &&
+      explorer.fileMode !== fileModeRef.current
+    ) {
+      applyViewState({
+        selectedPath: explorer.selectedPath,
+        fileMode: explorer.fileMode,
+      });
+    }
+  }, [explorer, applyViewState, transferInstalling, transferSuspended]);
 
   const persistViewState = useCallback(
     (next: { selectedPath: string | null; fileMode: ExplorerFileMode }) => {
@@ -833,14 +870,15 @@ export function ExplorerView({
       const approvedRevision = previous?.revision;
       if (!streamEncryptionReadyRef.current || !bindingKey) return;
       if (
-        isLogFile(path) &&
+        resolveFileViewer(path, fileViewerRef.current).log &&
         fileModeRef.current === "preview" &&
         !dirtyRef.current
       ) {
         setPreviewRevision((revision) => revision + 1);
         return;
       }
-      if (explorerMediaTypeForPath(path)) {
+      const refreshViewer = resolveFileViewer(path, fileViewerRef.current);
+      if (refreshViewer.media || refreshViewer.custom) {
         setMediaRevision((revision) => revision + 1);
         return;
       }
@@ -954,7 +992,7 @@ export function ExplorerView({
     applyViewState(nextViewState);
     if (
       nextViewState.selectedPath &&
-      explorerMediaTypeForPath(nextViewState.selectedPath)
+      resolveFileViewer(nextViewState.selectedPath, fileViewerRef.current).media
     ) {
       setMediaRevision((revision) => revision + 1);
     }
@@ -1283,8 +1321,10 @@ export function ExplorerView({
       const path = selectedPathRef.current;
       if (
         !path ||
-        (mode === "edit" && explorerMediaTypeForPath(path) !== null) ||
-        (mode === "visual" && !structuredFileFormatForPath(path))
+        (mode === "edit" &&
+          resolveFileViewer(path, fileViewer).media !== null) ||
+        (mode === "visual" &&
+          !resolveFileViewer(path, fileViewer).structuredFormat)
       ) {
         return;
       }
@@ -1293,7 +1333,7 @@ export function ExplorerView({
         await persistViewState({ selectedPath: path, fileMode: mode });
       })();
     },
-    [persistViewState],
+    [persistViewState, fileViewer],
   );
 
   const largeTextPreview = requiresTextPreview(file.error) && !dirty;
@@ -1485,6 +1525,9 @@ export function ExplorerView({
           workerId: explorer.activeWorkerId,
           selectedPath: transientFilePath ?? selectedPathRef.current,
           fileMode: fileModeRef.current,
+          ...(fileViewerRef.current !== undefined
+            ? { fileViewer: fileViewerRef.current }
+            : {}),
           documents,
         };
         await documentRecovery?.checkpoint(state);
@@ -1611,6 +1654,9 @@ export function ExplorerView({
       workerId: explorer.activeWorkerId,
       selectedPath: transientFilePath ?? selectedPathRef.current,
       fileMode: fileModeRef.current,
+      ...(fileViewerRef.current !== undefined
+        ? { fileViewer: fileViewerRef.current }
+        : {}),
       documents: sessions.current!.captureRecovery(),
     };
     // The recovery owner surfaces errors and retains the prior ciphertext.
@@ -1685,20 +1731,30 @@ export function ExplorerView({
   }, []);
   useEffect(() => {
     if (transferInstalling || !transferStaging) return;
-    if (!selectedPath) onTransferredViewReady();
+    if (viewer.unavailable)
+      onTransferredViewError(
+        new Error(`The ${viewer.unavailable} viewer is unavailable.`),
+      );
+    else if (!selectedPath) onTransferredViewReady();
     else if (
       !mediaType &&
-      !(selectedPath && isLogFile(selectedPath) && fileMode === "preview") &&
+      !viewer.custom &&
+      !(
+        selectedPath &&
+        resolveFileViewer(selectedPath, fileViewer).log &&
+        fileMode === "preview"
+      ) &&
       file.isError &&
       !requiresTextPreview(file.error)
     )
       onTransferredViewError(file.error);
     else if (
       !mediaType &&
+      !viewer.custom &&
       file.data &&
       fileMode !== "edit" &&
       !(fileMode === "visual" && structuredFormat) &&
-      (file.data.markdown || isLicenseFile(file.data.path))
+      (viewer.markdown || viewer.license)
     )
       onTransferredViewReady();
   }, [
@@ -1706,6 +1762,11 @@ export function ExplorerView({
     transferStaging,
     selectedPath,
     mediaType,
+    viewer.custom,
+    viewer.unavailable,
+    viewer.markdown,
+    viewer.license,
+    fileViewer,
     file.isError,
     file.error,
     file.data,
@@ -1756,7 +1817,7 @@ export function ExplorerView({
     setBaselineContent("");
     setDraftVersion(null);
     resetSaveFile();
-    if (explorerMediaTypeForPath(entry.path)) {
+    if (resolveFileViewer(entry.path, fileViewerRef.current).media) {
       setMediaRevision((revision) => revision + 1);
     }
     void persistViewState({
@@ -1905,11 +1966,34 @@ export function ExplorerView({
             />
           ) : selectedPath ? (
             <div className="min-h-0 flex-1 overflow-hidden">
-              {mediaType ? (
+              {viewer.unavailable ? (
+                <p role="alert" className="m-4 text-sm text-destructive">
+                  The {viewer.unavailable} viewer is unavailable in this
+                  version. Choose Open As → Automatic to use the default viewer.
+                </p>
+              ) : CustomFileViewer ? (
+                <CustomFileViewer
+                  path={selectedPath}
+                  explorerId={explorer.id}
+                  documentId={
+                    isDocumentView(explorer) ? explorer.documentId : undefined
+                  }
+                  projectId={explorer.projectId}
+                  worktreeId={explorer.worktreeId}
+                  workerId={explorer.activeWorkerId}
+                  appearance={appearance}
+                  fileAccess={fileAccess}
+                  active={active && !transferSuspended}
+                  revision={mediaRevision}
+                  onReady={onTransferredViewReady}
+                  onError={onTransferredViewError}
+                />
+              ) : mediaType ? (
                 <ExplorerMediaView
                   explorerId={explorer.id}
                   fileAccess={fileAccess}
-                  key={`${selectedPath}:${mediaRevision}`}
+                  key={`${selectedPath}:${fileViewer ?? "auto"}:${mediaRevision}`}
+                  forceType={Boolean(fileViewer)}
                   kind={mediaType.kind}
                   mimeType={mediaType.mimeType}
                   path={selectedPath}
@@ -1917,7 +2001,7 @@ export function ExplorerView({
                   onReady={onTransferredViewReady}
                   onError={onTransferredViewError}
                 />
-              ) : isLogFile(selectedPath) &&
+              ) : resolveFileViewer(selectedPath, fileViewer).log &&
                 (fileMode === "preview" || largeTextPreview) &&
                 !dirty ? (
                 <LogFileView
@@ -1957,6 +2041,7 @@ export function ExplorerView({
                 <NativeCodeEditor
                   session={nativeDocument}
                   path={selectedPath}
+                  highlightPath={viewer.syntaxPath}
                   active={active && !transferSuspended}
                   readOnly={transferSuspended}
                   onReady={onTransferredDocumentReady}
@@ -1972,6 +2057,7 @@ export function ExplorerView({
                 <PagedTextPreview
                   key={`${fileAccess?.cacheKey ?? explorer.id}:${selectedPath}:${streamEncryption.bindingKey}:${previewRevision}`}
                   path={selectedPath}
+                  highlightPath={viewer.syntaxPath}
                   active={active && !transferSuspended}
                   readPage={async (offset, version) => {
                     if (fileAccess) {
@@ -2006,9 +2092,7 @@ export function ExplorerView({
                     ? file.error.message
                     : "File could not be loaded."}
                 </p>
-              ) : file.data &&
-                fileMode === "preview" &&
-                isLicenseFile(file.data.path) ? (
+              ) : file.data && fileMode === "preview" && viewer.license ? (
                 <LicenseFileView
                   content={draftVersion === null ? file.data.content : draft}
                   path={file.data.path}
@@ -2034,7 +2118,7 @@ export function ExplorerView({
                 (fileMode === "preview" ||
                   editableLanguage === null ||
                   fileMode === "visual") ? (
-                file.data.markdown ? (
+                viewer.markdown ? (
                   <div className="h-full overflow-auto">
                     {markdownPreviewUsesPlainText(file.data.path) ? (
                       <pre
@@ -2063,6 +2147,7 @@ export function ExplorerView({
                   <NativeCodeEditor
                     session={nativeDocument}
                     path={file.data.path}
+                    highlightPath={viewer.syntaxPath}
                     active={active && !transferSuspended}
                     readOnly
                     onReady={onTransferredDocumentReady}

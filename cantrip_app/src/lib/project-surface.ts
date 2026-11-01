@@ -80,6 +80,7 @@ export interface ProjectSurfaceBase<
   preview?: boolean;
   conversation?: boolean;
   fileMode?: ExplorerFileMode;
+  fileViewer?: string | null;
 }
 
 export interface ProjectSurfaceCollections {
@@ -399,6 +400,7 @@ export function buildProjectSurfaceIndex(
           view: { ...surface.view, resource: owned.tab.resource },
           preview: owned.tab.preview,
           fileMode: owned.tab.fileMode,
+          fileViewer: owned.tab.fileViewer,
         } as ProjectSurface;
       }
       if (pane.conversationView?.tabKey === surface.tabKey)

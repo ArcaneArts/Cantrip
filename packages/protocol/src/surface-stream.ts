@@ -207,6 +207,13 @@ export const explorerOperationRequestContentSchema = z.discriminatedUnion(
     z
       .object({
         type: z.literal("explorer.media.read"),
+        mediaType: z
+          .object({
+            kind: explorerMediaFileChunkSchema.shape.kind,
+            mimeType: explorerMediaFileChunkSchema.shape.mimeType,
+          })
+          .strict()
+          .optional(),
         path: explorerFileWriteSchema.shape.path,
         offset: z.number().int().nonnegative(),
         limit: z

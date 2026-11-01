@@ -1133,6 +1133,23 @@ export function applyWorkspaceCommand(
         // A permanent open promotes the existing preview in place. A preview
         // open never demotes an already pinned view, including in another window.
         if (!action.tab.preview) existing.tab.preview = false;
+        if (action.tab.fileViewer !== undefined) {
+          if (
+            (existing.tab.fileViewer !== action.tab.fileViewer ||
+              (action.tab.fileMode !== undefined &&
+                existing.tab.fileMode !== action.tab.fileMode)) &&
+            layout.pendingTransfers?.some((transfer) =>
+              transfer.tabIds.includes(existing.tab.id),
+            )
+          )
+            throw new WorkspaceCommandError(
+              "invalid",
+              "File view is reserved for a pending transfer.",
+            );
+          existing.tab.fileViewer = action.tab.fileViewer;
+          if (action.tab.fileMode !== undefined)
+            existing.tab.fileMode = action.tab.fileMode;
+        }
         navigate(layout, existing.owner, existing.pane, existing.tab.id);
         if (existing.owner.id !== window.id) focusWindowId = existing.owner.id;
         break;

@@ -841,6 +841,7 @@ export function App() {
     explorer: ExplorerSummary,
     path: string,
     preview: boolean,
+    viewer?: string | null,
   ) => {
     if (!ownedWorkspace) throw new Error("Workspace connection is not ready.");
     await openOwnedFile({
@@ -850,6 +851,7 @@ export function App() {
       worktreeId: explorer.worktreeId,
       path,
       preview,
+      viewer,
       reservePreview: (resourceId) =>
         explorerLifecycleRef.current
           .get(resourceId)
@@ -2011,6 +2013,7 @@ export function App() {
     importSidebarFiles,
     deleteSidebarFileEntry,
     openSidebarFilePreview,
+    openSidebarFileAs,
     openSidebarFilePreviewPath,
     openSidebarFolderGraph,
     openSidebarFolderNative,
@@ -2021,10 +2024,12 @@ export function App() {
     renameSidebarFileEntry,
     retrySidebarFileTree,
   } = createSidebarExplorerCommands({
-    openOwnedFile: (explorer, path, preview) =>
-      preview
-        ? openSidebarOwnedFile(explorer, path, true)
-        : pinSidebarFileMutation.mutateAsync({ explorer, path }),
+    openOwnedFile: (explorer, path, preview, viewer) =>
+      viewer !== undefined
+        ? openSidebarOwnedFile(explorer, path, false, viewer)
+        : preview
+          ? openSidebarOwnedFile(explorer, path, true)
+          : pinSidebarFileMutation.mutateAsync({ explorer, path }),
     createSidebarExplorerMutation,
     explorers: explorers.data,
     lifecycle: explorerLifecycle,
@@ -2178,7 +2183,7 @@ export function App() {
     onlineWorker, onlineWorkerIds, openChatConsole, openChatExplorerHere, openChatFileLink,
     openChatHistoryHere, openChatTerminalHere, openCompactRootSettings, openCreatedProject, openCreatedTab,
     openExplorerFileWindow, openExplorers, openOrFocusSurface, openProjectCreateSource, openProjectExplorerFile, openProjectNavigatorSurface, openProjectToolSection, openRunTerminal, ownedTerminals,
-    openProjectSettings, openProjectTask, openServerAdmin, openSidebarFilePreview, openSidebarFolderGraph,
+    openProjectSettings, openProjectTask, openServerAdmin, openSidebarFilePreview, openSidebarFileAs, openSidebarFolderGraph,
     openSidebarFolderNative, openSidebarRootNative, openSidebarFolderTerminal, openTerminalLink, openTerminalLinkExternally, openTunnelOwner,
     overlayTitlebar, pendingTerminalInputs, permanentlyDeleteStandaloneChat, pinSidebarFile, pinSidebarFileMutation,
     pinSidebarFilePath, popOutActiveView, popOutTab, popOutPane, popOutProjectOverviewView, popoutError, popoutPending,
