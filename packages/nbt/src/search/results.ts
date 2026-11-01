@@ -1,18 +1,19 @@
 import { assertRange } from "../types.js";
 import {
   openEncryptedNbtCache,
+  NBT_PAGE_BYTES,
   type EncryptedNbtPageCache,
 } from "../storage/index.js";
 import type { NbtSearchField, NbtSearchResult } from "./types.js";
 const fields: NbtSearchField[] = ["name", "value", "type", "path"];
-const PAGE = 256,
-  STRIDE = 40;
+const PAGE = 256;
 // node sequence, first element (-1 for a tag), run length, field mask, first result rank.
-type RecordRow = [number, number, number, number, number];
+type RecordRow = [string, number, number, number, number];
 /** Encrypted bounded result pages. Dense array matches use runs, not one object per element. */
 export class NbtSearchResults {
   private pending: RecordRow[] = [];
   private pages = 0;
+  private pendingBytes = 0;
   private total = 0;
   private pendingStart = 0;
   private constructor(private cache: EncryptedNbtPageCache) {}
@@ -37,8 +38,7 @@ export class NbtSearchResults {
     count: number,
     matched: NbtSearchField[],
   ) {
-    const sequence = Number(nodeId.slice(5));
-    assertRange(sequence, 0);
+    if (!nodeId) throw new Error("Invalid NBT result identity.");
     assertRange(this.total, count);
     if (!count) return;
     const mask = matched.reduce(
@@ -49,33 +49,45 @@ export class NbtSearchResults {
     if (
       elementIndex !== undefined &&
       last &&
-      last[0] === sequence &&
+      last[0] === nodeId &&
       last[1] >= 0 &&
       last[1] + last[2] === elementIndex &&
       last[3] === mask
     )
       last[2] += count;
-    else
-      this.pending.push([
-        sequence,
-        elementIndex ?? -1,
-        count,
-        mask,
-        this.total,
-      ]);
+    else {
+      const cost = nodeId.length * 6 + 128;
+      if (this.pending.length && this.pendingBytes + cost > 32768)
+        await this.flush();
+      this.pendingBytes += cost;
+      this.pending.push([nodeId, elementIndex ?? -1, count, mask, this.total]);
+    }
     this.total += count;
-    if (this.pending.length === PAGE) {
-      const bytes = new Uint8Array(PAGE * STRIDE),
-        view = new DataView(bytes.buffer);
-      this.pending.forEach((row, i) =>
-        row.forEach((value, j) =>
-          view.setFloat64(i * STRIDE + j * 8, value, true),
-        ),
-      );
+    if (this.pending.length === PAGE) await this.flush();
+  }
+  private async flush() {
+    if (this.pending.length) {
+      const bytes = new TextEncoder().encode(JSON.stringify(this.pending));
+      if (bytes.length > 256 * 1024)
+        throw new Error("NBT result identity exceeds the bounded page size.");
       try {
-        await this.cache.set("matches-" + this.pages, bytes);
+        const parts = Math.ceil(bytes.length / NBT_PAGE_BYTES);
+        for (let part = 0; part < parts; part++)
+          await this.cache.set(
+            "matches-" + this.pages + "-" + part,
+            bytes.subarray(part * NBT_PAGE_BYTES, (part + 1) * NBT_PAGE_BYTES),
+          );
+        const manifest = new TextEncoder().encode(
+          JSON.stringify({ version: 1, length: bytes.length, parts }),
+        );
+        try {
+          await this.cache.set("matches-" + this.pages, manifest);
+        } finally {
+          manifest.fill(0);
+        }
         this.pages++;
         this.pending = [];
+        this.pendingBytes = 0;
         this.pendingStart = this.total;
       } finally {
         bytes.fill(0);
@@ -85,22 +97,44 @@ export class NbtSearchResults {
   private async page(index: number) {
     if (index === this.pages)
       return this.pending.map((row) => row.slice() as RecordRow);
-    const bytes = await this.cache.get("matches-" + index);
-    if (!bytes || bytes.length !== PAGE * STRIDE)
-      throw new Error("NBT search results are unavailable.");
+    const manifest = await this.cache.get("matches-" + index);
+    if (!manifest) throw new Error("NBT search results are unavailable.");
+    let meta: { version: number; length: number; parts: number };
     try {
-      const view = new DataView(
-        bytes.buffer,
-        bytes.byteOffset,
-        bytes.byteLength,
-      );
-      return Array.from(
-        { length: PAGE },
-        (_, i) =>
-          Array.from({ length: 5 }, (_, j) =>
-            view.getFloat64(i * STRIDE + j * 8, true),
-          ) as RecordRow,
-      );
+      meta = JSON.parse(new TextDecoder().decode(manifest));
+    } finally {
+      manifest.fill(0);
+    }
+    if (
+      meta.version !== 1 ||
+      !Number.isSafeInteger(meta.length) ||
+      meta.length < 1 ||
+      meta.length > 256 * 1024 ||
+      meta.parts !== Math.ceil(meta.length / NBT_PAGE_BYTES)
+    )
+      throw new Error("Invalid NBT result manifest.");
+    const bytes = new Uint8Array(meta.length);
+    try {
+      for (let part = 0; part < meta.parts; part++) {
+        const page = await this.cache.get("matches-" + index + "-" + part);
+        if (!page) throw new Error("NBT search result page is incomplete.");
+        try {
+          if (
+            page.length !==
+            Math.min(NBT_PAGE_BYTES, meta.length - part * NBT_PAGE_BYTES)
+          )
+            throw new Error("Invalid NBT result page size.");
+          bytes.set(page, part * NBT_PAGE_BYTES);
+        } finally {
+          page.fill(0);
+        }
+      }
+      const records = JSON.parse(
+        new TextDecoder().decode(bytes),
+      ) as RecordRow[];
+      if (!Array.isArray(records) || !records.length || records.length > PAGE)
+        throw new Error("Invalid NBT result page.");
+      return records;
     } finally {
       bytes.fill(0);
     }
@@ -140,7 +174,7 @@ export class NbtSearchResults {
         for (let i = 0; i < count; i++)
           result.push({
             id: "result:" + (rank + i),
-            nodeId: "node:" + row[0],
+            nodeId: row[0],
             ...(row[1] < 0 ? {} : { elementIndex: row[1] + rank + i - row[4] }),
             fields: fields.filter((_field, bit) =>
               Boolean(row[3] & (1 << bit)),

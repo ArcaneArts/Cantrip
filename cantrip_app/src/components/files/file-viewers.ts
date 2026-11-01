@@ -14,6 +14,17 @@ import type { FileIconKind } from "./file-type";
 
 export type VisualFileFormat =
   "json" | "toml" | "yaml" | "csv" | "env" | "properties";
+export interface FileViewerSession {
+  readonly revision: number;
+  readonly dirty: boolean;
+  readonly saving: boolean;
+  readonly pending: boolean;
+  save(): Promise<boolean>;
+  /** Explicitly approved discard; must reconcile an uncertain save first. */
+  discard(): Promise<void>;
+  /** Load and validate the replacement before retiring an approved draft. */
+  reload(): Promise<void>;
+}
 export interface FileViewerProps {
   path: string;
   explorerId: string;
@@ -25,6 +36,9 @@ export interface FileViewerProps {
   fileAccess?: FileAccess;
   active: boolean;
   revision: number;
+  readOnly?: boolean;
+  onSessionChange?(session: FileViewerSession | null): void;
+  onOpenDocument?(path: string): void | Promise<void>;
   onReady?(): void;
   onError?(error: unknown): void;
 }

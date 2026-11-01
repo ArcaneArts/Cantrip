@@ -14,6 +14,7 @@ import type {
 export function NbtFind({
   client,
   open,
+  revision = 0,
   onClose,
   inputRef,
   selection,
@@ -21,6 +22,7 @@ export function NbtFind({
 }: {
   client: NbtDocumentClient;
   open: boolean;
+  revision?: number;
   onClose(): void;
   inputRef: RefObject<HTMLInputElement | null>;
   selection: { id: string; name: string } | null;
@@ -40,6 +42,7 @@ export function NbtFind({
       () => null,
     ),
     key = JSON.stringify({
+      revision,
       text,
       caseSensitive,
       exactNumber,

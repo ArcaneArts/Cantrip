@@ -1,16 +1,37 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { NbtEditActions } from "./edit-actions";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import { ArrowLeft, FileUp, Search } from "lucide-react";
+import type { FileViewerSession } from "@/components/files/file-viewers";
+import {
+  acquireNbtSession,
+  discardNbtSession,
+} from "@/lib/nbt/session-registry";
+import type { NbtBinaryTransport } from "@/lib/nbt/save";
 import type {
   NbtDisplayRow,
   NbtDocumentSource,
   NbtSearchResult,
 } from "@cantrip/nbt/document";
-import { useNbtClient } from "./use-client";
+import { openNbtViewerClient, useNbtClient } from "./use-client";
+import { confirmEditorAction } from "@/lib/editor-confirmation";
 import { NbtTree, type NbtAnchor } from "./tree";
 import { NbtArray } from "./array";
 import { NbtTable } from "./table";
 import { NbtFind } from "./find";
-import { container, nbtControl, NBT_PROFILES, NBT_TYPE_NAMES } from "./format";
+import { nbtControl, NBT_PROFILES, NBT_TYPE_NAMES } from "./format";
+import {
+  NbtEditSheet,
+  type NbtEditAction,
+  type NbtEditRequest,
+} from "./edit-sheet";
 
 export function NbtBrowser({
   openSource,
@@ -20,6 +41,11 @@ export function NbtBrowser({
   onReady,
   onError,
   onLocalFile,
+  saveTarget,
+  readOnly = false,
+  onSessionChange,
+  saveAsTarget,
+  onOpenDocument,
 }: {
   openSource: (signal: AbortSignal) => Promise<Blob | NbtDocumentSource>;
   scope: string;
@@ -28,6 +54,11 @@ export function NbtBrowser({
   onReady?(): void;
   onError?(error: unknown): void;
   onLocalFile?(file: File): void;
+  saveTarget?: { path: string; write: NbtBinaryTransport };
+  readOnly?: boolean;
+  onSessionChange?(session: FileViewerSession | null): void;
+  saveAsTarget?(path: string): Promise<NbtBinaryTransport>;
+  onOpenDocument?(path: string): void | Promise<void>;
 }) {
   const [profile, setProfile] = useState("auto"),
     [compression, setCompression] = useState("auto"),
@@ -42,14 +73,23 @@ export function NbtBrowser({
     } | null>(null),
     [find, setFind] = useState(false),
     [crumbs, setCrumbs] = useState<NbtDisplayRow[]>([]),
-    [navigationError, setNavigationError] = useState<string | null>(null);
-  const { client, status, error } = useNbtClient(
-      openSource,
-      scope,
-      profile,
-      compression,
-      active,
-    ),
+    [navigationError, setNavigationError] = useState<string | null>(null),
+    [editing, setEditing] = useState(false),
+    [editRequest, setEditRequest] = useState<NbtEditRequest | null>(null),
+    [epoch, setEpoch] = useState(0);
+  const [saveAsPath, setSaveAsPath] = useState<string | null>(null),
+    [copyNotice, setCopyNotice] = useState<string | null>(null),
+    [copyError, setCopyError] = useState<string | null>(null);
+  const [copyPreparing, setCopyPreparing] = useState(false),
+    copyOpening = useRef(false);
+  const { client, session, status, edit, progress, error, sessionKey } =
+      useNbtClient(
+        openSource,
+        scope + "/reload-" + epoch,
+        profile,
+        compression,
+        active,
+      ),
     input = useRef<HTMLInputElement>(null),
     local = useRef<HTMLInputElement>(null),
     root = useRef<HTMLDivElement>(null),
@@ -57,6 +97,166 @@ export function NbtBrowser({
     ready = useRef<unknown>(null),
     initialRoot = useRef<unknown>(null),
     navigation = useRef<AbortController | null>(null);
+  const reloading = useRef(false),
+    replacement = useRef<{ key: string; release(): void } | null>(null);
+  const reloadAbort = useRef<AbortController | null>(null);
+  useEffect(() => {
+    if (client && replacement.current?.key === sessionKey) {
+      replacement.current.release();
+      replacement.current = null;
+    }
+  }, [client, sessionKey]);
+  useEffect(
+    () => () => {
+      reloadAbort.current?.abort();
+      replacement.current?.release();
+      replacement.current = null;
+    },
+    [],
+  );
+  const save = useCallback(async () => {
+    if (!session || copyOpening.current) return false;
+    const copy = session.pendingCopyPath;
+    if (!copy && !saveTarget) return false;
+    try {
+      const receipt = copy
+        ? await session.resumeCopy()
+        : await session.save(saveTarget!.path, saveTarget!.write);
+      if (copy) {
+        setCopyNotice(receipt.path);
+        setSaveAsPath(null);
+        try {
+          await onOpenDocument?.(receipt.path);
+        } catch (error) {
+          setNavigationError(
+            error instanceof Error
+              ? error.message
+              : "The saved file could not be opened.",
+          );
+        }
+      }
+      return !client?.getEditSnapshot()?.dirty;
+    } catch {
+      return false;
+    }
+  }, [session, saveTarget, client, onOpenDocument]);
+  const discard = useCallback(async () => {
+    const release = client?.freezeEdits();
+    try {
+      await discardNbtSession(sessionKey);
+      setEpoch((value) => value + 1);
+    } finally {
+      release?.();
+    }
+  }, [sessionKey, client]);
+  const reload = useCallback(async () => {
+    if (!client || reloading.current)
+      throw new Error("NBT reload is already in progress.");
+    const release = client.freezeEdits();
+    reloading.current = true;
+    const controller = new AbortController();
+    reloadAbort.current = controller;
+    const nextEpoch = epoch + 1,
+      key = JSON.stringify([
+        scope + "/reload-" + nextEpoch,
+        profile,
+        compression,
+      ]);
+    const lease = acquireNbtSession(
+      key,
+      (signal) =>
+        openNbtViewerClient(openSource, key, profile, compression, signal),
+      true,
+    );
+    controller.signal.addEventListener("abort", lease.release, { once: true });
+    let adopted = false;
+    try {
+      const next = await lease.promise;
+      controller.signal.throwIfAborted();
+      await new Promise<void>((resolve, reject) => {
+        let unsubscribe = () => {};
+        const cleanup = () => {
+          unsubscribe();
+          controller.signal.removeEventListener("abort", abort);
+        };
+        const abort = () => {
+          cleanup();
+          reject(controller.signal.reason);
+        };
+        controller.signal.addEventListener("abort", abort, { once: true });
+        const check = () => {
+          const status = next.client.getSnapshot();
+          if (status?.state === "complete") {
+            cleanup();
+            resolve();
+          } else if (status?.state === "error" || status?.state === "closed") {
+            cleanup();
+            reject(
+              new Error(
+                status.error?.message ??
+                  "The replacement NBT file could not be read.",
+              ),
+            );
+          }
+        };
+        unsubscribe = next.client.subscribe(check);
+        check();
+      });
+      controller.signal.throwIfAborted();
+      await discardNbtSession(sessionKey);
+      controller.signal.throwIfAborted();
+      replacement.current = { key, release: lease.release };
+      adopted = true;
+      setEpoch(nextEpoch);
+    } finally {
+      release();
+      reloading.current = false;
+      if (reloadAbort.current === controller) reloadAbort.current = null;
+      controller.signal.removeEventListener("abort", lease.release);
+      if (!adopted) lease.release();
+    }
+  }, [client, epoch, scope, profile, compression, openSource, sessionKey]);
+  const lifecycle = useMemo<FileViewerSession | null>(
+    () =>
+      client && edit
+        ? {
+            get revision() {
+              return client.getEditSnapshot()?.revision ?? 0;
+            },
+            get dirty() {
+              return client.getEditSnapshot()?.dirty ?? false;
+            },
+            get saving() {
+              return Boolean(
+                client.getEditSnapshot()?.saving ||
+                session?.busy ||
+                copyOpening.current,
+              );
+            },
+            get pending() {
+              const status = client.getEditSnapshot();
+              return Boolean(status?.pendingSaveId || status?.editing);
+            },
+            save,
+            discard,
+            reload,
+          }
+        : null,
+    [client, edit, save, discard, reload, session, progress, copyPreparing],
+  );
+  useEffect(() => {
+    onSessionChange?.(lifecycle);
+  }, [lifecycle, onSessionChange]);
+  useEffect(() => () => onSessionChange?.(null), [onSessionChange]);
+  useEffect(() => {
+    if (!edit?.dirty && !edit?.pendingSaveId && !edit?.editing) return;
+    const prevent = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", prevent);
+    return () => window.removeEventListener("beforeunload", prevent);
+  }, [edit?.dirty, edit?.pendingSaveId, edit?.editing]);
   useEffect(() => {
     setExpanded(new Set());
     setSelected(null);
@@ -64,11 +264,35 @@ export function NbtBrowser({
     setMode("tree");
     setAnchor(null);
     setArrayFocus(null);
+    setEditRequest(null);
     ready.current = null;
     initialRoot.current = null;
     navigation.current?.abort();
     return () => navigation.current?.abort();
   }, [client]);
+  useEffect(() => {
+    if (!client) return;
+    const controller = new AbortController();
+    const refresh = async (
+      row: NbtDisplayRow | null,
+      set: Dispatch<SetStateAction<NbtDisplayRow | null>>,
+    ) => {
+      if (!row) return;
+      try {
+        const next = await client.describe(row.node.id, controller.signal);
+        if (!controller.signal.aborted)
+          set((current) => (current?.node.id === row.node.id ? next : current));
+      } catch {
+        if (!controller.signal.aborted) {
+          set((current) => (current?.node.id === row.node.id ? null : current));
+          if (row === target) setMode("tree");
+        }
+      }
+    };
+    void refresh(selected, setSelected);
+    void refresh(target, setTarget);
+    return () => controller.abort();
+  }, [client, edit?.revision, selected?.node.id, target?.node.id]);
   useEffect(() => {
     if (client && status?.root) {
       if (initialRoot.current !== client) {
@@ -92,21 +316,47 @@ export function NbtBrowser({
         !active ||
         !(event.metaKey || event.ctrlKey) ||
         event.altKey ||
-        event.key.toLowerCase() !== "f"
+        !["f", "s", "z", "y"].includes(event.key.toLowerCase())
       )
         return;
       const focus = document.activeElement;
       if (focus && focus !== document.body && !root.current?.contains(focus))
         return;
+      if (
+        ["z", "y"].includes(event.key.toLowerCase()) &&
+        focus instanceof HTMLElement &&
+        focus.closest("input,textarea")
+      )
+        return;
       event.preventDefault();
       event.stopPropagation();
+      if (event.key.toLowerCase() === "s") {
+        if (!readOnly) void save();
+        return;
+      }
+      if (event.key.toLowerCase() === "z" || event.key.toLowerCase() === "y") {
+        if (
+          !readOnly &&
+          editing &&
+          client &&
+          !(focus instanceof HTMLElement && focus.closest("input,textarea"))
+        )
+          void (
+            event.shiftKey || event.key.toLowerCase() === "y"
+              ? client.redo()
+              : client.undo()
+          ).catch((reason) =>
+            setNavigationError(String(reason.message ?? reason)),
+          );
+        return;
+      }
       setFind(true);
       input.current?.focus();
       input.current?.select();
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [active]);
+  }, [active, readOnly, editing, client, save]);
   const select = useCallback((row: NbtDisplayRow) => {
     navigation.current?.abort();
     setSelected(row);
@@ -165,13 +415,28 @@ export function NbtBrowser({
       })
       .catch(() => {});
     return () => controller.abort();
-  }, [client, selected?.node.id]);
+  }, [client, selected?.node.id, edit?.revision]);
   const open = useCallback((row: NbtDisplayRow, next: "array" | "table") => {
     setSelected(row);
     setTarget(row);
     setMode(next);
     setArrayFocus(null);
   }, []);
+  const beginEdit = (
+    action: NbtEditAction,
+    row = selected,
+    element?: number,
+  ) => {
+    if (row && edit && !readOnly)
+      setEditRequest({ action, row, element, revision: edit.revision });
+  };
+  const protectedDraft = Boolean(
+    session?.busy ||
+    edit?.dirty ||
+    edit?.editing ||
+    edit?.saving ||
+    edit?.pendingSaveId,
+  );
   return (
     <div
       ref={root}
@@ -190,6 +455,7 @@ export function NbtBrowser({
             className={nbtControl}
             aria-label="NBT encoding"
             value={profile}
+            disabled={protectedDraft}
             onChange={(event) => setProfile(event.target.value)}
           >
             {NBT_PROFILES.map((item) => (
@@ -205,6 +471,7 @@ export function NbtBrowser({
             className={nbtControl}
             aria-label="NBT compression"
             value={compression}
+            disabled={protectedDraft}
             onChange={(event) => setCompression(event.target.value)}
           >
             <option value="auto">Automatic</option>
@@ -240,6 +507,67 @@ export function NbtBrowser({
           <Search className="size-3.5" />
           <span>Find</span>
         </button>
+        <button
+          className={nbtControl}
+          disabled={!client || readOnly}
+          onClick={() => setEditing((value) => !value)}
+          aria-label="Toggle NBT editing"
+          aria-pressed={editing}
+        >
+          {editing ? "Edit mode" : "View mode"}
+        </button>
+        {saveTarget ? (
+          <button
+            className={nbtControl}
+            disabled={
+              !edit ||
+              edit.saving ||
+              readOnly ||
+              (!edit.dirty && !edit.pendingSaveId)
+            }
+            onClick={() => void save()}
+          >
+            {edit?.saving
+              ? "Saving…"
+              : edit?.pendingSaveId
+                ? "Retry save"
+                : "Save"}
+          </button>
+        ) : null}
+        {saveAsTarget ? (
+          <button
+            className={nbtControl}
+            disabled={
+              !client || readOnly || Boolean(session?.busy) || copyPreparing
+            }
+            onClick={() => {
+              setSaveAsPath(
+                saveAsPath ??
+                  session?.pendingCopyPath ??
+                  (saveTarget?.path ?? label) + ".copy.nbt",
+              );
+              setCopyError(null);
+            }}
+          >
+            Save As…
+          </button>
+        ) : null}
+        <span
+          className="text-[10px] text-muted-foreground"
+          data-nbt-dirty={edit?.dirty ? "true" : "false"}
+        >
+          {progress?.phase === "uploading"
+            ? "Uploading " + (progress.uploaded / 1024 ** 2).toFixed(1) + " MiB"
+            : progress?.phase === "committing"
+              ? "Committing…"
+              : edit?.uncertain
+                ? "Save needs reconciliation"
+                : edit?.dirty
+                  ? "Unsaved changes"
+                  : progress?.phase === "saved"
+                    ? "Saved"
+                    : ""}
+        </span>
         {onLocalFile ? (
           <>
             <input
@@ -250,12 +578,13 @@ export function NbtBrowser({
               aria-label="Choose local NBT file"
               onChange={(event) => {
                 const file = event.target.files?.[0];
-                if (file) onLocalFile(file);
+                if (file && !protectedDraft) onLocalFile(file);
                 event.target.value = "";
               }}
             />
             <button
               className={nbtControl}
+              disabled={protectedDraft}
               onClick={() => local.current?.click()}
               aria-label="Open local NBT file"
             >
@@ -264,6 +593,98 @@ export function NbtBrowser({
           </>
         ) : null}
       </div>
+      {saveAsPath !== null && saveAsTarget && session ? (
+        <form
+          className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border/30 p-3 text-xs"
+          aria-label="Save NBT As"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (copyOpening.current) return;
+            copyOpening.current = true;
+            setCopyPreparing(true);
+            setCopyError(null);
+            void (async () => {
+              const write = await saveAsTarget(saveAsPath);
+              await session.saveAs(saveAsPath, write);
+              setCopyNotice(saveAsPath);
+              setSaveAsPath(null);
+              try {
+                await onOpenDocument?.(saveAsPath);
+              } catch (error) {
+                setNavigationError(
+                  error instanceof Error
+                    ? error.message
+                    : "The saved file could not be opened.",
+                );
+              }
+            })()
+              .catch((error) =>
+                setCopyError(
+                  error instanceof Error ? error.message : "Save As failed.",
+                ),
+              )
+              .finally(() => {
+                copyOpening.current = false;
+                setCopyPreparing(false);
+              });
+          }}
+        >
+          <label className="flex min-w-0 flex-1 items-center gap-2">
+            Project path
+            <input
+              autoFocus
+              className={nbtControl + " min-w-0 flex-1"}
+              aria-label="NBT Save As path"
+              value={saveAsPath}
+              disabled={Boolean(session.busy) || copyPreparing}
+              onChange={(event) => setSaveAsPath(event.target.value)}
+            />
+          </label>
+          <button
+            className={nbtControl}
+            disabled={
+              !saveAsPath || Boolean(session.busy) || copyPreparing || readOnly
+            }
+            type="submit"
+          >
+            Save new file
+          </button>
+          <button
+            type="button"
+            className={nbtControl}
+            disabled={Boolean(session.busy) || copyPreparing}
+            onClick={() => setSaveAsPath(null)}
+          >
+            Cancel
+          </button>
+          <p className="w-full text-muted-foreground">
+            Creates a new file. The draft in this original tab is retained.
+          </p>
+          {copyError ? (
+            <p role="alert" className="w-full text-destructive">
+              {copyError}
+            </p>
+          ) : null}
+        </form>
+      ) : null}
+      {copyNotice ? (
+        <p
+          role="status"
+          className="shrink-0 border-b border-border/30 px-3 py-2 text-xs text-muted-foreground"
+        >
+          Saved to {copyNotice}. This original tab still retains its draft.
+        </p>
+      ) : null}
+      {editing && client ? (
+        <NbtEditActions
+          client={client}
+          edit={edit}
+          selected={selected}
+          readOnly={readOnly}
+          onEdit={beginEdit}
+          onError={setNavigationError}
+        />
+      ) : null}
       <div
         className="flex h-8 shrink-0 items-center gap-1 overflow-x-auto border-b border-border/25 px-2 text-[10px] text-muted-foreground"
         aria-label="NBT breadcrumbs"
@@ -329,6 +750,47 @@ export function NbtBrowser({
           </p>
         </div>
       ) : null}
+      {progress?.error ? (
+        <div
+          role="alert"
+          className="shrink-0 border-b border-destructive/30 p-3 text-xs text-destructive"
+        >
+          {progress.error}
+          <p className="mt-1 text-muted-foreground">
+            Your draft is retained.{" "}
+            {progress.phase === "conflict"
+              ? "Reload to discard the draft or save it to another file."
+              : "Retry save to resume the upload and reconcile its receipt."}
+          </p>
+          <button
+            className={nbtControl + " mt-2"}
+            disabled={edit?.saving || readOnly}
+            onClick={() => void save()}
+          >
+            Retry save
+          </button>
+          <button
+            className={nbtControl + " ml-2"}
+            disabled={edit?.saving || readOnly || Boolean(session?.busy)}
+            onClick={() =>
+              void (async () => {
+                if (
+                  await confirmEditorAction(
+                    "Reload this NBT file and discard its unsaved changes?",
+                  )
+                )
+                  await reload();
+              })().catch((error) =>
+                setNavigationError(
+                  error instanceof Error ? error.message : "NBT reload failed.",
+                ),
+              )
+            }
+          >
+            Reload from disk
+          </button>
+        </div>
+      ) : null}
       {client ? (
         <div className="relative flex min-h-0 flex-1 flex-col">
           {mode === "array" && target ? (
@@ -338,6 +800,12 @@ export function NbtBrowser({
               row={target}
               focus={arrayFocus}
               availableBytes={status?.availableBytes ?? 0}
+              revision={edit?.revision ?? 0}
+              onEdit={
+                editing && !readOnly
+                  ? (element) => beginEdit("array", target, element)
+                  : undefined
+              }
             />
           ) : mode === "table" && target ? (
             <NbtTable
@@ -345,6 +813,7 @@ export function NbtBrowser({
               client={client}
               row={target}
               nodes={status?.nodes ?? 0}
+              revision={edit?.revision ?? 0}
               onSelect={select}
             />
           ) : (
@@ -352,6 +821,7 @@ export function NbtBrowser({
               client={client}
               root={status?.root ?? null}
               nodes={status?.nodes ?? 0}
+              revision={edit?.revision ?? 0}
               expanded={expanded}
               onExpanded={setExpanded}
               selected={selected?.node.id ?? null}
@@ -362,6 +832,7 @@ export function NbtBrowser({
           )}
           <NbtFind
             client={client}
+            revision={edit?.revision ?? 0}
             open={find}
             onClose={() => {
               setFind(false);
@@ -379,6 +850,23 @@ export function NbtBrowser({
             }
             onReveal={reveal}
           />
+          {editRequest ? (
+            <NbtEditSheet
+              key={
+                editRequest.action +
+                editRequest.row.node.id +
+                editRequest.revision +
+                String(editRequest.element)
+              }
+              client={client}
+              request={editRequest}
+              readOnly={readOnly}
+              onClose={() => setEditRequest(null)}
+              onApplied={(id) =>
+                void reveal({ id: "edit", nodeId: id, fields: [] })
+              }
+            />
+          ) : null}
         </div>
       ) : !error ? (
         <div className="grid flex-1 place-items-center text-xs text-muted-foreground">

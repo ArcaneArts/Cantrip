@@ -1,3 +1,12 @@
+import {
+  binaryWriteBeginSchema,
+  binaryWriteChunkSchema,
+  binaryWriteCommitSchema,
+  binaryWriteStatusSchema,
+  binaryWriteAbortSchema,
+  binaryWriteReceiptSchema,
+} from "./explorer-binary-write.js";
+export * from "./explorer-binary-write.js";
 import { z } from "zod";
 import {
   explorerBinaryReadSchema,
@@ -162,6 +171,11 @@ export const terminalSnapshotContentSchema = z
 export const explorerOperationRequestContentSchema = z.discriminatedUnion(
   "type",
   [
+    binaryWriteBeginSchema,
+    binaryWriteChunkSchema,
+    binaryWriteCommitSchema,
+    binaryWriteStatusSchema,
+    binaryWriteAbortSchema,
     explorerFileImportChunkSchema,
     explorerFileImportCancelSchema,
     z
@@ -252,6 +266,12 @@ export const explorerOperationRequestContentSchema = z.discriminatedUnion(
 export const explorerOperationResultContentSchema = z.discriminatedUnion(
   "type",
   [
+    z
+      .object({
+        type: z.literal("explorer.binary.write"),
+        value: binaryWriteReceiptSchema,
+      })
+      .strict(),
     explorerFileImportResultSchema,
     z
       .object({

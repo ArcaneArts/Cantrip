@@ -21,6 +21,7 @@ import type {
 
 type Job = {
   id: string;
+  model: NbtReadModel;
   controller: AbortController;
   status: NbtSearchStatus;
   results?: NbtSearchResults;
@@ -31,7 +32,7 @@ type Job = {
 export class NbtDocumentSearch {
   private current: Job | undefined;
   constructor(
-    private model: NbtReadModel,
+    private provider: NbtReadModel | (() => NbtReadModel),
     private binding: string,
     private publish: (status: NbtSearchStatus) => void,
   ) {}
@@ -55,6 +56,8 @@ export class NbtDocumentSearch {
     }
     const job: Job = {
       id,
+      model:
+        typeof this.provider === "function" ? this.provider() : this.provider,
       controller: new AbortController(),
       status: { id, state: "searching", count: 0, scannedNodes: 0 },
       done: Promise.resolve(),
@@ -86,6 +89,7 @@ export class NbtDocumentSearch {
   }
 
   private async nodeMatches(
+    model: NbtReadModel,
     node: NbtNode,
     query: NbtSearchQuery,
     signal: AbortSignal,
@@ -98,7 +102,7 @@ export class NbtDocumentSearch {
       has("name") &&
       (node.name
         ? await streamMatches(
-            textChunks(this.model, node.name, signal),
+            textChunks(model, node.name, signal),
             query,
             signal,
           )
@@ -112,7 +116,7 @@ export class NbtDocumentSearch {
       matched.push("type");
     if (
       has("path") &&
-      (await streamMatches(pathChunks(this.model, node, signal), query, signal))
+      (await streamMatches(pathChunks(model, node, signal), query, signal))
     )
       matched.push("path");
     if (has("value")) {
@@ -120,14 +124,14 @@ export class NbtDocumentSearch {
         node.type === NbtTag.String &&
         !query.exactNumber &&
         (await streamMatches(
-          textChunks(this.model, node.data!, signal),
+          textChunks(model, node.data!, signal),
           query,
           signal,
         ))
       )
         matched.push("value");
       else if (node.type >= NbtTag.Byte && node.type <= NbtTag.Double) {
-        const { value } = await this.model.scalar(node, signal);
+        const { value } = await model.scalar(node, signal);
         if (query.exactNumber ? numeric(value) : test(nbtScalarText(value)))
           matched.push("value");
       }
@@ -141,10 +145,11 @@ export class NbtDocumentSearch {
     test: ReturnType<typeof literalMatcher>,
     numeric: ReturnType<typeof numericMatcher>,
   ) {
+    const model = job.model;
     const signal = job.controller.signal,
       has = (field: NbtSearchField) => query.fields.includes(field),
       path = has("path")
-        ? await pathTail(this.model, node, query, signal)
+        ? await pathTail(model, node, query, signal)
         : undefined;
     const elementType =
         node.type === NbtTag.ByteArray
@@ -187,10 +192,10 @@ export class NbtDocumentSearch {
     if (!namesPossible && !valuesPossible && !typeMatches && !pathsPossible)
       return;
     for (let offset = 0; offset < (node.length ?? 0); offset += 4096) {
-      await this.model.work(signal);
+      await model.work(signal);
       const count = Math.min(4096, node.length! - offset),
         values = valuesPossible
-          ? await this.model.array(node.id, offset, count, signal)
+          ? await model.array(node.id, offset, count, signal)
           : undefined;
       let runStart = offset,
         runCount = 0,
@@ -238,6 +243,7 @@ export class NbtDocumentSearch {
     }
   }
   private async run(job: Job, query: NbtSearchQuery) {
+    const model = job.model;
     const signal = job.controller.signal,
       test = literalMatcher(query),
       numeric = numericMatcher(query.text);
@@ -246,25 +252,49 @@ export class NbtDocumentSearch {
         this.binding + "/search/" + job.id,
       );
       signal.throwIfAborted();
+      if (model.walkNodes) {
+        for await (const nodes of model.walkNodes(query.scope, signal)) {
+          for (const node of nodes) {
+            signal.throwIfAborted();
+            const matched = await this.nodeMatches(
+              model,
+              node,
+              query,
+              signal,
+              test,
+              numeric,
+            );
+            if (matched.length)
+              await job.results.append(node.id, undefined, matched);
+            if (isArray(node))
+              await this.arrayMatches(job, node, query, test, numeric);
+            job.status.scannedNodes++;
+          }
+          this.emit(job);
+        }
+        await model.validated(signal);
+        signal.throwIfAborted();
+        job.status.state = "complete";
+        this.emit(job, true);
+        return;
+      }
       let cursor = query.scope ? Number(query.scope.slice(5)) : 0;
       if (!Number.isSafeInteger(cursor) || cursor < 0)
         throw new Error("Invalid search scope.");
       for (;;) {
-        await this.model.work(signal);
-        const revision = this.model.changeRevision(),
-          status = this.model.snapshot(),
-          scope = query.scope
-            ? await this.model.getNode(query.scope)
-            : undefined;
+        await model.work(signal);
+        const revision = model.changeRevision(),
+          status = model.snapshot(),
+          scope = query.scope ? await model.getNode(query.scope) : undefined;
         if (query.scope && !scope)
           throw new Error("Search scope is unavailable.");
-        const nodes = await this.model.scanNodes(cursor, 64);
+        const nodes = await model.scanNodes(cursor, 64);
         let finishedScope = false;
         const inScope = async (node: NbtNode) => {
           let parent = node.parent;
           for (let depth = 0; parent !== null && depth <= 4096; depth++) {
             if (parent === scope!.id) return true;
-            parent = (await this.model.getNode(parent))?.parent ?? null;
+            parent = (await model.getNode(parent))?.parent ?? null;
           }
           return false;
         };
@@ -281,6 +311,7 @@ export class NbtDocumentSearch {
             break;
           }
           const matched = await this.nodeMatches(
+            model,
             node,
             query,
             signal,
@@ -300,16 +331,15 @@ export class NbtDocumentSearch {
           (cursor >= status.nodes && status.state === "complete")
         )
           break;
-        if (cursor >= this.model.snapshot().nodes) {
-          if (["error", "closed"].includes(this.model.snapshot().state))
+        if (cursor >= model.snapshot().nodes) {
+          if (["error", "closed"].includes(model.snapshot().state))
             throw new Error(
-              this.model.snapshot().error?.message ??
-                "NBT document is unavailable.",
+              model.snapshot().error?.message ?? "NBT document is unavailable.",
             );
-          await this.model.waitForChange(revision, signal);
+          await model.waitForChange(revision, signal);
         }
       }
-      await this.model.validated(signal);
+      await model.validated(signal);
       signal.throwIfAborted();
       job.status.state = "complete";
       this.emit(job, true);

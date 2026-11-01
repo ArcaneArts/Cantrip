@@ -13,7 +13,11 @@ function integer(value: number, min: number, max: number) {
   if (!Number.isInteger(value) || value < min || value > max)
     throw new NbtError(0, "Integer exceeds tag range");
 }
-function variable(value: bigint, bits: 32 | 64, zigzag = true): Uint8Array {
+export function nbtVariableInteger(
+  value: bigint,
+  bits: 32 | 64,
+  zigzag = true,
+): Uint8Array {
   if (zigzag) {
     if (value < -(1n << BigInt(bits - 1)) || value >= 1n << BigInt(bits - 1))
       throw new NbtError(0, "Integer exceeds tag range");
@@ -79,14 +83,14 @@ function* parts(
   function* string(text: string) {
     const bytes = encodeNbtString(text, encoding.strings);
     yield varints
-      ? variable(BigInt(bytes.length), 32, false)
+      ? nbtVariableInteger(BigInt(bytes.length), 32, false)
       : nbtFixedInteger(bytes.length, 2, little, true);
     yield bytes;
   }
   const i32 = (value: number) => {
     integer(value, -(2 ** 31), 2 ** 31 - 1);
     return varints
-      ? variable(BigInt(value), 32)
+      ? nbtVariableInteger(BigInt(value), 32)
       : nbtFixedInteger(value, 4, little);
   };
   let next: NbtValue | undefined = root.tag;
@@ -113,7 +117,7 @@ function* parts(
           break;
         case NbtTag.Long:
           yield varints
-            ? variable(tag.value, 64)
+            ? nbtVariableInteger(tag.value, 64)
             : nbtFixedInteger(tag.value, 8, little);
           break;
         case NbtTag.Float:

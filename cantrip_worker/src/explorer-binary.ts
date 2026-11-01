@@ -13,7 +13,7 @@ export class BinaryFileChangedError extends Error {
     );
   }
 }
-function version(stat: BigIntStats) {
+export function binaryFileVersion(stat: BigIntStats) {
   return (
     "binary-v1:" +
     createHash("sha256")
@@ -55,7 +55,7 @@ export async function readBinaryFilePage(
     if (before.size > BigInt(Number.MAX_SAFE_INTEGER))
       throw new Error("The file exceeds supported byte addressing.");
     const size = Number(before.size),
-      revision = version(before);
+      revision = binaryFileVersion(before);
     if (expectedVersion && expectedVersion !== revision)
       throw new BinaryFileChangedError();
     if (offset > size)
@@ -74,7 +74,7 @@ export async function readBinaryFilePage(
     }
     if (
       length !== bytes.length ||
-      version(await file.stat({ bigint: true })) !== revision
+      binaryFileVersion(await file.stat({ bigint: true })) !== revision
     )
       throw new BinaryFileChangedError();
     return explorerBinaryPageSchema.parse({

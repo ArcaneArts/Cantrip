@@ -1,3 +1,6 @@
+import { sha256 } from "@noble/hashes/sha2.js";
+import { bytesToHex } from "@noble/hashes/utils.js";
+import { NbtDocumentSession, serializeNbtEdits } from "../edit/index.js";
 import { NbtDocumentSearch } from "../search/search.js";
 import { nbtTreePage, nbtAncestors } from "../view/tree.js";
 import { nbtTablePage } from "../view/table.js";
@@ -14,6 +17,7 @@ import type {
 export function installNbtDocumentWorker(
   endpoint: NbtMessageEndpoint<NbtDocumentRequest, NbtDocumentResponse>,
 ) {
+  let session: NbtDocumentSession | undefined;
   let search: NbtDocumentSearch | undefined;
   let engine: NbtDocumentEngine | undefined,
     opening = false,
@@ -25,6 +29,8 @@ export function installNbtDocumentWorker(
         iterator: AsyncGenerator<Uint8Array>;
         controller: AbortController;
         busy: boolean;
+        hash: ReturnType<typeof sha256.create>;
+        size: number;
         request?: number;
       }
     | undefined;
@@ -139,8 +145,33 @@ export function installNbtDocumentWorker(
             await engine.close();
             throw controller.signal.reason;
           }
-          search = new NbtDocumentSearch(engine, engine.binding, (status) =>
-            send({ type: "search.status", status }),
+          session = await NbtDocumentSession.open(
+            engine,
+            command.options.version ?? "local",
+            (status) => {
+              send({ type: "edit.status", status });
+              send({
+                type: "status",
+                status: {
+                  ...session!.view().snapshot(),
+                  revision: status.revision,
+                },
+              });
+            },
+          );
+          if (controller.signal.aborted || closed) {
+            await session.close();
+            await engine.close();
+            throw (
+              controller.signal.reason ??
+              new Error("NBT worker closed while opening")
+            );
+          }
+          send({ type: "edit.status", status: session.snapshot() });
+          search = new NbtDocumentSearch(
+            () => session!.view(),
+            engine.binding,
+            (status) => send({ type: "search.status", status }),
           );
           value = engine.snapshot();
         } finally {
@@ -148,27 +179,41 @@ export function installNbtDocumentWorker(
         }
       } else {
         if (!engine) throw new Error("NBT worker has no open document.");
+        const model = session?.view() ?? engine;
         switch (command.type) {
-          case "rows":
-            value = await engine.rows(
-              command.parent,
-              command.offset,
-              command.limit,
-              controller.signal,
+          case "rows": {
+            assertRange(command.offset, command.limit);
+            if (command.limit > 128)
+              throw new NbtError(0, "Display pages are limited to 128 rows");
+            const nodes =
+              command.parent === null
+                ? command.offset === 0 && command.limit && model.snapshot().root
+                  ? [await model.getNode(model.snapshot().root!)]
+                  : []
+                : await model.getChildren(
+                    command.parent,
+                    command.offset,
+                    command.limit,
+                  );
+            value = await Promise.all(
+              nodes
+                .filter((node) => node !== undefined)
+                .map((node) => model.describe(node!, controller.signal)),
             );
             break;
+          }
           case "node": {
-            const node = await engine.getNode(command.id);
+            const node = await model.getNode(command.id);
             if (!node) throw new NbtError(0, "Indexed node is unavailable");
-            value = await engine.describe(node, controller.signal);
+            value = await model.describe(node, controller.signal);
             break;
           }
           case "ancestors":
-            value = await nbtAncestors(engine, command.id, controller.signal);
+            value = await nbtAncestors(model, command.id, controller.signal);
             break;
           case "tree":
             value = await nbtTreePage(
-              engine,
+              model,
               command.expanded,
               command.offset,
               command.limit,
@@ -178,7 +223,7 @@ export function installNbtDocumentWorker(
             break;
           case "table":
             value = await nbtTablePage(
-              engine,
+              model,
               command.id,
               command.offset,
               command.limit,
@@ -205,11 +250,73 @@ export function installNbtDocumentWorker(
             value = null;
             break;
           case "array":
-            value = await engine.array(
+            value = await model.array(
               command.id,
               command.offset,
               command.limit,
               controller.signal,
+            );
+            break;
+          case "edit.apply":
+            value = await session!.apply(
+              command.operations,
+              command.revision,
+              controller.signal,
+              command.label,
+            );
+            break;
+          case "edit.undo":
+            value = await session!.undo(controller.signal);
+            break;
+          case "edit.redo":
+            value = await session!.redo(controller.signal);
+            break;
+          case "edit.text": {
+            assertRange(command.offset, command.limit);
+            if (command.limit < 4 || command.limit > 65535)
+              throw new NbtError(0, "Text edit pages require 4–65535 bytes");
+            const node = await model.getNode(command.id),
+              span =
+                command.field === "name"
+                  ? node?.name
+                  : node?.type === 8
+                    ? node.data
+                    : undefined;
+            if (!span) throw new NbtError(0, "Tag has no requested text field");
+            if (command.offset > span.length)
+              throw new NbtError(0, "Text page is beyond the field");
+            const page = await model.text(
+              {
+                ...span,
+                offset: span.offset + command.offset,
+                length: span.length - command.offset,
+              },
+              command.limit,
+              controller.signal,
+            );
+            value = {
+              text: page.text,
+              offset: command.offset,
+              nextOffset: page.nextByte - span.offset,
+              totalBytes: span.length,
+              truncated: page.truncated,
+            };
+            break;
+          }
+          case "save.begin":
+            value = await session!.beginSave(command.saveId, controller.signal);
+            break;
+          case "save.ack":
+            value = await session!.acknowledgeSave(
+              command.saveId,
+              command.version,
+            );
+            break;
+          case "save.fail":
+            value = await session!.failSave(
+              command.saveId,
+              command.uncertain,
+              command.retain,
             );
             break;
           case "pause":
@@ -221,12 +328,26 @@ export function installNbtDocumentWorker(
             const exportController = new AbortController();
             serialization = {
               id: command.exportId,
-              iterator: engine.serialize(
-                command.original,
-                exportController.signal,
-              ),
+              iterator:
+                command.original &&
+                model === engine &&
+                session!.canExportOriginal &&
+                !command.saveId
+                  ? engine.serialize(true, exportController.signal)
+                  : (async function* () {
+                      const selected = command.saveId
+                          ? session!.saveView(command.saveId)
+                          : model,
+                        result = await engine!.completed;
+                      yield* serializeNbtEdits(selected, engine!.format, {
+                        signal: exportController.signal,
+                        levelVersion: result.levelVersion,
+                      });
+                    })(),
               controller: exportController,
               busy: false,
+              hash: sha256.create(),
+              size: 0,
             };
             value = null;
             break;
@@ -241,14 +362,21 @@ export function installNbtDocumentWorker(
               const result = await current.iterator.next();
               if (result.done) {
                 if (serialization === current) serialization = undefined;
-                value = { done: true };
+                value = {
+                  done: true,
+                  size: current.size,
+                  sha256: bytesToHex(current.hash.digest()),
+                };
               } else {
                 const bytes = result.value.slice();
+                current.hash.update(bytes);
+                current.size += bytes.length;
                 value = { done: false, bytes };
                 transfer = [bytes.buffer];
               }
             } catch (error) {
               current.controller.abort(error);
+              current.hash.destroy();
               if (serialization === current) serialization = undefined;
               throw error;
             } finally {
@@ -262,6 +390,7 @@ export function installNbtDocumentWorker(
             if (current?.id === command.exportId) {
               current.controller.abort(new Error("NBT export cancelled."));
               await current.iterator.return(undefined);
+              current.hash.destroy();
               if (serialization === current) serialization = undefined;
             }
             value = null;
@@ -275,8 +404,10 @@ export function installNbtDocumentWorker(
               new Error("NBT document is closed."),
             );
             await search?.close();
+            await session?.close();
             await engine.close();
             await serialization?.iterator.return(undefined);
+            serialization?.hash.destroy();
             serialization = undefined;
             closed = true;
             value = null;
@@ -308,7 +439,9 @@ export function installNbtDocumentWorker(
     reads.clear();
     serialization?.controller.abort();
     await search?.close();
+    await session?.close();
     await engine?.close();
     await serialization?.iterator.return(undefined);
+    serialization?.hash.destroy();
   };
 }

@@ -3,6 +3,10 @@ import type { NbtDisplayRow, NbtDocumentStatus } from "../document/types.js";
 
 /** All browsing/search reads use one logical model; edit overlays extend this boundary. */
 export interface NbtReadModel {
+  walkNodes?(
+    scope: string | undefined,
+    signal: AbortSignal,
+  ): AsyncIterable<NbtNode[]>;
   snapshot(): NbtDocumentStatus;
   getNode(id: string): Promise<NbtNode | undefined>;
   getChildren(

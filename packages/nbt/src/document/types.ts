@@ -1,3 +1,4 @@
+import type { NbtEditOperation, NbtEditStatus } from "../edit/types.js";
 import type { NbtSearchQuery, NbtSearchStatus } from "../search/types.js";
 import type {
   NbtByteSource,
@@ -8,6 +9,7 @@ import type {
 } from "../types.js";
 
 export interface NbtDocumentStatus {
+  revision?: number;
   state: "indexing" | "paused" | "complete" | "error" | "closed";
   root: string | null;
   availableBytes: number;
@@ -29,12 +31,14 @@ export interface NbtDisplayRow {
 }
 export interface NbtDocumentOpenOptions {
   binding: string;
+  version?: string;
   format: NbtFormat;
   cacheBytes?: number;
   indexPages?: number;
   fallbackCompression?: boolean;
 }
 export interface NbtDocumentSource extends NbtByteSource {
+  readonly version?: string;
   close?(): void;
 }
 export type NbtDocumentInput =
@@ -65,8 +69,31 @@ export type NbtDocumentCommand =
   | { type: "search.start"; id: string; query: NbtSearchQuery }
   | { type: "search.page"; id: string; offset: number; limit: number }
   | { type: "search.cancel"; id: string }
+  | {
+      type: "edit.apply";
+      operations: NbtEditOperation[];
+      revision: number;
+      label?: string;
+    }
+  | { type: "edit.undo" }
+  | { type: "edit.redo" }
+  | {
+      type: "edit.text";
+      id: string;
+      field: "name" | "value";
+      offset: number;
+      limit: number;
+    }
+  | { type: "save.begin"; saveId: string }
+  | { type: "save.ack"; saveId: string; version: string }
+  | { type: "save.fail"; saveId: string; uncertain: boolean; retain?: boolean }
   | { type: "pause"; paused: boolean }
-  | { type: "serialize.begin"; exportId: string; original: boolean }
+  | {
+      type: "serialize.begin";
+      exportId: string;
+      original: boolean;
+      saveId?: string;
+    }
   | { type: "serialize.next"; exportId: string }
   | { type: "serialize.cancel"; exportId: string }
   | { type: "close" };
@@ -82,6 +109,7 @@ export type NbtDocumentResponse =
       error?: { message: string; offset?: number };
     }
   | { type: "status"; status: NbtDocumentStatus }
+  | { type: "edit.status"; status: NbtEditStatus }
   | { type: "search.status"; status: NbtSearchStatus }
   | { type: "source.read"; id: number; offset: number; length: number }
   | { type: "source.cancel"; id: number };
@@ -97,3 +125,8 @@ export interface NbtMessageEndpoint<In, Out> {
   ): void;
 }
 export type NbtCompletedDocument = NbtScanResult;
+
+export interface NbtSerializationReceipt {
+  size: number;
+  sha256: string;
+}

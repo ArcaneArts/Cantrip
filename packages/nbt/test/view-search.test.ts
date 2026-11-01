@@ -527,3 +527,17 @@ it("rank-selects a deeply expanded tree without recursing on the JavaScript stac
     await engine.close();
   }
 });
+it("stores long logical node identities across encrypted cache page boundaries", async () => {
+  const results = await NbtSearchResults.open("query/large-identities"),
+    id = "copy:" + "x".repeat(70000);
+  try {
+    await results.append(id, undefined, ["name"]);
+    await results.append("node:next", undefined, ["value"]);
+    expect((await results.read(0, 2)).map((row) => row.nodeId)).toEqual([
+      id,
+      "node:next",
+    ]);
+  } finally {
+    await results.close();
+  }
+});
