@@ -391,3 +391,49 @@ it("reads indexed scalar values without awaiting unavailable structural lookahea
     truncated: false,
   });
 });
+it("serves bounded tree, table, full-value search and ancestor pages through worker RPC", async () => {
+  const bytes = await fixture(),
+    endpoints = pair(),
+    dispose = installNbtDocumentWorker(endpoints.worker),
+    client = await NbtDocumentClient.open(
+      endpoints.main,
+      memoryNbtSource(bytes),
+      options,
+    );
+  try {
+    await waitFor(() => client.getSnapshot()?.state === "complete");
+    const root = client.getSnapshot()!.root!,
+      children = await client.rows(root),
+      items = children.find((row) => row.name === "items")!;
+    const tree = await client.tree([root, items.node.id], 0, 128);
+    expect(tree.total).toBe(6);
+    const table = await client.table({
+      id: items.node.id,
+      offset: 0,
+      limit: 2,
+      columnOffset: 0,
+      columnLimit: 8,
+      referenceOrdinal: 0,
+      reverse: false,
+    });
+    expect(table.rows[0]?.cells[0]?.value).toBe(42);
+    await client.startSearch("find", {
+      text: "word word",
+      fields: ["value"],
+      caseSensitive: false,
+      exactNumber: false,
+    });
+    await waitFor(() => client.getSearchSnapshot()?.state === "complete");
+    const results = await client.searchResults("find", 0, 128);
+    expect(results).toHaveLength(1);
+    expect((await client.describe(results[0]!.nodeId)).valueTruncated).toBe(
+      true,
+    );
+    expect((await client.ancestors(results[0]!.nodeId))[0]?.id).toBe(root);
+    await expect(client.searchResults("find", 0, 129)).rejects.toThrow();
+    await client.cancelSearch("find");
+  } finally {
+    await client.close();
+    await dispose();
+  }
+});

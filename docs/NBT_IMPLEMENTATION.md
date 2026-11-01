@@ -4,15 +4,15 @@ This is the complete accepted NBT implementation scope. It remains the goal
 until every completion condition below has direct evidence. The codec package
 is a foundation; its presence does not mean the app viewer/editor has shipped.
 
-| Milestone                              | Current state | Required evidence                                                                           |
-| -------------------------------------- | ------------- | ------------------------------------------------------------------------------------------- |
-| 1. Lossless client codec               | Implemented   | Codec tests, independent fixtures, production browser-worker QA                             |
-| 2. Binary access and encrypted storage | Implemented   | Protected range reads, pinned revisions, encrypted OPFS/IndexedDB spill and cancellation    |
-| 3. Background parser integration       | Implemented   | Dedicated document worker, progressive disk-backed indexing, bounded working set            |
-| 4. Tree/table viewer and global search | Pending       | Actual app interactions, unloaded-subtree search, paged grids and responsive navigation     |
-| 5. Typed editing and streamed saves    | Pending       | All edit operations, undo/redo, atomic version-checked saves and interrupted-write receipts |
-| 6. Recovery, ownership, and phones     | Pending       | Encrypted recoverable drafts, safe close/pop-out/return, touch editing and phone saves      |
-| 7. Qualification                       | Pending       | Full malformed/concurrency/storage matrix, measured desktop/browser/mobile performance      |
+| Milestone                              | Current state        | Required evidence                                                                           |
+| -------------------------------------- | -------------------- | ------------------------------------------------------------------------------------------- |
+| 1. Lossless client codec               | Implemented          | Codec tests, independent fixtures, production browser-worker QA                             |
+| 2. Binary access and encrypted storage | Implemented          | Protected range reads, pinned revisions, encrypted OPFS/IndexedDB spill and cancellation    |
+| 3. Background parser integration       | Implemented          | Dedicated document worker, progressive disk-backed indexing, bounded working set            |
+| 4. Tree/table viewer and global search | Baseline implemented | Actual app interactions, unloaded-subtree search, paged grids and responsive navigation     |
+| 5. Typed editing and streamed saves    | Pending              | All edit operations, undo/redo, atomic version-checked saves and interrupted-write receipts |
+| 6. Recovery, ownership, and phones     | Pending              | Encrypted recoverable drafts, safe close/pop-out/return, touch editing and phone saves      |
+| 7. Qualification                       | Pending              | Full malformed/concurrency/storage matrix, measured desktop/browser/mobile performance      |
 
 Milestone 1 validation commands:
 
@@ -94,6 +94,53 @@ the visible tree/table/search UI is milestone 4. Typed edit serialization and
 atomic worker writes are milestone 5; shared ownership, encrypted recoverable
 journals, locking and phones remain milestone 6. Disposable index cache flush
 is not a replacement for durable draft recovery.
+
+Milestone 4 validation commands:
+
+```sh
+pnpm --filter @cantrip/nbt build
+pnpm --filter @cantrip/nbt exec vitest run --maxWorkers=1
+pnpm --filter @cantrip/app exec vitest run src/components/nbt/use-client.test.tsx src/components/files/file-viewers.test.ts src/lib/nbt/document.test.ts src/lib/binary-file-source.test.ts src/lib/file-access.test.ts src/lib/api/file-documents.test.ts --maxWorkers=2
+pnpm --filter @cantrip/app build
+node scripts/qa/nbt-viewer-browser.mjs
+node scripts/qa/nbt-project-viewer.mjs
+```
+
+The app registers an NBT viewer and an Open As → NBT override. Its dedicated
+worker provides rank-selected virtual tree pages, sparse expansion state,
+ancestor navigation, typed compound-list tables, and decimal/hex numeric-array
+grids. Large scroll extents are scaled rather than relying on browser element
+heights large enough for hundreds of millions of rows. Table columns come from
+a user-selected available item and have their own pagination; reverse display
+order does not mutate source bytes. Every field remains accessible through the
+tree, table reference-item selector, and whole-document search.
+
+Literal search covers full names, values, types, and escaped JSON Pointer style
+paths, including unloaded/collapsed branches and numeric array elements. Long
+matching never converts integers through Number. Results stream from a
+cancellable worker job into separate encrypted result pages; contiguous array
+matches use runs rather than allocating one object per element. Exact totals
+require the validated end of the document, including compressed checksums.
+The compact find chip supports Enter/Shift+Enter, case sensitivity, exact
+numbers, and selected-subtree scope. Encoding and compression remain explicit
+controls for ambiguous files and malformed-data diagnostics.
+
+Browser interaction QA in Chromium and WebKit opens a 100 MiB expanded gzip
+array with unopened tail properties, finds those full values, reveals ancestors,
+checks exact Longs, reaches the last of 104,857,600 numeric elements with only
+viewport cells mounted, and exercises keyboard navigation, typed tables,
+column paging, format selection, diagnostics, and idle/inactive behavior.
+A separate real app/server/worker fixture opens a protected 12 MiB expanded file,
+finds its tail value, forces NBT for an unknown extension, and reads the final
+array element. The ordinary local-file input and 390px layout are browser tests,
+not physical iOS/Android qualification.
+
+This milestone reads the immutable baseline. All views and search share the
+`NbtReadModel` boundary; milestone 5 must extend it for typed edit overlays,
+inserted identities, structural changes, and searches that include unsaved edits.
+Those requirements are still mandatory and have not been proved here. Save,
+recovery, shared document ownership, physical-phone testing, and the complete
+qualification matrix remain milestones 5–7.
 
 ## Accepted plan
 
