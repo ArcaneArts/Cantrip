@@ -1,3 +1,8 @@
+import { isFindShortcut, registerFindEditor } from "./find/shortcut";
+import { EditorFindChip } from "./find/editor-find-chip";
+import { useEditorFind } from "./find/use-editor-find";
+import { findPaintedText } from "./find/find-painted-text";
+import type { FindMatch } from "./find/index";
 import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { SyntaxToken } from "./syntax/types";
 import type {
@@ -27,20 +32,28 @@ const PaintedLine = memo(function PaintedLine({
   line,
   number,
   tokens,
+  offset,
+  match,
 }: {
   line: string;
   number: number;
   tokens: SyntaxToken[];
+  offset: number;
+  match: FindMatch | null;
 }) {
   return (
     <div className="cantrip-editor-line" data-editor-line={number}>
       {tokens.length
         ? tokens.map((token) => (
             <span className={`syntax-${token.kind}`} key={token.from}>
-              {line.slice(token.from, token.to)}
+              {findPaintedText(
+                line.slice(token.from, token.to),
+                offset + token.from,
+                match,
+              )}
             </span>
           ))
-        : line}
+        : findPaintedText(line, offset, match)}
       {line.length === 0 ? "\u200b" : null}
     </div>
   );
@@ -58,6 +71,10 @@ export function NativeCodeEditor({
   onViewportChange,
   followEnd = false,
   onScrollPositionChange,
+  onFindQueryChange,
+  findReady = true,
+  findError = false,
+  findScope,
 }: {
   session: EditorDocumentSession;
   path: string;
@@ -71,8 +88,20 @@ export function NativeCodeEditor({
   onViewportChange?(last: number, total: number): void;
   followEnd?: boolean;
   onScrollPositionChange?(atBottom: boolean): void;
+  onFindQueryChange?(query: string | null): void;
+  findReady?: boolean;
+  findError?: boolean;
+  findScope?: string;
 }) {
   const showLineNumbers = useCodeEditorLineNumbers();
+  const find = useEditorFind(session, active, findReady);
+  useEffect(
+    () => onFindQueryChange?.(active && find.open ? find.query : null),
+    [active, find.open, find.query, onFindQueryChange],
+  );
+  useEffect(() => () => onFindQueryChange?.(null), [onFindQueryChange]);
+  const pendingFindReveal = useRef(false);
+  const editorRoot = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   const codePaint = useRef<HTMLDivElement>(null);
   const gutterPaint = useRef<HTMLDivElement>(null);
@@ -270,6 +299,79 @@ export function NativeCodeEditor({
     )
       redraw((value) => value + 1);
   }, [active, followEnd, height, session, session.revision]);
+  useLayoutEffect(() => {
+    const match = find.result?.match,
+      node = input.current;
+    if (!active || !find.result?.reveal || !match || !node) {
+      pendingFindReveal.current = false;
+      return;
+    }
+    session.selection = {
+      start: match.from,
+      end: match.to,
+      direction: "forward",
+    };
+    node.setSelectionRange(match.from, match.to, "forward");
+    const row = lineIndex.current!.lineAt(match.from);
+    const top = EDITOR_VERTICAL_PADDING + row * EDITOR_LINE_HEIGHT;
+    if (
+      top < node.scrollTop + EDITOR_LINE_HEIGHT ||
+      top + EDITOR_LINE_HEIGHT > node.scrollTop + node.clientHeight
+    )
+      node.scrollTop = Math.max(0, top - node.clientHeight / 2);
+    session.scrollTop = node.scrollTop;
+    scrollPositionChange.current?.(
+      node.scrollHeight - node.clientHeight - node.scrollTop <= 2,
+    );
+    pendingFindReveal.current = true;
+    paintScroll();
+    redraw((value) => value + 1);
+  }, [active, find.result]);
+  useLayoutEffect(() => {
+    if (!pendingFindReveal.current) return;
+    const node = input.current,
+      mark =
+        codePaint.current?.querySelector<HTMLElement>("[data-find-active]");
+    if (!node || !mark) return;
+    pendingFindReveal.current = false;
+    const bounds = node.getBoundingClientRect(),
+      hit = mark.getBoundingClientRect();
+    if (hit.left < bounds.left + 12 || hit.right > bounds.right - 12) {
+      node.scrollLeft = Math.max(
+        0,
+        node.scrollLeft + hit.left - bounds.left - node.clientWidth / 2,
+      );
+      session.scrollLeft = node.scrollLeft;
+      paintScroll();
+    }
+    onViewStateChangeRef.current?.();
+  });
+  const showFind = () => {
+    const node = input.current;
+    if (node) session.selection = selection(node);
+    const selected =
+      node?.value.slice(node.selectionStart, node.selectionEnd) ?? "";
+    find.show(
+      !find.open &&
+        selected &&
+        selected.length <= 1000 &&
+        !/[\r\n]/u.test(selected)
+        ? selected
+        : undefined,
+    );
+  };
+  const showFindRef = useRef(showFind);
+  showFindRef.current = showFind;
+  useEffect(() => {
+    const root = editorRoot.current;
+    if (active && root)
+      return registerFindEditor(root, () => showFindRef.current());
+  }, [active, session]);
+  const closeFind = () => {
+    find.close();
+    pendingFindReveal.current = false;
+    input.current?.focus({ preventScroll: true });
+  };
   useEffect(() => {
     if (input.current) onReady?.(session);
   }, [session, onReady]);
@@ -284,11 +386,33 @@ export function NativeCodeEditor({
 
   return (
     <div
+      ref={editorRoot}
       className="cantrip-editor"
       data-selectable-text="true"
       data-native-code-editor="true"
+      data-find-open={find.open || undefined}
+      onKeyDownCapture={(event) => {
+        if (!active || event.nativeEvent.isComposing) return;
+        if (isFindShortcut(event)) {
+          event.preventDefault();
+          event.stopPropagation();
+          showFind();
+        } else if (event.key === "Escape" && find.open) {
+          event.preventDefault();
+          event.stopPropagation();
+          closeFind();
+        }
+      }}
       style={{ "--editor-gutter-width": gutterWidth } as React.CSSProperties}
     >
+      {find.open ? (
+        <EditorFindChip
+          find={find}
+          onClose={closeFind}
+          unavailable={findError}
+          scope={findScope}
+        />
+      ) : null}
       {showLineNumbers ? (
         <div className="cantrip-editor-gutter" aria-hidden="true">
           <div
@@ -320,11 +444,21 @@ export function NativeCodeEditor({
             {lines.slice(viewport.first, viewport.last).map((line, offset) => {
               const cached = highlighted.get(viewport.first + offset + 1);
               const tokens = cached?.text === line ? cached.tokens : NO_TOKENS;
+              const from = lineIndex.current!.offsets[viewport.first + offset]!;
+              const selected = find.result?.match;
+              const match =
+                selected &&
+                selected.from < from + line.length &&
+                selected.to > from
+                  ? selected
+                  : null;
               return (
                 <PaintedLine
                   line={line}
                   number={viewport.first + offset + 1}
                   tokens={tokens}
+                  offset={match ? from : 0}
+                  match={match}
                   key={viewport.first + offset}
                 />
               );
@@ -334,10 +468,11 @@ export function NativeCodeEditor({
         <textarea
           ref={input}
           aria-label={`${readOnly ? "View" : "Edit"} ${path.split("/").at(-1) ?? path}`}
+          aria-keyshortcuts="Meta+F Control+F"
           aria-description={
             readOnly
-              ? "Read only. Select and copy text. Press Escape to leave the viewer."
-              : "Press Escape to leave the editor. Tab indents text."
+              ? "Read only. Select and copy text. Press Command+F or Control+F to find. Press Escape to leave the viewer."
+              : "Press Command+F or Control+F to find. Press Escape to leave the editor. Tab indents text."
           }
           readOnly={readOnly}
           autoCapitalize="off"

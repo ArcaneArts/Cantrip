@@ -7,15 +7,27 @@ import { PagedTextPreview } from "./paged-text-preview";
 
 const viewport = vi.hoisted(() => ({
   report: undefined as undefined | ((last: number, total: number) => void),
+  query: undefined as undefined | ((query: string | null) => void),
+  ready: true,
+  error: false,
 }));
 vi.mock("@/components/editor/native-code-editor", () => ({
   NativeCodeEditor: ({
     session,
     onViewportChange,
+    onFindQueryChange,
+    findReady,
+    findError,
   }: {
     session: { text: string };
     onViewportChange: (last: number, total: number) => void;
+    onFindQueryChange(query: string | null): void;
+    findReady: boolean;
+    findError: boolean;
   }) => {
+    viewport.query = onFindQueryChange;
+    viewport.ready = findReady;
+    viewport.error = findError;
     viewport.report = onViewportChange;
     return <pre>{session.text}</pre>;
   },
@@ -109,4 +121,30 @@ it("stops automatic reads after a changed-file error and keeps the last good tex
   expect(f.container.querySelector("pre")!.textContent).toBe("first");
   await act(async () => viewport.report!(10_000, 10_001));
   expect(f.readPage).toHaveBeenCalledTimes(2);
+});
+
+it("loads remaining pages for a whole-file find before allowing counts", async () => {
+  const f = await fixture();
+  let resolve!: (page: ExplorerTextPreviewPage) => void;
+  f.readPage.mockReturnValueOnce(
+    new Promise<ExplorerTextPreviewPage>((done) => {
+      resolve = done;
+    }),
+  );
+  await act(async () => viewport.query!("TARGET"));
+  expect(f.readPage).toHaveBeenLastCalledWith(5, "a".repeat(64));
+  expect(viewport.ready).toBe(false);
+  const tail = "x".repeat(89) + "TARGET";
+  await act(async () => resolve(page(tail, 5, true)));
+  expect(viewport.ready).toBe(true);
+  expect(f.container.querySelector("pre")!.textContent).toBe("first" + tail);
+  expect(f.readPage).toHaveBeenCalledTimes(2);
+});
+it("reports an incomplete search when a continuation fails instead of showing partial totals", async () => {
+  const f = await fixture();
+  f.readPage.mockRejectedValueOnce(new Error("file changed"));
+  await act(async () => viewport.query!("TARGET"));
+  expect(viewport.ready).toBe(false);
+  expect(viewport.error).toBe(true);
+  expect(f.container.querySelector("pre")!.textContent).toBe("first");
 });
