@@ -122,3 +122,28 @@ it("cancels an actual source open when the final clean view is released", async 
   expect(signal?.aborted).toBe(true);
   expect(await result).toBeInstanceOf(Error);
 });
+it("controls activity while encrypted recovery is still opening instead of waiting for replay to finish", async () => {
+  vi.useFakeTimers();
+  const value = client();
+  let finish!: (client: NbtDocumentClient) => void;
+  const view = acquireNbtSession(
+    "recovering",
+    async (_signal, created) => {
+      created(value.api);
+      return new Promise<NbtDocumentClient>((resolve) => {
+        finish = resolve;
+      });
+    },
+    false,
+  );
+  expect(value.paused).toHaveBeenLastCalledWith(true);
+  view.setActive(true);
+  expect(value.paused).toHaveBeenLastCalledWith(false);
+  view.setActive(false);
+  expect(value.paused).toHaveBeenLastCalledWith(true);
+  finish(value.api);
+  expect((await view.promise).client).toBe(value.api);
+  view.release();
+  await vi.runAllTimersAsync();
+  expect(value.close).toHaveBeenCalledOnce();
+});

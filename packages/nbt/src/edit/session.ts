@@ -6,6 +6,7 @@ import {
   type NbtSpan,
 } from "../types.js";
 import type { NbtDocumentEngine } from "../document/engine.js";
+import type { NbtRecoveryEvent, NbtRecoveryWriter } from "../recovery/types.js";
 import { NbtEditData } from "./data.js";
 import { NbtEditView, wrapCopy } from "./model.js";
 import { NbtPersistentMap, NbtSequence } from "./persistent.js";
@@ -27,6 +28,8 @@ import type {
   NbtSerializableModel,
   NbtChildPart,
   NbtArrayPart,
+  NbtPendingSave,
+  NbtSaveTarget,
 } from "./types.js";
 interface History {
   state: NbtEditState;
@@ -60,21 +63,20 @@ export class NbtDocumentSession {
   private closed = false;
   private uncertain = false;
   private journal = 0;
+  private restoring = false;
   private saving:
-    | {
-        id: string;
+    | (NbtPendingSave & {
         state: NbtEditState;
         view: NbtSerializableModel;
-        revision: number;
-        version: string;
         suspended?: boolean;
-      }
+      })
     | undefined;
   private constructor(
     readonly baseline: NbtDocumentEngine,
     readonly data: NbtEditData,
     private version: string,
     private publish: (status: NbtEditStatus) => void,
+    private recovery?: NbtRecoveryWriter,
   ) {
     this.initialVersion = version;
   }
@@ -82,12 +84,14 @@ export class NbtDocumentSession {
     baseline: NbtDocumentEngine,
     version: string,
     publish: (status: NbtEditStatus) => void = () => {},
+    recovery?: NbtRecoveryWriter,
   ) {
     return new NbtDocumentSession(
       baseline,
       await NbtEditData.open(baseline, baseline.binding),
       version,
       publish,
+      recovery,
     );
   }
   snapshot(): NbtEditStatus {
@@ -99,7 +103,18 @@ export class NbtDocumentSession {
       version: this.version,
       saving: Boolean(this.saving && !this.saving.suspended),
       pendingSaveId: this.saving?.id,
+      ...(this.saving ? { pendingSave: this.saveSnapshot() } : {}),
       uncertain: this.uncertain,
+    };
+  }
+  private saveSnapshot(): NbtPendingSave {
+    const save = this.saving!;
+    return {
+      id: save.id,
+      version: save.version,
+      revision: save.revision,
+      ...(save.target ? { target: { ...save.target } } : {}),
+      ...(save.metadata ? { metadata: { ...save.metadata } } : {}),
     };
   }
   private emit() {
@@ -136,6 +151,107 @@ export class NbtDocumentSession {
       this.state = this.initial;
       this.saved = this.initial;
       this.initialized = true;
+    }
+    if (!this.restoring) await this.recovery?.prepare(signal);
+  }
+  private async checkpoint(event: NbtRecoveryEvent) {
+    if (this.restoring) return;
+    if (this.recovery) await this.recovery.append(event);
+    else await this.data.journal(++this.journal, { version: 1, ...event });
+  }
+  attachRecovery(writer: NbtRecoveryWriter) {
+    if (
+      this.recovery ||
+      this.initialized ||
+      this.revision ||
+      this.saving ||
+      this.closed
+    )
+      throw new NbtError(
+        0,
+        "Only an unedited replacement can acquire NBT recovery",
+      );
+    this.recovery = writer;
+  }
+  /** Replay before publishing the session to views. Baseline bytes, node ID
+   * reservations, undo roots and saved roots all retain their original meaning. */
+  async restore(
+    events: AsyncIterable<NbtRecoveryEvent>,
+    signal = new AbortController().signal,
+  ) {
+    if (
+      this.revision ||
+      this.initialized ||
+      this.snapshot().pendingSaveId ||
+      this.restoring
+    )
+      throw new NbtError(0, "NBT recovery requires a new editing session");
+    this.restoring = true;
+    try {
+      await this.ready(signal);
+      for await (const event of events) {
+        this.check(signal);
+        if (!event || typeof event.kind !== "string")
+          throw new NbtError(0, "Invalid NBT recovery operation");
+        switch (event.kind) {
+          case "apply": {
+            if (
+              !Number.isSafeInteger(event.allocationStart) ||
+              event.allocationStart < this.sequence ||
+              !Number.isSafeInteger(event.allocationEnd) ||
+              event.allocationEnd < event.allocationStart
+            )
+              throw new NbtError(0, "Invalid NBT recovery node reservation");
+            this.sequence = event.allocationStart;
+            const revision = this.revision;
+            await this.apply(event.operations, revision, signal, event.label);
+            if (
+              this.sequence !== event.allocationEnd ||
+              this.revision !== revision + 1
+            )
+              throw new NbtError(
+                0,
+                "NBT recovery operation does not match its recorded result",
+              );
+            break;
+          }
+          case "undo":
+            if (!this.undoStack.length)
+              throw new NbtError(0, "NBT recovery has no operation to undo");
+            await this.undo(signal);
+            break;
+          case "redo":
+            if (!this.redoStack.length)
+              throw new NbtError(0, "NBT recovery has no operation to redo");
+            await this.redo(signal);
+            break;
+          case "save.begin":
+            await this.beginSave(event.id, signal, event.target);
+            break;
+          case "save.ready":
+            await this.prepareSave(event.id, event.metadata);
+            break;
+          case "save.ack":
+            await this.acknowledgeSave(event.id, event.version);
+            break;
+          case "save.fail":
+            if (this.saving?.id !== event.id)
+              throw new NbtError(0, "NBT recovery references an unknown save");
+            await this.failSave(event.id, event.uncertain, event.retain);
+            break;
+          default:
+            throw new NbtError(0, "Unsupported NBT recovery operation");
+        }
+      }
+      // A crashed renderer cannot certify that its pending external write did
+      // not commit. Receipt reconciliation must resolve this state after reload.
+      if (this.saving) {
+        this.saving.suspended = true;
+        this.uncertain = true;
+      }
+      this.emit();
+    } finally {
+      this.restoring = false;
     }
   }
   private record(state: NbtEditState, id: string, patch: NbtEditRecord) {
@@ -604,8 +720,7 @@ export class NbtDocumentSession {
             "Logical tag count exceeds the supported integer range",
           );
         if (next !== this.state) {
-          await this.data.journal(++this.journal, {
-            version: 1,
+          await this.checkpoint({
             kind: "apply",
             allocationStart,
             allocationEnd: this.sequence,
@@ -638,7 +753,7 @@ export class NbtDocumentSession {
       this.check(signal);
       const previous = this.undoStack.at(-1);
       if (!previous) return this.snapshot();
-      await this.data.journal(++this.journal, { version: 1, kind: "undo" });
+      await this.checkpoint({ kind: "undo" });
       this.undoStack.pop();
       this.redoStack.push({ state: this.state, label: previous.label });
       this.state = previous.state;
@@ -652,7 +767,7 @@ export class NbtDocumentSession {
       this.check(signal);
       const next = this.redoStack.at(-1);
       if (!next) return this.snapshot();
-      await this.data.journal(++this.journal, { version: 1, kind: "redo" });
+      await this.checkpoint({ kind: "redo" });
       this.redoStack.pop();
       this.undoStack.push({ state: this.state, label: next.label });
       this.state = next.state;
@@ -661,29 +776,78 @@ export class NbtDocumentSession {
       return this.snapshot();
     });
   }
-  beginSave(id: string, signal = new AbortController().signal) {
+  beginSave(
+    id: string,
+    signal = new AbortController().signal,
+    target?: NbtSaveTarget,
+  ) {
     return this.serial(async () => {
       await this.ready(signal);
+      if (
+        target &&
+        (typeof target.path !== "string" ||
+          !target.path ||
+          target.path.length > 8192 ||
+          typeof target.copy !== "boolean")
+      )
+        throw new NbtError(0, "Invalid NBT save target");
       if (this.saving) {
         if (this.saving.id !== id)
           throw new NbtError(0, "A document save is already in progress");
+        if (
+          target &&
+          (this.saving.target?.path !== target.path ||
+            this.saving.target.copy !== target.copy)
+        )
+          throw new NbtError(
+            0,
+            "The pending NBT save belongs to another destination",
+          );
         this.saving.suspended = false;
         this.emit();
-        return {
-          id,
-          version: this.saving.version,
-          revision: this.saving.revision,
-        };
+        return this.saveSnapshot();
       }
+      if (!id) throw new NbtError(0, "Save snapshot requires an identity");
+      await this.checkpoint({
+        kind: "save.begin",
+        id,
+        ...(target ? { target: { ...target } } : {}),
+      });
       this.saving = {
         id,
         state: this.state,
         view: this.view(),
         revision: this.revision,
         version: this.version,
+        ...(target ? { target: { ...target } } : {}),
       };
       this.emit();
-      return { id, version: this.version, revision: this.revision };
+      return this.saveSnapshot();
+    });
+  }
+  prepareSave(id: string, metadata: { size: number; sha256: string }) {
+    const captured = { ...metadata };
+    return this.serial(async () => {
+      if (this.saving?.id !== id)
+        throw new NbtError(0, "Save snapshot is unavailable");
+      if (
+        !Number.isSafeInteger(captured.size) ||
+        captured.size < 0 ||
+        !/^[a-f0-9]{64}$/u.test(captured.sha256)
+      )
+        throw new NbtError(0, "Invalid NBT serialized save receipt");
+      if (this.saving.metadata) {
+        if (
+          this.saving.metadata.size !== captured.size ||
+          this.saving.metadata.sha256 !== captured.sha256
+        )
+          throw new NbtError(0, "The serialized NBT save changed");
+        return this.saveSnapshot();
+      }
+      await this.checkpoint({ kind: "save.ready", id, metadata: captured });
+      this.saving.metadata = captured;
+      this.emit();
+      return this.saveSnapshot();
     });
   }
   saveView(id: string) {
@@ -696,6 +860,7 @@ export class NbtDocumentSession {
       if (this.saving?.id !== id)
         throw new NbtError(0, "Save snapshot is unavailable");
       if (!version) throw new NbtError(0, "Save receipt has no version");
+      await this.checkpoint({ kind: "save.ack", id, version });
       this.saved = this.saving.state;
       this.version = version;
       this.saving = undefined;
@@ -707,6 +872,7 @@ export class NbtDocumentSession {
   failSave(id: string, uncertain: boolean, retain = false) {
     return this.serial(async () => {
       if (this.saving?.id === id) {
+        await this.checkpoint({ kind: "save.fail", id, uncertain, retain });
         if (uncertain || retain) this.saving.suspended = true;
         else this.saving = undefined;
         this.uncertain = uncertain;

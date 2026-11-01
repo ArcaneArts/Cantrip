@@ -1,4 +1,8 @@
-import type { NbtEditOperation, NbtEditStatus } from "../edit/types.js";
+import type {
+  NbtEditOperation,
+  NbtEditStatus,
+  NbtSaveTarget,
+} from "../edit/types.js";
 import type { NbtSearchQuery, NbtSearchStatus } from "../search/types.js";
 import type {
   NbtByteSource,
@@ -36,13 +40,17 @@ export interface NbtDocumentOpenOptions {
   cacheBytes?: number;
   indexPages?: number;
   fallbackCompression?: boolean;
+  /** Vault-wrapped key is unwrapped by the client; no account key enters the parser. */
+  recovery?: { id: string; key: CryptoKey };
 }
 export interface NbtDocumentSource extends NbtByteSource {
   readonly version?: string;
   close?(): void;
 }
 export type NbtDocumentInput =
-  { kind: "blob"; blob: Blob } | { kind: "remote"; size: number };
+  | { kind: "blob"; blob: Blob }
+  | { kind: "remote"; size: number }
+  | { kind: "recovery" };
 export type NbtDocumentCommand =
   | { type: "open"; input: NbtDocumentInput; options: NbtDocumentOpenOptions }
   | { type: "rows"; parent: string | null; offset: number; limit: number }
@@ -84,9 +92,12 @@ export type NbtDocumentCommand =
       offset: number;
       limit: number;
     }
-  | { type: "save.begin"; saveId: string }
+  | { type: "save.begin"; saveId: string; target?: NbtSaveTarget }
+  | { type: "save.ready"; saveId: string; metadata: NbtSerializationReceipt }
   | { type: "save.ack"; saveId: string; version: string }
   | { type: "save.fail"; saveId: string; uncertain: boolean; retain?: boolean }
+  | { type: "recovery.clear" }
+  | { type: "recovery.attach"; id: string; key: CryptoKey }
   | { type: "pause"; paused: boolean }
   | {
       type: "serialize.begin";

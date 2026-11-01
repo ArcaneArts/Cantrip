@@ -1,4 +1,9 @@
-import type { NbtEditOperation, NbtEditStatus } from "../edit/types.js";
+import type {
+  NbtEditOperation,
+  NbtEditStatus,
+  NbtSaveTarget,
+  NbtPendingSave,
+} from "../edit/types.js";
 import type { NbtTreePage, NbtPathEntry, NbtTablePage } from "../view/types.js";
 import type {
   NbtSearchQuery,
@@ -51,23 +56,28 @@ export class NbtDocumentClient {
   }
   static async open(
     endpoint: NbtMessageEndpoint<NbtDocumentResponse, NbtDocumentRequest>,
-    input: Blob | NbtDocumentSource,
+    input: Blob | NbtDocumentSource | null,
     options: NbtDocumentOpenOptions,
     terminate: () => void = () => {},
     signal?: AbortSignal,
+    onCreated?: (client: NbtDocumentClient) => void,
   ) {
     const local = input instanceof Blob,
       client = new NbtDocumentClient(
         endpoint,
-        local ? undefined : input,
+        local || input === null ? undefined : input,
         terminate,
       );
     try {
-      if (!local && input.size === undefined)
+      onCreated?.(client);
+      if (!local && input !== null && input.size === undefined)
         throw new NbtError(0, "Remote NBT source requires a snapshot size");
-      const source: NbtDocumentInput = local
-        ? { kind: "blob", blob: input }
-        : { kind: "remote", size: input.size! };
+      const source: NbtDocumentInput =
+        input === null
+          ? { kind: "recovery" }
+          : local
+            ? { kind: "blob", blob: input }
+            : { kind: "remote", size: input.size! };
       const status = await client.request<NbtDocumentStatus>(
         { type: "open", input: source, options },
         signal,
@@ -336,11 +346,18 @@ export class NbtDocumentClient {
       truncated: boolean;
     }>({ type: "edit.text", id, field, offset, limit }, signal);
   }
-  beginSave(saveId: string, signal?: AbortSignal) {
-    return this.request<{ id: string; version: string; revision: number }>(
-      { type: "save.begin", saveId },
+  beginSave(saveId: string, signal?: AbortSignal, target?: NbtSaveTarget) {
+    return this.request<NbtPendingSave>(
+      { type: "save.begin", saveId, target },
       signal,
     );
+  }
+  prepareSave(saveId: string, metadata: NbtSerializationReceipt) {
+    return this.request<NbtPendingSave>({
+      type: "save.ready",
+      saveId,
+      metadata,
+    });
   }
   acknowledgeSave(saveId: string, version: string) {
     return this.request<NbtEditStatus>({ type: "save.ack", saveId, version });
@@ -352,6 +369,13 @@ export class NbtDocumentClient {
       uncertain,
       retain,
     });
+  }
+  /** Call only after an explicit discard and pending-write reconciliation. */
+  clearRecovery() {
+    return this.request<null>({ type: "recovery.clear" });
+  }
+  attachRecovery(options: { id: string; key: CryptoKey }) {
+    return this.request<null>({ type: "recovery.attach", ...options });
   }
   setPaused(paused: boolean) {
     return this.request<NbtDocumentStatus>({ type: "pause", paused });
@@ -433,6 +457,7 @@ export class NbtDocumentClient {
     }
   }
   close() {
+    if (this.closed) return this.closing ?? Promise.resolve();
     return (this.closing ??= (async () => {
       try {
         await this.request({ type: "close" });

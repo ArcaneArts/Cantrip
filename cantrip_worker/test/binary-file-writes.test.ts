@@ -352,6 +352,52 @@ it("binds receipts to their account/document/path context", async () => {
     }),
   ).toMatchObject({ state: "unknown" });
 });
+it("durably cancels an upload before begin arrives and refuses to resurrect it", async () => {
+  const f = await fixture(),
+    uploadId = randomUUID();
+  expect(
+    await f.send({
+      type: "explorer.binary.write.abort",
+      path: "file.nbt",
+      uploadId,
+    }),
+  ).toMatchObject({ state: "aborted" });
+  expect(
+    await f.send({
+      type: "explorer.binary.write.status",
+      path: "file.nbt",
+      uploadId,
+    }),
+  ).toMatchObject({ state: "aborted" });
+  expect(
+    await f.send({
+      type: "explorer.binary.write.begin",
+      path: "file.nbt",
+      uploadId,
+      version: "binary-sha256:" + digest(Buffer.from("original bytes")),
+    }),
+  ).toMatchObject({ state: "aborted" });
+  await expect(
+    f.send({
+      type: "explorer.binary.write.chunk",
+      path: "file.nbt",
+      uploadId,
+      offset: 0,
+      data: Buffer.from("late").toString("base64"),
+      final: true,
+    }),
+  ).rejects.toThrow("no longer accepts");
+  expect(
+    await f.send({
+      type: "explorer.binary.write.abort",
+      path: "file.nbt",
+      uploadId,
+    }),
+  ).toMatchObject({ state: "aborted" });
+  expect(await readFile(path.join(f.root, "file.nbt"), "utf8")).toBe(
+    "original bytes",
+  );
+});
 it("preserves intentional file symlinks while atomically replacing their targets", async (context) => {
   const f = await fixture(),
     outside = path.join(f.directory, "outside.nbt");

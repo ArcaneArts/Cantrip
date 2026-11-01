@@ -1,11 +1,15 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import type { NbtDocumentSource } from "@cantrip/nbt/document";
+import type {
+  NbtDocumentSource,
+  NbtDocumentClient,
+} from "@cantrip/nbt/document";
 import { openNbtDocument } from "@/lib/nbt/document";
 import {
   acquireNbtSession,
   type NbtViewSession,
 } from "@/lib/nbt/session-registry";
 import { nbtFormat } from "./format";
+import type { NbtRecoveryVault } from "@/lib/nbt/recovery";
 const empty = () => null,
   subscribeEmpty = () => () => {};
 export async function openNbtViewerClient(
@@ -14,9 +18,29 @@ export async function openNbtViewerClient(
   profile: string,
   compression: string,
   signal = new AbortController().signal,
+  openRecovery?: () => Promise<NbtRecoveryVault>,
+  onCreated?: (client: NbtDocumentClient) => void,
 ) {
   let input: Blob | NbtDocumentSource | undefined;
   try {
+    const vault = await openRecovery?.();
+    signal.throwIfAborted();
+    const recovered = await vault?.inspect();
+    signal.throwIfAborted();
+    if (recovered)
+      return await openNbtDocument(
+        null,
+        {
+          binding: key + "/recovered",
+          format: recovered.format,
+          version: recovered.version,
+          recovery: vault ? { id: vault.id, key: vault.key } : undefined,
+          cacheBytes: 4 * 1024 ** 2,
+          indexPages: 32,
+        },
+        signal,
+        onCreated,
+      );
     input = await openSource(signal);
     signal.throwIfAborted();
     const header =
@@ -25,14 +49,20 @@ export async function openNbtViewerClient(
         : await input.read(0, 8, signal);
     signal.throwIfAborted();
     const format = nbtFormat(profile, compression, header, input.size ?? 0);
-    return await openNbtDocument(input, {
-      binding:
-        key + "/" + ("version" in input ? String(input.version) : "local"),
-      format,
-      version: "version" in input ? input.version : "local",
-      cacheBytes: 4 * 1024 ** 2,
-      indexPages: 32,
-    });
+    return await openNbtDocument(
+      input,
+      {
+        binding:
+          key + "/" + ("version" in input ? String(input.version) : "local"),
+        format,
+        version: "version" in input ? input.version : "local",
+        cacheBytes: 4 * 1024 ** 2,
+        indexPages: 32,
+        ...(vault ? { recovery: { id: vault.id, key: vault.key } } : {}),
+      },
+      signal,
+      onCreated,
+    );
   } catch (error) {
     if (input && !(input instanceof Blob)) input.close?.();
     throw error;
@@ -44,10 +74,13 @@ export function useNbtClient(
   profile: string,
   compression: string,
   active: boolean,
+  openRecovery?: () => Promise<NbtRecoveryVault>,
 ) {
   const key = JSON.stringify([scope, profile, compression]);
   const source = useRef(openSource);
+  const recovery = useRef(openRecovery);
   source.current = openSource;
+  recovery.current = openRecovery;
   const [session, setSession] = useState<{
       key: string;
       value: NbtViewSession;
@@ -61,8 +94,16 @@ export function useNbtClient(
     setError(null);
     const current = acquireNbtSession(
       key,
-      (signal) =>
-        openNbtViewerClient(source.current, key, profile, compression, signal),
+      (signal, onCreated) =>
+        openNbtViewerClient(
+          source.current,
+          key,
+          profile,
+          compression,
+          signal,
+          recovery.current,
+          onCreated,
+        ),
       active,
     );
     lease.current = current;

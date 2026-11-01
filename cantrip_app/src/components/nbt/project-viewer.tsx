@@ -21,6 +21,8 @@ import type { NbtBinaryTransport } from "@/lib/nbt/save";
 import { createFileDocument } from "@/lib/api/file-documents";
 import { documentFileAccess } from "@/lib/file-access";
 import { surfaceTitleEncryption } from "@/lib/surface-title-encryption";
+import { openNbtRecoveryVault } from "@/lib/nbt/recovery";
+import { readWorkspaceDeviceIdentity } from "@/lib/workspace-device-identity";
 export function NbtProjectViewer(props: FileViewerProps) {
   const [identity, setIdentity] = useState(getClientSessionIdentitySnapshot),
     [localFile, setLocalFile] = useState<File | null>(null),
@@ -84,6 +86,40 @@ export function NbtProjectViewer(props: FileViewerProps) {
     () => (localFile ? undefined : { path: props.path, write }),
     [localFile, props.path, write],
   );
+  const openRecovery = useCallback(async () => {
+    if (!identity || !clientSessionIdentityMatches(identity))
+      throw new Error("The NBT recovery account changed.");
+    const { workspaceId } = await readWorkspaceDeviceIdentity(
+      identity,
+      props.projectId,
+    );
+    const vault = await openNbtRecoveryVault({
+      serverId: identity.serverId,
+      ownerId: identity.userId,
+      workspaceId,
+      projectId: props.projectId,
+      workerId: props.workerId,
+      worktreeId: props.worktreeId,
+      documentId:
+        props.documentId ??
+        surfaceTitleEncryption.fileDocumentId({
+          projectId: props.projectId,
+          workerId: props.workerId,
+          worktreeId: props.worktreeId,
+          path: props.path,
+        }),
+    });
+    if (!clientSessionIdentityMatches(identity))
+      throw new Error("The NBT recovery account changed.");
+    return vault;
+  }, [
+    identity,
+    props.projectId,
+    props.workerId,
+    props.worktreeId,
+    props.documentId,
+    props.path,
+  ]);
   const saveAsTarget = useCallback(
     async (path: string) => {
       const document = await createFileDocument({
@@ -174,6 +210,7 @@ export function NbtProjectViewer(props: FileViewerProps) {
       openSource={openSource}
       scope={scope}
       active={props.active}
+      openRecovery={localFile ? undefined : openRecovery}
       readOnly={props.readOnly}
       onSessionChange={props.onSessionChange}
       saveTarget={saveTarget}

@@ -17,7 +17,7 @@ for (const [engine, engineType] of Object.entries({ chromium, webkit }).filter(
   const fixture = await startEditorRecoveryFixture({ repositoryProject: true });
   let browser, page;
   try {
-    const size = 100 * 1024 ** 2,
+    const size = Number(process.env.CANTRIP_NBT_QA_MIB ?? 100) * 1024 ** 2,
       head = Buffer.from([
         10, 0, 0, 7, 0, 5, 97, 114, 114, 97, 121, 6, 64, 0, 0,
       ]),
@@ -30,7 +30,13 @@ for (const [engine, engineType] of Object.entries({ chromium, webkit }).filter(
         value,
         Buffer.from([0]),
       ]);
+    assert.ok(Number.isSafeInteger(size) && size > 0 && size <= 1024 ** 3);
+    head.writeInt32BE(size, 11);
     const bytes = gzipSync(Buffer.concat([head, Buffer.alloc(size, 42), tail]));
+    const quickPayload = Buffer.alloc(16);
+    quickPayload.set([10, 0, 0, 4, 0, 1, 110]);
+    quickPayload.writeBigInt64BE(1n, 7);
+    const quickBytes = gzipSync(quickPayload);
     await Promise.all([
       writeFile(
         path.join(fixture.repositorySeed.repository, "automatic.nbt"),
@@ -39,6 +45,10 @@ for (const [engine, engineType] of Object.entries({ chromium, webkit }).filter(
       writeFile(
         path.join(fixture.repositorySeed.repository, "ambiguous.xyz"),
         bytes,
+      ),
+      writeFile(
+        path.join(fixture.repositorySeed.repository, "quick.nbt"),
+        quickBytes,
       ),
     ]);
     browser = await engineType.launch({ headless: true });
@@ -216,6 +226,32 @@ for (const [engine, engineType] of Object.entries({ chromium, webkit }).filter(
       await viewer.getByLabel("NBT encoding", { exact: true }).isDisabled(),
       true,
     );
+    const recovery = process.env.CANTRIP_NBT_QA_RECOVERY === "true";
+    if (recovery) {
+      page.once("dialog", (dialog) => dialog.accept());
+      await page.reload();
+      await page
+        .locator('[data-nbt-document-state="complete"]:visible')
+        .waitFor({ timeout: 180000 });
+      await viewer.locator('[data-nbt-dirty="true"]').waitFor();
+      await viewer
+        .getByRole("row")
+        .filter({ hasText: "9223372036854775807" })
+        .waitFor();
+      await action("Toggle NBT editing").click();
+      assert.equal(await action("Undo").isEnabled(), true);
+      await action("Undo").click();
+      await action("Redo").click();
+      assert.deepEqual(
+        await readFile(
+          path.join(fixture.repositorySeed.repository, "automatic.nbt"),
+        ),
+        bytes,
+      );
+      await page.screenshot({
+        path: path.join(evidence, engine + "-recovered-draft.png"),
+      });
+    }
     await viewer
       .getByRole("button", { name: "Find in NBT document", exact: true })
       .click();
@@ -365,6 +401,45 @@ for (const [engine, engineType] of Object.entries({ chromium, webkit }).filter(
     await page.screenshot({
       path: path.join(evidence, engine + "-save-as.png"),
     });
+    if (recovery) {
+      await file("quick.nbt").click();
+      const quick = page.locator(
+        '[data-nbt-viewer]:visible[data-nbt-binding*="quick.nbt"]',
+      );
+      await quick.locator('[data-nbt-document-state="complete"]').waitFor();
+      await quick
+        .getByLabel("NBT compression", { exact: true })
+        .selectOption("gzip");
+      await page.waitForFunction(() =>
+        [...document.querySelectorAll('[aria-label="NBT compression"]')].some(
+          (select) => select.getClientRects().length && select.value === "gzip",
+        ),
+      );
+      await quick.locator('[data-nbt-document-state="complete"]').waitFor();
+      await quick
+        .getByRole("button", { name: "Toggle NBT editing", exact: true })
+        .click();
+      await quick.locator('[data-nbt-node="node:1"]').click();
+      await quick
+        .getByRole("button", { name: "Edit value", exact: true })
+        .click();
+      await sheet.getByLabel("NBT edit value", { exact: true }).fill("42");
+      await apply();
+      page.once("dialog", (dialog) => dialog.accept());
+      await page.reload();
+      await quick.locator('[data-nbt-document-state="complete"]').waitFor();
+      await quick.locator('[data-nbt-dirty="true"]').waitFor();
+      assert.match(
+        await quick.locator('[data-nbt-node="node:1"]').innerText(),
+        /42/,
+      );
+      assert.deepEqual(
+        await readFile(
+          path.join(fixture.repositorySeed.repository, "quick.nbt"),
+        ),
+        quickBytes,
+      );
+    }
     assert.ok(wire.length > 0);
     assert.equal(
       wire.some((body) => body?.includes("PROTECTED_TAIL_NEEDLE")),
@@ -386,6 +461,8 @@ for (const [engine, engineType] of Object.entries({ chromium, webkit }).filter(
       lostCommitReply: dropped,
       independentReopen: true,
       dirtyCloseCancellation: true,
+      encryptedDraftReload: recovery,
+      replacementRetainsRecovery: recovery,
       conflictRetainsDraft: true,
       failedReloadRetainsDraft: true,
       saveAsCreatesNewDocument: true,
@@ -412,8 +489,33 @@ for (const [engine, engineType] of Object.entries({ chromium, webkit }).filter(
           .innerText()
           .catch(() => "")) ?? ""),
     );
+    await writeFile(
+      path.join(evidence, engine + "-edit-project-state.json"),
+      JSON.stringify(
+        await page
+          ?.locator("[data-nbt-viewer]")
+          .evaluateAll((views) =>
+            views.map((view) => ({
+              visible: Boolean(view.getClientRects().length),
+              binding: view.getAttribute("data-nbt-binding"),
+              controls: [...view.querySelectorAll("select")].map((select) => ({
+                name: select.getAttribute("aria-label"),
+                value: select.value,
+                disabled: select.disabled,
+              })),
+              state: view
+                .querySelector("[data-nbt-document-state]")
+                ?.getAttribute("data-nbt-document-state"),
+            })),
+          )
+          .catch(() => []),
+        null,
+        2,
+      ),
+    );
     throw error;
   } finally {
+    await page?.unrouteAll({ behavior: "wait" }).catch(() => {});
     await browser?.close();
     await fixture.close();
   }

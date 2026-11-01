@@ -423,6 +423,45 @@ export class NbtDocumentEngine implements NbtSerializableModel {
     this.check(signal);
     return result;
   }
+  async *arrayBytes(
+    id: string,
+    offset: number,
+    count: number,
+    signal: AbortSignal,
+  ) {
+    this.check(signal);
+    assertRange(offset, count);
+    const node = await this.getNode(id);
+    if (
+      !node?.data ||
+      node.length === undefined ||
+      ![NbtTag.ByteArray, NbtTag.IntArray, NbtTag.LongArray].includes(
+        node.type,
+      ) ||
+      offset + count > node.length
+    )
+      throw new NbtError(0, "Encoded array range is unavailable");
+    const width =
+      node.type === NbtTag.ByteArray
+        ? 1
+        : node.type === NbtTag.IntArray
+          ? 4
+          : 8;
+    for (let at = 0; at < count * width; at += NBT_PAGE_BYTES) {
+      const bytes = await this.bytes(
+        {
+          offset: node.data.offset + offset * width + at,
+          length: Math.min(NBT_PAGE_BYTES, count * width - at),
+        },
+        signal,
+      );
+      try {
+        yield bytes;
+      } finally {
+        bytes.fill(0);
+      }
+    }
+  }
   async *serialize(original: boolean, signal?: AbortSignal) {
     this.check(signal);
     await waitNbtPromise(this.completed, signal);

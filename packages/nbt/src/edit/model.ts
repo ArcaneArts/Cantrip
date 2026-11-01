@@ -285,6 +285,57 @@ export class NbtEditView implements NbtSerializableModel {
     }
     return values;
   }
+  async *arrayBytes(
+    id: string,
+    offset: number,
+    count: number,
+    signal: AbortSignal,
+  ): AsyncIterable<Uint8Array> {
+    assertRange(offset, count);
+    const node = await this.getNode(id),
+      resolved = node && (await this.resolve(id));
+    if (!resolved || !nbtArray(node!.type) || offset + count > node!.length!)
+      throw new NbtError(0, "Encoded array range is unavailable");
+    const width =
+      node!.type === NbtTag.ByteArray
+        ? 1
+        : node!.type === NbtTag.IntArray
+          ? 4
+          : 8;
+    for (const piece of this.arraySequence(resolved).slices(offset, count)) {
+      signal.throwIfAborted();
+      if (piece.data.kind === "source") {
+        if (!piece.data.view.arrayBytes)
+          throw new NbtError(0, "Encoded source array is unavailable");
+        yield* piece.data.view.arrayBytes(
+          piece.data.id,
+          piece.offset,
+          piece.count,
+          signal,
+        );
+      } else {
+        for (let at = 0; at < piece.count * width; at += 64 * 1024) {
+          const bytes = await this.bytes(
+            {
+              ...piece.data.span,
+              offset: piece.data.span.offset + piece.offset * width + at,
+              length: Math.min(64 * 1024, piece.count * width - at),
+            },
+            signal,
+          );
+          try {
+            // The append-only edit store uses little-endian fixed integers.
+            if (width > 1 && this.encoding.endian === "big")
+              for (let start = 0; start < bytes.length; start += width)
+                bytes.subarray(start, start + width).reverse();
+            yield bytes;
+          } finally {
+            bytes.fill(0);
+          }
+        }
+      }
+    }
+  }
   async describe(node: NbtNode, signal?: AbortSignal) {
     const row: NbtDisplayRow = { node, name: "", nameTruncated: false };
     try {

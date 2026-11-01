@@ -31,6 +31,7 @@ interface Pending {
   revision: number;
   metadata?: NbtSerializationReceipt;
   commitAttempted: boolean;
+  recovered?: boolean;
 }
 function base64(bytes: Uint8Array) {
   let binary = "";
@@ -102,18 +103,42 @@ export class NbtSaveController {
       signal,
     );
   }
+  private adoptRetained() {
+    if (this.pending) return;
+    const retained = this.client.getEditSnapshot()?.pendingSave;
+    if (!retained) return;
+    if (
+      retained.target?.path !== this.path ||
+      retained.target.copy !== Boolean(this.options.copy)
+    )
+      return;
+    this.pending = {
+      id: retained.id,
+      version: retained.version,
+      revision: retained.revision,
+      metadata: retained.metadata,
+      commitAttempted: Boolean(retained.metadata),
+      recovered: true,
+    };
+  }
   private async run(signal: AbortSignal): Promise<BinaryWriteReceipt> {
     let pending = this.pending,
       uploaded = 0;
     try {
       if (!pending) {
-        const id = crypto.randomUUID(),
-          snapshot = await this.client.beginSave(id, signal);
+        const retained = this.client.getEditSnapshot()?.pendingSave,
+          id = retained?.id ?? crypto.randomUUID(),
+          snapshot = await this.client.beginSave(id, signal, {
+            path: this.path,
+            copy: Boolean(this.options.copy),
+          });
         pending = {
           id,
           version: snapshot.version,
           revision: snapshot.revision,
-          commitAttempted: false,
+          metadata: snapshot.metadata,
+          commitAttempted: Boolean(snapshot.metadata),
+          recovered: Boolean(retained),
         };
         this.pending = pending;
       } else await this.client.beginSave(pending.id, signal);
@@ -127,6 +152,27 @@ export class NbtSaveController {
         );
       if (receipt.state === "prepared")
         throw new Error("The worker has not finished reconciling this save.");
+      if (pending.recovered && !pending.metadata) {
+        // Publication is only requested after save.ready is durable. A crash
+        // before that record can leave a partial compressed upload whose bytes
+        // need not be identical in another browser engine. Abort it and start
+        // a fresh upload of the recovered draft instead of trusting its prefix.
+        const cancelled = await this.command(
+          {
+            type: "explorer.binary.write.abort",
+            path: this.path,
+            uploadId: pending.id,
+          },
+          signal,
+        );
+        if (cancelled.state !== "aborted")
+          throw new Error(
+            "The interrupted NBT upload could not be reconciled.",
+          );
+        await this.client.failSave(pending.id, false);
+        this.pending = undefined;
+        return await this.run(signal);
+      }
       if (receipt.state === "unknown") {
         if (pending.commitAttempted)
           throw new Error(
@@ -146,70 +192,80 @@ export class NbtSaveController {
         throw new Error("The worker did not open the binary upload.");
       uploaded = receipt.offset;
       this.notify({ phase: "uploading", uploaded }, true);
-      let offset = 0,
-        buffer = new Uint8Array(BINARY_WRITE_CHUNK_BYTES),
-        used = 0;
-      const send = async (final: boolean) => {
-        signal.throwIfAborted();
-        if (
-          offset + used > uploaded ||
-          (final && used === 0 && offset === uploaded)
-        ) {
-          if (offset !== uploaded)
-            throw new Error(
-              "The worker's uploaded prefix does not match a serialized page.",
+      if (!pending.commitAttempted) {
+        let offset = 0,
+          buffer = new Uint8Array(BINARY_WRITE_CHUNK_BYTES),
+          used = 0;
+        const send = async (final: boolean) => {
+          signal.throwIfAborted();
+          if (
+            offset + used > uploaded ||
+            (final && used === 0 && offset === uploaded)
+          ) {
+            if (offset !== uploaded)
+              throw new Error(
+                "The worker's uploaded prefix does not match a serialized page.",
+              );
+            const receipt = await this.command(
+              {
+                type: "explorer.binary.write.chunk",
+                path: this.path,
+                uploadId: pending!.id,
+                offset,
+                data: base64(buffer.subarray(0, used)),
+                final,
+              },
+              signal,
             );
-          const receipt = await this.command(
-            {
-              type: "explorer.binary.write.chunk",
-              path: this.path,
-              uploadId: pending!.id,
-              offset,
-              data: base64(buffer.subarray(0, used)),
-              final,
-            },
-            signal,
-          );
-          if (receipt.state !== "uploading" || receipt.offset !== offset + used)
-            throw new Error(
-              "The worker acknowledged a different upload prefix.",
-            );
-          uploaded = receipt.offset;
-          this.notify({ phase: "uploading", uploaded });
-        }
-        offset += used;
-        buffer.fill(0);
-        used = 0;
-      };
-      const stream = this.client.serialize(false, signal, pending.id);
-      try {
-        for (;;) {
-          const part = await stream.next();
-          if (part.done) {
-            pending.metadata = part.value;
-            break;
+            if (
+              receipt.state !== "uploading" ||
+              receipt.offset !== offset + used
+            )
+              throw new Error(
+                "The worker acknowledged a different upload prefix.",
+              );
+            uploaded = receipt.offset;
+            this.notify({ phase: "uploading", uploaded });
           }
-          const bytes = part.value;
-          try {
-            let at = 0;
-            while (at < bytes.length) {
-              if (used === buffer.length) await send(false);
-              const count = Math.min(bytes.length - at, buffer.length - used);
-              buffer.set(bytes.subarray(at, at + count), used);
-              used += count;
-              at += count;
+          offset += used;
+          buffer.fill(0);
+          used = 0;
+        };
+        const stream = this.client.serialize(false, signal, pending.id);
+        try {
+          for (;;) {
+            const part = await stream.next();
+            if (part.done) {
+              pending.metadata = part.value;
+              break;
             }
-          } finally {
-            bytes.fill(0);
+            const bytes = part.value;
+            try {
+              let at = 0;
+              while (at < bytes.length) {
+                if (used === buffer.length) await send(false);
+                const count = Math.min(bytes.length - at, buffer.length - used);
+                buffer.set(bytes.subarray(at, at + count), used);
+                used += count;
+                at += count;
+              }
+            } finally {
+              bytes.fill(0);
+            }
           }
+          await send(true);
+        } finally {
+          buffer.fill(0);
+          await stream.return({ size: 0, sha256: "" }).catch(() => {});
         }
-        await send(true);
-      } finally {
-        buffer.fill(0);
-        await stream.return({ size: 0, sha256: "" }).catch(() => {});
+        if (offset !== pending.metadata!.size)
+          throw new Error("Serialized size does not match the upload.");
+        await this.client.prepareSave(pending.id, pending.metadata!);
+      } else if (!pending.metadata || uploaded !== pending.metadata.size) {
+        throw new Error(
+          "The recovered NBT upload does not match its durable serialized receipt.",
+        );
       }
-      if (offset !== pending.metadata!.size)
-        throw new Error("Serialized size does not match the upload.");
       pending.commitAttempted = true;
       this.notify({ phase: "committing", uploaded }, true);
       receipt = await this.command(
@@ -273,6 +329,7 @@ export class NbtSaveController {
   async abandon() {
     if (this.active)
       throw new Error("Wait for the active save before abandoning its upload.");
+    this.adoptRetained();
     const pending = this.pending;
     if (!pending) return;
     const receipt = await this.status(pending, AbortSignal.timeout(15000));

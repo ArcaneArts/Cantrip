@@ -65,7 +65,7 @@ const TreeRow = memo(function TreeRow({
       <div
         role="gridcell"
         className="flex min-w-0 basis-2/5 items-center gap-1"
-        style={{ paddingLeft: Math.min(item.depth, 24) * 14 }}
+        style={{ paddingLeft: `min(${Math.min(item.depth, 24) * 14}px, 12%)` }}
       >
         {container(row.node) ? (
           <button

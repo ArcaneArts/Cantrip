@@ -52,9 +52,31 @@ export interface NbtEditStatus {
   /** Client-side mutation acknowledgement is still in flight. */
   editing?: boolean;
   pendingSaveId?: string;
+  pendingSave?: NbtPendingSave;
   uncertain: boolean;
 }
+export interface NbtSaveTarget {
+  path: string;
+  copy: boolean;
+}
+export interface NbtPendingSave {
+  id: string;
+  version: string;
+  revision: number;
+  target?: NbtSaveTarget;
+  /** Persisted after the worker acknowledged the complete uploaded stream and
+   * before requesting publication. Recovery can verify its durable receipt. */
+  metadata?: { size: number; sha256: string };
+}
 export interface NbtSerializableModel extends NbtReadModel {
+  /** Encoded fixed-width array elements in this model's original byte order.
+   * Chunks are borrowed until the next iterator step and must be consumed then. */
+  arrayBytes?(
+    id: string,
+    offset: number,
+    count: number,
+    signal: AbortSignal,
+  ): AsyncIterable<Uint8Array>;
   raw(
     id: string,
     part: "node" | "header" | "payload",

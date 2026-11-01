@@ -15,6 +15,7 @@ import {
   discardNbtSession,
 } from "@/lib/nbt/session-registry";
 import type { NbtBinaryTransport } from "@/lib/nbt/save";
+import type { NbtRecoveryVault } from "@/lib/nbt/recovery";
 import type {
   NbtDisplayRow,
   NbtDocumentSource,
@@ -46,6 +47,7 @@ export function NbtBrowser({
   onSessionChange,
   saveAsTarget,
   onOpenDocument,
+  openRecovery,
 }: {
   openSource: (signal: AbortSignal) => Promise<Blob | NbtDocumentSource>;
   scope: string;
@@ -59,6 +61,7 @@ export function NbtBrowser({
   onSessionChange?(session: FileViewerSession | null): void;
   saveAsTarget?(path: string): Promise<NbtBinaryTransport>;
   onOpenDocument?(path: string): void | Promise<void>;
+  openRecovery?(): Promise<NbtRecoveryVault>;
 }) {
   const [profile, setProfile] = useState("auto"),
     [compression, setCompression] = useState("auto"),
@@ -89,6 +92,7 @@ export function NbtBrowser({
         profile,
         compression,
         active,
+        openRecovery,
       ),
     input = useRef<HTMLInputElement>(null),
     local = useRef<HTMLInputElement>(null),
@@ -99,7 +103,15 @@ export function NbtBrowser({
     navigation = useRef<AbortController | null>(null);
   const reloading = useRef(false),
     replacement = useRef<{ key: string; release(): void } | null>(null);
+  const [interpreting, setInterpreting] = useState(false);
   const reloadAbort = useRef<AbortController | null>(null);
+  useEffect(() => {
+    session?.setTransportResolver(async (path) => {
+      if (saveTarget?.path === path) return saveTarget.write;
+      if (saveAsTarget) return saveAsTarget(path);
+      throw new Error("The NBT save destination is unavailable.");
+    });
+  }, [session, saveTarget, saveAsTarget]);
   useEffect(() => {
     if (client && replacement.current?.key === sessionKey) {
       replacement.current.release();
@@ -149,73 +161,106 @@ export function NbtBrowser({
       release?.();
     }
   }, [sessionKey, client]);
-  const reload = useCallback(async () => {
-    if (!client || reloading.current)
-      throw new Error("NBT reload is already in progress.");
-    const release = client.freezeEdits();
-    reloading.current = true;
-    const controller = new AbortController();
-    reloadAbort.current = controller;
-    const nextEpoch = epoch + 1,
-      key = JSON.stringify([
-        scope + "/reload-" + nextEpoch,
-        profile,
-        compression,
-      ]);
-    const lease = acquireNbtSession(
-      key,
-      (signal) =>
-        openNbtViewerClient(openSource, key, profile, compression, signal),
-      true,
-    );
-    controller.signal.addEventListener("abort", lease.release, { once: true });
-    let adopted = false;
-    try {
-      const next = await lease.promise;
-      controller.signal.throwIfAborted();
-      await new Promise<void>((resolve, reject) => {
-        let unsubscribe = () => {};
-        const cleanup = () => {
-          unsubscribe();
-          controller.signal.removeEventListener("abort", abort);
-        };
-        const abort = () => {
-          cleanup();
-          reject(controller.signal.reason);
-        };
-        controller.signal.addEventListener("abort", abort, { once: true });
-        const check = () => {
-          const status = next.client.getSnapshot();
-          if (status?.state === "complete") {
-            cleanup();
-            resolve();
-          } else if (status?.state === "error" || status?.state === "closed") {
-            cleanup();
-            reject(
-              new Error(
-                status.error?.message ??
-                  "The replacement NBT file could not be read.",
-              ),
-            );
-          }
-        };
-        unsubscribe = next.client.subscribe(check);
-        check();
+  const reload = useCallback(
+    async (interpretation?: { profile?: string; compression?: string }) => {
+      if (!client || reloading.current)
+        throw new Error("NBT reload is already in progress.");
+      const release = client.freezeEdits();
+      reloading.current = true;
+      setInterpreting(true);
+      const controller = new AbortController();
+      reloadAbort.current = controller;
+      const nextProfile = interpretation?.profile ?? profile,
+        nextCompression = interpretation?.compression ?? compression,
+        nextEpoch = epoch + 1,
+        key = JSON.stringify([
+          scope + "/reload-" + nextEpoch,
+          nextProfile,
+          nextCompression,
+        ]);
+      const lease = acquireNbtSession(
+        key,
+        (signal) =>
+          openNbtViewerClient(
+            openSource,
+            key,
+            nextProfile,
+            nextCompression,
+            signal,
+          ),
+        true,
+      );
+      controller.signal.addEventListener("abort", lease.release, {
+        once: true,
       });
-      controller.signal.throwIfAborted();
-      await discardNbtSession(sessionKey);
-      controller.signal.throwIfAborted();
-      replacement.current = { key, release: lease.release };
-      adopted = true;
-      setEpoch(nextEpoch);
-    } finally {
-      release();
-      reloading.current = false;
-      if (reloadAbort.current === controller) reloadAbort.current = null;
-      controller.signal.removeEventListener("abort", lease.release);
-      if (!adopted) lease.release();
-    }
-  }, [client, epoch, scope, profile, compression, openSource, sessionKey]);
+      let adopted = false;
+      try {
+        const next = await lease.promise;
+        controller.signal.throwIfAborted();
+        await new Promise<void>((resolve, reject) => {
+          let unsubscribe = () => {};
+          const cleanup = () => {
+            unsubscribe();
+            controller.signal.removeEventListener("abort", abort);
+          };
+          const abort = () => {
+            cleanup();
+            reject(controller.signal.reason);
+          };
+          controller.signal.addEventListener("abort", abort, { once: true });
+          const check = () => {
+            const status = next.client.getSnapshot();
+            if (status?.state === "complete") {
+              cleanup();
+              resolve();
+            } else if (
+              status?.state === "error" ||
+              status?.state === "closed"
+            ) {
+              cleanup();
+              reject(
+                new Error(
+                  status.error?.message ??
+                    "The replacement NBT file could not be read.",
+                ),
+              );
+            }
+          };
+          unsubscribe = next.client.subscribe(check);
+          check();
+        });
+        controller.signal.throwIfAborted();
+        await discardNbtSession(sessionKey);
+        controller.signal.throwIfAborted();
+        if (openRecovery) {
+          const vault = await openRecovery();
+          await next.client.attachRecovery({ id: vault.id, key: vault.key });
+        }
+        replacement.current = { key, release: lease.release };
+        adopted = true;
+        setProfile(nextProfile);
+        setCompression(nextCompression);
+        setEpoch(nextEpoch);
+      } finally {
+        release();
+        reloading.current = false;
+        setInterpreting(false);
+        if (reloadAbort.current === controller) reloadAbort.current = null;
+        controller.signal.removeEventListener("abort", lease.release);
+        if (!adopted) lease.release();
+      }
+    },
+    [
+      client,
+      epoch,
+      scope,
+      profile,
+      compression,
+      openSource,
+      sessionKey,
+      openRecovery,
+    ],
+  );
   const lifecycle = useMemo<FileViewerSession | null>(
     () =>
       client && edit
@@ -230,7 +275,8 @@ export function NbtBrowser({
               return Boolean(
                 client.getEditSnapshot()?.saving ||
                 session?.busy ||
-                copyOpening.current,
+                copyOpening.current ||
+                reloading.current,
               );
             },
             get pending() {
@@ -242,7 +288,17 @@ export function NbtBrowser({
             reload,
           }
         : null,
-    [client, edit, save, discard, reload, session, progress, copyPreparing],
+    [
+      client,
+      edit,
+      save,
+      discard,
+      reload,
+      session,
+      progress,
+      copyPreparing,
+      interpreting,
+    ],
   );
   useEffect(() => {
     onSessionChange?.(lifecycle);
@@ -431,6 +487,7 @@ export function NbtBrowser({
       setEditRequest({ action, row, element, revision: edit.revision });
   };
   const protectedDraft = Boolean(
+    interpreting ||
     session?.busy ||
     edit?.dirty ||
     edit?.editing ||
@@ -456,7 +513,17 @@ export function NbtBrowser({
             aria-label="NBT encoding"
             value={profile}
             disabled={protectedDraft}
-            onChange={(event) => setProfile(event.target.value)}
+            onChange={(event) => {
+              if (!client) setProfile(event.target.value);
+              else
+                void reload({ profile: event.target.value }).catch((error) =>
+                  setNavigationError(
+                    error instanceof Error
+                      ? error.message
+                      : "The NBT encoding could not be opened.",
+                  ),
+                );
+            }}
           >
             {NBT_PROFILES.map((item) => (
               <option key={item.id} value={item.id}>
@@ -472,7 +539,18 @@ export function NbtBrowser({
             aria-label="NBT compression"
             value={compression}
             disabled={protectedDraft}
-            onChange={(event) => setCompression(event.target.value)}
+            onChange={(event) => {
+              if (!client) setCompression(event.target.value);
+              else
+                void reload({ compression: event.target.value }).catch(
+                  (error) =>
+                    setNavigationError(
+                      error instanceof Error
+                        ? error.message
+                        : "The NBT compression could not be opened.",
+                    ),
+                );
+            }}
           >
             <option value="auto">Automatic</option>
             <option value="none">Raw</option>

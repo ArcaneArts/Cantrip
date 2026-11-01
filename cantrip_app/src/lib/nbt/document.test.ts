@@ -51,3 +51,28 @@ it("releases the source when the worker constructor itself fails", async () => {
   ).rejects.toThrow("Workers are blocked");
   expect(close).toHaveBeenCalledOnce();
 });
+it("cancels a real pending document open when its view is retired", async () => {
+  const close = vi.fn(),
+    terminate = vi.fn(),
+    started = vi.fn();
+  class WaitingWorker {
+    addEventListener() {}
+    removeEventListener() {}
+    postMessage() {
+      started();
+    }
+    terminate = terminate;
+  }
+  vi.stubGlobal("Worker", WaitingWorker);
+  const controller = new AbortController(),
+    pending = openNbtDocument(
+      { size: 1, read: vi.fn(), close },
+      { binding: "account/document/revision", format: JAVA_NBT },
+      controller.signal,
+    );
+  expect(started).toHaveBeenCalledOnce();
+  controller.abort(new Error("View retired"));
+  await expect(pending).rejects.toThrow("View retired");
+  expect(close).toHaveBeenCalledOnce();
+  expect(terminate).toHaveBeenCalled();
+});

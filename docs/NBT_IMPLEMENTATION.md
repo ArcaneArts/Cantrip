@@ -11,8 +11,34 @@ is a foundation; its presence does not mean the app viewer/editor has shipped.
 | 3. Background parser integration       | Implemented          | Dedicated document worker, progressive disk-backed indexing, bounded working set            |
 | 4. Tree/table viewer and global search | Baseline implemented | Actual app interactions, unloaded-subtree search, paged grids and responsive navigation     |
 | 5. Typed editing and streamed saves    | Implemented          | All edit operations, undo/redo, atomic version-checked saves and interrupted-write receipts |
-| 6. Recovery, ownership, and phones     | Pending              | Encrypted recoverable drafts, safe close/pop-out/return, touch editing and phone saves      |
+| 6. Recovery, ownership, and phones     | In progress          | Encrypted recoverable drafts, safe close/pop-out/return, touch editing and phone saves      |
 | 7. Qualification                       | Pending              | Full malformed/concurrency/storage matrix, measured desktop/browser/mobile performance      |
+
+Milestone 6 work in progress retains an encrypted original byte stream plus
+bounded operation records, committed through an authenticated revision fence.
+The account vault wraps a random, nonextractable document key. Journal replay
+restores stable IDs, undo/redo, saved roots and frozen pending saves; publication
+requires a durable size/checksum record so reload can reconcile its actual
+receipt. A partial upload without that publication record is cancelled before
+starting a fresh compressed stream. Unit/integration coverage includes storage
+failures, concurrent writers, discarded-draft tombstones and renderer reloads
+during normal saves and Save As. Shared cross-window ownership, transfer/quit
+integration, local export, touch qualification and real-phone testing are still
+unfinished; this milestone is not complete.
+
+Current recovery verification: 176 codec/document/edit/recovery tests, 24
+focused app tests, 12 binary-write worker tests, and app/worker typechecks pass.
+Production Chromium and WebKit app/server/worker runs restore unsaved drafts,
+preserve undo and exact Long values, save through a dropped commit reply, and
+retain drafts through conflicts and failed reloads. WebKit completes this flow
+with a 100 MiB expanded array. A smaller Chromium regression also verifies that
+changing an interpretation attaches recovery to the validated replacement.
+Edited arrays now stream original encoded spans and bounded edited ranges,
+including byte-order conversion, rather than decoding every unchanged element
+into display-value pages. This is browser evidence, not physical-phone
+qualification. Reproduce with `CANTRIP_NBT_QA_RECOVERY=true node
+scripts/qa/nbt-edit-project.mjs`; `CANTRIP_NBT_QA_MIB=1` selects the smaller
+regression workload.
 
 Milestone 1 validation commands:
 

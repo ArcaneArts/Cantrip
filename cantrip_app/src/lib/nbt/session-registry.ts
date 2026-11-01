@@ -7,6 +7,10 @@ import {
 
 /** Runtime ownership is independent of the React view. Durable recovery is a separate store. */
 export class NbtViewSession {
+  private resolveWrite?: (path: string) => Promise<NbtBinaryTransport>;
+  setTransportResolver(resolve: (path: string) => Promise<NbtBinaryTransport>) {
+    this.resolveWrite = resolve;
+  }
   private listeners = new Set<() => void>();
   private progress: NbtSaveProgress = { phase: "idle", uploaded: 0 };
   private saver?: NbtSaveController;
@@ -17,12 +21,16 @@ export class NbtViewSession {
     controller: NbtSaveController;
   };
   get pendingCopyPath() {
-    return this.copy?.path;
+    const retained = this.client.getEditSnapshot()?.pendingSave?.target;
+    return this.copy?.path ?? (retained?.copy ? retained.path : undefined);
   }
-  resumeCopy() {
+  async resumeCopy() {
     const copy = this.copy;
-    if (!copy) throw new Error("There is no pending Save As.");
-    return this.saveAs(copy.path, copy.transport);
+    if (copy) return this.saveAs(copy.path, copy.transport);
+    const path = this.pendingCopyPath;
+    if (!path || !this.resolveWrite)
+      throw new Error("The pending Save As destination is unavailable.");
+    return this.saveAs(path, await this.resolveWrite(path));
   }
   private saving = 0;
   private copying = false;
@@ -68,6 +76,22 @@ export class NbtViewSession {
   }
   async abandon() {
     if (this.busy) throw new Error("Wait for the current NBT save to finish.");
+    if (!this.saver && !this.copy) {
+      const retained = this.client.getEditSnapshot()?.pendingSave;
+      if (retained) {
+        if (!retained.target || !this.resolveWrite)
+          throw new Error("The pending NBT save destination is unavailable.");
+        const transport = await this.resolveWrite(retained.target.path);
+        const controller = new NbtSaveController(
+          this.client,
+          retained.target.path,
+          transport,
+          undefined,
+          { copy: retained.target.copy },
+        );
+        await controller.abandon();
+      }
+    }
     await this.saver?.abandon();
     await this.copy?.controller.abandon();
     this.copy = undefined;
@@ -83,6 +107,12 @@ export class NbtViewSession {
     this.progress = { phase: "preparing", uploaded: 0 };
     this.emit();
     try {
+      if (
+        !this.saver &&
+        !this.copy &&
+        this.client.getEditSnapshot()?.pendingSave?.target?.copy === false
+      )
+        await this.abandonRetainedOriginal();
       await this.saver?.abandon();
       this.copy ??= {
         path,
@@ -109,6 +139,19 @@ export class NbtViewSession {
       this.copying = false;
       this.emit();
     }
+  }
+  private async abandonRetainedOriginal() {
+    const retained = this.client.getEditSnapshot()?.pendingSave;
+    if (!retained?.target || retained.target.copy || !this.resolveWrite)
+      throw new Error(
+        "Reconcile the retained NBT save before choosing another destination.",
+      );
+    const controller = new NbtSaveController(
+      this.client,
+      retained.target.path,
+      await this.resolveWrite(retained.target.path),
+    );
+    await controller.abandon();
   }
 }
 interface Entry {
@@ -151,12 +194,15 @@ async function closeEntry(key: string, entry: Entry) {
   if (entry.timer) clearTimeout(entry.timer);
   if (sessions.get(key) === entry) sessions.delete(key);
   entry.unsubscribe?.();
-  const value = await entry.promise.catch(() => undefined);
+  const value = (await entry.promise.catch(() => undefined)) ?? entry.value;
   await value?.client.close();
 }
 export function acquireNbtSession(
   key: string,
-  open: (signal: AbortSignal) => Promise<NbtDocumentClient>,
+  open: (
+    signal: AbortSignal,
+    onCreated: (client: NbtDocumentClient) => void,
+  ) => Promise<NbtDocumentClient>,
   active: boolean,
 ) {
   let entry = sessions.get(key);
@@ -168,24 +214,27 @@ export function acquireNbtSession(
       promise: undefined!,
     };
     const created = entry;
-    created.promise = open(created.controller.signal)
-      .then(async (client) => {
-        const value = new NbtViewSession(client);
-        created.value = value;
-        if (created.closed) {
-          return value;
-        }
-        const edits = client.subscribeEdits(() => collect(key, created)),
-          saves = value.subscribe(() => collect(key, created));
-        created.unsubscribe = () => {
-          edits();
-          saves();
-        };
-        pause(created);
-        collect(key, created);
+    const register = (client: NbtDocumentClient) => {
+      if (created.value) return created.value;
+      const value = new NbtViewSession(client);
+      created.value = value;
+      if (created.closed) {
         return value;
-      })
+      }
+      const edits = client.subscribeEdits(() => collect(key, created)),
+        saves = value.subscribe(() => collect(key, created));
+      created.unsubscribe = () => {
+        edits();
+        saves();
+      };
+      pause(created);
+      collect(key, created);
+      return value;
+    };
+    created.promise = open(created.controller.signal, register)
+      .then(register)
       .catch((error) => {
+        created.unsubscribe?.();
         if (sessions.get(key) === created) sessions.delete(key);
         throw error;
       });
@@ -215,11 +264,14 @@ export async function discardNbtSession(key: string) {
   if (!entry) return;
   const value = await entry.promise;
   await value.abandon();
+  await value.client.clearRecovery();
   await closeEntry(key, entry);
 }
 /** Account invalidation releases plaintext regardless of detached React views. */
 export async function clearNbtSessions() {
-  await Promise.all(
+  // Each client terminates in finally. One rejected cache cleanup must not
+  // prevent the other account-bound workers from releasing decrypted state.
+  await Promise.allSettled(
     [...sessions].map(([key, entry]) => closeEntry(key, entry)),
   );
 }
