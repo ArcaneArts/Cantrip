@@ -1,3 +1,4 @@
+import { CantripLoading } from "@/components/ui/cantrip-loading";
 import { sidebarFileRevealAction } from "@/lib/sidebar-file-reveal";
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import { TabColor, TabIndicator } from "@/components/workspace/tab-color";
@@ -551,7 +552,7 @@ export function genericPaneBody(
         {presentation.surfaces.length === 0 ? (
           <EmptyWorkspace projectName={bindings.selectedProject?.name} />
         ) : (
-          "Loading pane…"
+          <CantripLoading label="Loading pane…" />
         )}
       </div>
     );
