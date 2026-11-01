@@ -6,6 +6,7 @@ import { CantripApiError } from "@/lib/api-client";
 import type { ArchivedAgentConversation } from "@/lib/api/conversations";
 import { preventMiddleMouseDefault } from "@/lib/tab-middle-click";
 import { useConversationLifecycle } from "./use-conversation-lifecycle";
+import { useConversationSessionOrder } from "./use-conversation-session-order";
 import { ConversationArchivedSection } from "./conversation-archived-section";
 import {
   ConversationRowMenu,
@@ -199,7 +200,7 @@ export function ProjectConversationList({
       }),
     getNextPageParam: (page) => page.nextCursor ?? undefined,
   });
-  const rows = [
+  const rows = useConversationSessionOrder(projectId, [
     ...new Map(
       (
         query.data?.pages.flatMap((page) =>
@@ -207,7 +208,7 @@ export function ProjectConversationList({
         ) ?? []
       ).map((chat) => [chat.id, chat]),
     ).values(),
-  ];
+  ]);
   async function open(chat: ChatSummary, action = captureAction()) {
     action.assert();
     if (!controller)
@@ -321,7 +322,15 @@ export function ProjectConversationList({
         ) : null}
         <ConversationVirtualList rows={rows} estimate={32} label="Active chats">
           {(chat) => (
-            <div key={chat.id} data-conversation-row="">
+            <div
+              key={chat.id}
+              data-conversation-row=""
+              data-elite-global-key={
+                visible
+                  ? `conversation:active:${projectId}:${chat.id}`
+                  : undefined
+              }
+            >
               <div className="flex items-center">
                 <ConversationRowButton
                   projectId={projectId}
