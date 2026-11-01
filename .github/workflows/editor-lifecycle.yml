@@ -32,7 +32,7 @@ jobs:
           node-version: 24
       - uses: pnpm/action-setup@v4
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @cantrip/version --filter @cantrip/logging --filter @cantrip/protocol --filter @cantrip/crypto --filter @cantrip/glitch -r build
+      - run: pnpm --filter '@cantrip/app^...' -r build
       - name: Execute native editor ownership and lifecycle behavior
         if: ${{ !cancelled() }}
         run: pnpm --filter @cantrip/app exec vitest run src/components/editor src/components/code src/components/explorer/persistent-explorer-code-ownership.test.tsx src/lib/native-explorer-window-broker.test.ts --maxWorkers=2
