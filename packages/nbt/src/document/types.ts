@@ -14,6 +14,8 @@ import type {
 
 export interface NbtDocumentStatus {
   format?: NbtFormat;
+  /** Immutable parser baseline; save receipts change edit.version, not IDs. */
+  baselineVersion?: string;
   /** App-origin ownership metadata; the codec host itself does not create it. */
   shared?: {
     generation: number;

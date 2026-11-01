@@ -236,6 +236,7 @@ export function NbtProjectViewer(props: FileViewerProps) {
       openRecovery={localFile ? undefined : openRecovery}
       readOnly={props.readOnly}
       onSessionChange={props.onSessionChange}
+      initialViewState={localFile ? undefined : props.initialViewState}
       saveTarget={saveTarget}
       saveAsTarget={saveAsTarget}
       onOpenDocument={props.onOpenDocument}

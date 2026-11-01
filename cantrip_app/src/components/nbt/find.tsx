@@ -1,9 +1,11 @@
 import {
   useEffect,
   useRef,
+  useImperativeHandle,
   useState,
   useSyncExternalStore,
   type RefObject,
+  type Ref,
 } from "react";
 import { ArrowDown, ArrowUp, Search, X } from "lucide-react";
 import type {
@@ -11,6 +13,7 @@ import type {
   NbtSearchField,
   NbtSearchResult,
 } from "@cantrip/nbt/document";
+import type { NbtFindViewState, NbtViewHandle } from "@/lib/nbt/view-state";
 export function NbtFind({
   client,
   open,
@@ -20,6 +23,8 @@ export function NbtFind({
   inputRef,
   selection,
   onReveal,
+  initialState,
+  stateRef,
 }: {
   client: NbtDocumentClient;
   open: boolean;
@@ -29,12 +34,20 @@ export function NbtFind({
   inputRef: RefObject<HTMLInputElement | null>;
   selection: { id: string; name: string } | null;
   onReveal(result: NbtSearchResult, signal?: AbortSignal): Promise<void>;
+  initialState?: NbtFindViewState;
+  stateRef?: Ref<NbtViewHandle<NbtFindViewState>>;
 }) {
-  const [text, setText] = useState(""),
-    [caseSensitive, setCase] = useState(false),
-    [exactNumber, setExact] = useState(false),
-    [fields, setFields] = useState<NbtSearchField[]>(["name", "value"]),
-    [scope, setScope] = useState<{ id: string; name: string } | undefined>(),
+  const [text, setText] = useState(initialState?.text ?? ""),
+    [caseSensitive, setCase] = useState(initialState?.caseSensitive ?? false),
+    [exactNumber, setExact] = useState(initialState?.exactNumber ?? false),
+    [fields, setFields] = useState<NbtSearchField[]>(
+      initialState?.fields ?? ["name", "value"],
+    ),
+    [scope, setScope] = useState<{ id: string; name: string } | undefined>(
+      initialState?.scope
+        ? { id: initialState.scope, name: "Selected subtree" }
+        : undefined,
+    ),
     [job, setJob] = useState<{ id: string; key: string } | null>(null),
     [error, setError] = useState<string | null>(null),
     [position, setPosition] = useState({ id: "", rank: -1 });
@@ -53,9 +66,26 @@ export function NbtFind({
     }),
     rank = useRef(-1),
     navigation = useRef<AbortController | null>(null),
-    auto = useRef("");
+    auto = useRef(""),
+    restoreRank = useRef(initialState?.rank ?? -1),
+    firstKey = useRef(key);
+  useImperativeHandle(
+    stateRef,
+    () => ({
+      capture: () => ({
+        text,
+        fields: [...fields],
+        caseSensitive,
+        exactNumber,
+        ...(scope ? { scope: scope.id } : {}),
+        rank: rank.current < 0 ? restoreRank.current : rank.current,
+      }),
+    }),
+    [text, fields, caseSensitive, exactNumber, scope],
+  );
   const status = job?.key === key && snapshot?.id === job.id ? snapshot : null;
   useEffect(() => {
+    if (key !== firstKey.current) restoreRank.current = -1;
     setError(null);
     rank.current = -1;
     auto.current = "";
@@ -117,8 +147,12 @@ export function NbtFind({
   };
   useEffect(() => {
     if (status?.count && job && auto.current !== job.id) {
+      if (restoreRank.current >= status.count && status.state === "searching")
+        return;
       auto.current = job.id;
-      void move(0);
+      const next = Math.max(0, Math.min(restoreRank.current, status.count - 1));
+      restoreRank.current = -1;
+      void move(next);
     }
   }, [status?.count, job?.id]);
   if (!open) return null;

@@ -18,6 +18,15 @@ import type { NbtBinaryTransport } from "@/lib/nbt/save";
 import type { NbtRecoveryVault } from "@/lib/nbt/recovery";
 import { nbtSharedDocument } from "@/lib/nbt/shared-document";
 import { readNbtEditTarget } from "@/lib/nbt/edit-target";
+import { resolveNbtView } from "@/lib/nbt/restore-view";
+import type {
+  NbtViewState,
+  NbtViewHandle,
+  NbtTreeViewState,
+  NbtArrayViewState,
+  NbtTableViewState,
+  NbtFindViewState,
+} from "@/lib/nbt/view-state";
 import type {
   NbtDisplayRow,
   NbtDocumentSource,
@@ -56,6 +65,7 @@ export function NbtBrowser({
   saveAsTarget,
   onOpenDocument,
   openRecovery,
+  initialViewState,
 }: {
   openSource: (signal: AbortSignal) => Promise<Blob | NbtDocumentSource>;
   scope: string;
@@ -70,9 +80,12 @@ export function NbtBrowser({
   saveAsTarget?(path: string): Promise<NbtBinaryTransport>;
   onOpenDocument?(path: string): void | Promise<void>;
   openRecovery?(): Promise<NbtRecoveryVault>;
+  initialViewState?: NbtViewState;
 }) {
-  const [profile, setProfile] = useState("auto"),
-    [compression, setCompression] = useState("auto"),
+  const [profile, setProfile] = useState(initialViewState?.profile ?? "auto"),
+    [compression, setCompression] = useState(
+      initialViewState?.compression ?? "auto",
+    ),
     [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set()),
     [selected, setSelected] = useState<NbtDisplayRow | null>(null),
     [target, setTarget] = useState<NbtDisplayRow | null>(null),
@@ -119,7 +132,44 @@ export function NbtBrowser({
     initialRoot = useRef<unknown>(null),
     navigation = useRef<AbortController | null>(null),
     editOpening = useRef<AbortController | null>(null);
+  const treeView = useRef<NbtViewHandle<NbtTreeViewState>>(null),
+    arrayView = useRef<NbtViewHandle<NbtArrayViewState>>(null),
+    tableView = useRef<NbtViewHandle<NbtTableViewState>>(null),
+    findView = useRef<NbtViewHandle<NbtFindViewState>>(null),
+    lastTree = useRef<NbtTreeViewState>({ position: 0, rank: 0 }),
+    consumedView = useRef<NbtViewState | undefined>(undefined),
+    captureView = useRef<() => NbtViewState | undefined>(() => undefined);
+  const [restoredView, setRestoredView] = useState<{
+    input?: NbtViewState;
+    seed?: NbtViewState;
+    nonce: number;
+  }>({ nonce: 0 });
+  const viewReady =
+    !initialViewState || restoredView.input === initialViewState;
   const generation = status?.shared?.generation ?? 0;
+  const viewKey = generation + "/" + restoredView.nonce;
+  captureView.current = () => {
+    const current = client?.getSnapshot();
+    if (!current?.format || !current.baselineVersion) return;
+    return {
+      viewer: "nbt",
+      version: 1,
+      baselineVersion: current.baselineVersion,
+      format: { ...current.format },
+      profile,
+      compression,
+      expanded: [...expanded],
+      selected: selected?.node.id ?? null,
+      target: target?.node.id ?? null,
+      mode,
+      editing,
+      findOpen: find,
+      tree: treeView.current?.capture() ?? lastTree.current,
+      ...(arrayView.current ? { array: arrayView.current.capture() } : {}),
+      ...(tableView.current ? { table: tableView.current.capture() } : {}),
+      ...(findView.current ? { find: findView.current.capture() } : {}),
+    };
+  };
   const readOnly =
     externalReadOnly ||
     Boolean(status?.shared?.changing || status?.shared?.unavailable);
@@ -340,7 +390,12 @@ export function NbtBrowser({
             discard,
             reload,
             ...(nbtSharedDocument(client)
-              ? { checkpoint: () => nbtSharedDocument(client)!.checkpoint() }
+              ? {
+                  checkpoint: async () => {
+                    await nbtSharedDocument(client)!.checkpoint();
+                    return captureView.current();
+                  },
+                }
               : {}),
           }
         : null,
@@ -384,9 +439,73 @@ export function NbtBrowser({
     setSaveAsPath(null);
     ready.current = null;
     initialRoot.current = null;
+    lastTree.current = { position: 0, rank: 0 };
+    setRestoredView((current) => ({
+      input: current.input,
+      nonce: current.nonce + 1,
+    }));
     navigation.current?.abort();
     return () => navigation.current?.abort();
   }, [client, generation]);
+  useEffect(() => {
+    if (
+      !initialViewState ||
+      consumedView.current === initialViewState ||
+      !client ||
+      !active ||
+      !status?.root ||
+      status.shared?.changing ||
+      status.shared?.unavailable
+    )
+      return;
+    const controller = new AbortController();
+    void resolveNbtView(client, initialViewState, controller.signal)
+      .then((resolved) => {
+        controller.signal.throwIfAborted();
+        consumedView.current = initialViewState;
+        if (resolved) {
+          setProfile(initialViewState.profile);
+          setCompression(initialViewState.compression);
+        }
+        initialRoot.current = client;
+        lastTree.current = resolved
+          ? initialViewState.tree
+          : { position: 0, rank: 0 };
+        setExpanded(
+          new Set(resolved ? initialViewState.expanded : [status.root!]),
+        );
+        setSelected(resolved?.selected ?? null);
+        setTarget(resolved?.target ?? null);
+        setMode(resolved?.mode ?? "tree");
+        setEditing(initialViewState.editing);
+        setFind(Boolean(resolved && initialViewState.findOpen));
+        setRestoredView((current) => ({
+          input: initialViewState,
+          seed: resolved ? initialViewState : undefined,
+          nonce: current.nonce + 1,
+        }));
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted) {
+          setNavigationError(
+            error instanceof Error
+              ? error.message
+              : "NBT view could not be restored.",
+          );
+          onError?.(error);
+        }
+      });
+    return () => controller.abort();
+  }, [
+    initialViewState,
+    client,
+    active,
+    generation,
+    status?.root,
+    status?.shared?.changing,
+    status?.shared?.unavailable,
+    onError,
+  ]);
   useEffect(() => {
     if (!client || !active) return;
     const controller = new AbortController();
@@ -418,7 +537,7 @@ export function NbtBrowser({
     target?.node.id,
   ]);
   useEffect(() => {
-    if (client && status?.root) {
+    if (client && status?.root && viewReady) {
       if (initialRoot.current !== client) {
         initialRoot.current = client;
         setExpanded(new Set([status.root!]));
@@ -430,7 +549,15 @@ export function NbtBrowser({
     }
     if (status?.state === "error")
       onError?.(new Error(status.error?.message ?? "NBT could not be read."));
-  }, [client, generation, status?.root, status?.state, onReady, onError]);
+  }, [
+    client,
+    generation,
+    status?.root,
+    status?.state,
+    viewReady,
+    onReady,
+    onError,
+  ]);
   useEffect(() => {
     if (error) onError?.(new Error(error));
   }, [error, onError]);
@@ -510,7 +637,13 @@ export function NbtBrowser({
         if (result.elementIndex !== undefined) {
           setTarget(row);
           setMode("array");
-          setArrayFocus({ index: result.elementIndex, nonce: ++nonce.current });
+          setArrayFocus({
+            index: Math.min(
+              result.elementIndex,
+              Math.max(0, (row.node.length ?? 1) - 1),
+            ),
+            nonce: ++nonce.current,
+          });
         } else {
           setMode("tree");
           setAnchor({ id: row.node.id, center: true, nonce: ++nonce.current });
@@ -545,6 +678,7 @@ export function NbtBrowser({
   }, [client, active, generation, selected?.node.id, edit?.revision]);
   const open = useCallback((row: NbtDisplayRow, next: "array" | "table") => {
     editOpening.current?.abort();
+    if (treeView.current) lastTree.current = treeView.current.capture();
     setSelected(row);
     setTarget(row);
     setMode(next);
@@ -1004,7 +1138,13 @@ export function NbtBrowser({
         <div className="relative flex min-h-0 flex-1 flex-col">
           {mode === "array" && target ? (
             <NbtArray
-              key={generation + "/" + target.node.id}
+              key={"array/" + viewKey + "/" + target.node.id}
+              stateRef={arrayView}
+              initialState={
+                restoredView.seed?.target === target.node.id
+                  ? restoredView.seed.array
+                  : undefined
+              }
               active={active}
               client={client}
               row={target}
@@ -1019,7 +1159,14 @@ export function NbtBrowser({
             />
           ) : mode === "table" && target ? (
             <NbtTable
-              key={generation + "/" + target.node.id}
+              key={"table/" + viewKey + "/" + target.node.id}
+              stateRef={tableView}
+              initialState={
+                restoredView.seed?.target === target.node.id
+                  ? restoredView.seed.table
+                  : undefined
+              }
+              complete={status?.state === "complete"}
               active={active}
               client={client}
               row={target}
@@ -1029,7 +1176,10 @@ export function NbtBrowser({
             />
           ) : (
             <NbtTree
-              key={"tree/" + generation}
+              key={"tree/" + viewKey}
+              stateRef={treeView}
+              initialState={lastTree.current}
+              complete={status?.state === "complete"}
               active={active}
               client={client}
               root={status?.root ?? null}
@@ -1044,7 +1194,9 @@ export function NbtBrowser({
             />
           )}
           <NbtFind
-            key={"find/" + generation}
+            key={"find/" + viewKey}
+            stateRef={findView}
+            initialState={restoredView.seed?.find}
             client={client}
             active={active}
             revision={edit?.revision ?? 0}
@@ -1078,7 +1230,21 @@ export function NbtBrowser({
               readOnly={readOnly}
               onClose={() => setEditRequest(null)}
               onApplied={(id) =>
-                void reveal({ id: "edit", nodeId: id, fields: [] })
+                void reveal({
+                  id: "edit",
+                  nodeId: id,
+                  fields: [],
+                  ...(editRequest.action === "array" &&
+                  mode === "array" &&
+                  target?.node.id === id
+                    ? {
+                        elementIndex:
+                          editRequest.element ??
+                          arrayView.current?.capture().firstElement ??
+                          0,
+                      }
+                    : {}),
+                })
               }
             />
           ) : null}

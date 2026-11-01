@@ -98,6 +98,7 @@ export class NbtDocumentEngine implements NbtSerializableModel {
     return {
       ...this.status,
       format: { ...this.options.format },
+      baselineVersion: this.options.version,
       availableBytes: this.spool.available,
       nodes: this.index.size,
       cacheBytes: this.cache.retainedBytes,

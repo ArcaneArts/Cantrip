@@ -11,6 +11,9 @@ import { isLogFile } from "@/components/editor/log-file";
 import { isLicenseFile } from "@/components/editor/license-file";
 import type { FileAccess } from "@/lib/file-access";
 import type { FileIconKind } from "./file-type";
+import type { NbtViewState } from "@/lib/nbt/view-state";
+
+export type FileViewerViewState = NbtViewState;
 
 export type VisualFileFormat =
   "json" | "toml" | "yaml" | "csv" | "env" | "properties";
@@ -25,7 +28,7 @@ export interface FileViewerSession {
   /** Load and validate the replacement before retiring an approved draft. */
   reload(): Promise<void>;
   /** Flush format-specific durable recovery before a handoff or quit. */
-  checkpoint?(): Promise<void>;
+  checkpoint?(): Promise<FileViewerViewState | void>;
 }
 export interface FileViewerProps {
   path: string;
@@ -39,6 +42,7 @@ export interface FileViewerProps {
   active: boolean;
   revision: number;
   readOnly?: boolean;
+  initialViewState?: FileViewerViewState;
   onSessionChange?(session: FileViewerSession | null): void;
   onOpenDocument?(path: string): void | Promise<void>;
   onReady?(): void;

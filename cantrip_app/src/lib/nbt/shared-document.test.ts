@@ -26,6 +26,8 @@ import { nbtSharedWire } from "./shared-wire";
 import type { NbtSharedFactory } from "./shared-owner";
 import { acquireNbtSession, NbtViewSession } from "./session-registry";
 import { readNbtEditTarget } from "./edit-target";
+import { resolveNbtView } from "./restore-view";
+import type { NbtViewState } from "./view-state";
 
 class Locks {
   private queues = new Map<
@@ -175,6 +177,7 @@ async function fixture({ holdTail = false } = {}) {
             value: new Uint8Array(200000),
           },
         },
+        { name: "after-array", tag: { type: NbtTag.Int, value: 42 } },
       ]
     : [];
   const id = crypto.randomUUID(),
@@ -948,6 +951,108 @@ it("suspends an orphaned frozen save and lets a surviving view reconcile the sam
     expect((await b.describe("node:1")).value).toBe(42n);
     expect(b.getEditSnapshot()?.dirty).toBe(true);
     await b.close();
+  } finally {
+    await f.close();
+  }
+}, 15000);
+it("resolves transferred IDs against the original parser baseline after a structural save and owner recovery", async () => {
+  const f = await fixture();
+  try {
+    const client = await f.renderer().open();
+    await until(() => client.getSnapshot()?.state === "complete");
+    await client.edit([
+      {
+        type: "insert",
+        parent: "node:0",
+        index: 0,
+        name: "new-first",
+        value: { type: NbtTag.Int, value: "7" },
+      },
+    ]);
+    await client.beginSave("structural-save");
+    await client.acknowledgeSave("structural-save", "v2");
+    expect(client.getEditSnapshot()?.version).toBe("v2");
+    expect(client.getSnapshot()?.baselineVersion).toBe("v1");
+    const state: NbtViewState = {
+      viewer: "nbt",
+      version: 1,
+      baselineVersion: "v1",
+      format: { ...JAVA_NBT },
+      profile: "java",
+      compression: "none",
+      expanded: ["node:0"],
+      selected: "node:1",
+      target: null,
+      mode: "tree",
+      editing: true,
+      findOpen: false,
+      tree: { position: 2, rank: 2 },
+    };
+    const generation = client.getSnapshot()?.shared?.generation;
+    f.created[0]!.fail(new Error("Worker terminated"));
+    await until(
+      () =>
+        client.getSnapshot()?.state === "complete" &&
+        client.getSnapshot()?.shared?.generation !== generation,
+    );
+    const restored = await resolveNbtView(
+      client,
+      state,
+      new AbortController().signal,
+    );
+    expect(restored?.selected?.name).toBe("privateName");
+    expect(restored?.selected?.value).toBe(9007199254740993n);
+    expect(client.getSnapshot()?.baselineVersion).toBe("v1");
+    await client.edit([{ type: "delete", id: "node:1" }]);
+    expect(
+      (await resolveNbtView(client, state, new AbortController().signal))
+        ?.selected,
+    ).toBeNull();
+    await client.close();
+  } finally {
+    await f.close();
+  }
+}, 15000);
+it("waits for an unloaded transferred selection to be indexed and cancels that wait when the view closes", async () => {
+  const f = await fixture({ holdTail: true });
+  try {
+    const client = await f.renderer().open();
+    await until(() => Boolean(client.getSnapshot()?.root));
+    const state: NbtViewState = {
+      viewer: "nbt",
+      version: 1,
+      baselineVersion: "v1",
+      format: { ...JAVA_NBT },
+      profile: "java",
+      compression: "none",
+      expanded: ["node:0"],
+      selected: "node:4",
+      target: null,
+      mode: "tree",
+      editing: false,
+      findOpen: false,
+      tree: { position: 4, rank: 4 },
+    };
+    const controller = new AbortController();
+    const cancelled = resolveNbtView(client, state, controller.signal);
+    controller.abort(new Error("Transferred view cancelled"));
+    await expect(cancelled).rejects.toThrow(/cancelled/);
+    let resolved = false;
+    const pending = resolveNbtView(
+      client,
+      state,
+      new AbortController().signal,
+    ).then((value) => {
+      resolved = true;
+      return value;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(resolved).toBe(false);
+    f.releaseTail();
+    const result = await pending;
+    expect(result?.selected?.name).toBe("after-array");
+    expect(result?.selected?.value).toBe(42);
+    await client.close();
   } finally {
     await f.close();
   }

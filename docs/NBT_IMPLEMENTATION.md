@@ -37,11 +37,18 @@ Actual recovery-storage failures expose a manual retry while retaining the
 journal; repeated crashes before indexing completes do not trigger a retry loop.
 Editors refresh selected tag descriptors before opening, fence concurrent
 changes, and avoid delayed autofocus stealing an already focused field.
-Native pop-out/return qualification, bounded view-state
-transfer, local-file recovery/export, touch qualification and real-phone testing
+Sparse view state now travels in the private encrypted transfer envelope:
+expansion IDs, selected/target IDs, logical scrolling, array number format,
+table columns/reference/order/horizontal position, and find options/result rank.
+References bind to the original parser baseline and encoding, including across
+journal replay after structural saves. Restoration waits for actual indexing
+progress rather than declaring later nodes missing. Stale page counts cannot
+clamp a restored position, and scaled scroll extents retain exact programmatic
+targets. Array edits keep their grid open. Local-file recovery/export, touch
+qualification and real-phone testing
 are still unfinished; this milestone is not complete.
 
-Current recovery verification: 178 codec/document/edit/recovery tests, 48
+Current recovery verification: 178 codec/document/edit/recovery tests, 59
 focused NBT app tests, Explorer transfer suites, 12 binary-write worker tests,
 and app/worker typechecks pass.
 Production Chromium and WebKit app/server/worker runs restore unsaved drafts,
@@ -64,11 +71,26 @@ recovered undo, inactive-view replacement and confirmed shared/last-view close.
 Both engines also terminate a real dedicated worker and recover its draft,
 then abort an actual recovery-head transaction and recover through manual retry.
 `CANTRIP_NBT_QA_OWNER_FAULTS=true` enables the corresponding fault injection in
-the full app fixture; Chromium passes that flow. WebKit full-app fault coverage
-is still being rechecked after fixing the edit-sheet autofocus race.
+the full app fixture; Chromium and WebKit pass that flow, including exact named
+Longs after fixing the edit-sheet autofocus race.
 This isolates the NBT broker; it does not simulate a native workspace window or
 qualify the full native pop-out flow. A second ordinary browser main page waits
 for the app's single main-workspace owner and is not a valid native-pop-out test.
+
+`node scripts/qa/nbt-view-transfer-browser.mjs` passes real-worker Chromium and
+WebKit restoration of tree, table, and find state, plus a dirty 100 MiB expanded
+array. A 640px-to-390px resize preserves the first visible element; the sparse
+array transfer payload is 517 bytes. This is browser layout coverage, not
+physical-phone qualification.
+
+`node scripts/qa/workspace-native.mjs --nbt` launches an isolated macOS QA app
+with its own bundle identity, server, worker, and disposable repository. Native
+UI qualification edits a Long in a 1 MiB array fixture, selects the last of 500
+nested properties, pops the dirty tab into a real Tauri window, and returns it
+by closing that window. The draft, edit mode, expanded compound, selection, and
+scroll position survive. Undo/redo still work after return; explicit streamed
+save is independently parsed to verify the edited Long, unchanged array, and
+500 unchanged compound entries. iOS/Android qualification is still required.
 
 Milestone 1 validation commands:
 

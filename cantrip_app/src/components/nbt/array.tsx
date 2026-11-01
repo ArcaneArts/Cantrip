@@ -1,7 +1,16 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type Ref,
+} from "react";
 import type { NbtDocumentClient, NbtDisplayRow } from "@cantrip/nbt/document";
 import { NbtVirtualList, type NbtVirtualHandle } from "./virtual-list";
 import { hexValue, nbtControl, NBT_TYPE_NAMES } from "./format";
+import type { NbtArrayViewState, NbtViewHandle } from "@/lib/nbt/view-state";
 export function NbtArray({
   client,
   active = true,
@@ -10,6 +19,8 @@ export function NbtArray({
   availableBytes,
   revision = 0,
   onEdit,
+  initialState,
+  stateRef,
 }: {
   client: NbtDocumentClient;
   active?: boolean;
@@ -18,15 +29,35 @@ export function NbtArray({
   availableBytes: number;
   revision?: number;
   onEdit?(index: number): void;
+  initialState?: NbtArrayViewState;
+  stateRef?: Ref<NbtViewHandle<NbtArrayViewState>>;
 }) {
   const [columns, setColumns] = useState(4),
-    [hex, setHex] = useState(false),
+    [hex, setHex] = useState(initialState?.hex ?? false),
     [range, setRange] = useState({ offset: 0, limit: 32 }),
     [values, setValues] = useState(new Map<number, number | bigint>()),
     [error, setError] = useState<string | null>(null),
     [jump, setJump] = useState("");
   const list = useRef<NbtVirtualHandle>(null),
-    host = useRef<HTMLDivElement>(null);
+    host = useRef<HTMLDivElement>(null),
+    columnsRef = useRef(columns),
+    firstElement = useRef(initialState?.firstElement ?? 0);
+  columnsRef.current = columns;
+  useImperativeHandle(
+    stateRef,
+    () => ({
+      capture: () => ({
+        firstElement: Math.floor(
+          (list.current?.capturePosition() ?? 0) * columns,
+        ),
+        hex,
+      }),
+    }),
+    [columns, hex],
+  );
+  useLayoutEffect(() => {
+    list.current?.restorePosition(Math.floor(firstElement.current / columns));
+  }, [columns]);
   const total = row.node.length ?? 0;
   const onRange = useCallback(
     (offset: number, limit: number) =>
@@ -40,9 +71,15 @@ export function NbtArray({
   useEffect(() => {
     const node = host.current;
     if (!active || !node) return;
-    const observer = new ResizeObserver(() =>
-      setColumns(Math.max(1, Math.min(8, Math.floor(node.clientWidth / 150)))),
-    );
+    const observer = new ResizeObserver(() => {
+      const next = Math.max(1, Math.min(8, Math.floor(node.clientWidth / 150)));
+      if (next === columnsRef.current) return;
+      firstElement.current = Math.floor(
+        (list.current?.capturePosition() ?? 0) * columnsRef.current,
+      );
+      columnsRef.current = next;
+      setColumns(next);
+    });
     observer.observe(node);
     return () => observer.disconnect();
   }, [active]);
