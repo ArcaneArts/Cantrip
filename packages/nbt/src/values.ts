@@ -88,7 +88,24 @@ export async function readNbtScalar(
     );
     return { value: result.text, truncated: result.truncated };
   }
-  const reader = new NbtCursor(source, encoding, signal);
+  if (node.type < NbtTag.Byte || node.type > NbtTag.Double)
+    throw new NbtError(node.start, "Tag is not a scalar");
+  const end = node.end;
+  if (end === null || end < node.payload || end - node.payload > 10)
+    throw new NbtError(node.start, "Scalar index record is incomplete");
+  // A scalar may be the last available value in a paused growing spool. Never
+  // wait for the cursor's ordinary 64 KiB structural lookahead to decode it.
+  const scalarSource: NbtByteSource = {
+    size: end,
+    read(offset, length, requestSignal) {
+      return source.read(
+        offset,
+        Math.min(length, Math.max(0, end - offset)),
+        requestSignal,
+      );
+    },
+  };
+  const reader = new NbtCursor(scalarSource, encoding, signal);
   reader.position = node.payload;
   let value: NbtScalar;
   switch (node.type) {

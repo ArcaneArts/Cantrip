@@ -8,7 +8,7 @@ is a foundation; its presence does not mean the app viewer/editor has shipped.
 | -------------------------------------- | ------------- | ------------------------------------------------------------------------------------------- |
 | 1. Lossless client codec               | Implemented   | Codec tests, independent fixtures, production browser-worker QA                             |
 | 2. Binary access and encrypted storage | Implemented   | Protected range reads, pinned revisions, encrypted OPFS/IndexedDB spill and cancellation    |
-| 3. Background parser integration       | Pending       | Dedicated document worker, progressive disk-backed indexing, bounded working set            |
+| 3. Background parser integration       | Implemented   | Dedicated document worker, progressive disk-backed indexing, bounded working set            |
 | 4. Tree/table viewer and global search | Pending       | Actual app interactions, unloaded-subtree search, paged grids and responsive navigation     |
 | 5. Typed editing and streamed saves    | Pending       | All edit operations, undo/redo, atomic version-checked saves and interrupted-write receipts |
 | 6. Recovery, ownership, and phones     | Pending       | Encrypted recoverable drafts, safe close/pop-out/return, touch editing and phone saves      |
@@ -58,9 +58,42 @@ fencing rather than a physical immutable filesystem snapshot; a changed source
 requires reopening, and cached bytes belong to their original revision.
 
 The default storage key is nonextractable and ephemeral. Durable encrypted
-recovery, crash-orphan cleanup, document ownership, the paged tag index, and
-the actual viewer/editor remain milestones 3–7. Disposable cache removal must
+recovery, crash-orphan cleanup, document ownership, and the actual viewer/editor
+remain milestones 4–7. Disposable cache removal must
 never be used as draft persistence.
+
+Milestone 3 validation commands:
+
+```sh
+pnpm --filter @cantrip/nbt build
+pnpm --filter @cantrip/nbt exec vitest run --maxWorkers=1
+pnpm --filter @cantrip/app exec vitest run src/lib/nbt/document.test.ts src/components/explorer/explorer-native-session.test.tsx --maxWorkers=2
+pnpm --filter @cantrip/app build
+node scripts/qa/nbt-codec-browser.mjs
+node scripts/qa/nbt-document-browser.mjs
+```
+
+The production app worker opens browser Files/Blobs directly or brokers bounded
+protected binary source reads through its client. Parsing, decompression,
+indexing, display decoding and baseline serialization stay in the worker.
+`PagedNbtIndex` uses fixed descriptor pages and 256-child sparse checkpoints,
+with no whole-document map. Stable preorder IDs also fix the byte-offset
+identity collision between compound list items and their first properties.
+
+Document-worker QA covers a 104,857,616-byte expanded array and 1,050,002 tags
+in Chromium/WebKit, using a 128 KiB byte cache and at most 16 decoded index
+pages. It checks early rows, pause/cancellation, precise Longs at the end,
+paging without source rereads, idle behavior, streamed original export, and
+baseline recompression/reopen. Main-thread frame sampling excludes synthetic
+fixture generation. Exact timings are workload observations, not full app or
+physical-phone qualification. The fixture uses a large numeric array and many
+small properties; the 1 GiB app stress case remains milestone 7.
+
+The dedicated worker and app factory are available to the viewer integration;
+the visible tree/table/search UI is milestone 4. Typed edit serialization and
+atomic worker writes are milestone 5; shared ownership, encrypted recoverable
+journals, locking and phones remain milestone 6. Disposable index cache flush
+is not a replacement for durable draft recovery.
 
 ## Accepted plan
 

@@ -11,6 +11,14 @@
     "./storage": {
       "types": "./src/storage/index.ts",
       "import": "./dist/storage/index.js"
+    },
+    "./paged": {
+      "types": "./src/paged/index.ts",
+      "import": "./dist/paged/index.js"
+    },
+    "./document": {
+      "types": "./src/document/index.ts",
+      "import": "./dist/document/index.js"
     }
   },
   "files": [

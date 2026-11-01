@@ -351,9 +351,9 @@ describe("native Explorer document integration", () => {
       await render();
       await edit("retain me if reading fails");
       const document = input().session;
-      api.getExplorerFile.mockRejectedValueOnce(
-        new Error("worker unavailable"),
-      );
+      // A single transient failure is retried; this case needs a sustained outage.
+      client.setQueryDefaults(["explorer-file"], { retryDelay: 0 });
+      api.getExplorerFile.mockRejectedValue(new Error("worker unavailable"));
       await act(async () => {
         await expect(header().refresh()).rejects.toThrow("worker unavailable");
       });
