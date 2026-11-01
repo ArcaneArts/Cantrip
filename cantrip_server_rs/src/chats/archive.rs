@@ -151,9 +151,9 @@ impl Repository {
             if chat["archived_at"].is_null(){return if !attach && chat["experience"]=="agent"{wire_summary(&chat).map(Some)}else{Ok(None)}}
             let at=crate::auth::now();
             let rows=if let Some(position)=position{
-                tx.query("UPDATE chats SET archived_at=NULL,updated_at=$1,last_used_at=$1,position=$2::bigint::integer WHERE id=$3 RETURNING to_jsonb(chats)::text",&[&at,&position,&id]).await?
+                tx.query("UPDATE chats SET archived_at=NULL,automation_paused=CASE WHEN experience='agent' AND status NOT IN ('running','waiting-for-approval') THEN false ELSE automation_paused END,updated_at=$1,last_used_at=$1,position=$2::bigint::integer WHERE id=$3 RETURNING to_jsonb(chats)::text",&[&at,&position,&id]).await?
             }else{
-                tx.query("UPDATE chats SET archived_at=NULL,updated_at=$1,last_used_at=$1 WHERE id=$2 RETURNING to_jsonb(chats)::text",&[&at,&id]).await?
+                tx.query("UPDATE chats SET archived_at=NULL,automation_paused=CASE WHEN experience='agent' AND status NOT IN ('running','waiting-for-approval') THEN false ELSE automation_paused END,updated_at=$1,last_used_at=$1 WHERE id=$2 RETURNING to_jsonb(chats)::text",&[&at,&id]).await?
             };
             let restored=raw(rows.first().context("Restored Chat")?)?;
             if chat["experience"]!="task" && attach{crate::project_layout::attach_resource(tx,&project,&id,"chat",&Value::Object(Default::default())).await?;}
