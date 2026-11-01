@@ -8,6 +8,7 @@ import {
   NbtTag,
   type NbtByteSource,
   type NbtNode,
+  type NbtSpan,
   type NbtScanResult,
 } from "../types.js";
 import {
@@ -24,6 +25,7 @@ import type {
   NbtDocumentStatus,
   NbtDisplayRow,
 } from "./types.js";
+import type { NbtReadModel } from "../view/types.js";
 
 export function nbtDocumentError(error: unknown) {
   return {
@@ -34,7 +36,7 @@ export function nbtDocumentError(error: unknown) {
 }
 const turn = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 /** Owns the only parser, expanded spool, and paged index for one document revision. */
-export class NbtDocumentEngine {
+export class NbtDocumentEngine implements NbtReadModel {
   private controller = new AbortController();
   private gate = new NbtWorkGate();
   private spool: NbtByteSpool;
@@ -53,6 +55,8 @@ export class NbtDocumentEngine {
   private stopped = false;
   private result: NbtScanResult | undefined;
   private closing: Promise<void> | undefined;
+  private revision = 0;
+  private changes = new Set<() => void>();
   readonly completed: Promise<NbtScanResult>;
   private constructor(
     private source: NbtDocumentSource,
@@ -99,6 +103,74 @@ export class NbtDocumentEngine {
       indexPages: this.index.retainedPages,
       peakIndexPages: this.index.peakPages,
     };
+  }
+  get encoding() {
+    return this.options.format;
+  }
+  get binding() {
+    return this.options.binding;
+  }
+  changeRevision() {
+    return this.revision;
+  }
+  private notify() {
+    this.revision++;
+    for (const wake of this.changes) wake();
+    this.changes.clear();
+  }
+  waitForChange(revision: number, signal: AbortSignal) {
+    signal.throwIfAborted();
+    if (revision !== this.revision) return Promise.resolve();
+    return new Promise<void>((resolve, reject) => {
+      const done = () => {
+        signal.removeEventListener("abort", abort);
+        this.changes.delete(done);
+        resolve();
+      };
+      const abort = () => {
+        signal.removeEventListener("abort", abort);
+        this.changes.delete(done);
+        reject(signal.reason);
+      };
+      this.changes.add(done);
+      signal.addEventListener("abort", abort, { once: true });
+    });
+  }
+  async work(signal: AbortSignal, background = true) {
+    this.check(signal);
+    if (background) await this.gate.wait(signal);
+    await turn();
+    this.check(signal);
+  }
+  async validated(signal: AbortSignal) {
+    await waitNbtPromise(this.completed, signal);
+  }
+  getNode(id: string) {
+    this.check();
+    return this.index.get(id);
+  }
+  getChildren(parent: string, offset: number, limit: number) {
+    this.check();
+    return this.index.children(parent, offset, limit);
+  }
+  async scanNodes(offset: number, limit: number) {
+    assertRange(offset, limit);
+    if (limit > 128)
+      throw new NbtError(0, "Scan pages are limited to 128 nodes");
+    const rows: NbtNode[] = [];
+    for (let i = offset; i < Math.min(offset + limit, this.index.size); i++) {
+      const node = await this.getNode("node:" + i);
+      if (node) rows.push(node);
+    }
+    return rows;
+  }
+  text(span: NbtSpan, maxBytes: number, signal?: AbortSignal) {
+    this.check(signal);
+    return readNbtText(this.spool, span, this.options.format, maxBytes, signal);
+  }
+  scalar(node: NbtNode, signal?: AbortSignal) {
+    this.check(signal);
+    return readNbtScalar(this.spool, node, this.options.format, signal);
   }
   private emit(force = false) {
     const now = performance.now();
@@ -162,6 +234,7 @@ export class NbtDocumentEngine {
       {
         put: async (node) => {
           await this.index.put(node);
+          this.notify();
           if (node.parent === null && this.status.root === null) {
             this.status.root = node.id;
             this.emit(true);
@@ -190,6 +263,7 @@ export class NbtDocumentEngine {
       this.status.state = "complete";
       this.status.indexedBytes = result.bytes;
       this.emit(true);
+      this.notify();
       return result;
     } catch (error) {
       this.controller.abort(error);
@@ -200,6 +274,7 @@ export class NbtDocumentEngine {
         this.status.state = "error";
         this.status.error = nbtDocumentError(error);
         this.emit(true);
+        this.notify();
       }
       throw error;
     }
@@ -216,10 +291,7 @@ export class NbtDocumentEngine {
     if (this.stopped) throw new NbtError(0, "NBT document is closed");
     signal?.throwIfAborted();
   }
-  private async row(
-    node: NbtNode,
-    signal?: AbortSignal,
-  ): Promise<NbtDisplayRow> {
+  async describe(node: NbtNode, signal?: AbortSignal): Promise<NbtDisplayRow> {
     this.check(signal);
     const row: NbtDisplayRow = { node, name: "", nameTruncated: false };
     try {
@@ -279,7 +351,7 @@ export class NbtDocumentEngine {
       }
     } else nodes = await this.index.children(parent, offset, limit);
     const rows: NbtDisplayRow[] = [];
-    for (const node of nodes) rows.push(await this.row(node, signal));
+    for (const node of nodes) rows.push(await this.describe(node, signal));
     return rows;
   }
   async array(id: string, offset: number, limit: number, signal?: AbortSignal) {
@@ -327,6 +399,7 @@ export class NbtDocumentEngine {
     this.source.close?.();
     this.status.state = "closed";
     this.emit(true);
+    this.notify();
     return (this.closing = (async () => {
       await this.completed.catch(() => {});
       await this.index.dispose();

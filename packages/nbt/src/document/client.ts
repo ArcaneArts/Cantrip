@@ -1,3 +1,9 @@
+import type { NbtTreePage, NbtPathEntry, NbtTablePage } from "../view/types.js";
+import type {
+  NbtSearchQuery,
+  NbtSearchStatus,
+  NbtSearchResult,
+} from "../search/types.js";
 import { assertRange, NbtError } from "../types.js";
 import type {
   NbtDisplayRow,
@@ -23,6 +29,8 @@ export class NbtDocumentClient {
   private reads = new Map<number, AbortController>();
   private listeners = new Set<() => void>();
   private status: NbtDocumentStatus | null = null;
+  private searchStatus: NbtSearchStatus | null = null;
+  private searchListeners = new Set<() => void>();
   private closing: Promise<void> | undefined;
   private closed = false;
   private constructor(
@@ -99,7 +107,7 @@ export class NbtDocumentClient {
         controller.signal.throwIfAborted();
         if (sourceBytes.length > message.length)
           throw new NbtError(message.offset, "Source exceeded requested range");
-        const bytes = sourceBytes.slice();
+        const bytes = new Uint8Array(sourceBytes);
         if (!this.closed)
           this.endpoint.postMessage(
             { type: "source.result", id: message.id, bytes },
@@ -118,6 +126,13 @@ export class NbtDocumentClient {
             });
         })
         .finally(() => this.reads.delete(message.id));
+      return;
+    }
+    if (message.type === "search.status") {
+      if (!this.closed) {
+        this.searchStatus = message.status;
+        for (const listener of this.searchListeners) listener();
+      }
       return;
     }
     if (message.type === "status") {
@@ -144,7 +159,9 @@ export class NbtDocumentClient {
     signal?.throwIfAborted();
     if (
       this.pending.size >= 64 &&
-      !["close", "pause", "serialize.cancel"].includes(command.type)
+      !["close", "pause", "serialize.cancel", "search.cancel"].includes(
+        command.type,
+      )
     )
       return Promise.reject(new Error("NBT request queue is full."));
     const id = ++this.sequence;
@@ -189,6 +206,49 @@ export class NbtDocumentClient {
       signal,
     );
   }
+  describe(id: string, signal?: AbortSignal) {
+    return this.request<NbtDisplayRow>({ type: "node", id }, signal);
+  }
+  ancestors(id: string, signal?: AbortSignal) {
+    return this.request<NbtPathEntry[]>({ type: "ancestors", id }, signal);
+  }
+  tree(
+    expanded: string[],
+    offset: number,
+    limit = 128,
+    anchor?: string,
+    signal?: AbortSignal,
+  ) {
+    return this.request<NbtTreePage>(
+      { type: "tree", expanded, offset, limit, anchor },
+      signal,
+    );
+  }
+  table(
+    input: Omit<Extract<NbtDocumentCommand, { type: "table" }>, "type">,
+    signal?: AbortSignal,
+  ) {
+    return this.request<NbtTablePage>({ type: "table", ...input }, signal);
+  }
+  startSearch(id: string, query: NbtSearchQuery) {
+    return this.request<NbtSearchStatus>({ type: "search.start", id, query });
+  }
+  searchResults(id: string, offset: number, limit = 128, signal?: AbortSignal) {
+    return this.request<NbtSearchResult[]>(
+      { type: "search.page", id, offset, limit },
+      signal,
+    );
+  }
+  cancelSearch(id: string) {
+    return this.request({ type: "search.cancel", id });
+  }
+  getSearchSnapshot = () => this.searchStatus;
+  subscribeSearch = (listener: () => void) => {
+    this.searchListeners.add(listener);
+    return () => {
+      this.searchListeners.delete(listener);
+    };
+  };
   setPaused(paused: boolean) {
     return this.request<NbtDocumentStatus>({ type: "pause", paused });
   }
@@ -234,6 +294,7 @@ export class NbtDocumentClient {
       }
       this.pending.clear();
       this.listeners.clear();
+      this.searchListeners.clear();
       this.terminate();
     }
   }

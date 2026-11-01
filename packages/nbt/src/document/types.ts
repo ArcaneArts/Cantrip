@@ -1,3 +1,4 @@
+import type { NbtSearchQuery, NbtSearchStatus } from "../search/types.js";
 import type {
   NbtByteSource,
   NbtFormat,
@@ -42,6 +43,28 @@ export type NbtDocumentCommand =
   | { type: "open"; input: NbtDocumentInput; options: NbtDocumentOpenOptions }
   | { type: "rows"; parent: string | null; offset: number; limit: number }
   | { type: "array"; id: string; offset: number; limit: number }
+  | { type: "node"; id: string }
+  | { type: "ancestors"; id: string }
+  | {
+      type: "tree";
+      expanded: string[];
+      offset: number;
+      limit: number;
+      anchor?: string;
+    }
+  | {
+      type: "table";
+      id: string;
+      offset: number;
+      limit: number;
+      columnOffset: number;
+      columnLimit: number;
+      referenceOrdinal: number;
+      reverse: boolean;
+    }
+  | { type: "search.start"; id: string; query: NbtSearchQuery }
+  | { type: "search.page"; id: string; offset: number; limit: number }
+  | { type: "search.cancel"; id: string }
   | { type: "pause"; paused: boolean }
   | { type: "serialize.begin"; exportId: string; original: boolean }
   | { type: "serialize.next"; exportId: string }
@@ -59,6 +82,7 @@ export type NbtDocumentResponse =
       error?: { message: string; offset?: number };
     }
   | { type: "status"; status: NbtDocumentStatus }
+  | { type: "search.status"; status: NbtSearchStatus }
   | { type: "source.read"; id: number; offset: number; length: number }
   | { type: "source.cancel"; id: number };
 export interface NbtMessageEndpoint<In, Out> {

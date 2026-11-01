@@ -7,6 +7,12 @@ import {
 import { mediaBlobForViewer } from "./viewer-media";
 
 it.each([
+  ["world.nbt", "nbt", "preview"],
+  ["data.nbt.gz", "nbt", "preview"],
+  ["level.dat", "nbt", "preview"],
+  ["level.dat_old", "nbt", "preview"],
+  ["build.litematic", "nbt", "preview"],
+  ["arbitrary.dat", "text", "edit"],
   ["photo.PNG", "image", "preview"],
   ["song.ogg", "audio", "preview"],
   ["clip.mp4", "video", "preview"],
@@ -97,4 +103,12 @@ it.each([
   expect(
     (await mediaBlobForViewer(new Blob([prefix]), "audio", "audio/mpeg")).type,
   ).toBe(mime);
+});
+
+it("offers NBT for ambiguous extensions without routing through text decoding", () => {
+  const result = resolveFileViewer("unknown.xyz", "nbt");
+  expect(result.definition.id).toBe("nbt");
+  expect(result.custom).toBeTypeOf("function");
+  expect(result.mode).toBe("preview");
+  expect(result.media).toBeNull();
 });

@@ -363,7 +363,9 @@ export async function executeExplorerOperation(
   operationId = crypto.randomUUID(),
   sequence = 0,
   binding?: ExplorerFileBinding,
+  signal?: AbortSignal,
 ): Promise<ExplorerOperationResultContent> {
+  signal?.throwIfAborted();
   const protectedRequest = await protectSurfaceStreamContent({
     context: {
       surfaceKind: "explorer",
@@ -375,11 +377,13 @@ export async function executeExplorerOperation(
     content,
     schema: explorerOperationRequestContentSchema,
   });
+  signal?.throwIfAborted();
   const wire = surfaceStreamWireResponseSchema.parse(
     await request(
       `/api/explorers/${encodeURIComponent(explorerId)}/operation`,
       {
         method: "POST",
+        signal,
         body: JSON.stringify({
           operationId,
           sequence,
@@ -389,6 +393,7 @@ export async function executeExplorerOperation(
       },
     ),
   );
+  signal?.throwIfAborted();
   if (wire.operationId !== operationId || wire.sequence !== sequence) {
     throw new Error("Explorer returned a stale protected operation.");
   }
@@ -403,6 +408,7 @@ export async function executeExplorerOperation(
     opaque: wire.protectedResponse,
     schema: surfaceOperationOutcomeContentSchema,
   });
+  signal?.throwIfAborted();
   if (!outcome.ok) throw new FileOperationError(outcome.error, outcome.code);
   return explorerOperationResultContentSchema.parse(outcome.result);
 }

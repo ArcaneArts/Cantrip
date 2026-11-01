@@ -1,3 +1,4 @@
+import { NbtFileViewer } from "@/components/nbt/file-viewer";
 import type { ComponentType } from "react";
 import {
   explorerMarkdownFileForPath,
@@ -63,6 +64,21 @@ const structured = (
   matches: (path) => extensions.includes(extension(path) ?? ""),
 });
 export const FILE_VIEWERS: readonly FileViewerDefinition[] = [
+  {
+    id: "nbt",
+    label: "NBT",
+    icon: "database",
+    defaultMode: "preview",
+    matches: (path) =>
+      ["nbt", "schematic", "litematic", "structure", "mcstructure"].includes(
+        extension(path) ?? "",
+      ) ||
+      /\.nbt\.(?:gz|zlib)$/iu.test(path) ||
+      /^(?:level|playerdata)\.dat(?:_old)?$/iu.test(
+        path.split("/").at(-1) ?? "",
+      ),
+    Component: NbtFileViewer,
+  },
   {
     id: "image",
     label: "Image",

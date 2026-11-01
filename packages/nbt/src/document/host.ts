@@ -1,3 +1,6 @@
+import { NbtDocumentSearch } from "../search/search.js";
+import { nbtTreePage, nbtAncestors } from "../view/tree.js";
+import { nbtTablePage } from "../view/table.js";
 import { blobNbtSource } from "../source.js";
 import { assertRange, NbtError, type NbtByteSource } from "../types.js";
 import { NbtDocumentEngine, nbtDocumentError } from "./engine.js";
@@ -11,6 +14,7 @@ import type {
 export function installNbtDocumentWorker(
   endpoint: NbtMessageEndpoint<NbtDocumentRequest, NbtDocumentResponse>,
 ) {
+  let search: NbtDocumentSearch | undefined;
   let engine: NbtDocumentEngine | undefined,
     opening = false,
     sourceSequence = 0,
@@ -100,7 +104,9 @@ export function installNbtDocumentWorker(
     if (!Number.isSafeInteger(id) || id < 0 || requests.has(id)) return;
     if (
       requests.size >= 64 &&
-      !["close", "pause", "serialize.cancel"].includes(message.command.type)
+      !["close", "pause", "serialize.cancel", "search.cancel"].includes(
+        message.command.type,
+      )
     ) {
       send({
         type: "result",
@@ -133,6 +139,9 @@ export function installNbtDocumentWorker(
             await engine.close();
             throw controller.signal.reason;
           }
+          search = new NbtDocumentSearch(engine, engine.binding, (status) =>
+            send({ type: "search.status", status }),
+          );
           value = engine.snapshot();
         } finally {
           opening = false;
@@ -147,6 +156,53 @@ export function installNbtDocumentWorker(
               command.limit,
               controller.signal,
             );
+            break;
+          case "node": {
+            const node = await engine.getNode(command.id);
+            if (!node) throw new NbtError(0, "Indexed node is unavailable");
+            value = await engine.describe(node, controller.signal);
+            break;
+          }
+          case "ancestors":
+            value = await nbtAncestors(engine, command.id, controller.signal);
+            break;
+          case "tree":
+            value = await nbtTreePage(
+              engine,
+              command.expanded,
+              command.offset,
+              command.limit,
+              command.anchor,
+              controller.signal,
+            );
+            break;
+          case "table":
+            value = await nbtTablePage(
+              engine,
+              command.id,
+              command.offset,
+              command.limit,
+              command.columnOffset,
+              command.columnLimit,
+              command.referenceOrdinal,
+              command.reverse,
+              controller.signal,
+            );
+            break;
+          case "search.start":
+            value = search!.start(command.id, command.query);
+            break;
+          case "search.page":
+            value = await search!.results(
+              command.id,
+              command.offset,
+              command.limit,
+              controller.signal,
+            );
+            break;
+          case "search.cancel":
+            await search!.cancel(command.id);
+            value = null;
             break;
           case "array":
             value = await engine.array(
@@ -218,6 +274,7 @@ export function installNbtDocumentWorker(
             serialization?.controller.abort(
               new Error("NBT document is closed."),
             );
+            await search?.close();
             await engine.close();
             await serialization?.iterator.return(undefined);
             serialization = undefined;
@@ -250,6 +307,7 @@ export function installNbtDocumentWorker(
     }
     reads.clear();
     serialization?.controller.abort();
+    await search?.close();
     await engine?.close();
     await serialization?.iterator.return(undefined);
   };
