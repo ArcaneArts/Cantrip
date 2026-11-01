@@ -17,7 +17,10 @@ import {
   getClientSessionIdentitySnapshot,
   onClientSessionIdentityChanged,
 } from "@/lib/client-session";
-import { ProjectPaneTabStrip } from "@/components/workspace/project-tab-bar";
+import {
+  SelectedPaneTabStrip,
+  selectedPaneTabStripVisible,
+} from "./selected-pane-tab-strip";
 import { revealProjectInNativeFileManager } from "@/lib/desktop-project-share";
 type PersistentSurfaceBindings = Readonly<Record<string, any>>;
 const NO_VISIBLE_PLACEMENTS: readonly any[] = [];
@@ -43,11 +46,6 @@ export function PersistentSurfaceLayer({
     codeAppearance,
     codeSurfaceVisible,
     compactShell,
-    closeSurfaceView,
-    keepSurfaceOpen,
-    createProjectSurface,
-    creatingSurfaceKinds,
-    deleteSurfaceResource,
     desktopRuntime,
     dockPanePresentations,
     explorerGraphRequest,
@@ -76,15 +74,11 @@ export function PersistentSurfaceLayer({
     openTerminalLinkExternally,
     ownedTerminals,
     pendingTerminalInputs,
-    selectedPaneSurfaces,
     projects,
     projectSurfaces,
     queryClient,
-    renameSurface,
-    selectTopTab,
     selectedCodeTab,
     selectedExplorer,
-    selectedPlacementContext,
     selectedProject,
     selectedProjectId,
     selectedSurface,
@@ -410,44 +404,8 @@ export function PersistentSurfaceLayer({
           }
         />
       </Suspense>
-      {!dockPanePresentations &&
-      appMode === "ide" &&
-      !compactShell &&
-      !showImporter &&
-      !showSettings &&
-      !bindings.showProjectOverview &&
-      !showArchivedStandaloneChats &&
-      !showServerAdmin &&
-      !showProjectSettings &&
-      !selectedPaneOwnedElsewhere &&
-      Boolean(selectedProject) ? (
-        <ProjectPaneTabStrip
-          activeTabKey={selectedTabKey ?? ""}
-          creatingKinds={creatingSurfaceKinds}
-          surfaces={selectedPaneSurfaces}
-          onCreate={(kind, target) => {
-            const paneId =
-              selectedPane?.id ?? selectedPaneSurfaces.at(-1)?.paneId;
-            if (selectedProject) {
-              createProjectSurface(
-                selectedProject.id,
-                kind,
-                paneId,
-                target,
-                paneId ? undefined : "center",
-              );
-            }
-          }}
-          onClose={closeSurfaceView}
-          onKeepOpen={keepSurfaceOpen}
-          onDelete={deleteSurfaceResource}
-          onRename={renameSurface}
-          onSelect={selectTopTab}
-          paneId={selectedPane?.id}
-          paneRegion={selectedPane?.region}
-          placement={selectedPlacementContext}
-          projectId={selectedProject.id}
-        />
+      {selectedPaneTabStripVisible(bindings) && !isPopout ? (
+        <SelectedPaneTabStrip bindings={bindings} />
       ) : null}
 
       <Suspense

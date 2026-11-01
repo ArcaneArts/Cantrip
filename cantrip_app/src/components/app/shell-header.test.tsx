@@ -250,6 +250,10 @@ function dockFocusedBindings(mainFile = false, region = "right") {
   const dock = {
     kind: "history",
     tabKey: "view:history",
+    title: "History",
+    paneId: "dock",
+    projectId: "project",
+    definition: { supportedPlacements: ["center", "right", "bottom"] },
     entity: {
       id: "history",
       title: "History",
@@ -272,6 +276,7 @@ function dockFocusedBindings(mainFile = false, region = "right") {
       capabilities: { git: true, worktrees: true },
     },
     selectedSurface: dock,
+    selectedPaneSurfaces: [dock],
     selectedProjectView: dock.entity,
     selectedTabKey: dock.tabKey,
     gitHistoryProject: { name: "Repository" },
@@ -388,11 +393,25 @@ describe("desktop main tab window title", () => {
     ])
       expect(markup).not.toContain(text);
   });
-  it("keeps a History popout's own title", () => {
-    expect(
-      windowMarkup({ ...dockFocusedBindings(), isPopout: true }),
-    ).toContain(">History<");
-  });
+  it.each([false, true])(
+    "merges a History popout's tabs and controls into one header (overlay=%s)",
+    (overlayTitlebar) => {
+      const markup = windowMarkup({
+        ...dockFocusedBindings(),
+        isPopout: true,
+        overlayTitlebar,
+        renderProjectRunConfigurationControl: () => (
+          <button>Window controls</button>
+        ),
+      });
+      expect(markup).toContain("data-popout-tab-titlebar");
+      expect(markup).toContain('role="tablist"');
+      expect(markup.match(/>History</g)).toHaveLength(1);
+      expect(markup).toContain("Window controls");
+      expect(markup).not.toContain("h-16");
+      expect(markup.includes("padding-left:5.5rem")).toBe(overlayTitlebar);
+    },
+  );
   it("keeps settings available over an empty main workspace", () => {
     const markup = windowMarkup({
       ...dockFocusedBindings(),
