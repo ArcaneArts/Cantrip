@@ -1,3 +1,4 @@
+import type { ExplorerTextPreviewPage } from "@cantrip/protocol/surface-stream";
 import type { ExplorerFile, ExplorerFileWrite } from "@cantrip/protocol";
 import {
   executeFileDocumentOperation,
@@ -9,6 +10,11 @@ import { loadProtectedFileMedia } from "./api/files";
 export interface FileAccess {
   readonly cacheKey: string;
   read(path: string): Promise<ExplorerFile>;
+  preview?(
+    path: string,
+    offset: number,
+    version?: string,
+  ): Promise<ExplorerTextPreviewPage>;
   save(input: ExplorerFileWrite): Promise<ExplorerFile>;
   media(path: string): Promise<Blob>;
 }
@@ -28,6 +34,18 @@ export function documentFileAccess(document: FileDocument): FileAccess {
       });
       if (result.type !== "explorer.file")
         throw new Error("Unexpected file result.");
+      return result.value;
+    },
+    async preview(path, offset, version) {
+      requirePath(path);
+      const result = await executeFileDocumentOperation(document.id, {
+        type: "explorer.file.preview",
+        path,
+        offset,
+        version,
+      });
+      if (result.type !== "explorer.file.preview")
+        throw new Error("Unexpected text preview result.");
       return result.value;
     },
     async save(input) {

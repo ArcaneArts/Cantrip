@@ -1,3 +1,4 @@
+import { FileOperationError } from "@/lib/file-operation-error";
 import {
   fileDocumentWireListSchema,
   fileDocumentWireSummarySchema,
@@ -27,7 +28,13 @@ export type FileDocument = Awaited<
 
 type DocumentOperation = Extract<
   ExplorerOperationRequestContent,
-  { type: "explorer.file.read" | "explorer.file.write" | "explorer.media.read" }
+  {
+    type:
+      | "explorer.file.read"
+      | "explorer.file.preview"
+      | "explorer.file.write"
+      | "explorer.media.read";
+  }
 >;
 
 export async function executeFileDocumentOperation(
@@ -70,10 +77,14 @@ export async function executeFileDocumentOperation(
     schema: surfaceOperationOutcomeContentSchema,
   });
   assertIdentity(captured);
-  if (!outcome.ok) throw new Error(outcome.error);
+  if (!outcome.ok) throw new FileOperationError(outcome.error, outcome.code);
   const result = explorerOperationResultContentSchema.parse(outcome.result);
   const expectedType =
-    content.type === "explorer.media.read" ? "explorer.media" : "explorer.file";
+    content.type === "explorer.media.read"
+      ? "explorer.media"
+      : content.type === "explorer.file.preview"
+        ? "explorer.file.preview"
+        : "explorer.file";
   if (
     result.type !== expectedType ||
     !("path" in result.value) ||

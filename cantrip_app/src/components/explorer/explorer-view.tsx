@@ -1,3 +1,6 @@
+import { PagedTextPreview } from "./paged-text-preview";
+import { requiresTextPreview, retryFileRead } from "@/lib/file-operation-error";
+import { executeExplorerOperation } from "@/lib/api/files";
 import { PanelToolbar } from "@/components/workspace/panel-toolbar";
 import { usePanelScrollDivider } from "@/lib/use-panel-scroll-divider";
 import { useEditorQuit } from "./use-editor-quit";
@@ -462,6 +465,7 @@ export function ExplorerView({
   });
   const viewStateQueueRef = useRef<Promise<boolean>>(Promise.resolve(true));
   const [refreshPending, setRefreshPending] = useState(false);
+  const [previewRevision, setPreviewRevision] = useState(0);
   const fileBinding = useMemo(
     () => ({
       workerId: explorer.activeWorkerId,
@@ -471,11 +475,16 @@ export function ExplorerView({
     [explorer.activeWorkerId, explorer.projectId, explorer.worktreeId],
   );
   const file = useQuery({
-    enabled: Boolean(
-      streamEncryptionReady &&
-      selectedPath &&
-      explorerMediaTypeForPath(selectedPath) === null,
-    ),
+    retry: retryFileRead,
+    // Once the actual full read selects paging, background filesystem events
+    // must not restart it. Refresh explicitly fetches a new snapshot below.
+    enabled: (query) =>
+      Boolean(
+        streamEncryptionReady &&
+        selectedPath &&
+        explorerMediaTypeForPath(selectedPath) === null &&
+        !requiresTextPreview(query.state.error),
+      ),
     queryFn: () =>
       fileAccess
         ? fileAccess.read(selectedPath!)
@@ -706,6 +715,7 @@ export function ExplorerView({
       transferSuspended ||
       transferInstalling ||
       !file.data ||
+      requiresTextPreview(file.error) ||
       file.data.path !== selectedPath ||
       file.data.path !== displayedSelectedPath ||
       (draftVersion !== null &&
@@ -734,6 +744,7 @@ export function ExplorerView({
     transferInstalling,
     draftVersion,
     file.data,
+    file.error,
     file.isFetchedAfterMount,
     recoveryFetching,
     documentRecovery,
@@ -827,18 +838,25 @@ export function ExplorerView({
         ],
         refetchType: "none",
       });
-      await queryClient.fetchQuery({
-        queryFn: () =>
-          fileAccess
-            ? fileAccess.read(path)
-            : getExplorerFile(explorer.id, path, fileBinding),
-        queryKey: [
-          "explorer-file",
-          fileAccess?.cacheKey ?? explorer.id,
-          path,
-          bindingKey,
-        ],
-      });
+      let previewRequired = false;
+      try {
+        await queryClient.fetchQuery({
+          retry: retryFileRead,
+          queryFn: () =>
+            fileAccess
+              ? fileAccess.read(path)
+              : getExplorerFile(explorer.id, path, fileBinding),
+          queryKey: [
+            "explorer-file",
+            fileAccess?.cacheKey ?? explorer.id,
+            path,
+            bindingKey,
+          ],
+        });
+      } catch (error) {
+        if (!requiresTextPreview(error)) throw error;
+        previewRequired = true;
+      }
       if (
         !mountedRef.current ||
         transferSuspendedRef.current ||
@@ -848,6 +866,7 @@ export function ExplorerView({
       ) {
         return;
       }
+      if (previewRequired) setPreviewRevision((revision) => revision + 1);
       if (discardDraft && previous) {
         if (
           nativeDocumentRef.current !== previous ||
@@ -1261,19 +1280,21 @@ export function ExplorerView({
     [persistViewState],
   );
 
+  const largeTextPreview = requiresTextPreview(file.error) && !dirty;
   const panelHeader = useMemo<ExplorerHeaderState>(
     () => ({
       backLabel: graphVisible ? "Close graph" : undefined,
       back,
-      canEdit: !graphVisible && editableLanguage !== null,
+      canEdit: !graphVisible && !largeTextPreview && editableLanguage !== null,
       canGoBack:
         !isDocumentView(explorer) && (graphVisible || Boolean(selectedPath)),
-      canVisual: !graphVisible && structuredFormat !== null,
+      canVisual:
+        !graphVisible && !largeTextPreview && structuredFormat !== null,
       directoryPath: graphVisible
         ? (graphRootPath ?? "")
         : (selectedPath ?? ""),
       dirty,
-      fileMode: graphVisible ? "preview" : fileMode,
+      fileMode: graphVisible || largeTextPreview ? "preview" : fileMode,
       isFetching: graphVisible
         ? (graphStatus?.isFetching ?? false)
         : refreshPending,
@@ -1303,6 +1324,7 @@ export function ExplorerView({
       changeFileMode,
       dirty,
       editableLanguage,
+      largeTextPreview,
       explorer.projectId,
       explorer.selectedPath,
       explorer.worktreeId,
@@ -1648,7 +1670,8 @@ export function ExplorerView({
   useEffect(() => {
     if (transferInstalling || !transferStaging) return;
     if (!selectedPath) onTransferredViewReady();
-    else if (!mediaType && file.isError) onTransferredViewError(file.error);
+    else if (!mediaType && file.isError && !requiresTextPreview(file.error))
+      onTransferredViewError(file.error);
     else if (
       !mediaType &&
       file.data &&
@@ -1874,7 +1897,8 @@ export function ExplorerView({
                   onError={onTransferredViewError}
                 />
               ) : nativeDocument?.id === nativeDocumentId &&
-                fileMode === "edit" ? (
+                fileMode === "edit" &&
+                !largeTextPreview ? (
                 <NativeCodeEditor
                   session={nativeDocument}
                   path={selectedPath}
@@ -1889,6 +1913,38 @@ export function ExplorerView({
                 <div className="grid h-full place-items-center text-muted-foreground">
                   <Loader2 className="size-5 animate-spin" />
                 </div>
+              ) : file.isError && requiresTextPreview(file.error) ? (
+                <PagedTextPreview
+                  key={`${fileAccess?.cacheKey ?? explorer.id}:${selectedPath}:${streamEncryption.bindingKey}:${previewRevision}`}
+                  path={selectedPath}
+                  active={active && !transferSuspended}
+                  readPage={async (offset, version) => {
+                    if (fileAccess) {
+                      if (!fileAccess.preview)
+                        throw new Error(
+                          "This file source does not support paged previews.",
+                        );
+                      return fileAccess.preview(selectedPath, offset, version);
+                    }
+                    const result = await executeExplorerOperation(
+                      explorer.id,
+                      {
+                        type: "explorer.file.preview",
+                        path: selectedPath,
+                        offset,
+                        version,
+                      },
+                      undefined,
+                      undefined,
+                      fileBinding,
+                    );
+                    if (result.type !== "explorer.file.preview")
+                      throw new Error("Unexpected text preview result.");
+                    return result.value;
+                  }}
+                  onReady={onTransferredViewReady}
+                  onError={onTransferredViewError}
+                />
               ) : file.isError ? (
                 <p className="m-4 border-y border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
                   {file.error instanceof Error
