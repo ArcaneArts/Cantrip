@@ -119,6 +119,7 @@ export function LogFileView({
             path={path}
             active={active}
             readOnly
+            findScope="Matches in the retained recent log output"
             followEnd={following}
             onScrollPositionChange={scrollChanged}
             onReady={onReady}

@@ -17,6 +17,7 @@ export function PagedTextPreview({
   onError?(error: unknown): void;
 }) {
   const [document] = useState(() => new TextPreviewDocument(path));
+  const [searchQuery, setSearchQuery] = useState<string | null>(null);
   const [state, setState] = useState({
     loading: false,
     error: "",
@@ -83,6 +84,24 @@ export function PagedTextPreview({
     )
       void loadMore();
   }, [active, document, loadMore]);
+  useEffect(() => {
+    if (
+      active &&
+      searchQuery &&
+      !document.eof &&
+      !state.loading &&
+      !state.error
+    )
+      void loadMore();
+  }, [
+    active,
+    searchQuery,
+    document.offset,
+    document.eof,
+    state.loading,
+    state.error,
+    loadMore,
+  ]);
   return (
     <div className="flex h-full min-h-0 flex-col" data-text-preview>
       <div
@@ -110,6 +129,9 @@ export function PagedTextPreview({
             path={path}
             active={active}
             readOnly
+            onFindQueryChange={setSearchQuery}
+            findReady={!searchQuery || document.eof}
+            findError={Boolean(searchQuery && state.error)}
             onReady={onReady}
             onViewportChange={nearEnd}
           />

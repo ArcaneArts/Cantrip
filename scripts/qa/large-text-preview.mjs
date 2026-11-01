@@ -170,6 +170,32 @@ for (const [engine, browserType] of [
       Math.abs((await input.evaluate((node) => node.scrollTop)) - before) < 2,
       "appending preserves scroll position",
     );
+    if (process.argv.includes("--find")) {
+      await input.press(engine === "chromium" ? "Meta+f" : "Control+f");
+      const find = page.getByRole("group", {
+        name: "Find in file",
+        exact: true,
+      });
+      await find
+        .getByRole("textbox", { name: "Find in file", exact: true })
+        .fill("SENTINEL_FINAL_PREVIEW_LINE");
+      await find
+        .getByRole("status")
+        .filter({ hasText: "1 of 1" })
+        .waitFor({ timeout: 60_000 });
+      assert.equal(
+        await input.evaluate((node) => node.value.length),
+        limit,
+        "find loads and searches the entire paged file",
+      );
+      await page.screenshot({
+        path: path.join(output, `${engine}-whole-file-find.png`),
+      });
+      await find
+        .getByRole("textbox", { name: "Find in file", exact: true })
+        .press("Escape");
+      console.log(JSON.stringify({ engine, wholeFileFind: true }));
+    }
     // Finishing via the explicit action also supports files with very long lines.
     while (
       !(await preview.getByRole("status").textContent()).includes(

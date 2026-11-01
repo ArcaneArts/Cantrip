@@ -20,6 +20,31 @@ In Pro mode the editor stays transparent over the app's existing backdrop tint.
 Clicking into its text does not add a focus rectangle; the caret and selection
 remain visible.
 
+## Find in the editor
+
+Press Command+F on macOS or Ctrl+F on Windows/Linux to open the compact find
+chip at the top right of an editor in either View or Edit mode. It also works
+from the file sidebar and the focused editor pane's header. A short selected
+single line seeds the query. Find matches literal text without case sensitivity
+and shows the current match number and total. Enter advances, Shift+Enter goes
+backward, and navigation wraps at either end. The arrow buttons offer the same
+controls; Escape closes find and returns focus to the editor.
+
+The current match stays highlighted without replacing syntax colors and is
+revealed vertically and horizontally. Find never changes text or undo history.
+Counts update after edits without moving the typing caret. Search runs in a
+separate worker only while find is open and the editor is active; scrolling
+does not rescan the document. Sparse checkpoints keep dense match lists small.
+
+Searching a paged text preview loads its remaining pages on demand and waits
+for the full snapshot before reporting totals. A failed continuation reports
+an unavailable search rather than a partial count. Log find is scoped to the
+retained recent output, as described by its count tooltip.
+
+Run `node scripts/qa/editor-find.mjs` for Chromium/WebKit desktop and phone
+viewport checks, and `node scripts/qa/large-text-preview.mjs --find` for whole
+10 MiB file searches through the production encrypted app/server/worker path.
+
 ## Syntax highlighting
 
 The first-party lexical engine covers JavaScript, TypeScript, JSX, TSX, Rust,
