@@ -1,4 +1,5 @@
 import { NbtEditActions } from "./edit-actions";
+import { useNbtExport } from "./use-export";
 import {
   useCallback,
   useEffect,
@@ -70,6 +71,7 @@ export function NbtBrowser({
   preparingSource = false,
   onClientReady,
   onDiscardSource,
+  exportName,
 }: {
   openSource: (signal: AbortSignal) => Promise<Blob | NbtDocumentSource>;
   scope: string;
@@ -84,6 +86,7 @@ export function NbtBrowser({
     signal: AbortSignal,
   ): void | Promise<void>;
   onDiscardSource?(): Promise<void>;
+  exportName?: string;
   saveTarget?: { path: string; write: NbtBinaryTransport };
   readOnly?: boolean;
   onSessionChange?(session: FileViewerSession | null): void;
@@ -142,6 +145,10 @@ export function NbtBrowser({
     initialRoot = useRef<unknown>(null),
     navigation = useRef<AbortController | null>(null),
     editOpening = useRef<AbortController | null>(null);
+  const exporter = useNbtExport(
+    client,
+    exportName ?? saveTarget?.path ?? "document.nbt",
+  );
   const treeView = useRef<NbtViewHandle<NbtTreeViewState>>(null),
     arrayView = useRef<NbtViewHandle<NbtArrayViewState>>(null),
     tableView = useRef<NbtViewHandle<NbtTableViewState>>(null),
@@ -184,6 +191,7 @@ export function NbtBrowser({
   };
   const readOnly =
     externalReadOnly ||
+    exporter.busy ||
     preparingSource ||
     Boolean(status?.shared?.changing || status?.shared?.unavailable);
   useEffect(() => {
@@ -228,7 +236,12 @@ export function NbtBrowser({
     [],
   );
   const save = useCallback(async () => {
-    if (!session || copyOpening.current || sourcePreparing.current)
+    if (
+      !session ||
+      copyOpening.current ||
+      sourcePreparing.current ||
+      exporter.busyRef.current
+    )
       return false;
     const copy = session.pendingCopyPath;
     if (!copy && !saveTarget) return false;
@@ -255,8 +268,8 @@ export function NbtBrowser({
     }
   }, [session, saveTarget, client, onOpenDocument]);
   const discard = useCallback(async () => {
-    if (sourcePreparing.current)
-      throw new Error("Wait for the local file to finish opening.");
+    if (sourcePreparing.current || exporter.busyRef.current)
+      throw new Error("Wait for the local file operation to finish.");
     const release = client?.freezeEdits();
     try {
       if (client) await discardNbtSession(sessionKey);
@@ -268,8 +281,8 @@ export function NbtBrowser({
   }, [sessionKey, client, onDiscardSource]);
   const reload = useCallback(
     async (interpretation?: { profile?: string; compression?: string }) => {
-      if (!client || reloading.current)
-        throw new Error("NBT reload is already in progress.");
+      if (!client || reloading.current || exporter.busyRef.current)
+        throw new Error("Wait for the current NBT operation to finish.");
       const shared = nbtSharedDocument(client);
       if (shared) {
         const release = client.freezeEdits();
@@ -405,6 +418,7 @@ export function NbtBrowser({
             get saving() {
               return Boolean(
                 sourcePreparing.current ||
+                exporter.busyRef.current ||
                 client.getEditSnapshot()?.saving ||
                 session?.busy ||
                 copyOpening.current ||
@@ -416,6 +430,7 @@ export function NbtBrowser({
               const status = client.getEditSnapshot();
               return Boolean(
                 sourcePreparing.current ||
+                exporter.busyRef.current ||
                 status?.pendingSaveId ||
                 status?.editing ||
                 client.getSnapshot()?.shared?.changing,
@@ -427,9 +442,9 @@ export function NbtBrowser({
             ...(nbtSharedDocument(client)
               ? {
                   checkpoint: async () => {
-                    if (sourcePreparing.current)
+                    if (sourcePreparing.current || exporter.busyRef.current)
                       throw new Error(
-                        "Wait for the local file to finish opening before moving this view.",
+                        "Wait for the local file operation to finish before moving this view.",
                       );
                     await nbtSharedDocument(client)!.checkpoint();
                     return captureView.current();
@@ -468,6 +483,7 @@ export function NbtBrowser({
       copyPreparing,
       interpreting,
       preparingSource,
+      exporter.busy,
     ],
   );
   useEffect(() => {
@@ -479,7 +495,8 @@ export function NbtBrowser({
       !edit?.dirty &&
       !edit?.pendingSaveId &&
       !edit?.editing &&
-      !preparingSource
+      !preparingSource &&
+      !exporter.busy
     )
       return;
     const prevent = (event: BeforeUnloadEvent) => {
@@ -488,7 +505,13 @@ export function NbtBrowser({
     };
     window.addEventListener("beforeunload", prevent);
     return () => window.removeEventListener("beforeunload", prevent);
-  }, [edit?.dirty, edit?.pendingSaveId, edit?.editing, preparingSource]);
+  }, [
+    edit?.dirty,
+    edit?.pendingSaveId,
+    edit?.editing,
+    preparingSource,
+    exporter.busy,
+  ]);
   useEffect(() => {
     setExpanded(new Set());
     setSelected(null);
@@ -786,6 +809,7 @@ export function NbtBrowser({
       });
   };
   const sourceBusy = Boolean(
+    exporter.busy ||
     preparingSource ||
     interpreting ||
     status?.shared?.changing ||
@@ -939,6 +963,27 @@ export function NbtBrowser({
             Save As…
           </button>
         ) : null}
+        <button
+          type="button"
+          className={nbtControl}
+          disabled={
+            !client ||
+            sourceBusy ||
+            Boolean(status?.shared?.unavailable || status?.error)
+          }
+          onClick={exporter.start}
+        >
+          Export Copy…
+        </button>
+        {exporter.busy ? (
+          <button
+            type="button"
+            className={nbtControl}
+            onClick={exporter.cancel}
+          >
+            Cancel export
+          </button>
+        ) : null}
         <span
           className="text-[10px] text-muted-foreground"
           data-nbt-dirty={edit?.dirty ? "true" : "false"}
@@ -1004,6 +1049,19 @@ export function NbtBrowser({
           </>
         ) : null}
       </div>
+      {exporter.busy || exporter.message ? (
+        <div
+          role={exporter.error ? "alert" : "status"}
+          data-nbt-export={
+            exporter.busy ? "streaming" : exporter.error ? "error" : "complete"
+          }
+          className="shrink-0 px-3 py-1 text-xs text-muted-foreground"
+        >
+          {exporter.busy
+            ? "Exporting " + (exporter.bytes / 1024 ** 2).toFixed(1) + " MiB…"
+            : exporter.message}
+        </div>
+      ) : null}
       {preparingSource ? (
         <div
           role="status"

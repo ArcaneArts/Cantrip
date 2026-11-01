@@ -1,8 +1,10 @@
 # NBT implementation contract
 
-This is the complete accepted NBT implementation scope. It remains the goal
-until every completion condition below has direct evidence. The codec package
-is a foundation; its presence does not mean the app viewer/editor has shipped.
+This records the accepted NBT implementation scope and the evidence collected.
+On November 1, 2026, the user ended further manual and computer-use testing after
+the native Export Copy check. Delivery continues with that instruction: remaining
+phone and performance qualification is deferred, rather than represented as
+passing. No further local test runs are required for this delivery.
 
 | Milestone                              | Current state        | Required evidence                                                                           |
 | -------------------------------------- | -------------------- | ------------------------------------------------------------------------------------------- |
@@ -11,10 +13,10 @@ is a foundation; its presence does not mean the app viewer/editor has shipped.
 | 3. Background parser integration       | Implemented          | Dedicated document worker, progressive disk-backed indexing, bounded working set            |
 | 4. Tree/table viewer and global search | Baseline implemented | Actual app interactions, unloaded-subtree search, paged grids and responsive navigation     |
 | 5. Typed editing and streamed saves    | Implemented          | All edit operations, undo/redo, atomic version-checked saves and interrupted-write receipts |
-| 6. Recovery, ownership, and phones     | In progress          | Encrypted recoverable drafts, safe close/pop-out/return, touch editing and phone saves      |
-| 7. Qualification                       | Pending              | Full malformed/concurrency/storage matrix, measured desktop/browser/mobile performance      |
+| 6. Recovery, ownership, and phones     | Implemented          | Encrypted recoverable drafts, safe close/pop-out/return, touch editing and phone saves      |
+| 7. Qualification                       | Further runs stopped | Full malformed/concurrency/storage matrix, measured desktop/browser/mobile performance      |
 
-Milestone 6 work in progress retains an encrypted original byte stream plus
+Milestone 6 retains an encrypted original byte stream plus
 bounded operation records, committed through an authenticated revision fence.
 The account vault wraps a random, nonextractable document key. Journal replay
 restores stable IDs, undo/redo, saved roots and frozen pending saves; publication
@@ -44,8 +46,10 @@ References bind to the original parser baseline and encoding, including across
 journal replay after structural saves. Restoration waits for actual indexing
 progress rather than declaring later nodes missing. Stale page counts cannot
 clamp a restored position, and scaled scroll extents retain exact programmatic
-targets. Array edits keep their grid open. Local OS export, touch qualification
-and real-phone testing are still unfinished; this milestone is not complete.
+targets. Array edits keep their grid open. The shared client implementation
+includes touch actions, responsive layouts and 4 MiB byte caches. Actual phone
+qualification and the remaining stress matrix were stopped at the user's
+request; they are not claimed as passing.
 
 Local-source persistence foundations now provide an explicit clean-baseline
 checkpoint: a selected File can become recoverable before its first edit,
@@ -64,8 +68,7 @@ worker file. Return to project file clears only the approved local draft and
 its reference. Account/encryption changes retire File references and viewer
 leases. Encoding replacement publishes a fully written baseline with a single
 authenticated CAS head update, preserving the old source and edits on failure;
-a lost reply reopens the actual authoritative baseline. Local OS export remains
-unfinished.
+a lost reply reopens the actual authoritative baseline.
 Recovered originals can also be read as bounded sources without a retained
 browser File. Replacement parsing can pin their exact encoded bytes in its
 encrypted paged cache, keeping original export available after the old journal
@@ -73,9 +76,10 @@ is retired. Tests cover raw/gzip streams larger than the memory cache and
 account-lock/abort cleanup. Pinning also exposed a Buffer aliasing issue in
 queued spool writes; those writes now always own the bytes they clear.
 
-Current recovery verification: 184 codec/document/edit/recovery tests, 80
-focused NBT app library tests plus component restoration tests, Explorer transfer suites, 12 binary-write worker tests,
-and app/worker typechecks pass.
+Verification collected before the stop instruction: 184 codec/document/edit/
+recovery tests, 93 focused NBT app and component tests, Explorer transfer suites,
+12 binary-write worker tests, four native export tests, and app/worker typechecks
+passed. The mobile export adapter was added afterward and was not tested.
 Production Chromium and WebKit app/server/worker runs restore unsaved drafts,
 preserve undo and exact Long values, save through a dropped commit reply, and
 retain drafts through conflicts and failed reloads. WebKit completes this flow
@@ -87,6 +91,28 @@ into display-value pages. This is browser evidence, not physical-phone
 qualification. Reproduce with `CANTRIP_NBT_QA_RECOVERY=true node
 scripts/qa/nbt-edit-project.mjs`; `CANTRIP_NBT_QA_MIB=1` selects the smaller
 regression workload.
+
+Export Copy streams one bounded write at a time while retaining the original
+draft, recovery and undo history. Desktop export opens the actual native save
+picker and returns a window-bound token; the renderer cannot submit an arbitrary
+OS path. Ordered binary chunks feed a sibling temporary file whose size and
+SHA-256 must match before flush and atomic replacement. Actual page navigation
+and window destruction retire partial exports and fence pending picker results.
+Browser destination handles use their writable stream; browsers without a save
+picker use a one-use, same-origin service-worker response with one bounded page
+per consumer pull. That worker persists no document bytes. Mobile uses bounded
+Filesystem appends into explicit export staging and the OS share sheet, then
+removes the staging file. Browser/share completion does not claim OS durability
+or acknowledge the original document as saved. Actual errors retain the draft.
+
+The Chromium app/server/worker flow independently parsed an exported unsaved
+Long plus array and verified that exporting kept the draft dirty. The final
+macOS native test edited an exact Long, used the real save picker, completed
+Export Copy, and visibly retained the unsaved draft. All test fixtures were
+stopped after that check. The 100 MiB uncompressed WebKit run opened, recovered,
+and replaced its encoding baseline; it was stopped before export qualification
+finished. Neither that export/cancellation case nor physical phones are claimed
+as verified. No additional test run followed the user's stop instruction.
 
 `node scripts/qa/nbt-shared-browser.mjs` exercises the production document worker
 and shared broker across real Chromium/WebKit renderer contexts with actual
@@ -318,12 +344,12 @@ and Save As into a new document while preserving the external original.
 Live runtime leases retain detached dirty workers and pause inactive parsing.
 Custom-viewer lifecycle state participates in existing save, preview replacement,
 dirty-close, and close-cancellation handling, including edits awaiting their
-worker acknowledgement. This is **not durable draft recovery**: cache keys are
-still ephemeral, journals are not yet reopened after a client restart, and
-runtime ownership is scoped to a view. Until milestone 6 adds shared durable
-ownership, dirty NBT drafts must be saved before moving a window or quitting.
-Encrypted reload recovery, cross-window transfer, local OS export, orphan
-cleanup, and actual phone qualification remain mandatory unfinished work.
+worker acknowledgement. Those were the milestone 5 runtime leases. Milestone 6
+above adds durable encrypted reload recovery, shared ownership, native transfer
+and local export. Approved last-close cleanup removes the retained journal;
+failed or unreferenced encrypted preparations can remain until their recovery
+store is explicitly cleared. Phone qualification and additional stress testing
+were deferred by the user's instruction.
 
 ## Accepted plan
 

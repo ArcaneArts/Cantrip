@@ -356,6 +356,7 @@ function ScopedNbtProjectViewer(
         saveAsTarget={saveAsTarget}
         onOpenDocument={props.onOpenDocument}
         label={origin ? origin.name + " · local" : "NBT"}
+        exportName={origin?.name ?? props.path}
         onReady={props.onReady}
         onError={failed}
         onLocalFile={(file) => local.document!.select(file)}

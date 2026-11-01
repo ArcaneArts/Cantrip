@@ -37,6 +37,7 @@ mod desktop_worker;
 mod direct_probe;
 mod installation_storage;
 mod local_logs;
+mod nbt_export;
 mod process_environment;
 mod project_share;
 mod synthetic_build;
@@ -1000,6 +1001,14 @@ fn monitor_owned_runtime(app: tauri::AppHandle) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default()
+        .on_page_load(|webview, payload| {
+            if payload.event() == tauri::webview::PageLoadEvent::Started {
+                if let Some(exports) = webview.try_state::<std::sync::Arc<nbt_export::NbtExports>>()
+                {
+                    exports.retire_window(webview.window().label());
+                }
+            }
+        })
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             #[cfg(desktop)]
             show_main_window(app);
@@ -1025,6 +1034,10 @@ pub fn run() {
     let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
     let builder = builder
         .invoke_handler(tauri::generate_handler![
+            nbt_export::begin_nbt_export,
+            nbt_export::write_nbt_export,
+            nbt_export::finish_nbt_export,
+            nbt_export::cancel_nbt_export,
             desktop_quit::register_desktop_quit,
             desktop_quit::acknowledge_desktop_quit,
             desktop_autostart_enabled,
@@ -1088,6 +1101,7 @@ pub fn run() {
         ])
         .setup(|app| {
             app.manage(std::sync::Arc::new(installation_storage::build(app)));
+            app.manage(std::sync::Arc::new(nbt_export::NbtExports::default()));
             #[cfg(desktop)]
             app.handle().plugin(tauri_plugin_autostart::init(
                 MacosLauncher::LaunchAgent,
@@ -1203,6 +1217,16 @@ pub fn run() {
     }
 
     app.run(|handle, event| {
+        if let RunEvent::WindowEvent {
+            label,
+            event: WindowEvent::Destroyed,
+            ..
+        } = &event
+        {
+            handle
+                .state::<std::sync::Arc<nbt_export::NbtExports>>()
+                .retire_window(label);
+        }
         #[cfg(target_os = "macos")]
         if let RunEvent::Reopen { .. } = &event {
             handle

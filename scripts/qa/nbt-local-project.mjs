@@ -31,8 +31,7 @@ for (const [engine, engineType] of Object.entries({ chromium, webkit }).filter(
       array = Buffer.from([7, 0, 5, 97, 114, 114, 97, 121, 0, 0, 0, 0]);
     number.writeBigInt64BE(9007199254740993n, 7);
     array.writeInt32BE(size, 8);
-    const localBytes = gzipSync(
-      Buffer.concat([
+    const localPayload = Buffer.concat([
         number.subarray(0, -1),
         Buffer.from([8, 0, 6]),
         Buffer.from("marker"),
@@ -42,15 +41,28 @@ for (const [engine, engineType] of Object.entries({ chromium, webkit }).filter(
         Buffer.alloc(size, 42),
         Buffer.from([0]),
       ]),
-    );
+      localBytes =
+        process.env.CANTRIP_NBT_QA_RAW === "true"
+          ? localPayload
+          : gzipSync(localPayload);
     await writeFile(
       path.join(fixture.repositorySeed.repository, "project.nbt"),
       projectBytes,
     );
+    const localPath = path.join(fixture.directory, "client-only.nbt");
+    await writeFile(localPath, localBytes);
     browser = await engineType.launch({ headless: true });
     const context = await browser.newContext({
       acceptDownloads: true,
       viewport: { width: 1440, height: 900 },
+    });
+    await context.addInitScript(() => {
+      // Exercise the streaming download fallback in both engines; destination
+      // picker writing is covered separately with an actual writable handle.
+      Object.defineProperty(window, "showSaveFilePicker", {
+        value: undefined,
+        configurable: true,
+      });
     });
     page = await context.newPage();
     page.setDefaultTimeout(30000);
@@ -154,11 +166,7 @@ for (const [engine, engineType] of Object.entries({ chromium, webkit }).filter(
     await complete(projectView);
     await projectView
       .getByLabel("Choose local NBT file", { exact: true })
-      .setInputFiles({
-        name: "client-only.nbt",
-        mimeType: "application/octet-stream",
-        buffer: localBytes,
-      });
+      .setInputFiles(localPath);
     await complete(local);
     await local
       .getByRole("button", { name: "Toggle NBT editing", exact: true })
@@ -252,10 +260,13 @@ for (const [engine, engineType] of Object.entries({ chromium, webkit }).filter(
       .getByLabel("NBT encoding", { exact: true })
       .selectOption("java");
     await complete(local);
-    await page.waitForFunction(() =>
-      [...document.querySelectorAll('[aria-label="NBT encoding"]')].some(
-        (select) => select.getClientRects().length && select.value === "java",
-      ),
+    await page.waitForFunction(
+      () =>
+        [...document.querySelectorAll('[aria-label="NBT encoding"]')].some(
+          (select) => select.getClientRects().length && select.value === "java",
+        ),
+      undefined,
+      { timeout: 180000 },
     );
     await reload();
     await complete(local);
@@ -265,6 +276,44 @@ for (const [engine, engineType] of Object.entries({ chromium, webkit }).filter(
     );
     console.log(JSON.stringify({ engine, stage: "reload-undo-format-reload" }));
     await editNumber("88");
+    if (process.env.CANTRIP_NBT_QA_CANCEL_EXPORT === "true") {
+      const partialCopy = page.waitForEvent("download");
+      await local
+        .getByRole("button", { name: "Export Copy…", exact: true })
+        .click();
+      const partial = await partialCopy;
+      await local
+        .getByRole("button", { name: "Cancel export", exact: true })
+        .click();
+      await local
+        .locator('[data-nbt-export="complete"]')
+        .filter({ hasText: "Export cancelled" })
+        .waitFor();
+      assert.ok(
+        await partial.failure(),
+        "cancelled download cannot be reported as a complete file",
+      );
+      assert.equal(await local.locator('[data-nbt-dirty="true"]').count(), 1);
+    }
+    const downloadCopy = page.waitForEvent("download");
+    await local
+      .getByRole("button", { name: "Export Copy…", exact: true })
+      .click();
+    const exported = await downloadCopy,
+      exportPath = path.join(evidence, engine + "-exported.nbt");
+    await exported.saveAs(exportPath);
+    await local.locator('[data-nbt-export="complete"]').waitFor();
+    assert.equal(exported.suggestedFilename(), "client-only.nbt");
+    const exportDocument = await reference.read(await readFile(exportPath));
+    assert.equal(exportDocument.data.n, 88n);
+    assert.equal(exportDocument.data.marker, "CLIENT_ONLY_LOCAL_MARKER");
+    assert.equal(exportDocument.data.array.length, size);
+    assert.ok(exportDocument.data.array.every((value) => value === 42));
+    assert.equal(
+      await local.locator('[data-nbt-dirty="true"]').count(),
+      1,
+      "exporting a copy does not acknowledge or discard the draft",
+    );
     await local.getByRole("button", { name: "Save As…", exact: true }).click();
     await local
       .getByLabel("NBT Save As path", { exact: true })
@@ -390,6 +439,8 @@ for (const [engine, engineType] of Object.entries({ chromium, webkit }).filter(
       ok: true,
       engine,
       expandedArrayBytes: size,
+      localSourceBytes: localBytes.length,
+      exportedBytes: (await readFile(exportPath)).length,
       localFileInput: true,
       encryptedOriginalBeforeFirstEdit: true,
       noProjectSaveTarget: true,
@@ -397,6 +448,10 @@ for (const [engine, engineType] of Object.entries({ chromium, webkit }).filter(
       exactLong: true,
       undoAfterReload: true,
       atomicFormatReplacementAndReload: true,
+      streamingBrowserExport: true,
+      cancelledStreamingExport:
+        process.env.CANTRIP_NBT_QA_CANCEL_EXPORT === "true",
+      exportRetainsDirtyDraft: true,
       explicitProtectedSaveAs: true,
       independentParser: true,
       returnToProject: true,
