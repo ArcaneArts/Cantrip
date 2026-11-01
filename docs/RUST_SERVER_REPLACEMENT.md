@@ -101,6 +101,805 @@ GUI/native dispatch, receipt HTTP consumers, Tasks/Goals/scheduling and the
 remaining replacement requirements continue separately. Normal app and server
 builds still launch Node; the worker remains Node by design.
 
+## Public chat execution (in progress)
+
+The Rust public turn and queue routes now use the production execution graph:
+encrypted submission and replay, retry rollback, canonical queue mutations and
+operation receipts, active steering, and automatic queued continuation. The
+one-second durable queue delivery service starts and drains with the server.
+Standalone chats retain their legacy queue shapes and default-mode restriction.
+
+The expanded local macOS Node/Rust comparison passes 268 paired HTTP
+observations per database across anonymous, password and account modes on
+native PGlite, private PostgreSQL and external PostgreSQL. Each profile verifies
+actual encrypted transcripts, two consumed claims, immutable queued input and
+claim-derived operation hashes, matching receipt generations, zero remaining
+active lanes or pending prompts, and idle completed chats. Existing worker
+transport, endpoint crypto, native command client and managed session adapter
+run unchanged; model execution and rollback are controlled fixture boundaries.
+This is not full worker-process, client or packaged-product acceptance.
+
+Seven additional public wire schema roots preserve all prior 466 root mappings
+and the entire 9,105-node prefix. The new manifest has 473 roots and 9,138 nodes.
+The Source/native comparison passes 9,636 additional public contract outcomes
+and errors, 421,047 full protocol cases and 69,648 ECMAScript JSON round trips.
+Actual public-route testing exposed a URL-suffix dispatch error for an invalid
+prompt lookup named `steer`; canonical Axum matched routes now choose the
+handler. Its regression and newly mounted Chat/Project Task pause controls
+pass all nine local database/authentication profiles. Pause comparisons verify
+validation and ownership, opposite/failing worker acknowledgments, retained
+project state after partial Task failure, stale revisions, four project-wide
+finally invalidations per peer/profile, and shutdown persistence. A caller
+actually disconnected after worker dispatch cannot cancel its admitted pause.
+An actually disconnected worker leaves threaded chats safely paused, while an
+empty threadless Task can resume without a worker action. Task ciphertext is
+actually decrypted after shutdown and matches its original protected content.
+Pause acknowledgments remain a controlled worker boundary; actual native pause,
+full worker/client and supported-platform acceptance remain.
+
+Public Task/Goal controls, complete unchanged-worker/client execution, failure
+and restart acceptance, supported platforms, merged delivery and the original
+replacement shipping requirements remain. Normal builds continue to use Node.
+
+## Managed chat preparation (in progress)
+
+The Rust preparation service now owns the existing GET/POST preparation routes,
+durable phase and generation receipts, linked-console identity, worker reconnect
+registration, authenticated detached-exit observations and owned shutdown work.
+The native-thread readiness promise completes before CLI console startup, as in
+Source. A console failure remains separate from native conversation readiness.
+Stale generations cannot overwrite a replacement or turn an exited console back
+into a ready console. Console creation retains the unique linked-chat identity.
+Worker notification handling verifies the actual worker-link identity, owner,
+server, worker process and preparation generation before committing an exit.
+Preparation never synthesizes terminal input.
+
+Local Node/Rust repository and runtime comparisons pass 57 cases, 15 complete
+state snapshots and a real reopen on native PGlite, private PostgreSQL and
+external PostgreSQL. An additional archive-during-thread-preparation scenario
+passes on PGlite; its expanded PostgreSQL corpus still needs to run. The unchanged
+Source preparation suite passes all 14 tests. Actual HTTP, the unchanged
+WorkerConnection transport, worker endpoint encryption/decryption and App Live
+comparisons pass all three database modes in anonymous, password and account
+authentication modes. Each runtime/profile verifies the exact ten preparation
+invalidations, retained opaque console fields, authenticated exit, stale-process
+and stale-preparation refusal, retry identity and a separately failed console.
+
+The in-progress GUI turn composition now includes native admission, protected
+input forwarding, inherited model configuration and post-commit receipt effects.
+The expanded local comparison passes 478 cases and 79 execution-state snapshots
+on native PGlite and private PostgreSQL. External PostgreSQL passes 490 cases
+and 85 snapshots, including six real concurrent placement scenarios for each
+repository, twelve telemetry races across same/mixed Node/Rust pairings, and
+eight Task lease races. Each store also reopens its real database three times.
+Task follow-up recovery requests the worker's real
+inventory before returning an actually removed, agent-managed checkout to its
+own source's Primary; pinned, active, offline and unready placements retain
+Source behavior. Existing conversation identity and target runtime survive the
+move, and the linked console moves in the same transaction. The unchanged
+Source Task placement suite passes all 13 tests.
+
+Placement race evidence holds the chat row with `FOR NO KEY UPDATE`, confirms
+the real final placement `UPDATE` is waiting on that lock, changes the captured
+worktree, revision, mode, automation pause or status, then releases it. Both
+repositories return the exact placement conflict and roll back the suspended
+lane and console move. A missing-target-runtime case also proves the new runtime
+insert rolls back. The content-free model behavior tracker retains actual
+native capture gaps and conflicts, streamed-update deduplication, first-observed
+timing and JavaScript test-command whitespace behavior. Equal locale collation
+keys preserve original capture insertion order. Returned snapshots cannot
+mutate retained native evidence; command text and output stay out of them. All
+15 unchanged Source tracker/attribution tests pass.
+
+General live token usage now has the complete native-turn identity writer:
+project-before-chat locking, exact source aliases, zero-count bootstrap adoption,
+refusal to discard independently measured usage, native response deduplication,
+immutable capture fences and delayed-finalizer retention. Canonical history uses
+that same writer inside its existing transaction and a real nested savepoint;
+the older specialized history writer has been removed. Model behavior uses the
+Source advisory lock and retains finalized counters while late captures enrich
+attribution. Both writers roll back actual injected SQL failures, then accept
+retries without duplicate rows or aliases.
+
+The live wrappers use these actual writers and the unchanged reference runtime
+for comparison. They preserve child-turn source identities, account/route resume
+identity, project usage publication, current server/runtime versions and warning
+behavior when analytics storage fails. Their behavior snapshots contain counts
+and model evidence without retaining command text or output.
+
+The chat quota service now uses the existing native account/observation writers
+and limited worker command bus. It retains live credit mutation and settings
+invalidation, the real two-minute quota-read command, immediate and 5/15/45-second
+completion samples, and deduplicated samples five seconds before and two seconds
+after known resets. Reset identities are released before sampling again. Delays
+outside the reference bounds are skipped. Closing cancels timers and drains
+admitted requests through their actual SQL commits, including a controlled
+worker response held in flight while closing starts.
+
+Twenty-eight quota scenarios per store compare the unchanged Source routing
+service and real writers, with seventeen additional durable-state observations.
+They cover provider/account eligibility, repeated snapshots, shared credit state,
+nullable correlation, missing versus null live limit identity, exact reset
+timing and deduplication, canceled timers,
+worker/schema errors and actual SQL faults. Credit writes that Source commits
+before a failed quota reading remain committed; runtime mutation and settings
+publication retain their separate Source success/failure boundaries. Grok
+observations preserve the reference's ChatGPT-only credit update policy. These
+components still require the full turn service's production composition.
+
+The production Live mutation service now uses the real message and interaction
+writers, worker protection, model attribution, plan state and Task workload
+routing. Native-event HTTP publication uses this same service after the fenced
+transaction commits. Its actual HTTP comparisons pass all three stores in all
+three authentication modes. Task launch, heartbeat, pause and settlement use the
+persisted lease's exact fence. Real row-lock races across Node, Rust and mixed
+pairs prove that launch and unstarted pause cannot both win. A Source PostgreSQL
+Date-parameter defect was reproduced and fixed; its thirteen Task dispatch tests
+and the actual PostgreSQL comparisons pass.
+
+The new turn bootstrap composes placement recovery, model/account binding,
+worker protection, attachments, policies, MCP, Task launch fencing, native or
+legacy lane admission, retry rollback, plan mode and durable input attribution.
+Comparison runs the real Source turn through worker-attribution loading and
+then deliberately stops before its worker stream. It covers bound disabled
+routes, Task reprotection, stale/missing leases, standalone ownership, missing
+attachments and real INSERT failure after admission. A surrogate-bearing route
+must remain a lookup filter; the regression fails before its native fix and
+passes afterward. Retry acknowledgments use the actual Source rollback schema.
+All 5,499 turn-contract outcomes and exact errors match, including the actual
+turn/relay results, automatic-label response, computer-use approval and worktree
+status roots. The latest extension preserves all 436 previous root mappings and
+all 8,892 schema nodes, adding one root for an already represented status schema.
+
+Bootstrap stage deadlines retain the actual late operation and shutdown drain;
+caller disconnect does not cancel its work or completion logging. Separate
+tests exercise those lifetimes. The initial 1 MiB bootstrap stack overflow was
+fixed by boxing async composition boundaries; the same constrained fixture now
+passes without increasing its stack.
+
+The native turn engine now composes automatic message-title claims, the real
+worker payload, ordered event handling, protected final-message deduplication,
+approvals, opaque plans, actual telemetry/quota writers, outcome validation,
+provider failover and failure settlement. Ordinary calls return while their
+owned stream continues; scheduled Tasks wait for dispatch and retain their
+fenced heartbeat. Message naming rereads the setting after the worker reply,
+releases its actual claim on failure, and retains the private logging boundary.
+Task title reconciliation still requires the Task domain implementation.
+
+The expanded controlled-worker corpus passes 553 comparisons and 116 complete
+state snapshots on native PGlite and private PostgreSQL. External PostgreSQL
+passes 565 comparisons and 122 snapshots, including the real placement,
+telemetry and Task lease races. Each store reopens its database three times.
+These tests execute the actual Source and Rust engines and durable writers. They cover
+protected approvals, plaintext-plan rejection, completed Task output, Task Goal
+worker interruption without replay, callback failure boundaries, worktree
+continuation and pre-activity provider failover. The comparison exposed and
+fixed a native fanout-admission ordering defect and a non-Unicode JavaScript
+retry-expression mismatch. Both regressions fail before their respective fixes.
+
+The recovery coordinator now implements real queue claims, unadmitted-claim
+release, dispatch coalescing, native Goal actions, full model configuration,
+worktree moves and protected system continuations. Account preparation precedes
+claim acquisition. A failed native action retains the already committed input
+projection while releasing the unadmitted claim. Unmanaged dispatch deletes its
+queue input only after bootstrap succeeds. Pending releases request actual
+worker status and cancel when new uncommitted changes appear. Task recovery runs
+before an old pending handoff can move placement. These comparisons exercise the
+real Node and Rust coordinators and repositories with explicitly controlled
+turn, account-transfer and Task collaborators.
+
+The shared outcome scheduler now cancels delayed recovery after ordinary turn
+settlement, renews its sixty-second suppression window and retains admitted
+recovery work through shutdown draining. Its virtual-clock regression exposed a
+late-started timer under executor backlog; deadlines now start at admission.
+All five native scheduler/lifetime tests and five unchanged Source tests pass.
+
+The engine and coordinator still need production composition with actual account
+preparation and Task collaborators. Controlled runtime collaborators are not
+production composition. Full
+durable outcome projection and public turn/receipt HTTP composition remain
+unported, so these components do not yet provide complete GUI execution.
+
+Native runtime handoffs now have their actual Rust repository, configured runtime
+resolution, worker dispatch coordinator and all seven HTTP route/method pairs.
+Reservations, preparation/replacement CAS, canonical commit, cancellation,
+acknowledgement, cold source/destination recovery, retirement and bounded failure
+diagnostics share the actual chat lock and native settings writers. A late SQL
+trigger failure rolls back the runtime, root model, settings and handoff together.
+Configuration uses owned configured identity without cached readiness or quota
+gates. Worker acknowledgements alone cannot authorize input: account transfer
+waits for the durable completed phase. The expanded GUI/handoff repository corpus
+passes 628 comparisons and 131 snapshots on PGlite/private PostgreSQL, and 640
+comparisons and 137 snapshots on external PostgreSQL, including its real races.
+Each store reopens four times. Seven added schema roots preserve every old root
+mapping and schema-node prefix; 15,432 turn protocol outcomes and exact errors
+match Source.
+
+Actual handoff HTTP comparisons pass all three stores in anonymous, password and
+account modes using the existing WorkerConnection and NativeRuntimeHandoffClient.
+They compare bodies, status codes, security headers, endpoint-encrypted snapshots,
+worker intents, publication counts, coalesced retry, cancellation, restart and
+shutdown with a command that has no deadline. A queued preparation retains its
+generation while real handoff recovery is held, then claims and opens the
+destination console only after recovery settles. Authenticated worker reconnect
+now supplies these actual per-chat recovery futures to Rust preparation. Owned
+HTTP/worker work drains after bridge closure and before database closure. The
+ordinary preparation HTTP matrix also passes again across all stores/auth modes.
+
+This combined test exposed two Source lifecycle defects, retained as failing
+before-fix evidence: pending handoff failure persistence raced database closure
+and hung shutdown, and account-mode reconnect published outside its owner
+context, rejecting an otherwise completed recovery and stranding preparation.
+Source now tracks every outstanding handoff through shutdown (including replaced
+requests), and binds reconnect recovery to the authenticated account. The same
+HTTP assertions pass after these fixes. All 52 existing Source handoff/account
+tests pass with the bundled real Codex binary, including both formerly skipped
+CLI transfer tests. Those CLI results exercise Source; Rust's new HTTP worker is
+explicitly controlled and does not establish real native file/account transfer
+or attached CLI acceptance. Strict all-target Clippy, the turn protocol/lifetime/
+scheduler suites and Source typechecking pass. The supported-platform workflow
+now includes these GUI, preparation and handoff suites; configured CI is not
+passing platform evidence. This work remains unmerged, and full GUI execution,
+packaging, migration/rollback, final cutover and merged delivery remain required.
+
+Automatic account preparation now uses the real Rust handoff service before
+admission. It rereads the owned context, checks its captured input revision and
+canonical binding, and preserves the route and native conversation. A depleted
+ChatGPT account can select an eligible credit or legacy account using the shared
+account-routing rules. Current credits, unknown or incomplete weekly usage,
+missing alternatives, Task conversations and active lanes retain Source behavior.
+There is no new readiness gate. The queued-account adapter uses the same service
+and captured revision; the application constructs that service with its actual
+handoff coordinator and drains account work before handoffs and the database.
+
+Concurrent callers join one owned preparation, including a caller with an older
+revision arriving while the transfer is held. Dropping the first or every waiter
+does not cancel the admitted transfer. Shared failures retain their original
+typed error, message, status and cause through caller context; an early worker
+reply still cannot authorize account replacement. A failed transfer retains its
+reservation, and a later automatic attempt respects that durable pending handoff.
+The complete GUI corpus now passes 696 comparisons and 173 state snapshots on
+PGlite/private PostgreSQL, and 708 comparisons and 179 snapshots on external
+PostgreSQL. Four real database reopens per store remain verified. The new cases
+use actual selectors, settings, handoff coordination and durable writers with
+an explicitly controlled worker. They also resolve both configured account homes,
+including a legacy fallback, and exercise actual model-catalog availability.
+All 21 existing Source account-failover/recovery tests and strict all-target
+Clippy pass. These are component checks; full turn/receipt routing, real Rust
+native account/file transfer, Task/outcome integration and merged delivery remain
+unfinished. Normal builds continue to use Node.
+
+The native Task repository now persists opaque draft/plan edits, encrypted
+operation starts and idempotent results, execution/message references,
+finalization acknowledgements, failures, interrupted-operation reconciliation,
+Goal state synchronization and owned deletion. It preserves the Source version
+conflicts, exact updated columns, queued-cycle fencing, lookup precedence and
+the boundary between an encrypted finalization result and acknowledged Goal
+startup. JSON-text comparisons retain raw JSONB key order: an otherwise
+identical Goal update can advance the revision just as Source does. The server
+does not decrypt Task content.
+
+The actual Source/native Task repository suite passes 158 paired observations
+on each of native PGlite, private PostgreSQL and external PostgreSQL, with three
+process reopens per store. A forced conflict after round insertion rolls back
+both the attempted round and the Task mutation. Oversized wire-valid draft/plan
+revisions preserve PostgreSQL integer-range failures and leave stored state
+unchanged; guards compare the actual typed column rather than its JSONB form.
+Twenty-four external PostgreSQL
+races verify distinct/duplicate starts and duplicate completion under actual
+row-lock contention, including mixed Node/Rust peers and reversed callers.
+These prove the Task repository operations, not a complete mixed rolling
+deployment. State, retry-window/latching and encrypted-relay policy comparisons
+match 1,756 Source outcomes; seven added schema roots match 20,022 protocol
+outcomes and exact error strings. The manifest retains all 444 previous root
+mappings and its entire 8,974-node prefix (now 451 roots and 9,013 nodes).
+
+This repository and its relay/retry helpers are dependencies for recovery
+integration. The Goal and retry services described below provide the next
+dependencies; execution recovery, scheduling collaborators, durable turn-outcome
+projection and public turn/receipt HTTP composition remain unfinished. Component comparisons do not establish actual Rust CLI acceptance,
+desktop packaging or Winterhold readiness. This GUI/Task milestone remains in
+its isolated worktree until it forms a coherent, verified delivery.
+
+Task dispatch now has its native owner-serialized enqueue, claim, pause/resume,
+capacity deferral, expired-lease reconciliation and retained Goal recovery
+repository. Worker order, FIFO age, assignment/continuity, project pause,
+worktree/branch ownership and capacity checks preserve Source behavior. The
+eligibility resolver is required; production routing must prepare its results
+outside the transaction, as Source does, so PGlite does not nest queries on its
+exclusive connection. An unused invalid clock does not add an eager rejection.
+
+Actual Source/native dispatch comparisons pass 282 observations on native
+PGlite/private PostgreSQL and 326 on external PostgreSQL, including 24 witnessed
+owner-lock races. Those races cover claims competing with claims, retained
+paused resumes and settled Goal capacity reacquisition, with same/mixed
+Node/Rust peers and both operation orders. A post-claim Task write failure rolls
+back the cycle, fence and metadata together. Goal recovery retains live owners
+and fences and re-fences expired ownership without replaying its operation.
+The timestamp comparison caught and corrected a real fidelity defect: Source
+writes FIFO age through JavaScript Date, so Rust now truncates stored
+submillisecond Task timestamps to the same millisecond precision.
+
+Two added schema roots retain all previous 451 mappings and the full 9,013-node
+prefix (now 453 roots and 9,027 nodes). The expanded Task protocol suite matches
+21,038 outcomes and exact error strings. All 18 existing Source dispatch,
+scheduling and scheduling-migration tests pass, as do strict all-target Clippy
+and the 158-case native PGlite Task repository regression. These are component
+results; the actual Goal runtime, model eligibility preparation, automatic retry
+scheduler, Task HTTP routes and complete turn/receipt execution still require
+production integration. The workflow includes these checks, but no new passing
+supported-platform run is claimed. Normal builds still select Node.
+
+The native Goal service now implements ordinary and encrypted Goal startup,
+prepared finalization, passive/active observations, controlled-message
+correlation, resume, saved-objective worktree continuation, retained dispatch
+leases and scheduled completion/failure hooks. Its real routing, console,
+protection, live and SQL dependencies preserve opaque Task content. Turn,
+worktree-recovery and queue callbacks are required dependencies; production has
+no placeholder collaborators. The composition into public turn execution is
+still pending.
+
+Actual Source/native Goal comparisons pass 86 observations on each of native
+PGlite, private PostgreSQL and external PostgreSQL, with three process reopens
+per store. They cover metadata/validation failures, passive stale-revision
+recovery, active control conflicts, missing Goal observations, native and opaque
+resume, unpause guards, console/input protection, finalization before turn
+admission, existing start-message replay prevention, startup failure retention,
+ordinary Goal UTF16/numeric interpolation and initial retained-lease
+reconciliation. A failing-before regression caught null launch options bypassing
+Source defaults in the first Rust implementation; the native service now applies
+the same nullish model, message, purpose and worker-prompt fallbacks. Worker and turn boundaries are explicitly controlled in these
+component fixtures. Periodic lease timing, in-flight shutdown, scheduled-hook
+failure paths and complete worktree continuation still require direct
+integration coverage.
+
+The separate durable retry ledger passes 141 Source/native observations per
+store and four process reopens per store. Operational retry writes leave Task
+row/scheduler revisions, encrypted content and Task timestamps unchanged.
+Checks include ownership, pause/approval gates, exact fractional due times,
+claim expiry, deferred-attempt refunds, latching/reset and window boundaries.
+Twenty-four external PostgreSQL owner-lock races cover duplicate claims,
+duplicate failure notes and duplicate finishes with same/mixed Node/Rust peers
+and both caller orders. These are repository coordination proofs, not full
+mixed-version rolling-deployment acceptance.
+
+The two new protocol roots preserve all previous 453 root mappings and the
+complete 9,027-node prefix (now 455 roots and 9,056 nodes). Task protocol checks
+match 22,944 outcomes and exact error strings; 660 actual Source failure-category
+vectors include Unicode and explicit-code precedence. All 42 existing Source
+Goal/retry tests pass. The 158-case Task and 696-case GUI native PGlite
+regressions and strict all-target Clippy pass. The supported-platform workflow
+now includes the new suites; its configuration does not prove platform
+acceptance. Task execution recovery, eligibility/worker management, automatic
+scheduling, complete turn/receipt composition and every original release,
+migration/rollback, coordination and packaging requirement remain. Normal
+builds continue to select Node; this owned milestone has no PR yet.
+
+Task execution recovery now uses the real native Goal service, Task/dispatch
+repositories, worktree placement and execution lanes. It restores retained
+session affinity, preserves manual pause and provider/user budgets, coalesces
+concurrent observations, escalates a joined explicit Resume, and throttles
+completed background observations for 30 seconds. Owner-scoped unpause and
+status writes preserve queue revisions and unread-completion behavior. The
+service implements the required Task collaborator for chat recovery; its
+publication, unpause and failure-report callbacks remain required production
+dependencies, without fallback implementations.
+
+Actual Source/native recovery comparisons pass 91 observations on each of
+native PGlite, private PostgreSQL and external PostgreSQL, with four process
+reopens per store. They include unavailable/different retained worktrees,
+concurrent user changes, running native-session reattachment, real capacity
+reacquisition, exact observation backoff, coalesced intent/failures, detached
+caller drain, restoration of original placement, and cancellation of obsolete
+handoffs. Canonical-repair cases persist a real encrypted finalization through
+the Task repositories before protecting a system continuation; they assert that
+the saved approved objective is reused and that concurrent protected completion
+wins before turn admission. The worker and final turn/publication callbacks are
+explicitly controlled component boundaries, not actual CLI/product acceptance.
+
+An existing Source/worker failure boundary remains visible: the worker's
+`protectTaskGoalLaunchFailure` creates a finalization-phase failure with
+`stableStateBeforeFailure: review`; implementation synchronization rejects that
+metadata during an already-started Goal continuation. Both servers preserve the
+same rejection, original Task revision and live bounded dispatch. A separate
+valid implementation-failure payload verifies opaque failure persistence and
+lease settlement. The failing expectation and the corrected distinct cases are
+retained; actual-worker continuation-failure acceptance still needs resolution
+before claiming that product flow is ready. No planning metadata is rewritten
+or validation bypassed to conceal the issue.
+
+All 39 existing Source recovery/Goal tests and 20 worker Task-operation tests
+pass. The preceding 86-case Goal and 696-case GUI native PGlite regressions and
+strict all-target Clippy pass. The workflow includes recovery across the three
+platform/backend jobs, but no new passing supported-platform run is claimed.
+Prepared eligibility, automatic scheduling, outcome projection and full public
+turn/receipt composition remain next, together with
+all original coordination, migration/rollback, release and packaging work.
+Normal builds still use Node and this owned GUI/Task lane has no PR yet.
+
+Task Worker settings now run through native production list/create/update/delete/
+order HTTP routes and real owner-scoped persistence. They preserve SQL defaults
+for omitted internal properties, optimistic revision fences, shared-provider
+checks for custom subagents, trusted catalog continuity-family normalization,
+explicit null overrides, active dispatch counts, two-phase ordering and soft
+deletion with retained Task/cycle references. Project scheduling pause persistence
+uses the same owner lock, revision and timestamp behavior as Source; its public
+pause/resume runtime is not yet composed.
+
+Actual Source/native comparisons pass 102 repository scenarios per backend,
+with ten snapshots and five process reopens on native PGlite, private PostgreSQL
+and external PostgreSQL. Forty external PostgreSQL races witness the actual
+competing SQL lock waits for create, update, delete/update and project pause
+with same/mixed Node/Rust peers and both arrival orders. Checks retain SQL integer
+overflow/rollback, lone-surrogate text encoding, committed invalid projections
+and a 257th worker that inserts successfully before list validation rejects it.
+No eager list-limit or model-catalog startup gate substitutes for the operation.
+
+Actual production HTTP/Live comparisons pass all three backends in anonymous,
+password and account modes: 37/41/45 observations per runtime on PGlite/private
+PostgreSQL and 38/42/46 on external PostgreSQL. They verify required DELETE bodies,
+static-order versus dynamic-ID routing, owner isolation, exact error responses,
+SQL rollback, post-commit settings invalidations, committed response-projection
+failure and restart persistence. External PostgreSQL additionally holds a real
+row lock, aborts an admitted caller, releases the lock and verifies the committed
+update and Live event in each authentication mode.
+
+The eight scheduling roots preserve all prior 455 mappings and the complete
+9,056-node prefix (now 463 roots and 9,093 nodes). Task protocol comparisons pass
+24,423 outcomes and exact errors; all 18 existing Source scheduling/migration/
+dispatch tests, the 282-case dispatch and 86-case Goal PGlite regressions, and
+strict all-target Clippy pass. CI now includes the repository
+and HTTP suites on each backend; no new supported-platform run is claimed.
+Prepared eligibility, the automatic/background scheduler, complete GUI/public
+turn/receipt composition and every original shipping requirement remain. These
+resource proofs do not establish a complete mixed-version rolling deployment.
+Normal builds still use Node; the owned GUI/Task lane remains unmerged.
+
+Prepared Task dispatch and resume eligibility now use the actual native routing,
+Task Worker configuration, physical worker status and chat context repositories.
+Provider/catalog reads finish before owner-serialized claim/resume transactions;
+the resolver passed into those transactions reads only its prepared snapshot.
+Changed project, physical worker, worktree or Task Worker revision fences reject
+the cached dispatch result. Claimed runtime projection checks the selected route
+and provider account exactly; retained threads survive only an exact match.
+
+Actual Source/native comparisons pass 64 observations on each backend, with six
+Task SQL snapshots and three process reopens. Explicit pre/post-reopen equality
+checks preserve the complete Task, Worker and dispatch/retained-lease rows. They include real prepared claims and
+resumes, worker disconnects during resolution, Task component grants, subagent
+capability/topology, catalog reconciliation, account budgets/credits/cooldowns,
+changed Worker revisions, cached-placement rejection and retained lease identity.
+The Source credit-funded account cooldown exception is asserted separately from
+ordinary account cooldown rejection. No extra grant or enabled-state gate is
+added to paused resident-session resumption, preserving Source behavior.
+
+Real delayed catalog work exercises both dispatch and resume timeouts. The
+native service retains admitted work and drains it after the waiter times out;
+its warning event, duration, error class and message match Source. A delayed
+catalog SQL write is observed after the timeout. The Source functions were
+extracted into a reusable production helper without body changes apart from a
+timeout dependency whose production default remains 30 seconds; the original
+body and an exact canonical-body comparison are preserved as evidence.
+
+Source typechecking, all 26 focused scheduling/dispatch/launch/project-pause
+tests, the boundary inventory audit, strict all-target Clippy, the 282-case
+PGlite dispatch regression and actual PGlite HTTP/Live in all three auth modes
+pass. CI now includes eligibility comparisons on all backends, but no new
+supported-platform run is claimed. Catalog transport and connection-state peers
+are explicitly controlled fixture boundaries; this does not prove complete
+worker/product execution. Full background scheduling, actual project Task
+pause/resume, durable outcome
+and full public turn/receipt composition remain, together with every original
+migration/rollback, coordination, packaging, platform/performance, Winterhold
+rehearsal and merged default-cutover requirement. Normal builds remain on Node.
+
+Task automatic naming now uses the native title service with the existing
+worker label command and opaque Task brief. Task-specific preferences remain
+independent of message/random-agent naming. Atomic claims, privacy-preserving
+failure logs and protected-label publication retain Source behavior. An empty
+creation result reconciles exactly once when a newer Task revision has a saved
+dispatch; an autosaved draft alone never triggers reconciliation. Ordinary
+message naming continues through its existing route-pair selection; Task naming
+uses the Source Task runtime's available-route selection.
+
+The native Task operation queue composes actual dispatch admission, retry-ledger
+reset, Task Live invalidation, Task lookup, best-effort naming and scheduler
+wakeup in Source order. Explicit operations reset the retry ledger; automatic
+admission preserves its complete stored record. A naming error cannot fail an
+already admitted operation. The retry helper reuses the real approved
+finalization/Goal receipt instead of creating a second operation; ordinary
+failed attempts use their requested or freshly generated operation ID.
+Implementation and Goal-continuation retries remain on their Goal controls.
+
+Actual Source/native comparisons pass 58 observations on each backend, with
+11 shared state snapshots, ten Task-specific SQL snapshots and three process
+reopens. Explicit pre/post-reopen comparisons retain protected labels and full
+Task/dispatch rows. The corpus includes the existing message-title assertions,
+Task preference/claim/reconciliation/error cases, manual/automatic admission,
+real encrypted finalization receipts and fresh-attempt retries. An actual SQL
+constraint forces retry-ledger reset to fail after dispatch admission commits;
+both servers retain the committed queued cycle and the original ledger.
+Catalog/worker replies and the scheduler wakeup are explicitly controlled
+fixture boundaries; this is not complete scheduler or real-worker acceptance.
+
+All 19 existing Source naming/retry tests, the 696-case PGlite GUI regression and
+strict all-target Clippy pass. CI includes the naming/queue corpus on all three
+backends; no new supported-platform run is claimed. The background claimed/resumed
+execution scheduler, actual project Task pause/resume,
+durable outcome and full public turn/receipt graph still require production
+composition, together with every original migration/rollback, coordination,
+platform/product/performance, packaging, Winterhold rehearsal and merged/default
+cutover requirement. Normal builds continue to use Node.
+
+The native automatic retry actor now composes the actual Task/retry repositories,
+Goal observation and execution recovery, operation queue, naming and Live services.
+It reserves at most four chats per batch before starting jobs, deduplicates
+concurrent ticks and lets other candidates proceed while a worker observation is
+held. Stop prevents new admission; drain waits for admitted jobs. Legacy failures
+are adopted once, claim IDs become new attempt receipts, running prior turns defer
+without spending attempts, and implementation recovery preserves user-paused Goals.
+
+All three local macOS storage modes pass 27 Source/native comparisons, including
+28 Task-specific SQL snapshots, eight shared snapshots and four process reopens.
+The fixture holds actual Goal commands to exercise the concurrency bound and
+nonstalling recovery, and uses actual database triggers to change a revision or
+invalidate the Task projection immediately after claim. Both implementations
+finish these claims through the same failure/revision branches; the revision
+mismatch preserves Source's early return without a final publication. Complete
+Task/dispatch rows are explicitly compared before and after restart. Different
+owners retain their own queued operations and Live events. Every event, command
+and log field is compared, preserving per-chat order while allowing independent
+chats to interleave.
+
+All 67 focused Source tests, the 86-case Goal and 91-case Task recovery regressions,
+the 696-case GUI regression, strict all-target Clippy, Rust formatting and diff
+checks pass. CI includes the retry corpus for every storage mode. Worker replies,
+catalog transport, the turn boundary and scheduler wakeup are named controlled
+fixture peers. Full background execution/public turn composition, actual worker
+and client acceptance, supported-platform and packaged readiness remain unproven.
+Every original coordination, existing-data upgrade/post-write rollback, performance,
+packaging, Winterhold rehearsal, merged/default cutover and Node-server removal
+requirement remains. Normal builds continue to use Node.
+
+The native claimed Task launcher now uses the actual turn runtime, Goal service,
+routing, worker command bus, Live writers and repositories. It validates the
+claim's current placement and selected runtime, prepares and persists the opaque
+operation, and supplies real structured completion/failure hooks. Completion
+persists the authenticated result, appends the protected assistant message,
+attaches its durable identity and settles the fenced dispatch. A saved committed
+result settles without replaying its worker operation. Preparation failures record
+operational retry state without inventing protected Task failure content.
+
+All three local storage modes pass 43 Source/native observations, twelve
+Task/round/cycle/message SQL snapshots, six shared snapshots and three process
+reopens. Direct and initial-plan operations run through the complete turn engine;
+full rows are explicitly compared across restart. An actual running Task forces
+capacity deferral, then a new real claim reuses the saved request without preparing
+a second operation. Worker transport failure, malformed stored metadata and
+structured result identity failure exercise real cleanup. A delayed worker reply
+commits an actual SQL effect after the launch timeout; both fixtures drain that
+admitted work. Launch-stage start is observed before bootstrap events.
+
+Configuration changes after claim preserve Source's distinction between a
+retryable unavailable subagent route and a nonretryable missing worker capability.
+The comparison exposed generic native error names; response validation and model
+configuration errors now retain their named classes and failure data across owned
+turn boundaries. Diagnostic text is preserved. The Source launcher was extracted
+as a reusable production helper: its 402-line body is unchanged after canonical
+formatting, and its launch timeout keeps the existing 30-second production default.
+All 54 focused Source tests, typechecking and the boundary inventory audit pass.
+The initial concurrent Source test batch timed out during database setup; the
+same assertions pass serially with their original deadlines.
+
+Strict all-target Clippy, the 696-case GUI and 158-case Task repository regressions,
+Rust formatting and diff checks pass. Worker replies, catalog transport,
+claim-eligibility answers, worktree/queue continuation and scheduler wakeup remain
+explicit controlled fixture boundaries. This is not actual-worker,
+full background scheduling or packaged acceptance. Pause/resume and resumed
+dispatch are described below. Complete scheduling/project controls, actual-worker
+finalization/Goal and lease/shutdown acceptance, the public turn/receipt graph and
+every original shipping requirement remain. Normal server defaults use Node.
+
+Chat/Task automation pause now uses the actual native control context, durable
+state, Goal service and Live publishers. Managed unpause commits before worker
+admission; active native controls persist intent at dispatch. A late worker
+acknowledgement rereads the newest durable state instead of overwriting it with
+an older request. Legacy Tasks still require an exact worker acknowledgement.
+Failure paths retain Source's pause rollback, compensation and error ordering.
+
+The local comparison passes 60 observations, thirteen shared snapshots and three
+process reopens on each storage backend. It uses real native admission, dispatch
+and settlement for overlapping controls in both directions. Invalid receipts,
+UTF16 errors, offline/missing/foreign sources, source deletion after the worker
+boundary, dropped callers, failed Goal resume and native failure after dispatch
+are covered. Initial and missing-source compensation commands retain the
+unbounded streaming deadline; failed next-action compensation retains the normal
+worker deadline. Worker replies remain a controlled fixture boundary. Public
+routing, full scheduler/project controls and actual product/platform acceptance
+remain unfinished.
+
+Resumed Task execution now composes the actual acknowledged pause service, Goal
+service, claimed launcher, turn engine and durable dispatch/Live repositories.
+It checks current placement and retained thread/turn affinity before continuing.
+An inactive Task uses the real claimed launcher; an implementing finalizer resumes
+its retained Goal. Failed resumes re-pause the worker and fenced dispatch. Typed
+stale-fence conflicts preserve the original error, while a genuine cleanup
+projection error takes precedence. Admitted work survives a dropped caller.
+
+The expanded claimed/resumed corpus passes 116 observations per local backend,
+25 Task/round/cycle/message SQL snapshots, eight shared snapshots and four process
+reopens. It covers real pause/resume claims, active-turn affinity, changed placement,
+offline workers, actual direct-turn restart, preparation failure accounting and
+retained finalization heartbeats. An actual SQL trigger commits an invalid dispatch
+projection to exercise cleanup precedence. The implementing finalizer runs a real
+encrypted Goal continuation through the turn engine and stores both protected
+messages. Complete rows are explicitly equal after restart.
+
+The 2,731-byte Source resumed function retains its exact body after canonical
+formatting and is called by the existing production routes. All 116 selected
+Source tests and 24,752 Task protocol outcomes/messages pass; all existing contract
+root mappings and nodes remain unchanged before the three appended pause roots.
+Strict all-target Clippy, typechecking, formatting and the boundary audit pass.
+Worker replies, catalog transport, continuation/queue boundaries and scheduler
+wakeup remain controlled development peers. This is component evidence: the full
+scheduler and project-control production mounting, public turn/receipt composition,
+actual client/worker/CLI, platform/product and all original shipping acceptance remain.
+
+The coalesced Task scheduler now uses concrete automatic retry, recovery,
+prepared eligibility, claimed/resumed execution and Live services. Weak wakeups
+connect their real completion hooks to the same scheduler without a reference
+cycle. A tick captures its own completion, drops duplicate active wakeups, and
+launches owned execution without waiting for slow worker turns. Startup retains
+an immediate tick and the one-second poll. Timer/retry stop and captured-tick,
+retry and admitted-launch drains keep durable writes owned through shutdown.
+
+All three local storage modes pass 31 Source/native observations, fourteen
+Task/cycle/round/message SQL snapshots, six in-run snapshots, eight shared
+snapshots and four process reopens. The graph executes encrypted direct Tasks,
+capacity-limited queues, independent checkouts, periodic project unpause,
+expired unstarted reclaim, worker-acknowledged resume and delayed affinity
+failure. Retained Goal recovery renews its lease before expiry reconciliation.
+Started-work expiry applies saved protected failure; real malformed projections
+exercise both per-cycle error reporting and failed-tick recovery. Automatic
+retry records its actual attempt while a disabled worker leaves the request
+queued, then completes when enabled. Stop/drain preserves admitted completion
+and queued work across restart. Concurrent tenants use their own worker, model
+and event ownership. Full durable rows are explicitly equal after restart.
+
+Independent chats can acquire PostgreSQL's global message sequences in either
+order. Raw results retain that interleaving. The comparison preserves the exact
+allocated sequence set and every message field, while checking positive unique
+sequences, per-chat first-publication order, message identity/role, event
+scope/revision and database/wire agreement. Negative checks reject changed
+revision, scope, stored sequence and reversed message publication; opaque
+payload changes remain observable. This makes independent-chat scheduling
+comparable without discarding durable ordering checks.
+
+The original 5,589-byte Source loop is preserved after canonical formatting and
+continues to run in the existing Node server. Source typechecking, 116 selected
+server tests, the boundary audit and strict all-target Clippy pass. Shared
+regressions also pass 696 GUI, 116 claimed/resumed execution and 27 automatic-retry
+observations. The reviewed contract set is unchanged. The worker, catalog and worktree/queued-turn
+continuation boundaries remain controlled development peers. Production mounting,
+public project controls, the full public turn/receipt graph and actual client/worker/CLI
+acceptance are still required, along with all original distributed coordination,
+full upgrade/post-write rollback, platform/product/performance, packaging,
+Winterhold rehearsal and merged/default-cutover requirements. Defaults remain Node.
+
+Project Task pause/resume orchestration now shares the concrete acknowledged
+Chat pause, Goal lease, dispatch and Live services. It attempts all eligible
+Tasks concurrently and aggregates failures in the original list order, preserving
+UTF-16 messages. Complete/failed, archived and non-Task Chats are excluded.
+Unstarted claims commit pause without a worker command and advance their fence;
+active claims use acknowledged affinity and release retained Goal leases. Only
+typed stale-dispatch conflicts are suppressed. List resume leaves paused dispatches
+to the scheduler so capacity and lease acquisition remain authoritative. Admitted
+controls remain owned when their caller disconnects.
+
+The integrated local corpus now passes 70 paired Source/native observations per
+backend: the 31 scheduler observations plus 39 project-control observations.
+Each storage mode has 33 SQL snapshots, 27 in-run observations, 12 shared snapshots
+and six process reopens. The added cases cover mixed states, saved/acknowledged
+affinity, genuine scheduler resume, independent concurrent acknowledgements,
+partial pause/resume failures, offline resume, tenant ownership and unchanged
+protected envelopes. Actual PostgreSQL triggers prove failure after acknowledgement
+and rollback of the Chat pause when the queue revision write fails; healthy
+sibling Tasks still finish. The full ORM query-error contract now matches Source
+for Chat, queue and both dispatch pause writes. A generated query manifest checks
+the current Source builders. Comparison keeps exact SQL and scalar parameters,
+validates live Date parameters before normalization, and rejects changed SQL,
+state, failure counts and out-of-window clocks in negative probes. The original
+Source project-control implementation is unchanged. This remains component
+evidence: authenticated project pause routes, complete public execution/outcome
+composition and every original product and shipping requirement remain.
+
+Durable turn-outcome recovery now uses the real lane, Task, dispatch, protected
+message, Live and logical-completion services. It checks lane ownership, the
+latest user message and the claimed Task fence before accepting saved worker
+results. It preserves partial commits on actual SQL failure, suspends finished
+lanes, repairs a successful outcome after a concurrent failed/released lane,
+and routes finalization through the actual Goal launch and turn engine. Lost
+logical acknowledgements retain the durable outbox; older outcomes cannot
+finish a newer GUI operation. Protected writes remain owned after their caller
+disconnects. Concrete Task recovery/Goal adapters and weak runtime/coordinator
+construction connect the actual queue/worktree coordinator without a reference
+cycle.
+
+The integrated local matrix passes 180 paired Source/native observations per
+backend: 31 scheduler, 39 project-control and 110 saved-outcome observations.
+Each backend has 84 SQL snapshots, 67 in-run observations, 18 shared snapshots
+and nine actual process reopens. Coverage includes protected Agent/Task and
+standalone results, malformed worker payloads, stale messages/leases, typed
+settlement conflicts, real heartbeat/settlement SQL faults, finalization launch
+and failure, logical acknowledgement loss and a retained queued follow-up
+through the real turn engine. The controlled worker does not exercise its real
+CLI receipt path; full queue consumption and actual-worker acceptance remain.
+Independent queue claims are compared only after verifying the exact operation
+hash against the owner, claim and immutable protected input. Negative probes
+reject changed operation hashes, claims, owners and opaque input, alongside
+changed SQL, state, failure counts and out-of-window Date parameters. Raw SQL
+evidence also retains the exact default lease duration.
+
+The original 12,622-byte Node outcome body is unchanged after canonical
+formatting and is reused by production through an extracted helper. Source
+typechecking, 92 existing server tests, the 696-case GUI regression, native
+lifetime tests, strict all-target Clippy, the Source query manifest and the
+boundary audit pass. The reviewed contract set and inventory counts are
+unchanged. Worker/catalog I/O, account preparation and scheduler wakeup remain
+explicit development boundaries for that component corpus. The production
+execution graph is now composed in `chats/execution_services`, with actual
+account preparation, worker commands, scheduler wakeups, receipt settlement and
+authenticated worker outcome subscriptions. Public turn/project/Task controls
+and all original actual-client, platform, upgrade, rollback, performance,
+packaging, Winterhold and merged/default-cutover acceptance remain. Defaults
+stay Node.
+
+Canonical-history comparisons pass 233 cases and 88 state snapshots on native
+PGlite/private PostgreSQL, and 255 cases and 99 snapshots on external PostgreSQL,
+including 22 history races. A real GUI bootstrap precedes protected ingestion;
+receipt SQL failure rolls the entire projection back, and a later GUI finalizer
+cannot replace canonical response totals. Actual history HTTP passes all three
+stores in anonymous, password and account modes using the unchanged worker
+transport and endpoint encryption, complete opaque evidence, publication retry
+and restart. The Rust library tests and strict all-target Clippy pass.
+
+This is component evidence; production service composition alone does not
+establish complete public GUI execution or packaged acceptance.
+
+The stronger native acceptance fixture starts Cantrip's actual bundled Codex
+runtime, managed gateway and PTY. It now passes against Node and Rust on all
+three database modes: actual native resume, detached CLI exit and retry retain
+the terminal/thread, with no inference, synthetic terminal input or native
+history turns. Both peers complete two gateway resumes with no captured native
+failures. The previously missing POST `/api/internal/native-commands/receipt`
+now settles through production receipt notifications, Live boundaries and the
+actual queue/recovery graph. These are macOS native preparation proofs using
+real worker components, not complete unchanged-worker/app, supported-platform
+or packaged GUI acceptance. The milestone remains in its owned worktree and
+has not been submitted or merged.
+
+The production HTTP/worker-notification comparison also passes anonymous,
+password and account modes on each backend: 86 paired HTTP observations and
+18 paired receipt Live-effect groups per backend. The actual worker transport
+delivers a saved outcome; the real protection command encrypts its message,
+duplicate notification preserves one result, and post-shutdown database reads
+prove idle state, five settled receipts and no active lanes. Strict all-target
+Clippy, three usage-timer tests and nine turn/recovery lifetime tests pass.
+Full public execution/queue/Goal/Task routes, complete queue consumption and
+adversarial production execution/shutdown coverage remain required.
+
+Strict all-target Clippy passes after the runtime and fixture additions. The
+corrected complete wire suite passes 370,337 actual protocol outcomes and exact
+error messages. The new native behavior attribution root separately passes 890
+outcomes and messages, and the generated manifest matches Source. All previous
+root mappings and the entire schema-node graph remain identical when adding
+that root. Invalid preparation examples remain in the explicit invalid-vector
+stream, while oracle baseline examples are strictly parsed by Source. The full
+`pnpm check` run reaches 1,662 passing
+server tests, 57 skips and the same provider-account pooling failure at
+`local-foundation.test.ts:7218` previously reproduced on clean Primary. Normal
+desktop, development and standalone builds continue to use the Node server.
+
 ## Platform compatibility observations
 
 Worktree state comparisons observe wall and monotonic clocks inside each
@@ -121,12 +920,43 @@ transfer, exact retention of an unrelated transfer and removal of deleted views
 from every window. All three store suites preserve complete relational/layout
 snapshots. Evidence uses `.qa/rust-server/platform-contracts-*`.
 
+Run 41249132393 completed with failure and has not established full platform
+acceptance. Its Windows
+contracts job fails on the Source Node Explorer oversized upload with
+`read ECONNRESET`. Its Windows native-command job also fails on Source Node's
+first oversized native-history request with `fetch failed` / `read ECONNRESET`,
+after six parse-before-authentication assertions and before any native-history
+proofs. Native-history HTTP on PGlite passes all authentication profiles in the
+same Windows job. These actual failures are retained in the platform job logs
+and downloaded report artifacts; no platform repair is claimed here.
+
+The Linux contracts job also fails the actual Run-retirement flow on Source
+Node: the real child starts and decrypts its protected Run secret, but its own
+termination witness never appears before the bounded observation fails at
+`actual-run-retirement.mjs:152`. Rust is not reached in that product flow. The
+macOS contracts job is canceled. Native-command jobs pass on Linux/macOS, and
+the migration, conversion, replica, discovery and chat-message jobs pass on all
+three platforms; these successes do not establish the remaining contracts or
+packaged product acceptance.
+
 The fresh broad check still fails the provider-pooling assertion at
 `local-foundation.test.ts:7218` (1,662 server tests pass, one fails and 57 skip).
 The same focused case fails on clean Primary `10484f06e`. Root formatting still
 reports 12 unchanged files. Focused protocol/worker/server/app suites, app build,
 strict all-target Clippy, clock/HTTP regression tests and changed-file formatting
 pass; the broad check remains unsuccessful.
+
+A later focused worker run failed during an actual `git add` with an existing
+`.git/index.lock`. Git Trace2 confirmed that background status reads write the
+index, and a deterministic real-repository regression failed before the fix:
+reading status changed the index bytes after only the tracked file's timestamp
+changed. The status reader now disables Git's optional locks. The same test
+passes while still reporting actual content edits, and subsequent add/commit
+operations succeed. All 138 Git, worktree and app-server tests pass together,
+including the previously failing filesystem observation case. The earlier
+source-byte witness describes the pre-fix state; the Git reader is now
+intentionally changed. This does not resolve the separate Node provider-pooling
+failure in the broad check.
 
 ## Native command kernel and protected internal APIs
 

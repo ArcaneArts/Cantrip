@@ -33,6 +33,9 @@ export function installChatRuntimeHandoffRoutes(
     },
   );
   const active = new Map<string, Promise<void>>();
+  // Reconnect can replace the coalescing entry while an older request still
+  // owns a failure write. Shutdown must retain both operations.
+  const pending = new Set<Promise<void>>();
   const dispatch = (
     ownerId: string,
     state: Awaited<ReturnType<typeof repository.nativeRuntimeHandoffs.begin>>,
@@ -68,8 +71,10 @@ export function installChatRuntimeHandoffRoutes(
       )
       .finally(() => {
         if (active.get(key) === operation) active.delete(key);
+        pending.delete(operation);
         dependencies.publishChatInvalidation(state.chatId, "chat");
       });
+    pending.add(operation);
     active.set(key, operation);
     // The durable reservation remains the retry authority even if failure
     // diagnostics cannot be stored during a server/database outage.
@@ -193,6 +198,9 @@ export function installChatRuntimeHandoffRoutes(
       return new Map(
         states.map((state) => [state.chatId, dispatch(ownerId, state, true)]),
       );
+    },
+    async drained() {
+      while (pending.size > 0) await Promise.allSettled([...pending]);
     },
   };
 }

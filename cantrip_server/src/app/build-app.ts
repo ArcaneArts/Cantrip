@@ -1404,6 +1404,9 @@ export async function buildApp({
     await projectGithubConversionJobExecutor.drain();
     await chatRelocationJobExecutor.drain();
     await chatImportJobExecutor.drain();
+    // Closing the bridge settles handoffs with no command deadline. Keep the
+    // database alive until their failure diagnostics have actually committed.
+    await nativeRuntimeHandoffs.drained();
     await database.close();
   });
 

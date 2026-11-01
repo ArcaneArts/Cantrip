@@ -57,7 +57,7 @@ pub(super) fn normalized(value: &Value, fields: &[&str]) -> Value {
     result
 }
 // Node's isDeepStrictEqual distinguishes negative zero, unlike JavaScript ===.
-pub(super) fn deep_equal(left: &Value, right: &Value) -> bool {
+pub(crate) fn deep_equal(left: &Value, right: &Value) -> bool {
     let mut pending = vec![(left, right)];
     while let Some((left, right)) = pending.pop() {
         match (left, right) {

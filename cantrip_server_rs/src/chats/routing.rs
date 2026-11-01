@@ -124,6 +124,49 @@ impl ModelRouting {
     pub fn set_cooldown(&self, runtime: &Value, until: Option<f64>) {
         self.set_cooldown_key(cooldown_key(runtime), until);
     }
+    /// An existing native conversation keeps its bound route/account, including
+    /// disabled or quota-limited routes which may still be observed/resumed.
+    pub async fn bound_managed_runtime(&self, owner: &str, context: &Value) -> Result<Value> {
+        let settings = SettingsRepository::new(self.database.clone());
+        let runtime = if truthy(context.get("modelRouteId")) {
+            let route = text(context, "modelRouteId")?;
+            settings
+                .get_model_runtimes(owner, None, Some(&route), true, None)
+                .await?
+                .into_iter()
+                .next()
+        } else {
+            None
+        };
+        let mut runtime = runtime
+            .as_ref()
+            .map(Value::from_serialize)
+            .context("The bound provider route no longer exists.")?;
+        if !eligibility::account_provider(&runtime["provider"]["kind"]) {
+            if context.get("providerAccountId") != Some(&Value::Null) {
+                bail!("The bound provider account does not match its route.");
+            }
+            return Ok(runtime);
+        }
+        let accounts = wire(
+            settings
+                .list_provider_account_runtimes(
+                    owner,
+                    &text(&runtime["provider"], "id")?,
+                    &text(context, "workerId")?,
+                    None,
+                )
+                .await?,
+        );
+        let account = accounts
+            .iter()
+            .find(|a| a.get("accountId") == context.get("providerAccountId"))
+            .context("The bound provider account no longer exists.")?;
+        for field in ["accountId", "credentialHomeKey", "credits"] {
+            runtime["provider"][field] = account[field].clone();
+        }
+        Ok(runtime)
+    }
     pub fn set_cooldown_key(&self, key: JsString, until: Option<f64>) {
         let mut cooldowns = self.cooldowns.lock().unwrap();
         if let Some(until) = until {

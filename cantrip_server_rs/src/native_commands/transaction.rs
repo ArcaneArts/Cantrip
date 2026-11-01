@@ -131,7 +131,9 @@ impl<'a, 'db> TransactionRepository<'a, 'db> {
         chat: &str,
         ids: &Value,
     ) -> Result<Vec<Value>> {
-        attachments::get(self.tx, owner, chat, ids).boxed().await
+        attachments::get(self.executor(), owner, chat, ids)
+            .boxed()
+            .await
     }
     pub async fn mutate_queue(&self, owner: &str, input: &Value, options: &Value) -> Result<Value> {
         let (owner, input, options) = (owner.to_owned(), input.clone(), options.clone());

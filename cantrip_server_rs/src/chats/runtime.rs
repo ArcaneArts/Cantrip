@@ -26,6 +26,20 @@ fn nullable(value: &Option<String>) -> Value {
         .unwrap_or(Value::Null)
 }
 impl Repository {
+    pub async fn set_status(&self, chat: &str, status: &str) -> Result<()> {
+        let now = crate::auth::now();
+        if matches!(status, "idle" | "failed") {
+            self.database.query("UPDATE chats SET status=$2,has_unread_completion=CASE WHEN status IN ('running','waiting-for-approval') THEN true ELSE has_unread_completion END,updated_at=$3 WHERE id=$1",&[&chat,&status,&now]).await?;
+        } else {
+            self.database
+                .query(
+                    "UPDATE chats SET status=$2,updated_at=$3 WHERE id=$1",
+                    &[&chat, &status, &now],
+                )
+                .await?;
+        }
+        Ok(())
+    }
     pub async fn select_model(
         &self,
         owner: &str,

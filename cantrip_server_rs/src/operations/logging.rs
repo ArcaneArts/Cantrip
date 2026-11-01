@@ -338,11 +338,23 @@ pub fn error_details(error: &anyhow::Error) -> Value {
         Some(CommandFailure::Bridge(error)) => Some(error),
         _ => error.downcast_ref::<crate::workers::bridge::CommandError>(),
     };
-    let name = if bridge.is_some_and(|error| error.encoding_error.is_some()) {
-        "ZodError"
-    } else {
-        "Error"
-    };
+    let name =
+        if bridge.is_some_and(|error| error.encoding_error.is_some())
+            || super::shared_failure::downcast_ref::<crate::settings::ResponseValidationError>(
+                error,
+            )
+            .is_some()
+        {
+            "ZodError"
+        } else if super::shared_failure::downcast_ref::<
+            crate::settings::reasoning::ConfigurationFailure,
+        >(error)
+        .is_some()
+        {
+            "ModelConfigurationResolutionError"
+        } else {
+            "Error"
+        };
     let mut raw = json!({"name":name,"message":crate::settings::operation_error_message(error)});
     if let Some(code) = bridge.and_then(|error| error.code.as_ref()) {
         raw["code"] = json!(code);

@@ -3,7 +3,7 @@
   "completeReplacement": false,
   "inventory": {
     "path": "docs/security/server-route-inventory.json",
-    "sha256": "98df357c9523f5687c8e6a96e11a7bc910fc7517af1633df33b5a50f2e289ae9",
+    "sha256": "a94993281c8fcb1041e6f43946d91495940ee2b6ecb0e5aca6e866c953a7ba95",
     "baselineCommit": "f8af0e1c2bff8792d647a063e3bd9ab06f3fe9f4",
     "counts": {
       "routes": 523,
@@ -12,7 +12,7 @@
       "repositoryMethods": 364,
       "liveResources": 45
     },
-    "workingTreeNote": "Refreshed against the current source inventory, including the three conversation-usage tables, three added routes and one added repository method. Inventory audit executes the current source parser; new managed execution behavior remains in scope."
+    "workingTreeNote": "Current source inventory retains523routes,278worker commands,113durable tables,364repository methods and45live resources. Eligibility, claimed/resumed execution, scheduler and durable outcome helpers preserve canonical production bodies; route positions/hash reflect the extractions."
   },
   "interpretation": "Every row in the referenced inventory inherits its category default unless explicitly overridden. Schema creation is not domain behavior. Test commands and configured CI are not passing evidence.",
   "routes": {
@@ -3554,6 +3554,291 @@
         "remaining": [
           "Current-head Linux/macOS/Windows platform and packaged acceptance; full product dispatch/Tasks/Goals integration and the remaining server-replacement objective."
         ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/settings/task-workers",
+        "implementation": "cantrip_server_rs/src/http/task_workers.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/task-workers-http-compatibility.mjs",
+          "scripts/server-rust/task-workers-cases.mjs",
+          "scripts/server-rust/task-workers-races.mjs",
+          "cantrip_server_rs/tests/task_contracts.rs"
+        ],
+        "remaining": [
+          "Supported-platform and packaged-product acceptance; full background scheduler and execution consumers remain separate unfinished domains."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/settings/task-workers",
+        "implementation": "cantrip_server_rs/src/http/task_workers.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/task-workers-http-compatibility.mjs",
+          "scripts/server-rust/task-workers-cases.mjs",
+          "scripts/server-rust/task-workers-races.mjs",
+          "cantrip_server_rs/tests/task_contracts.rs"
+        ],
+        "remaining": [
+          "Supported-platform and packaged-product acceptance; full background scheduler and execution consumers remain separate unfinished domains."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/settings/task-workers/:taskWorkerId",
+        "implementation": "cantrip_server_rs/src/http/task_workers.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/task-workers-http-compatibility.mjs",
+          "scripts/server-rust/task-workers-cases.mjs",
+          "scripts/server-rust/task-workers-races.mjs",
+          "cantrip_server_rs/tests/task_contracts.rs"
+        ],
+        "remaining": [
+          "Supported-platform and packaged-product acceptance; full background scheduler and execution consumers remain separate unfinished domains."
+        ]
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/settings/task-workers/:taskWorkerId",
+        "implementation": "cantrip_server_rs/src/http/task_workers.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/task-workers-http-compatibility.mjs",
+          "scripts/server-rust/task-workers-cases.mjs",
+          "scripts/server-rust/task-workers-races.mjs",
+          "cantrip_server_rs/tests/task_contracts.rs"
+        ],
+        "remaining": [
+          "Supported-platform and packaged-product acceptance; full background scheduler and execution consumers remain separate unfinished domains."
+        ]
+      },
+      {
+        "method": "PUT",
+        "path": "/api/settings/task-workers/order",
+        "implementation": "cantrip_server_rs/src/http/task_workers.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/task-workers-http-compatibility.mjs",
+          "scripts/server-rust/task-workers-cases.mjs",
+          "scripts/server-rust/task-workers-races.mjs",
+          "cantrip_server_rs/tests/task_contracts.rs"
+        ],
+        "remaining": [
+          "Supported-platform and packaged-product acceptance; full background scheduler and execution consumers remain separate unfinished domains."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/internal/native-commands/receipt",
+        "implementation": "cantrip_server_rs/src/http/native_admission.rs",
+        "status": "partial",
+        "evidence": [
+          "scripts/server-rust/native-execution-http-compatibility.mjs",
+          "scripts/server-rust/managed-preparation-native-compatibility.mjs",
+          "scripts/server-rust/receipt-handler-cases.mjs"
+        ],
+        "remaining": [
+          "Complete full queued-input consumption through actual unchanged worker/client and all production execution failure/restart/shutdown boundaries.",
+          "Supported-platform and packaged-product acceptance."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/chats/:chatId/turns",
+        "implementation": "cantrip_server_rs/src/http/chat_execution/submit.rs",
+        "status": "partial",
+        "evidence": [
+          "scripts/server-rust/public-chat-execution-http.mjs",
+          "scripts/server-rust/public-chat-additional-cases.mjs",
+          "scripts/server-rust/public-chat-execution-worker.mjs",
+          "cantrip_server_rs/tests/public_chat_contracts.rs"
+        ],
+        "remaining": [
+          "Local macOS full Source/native matrix passes268pairedHTTP observations per database across all9database/authentication profiles. Exact route regression, encrypted chat/queue and consumed-claim identity proofs, typed pause errors, committed partial failures, caller disconnect, actual worker disconnect and post-shutdown encrypted Task preservation pass. Model execution/rollback and pause acknowledgments are controlled boundaries.",
+          "Full public Task/Goal controls, actual native pause and unchanged-worker/client flows, failure/restart and supported-platform acceptance remain; this milestone is unmerged."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/chats/:chatId/turns/:messageId/retry",
+        "implementation": "cantrip_server_rs/src/http/chat_execution/retry.rs",
+        "status": "partial",
+        "evidence": [
+          "scripts/server-rust/public-chat-execution-http.mjs",
+          "scripts/server-rust/public-chat-additional-cases.mjs",
+          "scripts/server-rust/public-chat-execution-worker.mjs",
+          "cantrip_server_rs/tests/public_chat_contracts.rs"
+        ],
+        "remaining": [
+          "Local macOS full Source/native matrix passes268pairedHTTP observations per database across all9database/authentication profiles. Exact route regression, encrypted chat/queue and consumed-claim identity proofs, typed pause errors, committed partial failures, caller disconnect, actual worker disconnect and post-shutdown encrypted Task preservation pass. Model execution/rollback and pause acknowledgments are controlled boundaries.",
+          "Full public Task/Goal controls, actual native pause and unchanged-worker/client flows, failure/restart and supported-platform acceptance remain; this milestone is unmerged."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/chats/:chatId/queue",
+        "implementation": "cantrip_server_rs/src/http/chat_execution/queue.rs",
+        "status": "partial",
+        "evidence": [
+          "scripts/server-rust/public-chat-execution-http.mjs",
+          "scripts/server-rust/public-chat-additional-cases.mjs",
+          "scripts/server-rust/public-chat-execution-worker.mjs",
+          "cantrip_server_rs/tests/public_chat_contracts.rs"
+        ],
+        "remaining": [
+          "Local macOS full Source/native matrix passes268pairedHTTP observations per database across all9database/authentication profiles. Exact route regression, encrypted chat/queue and consumed-claim identity proofs, typed pause errors, committed partial failures, caller disconnect, actual worker disconnect and post-shutdown encrypted Task preservation pass. Model execution/rollback and pause acknowledgments are controlled boundaries.",
+          "Full public Task/Goal controls, actual native pause and unchanged-worker/client flows, failure/restart and supported-platform acceptance remain; this milestone is unmerged."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/chats/:chatId/queue",
+        "implementation": "cantrip_server_rs/src/http/chat_execution/queue.rs",
+        "status": "partial",
+        "evidence": [
+          "scripts/server-rust/public-chat-execution-http.mjs",
+          "scripts/server-rust/public-chat-additional-cases.mjs",
+          "scripts/server-rust/public-chat-execution-worker.mjs",
+          "cantrip_server_rs/tests/public_chat_contracts.rs"
+        ],
+        "remaining": [
+          "Local macOS full Source/native matrix passes268pairedHTTP observations per database across all9database/authentication profiles. Exact route regression, encrypted chat/queue and consumed-claim identity proofs, typed pause errors, committed partial failures, caller disconnect, actual worker disconnect and post-shutdown encrypted Task preservation pass. Model execution/rollback and pause acknowledgments are controlled boundaries.",
+          "Full public Task/Goal controls, actual native pause and unchanged-worker/client flows, failure/restart and supported-platform acceptance remain; this milestone is unmerged."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/chats/:chatId/queue/order",
+        "implementation": "cantrip_server_rs/src/http/chat_execution/queue.rs",
+        "status": "partial",
+        "evidence": [
+          "scripts/server-rust/public-chat-execution-http.mjs",
+          "scripts/server-rust/public-chat-additional-cases.mjs",
+          "scripts/server-rust/public-chat-execution-worker.mjs",
+          "cantrip_server_rs/tests/public_chat_contracts.rs"
+        ],
+        "remaining": [
+          "Local macOS full Source/native matrix passes268pairedHTTP observations per database across all9database/authentication profiles. Exact route regression, encrypted chat/queue and consumed-claim identity proofs, typed pause errors, committed partial failures, caller disconnect, actual worker disconnect and post-shutdown encrypted Task preservation pass. Model execution/rollback and pause acknowledgments are controlled boundaries.",
+          "Full public Task/Goal controls, actual native pause and unchanged-worker/client flows, failure/restart and supported-platform acceptance remain; this milestone is unmerged."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/chats/:chatId/queue/operations/:operationId",
+        "implementation": "cantrip_server_rs/src/http/chat_execution/mod.rs",
+        "status": "partial",
+        "evidence": [
+          "scripts/server-rust/public-chat-execution-http.mjs",
+          "scripts/server-rust/public-chat-additional-cases.mjs",
+          "scripts/server-rust/public-chat-execution-worker.mjs",
+          "cantrip_server_rs/tests/public_chat_contracts.rs"
+        ],
+        "remaining": [
+          "Local macOS full Source/native matrix passes268pairedHTTP observations per database across all9database/authentication profiles. Exact route regression, encrypted chat/queue and consumed-claim identity proofs, typed pause errors, committed partial failures, caller disconnect, actual worker disconnect and post-shutdown encrypted Task preservation pass. Model execution/rollback and pause acknowledgments are controlled boundaries.",
+          "Full public Task/Goal controls, actual native pause and unchanged-worker/client flows, failure/restart and supported-platform acceptance remain; this milestone is unmerged."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/queued-prompts/:promptId",
+        "implementation": "cantrip_server_rs/src/http/chat_execution/changes.rs",
+        "status": "partial",
+        "evidence": [
+          "scripts/server-rust/public-chat-execution-http.mjs",
+          "scripts/server-rust/public-chat-additional-cases.mjs",
+          "scripts/server-rust/public-chat-execution-worker.mjs",
+          "cantrip_server_rs/tests/public_chat_contracts.rs"
+        ],
+        "remaining": [
+          "Local macOS full Source/native matrix passes268pairedHTTP observations per database across all9database/authentication profiles. Exact route regression, encrypted chat/queue and consumed-claim identity proofs, typed pause errors, committed partial failures, caller disconnect, actual worker disconnect and post-shutdown encrypted Task preservation pass. Model execution/rollback and pause acknowledgments are controlled boundaries.",
+          "Full public Task/Goal controls, actual native pause and unchanged-worker/client flows, failure/restart and supported-platform acceptance remain; this milestone is unmerged."
+        ]
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/queued-prompts/:promptId",
+        "implementation": "cantrip_server_rs/src/http/chat_execution/changes.rs",
+        "status": "partial",
+        "evidence": [
+          "scripts/server-rust/public-chat-execution-http.mjs",
+          "scripts/server-rust/public-chat-additional-cases.mjs",
+          "scripts/server-rust/public-chat-execution-worker.mjs",
+          "cantrip_server_rs/tests/public_chat_contracts.rs"
+        ],
+        "remaining": [
+          "Local macOS full Source/native matrix passes268pairedHTTP observations per database across all9database/authentication profiles. Exact route regression, encrypted chat/queue and consumed-claim identity proofs, typed pause errors, committed partial failures, caller disconnect, actual worker disconnect and post-shutdown encrypted Task preservation pass. Model execution/rollback and pause acknowledgments are controlled boundaries.",
+          "Full public Task/Goal controls, actual native pause and unchanged-worker/client flows, failure/restart and supported-platform acceptance remain; this milestone is unmerged."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/queued-prompts/:promptId/steer",
+        "implementation": "cantrip_server_rs/src/http/chat_execution/steer.rs",
+        "status": "partial",
+        "evidence": [
+          "scripts/server-rust/public-chat-execution-http.mjs",
+          "scripts/server-rust/public-chat-additional-cases.mjs",
+          "scripts/server-rust/public-chat-execution-worker.mjs",
+          "cantrip_server_rs/tests/public_chat_contracts.rs"
+        ],
+        "remaining": [
+          "Local macOS full Source/native matrix passes268pairedHTTP observations per database across all9database/authentication profiles. Exact route regression, encrypted chat/queue and consumed-claim identity proofs, typed pause errors, committed partial failures, caller disconnect, actual worker disconnect and post-shutdown encrypted Task preservation pass. Model execution/rollback and pause acknowledgments are controlled boundaries.",
+          "Full public Task/Goal controls, actual native pause and unchanged-worker/client flows, failure/restart and supported-platform acceptance remain; this milestone is unmerged."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/chats/:chatId/pause",
+        "implementation": "cantrip_server_rs/src/http/chat_execution/controls.rs",
+        "status": "partial",
+        "evidence": [
+          "scripts/server-rust/public-pause-cases.mjs",
+          "scripts/server-rust/public-chat-execution-http.mjs",
+          "scripts/server-rust/public-chat-execution-worker.mjs",
+          "cantrip_server_rs/src/chats/automation_pause.rs",
+          "cantrip_server_rs/src/task_scheduling/project_pause.rs"
+        ],
+        "remaining": [
+          "Local macOS full Source/native matrix passes268pairedHTTP observations per database across all9database/authentication profiles. Exact route regression, encrypted chat/queue and consumed-claim identity proofs, typed pause errors, committed partial failures, caller disconnect, actual worker disconnect and post-shutdown encrypted Task preservation pass. Model execution/rollback and pause acknowledgments are controlled boundaries.",
+          "Full public Task/Goal controls, actual native pause and unchanged-worker/client flows, failure/restart and supported-platform acceptance remain; this milestone is unmerged."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/tasks/pause",
+        "implementation": "cantrip_server_rs/src/http/chat_execution/controls.rs",
+        "status": "partial",
+        "evidence": [
+          "scripts/server-rust/public-pause-cases.mjs",
+          "scripts/server-rust/public-chat-execution-http.mjs",
+          "scripts/server-rust/public-chat-execution-worker.mjs",
+          "cantrip_server_rs/src/chats/automation_pause.rs",
+          "cantrip_server_rs/src/task_scheduling/project_pause.rs"
+        ],
+        "remaining": [
+          "Local macOS full Source/native matrix passes268pairedHTTP observations per database across all9database/authentication profiles. Exact route regression, encrypted chat/queue and consumed-claim identity proofs, typed pause errors, committed partial failures, caller disconnect, actual worker disconnect and post-shutdown encrypted Task preservation pass. Model execution/rollback and pause acknowledgments are controlled boundaries.",
+          "Full public Task/Goal controls, actual native pause and unchanged-worker/client flows, failure/restart and supported-platform acceptance remain; this milestone is unmerged."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/projects/:projectId/tasks/pause",
+        "implementation": "cantrip_server_rs/src/http/chat_execution/controls.rs",
+        "status": "partial",
+        "evidence": [
+          "scripts/server-rust/public-pause-cases.mjs",
+          "scripts/server-rust/public-chat-execution-http.mjs",
+          "scripts/server-rust/public-chat-execution-worker.mjs",
+          "cantrip_server_rs/src/chats/automation_pause.rs",
+          "cantrip_server_rs/src/task_scheduling/project_pause.rs"
+        ],
+        "remaining": [
+          "Local macOS full Source/native matrix passes268pairedHTTP observations per database across all9database/authentication profiles. Exact route regression, encrypted chat/queue and consumed-claim identity proofs, typed pause errors, committed partial failures, caller disconnect, actual worker disconnect and post-shutdown encrypted Task preservation pass. Model execution/rollback and pause acknowledgments are controlled boundaries.",
+          "Full public Task/Goal controls, actual native pause and unchanged-worker/client flows, failure/restart and supported-platform acceptance remain; this milestone is unmerged."
+        ]
       }
     ]
   },
@@ -4889,6 +5174,21 @@
         ],
         "remaining": [
           "Current-head Linux/macOS/Windows platform and packaged acceptance; full product dispatch/Tasks/Goals integration and the remaining server-replacement objective."
+        ]
+      },
+      {
+        "tableName": "task_workers",
+        "exportName": "taskWorkers",
+        "status": "partial",
+        "implementation": "cantrip_server_rs/src/task_scheduling/",
+        "evidence": [
+          "scripts/server-rust/task-workers-http-compatibility.mjs",
+          "scripts/server-rust/task-workers-cases.mjs",
+          "scripts/server-rust/task-workers-races.mjs",
+          "cantrip_server_rs/tests/task_contracts.rs"
+        ],
+        "remaining": [
+          "Resources, active counts, continuity inference, owner isolation, revisions, ordering and soft deletion are implemented. Prepared eligibility is implemented separately; automatic/background scheduling and complete product/platform acceptance remain."
         ]
       }
     ]
@@ -8506,6 +8806,203 @@
       "remaining": [
         "Current-head Linux/macOS/Windows platform and packaged acceptance; full product dispatch/Tasks/Goals integration and the remaining server-replacement objective.",
         "Full GUI/native runtime consumers and receipt HTTP orchestration, Tasks/Goals/scheduling, Redis/multi-instance, full upgrade/post-write rollback, desktop/container artifacts, Winterhold rehearsal, default cutover and production Node removal."
+      ]
+    },
+    "taskWorkerConfigurationAndProjectPause": {
+      "status": "partial",
+      "implementation": "cantrip_server_rs/src/task_scheduling/",
+      "evidence": [
+        "scripts/server-rust/task-workers-http-compatibility.mjs",
+        "scripts/server-rust/task-workers-cases.mjs",
+        "scripts/server-rust/task-workers-races.mjs",
+        "cantrip_server_rs/tests/task_contracts.rs"
+      ],
+      "validatedSubset": "Local macOS:102 actual Source/native repository scenarios per backend,10 snapshots and5 process reopens;40 external PostgreSQL same/mixed-peer lock races with both arrival orders. Actual HTTP/Live passes all3 backends in none/password/accounts modes, including SQL rollback, committed projection failure and owner isolation. External PostgreSQL proves admitted mutation survives caller abort in all3 auth modes. Project scheduling pause persistence uses the actual owner lock and revision; public project controls still require actual Task pause/resume orchestration.",
+      "remaining": [
+        "Prepared eligibility, naming, operation queue and the automatic retry actor are implemented separately; complete background scheduling and actual Task pause/resume composition remain.",
+        "Full turn/receipt product graph, actual client/worker acceptance, coordination, migration/rollback, platform/performance, packaging, Winterhold rehearsal and merged default cutover."
+      ]
+    },
+    "taskDispatchPreparedEligibility": {
+      "status": "partial",
+      "implementation": "cantrip_server_rs/src/task_scheduling/eligibility.rs",
+      "evidence": [
+        "scripts/server-rust/task-eligibility-cases.mjs",
+        "scripts/server-rust/task-eligibility-node-fixture.mjs",
+        "cantrip_server_rs/examples/support/task_eligibility.rs",
+        "cantrip_server/src/app/runtime/task-dispatch-eligibility-runtime.ts"
+      ],
+      "validatedSubset": "Local macOS:64 actual Source/native observations per backend with6TaskSQL snapshots and3process reopens, including explicit complete Task/Worker/dispatch-row equality across reopen. Concrete routing, account selection, worker status/grants and context reads precede real claim/resume transactions. Snapshot fences, retained runtime identity, subagents, catalogs and timeout/drain behavior match. Source body extraction and typechecking,26focused Source tests, boundary audit, strictalltargetClippy, dispatch282 and authenticated HTTP/Live regression pass.",
+      "remaining": [
+        "Prepared eligibility, naming, operation queue and the automatic retry actor are implemented separately; complete background scheduling and actual Task pause/resume composition remain.",
+        "Full turn/receipt graph, actual worker/client acceptance and all original distributed coordination, migration/rollback, platform/performance, packaging, deployment rehearsal and merged cutover requirements."
+      ]
+    },
+    "taskNamingAndOperationQueue": {
+      "status": "partial",
+      "implementation": [
+        "cantrip_server_rs/src/chats/automatic_title.rs",
+        "cantrip_server_rs/src/task_scheduling/operation_queue.rs"
+      ],
+      "evidence": [
+        "scripts/server-rust/task-queue-cases.mjs",
+        "scripts/server-rust/automatic-title-node-fixture.mjs",
+        "scripts/server-rust/automatic-title-cases.mjs",
+        "cantrip_server_rs/examples/support/turn_execution.rs"
+      ],
+      "validatedSubset": "Local macOS:58Source/native observations per backend,11shared state snapshots,10TaskSQLsnapshots and3process reopens with explicit Task/dispatch/label equality across reopen. Real naming claims and opaque publication, one-time newer-submission reconciliation, actual queue admission/manual retry reset/automatic ledger preservation, real saved finalization/Goal receipt reuse and post-admission SQL failure persistence. Source19tests, GUI696 and strictalltargetClippy pass.",
+      "remaining": [
+        "Automatic retry actor is implemented separately; complete background execution scheduler and project Task pause/resume controls remain.",
+        "Full GUI/public turn/receipt graph and actual client/worker/platform acceptance; all original coordination, migration/post-write rollback, performance, packaging, Winterhold rehearsal and merged cutover requirements."
+      ]
+    },
+    "taskAutomaticRetryActor": {
+      "status": "partial",
+      "implementation": "cantrip_server_rs/src/task_scheduling/automatic_retry.rs",
+      "evidence": [
+        "scripts/server-rust/task-automatic-cases.mjs",
+        "scripts/server-rust/task-automatic-node-fixture.mjs",
+        "cantrip_server_rs/examples/support/task_automatic.rs"
+      ],
+      "validatedSubset": "Local macOS:27actual Source/native observations per backend,28TaskSQLsnapshots,8shared snapshots and4process reopens. Concrete Goal/recovery, Task/retry, queue/naming and Live services preserve old-failure adoption, claimed-attempt identity, read-only observation, active-operation defer/refund, failure accounting, revision fences, tenant scope, four-chat admission, overlapping-tick deduplication, nonstalling candidates and stop/drain. Actual PostgreSQL triggers force a post-claim projection failure and a revision change. Complete Task/cycle rows are explicitly equal across restart. Source67focused tests, Goal86, recovery91, GUI696 and strictalltargetClippy/format/diff pass. Worker replies, catalog transport, turn boundary and scheduler wakeup are explicit controlled peers; this is not full scheduler/product/platform or artifact acceptance.",
+      "remaining": [
+        "Pause/resume, resumed execution and the scheduler graph are component-verified separately; complete production mounting and public project/Task controls remain.",
+        "Full GUI/public turn/receipt graph and actual client/worker/platform acceptance; all original coordination, migration/post-write rollback, performance, packaging, Winterhold rehearsal, merged delivery/default cutover and Node-server removal requirements."
+      ]
+    },
+    "taskClaimedExecution": {
+      "status": "partial",
+      "implementation": "cantrip_server_rs/src/task_scheduling/claimed_execution/",
+      "evidence": [
+        "scripts/server-rust/task-claimed-cases.mjs",
+        "cantrip_server_rs/examples/support/task_claimed.rs",
+        "cantrip_server/src/app/runtime/task-claimed-execution-runtime.ts"
+      ],
+      "validatedSubset": "Local macOS:43actual Source/native observations per backend,12Task/round/cycle/message SQL snapshots,6shared snapshots and3process reopens. Actual turn bootstrap/engine, protected structured result, persistence and failure hooks. Direct and initial-plan completion, saved committed-result settlement without replay, current-turn capacity defer/new-fence reclaim with saved request reuse, real configuration/capability changes after claim, real SQL effects after a preflight timeout/drain, invalid persisted metadata and invalid worker result identity. Named validation/configuration errors retain class and failure data; Source distinguishes retryable missing routes from nonretryable lost capabilities. Source402-line launcher body is preserved exactly after canonical formatting; typecheck,54focused Source tests and boundary audit pass. Worker replies, catalog transport, claim-eligibility answers, continuation and scheduler wakeup are explicitly controlled fixture peers. StrictalltargetClippy, GUI696 and Task repository158regressions also pass.",
+      "remaining": [
+        "Pause/resume, resumed execution and the scheduler graph are component-verified separately; complete production mounting and public project/Task controls remain.",
+        "Scheduled finalization/Goal startup and continuation through the actual worker, periodic lease/shutdown and full public turn/receipt product composition.",
+        "Every original distributed coordination, old-data upgrade/post-write rollback, platform/product/performance, native/container/desktop packaging, Winterhold rehearsal and merged/default cutover/Node-server removal requirement."
+      ]
+    },
+    "automationPause": {
+      "status": "partial",
+      "implementation": "cantrip_server_rs/src/chats/automation_pause.rs",
+      "evidence": [
+        "scripts/server-rust/automation-pause-cases.mjs",
+        "scripts/server-rust/automation-pause-node-fixture.mjs",
+        "cantrip_server_rs/examples/support/automation_pause.rs",
+        "scripts/server-rust/public-pause-cases.mjs",
+        "cantrip_server_rs/src/http/chat_execution/controls.rs"
+      ],
+      "validatedSubset": "Local macOS:60actual Source/native observations per backend,13shared snapshots and3process reopens on native PGlite, bundled PostgreSQL and external PostgreSQL. Actual control context, durable pause and autonomy stop, Goal resume, queued prompt lookup, Live and native admission/dispatch/settlement. Worker boundary is a controlled peer. Tests preserve early durable native unpause, late acknowledgements in both directions, opposite receipt semantics, malformed receipts, UTF16 errors, offline and foreign/missing sources, post-ack deletion compensation, dropped callers, failed next-action rollback and default-vs-streaming compensation deadlines. Native failures after dispatch retain real receipts and safe durable pause. No public route, full scheduler/product, actual-worker, platform or artifact acceptance is claimed.",
+      "remaining": [
+        "Authenticated public pause routes are mounted and pass the local9profile/3database HTTP/Live/store matrix: typed validation/ownership/errors, opposite/failing worker acknowledgments, partial project commit, stale revision, finally invalidation, caller abort, actual worker transport disconnect and encrypted Task preservation after shutdown. Native pause acknowledgments, full worker/client/restart/platform acceptance remain.",
+        "Compose public turn/receipt services and full scheduler/project pause controls with actual worker/client acceptance.",
+        "All original coordination, upgrade/post-write rollback, platform/product/performance, packaging, Winterhold rehearsal and merged/default cutover requirements."
+      ]
+    },
+    "taskResumedExecution": {
+      "status": "partial",
+      "implementation": "cantrip_server_rs/src/task_scheduling/resumed_execution.rs",
+      "evidence": [
+        "scripts/server-rust/task-resumed-cases.mjs",
+        "scripts/server-rust/task-claimed-cases.mjs",
+        "cantrip_server_rs/examples/support/task_claimed.rs",
+        "cantrip_server/src/app/runtime/task-resumed-execution-runtime.ts"
+      ],
+      "validatedSubset": "Local macOS expanded claimed/resumed corpus:116actual Source/native observations per backend,25TaskSQLsnapshots,8sharedsnapshots and4process reopens. Real paused/resumed SQL claims, acknowledged pause, Goal, claimed launcher, turn engine, protected message writers and Live. Active affinity/detach, changed thread/turn/placement, offline pause restoration, direct execution restart, preparation failure accounting, stale cleanup fence, committed SQL projection failure precedence and retained finalization heartbeat. Implementing finalizer runs actual encrypted Goal continuation and stores both messages; complete Task/cycle/round/message rows equal across reopen. Source2731-byte resumed body unchanged after canonical formatting;116Source tests,24752protocol outcomes/messages, type/boundary/strictalltargetClippy/format pass. Worker replies/catalog/queue/continuation and scheduler wakeup are controlled fixture peers. Full scheduler/public/actual-worker/product/platform/artifact acceptance is not claimed.",
+      "remaining": [
+        "Pause/resume, resumed execution and the scheduler graph are component-verified separately; complete production mounting and public project/Task controls remain.",
+        "Actual worker Goal finalization/continuation and periodic lease/shutdown/client/CLI acceptance; witnessed worker failure-phase metadata boundary still open.",
+        "Every original coordination/Redis/WorkerLink, full existing-data upgrade/post-write rollback, platform/product/performance, native/container/desktop packaging, Winterhold rehearsal, merged delivery/default cutover and Node-server removal requirement."
+      ]
+    },
+    "taskBackgroundScheduler": {
+      "status": "partial",
+      "implementation": "cantrip_server_rs/src/task_scheduling/scheduler/",
+      "evidence": [
+        "scripts/server-rust/task-background-cases.mjs",
+        "scripts/server-rust/task-background-node-fixture.mjs",
+        "scripts/server-rust/task-background-observation.mjs",
+        "cantrip_server_rs/examples/support/task_background.rs",
+        "cantrip_server/src/app/runtime/task-scheduler-runtime.ts"
+      ],
+      "validatedSubset": "Local macOS:31actual Source/native observations per backend,14TaskSQLsnapshots,6in-run snapshots,8sharedsnapshots and4process reopens. Concrete automatic retry, recovery, eligibility, claimed/resumed execution, Goal/turn engine and SQL/Live. Immediate/1second startup, active-tick coalescing, nonblocking launches, capacity/checkouts, periodic project unpause, unstarted reclaim, acknowledged pause/affinity failure, retained Goal recovery before lease expiry, protected started-operation failure, actual projection faults and failed-tick recovery, retry admission/disabled-worker resume, owned stop/drain/restart and tenant-scoped workers/models/events. Complete raw durable rows equal across reopen. Comparison preserves exact allocated message-sequence set, per-chat order, identity/role, scope/revision and database/wire agreement; raw interleavings retained and negative probes prove ordering checks remain active. Source5589-byte loop canonically unchanged; typecheck,116Source tests, boundary/unchanged reviewed contracts and strictalltargetClippy pass. Worker/catalog/worktree/queue continuation remain controlled peers. No full production/public/actual-worker/platform/artifact acceptance claimed. Expanded integrated corpus now70/store including39project-control cases,33SQL/27in-run/12sharedsnapshots/6reopens; full production mounting still required.",
+      "remaining": [
+        "Mount complete Task/public turn/receipt graph and project controls with actual required production continuation and outcome services.",
+        "Actual client/worker/CLI and periodic Goal lease/shutdown/platform/product acceptance, including witnessed worker failure-phase boundary.",
+        "All original Redis/coordination/WorkerLink, full old-data upgrade/post-write rollback, performance, native/container/desktop packaging, Winterhold rehearsal, merged delivery/default cutover and production Node removal requirements."
+      ]
+    },
+    "taskProjectPause": {
+      "status": "partial",
+      "implementation": "cantrip_server_rs/src/task_scheduling/project_pause.rs",
+      "evidence": [
+        "scripts/server-rust/project-task-pause-cases.mjs",
+        "scripts/server-rust/project-task-pause-observation.mjs",
+        "scripts/server-rust/task-pause-queries.mjs",
+        "cantrip_server_rs/contracts/task-pause-queries.json",
+        "cantrip_server_rs/examples/support/task_background.rs",
+        "scripts/server-rust/public-pause-cases.mjs",
+        "cantrip_server_rs/src/http/chat_execution/controls.rs"
+      ],
+      "validatedSubset": "Local macOS:39additional project-control comparisons within70integrated Source/native observations per backend;33SQL snapshots,27in-run observations,12shared snapshots and6process reopens per store. Actual concurrent Task list/context, acknowledged Chat pause, Goal lease release, dispatch fencing and Live services. Mixed terminal/draft/active/Goal/manual/archived/agent states, saved/acknowledged affinity, scheduler reacquisition before actual unpause, dropped caller ownership, ordered UTF16 partial failures, opposite acknowledgement, stale-fence suppression, actual SQL faults for unstarted/running dispatch and Chat write, queue-write transaction rollback, offline resume and tenant ownership. Exact durable rows/protected envelopes across restart. Source project helper unchanged. Native ORM diagnostics preserve actual query and parameters; manifest checks Source builders. Negative probes reject changed SQL/state/failure count and out-of-window Date normalization. Worker/catalog/worktree/queued-turn boundaries controlled; public production/client/platform acceptance remains.",
+      "remaining": [
+        "Authenticated public pause routes are mounted and pass the local9profile/3database HTTP/Live/store matrix: typed validation/ownership/errors, opposite/failing worker acknowledgments, partial project commit, stale revision, finally invalidation, caller abort, actual worker transport disconnect and encrypted Task preservation after shutdown. Native pause acknowledgments, full worker/client/restart/platform acceptance remain.",
+        "Compose full production public turn/receipt/outcome graph with concrete required continuation services; actual unchanged-worker/client/CLI acceptance.",
+        "Every original distributed/Redis/WorkerLink, full existing-data upgrade/post-write rollback, supported-platform/product/performance, packaging, Winterhold rehearsal, merged/default-cutover and production Node removal requirement."
+      ]
+    },
+    "turnOutcomeRecovery": {
+      "status": "partial",
+      "implementation": "cantrip_server_rs/src/chats/recovery/outcomes/",
+      "evidence": [
+        "scripts/server-rust/turn-outcome-cases.mjs",
+        "scripts/server-rust/turn-outcome-node-fixture.mjs",
+        "scripts/server-rust/turn-outcome-queue-observation.mjs",
+        "cantrip_server_rs/examples/support/turn_outcomes.rs",
+        "cantrip_server/src/app/runtime/chat-turn-outcome-runtime.ts",
+        "cantrip_server_rs/src/chats/recovery/task_services.rs"
+      ],
+      "validatedSubset": "Local macOS:110saved-outcome observations within180integrated Source/native comparisons/store (31scheduler+39project controls+110outcomes),84SQLsnapshots/67in-run/18shared/9process reopens per backend. Actual lane/latest-user/owner gating, Task operations/fences and protected history/Live. Success/failed/malformed Agent/Task/standalone messages, exact UTF16 and clocks, stale Task leases, typed settlement conflict, actual heartbeat/settle SQL faults and retained partial commits, owned caller drop, concurrent lane release recovery, real recovered finalization Goal/turn and startup failure, native logical closure/ACK outbox and newer-root protection. Concrete TaskServices plus weak runtime/recovery construction use actual queue/worktree/Goal/turn services. Retained queued follow-up executes actual turn; controlled worker does not settle through real CLI/public receipt. Queue operation hash is checked against actual owner/claim/immutable input before identity comparison. Negative probes reject changed query/state/failure/clock/hash/claim/owner/opaque input. Source12622-byte body canonically unchanged; Source92tests,696GUI, native lifetime tests, strictalltargetClippy/type/querymanifest/boundary pass. Reviewed contract set unchanged. Worker/catalog/account preparation/scheduler wakeups controlled; full production/public/platform acceptance remains.",
+      "remaining": [
+        "Compose complete production services with actual account preparation and scheduler wakeups, public turn/receipt/project-control routes and owned worker notification integration.",
+        "Actual unchanged client/worker/CLI, complete queue consumption, Goal periodic lease/shutdown and known worker continuation failure-phase metadata issue.",
+        "Every original distributed/Redis/WorkerLink, full existing-data upgrade/post-write rollback, supported-platform/product/performance, native/container/desktop packaging, Winterhold rehearsal, merged delivery/default cutover and production Node-server removal requirement."
+      ]
+    },
+    "productionExecutionGraph": {
+      "status": "partial",
+      "implementation": "cantrip_server_rs/src/chats/execution_services/",
+      "evidence": [
+        "scripts/server-rust/native-execution-http-compatibility.mjs",
+        "scripts/server-rust/managed-preparation-native-compatibility.mjs",
+        "scripts/server-rust/managed-preparation-native-worker.mjs",
+        "cantrip_server_rs/src/http/native_admission.rs",
+        "cantrip_server_rs/src/http/worker_socket.rs"
+      ],
+      "validatedSubset": "Local macOS: production Runtime/Goal/Task/recovery/scheduler/receipt/outcome graph compiles with strict all-target Clippy. Concrete account_failover preparation, worker commands, model routing, managed console, Live writers and weak scheduler/runtime collaborators; no fixture dispatcher in production. Real bundled native runtime/gateway/PTY preparation passes against Source and Rust on all3stores: authenticated native admission/dispatch/receipt,2gateway resumes per peer,detached console exit and retry retaining terminal/thread;3proofs per peer,zero captured failures,no inference or synthetic terminal input. Project usage coalescing/instant completion/4096timer capacity/close has3passing paused-clock tests. Dedicated production HTTP/Live/outcome comparison passes all9profiles(all3auth modes/store):86paired HTTP observations and18paired receipt Live-effect groups/store. Actual worker transport delivers saved outcome; real endpoint protection decrypts correctly, duplicate is idempotent, and post-shutdown SQL proves idle/one message/5settled receipts/no active lane. Nine turn/recovery lifetime tests pass. Full queue consumption and adversarial public execution acceptance remain.",
+      "remaining": [
+        "Complete public turn/queue/Goal/Task/project control routes and actual full-worker/app queue consumption, recovery, periodic Goal leases and failure-phase metadata issue.",
+        "Supported-platform and all original coordination,upgrade,post-write rollback,performance,packaging,Winterhold rehearsal,merged/default cutover and Node-removal requirements."
+      ]
+    },
+    "publicChatExecution": {
+      "status": "partial",
+      "implementation": "cantrip_server_rs/src/http/chat_execution/",
+      "evidence": [
+        "scripts/server-rust/public-chat-execution-http.mjs",
+        "scripts/server-rust/public-chat-additional-cases.mjs",
+        "scripts/server-rust/public-chat-execution-worker.mjs",
+        "scripts/server-rust/public-chat-wire-fixtures.mjs",
+        "cantrip_server_rs/tests/public_chat_contracts.rs",
+        "scripts/server-rust/public-pause-cases.mjs"
+      ],
+      "validatedSubset": "Local macOS expanded HTTP/Live/store comparisons pass all9database/auth profiles against Source. Actual endpoint encryption, unchanged WorkerConnection, ManagedNativeCommandSession and NativeCommandClient perform public start/replay/retry, canonical add/edit/order/delete/lookup, active steering and automatic queued continuation. Actual consumed claims bind original encrypted message/key, owner/chat/worker, claim-derived operation hash and native receipt generation. Standalone turns and legacy queues preserve response/error shapes. Post-shutdown SQL proves encrypted transcripts, consumed claims, zero active lanes/pending prompts and idle chats. Model execution and rollback remain controlled, and no full worker process or product acceptance is claimed. Seven additional Source schema roots retain the full old manifest prefix:473roots/9138nodes,9636new outcomes/errors,421047full protocol cases and69648ECMAScriptJSON roundtrips pass. The expanded pause/caller/worker-disconnect matrix passes268pairedHTTP observations per store (87none/88password/93accounts),9controlled worker pause acknowledgments and4finally project invalidations per peer/profile. The PATCH prompt-id=steer malformed-body regression reproduces Source400/Rust404 before canonical MatchedPath dispatch and now matches Source. Actual caller abort after worker dispatch preserves committed pause; an actually disconnected worker cannot unpause a threaded chat, while a threadless empty Task can resume. Real endpoint-encrypted Task content survives all controls and shutdown unchanged. Strict all-target Clippy, formatting and boundary audit pass.",
+      "remaining": [
+        "Full public Task/Goal controls and actual unchanged-worker/client execution, including failure/restart/shutdown behavior.",
+        "Every original platform, coordination/Redis/WorkerLink, old-data upgrade/post-write rollback, artifact/desktop/container/Winterhold rehearsal, performance, merged/default cutover and production Node removal requirement."
       ]
     }
   },

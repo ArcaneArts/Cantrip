@@ -262,6 +262,9 @@ async fn run(
     // Owner lookup awaited database IO after the first revocation check. Fence
     // the final cache check and synchronous attach together: a revoker either
     // rejects this attach or disconnects the already attached peer afterward.
+    service
+        .managed_preparation
+        .subscribe(&state.bridge, &worker);
     service.worktree_observations.subscribe(&worker);
     service.run_configuration_observations.subscribe(&worker);
     let accepted = {
@@ -279,12 +282,20 @@ async fn run(
         return;
     }
     state.invalidate(&owner, "worker-availability", &worker);
+    service.execution.worker_connected(&worker);
     service
         .run_configuration_observations
         .worker_connected(owner.clone(), worker.clone());
     service
         .worktree_observations
         .schedule_worker(owner.clone(), worker.clone());
+    service.managed_preparation.schedule_worker(
+        peer.identity.owner.clone(),
+        worker.clone(),
+        service
+            .native_handoffs
+            .worker_connected(&peer.identity.owner, &worker),
+    );
     service.folder_setup.worker_connected(worker.clone());
     service.project_replicas.worker_connected(worker.clone());
     service.github_conversion.worker_connected(worker.clone());

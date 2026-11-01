@@ -1908,7 +1908,15 @@ export async function readGitStatus(cwd: string): Promise<GitStatus> {
       "--symbolic-full-name",
       "@{upstream}",
     ]).catch(() => ""),
-    gitRaw(cwd, ["status", "--porcelain=v1", "-z", "--untracked-files=all"]),
+    // Status observations must not take an optional index.lock while a user or
+    // agent is performing an actual add/commit operation in the same worktree.
+    gitRaw(cwd, [
+      "--no-optional-locks",
+      "status",
+      "--porcelain=v1",
+      "-z",
+      "--untracked-files=all",
+    ]),
     gitRaw(cwd, [
       "for-each-ref",
       "--format=%(refname)%00%(refname:short)%00%(objectname)%00%(upstream:short)%00%(HEAD)%00%(symref)",

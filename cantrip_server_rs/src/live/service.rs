@@ -148,6 +148,9 @@ impl LiveService {
         }
         Ok(())
     }
+    pub fn publishing_enabled(&self) -> bool {
+        self.publishing.load(Ordering::Acquire)
+    }
     pub fn revoke(&self, revocation: &Revocation) {
         self.revoke_live(revocation);
         self.close_revoked_sockets(revocation);

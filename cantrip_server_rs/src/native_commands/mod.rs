@@ -1,7 +1,7 @@
 //! Durable native command admission, receipts and execution recovery.
 pub mod admission;
 mod admit;
-mod attachments;
+pub(crate) mod attachments;
 pub mod context;
 mod control;
 mod dispatch;
@@ -16,6 +16,7 @@ pub mod permissions;
 pub mod policy;
 mod preparation;
 mod queue;
+pub(crate) use queue::changed as queue_state_changed;
 pub mod queued_prompt;
 pub mod receipt;
 mod recovery;

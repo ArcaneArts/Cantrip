@@ -23,7 +23,7 @@ pub struct QuotaContext<'a> {
     pub turn: Option<&'a str>,
     pub execution_attempt: Option<&'a str>,
 }
-fn server_version() -> &'static str {
+pub(crate) fn server_version() -> &'static str {
     static VERSION: OnceLock<Json> = OnceLock::new();
     VERSION.get_or_init(|| {
         serde_json::from_slice(include_bytes!(concat!(env!("OUT_DIR"), "/version.json")))
@@ -92,7 +92,9 @@ impl SettingsRepository {
                 let suffix = JsString::from(format!(":{milliseconds}"));
                 Value::String(concatenate(&[&prefix, id, &suffix]))
             });
-        let codex = activity["limitId"].is_null() || activity["limitId"] == "codex";
+        let codex = activity
+            .get("limitId")
+            .is_some_and(|value| value.is_null() || *value == "codex");
         let mut snapshot = Value::object([
             ("snapshotId", batch),
             ("observedAt", Value::String(observed.into())),

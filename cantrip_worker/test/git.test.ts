@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -76,6 +76,56 @@ afterEach(async () => {
 });
 
 describe("Git history", () => {
+  it("reads status without refreshing the index used by concurrent Git operations", async () => {
+    const directory = await mkdtemp(
+      path.join(tmpdir(), "cantrip-status-index-"),
+    );
+    directories.push(directory);
+    await execFileAsync("git", ["init", "-b", "main", directory]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.name",
+      "Cantrip Test",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "config",
+      "user.email",
+      "test@cantrip.art",
+    ]);
+    const file = path.join(directory, "tracked.txt");
+    const index = path.join(directory, ".git", "index");
+    await writeFile(file, "tracked content\n");
+    await execFileAsync("git", ["-C", directory, "add", "tracked.txt"]);
+    await execFileAsync("git", ["-C", directory, "commit", "-m", "Initial"]);
+    const originalIndex = await readFile(index);
+
+    // A changed stat cache makes ordinary git status refresh .git/index under
+    // an optional index.lock, which can race an actual add/commit operation.
+    const modified = new Date(Date.now() + 10_000);
+    await utimes(file, modified, modified);
+    expect((await readGitStatus(directory)).files).toEqual([]);
+    expect(await readFile(index)).toEqual(originalIndex);
+
+    await writeFile(file, "actual changed content\n");
+    expect((await readGitStatus(directory)).files).toEqual([
+      expect.objectContaining({ path: "tracked.txt", unstaged: true }),
+    ]);
+    expect(await readFile(index)).toEqual(originalIndex);
+    await execFileAsync("git", ["-C", directory, "add", "tracked.txt"]);
+    await execFileAsync("git", [
+      "-C",
+      directory,
+      "commit",
+      "-m",
+      "Observed change",
+    ]);
+    expect((await readGitStatus(directory)).files).toEqual([]);
+  });
+
   it("moves staged, unstaged, and untracked changes between worktrees", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "cantrip-move-changes-"));
     directories.push(root);

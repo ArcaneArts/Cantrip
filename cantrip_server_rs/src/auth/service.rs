@@ -89,7 +89,12 @@ pub struct AuthService {
     pub project_operations: Arc<crate::projects::coordinator::Coordinator>,
     pub worktrees: Arc<crate::projects::worktrees::Service>,
     pub run_configuration_observations: Arc<crate::run_configurations::observations::Service>,
+    pub managed_preparation: Arc<crate::chats::managed_preparation::Service>,
+    pub native_handoffs: Arc<crate::native_handoffs::service::Service>,
+    pub account_failover: Arc<crate::chats::account_failover::Service>,
     pub managed_console: Arc<crate::chats::managed_console::ManagedConsole>,
+    pub chat_mutations: Arc<crate::chats::live_mutations::Service>,
+    pub execution: Arc<crate::chats::execution_services::Service>,
     pub logical_completion_delivery:
         Arc<crate::native_commands::runtime::logical_delivery::LogicalDelivery>,
     pub history_publication_delivery: Arc<crate::native_history::delivery::PublicationDelivery>,
@@ -190,6 +195,34 @@ impl AuthService {
             workers.commands.clone(),
             live.clone(),
             server_id.clone(),
+        );
+        let chat_mutations = crate::chats::live_mutations::Service::new(
+            repository.database.clone(),
+            workers.commands.clone(),
+            {
+                let live = live.clone();
+                Arc::new(move |event| live.publish_event(event))
+            },
+            {
+                let live = live.clone();
+                Arc::new(move |event| {
+                    let resource = event["resource"].clone();
+                    if let Err(error) = live.publish_event(event) {
+                        crate::operations::logging::server_logger()(
+                            crate::operations::logging::LogCall::event(
+                                "error",
+                                "Could not publish application live invalidation",
+                                crate::wire::value::json!({"err":crate::operations::logging::error_details(&error),"resource":resource}),
+                            ),
+                        );
+                    }
+                })
+            },
+            {
+                let live = live.clone();
+                Arc::new(move || live.publishing_enabled())
+            },
+            crate::operations::logging::server_logger(),
         );
         let worker_links = crate::worker_links::service::Service::new(
             server_id.clone(),
@@ -309,6 +342,55 @@ impl AuthService {
             model_routing.clone(),
             workers.commands.clone(),
         );
+        let managed_preparation = crate::chats::managed_preparation::Service::new(
+            repository.database.clone(),
+            model_routing.clone(),
+            managed_console.clone(),
+            workers.commands.clone(),
+            {
+                let live = live.clone();
+                Arc::new(move |event| {
+                    let _ = live.publish_event(event);
+                })
+            },
+            server_id.clone(),
+        );
+        let native_handoffs = crate::native_handoffs::service::Service::new(
+            repository.database.clone(),
+            workers.commands.clone(),
+            {
+                let live = live.clone();
+                Arc::new(move |owner, chat| {
+                    let _ = live.publish_event(crate::wire::value::json!({
+                        "ownerId":owner,"scope":crate::wire::value::json!({"kind":"chat","chatId":chat}),
+                        "resource":"chat","action":"invalidated","entityId":crate::wire::Value::Null,
+                        "revision":crate::wire::Value::Null,"payload":crate::wire::Value::Null
+                    }));
+                })
+            },
+        );
+        let account_failover = crate::chats::account_failover::Service::new(
+            repository.database.clone(),
+            native_handoffs.clone(),
+        );
+        let execution = crate::chats::execution_services::Service::new(
+            crate::chats::execution_services::Dependencies {
+                database: repository.database.clone(),
+                commands: workers.commands.clone(),
+                bridge: workers.bridge.clone(),
+                routing: model_routing.clone(),
+                console: managed_console.clone(),
+                live: chat_mutations.clone(),
+                application_live: live.clone(),
+                account_failover: account_failover.clone(),
+                server_id: server_id.clone(),
+                instance_id: config
+                    .server_instance_id
+                    .clone()
+                    .unwrap_or_else(|| "local-single-instance".into()),
+                logger: crate::operations::logging::server_logger(),
+            },
+        );
         let logical_completion_delivery =
             crate::native_commands::runtime::logical_delivery::LogicalDelivery::new(
                 repository.database.clone(),
@@ -390,6 +472,11 @@ impl AuthService {
             transport_metrics: Arc::new(Default::default()),
             model_routing,
             managed_console,
+            chat_mutations,
+            execution,
+            managed_preparation,
+            native_handoffs,
+            account_failover,
             logical_completion_delivery,
             history_publication_delivery,
             project_operations,

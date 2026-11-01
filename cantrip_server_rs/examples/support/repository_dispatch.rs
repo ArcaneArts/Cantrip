@@ -18,6 +18,9 @@ impl Dispatcher<'_> {
         trace: Arc<std::sync::Mutex<Vec<Value>>>,
     ) -> BoxFuture<'a, Result<Value>> {
         let operation = request["op"].as_str().unwrap_or_default();
+        if operation.starts_with("preparation-") {
+            return managed_preparation::run(self.database.clone(), request).boxed();
+        }
         if operation.starts_with("console-") {
             return async move {
                 let result = chat_console::run(self.database.clone(), request, trace.clone())

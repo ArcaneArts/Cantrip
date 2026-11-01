@@ -5,8 +5,12 @@ use cantrip_server::{
     migrations::migrate, projects::repository::ProjectRepository, wire::Value,
 };
 use clap::Parser;
+#[path = "support/account_failover.rs"]
+mod account_failover;
 #[path = "support/agent_interactions.rs"]
 mod agent_interactions;
+#[path = "support/automation_pause.rs"]
+mod automation_pause;
 #[path = "support/browsers.rs"]
 mod browsers;
 #[path = "support/chat_console.rs"]
@@ -27,12 +31,18 @@ mod execution_lanes;
 mod file_documents;
 #[path = "support/managed_gui_finish.rs"]
 mod managed_gui_finish;
+#[path = "support/managed_preparation.rs"]
+mod managed_preparation;
 #[path = "support/managed_queue.rs"]
 mod managed_queue;
 #[path = "support/native_commands.rs"]
 mod native_commands;
 #[path = "support/native_events.rs"]
 mod native_events;
+#[path = "support/native_handoff_service.rs"]
+mod native_handoff_service;
+#[path = "support/native_handoffs.rs"]
+mod native_handoffs;
 #[path = "support/native_history.rs"]
 mod native_history;
 #[path = "support/native_logical.rs"]
@@ -47,6 +57,10 @@ mod project_surfaces;
 mod queue_delivery;
 #[path = "support/queued_prompts.rs"]
 mod queued_prompts;
+#[path = "support/receipt_handler.rs"]
+mod receipt_handler;
+#[path = "support/recovery.rs"]
+mod recovery;
 #[path = "support/replicas.rs"]
 mod replicas;
 #[path = "support/repository_dispatch.rs"]
@@ -55,10 +69,46 @@ mod repository_dispatch;
 mod repository_operations;
 #[path = "support/run_configurations.rs"]
 mod run_configurations;
+#[path = "support/runtime_quota.rs"]
+mod runtime_quota;
+#[path = "support/runtime_telemetry.rs"]
+mod runtime_telemetry;
 #[path = "support/scratch_roots.rs"]
 mod scratch_roots;
+#[path = "support/task_automatic.rs"]
+mod task_automatic;
+#[path = "support/task_background.rs"]
+mod task_background;
+#[path = "support/task_claimed.rs"]
+mod task_claimed;
+#[path = "support/task_dispatch_lease.rs"]
+mod task_dispatch_lease;
+#[path = "support/task_eligibility.rs"]
+mod task_eligibility;
+#[path = "support/task_goals.rs"]
+mod task_goals;
+#[path = "support/task_retries.rs"]
+mod task_retries;
+#[path = "support/task_scheduler.rs"]
+mod task_scheduler;
+#[path = "support/task_workers.rs"]
+mod task_workers;
+#[path = "support/tasks.rs"]
+mod tasks;
 #[path = "support/tunnels.rs"]
 mod tunnels;
+#[path = "support/turn_behavior.rs"]
+mod turn_behavior;
+#[path = "support/turn_bootstrap.rs"]
+mod turn_bootstrap;
+#[path = "support/turn_execution.rs"]
+mod turn_execution;
+#[path = "support/turn_live.rs"]
+mod turn_live;
+#[path = "support/turn_outcomes.rs"]
+mod turn_outcomes;
+#[path = "support/turn_placement.rs"]
+mod turn_placement;
 #[path = "support/workspaces.rs"]
 mod workspaces;
 #[path = "support/worktree_coordinator.rs"]
@@ -159,15 +209,21 @@ async fn run() -> Result<()> {
             Ok(value) => reply["value"] = value,
             Err(error) => {
                 reply["diagnostic"] = Value::String(error.to_string().into());
+                if error.is::<cantrip_server::task_dispatch::Conflict>() {
+                    reply["taskLeaseError"] = Value::String("stale-lease".into());
+                }
                 if error.is::<cantrip_server::agent_interactions::Conflict>() {
                     reply["interactionError"] =
                         Value::String("AgentInteractionConflictError".into());
                 }
-                if request["op"]
-                    .as_str()
-                    .is_some_and(|op| op.starts_with("native-command-lane-"))
-                    && let Some(error) =
-                        error.downcast_ref::<cantrip_server::chats::execution_lanes::LaneError>()
+                if request["op"].as_str().is_some_and(|op| {
+                    op.starts_with("native-command-lane-")
+                        || matches!(
+                            op,
+                            "native-command-gui-placement" | "native-command-gui-worktree"
+                        )
+                }) && let Some(error) =
+                    error.downcast_ref::<cantrip_server::chats::execution_lanes::LaneError>()
                 {
                     reply["laneError"] = Value::String(error.class_name().into());
                 }

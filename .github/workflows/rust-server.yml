@@ -22,6 +22,7 @@ on:
       - cantrip_server/src/db/repository/queued-prompts.ts
       - cantrip_server/src/db/repository/agent-interactions.ts
       - cantrip_server/src/db/repository/chat-execution-lanes.ts
+      - cantrip_server/src/db/repository/chat-state.ts
       - cantrip_server/src/app/routes/*native*.ts
       - cantrip_server/src/app/runtime/computer-use-agent-events.ts
       - cantrip_server/src/app/runtime/clear-agent-interaction.ts
@@ -57,6 +58,18 @@ on:
       - cantrip_server/src/db/repository/telemetry.ts
       - cantrip_server/src/db/repository-facade-identity-model.ts
       - cantrip_server/src/db/schema.ts
+      - cantrip_server/src/db/tasks.ts
+      - cantrip_server/src/db/task-retries.ts
+      - cantrip_server/src/tasks/automatic-retry.ts
+      - cantrip_server/src/app/runtime/task-goal-runtime.ts
+      - cantrip_server/src/app/runtime/task-*.ts
+      - cantrip_server/src/app/runtime/project-task-pause-runtime.ts
+      - cantrip_server/src/app/runtime/chat-automation-pause-runtime.ts
+      - cantrip_server/src/app/runtime/chat-recovery-runtime.ts
+      - cantrip_server/src/app/runtime/chat-turn-*.ts
+      - cantrip_server/src/app/runtime/task-execution-recovery.ts
+      - cantrip_server/src/db/task-dispatch.ts
+      - cantrip_server/src/tasks/**
       - cantrip_server/src/db/repository/model*.ts
       - cantrip_server/src/models/**
       - cantrip_server/src/app/runtime/settings-routes.ts
@@ -1132,8 +1145,12 @@ jobs:
         run: node scripts/server-rust/cargo.mjs test --lib native_commands -- --nocapture
       - name: Native method policy matches the TypeScript authority
         run: node --import tsx scripts/server-rust/native-command-policy-manifest.mjs --check
+      - name: Task pause and lease SQL diagnostics match current Source builders
+        run: node --import tsx scripts/server-rust/task-pause-queries.mjs
       - name: Native command protocol compatibility
         run: node scripts/server-rust/cargo.mjs test --test native_command_contracts -- --nocapture
+      - name: Turn protocol, lifetime and recovery scheduler compatibility
+        run: node scripts/server-rust/cargo.mjs test --test task_contracts --test task_failure_kind --test task_behavior --test turn_orchestration_contracts --test turn_behavior_contracts --test turn_stage_lifetime --test turn_outcome_scheduler -- --nocapture
       - name: native-settings-repository with pglite
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"
@@ -1146,6 +1163,66 @@ jobs:
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"
         run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --database pglite --report .qa/rust-server/native-command-kernel-pglite.json
+      - name: Task dispatch capacity, retained Goal leases and recovery with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-dispatch --database pglite --report .qa/rust-server/task-dispatch-pglite.json
+      - name: Native Task session recovery and canonical Goal continuation with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-recovery --database pglite --report .qa/rust-server/task-recovery-pglite.json
+      - name: Task Worker resources and project pause with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-workers --database pglite --report .qa/rust-server/task-workers-pglite.json
+      - name: Prepared Task dispatch and retained-session eligibility with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-eligibility --database pglite --report .qa/rust-server/task-eligibility-pglite.json
+      - name: Task naming, operation queue and saved finalization retries with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-queue --database pglite --report .qa/rust-server/task-queue-pglite.json
+      - name: Automatic Task retries, concurrent claims and recovery with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-automatic --database pglite --report .qa/rust-server/task-automatic-pglite.json
+      - name: Coalesced Task scheduler, retry/recovery and owned shutdown with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-background --database pglite --report .qa/rust-server/task-background-pglite.json
+      - name: Worker-acknowledged pause/resume and late native controls with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain automation-pause --database pglite --report .qa/rust-server/automation-pause-pglite.json
+      - name: Claimed/resumed Task execution, structured completion and launch recovery with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-claimed --database pglite --report .qa/rust-server/task-claimed-pglite.json
+      - name: Task Worker authenticated HTTP and Live with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/task-workers-http-compatibility.mjs --database pglite --report .qa/rust-server/task-workers-http-pglite.json
+      - name: Encrypted Goal observations, launch, resume and retained leases with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-goal --database pglite --report .qa/rust-server/task-goal-pglite.json
+      - name: Durable Task retry accounting and contention with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-retry --database pglite --report .qa/rust-server/task-retry-pglite.json
+      - name: Encrypted Task persistence, Goal finalization and recovery with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain tasks --database pglite --report .qa/rust-server/task-runtime-pglite.json
+      - name: GUI admission, execution, recovery and handoffs with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain gui --database pglite --report .qa/rust-server/gui-runtime-pglite.json
+      - name: Managed preparation HTTP and encrypted worker transport with pglite
+        run: node --import tsx scripts/server-rust/managed-preparation-http-compatibility.mjs --database pglite --report .qa/rust-server/managed-preparation-http-pglite.json
+      - name: Handoff HTTP, retry, restart and pending-command shutdown with pglite
+        run: node --import tsx scripts/server-rust/native-handoff-http-compatibility.mjs --database pglite --report .qa/rust-server/native-handoff-http-pglite.json
       - name: native-settings-http with pglite
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"
@@ -1158,6 +1235,14 @@ jobs:
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"
         run: node --import tsx scripts/server-rust/native-event-http-compatibility.mjs --database pglite --report .qa/rust-server/native-event-http-pglite.json
+      - name: Production native receipts and durable outcomes with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-execution-http-compatibility.mjs --database pglite --report .qa/rust-server/native-execution-http-pglite.json
+      - name: Public encrypted chat, queue and pause controls with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/public-chat-execution-http.mjs --database pglite --report .qa/rust-server/public-chat-execution-http-pglite.json
       - name: native-coordination-http with pglite
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"
@@ -1186,6 +1271,66 @@ jobs:
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"
         run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --database bundled-postgres --report .qa/rust-server/native-command-kernel-bundled-postgres.json
+      - name: Task dispatch capacity, retained Goal leases and recovery with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-dispatch --database bundled-postgres --report .qa/rust-server/task-dispatch-bundled-postgres.json
+      - name: Native Task session recovery and canonical Goal continuation with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-recovery --database bundled-postgres --report .qa/rust-server/task-recovery-bundled-postgres.json
+      - name: Task Worker resources and project pause with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-workers --database bundled-postgres --report .qa/rust-server/task-workers-bundled-postgres.json
+      - name: Prepared Task dispatch and retained-session eligibility with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-eligibility --database bundled-postgres --report .qa/rust-server/task-eligibility-bundled-postgres.json
+      - name: Task naming, operation queue and saved finalization retries with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-queue --database bundled-postgres --report .qa/rust-server/task-queue-bundled-postgres.json
+      - name: Automatic Task retries, concurrent claims and recovery with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-automatic --database bundled-postgres --report .qa/rust-server/task-automatic-bundled-postgres.json
+      - name: Coalesced Task scheduler, retry/recovery and owned shutdown with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-background --database bundled-postgres --report .qa/rust-server/task-background-bundled-postgres.json
+      - name: Worker-acknowledged pause/resume and late native controls with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain automation-pause --database bundled-postgres --report .qa/rust-server/automation-pause-bundled-postgres.json
+      - name: Claimed/resumed Task execution, structured completion and launch recovery with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-claimed --database bundled-postgres --report .qa/rust-server/task-claimed-bundled-postgres.json
+      - name: Task Worker authenticated HTTP and Live with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/task-workers-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/task-workers-http-bundled-postgres.json
+      - name: Encrypted Goal observations, launch, resume and retained leases with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-goal --database bundled-postgres --report .qa/rust-server/task-goal-bundled-postgres.json
+      - name: Durable Task retry accounting and contention with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-retry --database bundled-postgres --report .qa/rust-server/task-retry-bundled-postgres.json
+      - name: Encrypted Task persistence, Goal finalization and recovery with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain tasks --database bundled-postgres --report .qa/rust-server/task-runtime-bundled-postgres.json
+      - name: GUI admission, execution, recovery and handoffs with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain gui --database bundled-postgres --report .qa/rust-server/gui-runtime-bundled-postgres.json
+      - name: Managed preparation HTTP and encrypted worker transport with bundled-postgres
+        run: node --import tsx scripts/server-rust/managed-preparation-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/managed-preparation-http-bundled-postgres.json
+      - name: Handoff HTTP, retry, restart and pending-command shutdown with bundled-postgres
+        run: node --import tsx scripts/server-rust/native-handoff-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/native-handoff-http-bundled-postgres.json
       - name: native-settings-http with bundled-postgres
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"
@@ -1198,6 +1343,14 @@ jobs:
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"
         run: node --import tsx scripts/server-rust/native-event-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/native-event-http-bundled-postgres.json
+      - name: Production native receipts and durable outcomes with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-execution-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/native-execution-http-bundled-postgres.json
+      - name: Public encrypted chat, queue and pause controls with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/public-chat-execution-http.mjs --database bundled-postgres --report .qa/rust-server/public-chat-execution-http-bundled-postgres.json
       - name: native-coordination-http with bundled-postgres
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"
@@ -1226,6 +1379,66 @@ jobs:
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"
         run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --database postgres --report .qa/rust-server/native-command-kernel-postgres.json
+      - name: Task dispatch capacity, retained Goal leases and recovery with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-dispatch --database postgres --report .qa/rust-server/task-dispatch-postgres.json
+      - name: Native Task session recovery and canonical Goal continuation with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-recovery --database postgres --report .qa/rust-server/task-recovery-postgres.json
+      - name: Task Worker resources and project pause with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-workers --database postgres --report .qa/rust-server/task-workers-postgres.json
+      - name: Prepared Task dispatch and retained-session eligibility with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-eligibility --database postgres --report .qa/rust-server/task-eligibility-postgres.json
+      - name: Task naming, operation queue and saved finalization retries with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-queue --database postgres --report .qa/rust-server/task-queue-postgres.json
+      - name: Automatic Task retries, concurrent claims and recovery with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-automatic --database postgres --report .qa/rust-server/task-automatic-postgres.json
+      - name: Coalesced Task scheduler, retry/recovery and owned shutdown with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-background --database postgres --report .qa/rust-server/task-background-postgres.json
+      - name: Worker-acknowledged pause/resume and late native controls with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain automation-pause --database postgres --report .qa/rust-server/automation-pause-postgres.json
+      - name: Claimed/resumed Task execution, structured completion and launch recovery with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-claimed --database postgres --report .qa/rust-server/task-claimed-postgres.json
+      - name: Task Worker authenticated HTTP and Live with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/task-workers-http-compatibility.mjs --database postgres --report .qa/rust-server/task-workers-http-postgres.json
+      - name: Encrypted Goal observations, launch, resume and retained leases with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-goal --database postgres --report .qa/rust-server/task-goal-postgres.json
+      - name: Durable Task retry accounting and contention with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-retry --database postgres --report .qa/rust-server/task-retry-postgres.json
+      - name: Encrypted Task persistence, Goal finalization and recovery with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain tasks --database postgres --report .qa/rust-server/task-runtime-postgres.json
+      - name: GUI admission, execution, recovery and handoffs with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain gui --database postgres --report .qa/rust-server/gui-runtime-postgres.json
+      - name: Managed preparation HTTP and encrypted worker transport with postgres
+        run: node --import tsx scripts/server-rust/managed-preparation-http-compatibility.mjs --database postgres --report .qa/rust-server/managed-preparation-http-postgres.json
+      - name: Handoff HTTP, retry, restart and pending-command shutdown with postgres
+        run: node --import tsx scripts/server-rust/native-handoff-http-compatibility.mjs --database postgres --report .qa/rust-server/native-handoff-http-postgres.json
       - name: native-settings-http with postgres
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"
@@ -1238,6 +1451,14 @@ jobs:
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"
         run: node --import tsx scripts/server-rust/native-event-http-compatibility.mjs --database postgres --report .qa/rust-server/native-event-http-postgres.json
+      - name: Production native receipts and durable outcomes with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-execution-http-compatibility.mjs --database postgres --report .qa/rust-server/native-execution-http-postgres.json
+      - name: Public encrypted chat, queue and pause controls with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/public-chat-execution-http.mjs --database postgres --report .qa/rust-server/public-chat-execution-http-postgres.json
       - name: native-coordination-http with postgres
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"

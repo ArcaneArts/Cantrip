@@ -42,6 +42,30 @@ export function terminalWireFixtures(label) {
     },
   ];
   return {
+    managedChatPreparationSchema: [
+      ...["pending", "thread", "console", "ready", "failed", "needs-model"].map(
+        (phase) => ({
+          chatId: "chat",
+          workerId: "worker",
+          terminalId: input.id,
+          generation: "66666666-6666-4666-8666-666666666666",
+          phase,
+          failedPhase: null,
+          updatedAt: "2026-10-25T00:00:00.000Z",
+          ownerId: "stripped-owner",
+        }),
+      ),
+      ...["thread", "console"].map((failedPhase) => ({
+        chatId: "chat",
+        workerId: "worker",
+        terminalId: input.id,
+        generation: "66666666-6666-4666-8666-666666666666",
+        phase: "failed",
+        failedPhase,
+        updatedAt: "2026-10-25T00:00:00.000Z",
+      })),
+    ],
+    encryptedLinkedConsoleCreateSchema: [input],
     terminalClientMessageSchema: [
       { type: "resize", cols: 1, rows: 1000 },
       { type: "resize", cols: 80, rows: 24, extra: true },
@@ -109,4 +133,33 @@ export function terminalWireFixtures(label) {
       { worktreeId: "worktree", extra: true },
     ],
   };
+}
+
+// Invalid examples join the ordinary mutation stream; every baseline above is
+// still parsed as valid by the unchanged Source schema before mutation.
+export function* terminalWireCases(name, samples) {
+  if (name === "managedChatPreparationSchema") {
+    yield {
+      chatId: "",
+      workerId: "",
+      terminalId: "invalid",
+      generation: null,
+      phase: "unknown",
+      failedPhase: "unknown",
+      updatedAt: "invalid",
+    };
+    yield null;
+  }
+  if (name === "encryptedLinkedConsoleCreateSchema") {
+    const input = samples[0];
+    yield { ...input, extra: true };
+    yield {
+      ...input,
+      titleProtection: {
+        ...input.titleProtection,
+        classification: { recordKind: "chat" },
+      },
+    };
+    yield null;
+  }
 }

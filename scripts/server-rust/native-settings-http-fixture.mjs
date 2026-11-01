@@ -63,6 +63,7 @@ export async function settingsHttpFixture({
   configure,
   prepare,
   onLogicalCompletion,
+  onCommand,
   observeCompletions = false,
   environment = {},
 }) {
@@ -115,6 +116,7 @@ export async function settingsHttpFixture({
   const encryption = {
     ownerId: () => owner,
     serverIdentity: () => serverId,
+    status: () => ({ error: null }),
     componentKey: () => ({ key: new Uint8Array(componentKey), keyRevision: 1 }),
   };
   const nativeSettings = () => ({
@@ -311,7 +313,16 @@ export async function settingsHttpFixture({
     });
     worker = new WorkerConnection(
       config,
-      async (command) => {
+      async (command, emit) => {
+        if (onCommand) {
+          const result = await onCommand(command, emit, {
+            encryption,
+            owner,
+            serverId,
+            scope,
+          });
+          if (result !== undefined) return result;
+        }
         if (
           command.type === "chat.native-logical.complete" &&
           onLogicalCompletion

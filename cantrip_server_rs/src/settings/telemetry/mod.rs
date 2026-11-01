@@ -1,11 +1,16 @@
 //! Owner-scoped telemetry. Exports contain opaque dimension IDs and structured
 //! metrics, never message content, credential data or raw provider payloads.
+mod behavior_writes;
 pub mod changes;
 mod exports;
 pub mod quota;
 mod repository;
 pub mod repository_agent;
 pub mod statistics;
+mod token_usage;
+mod usage_identity;
+pub(crate) use usage_identity::record_in_transaction as record_usage_in_transaction;
+mod write_support;
 use crate::wire::Value;
 use anyhow::{Context, Result};
 pub use repository::TelemetryQuery;

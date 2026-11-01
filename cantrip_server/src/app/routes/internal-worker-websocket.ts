@@ -332,9 +332,8 @@ export function installInternalWorkerWebsocketRoute(
           workerProcessGeneration: resolvedWorkerProcessGeneration,
         });
         catalogWorkers.set(workerId, workerAuth.ownerId);
-        void resumeNativeRuntimeHandoffsForWorker(
-          workerAuth.ownerId,
-          workerId,
+        void runAsOwner(workerAuth.ownerId, () =>
+          resumeNativeRuntimeHandoffsForWorker(workerAuth.ownerId, workerId),
         ).catch((error) => {
           app.log.error(
             { err: error, workerId },

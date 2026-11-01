@@ -2,8 +2,6 @@
 //! the ingestion transaction; response identity, labels and timing remain fenced.
 use super::*;
 use crate::wire::{coercion::truthy, value::json};
-mod identity;
-mod persist;
 
 pub fn reconcile(previous: Option<&Value>, incoming: &Value) -> Result<(Value, Option<Value>)> {
     let mut responses: Vec<Value> = Vec::new();
@@ -164,8 +162,25 @@ pub(super) async fn record(
         ])
         .stringify()
     );
-    identity::adopt(tx, owner, binding, turn, &source).await?;
-    persist::write(tx, owner, binding, turn, &source, capture.as_ref()).await
+    let timing = |key: &str| -> Result<Value> {
+        if turn[key].is_null() {
+            return Ok(Value::Null);
+        }
+        let value = turn[key].as_f64().context("Native turn timing")?;
+        anyhow::ensure!(
+            value.is_finite() && value.abs() <= 8.64e15,
+            "Invalid time value"
+        );
+        Ok(json!(
+            crate::wire::date_iso_milliseconds(value.trunc() as i64)
+                .context("Invalid time value")?
+        ))
+    };
+    let mut input = json!({"sourceKey":source,"projectId":binding["projectId"],"chatId":binding["chatId"],"modelRouteId":if capture.is_some(){binding["modelRouteId"].as_str().unwrap_or("")}else{""},"nativeTurn":json!({"threadId":turn["threadId"],"turnId":turn["turnId"]}),"nativeUsage":usage,"workerId":binding["workerId"],"providerAccountId":binding["providerAccountId"],"turnId":turn["turnId"],"attemptStatus":if turn["status"]=="inProgress"{json!("running")}else{turn["status"].clone()},"startedAt":timing("startedAtMs")?,"completedAt":timing("completedAtMs")?,"finalizedAt":timing("completedAtMs")?});
+    if let Some(capture) = capture {
+        input["nativeModelAttribution"] = capture;
+    }
+    crate::settings::telemetry::record_usage_in_transaction(tx, owner, &input).await
 }
 async fn routes(tx: &Transaction<'_>, owner: &str, ids: &[String]) -> Result<Vec<Value>> {
     all(tx,"SELECT jsonb_build_object('model_id',m.id,'model_route_id',r.id,'provider_id',p.id)::text FROM model_routes r INNER JOIN model_profiles m ON m.id=r.model_id AND m.owner_id=$1 INNER JOIN model_providers p ON p.id=r.provider_id AND p.owner_id=$1 WHERE r.id=ANY($2::text[])",&[&owner,&ids]).await

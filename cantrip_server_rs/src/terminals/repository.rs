@@ -28,7 +28,7 @@ fn queries() -> &'static Queries {
 }
 #[derive(Clone)]
 pub struct Repository {
-    database: Arc<Database>,
+    pub(super) database: Arc<Database>,
 }
 impl Repository {
     pub async fn delete(&self, owner: &str, terminal: &str) -> Result<Option<Value>> {
