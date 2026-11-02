@@ -50,9 +50,9 @@ function settingsWithContentGutters(contentGutters: boolean): SettingsBundle {
 }
 
 describe("account settings", () => {
-  it("provides a separate Code Editor category with searchable line numbers enabled by default", () => {
-    const markup = renderSettings("code-editor");
-    expect(markup).toContain("Code Editor");
+  it("provides a separate Editors category with searchable line numbers enabled by default", () => {
+    const markup = renderSettings("editors");
+    expect(markup).toContain("Editors");
     expect(markup).toContain("Show line numbers");
     expect(markup).toContain('type="checkbox"');
     expect(markup).toContain('checked=""');
@@ -61,7 +61,7 @@ describe("account settings", () => {
       settingsSearchResults("line numbers", settingsNavigationSections),
     ).toEqual([
       expect.objectContaining({
-        sectionId: "code-editor",
+        sectionId: "editors",
         id: "code-editor-line-numbers",
       }),
     ]);

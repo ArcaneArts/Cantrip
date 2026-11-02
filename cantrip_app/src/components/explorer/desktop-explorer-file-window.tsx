@@ -1,3 +1,4 @@
+import { useMediaLoopDefault } from "@/lib/use-media-loop-default";
 import {
   explorerMediaTypeForPath,
   type ExplorerFile,
@@ -69,6 +70,7 @@ function MediaView({
   path: string;
 }) {
   const source = useMemo(() => URL.createObjectURL(blob), [blob]);
+  const loop = useMediaLoopDefault(kind, source);
   useEffect(() => () => URL.revokeObjectURL(source), [source]);
   if (kind === "image") {
     return <ExplorerImageViewport alt={fileName(path)} source={source} />;
@@ -80,6 +82,7 @@ function MediaView({
           aria-label={fileName(path)}
           className="w-full max-w-2xl"
           controls
+          loop={loop}
           preload="metadata"
           src={source}
         />
@@ -92,6 +95,7 @@ function MediaView({
         aria-label={fileName(path)}
         className="max-h-full max-w-full"
         controls
+        loop={loop}
         playsInline
         preload="metadata"
       >

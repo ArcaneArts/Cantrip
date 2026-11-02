@@ -2,7 +2,10 @@ import {
   explorerTextLanguageForPath,
   type ExplorerFileMode,
 } from "@cantrip/protocol";
-import { resolveFileViewer } from "@/components/files/file-viewers";
+import {
+  resolveFileViewer,
+  resolveFileOpeningMode,
+} from "@/components/files/file-viewers";
 
 export function textLanguageForPath(path: string): string | null {
   return explorerTextLanguageForPath(path);
@@ -21,7 +24,7 @@ export function structuredFileFormatForPath(
 }
 
 export function defaultExplorerFileMode(path: string): ExplorerFileMode {
-  return resolveFileViewer(path).mode;
+  return resolveFileOpeningMode(path);
 }
 
 export function markdownPreviewUsesPlainText(path: string): boolean {

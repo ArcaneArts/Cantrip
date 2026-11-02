@@ -1,4 +1,4 @@
-import { resolveFileViewer } from "@/components/files/file-viewers";
+import { resolveFileOpeningMode } from "@/components/files/file-viewers";
 import type { QueryClient } from "@tanstack/react-query";
 import {
   createFileDocument,
@@ -116,7 +116,7 @@ export async function openOwnedFile({
         ...(viewer !== undefined
           ? {
               fileViewer: viewer,
-              fileMode: resolveFileViewer(path, viewer).mode,
+              fileMode: resolveFileOpeningMode(path, viewer),
             }
           : {}),
       },

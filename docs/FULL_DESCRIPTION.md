@@ -593,6 +593,10 @@ full-content file surface:
 
 - recognized editable text opens in Edit by default, while Markdown/MDX and
   media or otherwise non-editable files open in Preview;
+- Settings → Editors provides device-local opening defaults for text, Markdown,
+  logs, licenses, and each structured/tabular format, plus NBT view/edit, image
+  fitting, and audio/video looping preferences. Existing tab modes and explicit
+  Open As choices take priority;
 - a compact eye/pencil-style mode menu switches Preview, Edit, or a supported
   structured/visual view;
 - close-file control appears beside the Explorer/worktree title;

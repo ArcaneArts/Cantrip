@@ -1,3 +1,4 @@
+import { useMediaLoopDefault } from "@/lib/use-media-loop-default";
 import { resolveFileViewer } from "@/components/files/file-viewers";
 import { mediaBlobForViewer } from "@/components/files/viewer-media";
 import { LogFileView } from "./log-file-view";
@@ -103,6 +104,7 @@ function ExplorerMediaView({
 }) {
   const [failed, setFailed] = useState(false);
   const [source, setSource] = useState<string | null>(null);
+  const loop = useMediaLoopDefault(kind, source);
   useEffect(() => {
     if (failed) onError?.(new Error("Transferred media could not be loaded."));
     else if (source) onReady?.();
@@ -169,6 +171,7 @@ function ExplorerMediaView({
           aria-label={path.split("/").at(-1) ?? path}
           className="w-full max-w-2xl"
           controls
+          loop={loop}
           onError={() => setFailed(true)}
           preload="metadata"
           src={source}
@@ -182,6 +185,7 @@ function ExplorerMediaView({
         aria-label={path.split("/").at(-1) ?? path}
         className="max-h-full max-w-full"
         controls
+        loop={loop}
         onError={() => setFailed(true)}
         playsInline
         preload="metadata"
