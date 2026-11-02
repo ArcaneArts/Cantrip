@@ -4,6 +4,7 @@ import { Monitor } from "lucide-react";
 import { FileChangeSettings } from "./file-change-settings";
 import { TabDisplaySettings } from "./tab-display-settings";
 import { CodeEditorSettings } from "./code-editor-settings";
+import { FileNavigationSettings } from "./file-navigation-settings";
 import type {
   CodeAppearance,
   CodexDeviceLogin,
@@ -221,6 +222,15 @@ export const settingsNavigationSections: readonly SettingsNavigationSection<Sett
           label: "Project workspace profile",
           description: "First-open destinations for new project tabs.",
           keywords: ["agent hybrid ide layout tabs panes docks"],
+        },
+        {
+          id: "sidebar-auto-expand-folders",
+          label: "Auto-expand nested folders",
+          description:
+            "Automatically expand folders that contain only another folder in the file sidebar.",
+          keywords: [
+            "files explorer tree navigation single child chain directory",
+          ],
         },
         {
           id: "agent-permissions",
@@ -1885,6 +1895,11 @@ export function SettingsPage({
                   {section === "general" &&
                   matchesSetting("anonymous-recovery") ? (
                     <EncryptionRecoverySettings />
+                  ) : null}
+
+                  {section === "general" &&
+                  matchesSetting("sidebar-auto-expand-folders") ? (
+                    <FileNavigationSettings />
                   ) : null}
 
                   {section === "general" &&
