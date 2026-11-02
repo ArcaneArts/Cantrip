@@ -52,6 +52,11 @@ describe("application actions", () => {
         shortcut: "⌘N",
       },
       {
+        id: APP_ACTION_IDS.newTask,
+        label: "New Task",
+        shortcut: undefined,
+      },
+      {
         id: APP_ACTION_IDS.newTerminal,
         label: "New Terminal",
         shortcut: "⌘T",
@@ -107,7 +112,11 @@ describe("application actions", () => {
         pendingActionIds: new Set([APP_ACTION_IDS.newAgentChat]),
         projectId: "project-1",
       }).map(({ id }) => id),
-    ).toEqual([APP_ACTION_IDS.newProject, APP_ACTION_IDS.newTerminal]);
+    ).toEqual([
+      APP_ACTION_IDS.newProject,
+      APP_ACTION_IDS.newTask,
+      APP_ACTION_IDS.newTerminal,
+    ]);
     expect(isAppActionId(APP_ACTION_IDS.newTerminal)).toBe(true);
     expect(isAppActionId("project.delete")).toBe(false);
   });

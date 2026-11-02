@@ -1,6 +1,7 @@
 export const APP_ACTION_IDS = {
   newProject: "navigation.new-project",
   newAgentChat: "project.new-agent-chat",
+  newTask: "project.new-task",
   newTerminal: "project.new-terminal",
 } as const;
 
@@ -37,6 +38,13 @@ export const APP_ACTIONS = [
     label: "New Agent Chat",
     requiresProject: true,
     shortcut: { key: "n", label: "⌘N" },
+  },
+  {
+    category: "Project",
+    id: APP_ACTION_IDS.newTask,
+    keywords: ["task", "tasks", "new", "create", "goal", "plan"],
+    label: "New Task",
+    requiresProject: true,
   },
   {
     category: "Project",

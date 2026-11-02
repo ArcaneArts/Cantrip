@@ -14,6 +14,7 @@ import { getActiveServerUrl } from "@/lib/server-connections";
 import {
   Bot,
   Check,
+  ClipboardPlus,
   CornerDownLeft,
   FileCode2,
   FileDown,
@@ -119,6 +120,9 @@ function projectDetail(
 function AppActionIcon({ actionId }: { actionId: AppActionId }) {
   if (actionId === APP_ACTION_IDS.newProject) {
     return <FolderOpen className="size-4" />;
+  }
+  if (actionId === APP_ACTION_IDS.newTask) {
+    return <ClipboardPlus className="size-4" />;
   }
   return actionId === APP_ACTION_IDS.newAgentChat ? (
     <Bot className="size-4" />
