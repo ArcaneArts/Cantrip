@@ -95,7 +95,7 @@ describe("ContentHeaderActions", () => {
     expect(markup).not.toContain("Edit</button>");
     expect(markup).toContain("Unsaved");
     expect(markup).toContain('aria-label="Save file"');
-    expect(markup).toContain('aria-label="Refresh Explorer"');
+    expect(markup).not.toContain('aria-label="Refresh Explorer"');
     expect(markup).toContain('aria-label="Save file"');
     expect(markup).toContain('aria-pressed="true"');
     expect(markup).toContain('aria-label="Configure terminal service"');
@@ -198,7 +198,7 @@ describe("ContentHeaderActions", () => {
       expect(markup).not.toContain('aria-label="Close file"');
       expect(markup).not.toContain(">Close file</span>");
       expect(markup).toContain('aria-label="Save file"');
-      expect(markup).toContain('aria-label="Refresh Explorer"');
+      expect(markup).not.toContain('aria-label="Refresh Explorer"');
       expect(markup).not.toContain("Restart editor");
       expect(markup).not.toContain("Stop editor");
     },
