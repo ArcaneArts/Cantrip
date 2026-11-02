@@ -4,7 +4,7 @@ use crate::{
     wire::{Value, coercion::truthy},
 };
 use anyhow::Result;
-pub(super) async fn changed(tx: &Transaction<'_>, chat: &str) -> Result<()> {
+pub(crate) async fn changed(tx: &Transaction<'_>, chat: &str) -> Result<()> {
     tx.query(
         "UPDATE managed_queue_states SET revision=revision+1 WHERE chat_id=$1",
         &[&chat],

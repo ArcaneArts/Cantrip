@@ -34,6 +34,11 @@ import { discoveryWireFixtures } from "./discovery-wire-fixtures.mjs";
 import { runWireFixtures } from "./run-wire-fixtures.mjs";
 import { worktreeWireFixtures } from "./worktree-wire-fixtures.mjs";
 import { provisioningWireFixtures } from "./provisioning-wire-fixtures.mjs";
+import { turnOrchestrationWireFixtures } from "./turn-orchestration-wire-fixtures.mjs";
+import { publicChatWireFixtures } from "./public-chat-wire-fixtures.mjs";
+import { nativeHandoffWireFixtures } from "./native-handoff-wire-fixtures.mjs";
+import { taskSchedulingWireFixtures } from "./task-wire-fixtures.mjs";
+import { taskWireFixtures } from "./task-wire-fixtures.mjs";
 
 export const owner = "11111111-1111-4111-8111-111111111111";
 export const clientId = "22222222-2222-4222-8222-222222222222";
@@ -264,11 +269,75 @@ export const projectWire = {
   updatedAt: timestamp,
 };
 export const securityFixtures = {
+  nativeBehaviorAttributionSchema: [
+    { version: 1, turnIds: [], captures: [], conflictingTurnKeys: [] },
+    {
+      version: 1,
+      turnIds: ["native-turn", "uncaptured"],
+      captures: [
+        {
+          threadId: "thread",
+          turnId: "native-turn",
+          isRoot: true,
+          reasoningEffort: null,
+          selection: {
+            status: "resolved",
+            workerId: "worker",
+            providerId: "provider",
+            providerAccountId: null,
+            modelId: "model",
+            routeId: "route",
+          },
+        },
+      ],
+      conflictingTurnKeys: ['["thread","native-turn"]'],
+    },
+    {
+      version: 1,
+      turnIds: ["\ud800", "😀"],
+      captures: [
+        {
+          threadId: "e\u0301",
+          turnId: "\ud800",
+          isRoot: false,
+          reasoningEffort: "low",
+          selection: {
+            status: "resolved",
+            workerId: "worker",
+            providerId: "provider",
+            providerAccountId: null,
+            modelId: "model",
+            routeId: "route",
+          },
+        },
+      ],
+      conflictingTurnKeys: [],
+    },
+  ],
   ...nativeEventWireFixtures(),
   ...nativeModelInventoryWireFixtures(),
   ...agentInteractionWireFixtures(),
   ...nativeSettingsHttpWireFixtures(),
   chatPlanOpaqueStateSchema: [eventPlan],
+  ...turnOrchestrationWireFixtures(timestamp),
+  ...publicChatWireFixtures(timestamp),
+  ...nativeHandoffWireFixtures(timestamp),
+  ...taskWireFixtures(timestamp),
+  ...taskSchedulingWireFixtures(timestamp),
+  chatPauseUpdateSchema: [{ paused: true }, { paused: false, ignored: true }],
+  chatPauseStateSchema: [{ paused: true }, { paused: false, active: null }],
+  chatPauseRuntimeStateSchema: [
+    { paused: true, active: null },
+    { paused: false, active: { threadId: "thread", turnId: "turn" } },
+    {
+      paused: true,
+      active: { threadId: "😀".repeat(250), turnId: "e\u0301".repeat(250) },
+    },
+  ],
+  taskDispatchCycleListSchema: [
+    [],
+    turnOrchestrationWireFixtures(timestamp).taskDispatchCycleSummarySchema,
+  ],
   chatAttachmentOpaqueSummarySchema: [deferredAttachment()],
   modelConfigurationSchema: [
     { modelId: null },

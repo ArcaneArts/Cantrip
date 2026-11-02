@@ -421,7 +421,59 @@
     "managedQueueImportAckSchema": 8812,
     "managedQueueImportResultSchema": 8819,
     "managedQueueLookupSchema": 8826,
-    "managedQueueLookupResultSchema": 8828
+    "managedQueueLookupResultSchema": 8828,
+    "managedChatPreparationSchema": 8835,
+    "encryptedLinkedConsoleCreateSchema": 8844,
+    "nativeBehaviorAttributionSchema": 6401,
+    "encryptedChatPlanWireStateSchema": 8847,
+    "taskDispatchCycleSummarySchema": 4709,
+    "taskDispatchWorkerLeaseSchema": 5001,
+    "taskOperationRelayRequestSchema": 4971,
+    "chatMessageSchema": 8853,
+    "chatTurnRollbackAcceptedSchema": 8883,
+    "generateLabelResultSchema": 8885,
+    "agentTurnResultSchema": 1834,
+    "chatMessageRelayResultSchema": 8890,
+    "taskMessageRelayResultSchema": 8893,
+    "cuaApprovalRequestEventSchema": 1076,
+    "cuaApprovalTerminalSchema": 1080,
+    "worktreeStatusResultSchema": 1916,
+    "nativeRuntimeHandoffRequestSchema": 8895,
+    "nativeRuntimeHandoffPreparedSchema": 8900,
+    "nativeRuntimeHandoffStateSchema": 8905,
+    "nativeRuntimeHandoffInventorySchema": 8924,
+    "nativeRuntimeHandoffWorkerRequestSchema": 8936,
+    "nativeRuntimeHandoffConfigurationRequestSchema": 8962,
+    "nativeRuntimeHandoffConfigurationSchema": 8968,
+    "taskEncryptedOperationStartSchema": 8977,
+    "taskOpaqueContentSchema": 4987,
+    "taskOpaqueMutationSchema": 8984,
+    "taskOpaqueSummarySchema": 4667,
+    "taskOperationRelayResultSchema": 8996,
+    "taskPlanningRoundOpaqueSummarySchema": 9001,
+    "taskPlanningRoundOpaqueContentSchema": 8980,
+    "taskWorkerSummarySchema": 9016,
+    "taskDispatchCycleListSchema": 9029,
+    "taskGoalWorkerResultSchema": 9030,
+    "chatGoalResponseSchema": 9047,
+    "taskWorkerContinuityFamilySchema": 4703,
+    "taskWorkerCreateSchema": 9059,
+    "taskWorkerUpdateSchema": 9068,
+    "taskWorkerDeleteSchema": 9077,
+    "taskWorkerOrderUpdateSchema": 9080,
+    "taskWorkerListSchema": 9084,
+    "projectTaskPauseStateSchema": 9085,
+    "projectTaskPauseUpdateSchema": 9092,
+    "chatPauseUpdateSchema": 9096,
+    "chatPauseStateSchema": 9098,
+    "chatPauseRuntimeStateSchema": 9100,
+    "encryptedChatTurnCreateSchema": 9108,
+    "encryptedQueuedPromptListSchema": 9112,
+    "encryptedQueuedPromptUpdateSchema": 9113,
+    "queuedPromptOrderSchema": 9119,
+    "encryptedChatPromptSubmitResultSchema": 9126,
+    "encryptedConversationPromptSubmitResultSchema": 9133,
+    "encryptedChatPromptSteerResultSchema": 9138
   },
   "nodes": [
     {
@@ -51646,6 +51698,1721 @@
         "found": 8833
       },
       "catchall": 8834,
+      "checks": []
+    },
+    { "type": "literal", "values": [true], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "managedChatPreparationSchema",
+      "shape": {
+        "chatId": 8836,
+        "workerId": 8837,
+        "terminalId": 8838,
+        "generation": 8839,
+        "phase": 8840,
+        "failedPhase": 8841,
+        "updatedAt": 8843
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "values": [
+        "pending",
+        "thread",
+        "console",
+        "ready",
+        "failed",
+        "needs-model"
+      ],
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 8842, "checks": [] },
+    { "type": "enum", "values": ["thread", "console"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "encryptedLinkedConsoleCreateSchema",
+      "shape": { "id": 8845, "titleProtection": 701, "stateProtection": 2979 },
+      "catchall": 8846,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "terminal-title",
+          "messageAfterPath": true,
+          "message": "Linked console title classification must be terminal.",
+          "path": ["titleProtection", "classification", "recordKind"]
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "encryptedChatPlanWireStateSchema",
+      "shape": {
+        "kind": 8848,
+        "chatId": 8849,
+        "mode": 4455,
+        "hasQuestion": 8850,
+        "state": 8851
+      },
+      "catchall": 8852,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "encrypted-plan-state",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    { "type": "literal", "values": ["chat-encrypted"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "nullable", "innerType": 1706, "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "chatMessageSchema",
+      "shape": {
+        "role": 4622,
+        "content": 4623,
+        "mode": 8854,
+        "reasoningEffort": 8855,
+        "id": 8857,
+        "chatId": 8858,
+        "contextKind": 8859,
+        "worktreeId": 8860,
+        "scratchRootId": 8862,
+        "executionLaneId": 8865,
+        "sequence": 8867,
+        "modelId": 8868,
+        "modelRouteId": 8870,
+        "providerId": 8872,
+        "providerName": 8874,
+        "providerModelName": 8876,
+        "appliedReasoningEffort": 8878,
+        "reasoningAdjusted": 8880,
+        "createdAt": 8882
+      },
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "chat-message-root",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 2584,
+      "defaultValue": "default",
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 8856,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 789, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 1818,
+      "defaultValue": "project",
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 8861, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 8863,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 8864, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 8866, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    { "type": "nullable", "innerType": 8869, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 8871, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 8873, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 8875, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 8877, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 8879,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 789, "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 8881,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "chatTurnRollbackAcceptedSchema",
+      "shape": { "rolledBack": 8884 },
+      "checks": []
+    },
+    { "type": "literal", "values": [true], "checks": [] },
+    {
+      "type": "object",
+      "name": "generateLabelResultSchema",
+      "shape": { "titleProtection": 8886, "emptyInput": 8887 },
+      "catchall": 8889,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 701, "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 8888,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "chatMessageRelayResultSchema",
+      "shape": { "message": 8891 },
+      "catchall": 8892,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 1569, "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "taskMessageRelayResultSchema",
+      "shape": { "message": 1628 },
+      "catchall": 8894,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "task-message-relay-result",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "nativeRuntimeHandoffRequestSchema",
+      "shape": {
+        "operationId": 8896,
+        "bindingId": 8897,
+        "targetModelRouteId": 8897,
+        "targetProviderAccountId": 8898
+      },
+      "catchall": 8899,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 255, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 8897, "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "nativeRuntimeHandoffPreparedSchema",
+      "shape": {
+        "threadId": 8897,
+        "runtimeGeneration": 8897,
+        "snapshot": 8662,
+        "reasoningEffort": 8901
+      },
+      "catchall": 8904,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 8902,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 8903, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 80, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "nativeRuntimeHandoffStateSchema",
+      "shape": {
+        "operationId": 8906,
+        "chatId": 8897,
+        "workerId": 8897,
+        "phase": 8907,
+        "cancelRequested": 8908,
+        "source": 4587,
+        "binding": 8910,
+        "retiredRuntimeGenerations": 8912,
+        "retiredNativeEpochs": 8914,
+        "targetModelRouteId": 8897,
+        "targetProviderAccountId": 8918,
+        "prepared": 8919,
+        "errorCode": 8920,
+        "createdAt": 8921,
+        "updatedAt": 8922
+      },
+      "catchall": 8923,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "values": [
+        "preparing",
+        "prepared",
+        "committed",
+        "completed",
+        "cancelled"
+      ],
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 8909,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 8911,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 4587, "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 8913,
+      "defaultValue": [],
+      "checks": []
+    },
+    { "type": "array", "element": 8897, "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 8915,
+      "defaultValue": [],
+      "checks": []
+    },
+    { "type": "array", "element": 8916, "checks": [] },
+    {
+      "type": "object",
+      "shape": { "runtimeGeneration": 8897, "nativeEpoch": 8897 },
+      "catchall": 8917,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    { "type": "nullable", "innerType": 8897, "checks": [] },
+    { "type": "nullable", "innerType": 8900, "checks": [] },
+    { "type": "nullable", "innerType": 8897, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "nativeRuntimeHandoffInventorySchema",
+      "shape": {
+        "chatId": 8897,
+        "binding": 8925,
+        "latest": 8926,
+        "providers": 8927
+      },
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 4587, "checks": [] },
+    { "type": "nullable", "innerType": 8905, "checks": [] },
+    { "type": "array", "element": 8928, "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "id": 8897,
+        "name": 8929,
+        "accounts": 8930,
+        "requiresAccount": 8931,
+        "models": 8932
+      },
+      "checks": []
+    },
+    { "type": "string", "checks": [] },
+    { "type": "array", "element": 5802, "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "array", "element": 8933, "checks": [] },
+    {
+      "type": "object",
+      "shape": { "routeId": 8897, "name": 8934, "profileName": 8935 },
+      "checks": []
+    },
+    { "type": "string", "checks": [] },
+    { "type": "string", "checks": [] },
+    {
+      "type": "union",
+      "name": "nativeRuntimeHandoffWorkerRequestSchema",
+      "options": [8937, 8941, 8947, 8951, 8954, 8958],
+      "discriminator": "action",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "workerId": 8897,
+        "chatId": 8897,
+        "operationId": 8938,
+        "action": 8939
+      },
+      "catchall": 8940,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "literal", "values": ["read"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "workerId": 8897,
+        "chatId": 8897,
+        "operationId": 8938,
+        "action": 8942,
+        "prepared": 8900,
+        "expectedPreparedRuntimeGeneration": 8943,
+        "expectedPreparedNativeEpoch": 8944
+      },
+      "catchall": 8946,
+      "checks": []
+    },
+    { "type": "literal", "values": ["prepared"], "checks": [] },
+    { "type": "nullable", "innerType": 8897, "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 8945,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 8897, "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "workerId": 8897,
+        "chatId": 8897,
+        "operationId": 8938,
+        "action": 8948,
+        "side": 8949,
+        "expectedBindingId": 8897,
+        "recovered": 8900
+      },
+      "catchall": 8950,
+      "checks": []
+    },
+    { "type": "literal", "values": ["recover"], "checks": [] },
+    { "type": "enum", "values": ["source", "destination"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "workerId": 8897,
+        "chatId": 8897,
+        "operationId": 8938,
+        "action": 8952
+      },
+      "catchall": 8953,
+      "checks": []
+    },
+    { "type": "literal", "values": ["commit"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "workerId": 8897,
+        "chatId": 8897,
+        "operationId": 8938,
+        "action": 8955,
+        "outcome": 8956
+      },
+      "catchall": 8957,
+      "checks": []
+    },
+    { "type": "literal", "values": ["finish"], "checks": [] },
+    { "type": "enum", "values": ["completed", "cancelled"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "workerId": 8897,
+        "chatId": 8897,
+        "operationId": 8938,
+        "action": 8959,
+        "errorCode": 8960
+      },
+      "catchall": 8961,
+      "checks": []
+    },
+    { "type": "literal", "values": ["failure"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[a-z0-9-]{1,100}$",
+          "flags": "",
+          "displayPattern": "/^[a-z0-9-]{1,100}$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "nativeRuntimeHandoffConfigurationRequestSchema",
+      "shape": {
+        "workerId": 8963,
+        "chatId": 8964,
+        "operationId": 8965,
+        "side": 8966
+      },
+      "catchall": 8967,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "enum", "values": ["source", "destination"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "nativeRuntimeHandoffConfigurationSchema",
+      "shape": { "state": 8905, "side": 8969, "configuration": 8970 },
+      "catchall": 8976,
+      "checks": []
+    },
+    { "type": "enum", "values": ["source", "destination"], "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "session": 4434,
+        "threadId": 8971,
+        "cwd": 8972,
+        "model": 4117,
+        "provider": 4156,
+        "subagentDefaults": 8973,
+        "mcpServers": 8974,
+        "planMode": 4455,
+        "permissionProfileId": 4459
+      },
+      "catchall": 8975,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 4452, "checks": [] },
+    { "type": "array", "element": 4161, "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "taskEncryptedOperationStartSchema",
+      "shape": { "rowVersion": 8978, "operation": 4971, "failure": 8979 },
+      "catchall": 8983,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "task-operation-start",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": { "task": 4987, "round": 8980 },
+      "catchall": 8982,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "taskPlanningRoundOpaqueContentSchema",
+      "shape": { "classification": 4974, "protectedContent": 4982 },
+      "catchall": 8981,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "taskOpaqueMutationSchema",
+      "shape": {
+        "rowVersion": 8985,
+        "task": 4987,
+        "planGoalEnabled": 8986,
+        "draftAttachmentIds": 8988,
+        "priority": 8991,
+        "requestedTaskWorkerId": 8992
+      },
+      "catchall": 8995,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 8987,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 8989,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 8990,
+      "checks": [
+        { "check": "max_length", "maximum": 100, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "worker-command-unique",
+          "messageAfterPath": true,
+          "message": "Task attachment IDs must be unique."
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 4697,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 8993,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 8994, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "taskOperationRelayResultSchema",
+      "shape": {
+        "chatId": 8997,
+        "operationId": 8998,
+        "fingerprint": 48,
+        "classification": 4974,
+        "protectedResult": 4982,
+        "task": 4987,
+        "assistantMessage": 1628,
+        "goal": 8999
+      },
+      "catchall": 9000,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "task-operation-result",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 5223, "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "taskPlanningRoundOpaqueSummarySchema",
+      "shape": {
+        "ordinal": 4975,
+        "kind": 4666,
+        "status": 4976,
+        "hasOutputPlan": 4977,
+        "hasOutputQuestions": 4978,
+        "hasOutputGoalPrompt": 4979,
+        "error": 4980,
+        "id": 9002,
+        "chatId": 9003,
+        "protectedContent": 4982,
+        "userMessageId": 9004,
+        "assistantMessageId": 9006,
+        "executionLaneId": 9008,
+        "turnId": 9010,
+        "startedAt": 9012,
+        "completedAt": 9013
+      },
+      "catchall": 9015,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 9005, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 9007, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 9009, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 9011, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 9014, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "taskWorkerSummarySchema",
+      "shape": {
+        "id": 9017,
+        "name": 9018,
+        "enabled": 9019,
+        "modelConfiguration": 4724,
+        "maxConcurrency": 9020,
+        "allowsPlanGoal": 9021,
+        "continuityFamily": 4703,
+        "continuityFamilyOverride": 9022,
+        "position": 9023,
+        "activeTaskCount": 9024,
+        "rowVersion": 9025,
+        "createdAt": 9026,
+        "updatedAt": 9027
+      },
+      "catchall": 9028,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 160, "when": "length" }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 1, "inclusive": true },
+        { "check": "less_than", "value": 64, "inclusive": true }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "nullable", "innerType": 4703, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "array",
+      "name": "taskDispatchCycleListSchema",
+      "element": 4709,
+      "checks": [{ "check": "max_length", "maximum": 10000, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "taskGoalWorkerResultSchema",
+      "shape": {
+        "goal": 9031,
+        "task": 4987,
+        "message": 9040,
+        "execution": 9041
+      },
+      "catchall": 9046,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "task-goal-worker-result",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 9032, "checks": [] },
+    {
+      "type": "object",
+      "name": "taskGoalObjectiveOpaqueSnapshotSchema",
+      "shape": {
+        "chatId": 5225,
+        "threadId": 5226,
+        "status": 5227,
+        "protectedObjective": 5229,
+        "tokenBudget": 9033,
+        "tokensUsed": 9035,
+        "timeUsedSeconds": 9036,
+        "createdAt": 9037,
+        "updatedAt": 9038
+      },
+      "catchall": 9039,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 9034, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "nullable", "innerType": 1628, "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 9042,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "threadId": 9043, "status": 9044 },
+      "catchall": 9045,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "enum", "values": ["running", "idle", "failed"], "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "chatGoalResponseSchema",
+      "shape": { "goal": 9048 },
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 9049, "checks": [] },
+    {
+      "type": "object",
+      "name": "threadGoalSchema",
+      "shape": {
+        "threadId": 9050,
+        "objective": 9051,
+        "status": 9052,
+        "tokenBudget": 9053,
+        "tokensUsed": 9055,
+        "timeUsedSeconds": 9056,
+        "createdAt": 9057,
+        "updatedAt": 9058
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "enum",
+      "name": "threadGoalStatusSchema",
+      "values": [
+        "active",
+        "paused",
+        "blocked",
+        "usageLimited",
+        "budgetLimited",
+        "complete"
+      ],
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 9054, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "taskWorkerCreateSchema",
+      "shape": {
+        "name": 9018,
+        "enabled": 9060,
+        "modelConfiguration": 4724,
+        "maxConcurrency": 9062,
+        "allowsPlanGoal": 9063,
+        "continuityFamilyOverride": 9065
+      },
+      "catchall": 9067,
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 9061,
+      "defaultValue": true,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 9020,
+      "defaultValue": 1,
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 9064,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 9066,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 4703, "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "taskWorkerUpdateSchema",
+      "shape": {
+        "rowVersion": 9069,
+        "name": 9070,
+        "enabled": 9071,
+        "modelConfiguration": 9072,
+        "maxConcurrency": 9073,
+        "allowsPlanGoal": 9074,
+        "continuityFamilyOverride": 9075
+      },
+      "catchall": 9076,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "task-worker-update",
+          "messageAfterPath": true,
+          "message": "A Task Worker update must change at least one field."
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 9018,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 9061,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 4724,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 9020,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 9064,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 9066,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "taskWorkerDeleteSchema",
+      "shape": { "rowVersion": 9078 },
+      "catchall": 9079,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "taskWorkerOrderUpdateSchema",
+      "shape": { "ids": 9081 },
+      "catchall": 9083,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 9082,
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 256, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "worker-command-unique",
+          "messageAfterPath": true,
+          "message": "Task Worker ordering IDs must be unique."
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "array",
+      "name": "taskWorkerListSchema",
+      "element": 9016,
+      "checks": [{ "check": "max_length", "maximum": 256, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "projectTaskPauseStateSchema",
+      "shape": {
+        "projectId": 9086,
+        "paused": 9087,
+        "pausedAt": 9088,
+        "rowVersion": 9090
+      },
+      "catchall": 9091,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "nullable", "innerType": 9089, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "projectTaskPauseUpdateSchema",
+      "shape": { "paused": 9093, "rowVersion": 9094 },
+      "catchall": 9095,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "chatPauseUpdateSchema",
+      "shape": { "paused": 9097 },
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "object",
+      "name": "chatPauseStateSchema",
+      "shape": { "paused": 9099 },
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "object",
+      "name": "chatPauseRuntimeStateSchema",
+      "shape": { "paused": 9101, "active": 9102 },
+      "catchall": 9107,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "nullable", "innerType": 9103, "checks": [] },
+    {
+      "type": "object",
+      "shape": { "threadId": 9104, "turnId": 9105 },
+      "catchall": 9106,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 500, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 500, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "encryptedChatTurnCreateSchema",
+      "shape": { "message": 1569, "queuedPrompt": 5113, "modelId": 9109 },
+      "catchall": 9111,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "encrypted-chat-turn-pair",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 9110,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "array",
+      "name": "encryptedQueuedPromptListSchema",
+      "element": 8730,
+      "checks": [{ "check": "max_length", "maximum": 1000, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "encryptedQueuedPromptUpdateSchema",
+      "shape": {
+        "prompt": 5113,
+        "expectedItemRevision": 9114,
+        "operationId": 9116
+      },
+      "catchall": 9118,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 9115,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 9117,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 255, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "queuedPromptOrderSchema",
+      "shape": { "expectedRevision": 9120, "operationId": 9122, "ids": 9124 },
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 9121,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 9123,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 255, "when": "length" }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 9125,
+      "checks": [{ "check": "max_length", "maximum": 1000, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "union",
+      "name": "encryptedChatPromptSubmitResultSchema",
+      "options": [9127, 9130],
+      "discriminator": "status",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "status": 9128, "message": 4795 },
+      "catchall": 9129,
+      "checks": []
+    },
+    { "type": "literal", "values": ["started"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "status": 9131, "prompt": 8730 },
+      "catchall": 9132,
+      "checks": []
+    },
+    { "type": "literal", "values": ["queued"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "union",
+      "name": "encryptedConversationPromptSubmitResultSchema",
+      "options": [9134, 9126],
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "status": 9135, "kind": 9136, "message": 8298 },
+      "catchall": 9137,
+      "checks": []
+    },
+    { "type": "literal", "values": ["started"], "checks": [] },
+    { "type": "literal", "values": ["task-encrypted"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "encryptedChatPromptSteerResultSchema",
+      "shape": { "steered": 9139, "message": 4795 },
+      "catchall": 9140,
       "checks": []
     },
     { "type": "literal", "values": [true], "checks": [] },

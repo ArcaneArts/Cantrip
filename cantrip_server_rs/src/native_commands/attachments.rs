@@ -1,12 +1,12 @@
 //! Transaction-bound port of ChatAttachmentRepository.getChatAttachments.
 use super::{admit::text, receipt, settings_persistence::parse};
 use crate::{
-    database::Transaction,
+    database::Executor,
     wire::{Value, value::json},
 };
 use anyhow::{Context, Result};
-pub(super) async fn get(
-    tx: &Transaction<'_>,
+pub(crate) async fn get(
+    tx: Executor<'_, '_>,
     owner: &str,
     chat: &str,
     ids: &Value,

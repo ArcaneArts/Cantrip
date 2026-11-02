@@ -21,6 +21,7 @@ import { chatMessageFixture } from "./chat-message-node-fixture.mjs";
 import { nativeCommandFixture } from "./native-command-node-fixture.mjs";
 import { nativeHistoryFixture } from "./native-history-node-fixture.mjs";
 import { startOperationClock } from "./operation-clock.mjs";
+import { managedPreparationFixture } from "./managed-preparation-node-fixture.mjs";
 import { NativeCommandError } from "../../cantrip_server/src/db/repository/native-command-errors.ts";
 import { ExecutionLaneConflictError } from "../../cantrip_server/src/db/repository/chat-execution-lanes.ts";
 import { AgentInteractionConflictError } from "../../cantrip_server/src/db/repository/agent-interactions.ts";
@@ -44,7 +45,9 @@ try {
       // Seeding owns only this disposable fixture. Runtime TS private storage is
       // used solely to exercise the actual connector on both PostgreSQL and PGlite.
       let value;
-      if (request.op.startsWith("console-")) {
+      if (request.op.startsWith("preparation-")) {
+        value = await managedPreparationFixture(database.repository, request);
+      } else if (request.op.startsWith("console-")) {
         value = await managedConsoleFixture(
           database.repository,
           request,
@@ -886,11 +889,18 @@ try {
         JSON.stringify({
           id: request.id,
           rejected: true,
+          ...(error.name === "TaskDispatchConflictError"
+            ? { taskLeaseError: error.code }
+            : {}),
           ...(finishClock ? { operationClock: finishClock() } : {}),
           ...(error instanceof AgentInteractionConflictError
             ? { interactionError: "AgentInteractionConflictError" }
             : {}),
-          ...(request.op.startsWith("native-command-lane-") &&
+          ...((request.op.startsWith("native-command-lane-") ||
+            [
+              "native-command-gui-placement",
+              "native-command-gui-worktree",
+            ].includes(request.op)) &&
           error instanceof ExecutionLaneConflictError
             ? { laneError: error.constructor.name }
             : {}),

@@ -326,6 +326,7 @@ async fn main() -> Result<()> {
         service.usage.start();
         service.logical_completion_delivery.start();
         service.history_publication_delivery.start();
+        service.execution.start();
         use std::io::Write;
         writeln!(
             parent_output,
@@ -353,6 +354,7 @@ async fn main() -> Result<()> {
         .with_graceful_shutdown(async move {
             tokio::select! { _=shutdown()=>{}, _=receiver, if watch_parent=>{} }
             eprintln!("{}", json!({"event":"server.shutdown.started"}));
+            shutdown_service.execution.stop();
             shutdown_service.history_publication_delivery.stop();
             shutdown_service.live.transports.pre_close();
             shutdown_service.workers.pre_close();
@@ -362,6 +364,7 @@ async fn main() -> Result<()> {
         // Finish active HTTP requests before permanently closing the bridge,
         // disabling publications, or draining service/database owners.
         service.logical_completion_delivery.stop();
+        service.managed_preparation.stop();
         service.folder_setup.stop();
         service.project_replicas.stop();
         service.github_conversion.stop();
@@ -388,6 +391,7 @@ async fn main() -> Result<()> {
         );
         shutdown_step!("worker-links-close", service.worker_links.close().await);
         shutdown_step!("worker-bridge-close", service.workers.close());
+        shutdown_step!("execution", service.execution.drained().await);
         shutdown_step!(
             "logical-completions",
             service.logical_completion_delivery.drained().await
@@ -423,6 +427,10 @@ async fn main() -> Result<()> {
                 json!({"level":"warn","event":"provider.catalog.background-persistence-failed","message":"Provider catalog background persistence failed during shutdown"})
             );
         }
+        shutdown_step!(
+            "managed-chat-preparation",
+            service.managed_preparation.drained().await
+        );
         shutdown_step!("worker-commands", service.workers.commands.drained().await);
         shutdown_step!(
             "direct-attachments-drain",
@@ -446,6 +454,23 @@ async fn main() -> Result<()> {
             service.worker_maintenance.drained().await
         );
         shutdown_step!("mutation-audits", service.mutation_audits.drained().await);
+        // Detached native/HTTP callbacks can enqueue routing work after their
+        // caller disconnects. Drain their producers before these final reads.
+        shutdown_step!(
+            "chat-live-mutations",
+            service.chat_mutations.drained().await
+        );
+        // Socket and HTTP producers have finished, and closing the worker
+        // bridge has settled commands without deadlines. Persist their final
+        // handoff diagnostics before closing the database.
+        shutdown_step!(
+            "chat-account-failover",
+            service.account_failover.drained().await
+        );
+        shutdown_step!(
+            "native-runtime-handoffs",
+            service.native_handoffs.drained().await
+        );
         shutdown_step!("usage", service.usage.close().await);
     }
     shutdown_step!("database", database.close().await?);

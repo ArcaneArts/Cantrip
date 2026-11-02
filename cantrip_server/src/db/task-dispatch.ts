@@ -13,7 +13,7 @@ import {
   type TaskDispatchWorkerLease,
   type TaskWorkerSummary,
 } from "@cantrip/protocol/task-scheduling";
-import { and, asc, eq, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 
@@ -196,7 +196,7 @@ function fenceWhere(fence: TaskDispatchFence, now: Date) {
     eq(schema.taskDispatchCycles.operationId, fence.operationId),
     eq(schema.taskDispatchCycles.leaseOwner, fence.leaseOwner),
     eq(schema.taskDispatchCycles.fencingToken, fence.fencingToken),
-    sql`${schema.taskDispatchCycles.leaseExpiresAt} > ${now}`,
+    gt(schema.taskDispatchCycles.leaseExpiresAt, now),
   );
 }
 
@@ -777,7 +777,7 @@ export class TaskDispatchRepository {
       .update(schema.taskDispatchCycles)
       .set({
         state: "running",
-        startedAt: sql`coalesce(${schema.taskDispatchCycles.startedAt}, ${now})`,
+        startedAt: sql`coalesce(${schema.taskDispatchCycles.startedAt}, ${now.toISOString()})`,
         turnId: options.turnId,
         ...(options.affinity
           ? {

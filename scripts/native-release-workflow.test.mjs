@@ -82,15 +82,7 @@ test("builds mobile releases in parallel and gates publication on them", async (
   assert.match(workflow, /^ {2}android:\n {4}name: Android signed release$/mu);
   assert.match(workflow, /^ {2}ios:\n {4}name: iOS TestFlight$/mu);
   assert.equal(
-    workflow.match(/pnpm --filter @cantrip\/logging build/gmu)?.length,
-    3,
-  );
-  assert.equal(
-    workflow.match(/pnpm --filter @cantrip\/crypto build/gmu)?.length,
-    3,
-  );
-  assert.equal(
-    workflow.match(/pnpm --filter @cantrip\/version build/gmu)?.length,
+    workflow.match(/pnpm --filter '@cantrip\/app\^\.\.\.' -r build/gmu)?.length,
     3,
   );
   const androidJob =
@@ -98,10 +90,8 @@ test("builds mobile releases in parallel and gates publication on them", async (
   const iosJob = workflow.match(/^ {2}ios:[\s\S]*?(?=^ {2}\w+:)/mu)?.[0] ?? "";
   const clientJob =
     workflow.match(/^ {2}client:[\s\S]*?(?=^ {2}\w+:)/mu)?.[0] ?? "";
-  assert.match(androidJob, /pnpm --filter @cantrip\/version build/u);
-  assert.match(iosJob, /pnpm --filter @cantrip\/version build/u);
-  assert.match(androidJob, /pnpm --filter @cantrip\/crypto build/u);
-  assert.match(iosJob, /pnpm --filter @cantrip\/crypto build/u);
+  assert.match(androidJob, /pnpm --filter '@cantrip\/app\^\.\.\.' -r build/u);
+  assert.match(iosJob, /pnpm --filter '@cantrip\/app\^\.\.\.' -r build/u);
   assert.match(androidJob, /pnpm verify:installation-compatibility/u);
   assert.match(iosJob, /pnpm verify:installation-compatibility/u);
   assert.match(clientJob, /pnpm verify:installation-compatibility/u);
@@ -281,19 +271,7 @@ test("builds generated desktop dependencies before packaging installers", async 
   assert.ok(protocolBuild >= 0);
   assert.match(
     workflow.slice(protocolBuild, macosPackage),
-    /pnpm --filter @cantrip\/version build/u,
-  );
-  assert.match(
-    workflow.slice(protocolBuild, macosPackage),
-    /pnpm --filter @cantrip\/logging build/u,
-  );
-  assert.match(
-    workflow.slice(protocolBuild, macosPackage),
-    /pnpm --filter @cantrip\/protocol build/u,
-  );
-  assert.match(
-    workflow.slice(protocolBuild, macosPackage),
-    /pnpm --filter @cantrip\/crypto build/u,
+    /pnpm --filter '@cantrip\/app\^\.\.\.' -r build/u,
   );
   assert.ok(macosPackage > protocolBuild);
   assert.ok(windowsPackage > protocolBuild);

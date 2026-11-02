@@ -69,10 +69,18 @@ pub(crate) fn parse_response(
 ) -> anyhow::Result<crate::wire::Value> {
     crate::wire::parse(schema, value).map_err(response_error)
 }
+#[derive(Debug, Clone)]
+pub(crate) struct ResponseValidationError(String);
+impl std::fmt::Display for ResponseValidationError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+impl std::error::Error for ResponseValidationError {}
 pub(crate) fn response_error(error: crate::wire::ValidationError) -> anyhow::Error {
     match error {
         crate::wire::ValidationError::Invalid(issues) => {
-            anyhow::Error::msg(crate::wire::Value::Array(issues).stringify_pretty())
+            ResponseValidationError(crate::wire::Value::Array(issues).stringify_pretty()).into()
         }
         crate::wire::ValidationError::Operation => {
             anyhow::anyhow!("Settings response validation failed.")

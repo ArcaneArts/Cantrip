@@ -852,11 +852,17 @@ try {
           );
           server.middlewares.use(
             "/__actual_folder_fixture",
-            (_request, response) => {
-              response.setHeader("content-type", "text/html");
-              response.end(
-                "<!doctype html><html><title>Actual folder client</title><body>Disposable folder acceptance</body></html>",
-              );
+            async (_request, response, next) => {
+              try {
+                const html = await server.transformIndexHtml(
+                  "/__actual_folder_fixture",
+                  "<!doctype html><html><title>Actual folder client</title><body>Disposable folder acceptance</body></html>",
+                );
+                response.setHeader("content-type", "text/html");
+                response.end(html);
+              } catch (error) {
+                next(error);
+              }
             },
           );
         },

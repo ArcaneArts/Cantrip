@@ -7,6 +7,8 @@ import * as runDefinitions from "../../packages/protocol/dist/run-configuration-
 import * as runSecrets from "../../packages/protocol/dist/run-configuration-secrets.js";
 import * as runConfigurationOperations from "../../packages/protocol/dist/run-configuration-operations.js";
 import * as runConfigurationRuntime from "../../packages/protocol/dist/run-configuration-runtime.js";
+import * as taskScheduling from "../../packages/protocol/dist/task-scheduling.js";
+import * as taskOperations from "../../packages/protocol/dist/tasks.js";
 import { repositoryRoutingHandleSchema } from "../../packages/protocol/dist/repository-operation.js";
 import { cuaCursorPreferenceRecordSchema } from "../../packages/protocol/dist/computer-use-preferences.js";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -438,6 +440,58 @@ export const contractRoots = [
   "managedQueueImportResultSchema",
   "managedQueueLookupSchema",
   "managedQueueLookupResultSchema",
+  "managedChatPreparationSchema",
+  "encryptedLinkedConsoleCreateSchema",
+  "nativeBehaviorAttributionSchema",
+  "encryptedChatPlanWireStateSchema",
+  "taskDispatchCycleSummarySchema",
+  "taskDispatchWorkerLeaseSchema",
+  "taskOperationRelayRequestSchema",
+  "chatMessageSchema",
+  "chatTurnRollbackAcceptedSchema",
+  "generateLabelResultSchema",
+  "agentTurnResultSchema",
+  "chatMessageRelayResultSchema",
+  "taskMessageRelayResultSchema",
+  "cuaApprovalRequestEventSchema",
+  "cuaApprovalTerminalSchema",
+  "worktreeStatusResultSchema",
+  "nativeRuntimeHandoffRequestSchema",
+  "nativeRuntimeHandoffPreparedSchema",
+  "nativeRuntimeHandoffStateSchema",
+  "nativeRuntimeHandoffInventorySchema",
+  "nativeRuntimeHandoffWorkerRequestSchema",
+  "nativeRuntimeHandoffConfigurationRequestSchema",
+  "nativeRuntimeHandoffConfigurationSchema",
+  "taskEncryptedOperationStartSchema",
+  "taskOpaqueContentSchema",
+  "taskOpaqueMutationSchema",
+  "taskOpaqueSummarySchema",
+  "taskOperationRelayResultSchema",
+  "taskPlanningRoundOpaqueSummarySchema",
+  "taskPlanningRoundOpaqueContentSchema",
+  "taskWorkerSummarySchema",
+  "taskDispatchCycleListSchema",
+  "taskGoalWorkerResultSchema",
+  "chatGoalResponseSchema",
+  "taskWorkerContinuityFamilySchema",
+  "taskWorkerCreateSchema",
+  "taskWorkerUpdateSchema",
+  "taskWorkerDeleteSchema",
+  "taskWorkerOrderUpdateSchema",
+  "taskWorkerListSchema",
+  "projectTaskPauseStateSchema",
+  "projectTaskPauseUpdateSchema",
+  "chatPauseUpdateSchema",
+  "chatPauseStateSchema",
+  "chatPauseRuntimeStateSchema",
+  "encryptedChatTurnCreateSchema",
+  "encryptedQueuedPromptListSchema",
+  "encryptedQueuedPromptUpdateSchema",
+  "queuedPromptOrderSchema",
+  "encryptedChatPromptSubmitResultSchema",
+  "encryptedConversationPromptSubmitResultSchema",
+  "encryptedChatPromptSteerResultSchema",
 ];
 
 // Resolve the actual source schemas, including their separate protocol modules.
@@ -450,6 +504,8 @@ export function sourceContractSchema(name) {
     runConfigurationRuntime[name] ??
     runConfigurationOperations[name] ??
     runDefinitions[name] ??
+    taskScheduling[name] ??
+    taskOperations[name] ??
     (name === "nativeCommandTerminalEvidenceSchema"
       ? protocol.nativeCommandSettlementSchema.shape.reconciliation.unwrap()
       : undefined) ??
@@ -460,6 +516,17 @@ export function sourceContractSchema(name) {
 }
 
 const refinements = new Map([
+  [taskScheduling.taskWorkerUpdateSchema, "task-worker-update"],
+  [
+    taskScheduling.taskWorkerOrderUpdateSchema.shape.ids,
+    "worker-command-unique",
+  ],
+  [taskOperations.taskGoalWorkerResultSchema, "task-goal-worker-result"],
+  [taskOperations.taskEncryptedOperationStartSchema, "task-operation-start"],
+  [taskOperations.taskOperationRelayResultSchema, "task-operation-result"],
+  [taskOperations.taskMessageRelayResultSchema, "task-message-relay-result"],
+  [protocol.encryptedChatPlanWireStateSchema, "encrypted-plan-state"],
+  [protocol.chatMessageSchema, "chat-message-root"],
   [
     protocol.encryptedProjectGithubConversionPreflightRequestSchema,
     "conversion-source-pair",
@@ -530,11 +597,19 @@ function registerChecks(schema, tags) {
     );
   tags.forEach((tag, index) => registerCustom(schema, index, tag));
 }
+for (const schema of [
+  taskOperations.taskOpaqueMutationSchema.shape.draftAttachmentIds.unwrap(),
+  taskOperations.taskOpaqueSummarySchema.shape.draftAttachmentIds,
+])
+  registerChecks(schema, ["worker-command-unique"]);
 registerChecks(protocol.nativeSettingsVersionSchema.shape.revision, [
   "native-settings-version",
 ]);
 registerChecks(protocol.nativeCommandAdmissionSchema, [
   "native-command-admission",
+]);
+registerChecks(protocol.encryptedChatTurnCreateSchema, [
+  "encrypted-chat-turn-pair",
 ]);
 registerChecks(protocol.nativeHistoryPreparedBatchSchema.shape.items.element, [
   "native-history-evidence-revision",
@@ -718,6 +793,7 @@ registerChecks(protocol.encryptedTerminalCreateSchema, [
   "terminal-title",
 ]);
 registerChecks(protocol.encryptedTerminalUpdateSchema, ["terminal-title"]);
+registerChecks(protocol.encryptedLinkedConsoleCreateSchema, ["terminal-title"]);
 registerChecks(protocol.terminalWireSummarySchema, ["terminal-wire"]);
 registerChecks(protocol.encryptedExplorerCreateSchema, [
   "terminal-placement",

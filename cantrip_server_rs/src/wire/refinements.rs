@@ -7,6 +7,12 @@ pub(super) fn apply(
     path: &[Value],
     message: Option<&str>,
 ) -> Result<(), ValidationError> {
+    if super::public_chats::refine(tag, result, path)? {
+        return Ok(());
+    }
+    if super::tasks::refine(tag, result, path)? {
+        return Ok(());
+    }
     if super::agent_interactions::refine(tag, result, path)? {
         return Ok(());
     }
@@ -204,6 +210,40 @@ pub(super) fn apply(
     }
     let wrapper = &value["passwordWrappedMasterKey"];
     match tag {
+        "task-message-relay-result" => {
+            if value["message"]["classification"]["role"] != "assistant" {
+                let mut at = path.to_vec();
+                at.extend([json!("message"), json!("classification")]);
+                result.issues.push(json!({"code":"custom","message":"An encrypted Task turn must return an assistant message.","path":at}));
+            }
+        }
+        "chat-message-root" => {
+            let valid = (value["contextKind"] == "project"
+                && !value["worktreeId"].is_null()
+                && value["scratchRootId"].is_null())
+                || (value["contextKind"] == "standalone"
+                    && value["worktreeId"].is_null()
+                    && !value["scratchRootId"].is_null());
+            if !valid {
+                custom(&["contextKind"], "Chat message execution root is invalid.");
+            }
+        }
+        "encrypted-plan-state" => {
+            if !value["state"].is_null()
+                && value["state"]["classification"]["hasQuestion"] != value["hasQuestion"]
+            {
+                custom(
+                    &["state", "classification", "hasQuestion"],
+                    "Encrypted plan question metadata is inconsistent.",
+                );
+            }
+            if value["state"].is_null() && value["hasQuestion"] == true {
+                custom(
+                    &["state"],
+                    "Pending encrypted plans require protected state.",
+                );
+            }
+        }
         "pane-title" => {
             if value["titleProtection"]["classification"]["recordKind"] != "tab-group" {
                 custom(&[], "Tab-group title classification must be tab-group.");
@@ -411,6 +451,21 @@ pub(super) fn apply(
                     &["subagentModelId"],
                     "A custom subagent model must be selected.",
                 );
+            }
+        }
+        "task-worker-update" => {
+            if ![
+                "name",
+                "enabled",
+                "modelConfiguration",
+                "maxConcurrency",
+                "allowsPlanGoal",
+                "continuityFamilyOverride",
+            ]
+            .iter()
+            .any(|key| value.get(key).is_some())
+            {
+                custom(&[], "A Task Worker update must change at least one field.");
             }
         }
         "canonical-base64url" => {

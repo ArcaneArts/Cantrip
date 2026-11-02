@@ -34,6 +34,8 @@ fn terminal_contracts_match_actual_protocol_exports() -> Result<()> {
         "terminalWireListSchema",
         "terminalClientMessageSchema",
         "terminalServerMessageSchema",
+        "managedChatPreparationSchema",
+        "encryptedLinkedConsoleCreateSchema",
     ] {
         let output = Command::new("node")
             .args(["scripts/server-rust/security-oracle.mjs", "--vectors", name])

@@ -17,9 +17,11 @@ mod body;
 mod browser_discovery;
 mod browsers;
 mod chat_catalogs;
+mod chat_execution;
 mod chat_forks;
 mod chat_lifecycle;
 mod chat_messages;
+mod chat_preparation;
 mod direct_attachments;
 mod encryption;
 mod file_documents;
@@ -31,6 +33,7 @@ mod middleware;
 mod native_admission;
 mod native_coordination;
 mod native_events;
+mod native_handoffs;
 mod native_history;
 mod native_settings;
 mod on_response;
@@ -53,6 +56,7 @@ mod run_definitions;
 mod run_secrets;
 mod sessions;
 mod settings;
+mod task_workers;
 mod terminal_direct;
 mod terminal_socket;
 mod terminals;
@@ -158,10 +162,13 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(projects::routes())
         .merge(folders::routes())
         .merge(chat_catalogs::routes())
+        .merge(chat_execution::routes())
         .merge(chat_lifecycle::routes())
         .merge(chat_forks::routes())
         .merge(chat_messages::routes())
+        .merge(chat_preparation::routes())
         .merge(native_settings::routes())
+        .merge(native_handoffs::routes())
         .merge(native_events::routes())
         .merge(native_admission::routes())
         .merge(native_history::routes())
@@ -180,6 +187,7 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(run_definitions::routes())
         .merge(run_secrets::routes())
         .merge(settings::routes())
+        .merge(task_workers::routes())
         .merge(terminals::routes())
         .merge(browsers::routes())
         .merge(browser_discovery::routes())

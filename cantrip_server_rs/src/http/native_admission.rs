@@ -52,6 +52,9 @@ async fn apply(
     input: Value,
     phase: String,
 ) -> Result<Value> {
+    if phase == "receipt" {
+        return service.execution.receipts.settle(&owner, &input).await;
+    }
     let repo = Repository::new(service.repository.database.clone());
     if phase == "continue" {
         return authority(
@@ -126,6 +129,7 @@ async fn handle(
             "admit" => "nativeCommandAdmissionSchema",
             "continue" => "nativeCommandContinuationSchema",
             "settings-evidence" => "nativeSettingsEvidenceSchema",
+            "receipt" => "nativeCommandSettlementSchema",
             _ => "nativeCommandDispatchSchema",
         },
         body.as_ref(),
@@ -177,6 +181,7 @@ pub(super) fn routes() -> Router<Arc<AuthService>> {
         .route("/api/internal/native-commands/admit", post(handle))
         .route("/api/internal/native-commands/dispatch", post(handle))
         .route("/api/internal/native-commands/continue", post(handle))
+        .route("/api/internal/native-commands/receipt", post(handle))
         .route(
             "/api/internal/native-commands/settings-evidence",
             post(handle),

@@ -27,8 +27,8 @@ export async function startRetirementProbe({
 const fs = require('node:fs');
 fs.writeFileSync(${JSON.stringify(secretPath)}, require('node:crypto').createHash('sha256').update(process.env.ACCEPTANCE_RUN_SECRET || '').digest('hex'));
 const target = ${JSON.stringify(worktree.path)};
-process.on('SIGTERM', () => {
-  fs.writeFileSync(${JSON.stringify(exitPath)}, JSON.stringify({directoryPresent:fs.existsSync(target),pid:process.pid}));
+for (const signal of ['SIGTERM', 'SIGHUP']) process.on(signal, () => {
+  fs.writeFileSync(${JSON.stringify(exitPath)}, JSON.stringify({directoryPresent:fs.existsSync(target),pid:process.pid,signal}));
   process.exit(0);
 });
 fs.writeFileSync(${JSON.stringify(pidPath)}, String(process.pid));
@@ -153,6 +153,7 @@ setInterval(() => {}, 1000);
       ),
     );
     assert.equal(exited.pid, Number(pid));
+    assert.ok(["SIGTERM", "SIGHUP"].includes(exited.signal));
     assert.equal(
       exited.directoryPresent,
       true,

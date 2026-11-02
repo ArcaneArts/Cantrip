@@ -223,6 +223,27 @@ export async function runHistoryIngestionCases(h) {
     );
   });
   const first = batch(1, (i) => [prepared(i, 0), prepared(i, 1)], [turn]);
+  const guiUsage = (name, record = {}) =>
+    call(name, {
+      op: "native-command-gui-telemetry",
+      action: "usage",
+      record: {
+        sourceKey: "history-gui-attempt",
+        projectId: "github",
+        chatId: "chat",
+        modelRouteId: "",
+        workerId: "alpha",
+        providerAccountId: null,
+        turnId,
+        nativeModelAttribution: capture,
+        attemptStatus: "running",
+        startedAt: stamp,
+        ...record,
+      },
+    });
+  await guiUsage(
+    "real GUI usage bootstrap precedes canonical history ingestion",
+  );
   await seed([
     "CREATE FUNCTION native_history_fail_receipt() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'controlled receipt failure' USING ERRCODE='23514'; END $$",
     "CREATE TRIGGER native_history_receipt_fault BEFORE INSERT ON native_history_receipts FOR EACH ROW EXECUTE FUNCTION native_history_fail_receipt()",
@@ -507,6 +528,15 @@ export async function runHistoryIngestionCases(h) {
   await ingest(
     "complete usage replay stays deduplicated",
     batch(8, [], [{ ...terminal, revision: 3 }]),
+  );
+  await guiUsage(
+    "late GUI finalizer shares canonical turn identity and retains measured history",
+    {
+      attemptStatus: "failed",
+      reasoningEffort: "high",
+      usage: { totalTokens: 999, inputTokens: 999, outputTokens: 0 },
+      nativeModelAttribution: undefined,
+    },
   );
   const usageRows = await raw(
     "SELECT jsonb_agg(jsonb_build_object('input',input_tokens,'total',reported_total_tokens,'status',attempt_status) ORDER BY source_key) result FROM token_usage_records",

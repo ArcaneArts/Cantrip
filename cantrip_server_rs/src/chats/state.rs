@@ -8,6 +8,20 @@ use crate::wire::{Value, value::json};
 use anyhow::Result;
 
 impl Repository {
+    pub async fn set_automation_paused(
+        &self,
+        owner: &str,
+        chat: &str,
+        paused: bool,
+    ) -> Result<Option<Value>> {
+        let (owner, chat) = (owner.to_owned(), chat.to_owned());
+        self.database.transaction(|tx|Box::pin(async move{
+            let at=crate::auth::now();
+            let rows=crate::database::task_pause_queries::context(tx.query("UPDATE chats SET automation_paused=$3,updated_at=$4 WHERE id=$1 AND owner_id=$2 RETURNING to_jsonb(chats)::text",&[&chat,&owner,&paused,&at]).await,"chat",&[json!(paused),json!(crate::auth::iso(at)),json!(chat),json!(owner)])?;
+            if !rows.is_empty(){crate::database::task_pause_queries::context(tx.query("UPDATE managed_queue_states SET revision=revision+1 WHERE chat_id=$1",&[&chat]).await,"queue",&[json!(chat)])?;}
+            rows.first().map(|row|wire_summary(&raw(row)?)).transpose()
+        })).await
+    }
     pub async fn update_label(
         &self,
         owner: &str,

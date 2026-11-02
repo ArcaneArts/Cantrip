@@ -1,7 +1,7 @@
 use crate::wire::{self, Value, coercion::truthy, value::json};
 use anyhow::{Context, Result};
 
-pub(super) fn iso(value: &Value) -> Result<Value> {
+pub(crate) fn iso(value: &Value) -> Result<Value> {
     let millis = value
         .as_js_string()
         .and_then(wire::date_milliseconds)

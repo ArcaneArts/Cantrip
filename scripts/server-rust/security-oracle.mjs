@@ -8,6 +8,10 @@ import { settingsWireCases } from "./settings-wire-fixtures.mjs";
 import { nativeSettingsWireCases } from "./native-settings-fixtures.mjs";
 import { nativeEventWireCases } from "./native-event-http-wire-fixtures.mjs";
 import { nativeHistoryWireCases } from "./native-history-wire-fixtures.mjs";
+import { terminalWireCases } from "./terminal-wire-fixtures.mjs";
+import { turnOrchestrationWireCases } from "./turn-orchestration-wire-fixtures.mjs";
+import { taskWireCases } from "./task-wire-fixtures.mjs";
+import { publicChatWireCases } from "./public-chat-wire-fixtures.mjs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -61,6 +65,11 @@ export function* vectorCases(name, samples = securityFixtures[name]) {
   for (const input of nativeSettingsWireCases(name)) yield prepare(input);
   for (const input of nativeEventWireCases(name)) yield prepare(input);
   for (const input of nativeHistoryWireCases(name)) yield prepare(input);
+  for (const input of terminalWireCases(name, samples)) yield prepare(input);
+  for (const input of turnOrchestrationWireCases(name, samples))
+    yield prepare(input);
+  for (const input of taskWireCases(name, samples)) yield prepare(input);
+  for (const input of publicChatWireCases(name, samples)) yield prepare(input);
   for (const input of [null, [], {}, false, 42, ""]) yield prepare(input);
   for (const sample of samples) {
     const baseline = schema.parse(sample);
