@@ -278,52 +278,56 @@ export async function runGuiRuntimeQuotaCases({ observe, seed, owner }) {
   }
   await clean();
   const resetsAt = now / 1000 + 20;
-  outputs = await run(
-    "known reset windows deduplicate across captures and release keys before recapture",
-    {
-      snapshot: snapshot({
-        windows: [window({ resetsAt }), window({ resetsAt })],
-      }),
-      steps: [
-        { op: "capture" },
-        { op: "capture" },
-        {
-          op: "advance",
-          byMs: 15000,
-          snapshot: snapshot({
-            snapshotId: "before-reset",
-            windows: [window({ resetsAt })],
-          }),
-        },
-        {
-          op: "advance",
-          byMs: 7000,
-          snapshot: snapshot({
-            snapshotId: "after-reset",
-            windows: [window({ resetsAt })],
-          }),
-        },
-      ],
-    },
-  );
-  for (const o of outputs) {
-    assert.deepEqual(
-      o.commands.map((c) => c.atMs),
-      [now, now, now + 15000, now + 22000],
+  for (const quotaTimerFrames of [undefined, "windows"]) {
+    await clean();
+    outputs = await run(
+      `known reset windows deduplicate across captures and release keys before recapture${quotaTimerFrames ? " with Windows stack paths" : ""}`,
+      {
+        quotaTimerFrames,
+        snapshot: snapshot({
+          windows: [window({ resetsAt }), window({ resetsAt })],
+        }),
+        steps: [
+          { op: "capture" },
+          { op: "capture" },
+          {
+            op: "advance",
+            byMs: 15000,
+            snapshot: snapshot({
+              snapshotId: "before-reset",
+              windows: [window({ resetsAt })],
+            }),
+          },
+          {
+            op: "advance",
+            byMs: 7000,
+            snapshot: snapshot({
+              snapshotId: "after-reset",
+              windows: [window({ resetsAt })],
+            }),
+          },
+        ],
+      },
     );
-    assert.deepEqual(o.remainingTimers, []);
+    for (const o of outputs) {
+      assert.deepEqual(
+        o.commands.map((c) => c.atMs),
+        [now, now, now + 15000, now + 22000],
+      );
+      assert.deepEqual(o.remainingTimers, []);
+    }
+    states = await state("reset phase observations retain exact triggers");
+    for (const s of states)
+      assert.deepEqual(
+        s.readings.map((r) => r.observation_trigger).sort(),
+        [
+          "fixture-capture",
+          "fixture-capture",
+          "reset-window-after",
+          "reset-window-before",
+        ].sort(),
+      );
   }
-  states = await state("reset phase observations retain exact triggers");
-  for (const s of states)
-    assert.deepEqual(
-      s.readings.map((r) => r.observation_trigger).sort(),
-      [
-        "fixture-capture",
-        "fixture-capture",
-        "reset-window-after",
-        "reset-window-before",
-      ].sort(),
-    );
   for (const [label, windows, expected] of [
     ["null reset", [window()], []],
     ["past reset", [window({ resetsAt: now / 1000 - 10 })], []],

@@ -3839,6 +3839,39 @@
           "Local macOS full Source/native matrix passes268pairedHTTP observations per database across all9database/authentication profiles. Exact route regression, encrypted chat/queue and consumed-claim identity proofs, typed pause errors, committed partial failures, caller disconnect, actual worker disconnect and post-shutdown encrypted Task preservation pass. Model execution/rollback and pause acknowledgments are controlled boundaries.",
           "Full public Task/Goal controls, actual native pause and unchanged-worker/client flows, failure/restart and supported-platform acceptance remain; this milestone is unmerged."
         ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/tasks/:chatId",
+        "implementation": "cantrip_server_rs/src/http/task_controls.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/task-controls-http.mjs",
+          "scripts/server-rust/task-repository-cases.mjs"
+        ],
+        "remaining": ["Supported-platform and packaged-client acceptance."]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/tasks/:chatId/draft",
+        "implementation": "cantrip_server_rs/src/http/task_controls.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/task-controls-http.mjs",
+          "scripts/server-rust/task-repository-cases.mjs"
+        ],
+        "remaining": ["Supported-platform and packaged-client acceptance."]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/tasks/:chatId/plan",
+        "implementation": "cantrip_server_rs/src/http/task_controls.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/task-controls-http.mjs",
+          "scripts/server-rust/task-repository-cases.mjs"
+        ],
+        "remaining": ["Supported-platform and packaged-client acceptance."]
       }
     ]
   },
@@ -9003,6 +9036,21 @@
       "remaining": [
         "Full public Task/Goal controls and actual unchanged-worker/client execution, including failure/restart/shutdown behavior.",
         "Every original platform, coordination/Redis/WorkerLink, old-data upgrade/post-write rollback, artifact/desktop/container/Winterhold rehearsal, performance, merged/default cutover and production Node removal requirement."
+      ]
+    },
+    "publicTaskControls": {
+      "status": "partial",
+      "implementation": [
+        "cantrip_server_rs/src/http/task_controls.rs",
+        "cantrip_server_rs/src/tasks/",
+        "cantrip_server_rs/src/chats/live_mutations/"
+      ],
+      "evidence": ["scripts/server-rust/task-controls-http.mjs"],
+      "validatedSubset": "Unmerged native GETTask and PATCHdraft/plan use the real repositories and post-commit chat/project Live publication. Local macOS all9storage/auth profiles match Source:86pairedHTTP observations per store(27none/28password/31accounts),6independently decrypted Task results and4Live events per peer/profile. Owner and foreign-owner404, HEAD, malformed-body400, exact state/revision/worker-selection409, rejected-write preservation and admitted ciphertext identity are verified. WorkerConnection is unchanged but this is not a full worker-process/client Task execution proof. No wire schema or production Source behavior changes.",
+      "remaining": [
+        "Public Task create/delete/recover/attachments/dashboard and start/plan/continue/finalize/retry operations.",
+        "Full Chat Goal lifecycle and protected continuation failure correction.",
+        "All supported-platform, real-client/worker, coordination, migration/rollback, packaging, Winterhold rehearsal, performance and final cutover acceptance."
       ]
     }
   },

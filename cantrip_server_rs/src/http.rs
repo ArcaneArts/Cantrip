@@ -56,6 +56,7 @@ mod run_definitions;
 mod run_secrets;
 mod sessions;
 mod settings;
+mod task_controls;
 mod task_workers;
 mod terminal_direct;
 mod terminal_socket;
@@ -163,6 +164,7 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(folders::routes())
         .merge(chat_catalogs::routes())
         .merge(chat_execution::routes())
+        .merge(task_controls::routes())
         .merge(chat_lifecycle::routes())
         .merge(chat_forks::routes())
         .merge(chat_messages::routes())

@@ -49,11 +49,11 @@ export async function runtimeQuotaFixture(repository, input) {
   });
   Date.now = () => now;
   globalThis.setTimeout = (callback, delay, ...args) => {
-    if (
-      !new Error().stack
-        .split("\n")[2]
-        ?.includes("app/runtime/model-routing-runtime.ts")
-    )
+    const frame = new Error().stack.split("\n")[2] ?? "";
+    const caller = (
+      input.quotaTimerFrames === "windows" ? frame.replaceAll("/", "\\") : frame
+    ).replaceAll("\\", "/");
+    if (!caller.includes("app/runtime/model-routing-runtime.ts"))
       return original.setTimeout(callback, delay, ...args);
     const timer = {
       quotaFixtureTimer: true,
