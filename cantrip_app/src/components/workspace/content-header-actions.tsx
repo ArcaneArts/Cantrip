@@ -163,14 +163,14 @@ export function ExplorerHeaderActions({
               Unsaved
             </span>
           ) : null}
-          {header.canEdit ? (
+          {header.canEdit && (header.dirty || header.isSaving) ? (
             <TooltipButton
               aria-keyshortcuts="Meta+S Control+S"
               className="relative size-8"
               disabled={!header.dirty || header.isSaving}
               onClick={() => void header.save()}
               size="icon"
-              tooltip={header.dirty ? "Save file" : "File is saved"}
+              tooltip={header.isSaving ? "Saving file" : "Save file"}
               variant="ghost"
             >
               {header.isSaving ? (
