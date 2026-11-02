@@ -96,7 +96,17 @@ impl Service {
         resource: &'static str,
         routing: Option<&Value>,
     ) {
-        let pending = self.invalidate_chat(owner, chat, resource, &Value::Null, routing);
+        self.publish_entity_invalidation(owner, chat, resource, &Value::Null, routing);
+    }
+    pub fn publish_entity_invalidation(
+        self: &Arc<Self>,
+        owner: &str,
+        chat: &str,
+        resource: &'static str,
+        entity: &Value,
+        routing: Option<&Value>,
+    ) {
+        let pending = self.invalidate_chat(owner, chat, resource, entity, routing);
         self.fanout(pending.into_iter().collect());
     }
     fn invalidate_chat(

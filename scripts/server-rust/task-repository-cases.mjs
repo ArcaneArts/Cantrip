@@ -151,7 +151,13 @@ export async function runTaskRepositoryCases(h) {
         priority: 17,
         planGoalEnabled: true,
         draftAttachmentIds: ["attachment"],
-        requestedTaskWorkerId: null,
+        modelConfiguration: {
+          modelId: null,
+          reasoningEffort: null,
+          customSubagentModel: false,
+          subagentModelId: null,
+          subagentReasoningEffort: null,
+        },
       },
     },
     (v) => {
@@ -160,6 +166,13 @@ export async function runTaskRepositoryCases(h) {
       assert.equal(v.priority, 17);
       assert.equal(v.planGoalEnabled, true);
       assert.deepEqual(v.draftAttachmentIds, ["attachment"]);
+      assert.deepEqual(v.modelConfiguration, {
+        modelId: null,
+        reasoningEffort: null,
+        customSubagentModel: false,
+        subagentModelId: null,
+        subagentReasoningEffort: null,
+      });
     },
   );
   await rejected(
@@ -178,11 +191,23 @@ export async function runTaskRepositoryCases(h) {
     "The encrypted Task mutation changed server-owned state.",
   );
   await rejected(
-    "unavailable requested Task worker",
+    "unavailable per-Task model",
     "draft",
-    { input: { rowVersion: 2, task: edit, requestedTaskWorkerId: id(991) } },
+    {
+      input: {
+        rowVersion: 2,
+        task: edit,
+        modelConfiguration: {
+          modelId: id(991),
+          reasoningEffort: null,
+          customSubagentModel: false,
+          subagentModelId: null,
+          subagentReasoningEffort: null,
+        },
+      },
+    },
     "stale-version",
-    "The selected Task Worker is unavailable.",
+    "The selected model is unavailable.",
   );
   await ok(
     "missing owner draft edit is null",

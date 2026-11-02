@@ -29,7 +29,7 @@ pub(super) async fn lock_user(tx: &Transaction<'_>, owner: &str) -> Result<bool>
         .await?
         .is_empty())
 }
-pub(super) fn task_columns(content: &Value) -> Value {
+pub(crate) fn task_columns(content: &Value) -> Value {
     let mut out = json!({"protected_content":content["protectedContent"]});
     for (name, column) in classification_columns() {
         out[column] = content["classification"][name].clone();
@@ -72,7 +72,7 @@ pub(super) fn round_columns(classification: &Value, protected: &Value) -> Value 
     }
     out
 }
-pub(super) fn summary(row: &Value, dispatch: Option<&Value>) -> Result<Value> {
+pub(crate) fn summary(row: &Value, dispatch: Option<&Value>) -> Result<Value> {
     let mut out = task_content(row)["classification"].clone();
     for (name, column) in [
         ("chatId", "chat_id"),

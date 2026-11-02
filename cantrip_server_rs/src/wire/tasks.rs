@@ -8,7 +8,12 @@ pub(super) fn refine(
 ) -> Result<bool, ValidationError> {
     if !matches!(
         tag,
-        "task-operation-start" | "task-operation-result" | "task-goal-worker-result"
+        "task-operation-start"
+            | "task-operation-result"
+            | "task-goal-worker-result"
+            | "chat-placement-create"
+            | "encrypted-task-create"
+            | "chat-root-model"
     ) {
         return Ok(false);
     }
@@ -25,6 +30,58 @@ pub(super) fn refine(
             .push(json!({"code":"custom","message":message,"path":at}));
     };
     match tag {
+        "chat-root-model" => {
+            if value["modelId"].is_null() {
+                // The generated refine check already includes its declared path.
+                custom(&[], "A root model must be selected.");
+            }
+        }
+        "chat-placement-create" => {
+            if crate::wire::coercion::truthy(value.get("worktreeId"))
+                && crate::wire::coercion::truthy(value.get("target"))
+            {
+                custom(
+                    &[],
+                    "Choose either a legacy worktreeId or an execution target.",
+                );
+            }
+            if ["paneId", "tabGroupId", "targetRegion"]
+                .iter()
+                .filter(|key| value.get(key).is_some())
+                .count()
+                > 1
+            {
+                custom(
+                    &["paneId"],
+                    "Specify only one of paneId, the deprecated tabGroupId, or targetRegion.",
+                );
+            }
+        }
+        "encrypted-task-create" => {
+            let c = &value["task"]["classification"];
+            if c["state"] != "draft"
+                || !c["stableStateBeforeFailure"].is_null()
+                || !c["activeOperationKind"].is_null()
+                || c["planAuthorship"] != "agent"
+                || c["planningRound"] != 0
+                || c["hasPlan"] == true
+                || c["hasQuestions"] == true
+                || c["hasFinalPlan"] == true
+                || c["hasGoalPrompt"] == true
+                || !c["lastError"].is_null()
+            {
+                custom(
+                    &["task", "classification"],
+                    "A new encrypted Task must begin as an empty draft.",
+                );
+            }
+            if value["titleProtection"]["classification"]["recordKind"] != "chat" {
+                custom(
+                    &["titleProtection", "classification", "recordKind"],
+                    "Task title classification must be chat.",
+                );
+            }
+        }
         "task-goal-worker-result" => {
             if !value["message"].is_null()
                 && (value["message"]["classification"]["role"] != "user"

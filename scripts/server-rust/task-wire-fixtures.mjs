@@ -1,3 +1,6 @@
+import { placementWireFixtures } from "./placement-wire-fixtures.mjs";
+import { deferredAttachment } from "./native-settlement-fixtures.mjs";
+
 export const taskTimestamp = "2026-10-25T00:00:00.000Z";
 export const taskOperationId = "77777777-7777-4777-8777-000000000081";
 export const taskEnvelope = {
@@ -186,7 +189,56 @@ export function taskWireFixtures(timestamp) {
   };
   const legacy = structuredClone(results[3]);
   delete legacy.goal.failureTask;
+  const titleProtection = {
+    classification: { recordKind: "chat" },
+    protectedLabel: structuredClone(taskEnvelope),
+  };
+  const create = {
+    chatId: taskOperationId,
+    titleProtection,
+    task: taskContent(),
+  };
+  const chat = {
+    ...placementWireFixtures(titleProtection).chatWireSummarySchema[0],
+    id: taskOperationId,
+    experience: "task",
+  };
   return {
+    encryptedTaskCreateSchema: [
+      create,
+      {
+        ...create,
+        planGoalEnabled: true,
+        priority: 3,
+        modelConfiguration: summary.modelConfiguration,
+        target: {
+          kind: "worktree",
+          projectId: chat.projectId,
+          worktreeId: chat.activeWorktreeId,
+        },
+        paneId: "pane",
+        autoTitle: true,
+        worktreeMode: "pinned",
+      },
+    ],
+    taskWireCreateResultSchema: [
+      { chat, task: { ...summary, chatId: chat.id } },
+    ],
+    chatAttachmentOpaqueListSchema: [[], [deferredAttachment()]],
+    chatModelConfigurationUpdateSchema: [
+      { modelId: "task-model" },
+      {
+        modelId: "task-model",
+        reasoningEffort: " high ",
+        customSubagentModel: true,
+        subagentModelId: " child ",
+        subagentReasoningEffort: " low ",
+      },
+    ],
+    chatInterruptAcceptedSchema: [
+      { interrupted: true },
+      { interrupted: false, ignored: true },
+    ],
     taskWorkerSummarySchema: [
       {
         id: "77777777-7777-4777-8777-000000000101",
@@ -288,6 +340,57 @@ export function taskWireFixtures(timestamp) {
   };
 }
 export function* taskWireCases(name, samples) {
+  if (name === "encryptedTaskCreateSchema") {
+    const base = samples[0];
+    const changes = [
+      { worktreeId: "tree", target: { kind: "project", projectId: "project" } },
+      { paneId: "pane", tabGroupId: "legacy" },
+      { paneId: "pane", targetRegion: "left" },
+      { tabGroupId: "legacy", targetRegion: "right" },
+      {
+        paneId: "pane",
+        tabGroupId: "legacy",
+        targetRegion: "bottom",
+        worktreeId: "tree",
+        target: { kind: "project", projectId: "project" },
+      },
+    ];
+    for (const change of changes) {
+      yield { ...structuredClone(base), ...change };
+      const all = { ...structuredClone(base), ...change };
+      all.task.classification.hasPlan = true;
+      all.titleProtection.classification.recordKind = "project";
+      yield all;
+    }
+    for (const [field, values] of Object.entries({
+      state: [
+        "draft",
+        "review",
+        "planning",
+        "implementing",
+        "failed",
+        "complete",
+      ],
+      stableStateBeforeFailure: [null, "draft", "review"],
+      activeOperationKind: [null, "direct", "initial-plan", "finalize"],
+      planAuthorship: ["agent", "user"],
+      planningRound: [0, 1, 2],
+      hasPlan: [false, true],
+      hasQuestions: [false, true],
+      hasFinalPlan: [false, true],
+      hasGoalPrompt: [false, true],
+      lastError: [
+        null,
+        { code: "failure", operationKind: "direct", occurredAt: taskTimestamp },
+      ],
+    }))
+      for (const value of values) {
+        const input = structuredClone(base);
+        input.task.classification[field] = value;
+        yield input;
+      }
+    return;
+  }
   if (name === "taskWorkerOrderUpdateSchema") {
     yield { ids: [samples[0].ids[0], samples[0].ids[0]] };
     yield { ids: [samples[0].ids[0], samples[0].ids[0].toUpperCase()] };

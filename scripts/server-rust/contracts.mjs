@@ -501,6 +501,11 @@ export const contractRoots = [
   "projectAlertCountsSchema",
   "projectAlertChangeSchema",
   "projectAlertProtectedDetailSchema",
+  "encryptedTaskCreateSchema",
+  "taskWireCreateResultSchema",
+  "chatAttachmentOpaqueListSchema",
+  "chatInterruptAcceptedSchema",
+  "chatModelConfigurationUpdateSchema",
 ];
 
 // Resolve the actual source schemas, including their separate protocol modules.
@@ -621,6 +626,14 @@ registerChecks(protocol.nativeCommandAdmissionSchema, [
 ]);
 registerChecks(protocol.encryptedChatTurnCreateSchema, [
   "encrypted-chat-turn-pair",
+]);
+registerChecks(protocol.encryptedTaskCreateSchema, [
+  "chat-placement-create",
+  "encrypted-task-create",
+]);
+registerChecks(protocol.chatModelConfigurationUpdateSchema, [
+  "model-configuration",
+  "chat-root-model",
 ]);
 registerChecks(protocol.nativeHistoryPreparedBatchSchema.shape.items.element, [
   "native-history-evidence-revision",

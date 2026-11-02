@@ -1249,6 +1249,10 @@ jobs:
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"
         run: node --import tsx scripts/server-rust/task-controls-http.mjs --database pglite --report .qa/rust-server/task-controls-http-pglite.json
+      - name: Public Task creation, deletion, attachments and model configuration with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/task-surfaces-http.mjs --database pglite --report .qa/rust-server/task-surfaces-http-pglite.json
       - name: native-coordination-http with pglite
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"
@@ -1361,6 +1365,10 @@ jobs:
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"
         run: node --import tsx scripts/server-rust/task-controls-http.mjs --database bundled-postgres --report .qa/rust-server/task-controls-http-bundled-postgres.json
+      - name: Public Task creation, deletion, attachments and model configuration with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/task-surfaces-http.mjs --database bundled-postgres --report .qa/rust-server/task-surfaces-http-bundled-postgres.json
       - name: native-coordination-http with bundled-postgres
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"
@@ -1473,6 +1481,10 @@ jobs:
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"
         run: node --import tsx scripts/server-rust/task-controls-http.mjs --database postgres --report .qa/rust-server/task-controls-http-postgres.json
+      - name: Public Task creation, deletion, attachments and model configuration with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/task-surfaces-http.mjs --database postgres --report .qa/rust-server/task-surfaces-http-postgres.json
       - name: native-coordination-http with postgres
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"
