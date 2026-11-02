@@ -740,19 +740,22 @@ export function useRemoteDesktopCreationOperation({
       paneId,
       target,
       desktopTarget,
+      targetRegion,
     }: {
       projectId: string;
       paneId?: string;
       target?: ExecutionTarget;
       desktopTarget?: RemoteDesktopTarget;
+      targetRegion?: ProjectPaneRegion;
     }) =>
       createRemoteDesktop(
         projectId,
         ownedPlacement ? undefined : paneId,
         target,
         desktopTarget,
+        ownedPlacement ? undefined : targetRegion,
       ),
-    onSuccess: (desktop, { paneId }) => {
+    onSuccess: (desktop, { paneId, targetRegion }) => {
       queryClient.setQueryData<ProjectViewSummary[]>(
         ["project-views", desktop.projectId],
         (current = []) =>
@@ -776,6 +779,7 @@ export function useRemoteDesktopCreationOperation({
       });
       openCreatedTab(desktop.projectId, "remote-desktop", desktop.id, {
         paneId,
+        targetRegion,
       });
       void queryClient.invalidateQueries({
         queryKey: ["project-views", desktop.projectId],
