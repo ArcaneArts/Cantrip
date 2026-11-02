@@ -46,3 +46,4 @@ export { projectPaneViews } from "./project-tabs.js";
 
 export * from "./agent-chat-tools.js";
 export * from "./chat-communication.js";
+export * from "./project-alerts.js";

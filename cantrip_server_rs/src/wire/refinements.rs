@@ -90,6 +90,62 @@ pub(super) fn apply(
         at.extend(suffix.iter().map(|v| json!(v)));
         result.issue(json!({"code":"custom"}), &at, message.into(), false);
     };
+    if tag == "project-alert-detail" {
+        if value["context"]["domain"] != json!("alert-content")
+            || value["protectedContent"]["domain"] != json!("alert-content")
+            || value["context"]["direction"] != json!("stored")
+        {
+            custom(&[], "Alerts require stored alert-content ciphertext.");
+        }
+        return Ok(());
+    }
+    if tag == "project-alert-projection" {
+        let expected = match value["source"].as_str() {
+            Some("interaction") => "interaction",
+            Some("goal") => "goal",
+            Some("agent") => "chat",
+            _ => "task",
+        };
+        if value["target"]["kind"] != json!(expected)
+            || value["target"]["chatId"] != value["chatId"]
+        {
+            custom(&["target"], "Alert target does not match its source.");
+        }
+        if value["source"] == json!("interaction")
+            && value["target"]["kind"] == json!("interaction")
+            && value["target"]["requestId"] != value["sourceId"]
+        {
+            custom(
+                &["sourceId"],
+                "Interaction alert must identify its exact request.",
+            );
+        }
+        if value["source"] == json!("agent")
+            && (value["chatId"].is_null()
+                || value["protectedDetail"].is_null()
+                || value["protectedDetail"]["context"]["scopeId"] != value["chatId"])
+        {
+            custom(
+                &["protectedDetail"],
+                "Agent alerts need protected details bound to their originating chat.",
+            );
+        }
+        if value["source"] != json!("agent") && !value["protectedDetail"].is_null() {
+            custom(
+                &["protectedDetail"],
+                "System alerts retain details in their authoritative source.",
+            );
+        }
+        if value["source"] == json!("agent")
+            && !matches!(value["kind"].as_str(), Some("blocked" | "action-required"))
+        {
+            custom(
+                &["kind"],
+                "Agents cannot forge system-owned attention requests.",
+            );
+        }
+        return Ok(());
+    }
     if tag == "native-command-event" {
         if !matches!(
             value["type"].as_str(),

@@ -475,7 +475,14 @@
     "encryptedConversationPromptSubmitResultSchema": 9137,
     "encryptedChatPromptSteerResultSchema": 9142,
     "taskOperationStartSchema": 9145,
-    "taskRecoveryStartSchema": 9148
+    "taskRecoveryStartSchema": 9148,
+    "projectAlertProjectionSchema": 9150,
+    "projectAlertSchema": 9193,
+    "projectAlertQuerySchema": 9204,
+    "projectAlertPageSchema": 9209,
+    "projectAlertCountsSchema": 9213,
+    "projectAlertChangeSchema": 9217,
+    "projectAlertProtectedDetailSchema": 9180
   },
   "nodes": [
     {
@@ -1260,6 +1267,7 @@
         "customization-content",
         "tunnel-content",
         "client-control-content",
+        "alert-content",
         "private-analytics"
       ],
       "checks": []
@@ -1306,6 +1314,7 @@
         "customization-content",
         "tunnel-content",
         "client-control-content",
+        "alert-content",
         "private-analytics"
       ],
       "checks": []
@@ -2802,7 +2811,7 @@
     {
       "type": "array",
       "element": 377,
-      "checks": [{ "check": "max_length", "maximum": 16, "when": "length" }]
+      "checks": [{ "check": "max_length", "maximum": 17, "when": "length" }]
     },
     {
       "type": "object",
@@ -3876,6 +3885,7 @@
       "type": "enum",
       "name": "appLiveResourceSchema",
       "values": [
+        "project-alert",
         "server",
         "account-session",
         "account-resource-usage",
@@ -4155,6 +4165,7 @@
       "type": "enum",
       "name": "endpointContentDomainSchema",
       "values": [
+        "alert-content",
         "run-content",
         "customization-content",
         "tunnel-content",
@@ -53486,6 +53497,414 @@
       "name": "taskRecoveryStartSchema",
       "shape": {},
       "catchall": 9149,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "projectAlertProjectionSchema",
+      "shape": {
+        "projectId": 9151,
+        "chatId": 9152,
+        "source": 9153,
+        "sourceId": 9151,
+        "episodeId": 9151,
+        "sourceRevision": 9154,
+        "kind": 9155,
+        "priority": 9156,
+        "status": 9158,
+        "target": 9159,
+        "occurredAt": 9177,
+        "protectedDetail": 9178
+      },
+      "catchall": 9192,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "project-alert-projection",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 255, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 9151, "checks": [] },
+    {
+      "type": "enum",
+      "name": "projectAlertSourceSchema",
+      "values": ["interaction", "task-review", "task-blocker", "goal", "agent"],
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 1, "inclusive": true },
+        { "check": "less_than", "value": 2147483647, "inclusive": true }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "projectAlertKindSchema",
+      "values": [
+        "permission",
+        "user-input",
+        "task-questions",
+        "plan-ready",
+        "blocked",
+        "goal-stalled",
+        "action-required"
+      ],
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 9157,
+      "defaultValue": 1,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 2, "inclusive": true }
+      ]
+    },
+    { "type": "enum", "values": ["open", "resolved"], "checks": [] },
+    {
+      "type": "union",
+      "name": "projectAlertTargetSchema",
+      "options": [9160, 9164, 9169, 9173],
+      "discriminator": "kind",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "kind": 9161, "chatId": 9162, "requestId": 9151 },
+      "catchall": 9163,
+      "checks": []
+    },
+    { "type": "literal", "values": ["interaction"], "checks": [] },
+    { "type": "nullable", "innerType": 9151, "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "kind": 9165,
+        "chatId": 9151,
+        "planningRound": 9166,
+        "section": 9167
+      },
+      "catchall": 9168,
+      "checks": []
+    },
+    { "type": "literal", "values": ["task"], "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "enum",
+      "values": ["questions", "plan", "overview"],
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "kind": 9170, "chatId": 9151, "threadId": 9171 },
+      "catchall": 9172,
+      "checks": []
+    },
+    { "type": "literal", "values": ["goal"], "checks": [] },
+    { "type": "nullable", "innerType": 9151, "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "kind": 9174, "chatId": 9151, "turnId": 9175 },
+      "catchall": 9176,
+      "checks": []
+    },
+    { "type": "literal", "values": ["chat"], "checks": [] },
+    { "type": "nullable", "innerType": 9151, "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 9179,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 9180, "checks": [] },
+    {
+      "type": "object",
+      "name": "projectAlertProtectedDetailSchema",
+      "shape": { "context": 9181, "protectedContent": 2222 },
+      "catchall": 9191,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "project-alert-detail",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "endpointContentContextSchema",
+      "shape": {
+        "domain": 600,
+        "serverId": 9182,
+        "workerId": 9183,
+        "scopeId": 9185,
+        "operationId": 9186,
+        "operation": 9187,
+        "direction": 9188,
+        "sequence": 9189
+      },
+      "catchall": 9190,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 2000, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 9184, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 255, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 1000, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 160, "when": "length" }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "endpointContentDirectionSchema",
+      "values": ["request", "response", "event", "stored"],
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 9007199254740991, "inclusive": true }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "projectAlertSchema",
+      "shape": {
+        "projectId": 9151,
+        "chatId": 9152,
+        "source": 9153,
+        "sourceId": 9151,
+        "episodeId": 9151,
+        "id": 9194,
+        "sourceRevision": 9195,
+        "kind": 9155,
+        "priority": 9196,
+        "status": 9197,
+        "target": 9159,
+        "protectedDetail": 9198,
+        "createdAt": 9199,
+        "updatedAt": 9200,
+        "resolvedAt": 9201
+      },
+      "catchall": 9203,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^alert_[a-f0-9]{64}$",
+          "flags": "",
+          "displayPattern": "/^alert_[a-f0-9]{64}$/"
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 2, "inclusive": true }
+      ]
+    },
+    { "type": "enum", "values": ["open", "resolved"], "checks": [] },
+    { "type": "nullable", "innerType": 9180, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 9202, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "projectAlertQuerySchema",
+      "shape": { "limit": 9205, "after": 9207 },
+      "catchall": 9208,
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 9206,
+      "defaultValue": 50,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "coerce": true,
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 1, "inclusive": true },
+        { "check": "less_than", "value": 100, "inclusive": true }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 9194,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "projectAlertPageSchema",
+      "shape": { "items": 9210, "nextCursor": 9211 },
+      "catchall": 9212,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 9193,
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 9194, "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "array",
+      "name": "projectAlertCountsSchema",
+      "element": 9214,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "projectId": 9151, "count": 9215 },
+      "catchall": 9216,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "projectAlertChangeSchema",
+      "shape": { "ownerId": 9151, "projectId": 9151 },
+      "catchall": 9218,
       "checks": []
     },
     { "type": "never", "checks": [] }

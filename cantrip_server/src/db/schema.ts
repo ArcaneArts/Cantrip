@@ -1,3 +1,4 @@
+export { projectAlerts } from "./schema-alerts.js";
 import type { CuaEffectConfiguration } from "@cantrip/protocol/computer-use-effects";
 export {
   conversationUsageClients,

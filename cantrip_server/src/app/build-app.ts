@@ -1,3 +1,4 @@
+import { installProjectAlertRoutes } from "./routes/project-alerts.js";
 import { createAgentChatOperations } from "../agent-tools/chat-operations.js";
 import { installManagedNativeRoutes } from "./routes/internal-native.js";
 import { installNativeHistoryRuntime } from "./runtime/native-history-runtime.js";
@@ -884,6 +885,18 @@ export async function buildApp({
     recordLiveEncryptedAgentInteractionRequest,
     terminalizeLiveAgentInteractionRequest,
   });
+  const stopProjectAlertSubscription = repository.alerts.subscribe((change) => {
+    if (!isLivePublishingEnabled()) return;
+    liveHub.publish({
+      ownerId: change.ownerId,
+      scope: { kind: "current-user" },
+      resource: "project-alert",
+      action: "invalidated",
+      entityId: change.projectId,
+      revision: null,
+      payload: null,
+    });
+  });
   const stopComputerUseAuthoritySubscription =
     repository.subscribeComputerUseAuthorityChanges(async (change) => {
       const workers = await repository.listWorkers(change.ownerId);
@@ -1358,6 +1371,7 @@ export async function buildApp({
   });
 
   installPolicyRoutes(app, { applicationOwnerId, repository });
+  installProjectAlertRoutes(app, { applicationOwnerId, repository });
 
   app.addHook("onClose", async () => {
     // Upgraded sockets can close while their credential/owner queries remain
@@ -1366,6 +1380,7 @@ export async function buildApp({
     await drainWorkerAuthentications();
     nativeLogicalCompletionDelivery.stop();
     stopComputerUseAuthoritySubscription();
+    stopProjectAlertSubscription();
     liveInfrastructureRuntime.stopPublishing();
     sessionSocketRuntime.stopValidation();
     tunnelControlPlaneRuntime.stopExpirySweep();

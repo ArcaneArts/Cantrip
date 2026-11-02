@@ -1,3 +1,4 @@
+import { PROJECT_ALERT_CHANNEL } from "./repository/project-alerts.js";
 import { mkdir, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -191,6 +192,10 @@ async function openPglite(
       COMPUTER_USE_AUTHORITY_CHANNEL,
       (payload) => repository.receiveComputerUseAuthorityNotification(payload),
     );
+    const stopAlertNotifications = await client.listen(
+      PROJECT_ALERT_CHANNEL,
+      (payload) => repository.alerts.receive(payload),
+    );
     await repository.ensureLocalIdentity();
     await repository.policies.ensureOwnerState(LOCAL_USER_ID);
     await repository.migrateProviderSecrets();
@@ -216,7 +221,10 @@ async function openPglite(
       },
       async close() {
         try {
-          await stopAuthorityNotifications();
+          await Promise.all([
+            stopAuthorityNotifications(),
+            stopAlertNotifications(),
+          ]);
         } finally {
           await client.close();
         }
@@ -254,6 +262,10 @@ async function connectPostgres(
         (payload) =>
           repository.receiveComputerUseAuthorityNotification(payload),
       );
+      const alertNotifications = await client.listen(
+        PROJECT_ALERT_CHANNEL,
+        (payload) => repository.alerts.receive(payload),
+      );
       await repository.ensureLocalIdentity();
       await repository.policies.ensureOwnerState(LOCAL_USER_ID);
       await repository.migrateProviderSecrets();
@@ -280,7 +292,10 @@ async function connectPostgres(
         },
         async close() {
           try {
-            await authorityNotifications.unlisten();
+            await Promise.all([
+              authorityNotifications.unlisten(),
+              alertNotifications.unlisten(),
+            ]);
           } finally {
             await client.end({ timeout: 5 });
           }
