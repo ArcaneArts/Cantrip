@@ -1,4 +1,4 @@
-//! One executor owns session state; independent input jobs own long gestures.
+//! One executor owns session state; independent jobs own capture and long gestures.
 //! Requests within each session remain ordered, while other sessions can proceed.
 use crate::{
     backend::CaptureBackend,
@@ -22,6 +22,8 @@ use std::{
 // closes and four JS resets. Matches the worker transport's reserved lanes.
 const MAX_PENDING: usize = 37;
 const MAX_OUTBOUND: usize = 4;
+// Keep raster/PNG work bounded while leaving the executor free for input.
+const MAX_CAPTURE_JOBS: usize = 2;
 pub(crate) type Pending = Arc<Mutex<HashMap<u64, Cancellation>>>;
 
 pub(crate) enum Work {
@@ -33,6 +35,10 @@ pub(crate) enum Work {
     InputDone {
         id: u64,
         result: Box<crate::input_job::InputResult>,
+    },
+    CaptureDone {
+        id: u64,
+        result: Box<crate::error::Result<crate::remote_capture::EncodedFrame>>,
     },
     Wake,
     InputClosed(io::Result<()>),
@@ -47,6 +53,11 @@ struct Request {
 struct ActiveInput {
     id: u64,
     plan: Box<InputPlan>,
+    cancellation: Cancellation,
+    thread: std::thread::JoinHandle<()>,
+}
+struct ActiveCapture {
+    plan: crate::remote_capture::FramePlan,
     cancellation: Cancellation,
     thread: std::thread::JoinHandle<()>,
 }
@@ -293,6 +304,7 @@ pub fn run<B: CaptureBackend + 'static>(
     service.enable_javascript();
     let mut sequence = 0;
     let mut active: HashMap<String, ActiveInput> = HashMap::new();
+    let mut captures: HashMap<u64, ActiveCapture> = HashMap::new();
     let mut deferred: VecDeque<Request> = VecDeque::new();
     let mut result = (|| {
         loop {
@@ -300,10 +312,16 @@ pub fn run<B: CaptureBackend + 'static>(
             // unrelated work, and cancellation can retire a queued request now.
             while let Some(index) = deferred.iter().position(|request| {
                 request.cancellation.is_cancelled()
-                    || request
-                        .operation
-                        .binding()
-                        .is_none_or(|binding| !active.contains_key(&binding.session_id))
+                    || ((!matches!(
+                        request.operation,
+                        Operation::RemoteCapture {
+                            request: crate::remote_capture::Request::Frame { .. }
+                        }
+                    ) || captures.len() < MAX_CAPTURE_JOBS)
+                        && request
+                            .operation
+                            .binding()
+                            .is_none_or(|binding| !active.contains_key(&binding.session_id)))
             }) {
                 let Request {
                     id,
@@ -317,6 +335,47 @@ pub fn run<B: CaptureBackend + 'static>(
                 match service.dispatch(operation, &cancellation, now) {
                     Dispatch::Complete(result) => {
                         respond(id, result, &frames_tx, &pending, &mut sequence)?
+                    }
+                    Dispatch::Capture { plan, work } => {
+                        let completion = completion_tx.clone();
+                        let spawned = std::thread::Builder::new()
+                            .name("cua-capture".into())
+                            .spawn(move || {
+                                let result =
+                                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(work))
+                                        .unwrap_or_else(|_| {
+                                            Err(CuaError::new(
+                                                ErrorCode::CaptureFailed,
+                                                "Native capture failed unexpectedly.",
+                                            ))
+                                        });
+                                let _ = completion.send(Work::CaptureDone {
+                                    id,
+                                    result: Box::new(result),
+                                });
+                            });
+                        match spawned {
+                            Ok(thread) => {
+                                captures.insert(
+                                    id,
+                                    ActiveCapture {
+                                        plan,
+                                        cancellation,
+                                        thread,
+                                    },
+                                );
+                            }
+                            Err(_) => {
+                                let result = service.finish_capture(
+                                    plan,
+                                    Err(CuaError::new(
+                                        ErrorCode::CaptureFailed,
+                                        "Cannot start native capture.",
+                                    )),
+                                );
+                                respond(id, result, &frames_tx, &pending, &mut sequence)?;
+                            }
+                        }
                     }
                     Dispatch::Input { plan, work } => {
                         let completion = completion_tx.clone();
@@ -361,6 +420,13 @@ pub fn run<B: CaptureBackend + 'static>(
                 Ok(Work::InputClosed(result)) => return result,
                 Ok(Work::OutputFailed) => return Err(io::Error::other("CUA output closed.")),
                 Ok(Work::Wake) => {}
+                Ok(Work::CaptureDone { id, result }) => {
+                    if let Some(job) = captures.remove(&id) {
+                        let _ = job.thread.join();
+                        let result = service.finish_capture(job.plan, *result);
+                        respond(id, result, &frames_tx, &pending, &mut sequence)?;
+                    }
+                }
                 Ok(Work::InputDone { id, result }) => {
                     let session = active
                         .iter()
@@ -423,6 +489,9 @@ pub fn run<B: CaptureBackend + 'static>(
     for job in active.values() {
         job.cancellation.cancel();
     }
+    for job in captures.values() {
+        job.cancellation.cancel();
+    }
     // Cancellation wakes native waits. Allow scoped release and source cleanup
     // before dropping the backend, but never hang transport shutdown on a broken
     // native API. Remaining jobs retain their own resources until they exit.
@@ -432,9 +501,21 @@ pub fn run<B: CaptureBackend + 'static>(
         Err(io::Error::other("CUA transport already closed."))
     };
     let shutdown = Instant::now();
-    while !active.is_empty() {
+    while !active.is_empty() || !captures.is_empty() {
         let remaining = Duration::from_secs(2).saturating_sub(shutdown.elapsed());
         match jobs_rx.recv_timeout(remaining) {
+            Ok(Work::CaptureDone { id, result }) => {
+                if let Some(job) = captures.remove(&id) {
+                    let _ = job.thread.join();
+                    let completed = service.finish_capture(job.plan, *result);
+                    if shutdown_result.is_ok() {
+                        shutdown_result =
+                            respond(id, completed, &frames_tx, &pending, &mut sequence);
+                    } else {
+                        pending.lock().unwrap().remove(&id);
+                    }
+                }
+            }
             Ok(Work::InputDone { id, result }) => {
                 let session = active
                     .iter()
@@ -473,7 +554,7 @@ pub fn run<B: CaptureBackend + 'static>(
                 &mut sequence,
             );
         }
-        result = if active.is_empty() {
+        result = if active.is_empty() && captures.is_empty() {
             shutdown_result
         } else {
             Err(io::Error::other("CUA input shutdown timed out."))

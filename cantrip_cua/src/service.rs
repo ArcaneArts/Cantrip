@@ -205,6 +205,10 @@ pub(crate) struct InputPlan {
 }
 pub(crate) enum Dispatch {
     Complete(Result<OperationResult>),
+    Capture {
+        plan: crate::remote_capture::FramePlan,
+        work: crate::remote_capture::FrameWork,
+    },
     Input {
         plan: Box<InputPlan>,
         work: crate::input_job::InputWork,
@@ -254,6 +258,13 @@ impl<B: CaptureBackend> CuaService<B> {
     }
     pub(crate) fn enable_javascript(&mut self) {
         self.javascript = true;
+    }
+    pub(crate) fn finish_capture(
+        &mut self,
+        plan: crate::remote_capture::FramePlan,
+        result: Result<crate::remote_capture::EncodedFrame>,
+    ) -> Result<OperationResult> {
+        self.remote_captures.finish_frame(plan, result)
     }
     pub fn session_count(&self) -> usize {
         self.sessions.len()
@@ -326,6 +337,19 @@ impl<B: CaptureBackend> CuaService<B> {
         cancel: &Cancellation,
         now_ms: u64,
     ) -> Dispatch {
+        if let Operation::RemoteCapture {
+            request: crate::remote_capture::Request::Frame { binding, handle },
+        } = &operation
+        {
+            match self
+                .remote_captures
+                .prepare_frame(&mut self.backend, binding, *handle, cancel)
+            {
+                Ok(Some((plan, work))) => return Dispatch::Capture { plan, work },
+                Err(error) => return Dispatch::Complete(Err(error)),
+                Ok(None) => {}
+            }
+        }
         let Operation::InputPerform {
             binding,
             target_id,
@@ -914,6 +938,7 @@ impl<B: CaptureBackend> CuaService<B> {
                 // the framed runtime, but execute their owned work in this call.
                 match self.dispatch(operation, cancel, now_ms) {
                     Dispatch::Complete(result) => result,
+                    Dispatch::Capture { plan, work } => self.finish_capture(plan, work()),
                     Dispatch::Input { plan, work } => {
                         let progress = plan.progress.clone();
                         let result = work(&mut |point| progress.set(point));

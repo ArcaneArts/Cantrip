@@ -13,6 +13,17 @@ type Input = Extract<
   RemoteDesktopClientMessage,
   { type: "pointer" | "key" | "clipboard" }
 >;
+type Dimensions = {
+  pixelWidth: number;
+  pixelHeight: number;
+  logicalWidth: number;
+  logicalHeight: number;
+};
+type PendingHover = {
+  message: Input;
+  dimensions: Dimensions;
+  work: Promise<void>;
+};
 type Entry = {
   epoch: string;
   controller: AbortController;
@@ -21,6 +32,8 @@ type Entry = {
   sequence: number;
   nativeSequence: number;
   queue: Promise<unknown>;
+  pendingHover: PendingHover | null;
+  wheelRemainder: { x: number; y: number; modifiers: number };
   heldKeys: Map<string, Set<string>>;
   position: { x: number; y: number } | null;
 };
@@ -120,6 +133,8 @@ export class DesktopParticipantInput {
       sequence: 0,
       nativeSequence: 0,
       queue: Promise.resolve(),
+      pendingHover: null,
+      wheelRemainder: { x: 0, y: 0, modifiers: 0 },
       heldKeys: new Map(),
       position: null,
     };
@@ -163,12 +178,7 @@ export class DesktopParticipantInput {
   async send(
     id: string,
     message: Input,
-    dimensions: {
-      pixelWidth: number;
-      pixelHeight: number;
-      logicalWidth: number;
-      logicalHeight: number;
-    },
+    dimensions: Dimensions,
   ): Promise<void> {
     const entry = this.entries.get(id);
     if (
@@ -205,7 +215,33 @@ export class DesktopParticipantInput {
         // A lost cursor update is not a failed native input operation.
       }
     }
+    const hover =
+      submitted.type === "pointer" &&
+      submitted.event === "move" &&
+      submitted.buttons === 0;
+    const previousHover = entry.pendingHover;
+    if (
+      hover &&
+      submitted.type === "pointer" &&
+      previousHover?.message.type === "pointer" &&
+      previousHover.message.modifiers === submitted.modifiers
+    ) {
+      // Replace only an adjacent hover that has not started native delivery.
+      // Clicks, drag moves, wheel and key events are ordering barriers.
+      previousHover.message = submitted;
+      previousHover.dimensions = { ...dimensions };
+      return previousHover.work;
+    }
+    entry.pendingHover = null;
+    const queued: PendingHover = {
+      message: submitted,
+      dimensions: { ...dimensions },
+      work: Promise.resolve(),
+    };
     const work = entry.queue.then(async () => {
+      if (entry.pendingHover === queued) entry.pendingHover = null;
+      const submitted = queued.message;
+      const dimensions = queued.dimensions;
       if (this.entries.get(id) !== entry)
         throw new Error("Remote input target changed; no input was sent.");
       const post = async (event: InteractionEvent) => {
@@ -225,17 +261,30 @@ export class DesktopParticipantInput {
         const mods = modifiers(submitted.modifiers);
         if (submitted.event === "move")
           await post({ type: "pointerMove", data: { point, modifiers: mods } });
-        else if (submitted.event === "wheel")
-          await post({
-            type: "scroll",
-            data: {
-              point,
-              deltaX: Math.round(submitted.deltaX),
-              deltaY: Math.round(submitted.deltaY),
-              modifiers: mods,
-            },
-          });
-        else if (submitted.button !== "none")
+        else if (submitted.event === "wheel") {
+          const remainder = entry.wheelRemainder;
+          if (remainder.modifiers !== submitted.modifiers) {
+            remainder.x = remainder.y = 0;
+            remainder.modifiers = submitted.modifiers;
+          }
+          remainder.x += submitted.deltaX;
+          remainder.y += submitted.deltaY;
+          const deltaX = Math.trunc(remainder.x);
+          const deltaY = Math.trunc(remainder.y);
+          remainder.x -= deltaX;
+          remainder.y -= deltaY;
+          // Keep fractional trackpad motion until it adds up to native pixels.
+          if (deltaX || deltaY)
+            await post({
+              type: "scroll",
+              data: {
+                point,
+                deltaX,
+                deltaY,
+                modifiers: mods,
+              },
+            });
+        } else if (submitted.button !== "none")
           await post(
             submitted.event === "down"
               ? {
@@ -312,6 +361,8 @@ export class DesktopParticipantInput {
         if (this.entries.get(id) === entry) this.options.clipboard(id, text);
       }
     });
+    queued.work = work;
+    if (hover) entry.pendingHover = queued;
     entry.queue = work;
     try {
       await work;

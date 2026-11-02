@@ -7,7 +7,6 @@ import {
   type FormEvent,
   type KeyboardEvent,
   type PointerEvent,
-  type WheelEvent,
 } from "react";
 
 import {
@@ -519,19 +518,25 @@ export const RemoteSurfaceCanvas = forwardRef<
     );
   };
 
-  const wheel = (event: WheelEvent<HTMLCanvasElement>) => {
-    event.preventDefault();
+  useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    onPointer(
-      remoteSurfaceWheelInput(
-        event,
-        canvas.getBoundingClientRect(),
-        getCoordinateSpace(),
-        coordinateLimit,
-      ),
-    );
-  };
+    const wheel = (event: WheelEvent) => {
+      event.preventDefault();
+      onPointer(
+        remoteSurfaceWheelInput(
+          event,
+          canvas.getBoundingClientRect(),
+          getCoordinateSpace(),
+          coordinateLimit,
+        ),
+      );
+    };
+    // React's delegated wheel listener is passive. The remote viewport owns
+    // scrolling, so prevent local scrolling using a cancellable native listener.
+    canvas.addEventListener("wheel", wheel, { passive: false });
+    return () => canvas.removeEventListener("wheel", wheel);
+  }, [onPointer, getCoordinateSpace, coordinateLimit]);
 
   const key = (event: KeyboardEvent<HTMLElement>, type: "down" | "up") => {
     event.preventDefault();
@@ -612,7 +617,6 @@ export const RemoteSurfaceCanvas = forwardRef<
         onPointerMove={(event) => pointer(event, "move")}
         onPointerUp={(event) => pointer(event, "up")}
         onPointerCancel={(event) => pointer(event, "cancel")}
-        onWheel={wheel}
         onKeyDown={(event) => key(event, "down")}
         onKeyUp={(event) => key(event, "up")}
       />
