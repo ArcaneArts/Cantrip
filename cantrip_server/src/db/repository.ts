@@ -358,7 +358,9 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
     // finish moving out of this repository. Provider and MCP payloads never
     // use this server key.
     void secretVault;
-    this.alerts = new ProjectAlertRepository(database);
+    this.alerts = new ProjectAlertRepository(database, () =>
+      this.expireAgentInteractionRequests(),
+    );
     this.accountResourceUsage = new AccountResourceUsageRepository(database);
     this.desktopUpdateState = new DesktopUpdateStateRepository(database);
     this.providerAccounts = new ProviderAccountRepository(database);

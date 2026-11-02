@@ -17,7 +17,10 @@ export const PROJECT_ALERT_CHANNEL = "cantrip_project_alerts";
 /** A projection of source attention; this repository never executes source actions. */
 export class ProjectAlertRepository {
   private readonly observers = new Set<(change: ProjectAlertChange) => void>();
-  constructor(private readonly database: RepositoryDatabase) {}
+  constructor(
+    private readonly database: RepositoryDatabase,
+    private readonly expireInteractions: () => Promise<unknown>,
+  ) {}
 
   private async value(query: ReturnType<typeof sql>) {
     const result = await this.database.execute(query);
@@ -40,12 +43,14 @@ export class ProjectAlertRepository {
     input: Partial<ProjectAlertQuery> = {},
   ) {
     const query = projectAlertQuerySchema.parse(input);
+    await this.expireInteractions();
     const value = await this.value(
       sql`SELECT project_alert_page(${ownerId},${projectId},${query.limit},${query.after ?? null}) AS value`,
     );
     return value === null ? null : projectAlertPageSchema.parse(value);
   }
   async counts(ownerId: string) {
+    await this.expireInteractions();
     return projectAlertCountsSchema.parse(
       await this.value(sql`SELECT project_alert_counts(${ownerId}) AS value`),
     );
