@@ -304,6 +304,29 @@ fn execute<'a>(
         Some("native-command-dispatch") => {
             async move { repository.dispatch(owner, &input["input"]).await }.boxed()
         }
+        Some("native-command-thread-changes") => super::thread_changes::run(input).boxed(),
+        Some("native-command-observe-thread") => async move {
+            repository
+                .reconcile_thread_observation(
+                    owner,
+                    &input["expected"],
+                    input["status"].as_str().context("Observed thread status")?,
+                )
+                .await
+        }
+        .boxed(),
+        Some("native-command-thread-sync-project") => async move {
+            let sync = cantrip_server::wire::parse("agentThreadSyncSchema", Some(&input["input"]))
+                .map_err(|_| anyhow::anyhow!("Invalid thread synchronization fixture"))?;
+            Ok(Value::Array(
+                cantrip_server::chats::thread_sync::canonical_messages(
+                    &sync,
+                    &input["options"],
+                    input.get("attachments"),
+                )?,
+            ))
+        }
+        .boxed(),
         Some("native-command-register-pending") => async move {
             repository.register_pending(owner, &input["input"]).await?;
             Ok(Value::Null)

@@ -52,6 +52,7 @@ pub struct Dependencies {
 }
 
 pub struct Service {
+    pub thread_sync: Arc<super::thread_sync::Service>,
     pub runtime: Arc<Runtime>,
     pub recovery: Arc<recovery::Service>,
     pub goals: Arc<goals::Service>,
@@ -103,7 +104,7 @@ impl Service {
             database: d.database.clone(),
             live: d.live.clone(),
             commands: d.commands.clone(),
-            telemetry,
+            telemetry: telemetry.clone(),
             quota: quota.clone(),
             clock: clock.clone(),
         };
@@ -203,7 +204,17 @@ impl Service {
                 })
             },
         );
+        let thread_sync = super::thread_sync::Service::new(super::thread_sync::Dependencies {
+            database: d.database.clone(),
+            commands: d.commands.clone(),
+            routing: d.routing.clone(),
+            live: d.live.clone(),
+            recovery: turns.recovery.clone(),
+            telemetry,
+            logger: d.logger.clone(),
+        });
         Arc::new(Self {
+            thread_sync,
             runtime: turns.runtime,
             recovery: turns.recovery,
             goals: turns.goals,
@@ -238,6 +249,7 @@ impl Service {
 
     /// Stop sources of new background work before closing the worker bridge.
     pub fn stop(&self) {
+        self.thread_sync.close();
         self.queue_delivery.stop();
         self.scheduler.stop_timer();
         self.scheduler.stop_automatic_retries();
@@ -249,6 +261,7 @@ impl Service {
 
     /// The bridge must settle pending requests before this drains their writers.
     pub async fn drained(&self) {
+        self.thread_sync.drained().await;
         self.queue_delivery.drained().await;
         self.scheduler.drained().await;
         self.outcome_timers.drained().await;

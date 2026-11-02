@@ -26,6 +26,7 @@ mod settings_observations;
 pub mod settings_persistence;
 pub mod settings_state;
 mod settlement;
+mod thread_observation;
 pub mod transaction;
 pub mod turns;
 use crate::database::Database;

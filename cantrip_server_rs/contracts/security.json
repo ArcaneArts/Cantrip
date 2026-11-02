@@ -511,7 +511,9 @@
     "conversationCatalogWirePageSchema": 9474,
     "conversationCursorSchema": 9491,
     "conversationUsageSchema": 9499,
-    "conversationUsageResultSchema": 9504
+    "conversationUsageResultSchema": 9504,
+    "agentThreadSyncSchema": 9508,
+    "agentThreadSyncItemSchema": 9524
   },
   "nodes": [
     {
@@ -55707,6 +55709,152 @@
       ]
     },
     { "type": "boolean", "checks": [] },
-    { "type": "never", "checks": [] }
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "agentThreadSyncSchema",
+      "shape": {
+        "threadId": 9509,
+        "status": 9510,
+        "statusSource": 9511,
+        "turns": 9513
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "enum", "values": ["idle", "running", "failed"], "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 9512,
+      "checks": []
+    },
+    { "type": "literal", "values": ["native-thread"], "checks": [] },
+    { "type": "array", "element": 9514, "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "id": 9515,
+        "status": 9516,
+        "startedAt": 9517,
+        "completedAt": 9519,
+        "durationMs": 9521,
+        "items": 9523
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "enum",
+      "values": ["completed", "failed", "interrupted", "inProgress"],
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 9518, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "nullable", "innerType": 9520, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "nullable", "innerType": 9522, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "array", "element": 9524, "checks": [] },
+    {
+      "type": "union",
+      "name": "agentThreadSyncItemSchema",
+      "options": [9525, 9532, 9534],
+      "discriminator": "type",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "type": 9526,
+        "id": 9527,
+        "text": 9528,
+        "externalAttachmentIds": 9529
+      },
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "agent-sync-user-message",
+          "messageAfterPath": true,
+          "message": "User messages require text or an external attachment."
+        }
+      ]
+    },
+    { "type": "literal", "values": ["userMessage"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "string", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 9530,
+      "defaultValue": [],
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 9531,
+      "checks": [{ "check": "max_length", "maximum": 20, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "type": 9533,
+        "id": 1530,
+        "text": 1531,
+        "phase": 1532,
+        "streaming": 1534,
+        "correlation": 1536,
+        "agentScope": 1538
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["agentMessage"], "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 9535, "activity": 1120 },
+      "checks": []
+    },
+    { "type": "literal", "values": ["activity"], "checks": [] }
   ]
 }

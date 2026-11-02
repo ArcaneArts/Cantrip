@@ -32,6 +32,7 @@ mod state;
 mod summary;
 pub mod task_creation;
 pub mod task_recovery;
+pub mod thread_sync;
 pub mod turn_behavior;
 pub mod turn_configuration;
 pub mod turn_placement;

@@ -45,6 +45,29 @@ fn permission_projection(state: &Value, source: Value) -> Result<Value> {
 }
 
 impl Repository {
+    pub async fn contexts_by_thread(
+        &self,
+        owner: &str,
+        worker: &str,
+        thread: &str,
+    ) -> Result<Vec<Value>> {
+        let rows = self.database.query("SELECT r.chat_id FROM chat_runtime_sessions r INNER JOIN chats c ON c.id=r.chat_id WHERE c.owner_id=$1 AND r.worker_id=$2 AND r.codex_thread_id=$3 AND c.archived_at IS NULL", &[&owner,&worker,&thread]).await?;
+        let mut ids = Vec::new();
+        for row in rows {
+            let id = row.get::<String>(0)?;
+            if !ids.contains(&id) {
+                ids.push(id);
+            }
+        }
+        let contexts =
+            futures::future::try_join_all(ids.iter().map(|id| self.execution_context(owner, id)))
+                .await?;
+        Ok(contexts
+            .into_iter()
+            .flatten()
+            .filter(|context| context["workerId"] == worker && context["threadId"] == thread)
+            .collect())
+    }
     pub async fn execution_context(&self, owner: &str, chat_id: &str) -> Result<Option<Value>> {
         Self::execution_context_with(Executor::Database(&self.database), owner, chat_id).await
     }

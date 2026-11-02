@@ -68,6 +68,12 @@ on:
       - cantrip_server/src/app/runtime/chat-automation-pause-runtime.ts
       - cantrip_server/src/app/runtime/chat-recovery-runtime.ts
       - cantrip_server/src/app/runtime/chat-turn-*.ts
+      - cantrip_server/src/app/runtime/chat-thread-sync-runtime.ts
+      - cantrip_server/src/app/runtime/worker-notification-runtime.ts
+      - cantrip_server/src/app/routes/chat-messages-and-sync.ts
+      - cantrip_server/src/chats/thread-sync.ts
+      - cantrip_server/src/chats/thread-change-reconciliation.ts
+      - cantrip_worker/src/codex/thread-observation.ts
       - cantrip_server/src/app/runtime/task-execution-recovery.ts
       - cantrip_server/src/db/task-dispatch.ts
       - cantrip_server/src/tasks/**
@@ -1700,10 +1706,16 @@ jobs:
       - run: pnpm --filter '@cantrip/app^...' -r build
       - name: Protected message validation contracts
         run: node scripts/server-rust/cargo.mjs test --test chat_contracts -- --nocapture
+      - name: Reference thread synchronization and observation contracts
+        run: pnpm --filter @cantrip/server exec vitest run --maxWorkers=2 test/chat-thread-sync-admission.test.ts test/chat-thread-sync-observation.test.ts test/chat-thread-change-reconciliation.test.ts
       - name: Project Chat catalogs and archives with pglite
         run: node --import tsx scripts/server-rust/project-chat-catalog-http.mjs --database pglite --report .qa/rust-server/project-chat-catalog-pglite.json
       - name: Project Chat creation, conversation keysets and usage with pglite
         run: node --import tsx scripts/server-rust/project-chat-creation-http.mjs --database pglite --report .qa/rust-server/project-chat-creation-pglite.json
+      - name: Passive thread observation and admission with pglite
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain thread-observation --database pglite --report .qa/rust-server/chat-thread-observation-pglite.json
+      - name: Chat synchronization HTTP, protected history and notifications with pglite
+        run: node --import tsx scripts/server-rust/chat-thread-sync-http.mjs --database pglite --report .qa/rust-server/chat-thread-sync-http-pglite.json
       - name: Message query state with pglite
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"
@@ -1718,6 +1730,10 @@ jobs:
         run: node --import tsx scripts/server-rust/project-chat-catalog-http.mjs --database bundled-postgres --report .qa/rust-server/project-chat-catalog-bundled-postgres.json
       - name: Project Chat creation, conversation keysets and usage with bundled-postgres
         run: node --import tsx scripts/server-rust/project-chat-creation-http.mjs --database bundled-postgres --report .qa/rust-server/project-chat-creation-bundled-postgres.json
+      - name: Passive thread observation and admission with bundled-postgres
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain thread-observation --database bundled-postgres --report .qa/rust-server/chat-thread-observation-bundled-postgres.json
+      - name: Chat synchronization HTTP, protected history and notifications with bundled-postgres
+        run: node --import tsx scripts/server-rust/chat-thread-sync-http.mjs --database bundled-postgres --report .qa/rust-server/chat-thread-sync-http-bundled-postgres.json
       - name: Message query state with bundled-postgres
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"
@@ -1732,6 +1748,10 @@ jobs:
         run: node --import tsx scripts/server-rust/project-chat-catalog-http.mjs --database postgres --report .qa/rust-server/project-chat-catalog-postgres.json
       - name: Project Chat creation, usage receipt races, SQL faults and aborted callers with postgres
         run: node --import tsx scripts/server-rust/project-chat-creation-http.mjs --database postgres --report .qa/rust-server/project-chat-creation-postgres.json
+      - name: Passive thread observation and admission with postgres
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain thread-observation --database postgres --report .qa/rust-server/chat-thread-observation-postgres.json
+      - name: Chat synchronization HTTP, protected history and notifications with postgres
+        run: node --import tsx scripts/server-rust/chat-thread-sync-http.mjs --database postgres --report .qa/rust-server/chat-thread-sync-http-postgres.json
       - name: Message query state with postgres
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"

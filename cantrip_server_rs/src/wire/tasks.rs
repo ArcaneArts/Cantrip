@@ -16,6 +16,7 @@ pub(super) fn refine(
             | "encrypted-chat-create"
             | "chat-root-model"
             | "chat-goal-update"
+            | "agent-sync-user-message"
     ) {
         return Ok(false);
     }
@@ -32,6 +33,17 @@ pub(super) fn refine(
             .push(json!({"code":"custom","message":message,"path":at}));
     };
     match tag {
+        "agent-sync-user-message" => {
+            if value["text"]
+                .as_js_string()
+                .is_some_and(|text| text.trim().is_empty())
+                && value["externalAttachmentIds"]
+                    .as_array()
+                    .is_some_and(Vec::is_empty)
+            {
+                custom(&[], "User messages require text or an external attachment.");
+            }
+        }
         "chat-goal-update" => {
             if value.get("status").is_none() && value.get("protectedObjective").is_none() {
                 custom(&[], "A goal update needs a status or encrypted objective.");

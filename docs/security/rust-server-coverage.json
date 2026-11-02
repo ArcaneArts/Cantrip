@@ -4149,6 +4149,23 @@
         "remaining": [
           "Supported-platform and packaged acceptance, remaining conversation APIs, Redis/multi-instance behavior and all original upgrade/post-write rollback, packaging, performance, Winterhold rehearsal and default-cutover requirements remain."
         ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/chats/:chatId/sync",
+        "implementation": "cantrip_server_rs/src/http/chat_sync.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/chat-thread-sync-http.mjs",
+          "scripts/server-rust/chat-thread-observation-cases.mjs",
+          "scripts/server-rust/chat-thread-observation-races.mjs",
+          "scripts/server-rust/thread-change-reconciler-fixture.mjs",
+          "scripts/server-rust/actual-project-chat-client.mjs"
+        ],
+        "remaining": [
+          "Supported-platform and packaged acceptance, archive cleanup and other unfinished domains, Redis/multi-instance operation, complete upgrade/post-write rollback acceptance, final artifacts, desktop packaging, performance, Winterhold rehearsal and default cutover remain required. Node remains the default server."
+        ]
       }
     ]
   },
@@ -4709,6 +4726,22 @@
         "remaining": [
           "The HTTP/Live flows use the production Node worker transport and production worker encryption/read/update/account-default helpers with a controlled native RPC runtime. Complete native command admission/dispatch/history integration and existing full app/worker acceptance remain required.",
           "Supported-platform acceptance, Redis/multi-instance coordination, migration/post-write rollback, packaging and default cutover remain unfinished."
+        ]
+      },
+      {
+        "command": "chat.sync",
+        "implementation": "cantrip_server_rs/src/chats/thread_sync/mod.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/chat-thread-sync-http.mjs",
+          "scripts/server-rust/chat-thread-observation-cases.mjs",
+          "scripts/server-rust/chat-thread-observation-races.mjs",
+          "scripts/server-rust/thread-change-reconciler-fixture.mjs",
+          "scripts/server-rust/actual-project-chat-client.mjs"
+        ],
+        "remaining": [
+          "Supported-platform and packaged acceptance, archive cleanup and other unfinished domains, Redis/multi-instance operation, complete upgrade/post-write rollback acceptance, final artifacts, desktop packaging, performance, Winterhold rehearsal and default cutover remain required. Node remains the default server."
         ]
       }
     ]
@@ -7343,6 +7376,22 @@
         "remaining": [
           "Supported-platform and packaged acceptance, remaining conversation APIs, Redis/multi-instance behavior and all original upgrade/post-write rollback, packaging, performance, Winterhold rehearsal and default-cutover requirements remain."
         ]
+      },
+      {
+        "method": "listChatExecutionContextsByThreadId",
+        "implementation": "cantrip_server_rs/src/chats/context.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/chat-thread-sync-http.mjs",
+          "scripts/server-rust/chat-thread-observation-cases.mjs",
+          "scripts/server-rust/chat-thread-observation-races.mjs",
+          "scripts/server-rust/thread-change-reconciler-fixture.mjs",
+          "scripts/server-rust/actual-project-chat-client.mjs"
+        ],
+        "remaining": [
+          "Supported-platform and packaged acceptance, archive cleanup and other unfinished domains, Redis/multi-instance operation, complete upgrade/post-write rollback acceptance, final artifacts, desktop packaging, performance, Winterhold rehearsal and default cutover remain required. Node remains the default server."
+        ]
       }
     ]
   },
@@ -9542,6 +9591,65 @@
           "Canonical completed turn archives preserve original model attribution, then entire encrypted/decrypted transcript survives server restart and worker reconnect",
           "Native Goal create/complete matches decrypted objective and thread; clear and retained identity replay perform no extra inference"
         ]
+      }
+    },
+    "chatThreadSynchronization": {
+      "status": "partial",
+      "implementation": [
+        "cantrip_server_rs/src/chats/thread_sync/",
+        "cantrip_server_rs/src/native_commands/thread_observation.rs"
+      ],
+      "evidence": [
+        "cantrip_server_rs/tests/chat_contracts.rs",
+        "scripts/server-rust/chat-thread-sync-http.mjs",
+        "scripts/server-rust/chat-thread-observation-cases.mjs",
+        "scripts/server-rust/chat-thread-observation-races.mjs",
+        "scripts/server-rust/thread-change-reconciler-fixture.mjs",
+        "scripts/server-rust/actual-project-chat-client.mjs"
+      ],
+      "validatedSubset": "Public synchronization and enrolled-worker thread-change observation reuse actual model routing, native admission fencing, lane transitions, token accounting, protected Live message writers, pending worktree transitions and queue dispatch. Source/native canonical projection and production revision coalescer cases pass on all three local stores. PostgreSQL project-row contention covers admission-first, observation-first and active GUI preparation completion, with homogeneous and mixed Node/Rust processes; an AFTER lane-insert exception rolls back all earlier writes. Actual existing browser syncChat plus full worker and production bundled Codex passes on all three local stores before and after server/worker restart, preserving the exact protected transcript, native thread, idle status and empty legacy turns without new inference.",
+      "remaining": [
+        "Supported-platform and packaged acceptance, archive cleanup and other unfinished domains, Redis/multi-instance operation, complete upgrade/post-write rollback acceptance, final artifacts, desktop packaging, performance, Winterhold rehearsal and default cutover remain required. Node remains the default server."
+      ],
+      "localAcceptance": {
+        "platform": "macOS arm64",
+        "servers": ["node", "rust"],
+        "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+        "protocolRoots": 513,
+        "protocolNodes": 9536,
+        "preservedRootPrefix": 511,
+        "preservedNodePrefix": 9508,
+        "chatContractComparisons": 27184,
+        "sourceTests": 19,
+        "libraryTests": 46,
+        "repositoryCasesPerStore": 92,
+        "repositorySnapshotsPerStore": 40,
+        "postgresRaceEntries": 12,
+        "postgresSqlRollback": true,
+        "actualClientStepsPerServer": 13,
+        "actualSynchronizationsPerServer": 2,
+        "actualModelRequestsPerServer": 4,
+        "nativeRuntime": "Production bundled codex-cli 0.166.0; public Responses HTTP is the controlled execution boundary.",
+        "pairedHttpObservations": 288,
+        "httpObservationsPerAuthProfile": [31, 32, 33],
+        "protectedMessagesPerProfile": 3,
+        "plaintextMessagesPerProfile": 0,
+        "verifiedMessageDecryptionsPerServerProfile": 12,
+        "usageRecordsPerServerProfile": 1,
+        "rejectedNotificationBindingsPerProfile": 5,
+        "broadCheck": {
+          "command": "pnpm check",
+          "exitCode": 1,
+          "elapsedSeconds": 574.3,
+          "sourcePassed": 1700,
+          "sourceSkipped": 57,
+          "sourceFailed": 2,
+          "failures": [
+            "Provider account pooling assertion at local-foundation.test.ts:7218; identical assertion in independently hash-verified prior milestone logs.",
+            "Administrator registry original5000ms timeout in broad run; all4 unchanged registry tests pass on focused rerun with original deadlines."
+          ],
+          "limits": "Later worker/app tests and whole-repository formatting did not run after recursive bail. Focused formatting and actual worker suites pass."
+        }
       }
     }
   },
