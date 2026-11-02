@@ -1,3 +1,4 @@
+import { AlertCountBadge } from "@/components/alerts/project-alert-discovery";
 import type {
   ProjectFolderSetupJobSummary,
   ProjectReplicaJobSummary,
@@ -75,6 +76,7 @@ function projectStatus(
 
 export function MobileProjectSelector({
   activeWorkspace,
+  alertCounts,
   currentUserName,
   error,
   loading,
@@ -93,6 +95,7 @@ export function MobileProjectSelector({
   workspaces,
 }: {
   activeWorkspace: ProjectWorkspaceSummary | null;
+  alertCounts?: ReadonlyMap<string, number>;
   currentUserName: string;
   error?: string | null;
   loading: boolean;
@@ -229,6 +232,7 @@ export function MobileProjectSelector({
                       <span className="min-w-0 flex-1 truncate text-sm font-medium">
                         {project.name}
                       </span>
+                      <AlertCountBadge count={alertCounts?.get(project.id)} />
                       <span className="flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground">
                         {status.icon === "loading" ? (
                           <Loader2 className="size-3 animate-spin" />

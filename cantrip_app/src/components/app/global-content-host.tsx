@@ -253,6 +253,7 @@ export function GlobalContentHost({
       {mobileProjectSelectorOpen ? (
         <MobileProjectSelector
           activeWorkspace={activeProjectWorkspace}
+          alertCounts={bindings.projectAlertCounts}
           currentUserName={
             bootstrap.data?.auth.currentUser?.displayName ?? "Cantrip User"
           }
@@ -827,6 +828,10 @@ export function GlobalContentHost({
                     <AlertInbox
                       key={selectedProject.id}
                       projectId={selectedProject.id}
+                      activeCount={
+                        bindings.projectAlertCounts?.get(selectedProject.id) ??
+                        0
+                      }
                       chats={chats.data ?? []}
                       workers={workers.data ?? []}
                       settings={settings.data}

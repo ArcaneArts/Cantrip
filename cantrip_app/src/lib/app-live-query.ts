@@ -69,6 +69,13 @@ function projectScopeId(scope: AppLiveScope): string | null {
 export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
   const projectId = projectScopeId(event.scope);
   switch (event.resource) {
+    case "project-alert": {
+      const alertProject = projectId ?? event.entityId;
+      return [
+        ["project-alert-counts"],
+        alertProject ? ["project-alerts", alertProject] : ["project-alerts"],
+      ];
+    }
     case "server":
       return [["server-bootstrap"]];
     case "account-session":
@@ -426,6 +433,8 @@ export function appLiveScopeQueryKeys(scope: AppLiveScope): QueryKey[] {
   switch (scope.kind) {
     case "current-user":
       return [
+        ["project-alert-counts"],
+        ["project-alerts"],
         ["server-bootstrap"],
         ["account-sessions"],
         ["account-resource-usage"],
@@ -449,6 +458,8 @@ export function appLiveScopeQueryKeys(scope: AppLiveScope): QueryKey[] {
       ];
     case "project":
       return [
+        ["project-alert-counts"],
+        ["project-alerts", scope.projectId],
         ["project-policy-assignments", scope.projectId],
         ["effective-policies", scope.projectId],
         ["project-replica-jobs", scope.projectId],

@@ -1,3 +1,4 @@
+import { AlertCountBadge } from "@/components/alerts/project-alert-discovery";
 import type {
   ProjectSummary,
   ProjectWorkspaceSummary,
@@ -57,6 +58,7 @@ function projectContext(
 
 export function ProjectSwitcher({
   activeWorkspaceId,
+  alertCounts,
   onAddProject,
   onManageWorkspaces,
   onOpenProjectSettings,
@@ -71,6 +73,7 @@ export function ProjectSwitcher({
   workspaces,
 }: {
   activeWorkspaceId: string | null;
+  alertCounts?: ReadonlyMap<string, number>;
   onAddProject(source: ProjectCreateSource): void;
   onManageWorkspaces(): void;
   onOpenProjectSettings(projectId: string): void;
@@ -255,6 +258,9 @@ export function ProjectSwitcher({
                                 )}
                               </span>
                             </span>
+                            <AlertCountBadge
+                              count={alertCounts?.get(project.id)}
+                            />
                             {project.id === selectedProject?.id ? (
                               <Check className="size-4 shrink-0" />
                             ) : null}

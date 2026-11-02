@@ -1,3 +1,4 @@
+import { useAppLiveScope, useAppLiveStatus } from "@/lib/app-live-react";
 import type {
   ChatSummary,
   ProjectAlert,
@@ -23,6 +24,7 @@ const labels: Record<ProjectAlert["kind"], string> = {
 };
 export function AlertInbox({
   projectId,
+  activeCount,
   chats,
   workers,
   settings,
@@ -30,12 +32,15 @@ export function AlertInbox({
   onOpenChat,
 }: {
   projectId: string;
+  activeCount?: number;
   chats: ChatSummary[];
   workers: WorkerSummary[];
   settings?: SettingsBundle;
   onRename(chatId: string, title: string): void;
   onOpenChat(chat: ChatSummary): Promise<unknown>;
 }) {
+  useAppLiveScope({ kind: "project", projectId });
+  const live = useAppLiveStatus() === "live";
   const [cursors, setCursors] = useState<Array<string | null>>([null]);
   const [expanded, setExpanded] = useState<string | null>(null);
   const after = cursors.at(-1) ?? null;
@@ -43,7 +48,7 @@ export function AlertInbox({
     queryKey: ["project-alerts", projectId, after],
     queryFn: () => getProjectAlerts(projectId, after),
     retry: false,
-    refetchInterval: 5000,
+    refetchInterval: live ? 30000 : 5000,
   });
   return (
     <section className="flex min-h-0 flex-1 flex-col" aria-label="Alert Inbox">
@@ -82,7 +87,9 @@ export function AlertInbox({
           <div className="grid min-h-48 place-content-center gap-2 text-center text-muted-foreground">
             <Bell className="mx-auto size-8 opacity-50" />
             <h3 className="text-base font-medium">
-              {after ? "No alerts on this page" : "No active alerts"}
+              {after && activeCount !== 0
+                ? "No alerts on this page"
+                : "No active alerts"}
             </h3>
             <p className="text-sm">
               Work that needs your attention will appear here.

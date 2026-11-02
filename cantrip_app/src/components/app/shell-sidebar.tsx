@@ -1,3 +1,4 @@
+import { ProjectAlertTile } from "@/components/alerts/project-alert-discovery";
 import { ProjectSidebarPages } from "@/components/sidebar/project-sidebar-pages";
 import { ProjectConversationList } from "@/components/sidebar/project-conversation-list";
 import { focusWorkspaceNativeWindow } from "@/lib/desktop-popout";
@@ -354,6 +355,7 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                 <div className="px-3 pb-2 pt-2">
                   <ProjectSwitcher
                     activeWorkspaceId={activeProjectWorkspace?.id ?? null}
+                    alertCounts={bindings.projectAlertCounts}
                     projects={projects.data ?? []}
                     selectedProjectId={selectedProjectId}
                     workspaces={projectWorkspaces.data ?? []}
@@ -395,6 +397,23 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                   className="flex min-h-0 flex-1 flex-col px-2 pb-4"
                   data-slot="sidebar-scroll-region"
                 >
+                  {selectedProjectId ? (
+                    <ProjectAlertTile
+                      count={bindings.projectAlertCounts?.get(
+                        selectedProjectId,
+                      )}
+                      selected={
+                        bindings.selectedBuiltInSurface?.entity.definitionId ===
+                        "project.alerts"
+                      }
+                      onOpen={() =>
+                        void bindings.openProjectNavigatorSurface(
+                          selectedProjectId,
+                          { kind: "builtin", definitionId: "project.alerts" },
+                        )
+                      }
+                    />
+                  ) : null}
                   <ProjectSidebarPages
                     key={selectedProjectId ?? "none"}
                     page={projectSidebarPage ?? "files"}
