@@ -443,10 +443,17 @@ export async function runTaskRecoveryCases(h) {
     "UPDATE task_dispatch_cycles SET state='failed'",
     `UPDATE task_workers SET enabled=false WHERE id='${worker}'`,
   ]);
-  await bad(
-    "automatic recovery enforces actual selected-worker eligibility",
+  await ok(
+    "automatic recovery uses its retained model despite a disabled legacy preset",
     { resume: true, automatic: true, goalReply: reply("idle") },
-    "The selected Task Worker is disabled or no longer allows Plan + Goal. Enable it before resuming.",
+    (v) => {
+      assert.equal(v.result, true);
+      assert.deepEqual(
+        v.commands.map((c) => c.command.type),
+        ["chat.goal.get", "chat.goal.update"],
+      );
+      assert.equal(v.trace.filter((t) => t.kind === "begin").length, 1);
+    },
   );
   await clean(["UPDATE task_dispatch_cycles SET state='failed'"]);
   await ok(

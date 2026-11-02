@@ -1,4 +1,7 @@
-import { backgroundObservation } from "./task-background-observation.mjs";
+import {
+  backgroundObservation,
+  backgroundSnapshotObservation,
+} from "./task-background-observation.mjs";
 import { outcomeQueueAdmissions } from "./turn-outcome-queue-observation.mjs";
 import { projectPauseDiagnostic } from "./project-task-pause-observation.mjs";
 import { runTaskBackgroundCases } from "./task-background-cases.mjs";
@@ -342,7 +345,12 @@ async function snapshot(name) {
   }
   report.snapshots.push({ name, values });
   const canonical = (value, i) => {
-    const result = normalized(value, i);
+    const result = normalized(
+      report.domain === "task-background"
+        ? backgroundSnapshotObservation(value)
+        : value,
+      i,
+    );
     // These raw relational tables are queried by random UUID. Compare every
     // row/field using the already-established identity aliases, then sort by
     // that canonical identity. Public repository/API list order is untouched.

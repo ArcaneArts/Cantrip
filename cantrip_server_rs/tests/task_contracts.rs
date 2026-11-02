@@ -6,6 +6,8 @@ fn task_contracts_match_source_outcomes_and_messages() -> Result<()> {
     let mut total = 0;
     for name in [
         "taskEncryptedOperationStartSchema",
+        "taskOperationStartSchema",
+        "taskRecoveryStartSchema",
         "taskOpaqueContentSchema",
         "taskOpaqueMutationSchema",
         "taskOpaqueSummarySchema",

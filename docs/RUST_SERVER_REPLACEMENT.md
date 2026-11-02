@@ -12,7 +12,8 @@ feature set.
 
 Status: **implementation in progress; not a deployable replacement**.
 
-The Task admission milestone mounts six public start, planning, continuation,
+The Task admission work in
+[PR #2425](https://github.com/ArcaneArts/Cantrip/pull/2425) mounts six public start, planning, continuation,
 finalization, retry and retained-session recovery endpoints through the actual
 native queue/recovery graph. The current per-Task model changes are integrated;
 retired Task Worker inputs retain their new strict rejection behavior. Fresh
@@ -39,14 +40,43 @@ all-target server Clippy pass. The regenerated 475-root/9,150-node manifest
 preserves every root mapping and the complete node prefix of the integrated
 473-root/9,145-node baseline.
 
-The fresh full worker suite has 2,616 passing tests, 133 skipped and one failure:
-the unchanged desktop input test expects a stale-input promise rejection while
-the adapter now dispatches participant input asynchronously. The exact failure
-reproduces on clean Primary `459955f43`; the Task failure regression cases pass.
-The broad `pnpm check` stops earlier at two existing `unnecessary_unwrap` errors
-in `cantrip_cua/src/macos/overlay.rs:422` and `:426`, also reproduced on that
-clean Primary revision. These results do not make
-the broad checks green. Current milestone evidence uses
+Platform followup exposed stale fixtures after the per-Task model cutover.
+The background scheduler, claimed execution and retained-session recovery now
+pass 180 cases/18 snapshots, 116 cases/eight snapshots and 92 cases/eight
+snapshots respectively on every store. Model selection and custom subagent
+selection live on Tasks; retired presets no longer impose concurrency or
+recovery eligibility. The fixtures retain physical-worktree exclusion, exact
+retry counts, runtime failures, original deadlines and all restart checks.
+All 25,024 Task protocol outcomes and exact errors pass, including the two new
+admission/recovery request roots.
+
+The actual Windows artifact `13149687017` showed independent tenants acquiring
+global message sequences in different orders. The generic snapshot comparison
+now uses the existing per-chat observer, retaining the exact allocation set,
+unique sequence ownership, stored/wire identity, per-chat order and every row
+field. Six additional observer tests pass. The downloaded ZIP's SHA-256 is
+`4f33d2acd00b413be0196cb428d36657b720465a7fed8a5aba6f88a199922334`;
+its exact allocation and identity witnesses agree under replay. This is not a
+fresh Windows acceptance result.
+
+The earlier worker desktop failure reproduces on clean Primary `459955f43`:
+the test expected a promise rejection after participant input became
+asynchronous. It now verifies rejection logging and exactly zero extra native
+sends for duplicate or stale-epoch packets, followed by a valid fresh-epoch
+input. All forty focused desktop/Goal crypto tests pass. The earlier CUA Clippy
+errors also reproduce on that clean revision; a semantics-preserving match
+removes the checked unwraps. Queue saturation tests now fill the actual 37-slot
+limit with one additional request, retaining their cancellation deadlines and
+every response assertion. All 222 CUA tests and strict all-target CUA Clippy
+pass locally; supported-platform reruns remain necessary.
+
+The refreshed full worker run passes 2,616 tests with 133 skipped and one
+15-second timeout in the unchanged large encrypted history batch case. The
+entire 28-test history file passes separately with its original limits, and the
+exact timed-out case passes on clean Primary `fa8441f8e` with the original limit.
+The
+earlier broad `pnpm check` stopped at the now-repaired CUA lint errors; these
+observations do not establish a green broad check. Current milestone evidence uses
 `.qa/rust-server/task-lifecycle-integrated-*`, with separate
 `task-lifecycle-main-*-baseline-v1` reports. Public Task creation, deletion,
 attachments/dashboard, Chat Goal controls, full client/worker execution,

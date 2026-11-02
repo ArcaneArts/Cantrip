@@ -25,6 +25,13 @@ export async function runTaskBackgroundCases(h) {
   const chats = ["task", "background-next"],
     worker = id(1),
     cycles = chats.map((_, i) => id(10 + i));
+  const modelConfiguration = (modelId) => ({
+    modelId,
+    reasoningEffort: null,
+    customSubagentModel: false,
+    subagentModelId: null,
+    subagentReasoningEffort: null,
+  });
   const encryption = {
     supported: true,
     state: "ready",
@@ -60,7 +67,7 @@ export async function runTaskBackgroundCases(h) {
       ...chats
         .slice(0, count)
         .flatMap((chat, i) => [
-          `INSERT INTO tasks(chat_id,protected_content,created_at,updated_at) VALUES(${literal(chat)},${json(taskEnvelope)},${literal(stamp)}::timestamptz+interval '${i} seconds',${literal(stamp)})`,
+          `INSERT INTO tasks(chat_id,model_configuration,protected_content,created_at,updated_at) VALUES(${literal(chat)},${json(modelConfiguration("background-model"))},${json(taskEnvelope)},${literal(stamp)}::timestamptz+interval '${i} seconds',${literal(stamp)})`,
           `INSERT INTO task_dispatch_cycles(id,owner_id,chat_id,operation_id,operation_kind,state,fifo_created_at,created_at,updated_at) VALUES('${cycles[i]}',${literal(owner)},${literal(chat)},${literal(id(70 + i))},'direct','queued',${literal(stamp)}::timestamptz+interval '${i} seconds',${literal(stamp)},${literal(stamp)})`,
           `INSERT INTO chat_runtime_sessions(id,chat_id,worker_id,worktree_id,codex_thread_id,model_route_id,status) VALUES('${id(30 + i)}',${literal(chat)},'alpha','github-alpha-main',${literal("background-thread-" + i)},'background-route','ready')`,
         ]),
@@ -130,7 +137,7 @@ export async function runTaskBackgroundCases(h) {
   );
   await clean({ count: 2 });
   for (const v of await run(
-    "overlapping wakeups coalesce while active turn retains capacity",
+    "overlapping wakeups coalesce while an active turn retains its worktree",
     {
       holdTurnChats: ["task"],
       steps: [
@@ -157,7 +164,11 @@ export async function runTaskBackgroundCases(h) {
         s.cycles.map((c) => c.state),
         ["running", "queued"],
       );
-      assert.equal(s.cycles[1].attempt_count, 0);
+      // Retired preset concurrency no longer blocks this admission. The
+      // physical worktree lease requeues its first attempt; later ticks must
+      // retain that attempt until the first Task releases the worktree.
+      assert.equal(s.cycles[1].attempt_count, 1);
+      assert.equal(s.cycles[1].eligibility_code, "capacity-unavailable");
     }
     assert.equal(
       v.commands.filter(
@@ -430,7 +441,10 @@ export async function runTaskBackgroundCases(h) {
       "DELETE FROM chat_runtime_sessions WHERE chat_id='task'",
     ],
   });
-  await seed("UPDATE task_workers SET enabled=false");
+  await seed([
+    "UPDATE task_workers SET enabled=false",
+    `UPDATE tasks SET model_configuration=${json(modelConfiguration(null))}`,
+  ]);
   const retryPrepared = structuredClone(preparedTasks);
   retryPrepared.task.operation.operationId = "<task-operation-id>";
   const retryAttempts = structuredClone(chatAttempts);
@@ -438,7 +452,7 @@ export async function runTaskBackgroundCases(h) {
   retryAttempts.task[0].result.structuredResult.operationId =
     "<task-operation-id>";
   for (const v of await run(
-    "automatic retry queues while worker disabled then reaches encrypted completion",
+    "automatic retry waits for its Task model then completes despite a disabled legacy preset",
     {
       preparedTasks: retryPrepared,
       chatAttempts: retryAttempts,
@@ -448,7 +462,10 @@ export async function runTaskBackgroundCases(h) {
         { kind: "wait" },
         { kind: "wait" },
         { kind: "snapshot", sql: selectRows },
-        { kind: "sql", sql: "UPDATE task_workers SET enabled=true" },
+        {
+          kind: "sql",
+          sql: `UPDATE tasks SET model_configuration=${json(modelConfiguration("background-model"))}`,
+        },
         { kind: "tick" },
         { kind: "drain" },
       ],
@@ -457,6 +474,7 @@ export async function runTaskBackgroundCases(h) {
     assert.equal(v.beginError, null);
     const admitted = v.result.snapshots[0];
     assert.equal(admitted.cycles[0].state, "queued");
+    assert.equal(admitted.cycles[0].eligibility_code, "model-unavailable");
     assert.equal(admitted.tasks[0].automatic_retry.status, "idle");
     assert.equal(admitted.tasks[0].automatic_retry.attempts.length, 1);
     assert.equal(admitted.tasks[0].automatic_retry.claim, null);
@@ -476,6 +494,8 @@ export async function runTaskBackgroundCases(h) {
     assert.equal(r.cycles[0].state, "succeeded");
     assert.equal(r.tasks[0].state, "complete");
     assert.equal(r.tasks[0].automatic_retry, null);
+    assert.equal(r.tasks[0].model_configuration.modelId, "background-model");
+    assert.equal(r.cycles[0].selected_task_worker_id, null);
   }
 
   await clean();
@@ -505,7 +525,7 @@ export async function runTaskBackgroundCases(h) {
     );
   }
   await clean({
-    extra: ["UPDATE task_dispatch_cycles SET model_configuration='[]'::jsonb"],
+    extra: ["UPDATE tasks SET model_configuration='[]'::jsonb"],
   });
   for (const v of await run(
     "failed tick clears its active slot so repaired queued work can run",
@@ -516,7 +536,7 @@ export async function runTaskBackgroundCases(h) {
         { kind: "snapshot", sql: selectRows },
         {
           kind: "sql",
-          sql: "UPDATE task_dispatch_cycles SET model_configuration=NULL",
+          sql: `UPDATE tasks SET model_configuration=${json(modelConfiguration("background-model"))}`,
         },
         { kind: "tick" },
         { kind: "drain" },
@@ -594,7 +614,7 @@ export async function runTaskBackgroundCases(h) {
     `INSERT INTO user_settings(user_id,default_model_id,auto_name_tasks,auto_name_chats) VALUES(${literal(otherOwner)},'background-foreign-model',false,false) ON CONFLICT(user_id) DO UPDATE SET default_model_id='background-foreign-model',auto_name_tasks=false,auto_name_chats=false`,
     `UPDATE workers SET encryption_status=${json(encryption)} WHERE id='foreign'`,
     `INSERT INTO chats(id,owner_id,project_id,active_worker_id,active_worktree_id,experience,model_id,protected_label,created_at,updated_at,last_used_at) VALUES(${literal(foreignChat)},${literal(otherOwner)},'other','foreign','other-foreign-main','task','background-foreign-model',${json(label("chat"))},${literal(stamp)},${literal(stamp)},${literal(stamp)}) ON CONFLICT(id) DO UPDATE SET model_id='background-foreign-model',experience='task',active_worker_id='foreign',active_worktree_id='other-foreign-main'`,
-    `INSERT INTO tasks(chat_id,protected_content,created_at,updated_at) VALUES(${literal(foreignChat)},${json(taskEnvelope)},${literal(stamp)},${literal(stamp)})`,
+    `INSERT INTO tasks(chat_id,model_configuration,protected_content,created_at,updated_at) VALUES(${literal(foreignChat)},${json(modelConfiguration("background-foreign-model"))},${json(taskEnvelope)},${literal(stamp)},${literal(stamp)})`,
     `INSERT INTO task_workers(id,owner_id,name,model_id,continuity_family,created_at,updated_at) VALUES('${id(3)}',${literal(otherOwner)},'Foreign background','background-foreign-model','foreign-family',${literal(stamp)},${literal(stamp)})`,
     `INSERT INTO task_dispatch_cycles(id,owner_id,chat_id,operation_id,operation_kind,state,fifo_created_at,created_at,updated_at) VALUES('${id(12)}',${literal(otherOwner)},${literal(foreignChat)},'${id(72)}','direct','queued',${literal(stamp)},${literal(stamp)},${literal(stamp)})`,
     `INSERT INTO chat_runtime_sessions(id,chat_id,worker_id,worktree_id,codex_thread_id,model_route_id,status) VALUES('${id(32)}',${literal(foreignChat)},'foreign','other-foreign-main','background-foreign-thread','background-foreign-route','ready')`,

@@ -95,7 +95,7 @@ impl Service {
                     .claim_next(&owner_id, &lease_owner, prepared.resolver(), &Value::Null)
                     .await?
                 {
-                    self.log("info", "Queued Task claimed for execution", json!({"event":"task.scheduler.claimed","subsystem":"task-scheduler","operation":"claim-task","status":"completed","chatId":claim["cycle"]["chatId"],"cycleId":claim["cycle"]["id"],"taskWorkerId":claim["cycle"]["selectedTaskWorkerId"],"workerId":claim["cycle"]["physicalWorkerId"],"modelRouteId":claim["cycle"]["modelRouteId"],"providerAccountId":claim["cycle"]["providerAccountId"],"serverVersion":crate::settings::quota::server_version(),"attempt":claim["cycle"]["attemptCount"]}));
+                    self.log("info", "Queued Task claimed for execution", json!({"event":"task.scheduler.claimed","subsystem":"task-scheduler","operation":"claim-task","status":"completed","chatId":claim["cycle"]["chatId"],"cycleId":claim["cycle"]["id"],"modelId":claim["cycle"]["modelConfiguration"]["modelId"],"workerId":claim["cycle"]["physicalWorkerId"],"modelRouteId":claim["cycle"]["modelRouteId"],"providerAccountId":claim["cycle"]["providerAccountId"],"serverVersion":crate::settings::quota::server_version(),"attempt":claim["cycle"]["attemptCount"]}));
                     let runtime = prepared.runtime_for_claim(&claim);
                     let launched =
                         self.dependencies
