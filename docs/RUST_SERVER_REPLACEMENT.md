@@ -5365,3 +5365,37 @@ existing skips and one MCP broker metadata failure: `alert_raise` advertises
 Primary with the worker files unchanged (15 other focused broker tests pass).
 This additional baseline issue remains to resolve; the worker suite is not
 reported as green.
+
+## Reference client and worker test alignment
+
+The independently reproduced app and MCP broker failures now have scoped test
+corrections. File views require their current View/Edit mode control and hide
+Explorer-directory refresh; returning to the directory must expose refresh,
+invalidate that exact directory and avoid reloading the previously selected file.
+History overlays preserve the focused pane's complete mounted URL, including
+unrelated query parameters, through open and close. A distinct background project
+cannot claim that route. Task tabs keep the real browser event subscription under
+jsdom and retain the unsaved Overview editor across tab changes.
+
+The default creation menu retains its exact GitHub items while omitting Running
+and its separator when there are no active instances. The packaged MCP host must
+advertise both keyed/revisioned Alert mutations as idempotent; actual Source Alert
+replay, ownership and resolved-key tombstone tests independently prove that
+contract. No production app, worker or server behavior changes in this milestone.
+
+Focused validation passes 42 app tests, 18 worker tests and 12 Source Alert tests.
+The broad `pnpm check` finishes in 627.5 seconds: all 1,702 Source and 4,391 app
+tests pass (57 and three existing skips respectively). Worker results are 2,622
+passing, 133 existing skips and two 15-second timeouts in the unchanged native
+history batch and CUA image-boundary tests. Both complete files pass all 56 tests
+on the focused rerun with their original deadlines. Their source hashes match
+clean Primary; the broad run remains failing and requires timing follow-up.
+
+A separate whole-repository format check finds eleven unchanged baseline files;
+all eleven failures reproduce on clean Primary. Changed-file formatting passes.
+The preceding #2450 Linux and Windows Chat-message jobs also fail because the
+original full foundation scenario exceeds its 15-second deadline, before reaching
+the synchronization suite. Those terminal job logs are retained with SHA-256
+digests. This does not establish platform acceptance or resolve the timing and
+formatting failures. Node remains the default server and the complete Rust
+replacement goal remains unfinished.

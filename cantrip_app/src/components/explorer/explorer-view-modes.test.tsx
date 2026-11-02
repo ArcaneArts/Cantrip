@@ -334,6 +334,10 @@ describe("Explorer renderer modes", () => {
   });
 
   it("leaves file-tab closing to the tab while retaining transient preview navigation", async () => {
+    const refreshButton = () =>
+      [...container.querySelectorAll<HTMLButtonElement>("button")].find(
+        (button) => button.textContent?.trim() === "Refresh Explorer",
+      );
     const render = await setup("README.md", {
       ...explorer,
       selectedPath: "README.md",
@@ -349,12 +353,30 @@ describe("Explorer renderer modes", () => {
     expect(
       container.querySelector('button[aria-label="Close file"]'),
     ).toBeNull();
-    expect(
-      container.querySelector('button[aria-label="Refresh Explorer"]'),
-    ).not.toBeNull();
+    expect(refreshButton()).toBeUndefined();
     expect(
       container.querySelector('button[aria-label="View mode"]'),
     ).not.toBeNull();
+
+    await render(explorer, null);
+    expect(header!.selectedPath).toBeNull();
+    expect(refreshButton()).toBeDefined();
+    expect(
+      container.querySelector('button[aria-label="View mode"]'),
+    ).toBeNull();
+    const invalidate = vi.spyOn(client, "invalidateQueries");
+    vi.mocked(api.getExplorerFile).mockClear();
+    await act(async () => refreshButton()!.click());
+    await settle();
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: [
+        "explorer-directory",
+        explorer.projectId,
+        explorer.worktreeId,
+        explorer.id,
+      ],
+    });
+    expect(api.getExplorerFile).not.toHaveBeenCalled();
   });
 
   it.each(["data/settings.yaml", "data/settings.json"])(

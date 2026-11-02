@@ -114,10 +114,20 @@ describe("running configuration submenu", () => {
           />,
         );
       });
+      const submenus = renderer.root.findAllByProps({ "data-submenu": true });
+      expect(submenus).toHaveLength(1);
+      expect(submenus[0]!.props.children).toContain("GitHub");
+      expect(JSON.stringify(renderer.toJSON())).not.toContain("Running");
       expect(
-        renderer.root.findAllByProps({ "data-submenu": true }),
-      ).toHaveLength(0);
-      expect(renderer.root.findAllByType("section")).toHaveLength(0);
+        renderer.root
+          .findByType("section")
+          .findAllByType("button")
+          .map((button) =>
+            button.children
+              .filter((child) => typeof child === "string")
+              .join(""),
+          ),
+      ).toEqual(["Issues", "Pull Requests", "Actions"]);
       expect(renderer.root.findAllByType("hr")).toHaveLength(0);
       await act(async () => renderer.unmount());
     },

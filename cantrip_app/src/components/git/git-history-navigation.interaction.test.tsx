@@ -320,7 +320,14 @@ describe("History pane navigation ownership", () => {
   });
 
   it("opens file history without changing the focused dock or URL", async () => {
+    window.history.replaceState(null, "", "/?workspace=retained");
     await mount({ focus: "dock" });
+    const previousUrl = window.location.href;
+    expect(parseGitHistoryRoute(window.location.search)).toMatchObject({
+      projectId: project.id,
+      worktreeId: "primary",
+      filePath: null,
+    });
     await request("README.md");
     expect(dialogs()).toHaveLength(1);
     expect(
@@ -328,7 +335,7 @@ describe("History pane navigation ownership", () => {
         .querySelector('[data-pane="dock"]')!
         .getAttribute("data-focused"),
     ).toBe("true");
-    expect(window.location.search).toBe("");
+    expect(window.location.href).toBe(previousUrl);
     const compare = [
       ...dialogs()[0]!.querySelectorAll<HTMLButtonElement>("button"),
     ].find((button) => button.textContent === "compare")!;
@@ -344,6 +351,7 @@ describe("History pane navigation ownership", () => {
       "README.md",
     );
     expect(dialogs()).toHaveLength(0);
+    expect(window.location.href).toBe(previousUrl);
   });
 
   it.each(["main", "dock"])(
@@ -372,9 +380,15 @@ describe("History pane navigation ownership", () => {
 
   it("does not let a distinct background project open or overwrite the foreground route", async () => {
     await mount({ dockProject: { ...project, id: "project-other" } });
+    const previousUrl = window.location.href;
+    expect(parseGitHistoryRoute(window.location.search)).toMatchObject({
+      projectId: project.id,
+      worktreeId: "primary",
+      filePath: null,
+    });
     await request("foreground.txt");
     expect(dialogs()).toHaveLength(1);
-    expect(window.location.search).toBe("");
+    expect(window.location.href).toBe(previousUrl);
     expect(getProjectWorktreeFileHistory).not.toHaveBeenCalledWith(
       "project-other",
       expect.anything(),

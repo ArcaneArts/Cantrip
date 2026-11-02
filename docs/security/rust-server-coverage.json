@@ -9716,6 +9716,58 @@
           "failure": "MCP broker alert_raise idempotentHint expected false, actual true. Reproduced on clean Primary 4692c643d; 15 other focused broker tests pass."
         }
       }
+    },
+    "referenceClientWorkerFixtures": {
+      "status": "partial",
+      "evidence": [
+        "cantrip_app/src/components/explorer/explorer-view-modes.test.tsx",
+        "cantrip_app/src/components/git/git-history-navigation.interaction.test.tsx",
+        "cantrip_app/src/components/tasks/task-detail-tabs.test.tsx",
+        "cantrip_app/src/components/workspace/project-surface-running-menu.test.tsx",
+        "cantrip_worker/test/mcp-broker.test.ts",
+        "cantrip_server/test/project-alert-workflows.test.ts",
+        "cantrip_server/test/project-alerts.test.ts"
+      ],
+      "scope": "Reference assertions reflect current directory/file controls, exact mounted URL ownership, real browser event subscription, independent GitHub/Running menu scopes, and keyed/revisioned Alert idempotency. No production behavior changes; assertions, semantic negative controls and deadlines retained or strengthened.",
+      "localAcceptance": {
+        "platform": "macOS arm64",
+        "appTests": 42,
+        "workerTests": 18,
+        "sourceAlertTests": 12,
+        "fullRepositoryCheck": {
+          "exitCode": 1,
+          "elapsedSeconds": 627.5,
+          "sourcePassed": 1702,
+          "sourceSkipped": 57,
+          "appPassed": 4391,
+          "appSkipped": 3,
+          "workerPassed": 2622,
+          "workerSkipped": 133,
+          "workerFailed": 2,
+          "remainingFailures": "Original 15000ms deadlines exceeded in unchanged native-history batch and CUA image-boundary tests. Both files pass all56 focused tests with original deadlines. No broad green claim."
+        },
+        "workerTimingFocused": {
+          "passed": 56,
+          "elapsedSeconds": 62.8,
+          "originalDeadlines": true
+        },
+        "wholeRepositoryFormat": {
+          "exitCode": 1,
+          "baselineFiles": 11,
+          "primaryReproduction": "All eleven failures reproduce on clean Primary. Changed-file formatting passes."
+        }
+      },
+      "platformFoundationFailures": {
+        "run": "https://github.com/ArcaneArts/Cantrip/actions/runs/41537667541",
+        "linuxJobId": 125593553403,
+        "windowsJobId": 125593553280,
+        "failure": "Full Source foundation scenario exceeds original 15000ms deadline. Synchronization compatibility suites are not reached; platform acceptance remains unfinished."
+      },
+      "remaining": [
+        "Resolve the actual supported-platform foundation timing failure with existing assertions and deadlines.",
+        "Resolve remaining broad worker timing failures and eleven independently reproduced formatting failures.",
+        "Complete the full original replacement goal, platform/package acceptance and default cutover."
+      ]
     }
   },
   "remainingAcceptance": [
