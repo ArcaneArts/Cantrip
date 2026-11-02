@@ -1,6 +1,7 @@
 export const projectOverviewSections = [
   "overview",
   "tasks",
+  "alerts",
   "history",
   "issues",
   "prs",

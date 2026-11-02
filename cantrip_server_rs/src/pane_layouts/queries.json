@@ -267,6 +267,26 @@
       "tabKind": "actions"
     },
     {
+      "id": "project.alerts",
+      "scope": "project",
+      "cardinality": "singleton",
+      "label": "Alert Inbox",
+      "icon": "bell",
+      "category": "project-tools",
+      "capabilityRequirements": [],
+      "suggestedPlacement": "center",
+      "supportedPlacements": ["center", "right", "bottom"],
+      "deletable": false,
+      "archivable": false,
+      "launcherLocations": [
+        "project-navigator",
+        "surface-catalog",
+        "command-palette"
+      ],
+      "launcherPinnedByDefault": false,
+      "tabKind": null
+    },
+    {
       "id": "project.tasks",
       "scope": "project",
       "cardinality": "singleton",

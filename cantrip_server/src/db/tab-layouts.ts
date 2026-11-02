@@ -1812,7 +1812,8 @@ export class ProjectTabLayoutRepository {
   ): Promise<ProjectTabLayoutWireSummary | null> {
     if (
       definitionId === "project.overview" ||
-      definitionId === "project.tasks"
+      definitionId === "project.tasks" ||
+      definitionId === "project.alerts"
     ) {
       throw new TabLayoutInvariantError(
         "This built-in surface does not use a worktree.",

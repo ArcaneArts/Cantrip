@@ -1338,8 +1338,7 @@ export function createShellProjectNavigationCommands({
       definitionId: "project.tasks",
     } as const;
     if (workspace !== undefined) {
-      void openOrFocusSurface(projectId, surfaceRef);
-      return;
+      return openOrFocusSurface(projectId, surfaceRef);
     }
     const tabKey = projectSurfaceViewId({ projectId, resource: surfaceRef });
     const cachedLayout = queryClient.getQueryData<ProjectTabLayoutSummary>([
@@ -1350,8 +1349,7 @@ export function createShellProjectNavigationCommands({
       !cachedLayout ||
       !projectTabLayoutContainsTab(cachedLayout, projectId, tabKey)
     ) {
-      void openOrFocusSurface(projectId, surfaceRef);
-      return;
+      return openOrFocusSurface(projectId, surfaceRef);
     }
     setAppMode("ide");
     setDesktopSidebarDrawerOpen(false);
@@ -1369,6 +1367,7 @@ export function createShellProjectNavigationCommands({
       lastIdeProjectId: projectId,
       lastIdeWorkspaceId: getActiveProjectWorkspaceId(),
     });
+    return Promise.resolve(true);
   };
   const closeProjectTask = (projectId: string) => {
     setProjectTaskChatIds((current) => {

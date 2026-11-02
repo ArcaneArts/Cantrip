@@ -122,6 +122,30 @@ try {
         fact(1, "blocked"),
       );
       await counts(1);
+      await fixture.observe(
+        "Goal alert page",
+        "GET",
+        "/api/projects/project/alerts",
+      );
+      const goalAlert = fixture.records.get("Goal alert page").items[0];
+      await fixture.observe(
+        "stored Goal source",
+        "GET",
+        `/api/projects/project/alerts/${goalAlert.id}/goal`,
+      );
+      assert.equal(
+        fixture.records.get("stored Goal source").goal.status,
+        "blocked",
+      );
+      assert.ok(
+        fixture.records.get("stored Goal source").goal.protectedObjective,
+      );
+      await fixture.observe(
+        "foreign Goal source",
+        "GET",
+        `/api/projects/foreign/alerts/${goalAlert.id}/goal`,
+        { status: 404 },
+      );
       await post(
         "resumed fact",
         "/api/internal/project-alerts/goals",

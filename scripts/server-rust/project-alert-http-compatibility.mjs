@@ -40,6 +40,11 @@ try {
             401,
           );
           await visit(
+            "unauthenticated Goal source",
+            "/api/projects/missing/alerts/missing/goal",
+            401,
+          );
+          await visit(
             "unauthenticated inbox",
             "/api/projects/missing/alerts",
             401,
@@ -61,6 +66,11 @@ try {
             },
           );
         }
+        await visit(
+          "unknown Goal source",
+          "/api/projects/missing/alerts/missing/goal",
+          404,
+        );
         await visit("counts", "/api/project-alerts/counts");
         await visit("unknown project", "/api/projects/missing/alerts", 404);
         await visit("zero limit", "/api/projects/missing/alerts?limit=0", 400);

@@ -4100,7 +4100,7 @@ export const projectBuiltInSurfaceStates = pgTable(
     primaryKey({ columns: [table.projectId, table.definitionId] }),
     check(
       "project_builtin_surface_states_definition_check",
-      sql`${table.definitionId} IN ('project.overview', 'project.tasks', 'git.history', 'git.graph', 'github.issues', 'github.pull-requests', 'github.actions')`,
+      sql`${table.definitionId} IN ('project.overview', 'project.tasks', 'project.alerts', 'git.history', 'git.graph', 'github.issues', 'github.pull-requests', 'github.actions')`,
     ),
   ],
 );
@@ -4129,7 +4129,7 @@ export const projectSurfaceLauncherPreferences = pgTable(
     }),
     check(
       "project_surface_launcher_preferences_definition_check",
-      sql`${table.definitionId} IN ('project.overview', 'project.tasks', 'git.history', 'git.graph', 'github.issues', 'github.pull-requests', 'github.actions')`,
+      sql`${table.definitionId} IN ('project.overview', 'project.tasks', 'project.alerts', 'git.history', 'git.graph', 'github.issues', 'github.pull-requests', 'github.actions')`,
     ),
     check(
       "project_surface_launcher_preferences_location_check",

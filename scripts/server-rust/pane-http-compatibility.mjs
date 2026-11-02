@@ -424,6 +424,34 @@ try {
           { revision: 0, viewId: "builtin:github:github.issues" },
           { method: "POST" },
         );
+        const alertOpen = {
+          surfaceRef: { kind: "builtin", definitionId: "project.alerts" },
+          targetPaneId: "center",
+        };
+        await change("open Alert Inbox", "/panes/member/open", alertOpen, {
+          method: "POST",
+        });
+        await change(
+          "reuse Alert Inbox singleton",
+          "/panes/member/open",
+          alertOpen,
+          { method: "POST" },
+        );
+        await change(
+          "close Alert Inbox",
+          "/panes/member/close",
+          { viewId: "builtin:github:project.alerts" },
+          { method: "POST" },
+        );
+        await change("restore Alert Inbox", "/panes/member/open", alertOpen, {
+          method: "POST",
+        });
+        await change(
+          "Alert Inbox rejects worktree",
+          "/builtin-surfaces/project.alerts/worktree",
+          { worktreeId: "github-alpha-main" },
+          { status: 400 },
+        );
         await change("pin built-in launcher", "/surface-launchers", {
           definitionId: "git.history",
           location: "project-navigator",

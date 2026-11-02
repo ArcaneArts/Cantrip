@@ -1,3 +1,4 @@
+import { AlertInbox } from "@/components/alerts/alert-inbox";
 import { PanelToolbar } from "@/components/workspace/panel-toolbar";
 import {
   UnresolvedProjectSurface,
@@ -679,7 +680,11 @@ export function GlobalContentHost({
             </Suspense>
           ) : selectedTerminal ? null : selectedChat ? null : selectedProject ? (
             <ProjectOverviewHost>
-              {selectedProject.setupStatus !== "ready" ? (
+              {selectedProject.setupStatus !== "ready" &&
+              !(
+                projectOverviewSelected &&
+                activeProjectOverviewSection === "alerts"
+              ) ? (
                 <EmptyState>
                   <EmptyStateContent>
                     <EmptyStateIcon>
@@ -818,6 +823,46 @@ export function GlobalContentHost({
                 </EmptyState>
               ) : projectOverviewSelected ? (
                 <div className="flex min-h-0 flex-1 flex-col">
+                  {activeProjectOverviewSection === "alerts" ? (
+                    <AlertInbox
+                      key={selectedProject.id}
+                      projectId={selectedProject.id}
+                      chats={chats.data ?? []}
+                      workers={workers.data ?? []}
+                      settings={settings.data}
+                      onRename={(chatId, title) =>
+                        renameChatMutation.mutate({ chatId, title })
+                      }
+                      onOpenChat={async (chat) => {
+                        if (chat.experience === "task") {
+                          const opened = await openProjectTask(
+                            chat.projectId,
+                            chat.id,
+                          );
+                          if (opened === false)
+                            throw new Error(
+                              "The originating task could not be opened.",
+                            );
+                          return;
+                        }
+                        const focused = await bindings.openOrFocusSurface(
+                          chat.projectId,
+                          {
+                            kind: "entity",
+                            definitionId: "project.agent",
+                            resourceId: chat.id,
+                          },
+                          undefined,
+                          undefined,
+                          { revealDock: true },
+                        );
+                        if (focused === false)
+                          throw new Error(
+                            "The originating chat could not be opened.",
+                          );
+                      }}
+                    />
+                  ) : null}
                   <div
                     className={cn(
                       "min-h-0 flex-1 flex-col",
@@ -930,7 +975,8 @@ export function GlobalContentHost({
                       }
                     />
                   </div>
-                  {activeProjectOverviewSection !== "tasks" ? (
+                  {activeProjectOverviewSection !== "tasks" &&
+                  activeProjectOverviewSection !== "alerts" ? (
                     <ProjectOverview
                       compact={compactShell}
                       creatingKinds={creatingSurfaceKinds}

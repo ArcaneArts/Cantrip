@@ -211,15 +211,15 @@
     "workerCommands": "packages/protocol/src/index.ts"
   },
   "summary": {
-    "application-principal": 475,
+    "application-principal": 476,
     "external-credential": 1,
     "public-authentication": 3,
     "public-bootstrap": 3,
     "worker-control": 39,
-    "http": 514,
+    "http": 515,
     "legacyLocalOwnerRoutes": 0,
-    "requestPrincipalRoutes": 425,
-    "total": 521,
+    "requestPrincipalRoutes": 426,
+    "total": 522,
     "websocket": 7,
     "workerCredentialRoutes": 39,
     "durableTables": 115,
@@ -240,7 +240,7 @@
   },
   "contractSetDigests": {
     "agentOperations": "691b6132f5052c9af8e83552661910d6619cf238fe20bb07869f932df7989b85",
-    "applicationRoutes": "6dedf25c560513c90d27e464a65cca5a83cdfaf4ecf9222bcd9b19a6100308e9",
+    "applicationRoutes": "0c32570a30c39d2969932ef3f668bfaf8720a7ac56385e8b14ec8127c6afc5d6",
     "cliCommands": "dac89683226ba9ee6f6211eba252fb0b83a5a022aa9150f107315733a4e44251",
     "clientControlCommands": "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
     "liveResources": "54dd12b30c184f81d2a8bdd249cc9a91e93dfb3052fcafb425233a5f8dc87a21",
@@ -3402,7 +3402,7 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/project-alerts.ts",
-      "line": 20,
+      "line": 36,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/project-alerts/counts",
@@ -3532,10 +3532,23 @@
     {
       "boundary": "application-principal",
       "file": "cantrip_server/src/app/routes/project-alerts.ts",
-      "line": 27,
+      "line": 43,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/alerts",
+      "transport": "http",
+      "contentBoundary": {
+        "classification": "endpoint-protected",
+        "rationale": "Owner/project-scoped attention projection with protected agent details and opaque source targets; source request content remains protected at its original endpoint."
+      }
+    },
+    {
+      "boundary": "application-principal",
+      "file": "cantrip_server/src/app/routes/project-alerts.ts",
+      "line": 21,
+      "method": "GET",
+      "ownerEvidence": "request-principal",
+      "path": "/api/projects/:projectId/alerts/:alertId/goal",
       "transport": "http",
       "contentBoundary": {
         "classification": "endpoint-protected",
@@ -12234,13 +12247,13 @@
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 1858,
+      "line": 1859,
       "method": "nextProjectTabPosition",
       "ownerEvidence": "delegated-or-missing-review"
     },
     {
       "file": "cantrip_server/src/db/tab-layouts.ts",
-      "line": 1905,
+      "line": 1906,
       "method": "reorderProjects",
       "ownerEvidence": "explicit-owner"
     }

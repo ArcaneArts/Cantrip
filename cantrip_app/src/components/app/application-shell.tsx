@@ -1,3 +1,7 @@
+import {
+  readAlertNavigation,
+  subscribeAlertNavigation,
+} from "@/lib/alert-navigation";
 import { useConversationPlacement } from "./use-conversation-placement";
 import { useSidebarFileReveal } from "@/components/sidebar/use-sidebar-file-reveal";
 import { useProjectSidebarPage } from "@/components/sidebar/use-project-sidebar-page";
@@ -455,6 +459,33 @@ export function App() {
     (selectedBuiltInDefinitionId
       ? projectOverviewSectionForBuiltInDefinition(selectedBuiltInDefinitionId)
       : projectOverviewSection);
+  useEffect(() => {
+    if (
+      !selectedProjectId ||
+      !projectOverviewSelected ||
+      activeProjectOverviewSection !== "tasks"
+    )
+      return;
+    const receive = () => {
+      const request = readAlertNavigation(selectedProjectId);
+      if (!request?.task || !request.target.chatId) return;
+      const chatId = request.target.chatId;
+      setProjectTaskChatIds((current) => {
+        if (current.get(selectedProjectId) === request.target.chatId)
+          return current;
+        const next = new Map(current);
+        next.set(selectedProjectId, chatId);
+        return next;
+      });
+    };
+    const unsubscribe = subscribeAlertNavigation(receive);
+    receive();
+    return unsubscribe;
+  }, [
+    selectedProjectId,
+    projectOverviewSelected,
+    activeProjectOverviewSection,
+  ]);
   const activeProjectTaskChatId =
     projectOverviewSelected &&
     activeProjectOverviewSection === "tasks" &&
@@ -899,7 +930,7 @@ export function App() {
     [openOrFocusSurface, tabLayout.data, workspaceSelection.focusedPaneId],
   );
   const openProjectBuiltinSurface = useCallback(
-    (projectId: string, section: "overview" | "tasks") =>
+    (projectId: string, section: "overview" | "tasks" | "alerts") =>
       openProjectNavigatorSurface(
         projectId,
         projectBuiltInSurfaceResourceRef(
@@ -1201,7 +1232,8 @@ export function App() {
       : undefined;
   const projectOverviewGitSection: GitViewSection | null =
     activeProjectOverviewSection === "overview" ||
-    activeProjectOverviewSection === "tasks"
+    activeProjectOverviewSection === "tasks" ||
+    activeProjectOverviewSection === "alerts"
       ? null
       : activeProjectOverviewSection;
   const projectOverviewGitProject =
@@ -1549,7 +1581,9 @@ export function App() {
             : selectedBuiltInSurface &&
                 selectedBuiltInSurface.entity.definitionId !==
                   "project.overview" &&
-                selectedBuiltInSurface.entity.definitionId !== "project.tasks"
+                selectedBuiltInSurface.entity.definitionId !==
+                  "project.tasks" &&
+                selectedBuiltInSurface.entity.definitionId !== "project.alerts"
               ? {
                   kind: "builtin",
                   projectId: selectedBuiltInSurface.projectId,

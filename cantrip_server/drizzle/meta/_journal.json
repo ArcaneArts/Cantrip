@@ -1688,6 +1688,13 @@
       "when": 1793637500000,
       "tag": "0240_project_alert_task_agent",
       "breakpoints": true
+    },
+    {
+      "idx": 241,
+      "version": "7",
+      "when": 1793637600000,
+      "tag": "0241_alert_inbox_surface",
+      "breakpoints": true
     }
   ]
 }

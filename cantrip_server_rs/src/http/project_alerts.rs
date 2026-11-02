@@ -52,8 +52,26 @@ async fn list(
     .await;
     result.unwrap_or_else(|cause| middleware::failure(&service, &ctx.id, &cause))
 }
+async fn goal(
+    State(service): State<Arc<AuthService>>,
+    Extension(ctx): Extension<Arc<Context>>,
+    Path((project, alert)): Path<(String, String)>,
+) -> Response {
+    let result: Result<Response> = async {
+        match Repository::new(service.repository.database.clone())
+            .goal_source(&ctx.principal.user.as_ref().unwrap().id, &project, &alert)
+            .await?
+        {
+            Some(value) => output(200, "projectGoalSnapshotSchema", &value),
+            None => Ok(error(404, "Alert source is no longer available.")),
+        }
+    }
+    .await;
+    result.unwrap_or_else(|cause| middleware::failure(&service, &ctx.id, &cause))
+}
 pub(super) fn routes() -> Router<Arc<AuthService>> {
     Router::new()
+        .route("/api/projects/{projectId}/alerts/{alertId}/goal", get(goal))
         .route("/api/project-alerts/counts", get(counts))
         .route("/api/projects/{projectId}/alerts", get(list))
 }

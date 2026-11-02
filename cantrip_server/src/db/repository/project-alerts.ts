@@ -8,6 +8,7 @@ import {
   projectAlertChangeSchema,
   agentAlertMutationWireSchema,
   projectGoalObservationSchema,
+  projectGoalSnapshotSchema,
   projectGoalObservationResultSchema,
   type ProjectGoalObservation,
   type AgentAlertMutationWire,
@@ -51,6 +52,12 @@ export class ProjectAlertRepository {
     await this.database.execute(
       sql`UPDATE workers SET project_goal_generation=${generation} WHERE id=${workerId} AND owner_id=${ownerId}`,
     );
+  }
+  async goalSource(ownerId: string, projectId: string, alertId: string) {
+    const value = await this.value(
+      sql`SELECT project_alert_goal_source(${ownerId},${projectId},${alertId}) AS value`,
+    );
+    return value === null ? null : projectGoalSnapshotSchema.parse(value);
   }
   async goalChats(
     ownerId: string,
