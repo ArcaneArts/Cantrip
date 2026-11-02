@@ -3,16 +3,16 @@
   "completeReplacement": false,
   "inventory": {
     "path": "docs/security/server-route-inventory.json",
-    "sha256": "a94993281c8fcb1041e6f43946d91495940ee2b6ecb0e5aca6e866c953a7ba95",
-    "baselineCommit": "f8af0e1c2bff8792d647a063e3bd9ab06f3fe9f4",
+    "sha256": "870d4799222a40728b68f8341bc1819f0fbe457785c24857fc9853543037a75e",
+    "baselineCommit": "2dd1ca594939e3b2696892e086d14d9bfea0a2c9",
     "counts": {
-      "routes": 523,
+      "routes": 520,
       "workerCommands": 278,
-      "durableTables": 113,
+      "durableTables": 114,
       "repositoryMethods": 364,
-      "liveResources": 45
+      "liveResources": 46
     },
-    "workingTreeNote": "Current source inventory retains523routes,278worker commands,113durable tables,364repository methods and45live resources. Eligibility, claimed/resumed execution, scheduler and durable outcome helpers preserve canonical production bodies; route positions/hash reflect the extractions."
+    "workingTreeNote": "Current Source inventory includes the project-alert foundation and per-Task model cutover. Retired Task Worker HTTP routes are absent in both implementations. Task catalog and admission entries describe scoped local evidence; full replacement and supported-platform/product acceptance remain unfinished."
   },
   "interpretation": "Every row in the referenced inventory inherits its category default unless explicitly overridden. Schema creation is not domain behavior. Test commands and configured CI are not passing evidence.",
   "routes": {
@@ -3556,81 +3556,6 @@
         ]
       },
       {
-        "method": "GET",
-        "path": "/api/settings/task-workers",
-        "implementation": "cantrip_server_rs/src/http/task_workers.rs",
-        "status": "implemented-pending-platform-acceptance",
-        "evidence": [
-          "scripts/server-rust/task-workers-http-compatibility.mjs",
-          "scripts/server-rust/task-workers-cases.mjs",
-          "scripts/server-rust/task-workers-races.mjs",
-          "cantrip_server_rs/tests/task_contracts.rs"
-        ],
-        "remaining": [
-          "Supported-platform and packaged-product acceptance; full background scheduler and execution consumers remain separate unfinished domains."
-        ]
-      },
-      {
-        "method": "POST",
-        "path": "/api/settings/task-workers",
-        "implementation": "cantrip_server_rs/src/http/task_workers.rs",
-        "status": "implemented-pending-platform-acceptance",
-        "evidence": [
-          "scripts/server-rust/task-workers-http-compatibility.mjs",
-          "scripts/server-rust/task-workers-cases.mjs",
-          "scripts/server-rust/task-workers-races.mjs",
-          "cantrip_server_rs/tests/task_contracts.rs"
-        ],
-        "remaining": [
-          "Supported-platform and packaged-product acceptance; full background scheduler and execution consumers remain separate unfinished domains."
-        ]
-      },
-      {
-        "method": "PATCH",
-        "path": "/api/settings/task-workers/:taskWorkerId",
-        "implementation": "cantrip_server_rs/src/http/task_workers.rs",
-        "status": "implemented-pending-platform-acceptance",
-        "evidence": [
-          "scripts/server-rust/task-workers-http-compatibility.mjs",
-          "scripts/server-rust/task-workers-cases.mjs",
-          "scripts/server-rust/task-workers-races.mjs",
-          "cantrip_server_rs/tests/task_contracts.rs"
-        ],
-        "remaining": [
-          "Supported-platform and packaged-product acceptance; full background scheduler and execution consumers remain separate unfinished domains."
-        ]
-      },
-      {
-        "method": "DELETE",
-        "path": "/api/settings/task-workers/:taskWorkerId",
-        "implementation": "cantrip_server_rs/src/http/task_workers.rs",
-        "status": "implemented-pending-platform-acceptance",
-        "evidence": [
-          "scripts/server-rust/task-workers-http-compatibility.mjs",
-          "scripts/server-rust/task-workers-cases.mjs",
-          "scripts/server-rust/task-workers-races.mjs",
-          "cantrip_server_rs/tests/task_contracts.rs"
-        ],
-        "remaining": [
-          "Supported-platform and packaged-product acceptance; full background scheduler and execution consumers remain separate unfinished domains."
-        ]
-      },
-      {
-        "method": "PUT",
-        "path": "/api/settings/task-workers/order",
-        "implementation": "cantrip_server_rs/src/http/task_workers.rs",
-        "status": "implemented-pending-platform-acceptance",
-        "evidence": [
-          "scripts/server-rust/task-workers-http-compatibility.mjs",
-          "scripts/server-rust/task-workers-cases.mjs",
-          "scripts/server-rust/task-workers-races.mjs",
-          "cantrip_server_rs/tests/task_contracts.rs"
-        ],
-        "remaining": [
-          "Supported-platform and packaged-product acceptance; full background scheduler and execution consumers remain separate unfinished domains."
-        ]
-      },
-      {
         "method": "POST",
         "path": "/api/internal/native-commands/receipt",
         "implementation": "cantrip_server_rs/src/http/native_admission.rs",
@@ -3843,7 +3768,7 @@
       {
         "method": "GET",
         "path": "/api/tasks/:chatId",
-        "implementation": "cantrip_server_rs/src/http/task_controls.rs",
+        "implementation": "cantrip_server_rs/src/http/task_controls/mod.rs",
         "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "scripts/server-rust/task-controls-http.mjs",
@@ -3854,7 +3779,7 @@
       {
         "method": "PATCH",
         "path": "/api/tasks/:chatId/draft",
-        "implementation": "cantrip_server_rs/src/http/task_controls.rs",
+        "implementation": "cantrip_server_rs/src/http/task_controls/mod.rs",
         "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "scripts/server-rust/task-controls-http.mjs",
@@ -3865,13 +3790,155 @@
       {
         "method": "PATCH",
         "path": "/api/tasks/:chatId/plan",
-        "implementation": "cantrip_server_rs/src/http/task_controls.rs",
+        "implementation": "cantrip_server_rs/src/http/task_controls/mod.rs",
         "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "scripts/server-rust/task-controls-http.mjs",
           "scripts/server-rust/task-repository-cases.mjs"
         ],
         "remaining": ["Supported-platform and packaged-client acceptance."]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/tasks",
+        "implementation": "cantrip_server_rs/src/http/task_controls/creation.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/task-surfaces-http.mjs",
+          "cantrip_server_rs/tests/task_contracts.rs"
+        ],
+        "remaining": [
+          "Supported-platform and packaged-client acceptance; complete client/worker Task lifecycle."
+        ]
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/tasks/:chatId",
+        "implementation": "cantrip_server_rs/src/http/task_controls/deletion.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/task-surfaces-http.mjs",
+          "cantrip_server_rs/tests/task_contracts.rs"
+        ],
+        "remaining": [
+          "Supported-platform and packaged-client acceptance; complete client/worker Task lifecycle."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/tasks/:chatId/attachments",
+        "implementation": "cantrip_server_rs/src/http/task_controls/mod.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/task-surfaces-http.mjs",
+          "cantrip_server_rs/tests/task_contracts.rs"
+        ],
+        "remaining": [
+          "Supported-platform and packaged-client acceptance; complete client/worker Task lifecycle."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/chats/:chatId/model-configuration",
+        "implementation": "cantrip_server_rs/src/http/task_controls/models.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/task-surfaces-http.mjs",
+          "cantrip_server_rs/tests/task_contracts.rs"
+        ],
+        "remaining": [
+          "Supported-platform and packaged-client acceptance; complete client/worker Task lifecycle."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/tasks/:chatId/start",
+        "implementation": "cantrip_server_rs/src/http/task_controls/operations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/task-controls-http.mjs",
+          "scripts/server-rust/task-operation-http-cases.mjs",
+          "scripts/server-rust/task-goal-cases.mjs",
+          "scripts/server-rust/task-goal-continuation-cases.mjs"
+        ],
+        "remaining": [
+          "Merged admission/continuation milestone has controlled-worker local evidence; complete client/model execution, supported-platform and packaged-client acceptance remain."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/tasks/:chatId/plan",
+        "implementation": "cantrip_server_rs/src/http/task_controls/operations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/task-controls-http.mjs",
+          "scripts/server-rust/task-operation-http-cases.mjs",
+          "scripts/server-rust/task-goal-cases.mjs",
+          "scripts/server-rust/task-goal-continuation-cases.mjs"
+        ],
+        "remaining": [
+          "Merged admission/continuation milestone has controlled-worker local evidence; complete client/model execution, supported-platform and packaged-client acceptance remain."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/tasks/:chatId/continue",
+        "implementation": "cantrip_server_rs/src/http/task_controls/operations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/task-controls-http.mjs",
+          "scripts/server-rust/task-operation-http-cases.mjs",
+          "scripts/server-rust/task-goal-cases.mjs",
+          "scripts/server-rust/task-goal-continuation-cases.mjs"
+        ],
+        "remaining": [
+          "Merged admission/continuation milestone has controlled-worker local evidence; complete client/model execution, supported-platform and packaged-client acceptance remain."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/tasks/:chatId/begin-implementation",
+        "implementation": "cantrip_server_rs/src/http/task_controls/operations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/task-controls-http.mjs",
+          "scripts/server-rust/task-operation-http-cases.mjs",
+          "scripts/server-rust/task-goal-cases.mjs",
+          "scripts/server-rust/task-goal-continuation-cases.mjs"
+        ],
+        "remaining": [
+          "Merged admission/continuation milestone has controlled-worker local evidence; complete client/model execution, supported-platform and packaged-client acceptance remain."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/tasks/:chatId/retry",
+        "implementation": "cantrip_server_rs/src/http/task_controls/operations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/task-controls-http.mjs",
+          "scripts/server-rust/task-operation-http-cases.mjs",
+          "scripts/server-rust/task-goal-cases.mjs",
+          "scripts/server-rust/task-goal-continuation-cases.mjs"
+        ],
+        "remaining": [
+          "Merged admission/continuation milestone has controlled-worker local evidence; complete client/model execution, supported-platform and packaged-client acceptance remain."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/tasks/:chatId/recover",
+        "implementation": "cantrip_server_rs/src/http/task_controls/operations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/task-controls-http.mjs",
+          "scripts/server-rust/task-operation-http-cases.mjs",
+          "scripts/server-rust/task-goal-cases.mjs",
+          "scripts/server-rust/task-goal-continuation-cases.mjs"
+        ],
+        "remaining": [
+          "Merged admission/continuation milestone has controlled-worker local evidence; complete client/model execution, supported-platform and packaged-client acceptance remain."
+        ]
       }
     ]
   },

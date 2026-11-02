@@ -51,6 +51,15 @@ describe("account resource usage storage accounting", () => {
     expect(categoryFor(schema.projectAutomationRuns)).toBe("projects");
     expect(
       STORAGE_ACCOUNTING_MANIFEST.find(
+        (entry) => entry.table === schema.projectAlerts,
+      ),
+    ).toMatchObject({
+      category: "projects",
+      classification: "account-owned",
+      ownerResolution: "owner-column",
+    });
+    expect(
+      STORAGE_ACCOUNTING_MANIFEST.find(
         (entry) => entry.table === schema.fileDocuments,
       ),
     ).toMatchObject({

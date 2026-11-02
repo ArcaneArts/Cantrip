@@ -11,11 +11,17 @@ it.each([false, true])(
       const migrations = readMigrationFiles({
         migrationsFolder: fileURLToPath(new URL("../drizzle", import.meta.url)),
       });
-      const migration = migrations.at(-1)!;
+      // Drizzle identifies 0236_direct_task_models by its journal timestamp.
+      // Later migrations must not change which upgrade this fixture exercises.
+      const migrationIndex = migrations.findIndex(
+        ({ folderMillis }) => folderMillis === 1793624400000,
+      );
+      expect(migrationIndex).toBeGreaterThanOrEqual(0);
+      const migration = migrations[migrationIndex]!;
       expect(migration.sql.join("\n")).toContain(
         "ALTER TABLE tasks ADD COLUMN model_configuration",
       );
-      for (const earlier of migrations.slice(0, -1))
+      for (const earlier of migrations.slice(0, migrationIndex))
         for (const statement of earlier.sql) await db.exec(statement);
       await db.exec(`
       INSERT INTO users(id,kind,display_name) VALUES('owner','anonymous','Owner');
