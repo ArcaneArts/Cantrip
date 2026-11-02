@@ -1078,11 +1078,13 @@ describe("Cantrip protocol", () => {
       CANTRIP_MCP_MUTATION_TOOL_NAMES.length,
     );
     expect(CANTRIP_MCP_OPERATIONS).toHaveLength(CANTRIP_MCP_TOOL_NAMES.length);
-    expect(cantripMcpOperationsForPermissionProfile(":read-only")).toEqual(
-      CANTRIP_MCP_READ_OPERATIONS.filter(
+    expect(cantripMcpOperationsForPermissionProfile(":read-only")).toEqual([
+      ...CANTRIP_MCP_READ_OPERATIONS.filter(
         (operation) => operation !== "web.session.snapshot",
       ),
-    );
+      "alert.raise",
+      "alert.resolve",
+    ]);
     expect(cantripMcpOperationsForPermissionProfile(":workspace")).toEqual(
       CANTRIP_MCP_OPERATIONS,
     );
@@ -1090,11 +1092,13 @@ describe("Cantrip protocol", () => {
       cantripMcpToolNamesForOperations(
         cantripMcpOperationsForPermissionProfile(":read-only"),
       ),
-    ).toEqual(
-      CANTRIP_MCP_READ_TOOL_NAMES.filter(
+    ).toEqual([
+      ...CANTRIP_MCP_READ_TOOL_NAMES.filter(
         (toolName) => toolName !== "web_session_snapshot",
       ),
-    );
+      "alert_raise",
+      "alert_resolve",
+    ]);
     expect(cantripMcpToolNamesForOperations(CANTRIP_MCP_OPERATIONS)).toEqual(
       CANTRIP_MCP_TOOL_NAMES,
     );

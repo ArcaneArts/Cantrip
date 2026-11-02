@@ -12,6 +12,7 @@ use serde_json::json;
 
 use crate::auth::service::AuthService;
 mod account;
+mod agent_alerts;
 mod audit;
 mod body;
 mod browser_discovery;
@@ -41,6 +42,7 @@ mod on_response;
 mod pane_layouts;
 mod policies;
 mod project_alerts;
+mod project_goal_observations;
 mod project_shares;
 mod project_surfaces;
 mod project_workspaces;
@@ -154,6 +156,8 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .route("/readyz", get(ready))
         .merge(sessions::routes())
         .merge(project_alerts::routes())
+        .merge(project_goal_observations::routes())
+        .merge(agent_alerts::routes())
         .merge(worker_links::routes())
         .merge(worker_link_sessions::routes())
         .merge(direct_attachments::routes())

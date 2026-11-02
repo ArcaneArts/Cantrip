@@ -14,6 +14,7 @@ import { clientEncryption } from "./client-encryption";
 import { refreshWorkerEncryption } from "./api";
 import {
   authorizeWorkerEncryption,
+  authorizeWorkerAlertEncryption,
   type WorkerGrantApi,
 } from "./worker-encryption-grants";
 
@@ -155,6 +156,15 @@ export async function ensureChatWorkerEncryption(input: {
       workerId: worker.workerId,
     });
   }
+  await authorizeWorkerAlertEncryption({
+    api: input.api,
+    identity,
+    keyRevision: snapshot.masterKeyRevision,
+    service,
+    workerId: worker.workerId,
+    grants: worker.encryption.grants,
+  });
+
   const refreshed = await (input.refresh ?? refreshWorkerEncryption)(
     worker.workerId,
     {

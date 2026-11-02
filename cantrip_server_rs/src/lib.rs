@@ -42,3 +42,5 @@ pub mod workspace_layouts;
 pub mod workspaces;
 
 pub mod project_surfaces;
+
+pub mod agent_alerts;

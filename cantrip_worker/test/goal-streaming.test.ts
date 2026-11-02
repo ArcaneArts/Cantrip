@@ -790,6 +790,8 @@ describe("Codex goal streaming", () => {
 
   it("clears a completed goal before creating its replacement", async () => {
     const { root, runtime } = await fixture("replace-completed");
+    const facts: unknown[] = [];
+    runtime.setGoalObserver((threadId, goal) => facts.push({ threadId, goal }));
     try {
       await expect(
         runtime.createGoal({
@@ -803,6 +805,14 @@ describe("Codex goal streaming", () => {
         }),
       ).resolves.toMatchObject({
         goal: { objective: "Replacement goal", status: "active" },
+      });
+      expect(facts).toContainEqual({ threadId: "goal-thread", goal: null });
+      expect(facts).toContainEqual({
+        threadId: "goal-thread",
+        goal: expect.objectContaining({
+          objective: "Replacement goal",
+          status: "active",
+        }),
       });
     } finally {
       runtime.close();

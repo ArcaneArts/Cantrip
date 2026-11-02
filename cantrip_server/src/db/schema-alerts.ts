@@ -3,6 +3,7 @@ import {
   pgTable,
   text,
   integer,
+  bigint,
   jsonb,
   timestamp,
   index,
@@ -10,7 +11,33 @@ import {
   check,
 } from "drizzle-orm/pg-core";
 import type { ProjectAlert } from "@cantrip/protocol";
+import type { ProjectGoalObservation } from "@cantrip/protocol";
 import { users, projects, chats } from "./schema.js";
+import { workers } from "./schema.js";
+
+export const chatGoalObservations = pgTable(
+  "chat_goal_observations",
+  {
+    chatId: text("chat_id")
+      .primaryKey()
+      .references(() => chats.id, { onDelete: "cascade" }),
+    workerId: text("worker_id").references(() => workers.id, {
+      onDelete: "set null",
+    }),
+    threadId: text("thread_id").notNull(),
+    sourceGeneration: text("source_generation").notNull(),
+    sourceRevision: bigint("source_revision", { mode: "number" }).notNull(),
+    rowRevision: integer("row_revision").notNull().default(1),
+    attentionEpoch: integer("attention_epoch").notNull().default(0),
+    snapshot: jsonb("snapshot")
+      .$type<ProjectGoalObservation["snapshot"]>()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, precision: 3 })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("chat_goal_observations_worker_idx").on(t.workerId)],
+);
 
 export const projectAlerts = pgTable(
   "project_alerts",

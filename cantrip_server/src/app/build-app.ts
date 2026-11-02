@@ -1,3 +1,6 @@
+import { createProjectGoalReconciler } from "./runtime/project-goal-observations.js";
+import { installProjectGoalObservationRoutes } from "./routes/project-alert-goals.js";
+import { createAgentAlertOperations } from "../agent-tools/alert-operations.js";
 import { installProjectAlertRoutes } from "./routes/project-alerts.js";
 import { createAgentChatOperations } from "../agent-tools/chat-operations.js";
 import { installManagedNativeRoutes } from "./routes/internal-native.js";
@@ -1301,6 +1304,12 @@ export async function buildApp({
     publishEncryptedChatMessage,
     dispatchNextQueuedPrompt,
   });
+  installProjectGoalObservationRoutes(app, { config, repository, bridge });
+  const executeAlertOperation = createAgentAlertOperations({
+    applicationOwnerId,
+    serverId,
+    repository,
+  });
   installInternalAgentToolRoutes(app, {
     appendAudit,
     cliCommandIsMutation,
@@ -1308,10 +1317,12 @@ export async function buildApp({
     executeAgentOperation: (context, request) =>
       request.operation.startsWith("chat.")
         ? executeChatOperation(context, request)
-        : agentOperationExecutor.execute(
-            chatOperationContext(context),
-            request,
-          ),
+        : request.operation.startsWith("alert.")
+          ? executeAlertOperation(context, request)
+          : agentOperationExecutor.execute(
+              chatOperationContext(context),
+              request,
+            ),
     executeCliCommand,
     repository,
     runAsOwner,
@@ -1326,6 +1337,16 @@ export async function buildApp({
     serverId,
   });
 
+  const reconcileProjectGoalSourcesForWorker = createProjectGoalReconciler({
+    repository,
+    bridge,
+    runtimeForContext,
+    onError: () =>
+      app.log.warn(
+        { event: "project-alert.goal-reconciliation-pending" },
+        "Goal observation reconciliation remains pending",
+      ),
+  });
   const drainWorkerAuthentications = installInternalWorkerWebsocketRoute(app, {
     bridge,
     catalogWorkers,
@@ -1341,6 +1362,7 @@ export async function buildApp({
     providerCredentialMigrations,
     publishLiveInvalidation,
     reconcileRunConfigurationRuntimesForWorker,
+    reconcileProjectGoalSourcesForWorker,
     refreshWorkerScopedCatalogs,
     repository,
     resumePendingWorktreeTransitionsForWorker,

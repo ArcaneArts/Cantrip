@@ -1647,6 +1647,8 @@ export class CodexAppServer implements CodexRuntime {
   #externalThreadChangeObserver:
     ((change: CodexExternalThreadChange) => void) | null = null;
   readonly #goals = new Map<string, ThreadGoal>();
+  #goalObserver: ((threadId: string, goal: ThreadGoal | null) => void) | null =
+    null;
   readonly #managedQueueResumers = new Map<
     string,
     {
@@ -1777,6 +1779,12 @@ export class CodexAppServer implements CodexRuntime {
 
   diagnostics(): CodexRuntimeDiagnostic[] {
     return [...this.#runtimeDiagnostics];
+  }
+
+  setGoalObserver(
+    observer: ((threadId: string, goal: ThreadGoal | null) => void) | null,
+  ): void {
+    this.#goalObserver = observer;
   }
 
   setExternalThreadChangeObserver(
@@ -3856,6 +3864,7 @@ export class CodexAppServer implements CodexRuntime {
         throw new Error("Could not replace the completed Codex goal.");
       }
       this.#goals.delete(threadId);
+      this.#goalObserver?.(threadId, null);
     }
     const response = chatGoalResponseSchema.parse(
       await this.requestGuiThreadMutation(
@@ -3929,7 +3938,10 @@ export class CodexAppServer implements CodexRuntime {
     const response = chatGoalClearSchema.parse(
       await this.requestGuiThreadMutation("thread/goal/clear", { threadId }),
     );
-    if (response.cleared) this.#goals.delete(threadId);
+    if (response.cleared) {
+      this.#goals.delete(threadId);
+      this.#goalObserver?.(threadId, null);
+    }
     return response;
   }
 
@@ -6690,6 +6702,7 @@ export class CodexAppServer implements CodexRuntime {
     if (message.method === "thread/goal/updated") {
       const params = message.params as ThreadGoalUpdatedParams;
       this.#goals.set(params.threadId, threadGoalSchema.parse(params.goal));
+      this.#goalObserver?.(params.threadId, this.#goals.get(params.threadId)!);
       this.observeExternalThreadChange(params.threadId, "goal");
       return;
     }
@@ -6697,6 +6710,7 @@ export class CodexAppServer implements CodexRuntime {
     if (message.method === "thread/goal/cleared") {
       const params = message.params as ThreadGoalClearedParams;
       this.#goals.delete(params.threadId);
+      this.#goalObserver?.(params.threadId, null);
       this.observeExternalThreadChange(params.threadId, "goal");
       return;
     }
@@ -7651,6 +7665,7 @@ export class CodexAppServer implements CodexRuntime {
   private cacheGoal(response: ChatGoalResponse): void {
     if (response.goal) {
       this.#goals.set(response.goal.threadId, response.goal);
+      this.#goalObserver?.(response.goal.threadId, response.goal);
     }
   }
 
@@ -7667,6 +7682,7 @@ export class CodexAppServer implements CodexRuntime {
     } else {
       this.#goals.delete(threadId);
     }
+    this.#goalObserver?.(threadId, response.goal);
     return response;
   }
 

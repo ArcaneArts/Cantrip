@@ -513,6 +513,16 @@ export const contractRoots = [
   "chatGoalUpdateSchema",
   "chatGoalClearSchema",
   "chatGoalWireResponseSchema",
+  "agentAlertMutationWireSchema",
+  "cantripMcpAlertRaiseInputSchema",
+  "cantripMcpAlertResolveInputSchema",
+  "workerCantripMcpOperationCallSchema",
+  "workerCantripMcpCapabilitiesQuerySchema",
+  "cantripAgentOperationResultSchema",
+  "projectGoalSnapshotSchema",
+  "projectGoalObservationSchema",
+  "projectGoalObservationResultSchema",
+  "cantripMcpContextGetResultSchema",
 ];
 
 // Resolve the actual source schemas, including their separate protocol modules.
@@ -538,6 +548,13 @@ export function sourceContractSchema(name) {
 
 const refinements = new Map([
   [protocol.chatGoalUpdateSchema, "chat-goal-update"],
+  [protocol.projectGoalObservationSchema, "project-goal-observation"],
+  [protocol.cantripMcpBindingSchema, "mcp-binding-dates"],
+  [
+    protocol.cantripMcpBindingSchema.options[0].shape.allowedOperations,
+    "worker-command-unique",
+  ],
+  [protocol.cantripAgentOperationArgumentsSchema, "mcp-arguments-size"],
   [protocol.projectAlertProjectionSchema, "project-alert-projection"],
   [protocol.projectAlertProtectedDetailSchema, "project-alert-detail"],
   [taskScheduling.taskWorkerUpdateSchema, "task-worker-update"],

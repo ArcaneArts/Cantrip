@@ -1,3 +1,4 @@
+import { ProjectGoalDelivery } from "./project-goal-delivery.js";
 import { BinaryFileWrites } from "./binary-file-writes.js";
 import { dispatchRepositoryOperation } from "./repository-operation-dispatch.js";
 import { BrowserSurfaceWebRuntime } from "./browser/surface-web-runtime.js";
@@ -852,6 +853,43 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     workerEncryption,
   );
   const serverManagedGrokClients = new Map<string, GrokSubscriptionClient>();
+  const projectGoalDelivery = new ProjectGoalDelivery({
+    directory: config.dataDirectory,
+    workerId: config.workerId,
+    generation: () => workerProcessGeneration,
+    service: workerEncryption,
+    send: async (observation, signal) => {
+      const response = await fetch(
+        new URL("/api/internal/project-alerts/goals", config.serverUrl),
+        {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${config.token}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify(observation),
+          signal: AbortSignal.any([signal, AbortSignal.timeout(15_000)]),
+        },
+      );
+      if (!response.ok)
+        throw new Error(`Goal observation rejected (${response.status}).`);
+      return response.json();
+    },
+    onError: () =>
+      workerLogger.rateLimited(
+        `goal-delivery:${config.workerId}`,
+        "warn",
+        "Goal observation delivery remains pending",
+        {
+          event: "codex.goal.delivery-pending",
+          subsystem: "codex",
+          operation: "persist-goal-observation",
+          workerId: config.workerId,
+        },
+        { windowMs: 60_000, summaryEvery: 5 },
+      ),
+  });
+  projectGoalDelivery.wake();
   const codexRuntimes = new Map<string, CodexAppServer>();
   const codexCatalogRuntimes = new Map<string, CodexAppServer>();
   const activeContextRuntime = (binding: {
@@ -1472,6 +1510,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     },
     stagingOperationId?: string,
   ) => {
+    if (command.threadId && command.chatId && !stagingOperationId)
+      projectGoalDelivery.watch(command.threadId, command.chatId);
     const namespace =
       stagingOperationId && command.threadId
         ? {
@@ -1549,6 +1589,18 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           : globalCodexSkillRoots,
         namespace ? configurationHome : null,
       );
+      runtime.setGoalObserver((threadId, goal) => {
+        if (runtime && handoffStaging.held(runtime, threadId)) return;
+        for (const entry of managedCommandSessions.get(runtime!)?.values() ??
+          []) {
+          if (
+            entry.threadId === threadId &&
+            entry.generation === runtime!.transportGeneration
+          )
+            projectGoalDelivery.watch(threadId, entry.chatId);
+        }
+        projectGoalDelivery.observe(threadId, goal);
+      });
       runtime.setManagedModelInventoryLoader((provider) =>
         nativeModelInventoryClient.read(provider),
       );
@@ -2136,6 +2188,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         managedCurrentRuntimes.set(session.chatId, runtime);
       }
     }
+    projectGoalDelivery.watch(result.threadId, session.chatId);
     threadObservations.bind(
       observationScope(session.chatId, result.threadId, options),
       runtime,
@@ -5602,6 +5655,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                   );
                 }
 
+                projectGoalDelivery.watch(prepared.threadId, command.chatId);
                 threadObservations.bind(
                   observationScope(
                     command.chatId,
@@ -5992,6 +6046,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         });
       }
       case "chat.goal.get": {
+        if (command.taskContext) projectGoalDelivery.skip(command.threadId);
+        else projectGoalDelivery.watch(command.threadId, command.chatId);
         const runtime =
           currentManagedRuntime(command.chatId, command.threadId) ??
           runtimeFor({
@@ -6031,8 +6087,15 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       }
       case "chat.goal.create": {
         const encryptedTaskGoal = typeof command.objective !== "string";
+        if (encryptedTaskGoal && command.threadId)
+          projectGoalDelivery.skip(command.threadId);
         try {
           const prepared = await prepareManagedMutation(command, provider());
+          const goalThread = prepared?.threadId ?? command.threadId;
+          if (goalThread) {
+            if (encryptedTaskGoal) projectGoalDelivery.skip(goalThread);
+            else projectGoalDelivery.watch(goalThread, command.chatId);
+          }
           const runtime =
             prepared?.runtime ??
             currentManagedRuntime(command.chatId, command.threadId) ??
@@ -6090,6 +6153,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         }
       }
       case "chat.goal.update": {
+        if (command.taskContext) projectGoalDelivery.skip(command.threadId);
+        else projectGoalDelivery.watch(command.threadId, command.chatId);
         const objective = command.protectedObjective
           ? await openEncryptedChatTurn({
               history: [],
@@ -6733,6 +6798,18 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           counts: { pendingRecords: pending.pendingRecords },
         },
       );
+    for (const runtime of codexRuntimes.values()) runtime.setGoalObserver(null);
+    await projectGoalDelivery.stop().catch(() =>
+      workerLogger.event(
+        "warn",
+        "Goal observation capture did not finish during shutdown",
+        {
+          event: "codex.goal.shutdown-pending",
+          subsystem: "codex",
+          operation: "stop-goal-capture",
+        },
+      ),
+    );
     for (const { publisher } of settingsPublishers.values()) publisher.close();
     settingsPublishers.clear();
     await nativeSettingsDelivery.stop().catch(() =>

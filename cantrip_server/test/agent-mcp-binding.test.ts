@@ -246,7 +246,7 @@ describe("Cantrip MCP server binding", () => {
     ).toThrow("active Cantrip chat lane");
   });
 
-  it("allows the read catalog under an unchanged read-only profile", () => {
+  it("allows discovery and Alert metadata under an unchanged read-only profile", () => {
     const readOnlyContext = {
       ...context,
       defaultPermissionProfileId: ":read-only",
@@ -255,6 +255,7 @@ describe("Cantrip MCP server binding", () => {
     const readOnlyBinding = {
       ...binding,
       permissionProfileId: ":read-only",
+      allowedOperations: cantripMcpOperationsForPermissionProfile(":read-only"),
     };
     for (const operation of cantripMcpOperationsForPermissionProfile(
       ":read-only",
@@ -265,7 +266,7 @@ describe("Cantrip MCP server binding", () => {
           context: readOnlyContext,
           operation,
           ownerId: "owner-one",
-          serverAllowedOperations,
+          serverAllowedOperations: new Set(CANTRIP_MCP_OPERATIONS),
           now,
         }),
       ).not.toThrow();
