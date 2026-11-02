@@ -7,9 +7,12 @@ import { transformChatHistoryFixture } from "./workspace-chat-history-fixture.mj
 const exec = promisify(execFile);
 
 /** A disposable existing checkout, admitted by the normal direct-placement job. */
-export async function seedEditorRepository(directory, workerId) {
+export async function seedEditorRepository(
+  directory,
+  workerId,
+  name = "Editor-Recovery-QA",
+) {
   const repository = path.join(directory, "repository");
-  const name = "Editor-Recovery-QA";
   const nameWithOwner = `Cantrip-QA/${name}`;
   const url = `https://github.com/${nameWithOwner}.git`;
   await mkdir(repository, { recursive: true });

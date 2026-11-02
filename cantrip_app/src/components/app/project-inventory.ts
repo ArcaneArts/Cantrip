@@ -23,6 +23,7 @@ import {
 } from "@/lib/project-setup-progress";
 import { getProjects } from "@/lib/project-encryption";
 import { getProjectWorkspaces } from "@/lib/workspace-encryption";
+import { useAlertWorkerEncryption } from "@/lib/alert-worker-encryption";
 
 export function useApplicationInventory({
   isPopout,
@@ -79,6 +80,7 @@ export function useApplicationInventory({
     queryKey: ["workers"],
     refetchInterval: projectResourcesLive ? false : 10_000,
   });
+  useAlertWorkerEncryption(workers.data);
   const settings = useQuery({ queryFn: getSettings, queryKey: ["settings"] });
   return {
     appResourcesLoggedRef,

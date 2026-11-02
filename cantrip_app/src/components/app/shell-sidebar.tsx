@@ -399,6 +399,7 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                 >
                   {selectedProjectId ? (
                     <ProjectAlertTile
+                      key={selectedProjectId}
                       count={bindings.projectAlertCounts?.get(
                         selectedProjectId,
                       )}
@@ -407,7 +408,7 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                         "project.alerts"
                       }
                       onOpen={() =>
-                        void bindings.openProjectNavigatorSurface(
+                        bindings.openProjectNavigatorSurface(
                           selectedProjectId,
                           { kind: "builtin", definitionId: "project.alerts" },
                         )

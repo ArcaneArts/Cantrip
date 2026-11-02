@@ -133,5 +133,19 @@ there is no interval work in a hidden window. Inbox lists reconcile while open.
 Badge reads never load/decrypt transcripts, open projects, or contact workers.
 
 Resolving the last alert removes discovery badges without closing an existing
-Inbox tab. Its empty state remains usable. Full-flow browser qualification
-follows in the final cycle.
+Inbox tab. Its empty state remains usable. Failed tile navigation is visible
+and retryable, including while a project workspace is attaching.
+
+The unlocked client provisions the optional Alert key for online workers that
+already hold current Chat grants. This supports already-running Chats after an
+upgrade without opening them. This background operation never approves a new
+worker principal or gates Chat execution. Missing authorization still fails the
+actual Alert tool with no plaintext fallback.
+
+## Qualification
+
+See [the runnable qualification guide](../scripts/qa/project-alerts.md) for the
+Chromium/WebKit browser flows, native window checklist, evidence format, and
+Node/Rust database/HTTP/race checks. Native execution and UI fixture boundaries
+are explicit there. The production app contains no fixture seed route or test
+controls.

@@ -282,8 +282,30 @@ function GoalSource({ alert }: { alert: ProjectAlert }) {
       ) : source.data ? (
         <>
           <p className="text-sm font-medium">
-            Goal state: {source.data.status}
+            {source.data.status === "usageLimited"
+              ? "Goal waiting for model usage"
+              : source.data.status === "budgetLimited"
+                ? "Goal budget reached"
+                : source.data.status === "blocked"
+                  ? "Goal blocked"
+                  : `Goal state: ${source.data.status}`}
           </p>
+          {source.data.status === "usageLimited" ? (
+            <p className="text-sm text-muted-foreground">
+              The model reported a usage limit. Open the chat to review account
+              availability and the next action.
+            </p>
+          ) : source.data.status === "budgetLimited" ? (
+            <p className="text-sm text-muted-foreground">
+              The Goal reached its configured budget. Open the chat to review
+              its progress and budget before continuing.
+            </p>
+          ) : source.data.status === "blocked" ? (
+            <p className="text-sm text-muted-foreground">
+              The agent reported a blocker. Open the chat for its latest update
+              and any requested decision.
+            </p>
+          ) : null}
           <Markdown>{source.data.objective}</Markdown>
           <p className="text-sm text-muted-foreground">
             Open the chat to review the current Goal and its next action.
