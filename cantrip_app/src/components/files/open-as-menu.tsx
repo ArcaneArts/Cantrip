@@ -1,5 +1,5 @@
 import * as ContextMenu from "@radix-ui/react-context-menu";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, FileInput, WandSparkles } from "lucide-react";
 import {
   StyledContextMenuItem,
   styledMenuItemClass,
@@ -16,6 +16,7 @@ export function OpenAsMenu({
   return (
     <ContextMenu.Sub>
       <ContextMenu.SubTrigger className={styledMenuItemClass}>
+        <FileInput className="size-4" aria-hidden="true" />
         Open As <ChevronRight className="ml-auto size-4" />
       </ContextMenu.SubTrigger>
       <ContextMenu.Portal>
@@ -23,6 +24,7 @@ export function OpenAsMenu({
           className={`${styledMenuContentClass} max-h-[70vh] min-w-48 overflow-auto`}
         >
           <StyledContextMenuItem onSelect={() => onSelect(null)}>
+            <WandSparkles className="size-4" aria-hidden="true" />
             Automatic
           </StyledContextMenuItem>
           <ContextMenu.Separator className="my-1 h-px bg-border" />
