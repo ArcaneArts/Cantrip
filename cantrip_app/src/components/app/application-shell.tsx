@@ -131,6 +131,7 @@ import type {
   GitHistoryHeaderState,
   GitViewSection,
 } from "@/components/git/git-history";
+import { GitFileHistoryHost } from "@/components/git/git-file-history-host";
 import type { ExplorerHeaderState } from "@/components/explorer/explorer-view";
 import type { ProjectSurfacePlacementContext } from "@/components/workspace/project-surface-create-menu";
 import { type FolderSourceMode } from "@/components/projects/folder-project-dialog";
@@ -178,11 +179,8 @@ import {
   selectWorkspaceTab,
 } from "@/lib/workspace-selection";
 import {
-  defaultGitHistoryOptions,
-  openGitFileHistoryEvent,
-  parseGitHistoryRoute,
   pushGitHistoryRoute,
-  type OpenGitFileHistoryRequest,
+  type GitHistoryRouteState,
 } from "@/lib/git-history-navigation";
 import { useGitHistoryNavigation } from "@/lib/use-git-history-navigation";
 import { workspaceWorkerObservationDemands } from "@/lib/workspace-worker-observation";
@@ -338,51 +336,38 @@ export function App() {
     setWorkspaceSelection,
     workspace: ownedWorkspace?.controller ?? null,
   });
-  useEffect(() => {
-    const openFileHistory = (event: Event) => {
-      const { projectId, worktreeId, path } = (
-        event as CustomEvent<OpenGitFileHistoryRequest>
-      ).detail;
-      const current = parseGitHistoryRoute(window.location.search);
-      pushGitHistoryRoute({
-        projectId,
-        worktreeId,
-        commit: null,
-        selectedCommits: [],
-        comparison: null,
-        filePath: path,
-        options:
-          current.projectId === projectId && current.worktreeId === worktreeId
-            ? current.options
-            : defaultGitHistoryOptions,
-      });
+  // Only explicit History/Graph actions navigate; opening file history is an overlay.
+  const openGitHistory = useCallback(
+    (
+      route: GitHistoryRouteState & { projectId: string; worktreeId: string },
+      section: GitViewSection = "history",
+    ) => {
+      pushGitHistoryRoute(route);
       setAppMode("ide");
-      setSelectedProjectId(projectId);
-      setProjectOverviewSection("history");
-      setProjectOverviewWorktreeId(worktreeId);
-      setWorkspaceSelection(emptyWorkspaceSelection(projectId));
+      setSelectedProjectId(route.projectId);
+      setProjectOverviewSection(section);
+      setProjectOverviewWorktreeId(route.worktreeId);
+      setWorkspaceSelection(emptyWorkspaceSelection(route.projectId));
       setShowArchivedStandaloneChats(false);
       setShowImporter(false);
       setShowProjectSettings(false);
       setShowServerAdmin(false);
       setShowSettings(false);
       window.dispatchEvent(new PopStateEvent("popstate"));
-    };
-    window.addEventListener(openGitFileHistoryEvent, openFileHistory);
-    return () =>
-      window.removeEventListener(openGitFileHistoryEvent, openFileHistory);
-  }, [
-    setAppMode,
-    setProjectOverviewSection,
-    setProjectOverviewWorktreeId,
-    setSelectedProjectId,
-    setShowArchivedStandaloneChats,
-    setShowImporter,
-    setShowProjectSettings,
-    setShowServerAdmin,
-    setShowSettings,
-    setWorkspaceSelection,
-  ]);
+    },
+    [
+      setAppMode,
+      setProjectOverviewSection,
+      setProjectOverviewWorktreeId,
+      setSelectedProjectId,
+      setShowArchivedStandaloneChats,
+      setShowImporter,
+      setShowProjectSettings,
+      setShowServerAdmin,
+      setShowSettings,
+      setWorkspaceSelection,
+    ],
+  );
   const sidebarFileState = useSidebarFileState();
   const { explorerGraphRequest, setExplorerGraphRequest } = sidebarFileState;
   const [chatConsoleOpenChats, setChatConsoleOpenChats] = useState<
@@ -2244,5 +2229,16 @@ export function App() {
     visibleProjects, workers, workspaceConnection, legacyDocumentMigration, workspaceDragError, workspaceSelection, worktreeActionError,
     worktreeCreateTarget, worktreeStatuses, worktrees,
   };
-  return <ApplicationShellRender bindings={renderBindings} />;
+  return (
+    <>
+      <ApplicationShellRender bindings={renderBindings} />
+      <GitFileHistoryHost
+        onOpenFile={openProjectExplorerFile}
+        onOpenHistory={openGitHistory}
+        projects={projects.data ?? []}
+        statuses={worktreeStatuses}
+        worktrees={worktrees.data ?? []}
+      />
+    </>
+  );
 }
