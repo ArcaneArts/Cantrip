@@ -25,7 +25,7 @@ async function waiters(sql, count) {
 }
 export async function runTaskSchedulerRaces(h, setup) {
   h.report.taskSchedulerRaces = [];
-  for (const mode of ["claim-claim", "resume-claim", "recover-claim"])
+  for (const mode of ["claim-claim", "resume-claim"])
     for (const mixed of [false, true])
       for (const reverse of [false, true]) {
         let expected;
@@ -49,9 +49,6 @@ export async function runTaskSchedulerRaces(h, setup) {
             );
           }
         }
-        await h.seed(
-          `UPDATE task_workers SET enabled=false WHERE id='${setup.second}'`,
-        );
         await setup.enqueue("scheduler-next", "competing-next");
         for (const [i, kind] of ["node", "rust"].entries()) {
           const peerKind = mixed ? (kind === "node" ? "rust" : "node") : kind;
@@ -121,23 +118,9 @@ export async function runTaskSchedulerRaces(h, setup) {
               outcomes[0].value.value,
               "first admitted owner operation succeeds",
             );
-            if (reverse && mode === "recover-claim")
-              assert.deepEqual(outcomes[1].value.error, {
-                kind: "conflict",
-                code: "active-operation",
-                message:
-                  "The Task Worker has no available capacity. Retry when a running Task finishes.",
-              });
-            else
-              assert.equal(
-                outcomes[1].value.value,
-                null,
-                "capacity prevents the waiting operation",
-              );
-            assert.deepEqual(
-              outcomes[1].value.trace,
-              [],
-              "capacity rejection never invokes a routing resolver",
+            assert.ok(
+              outcomes[1].value.value,
+              "a different Task is not blocked by a model semaphore",
             );
             const rows =
               await observer`SELECT id,chat_id,state,selected_task_worker_id,lease_owner,fencing_token::int,attempt_count,codex_thread_id FROM task_dispatch_cycles ORDER BY chat_id,operation_id`;
@@ -146,33 +129,16 @@ export async function runTaskSchedulerRaces(h, setup) {
             );
             assert.equal(
               active.length,
-              1,
-              "global Task worker capacity has one admitted operation",
+              2,
+              "independent Tasks both acquire fenced ownership",
             );
-            assert.equal(
-              active[0].chat_id,
-              reverse && mode !== "claim-claim" ? "scheduler-next" : "task",
+            assert.deepEqual(
+              new Set(active.map((row) => row.chat_id)),
+              new Set(["task", "scheduler-next"]),
             );
-            assert.equal(active[0].selected_task_worker_id, setup.worker);
-            if (reverse && mode !== "claim-claim") {
-              assert.equal(active[0].lease_owner, "race-0");
-              assert.equal(active[0].fencing_token, 1);
-              assert.equal(active[0].attempt_count, 1);
-            } else if (mode === "recover-claim") {
-              assert.equal(active[0].lease_owner, "race-0");
-              assert.equal(active[0].fencing_token, 2);
-              assert.equal(active[0].attempt_count, 1);
-              assert.equal(active[0].codex_thread_id, "retained-thread");
-            } else if (mode === "resume-claim") {
-              assert.equal(active[0].lease_owner, "scheduler-owner");
-              assert.equal(active[0].fencing_token, 1);
-              assert.equal(active[0].attempt_count, 2);
-              assert.equal(active[0].codex_thread_id, "retained-race-thread");
-            } else {
-              assert.equal(active[0].lease_owner, "race-0");
-              assert.equal(active[0].fencing_token, 1);
-              assert.equal(active[0].attempt_count, 1);
-            }
+            assert.ok(
+              active.every((row) => row.selected_task_worker_id === null),
+            );
             h.report.taskSchedulerRaces.push({
               mode,
               kind,

@@ -56,7 +56,7 @@ export async function withTaskLaunchStageTimeout<T>(
 
 /**
  * Emits a complete launch-stage lifecycle and prevents remote/read-only
- * preflight work from retaining Task Worker capacity forever.
+ * preflight work from retaining a Task launch lease forever.
  */
 export async function observeTaskLaunchStage<T>(
   logger: TaskLaunchLogger,

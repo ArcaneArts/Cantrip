@@ -127,7 +127,7 @@ export function taskImplementationStatusDescription(
   if (label === "Running") return "Implementation is running.";
   if (label === "Reconnecting")
     return "Worker disconnected; execution status is not yet confirmed.";
-  if (label === "Queued") return "Waiting for an available Task Worker.";
+  if (label === "Queued") return "Waiting to run with the selected model.";
   if (label === "Needs approval") return "Waiting for your approval.";
   return task.planGoalEnabled
     ? "Waiting for implementation status; completion has not been confirmed."

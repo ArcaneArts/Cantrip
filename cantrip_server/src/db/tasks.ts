@@ -126,6 +126,7 @@ export function toTaskOpaqueSummary(
     automaticRetry: taskRetrySummary(row.automaticRetry),
     chatId: row.chatId,
     planGoalEnabled: row.planGoalEnabled,
+    modelConfiguration: row.modelConfiguration,
     priority: row.priority,
     requestedTaskWorkerId: row.requestedTaskWorkerId,
     continuityFamily: row.continuityFamily,
@@ -437,26 +438,29 @@ export class TaskRepository {
       }
       assertMutationKeepsOperationalState(current, input);
 
-      if (
-        input.requestedTaskWorkerId !== undefined &&
-        input.requestedTaskWorkerId
-      ) {
-        const assigned = await transaction
-          .select({ id: schema.taskWorkers.id })
-          .from(schema.taskWorkers)
-          .where(
-            and(
-              eq(schema.taskWorkers.id, input.requestedTaskWorkerId),
-              eq(schema.taskWorkers.ownerId, ownerId),
-              isNull(schema.taskWorkers.deletedAt),
-            ),
-          )
-          .limit(1);
-        if (!assigned[0]) {
-          throw new TaskConflictError(
-            "The selected Task Worker is unavailable.",
-            "stale-version",
-          );
+      if (input.modelConfiguration) {
+        for (const modelId of [
+          input.modelConfiguration.modelId,
+          ...(input.modelConfiguration.customSubagentModel
+            ? [input.modelConfiguration.subagentModelId]
+            : []),
+        ]) {
+          if (!modelId) continue;
+          const model = await transaction
+            .select({ id: schema.modelProfiles.id })
+            .from(schema.modelProfiles)
+            .where(
+              and(
+                eq(schema.modelProfiles.id, modelId),
+                eq(schema.modelProfiles.ownerId, ownerId),
+              ),
+            )
+            .limit(1);
+          if (!model[0])
+            throw new TaskConflictError(
+              "The selected model is unavailable.",
+              "stale-version",
+            );
         }
       }
 
@@ -472,8 +476,8 @@ export class TaskRepository {
             ? { draftAttachmentIds: input.draftAttachmentIds }
             : {}),
           ...(input.priority !== undefined ? { priority: input.priority } : {}),
-          ...(input.requestedTaskWorkerId !== undefined
-            ? { requestedTaskWorkerId: input.requestedTaskWorkerId }
+          ...(input.modelConfiguration
+            ? { modelConfiguration: input.modelConfiguration }
             : {}),
           schedulerRevision: sql`${schema.tasks.schedulerRevision} + 1`,
           rowVersion: current.rowVersion + 1,
@@ -501,7 +505,7 @@ export class TaskRepository {
           .update(schema.taskDispatchCycles)
           .set({
             operationKind: planGoalEnabled ? "initial-plan" : "direct",
-            requestedTaskWorkerId: updated[0].requestedTaskWorkerId,
+            modelConfiguration: updated[0].modelConfiguration,
             fencingToken: sql`${schema.taskDispatchCycles.fencingToken} + 1`,
             eligibilityCode: null,
             updatedAt: now,

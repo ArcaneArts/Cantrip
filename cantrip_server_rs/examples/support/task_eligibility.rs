@@ -5,10 +5,7 @@ use cantrip_server::{
     database::Database,
     operations::logging::{LogCall, Logger},
     task_dispatch,
-    task_scheduling::{
-        Repository,
-        eligibility::{PREFLIGHT_TIMEOUT_MS, Service},
-    },
+    task_scheduling::eligibility::{PREFLIGHT_TIMEOUT_MS, Service},
     wire::Value,
 };
 use futures::FutureExt;
@@ -124,15 +121,15 @@ pub async fn run(database: Arc<Database>, input: &Value) -> Result<Value> {
         let(prepared,resume_resolver)=if resume{(None,Some(service.prepare_resume(owner.into()).await?))}else{(Some(service.prepare_dispatch(owner.into()).await?),None)};
         if let Some(sql)=input["afterPrepareSql"].as_str(){database.query(sql,&[]).await?;}
         let repository=task_dispatch::Repository::new(database.clone());
-        let cycles=repository.list(owner).await?;let workers=Repository::new(database.clone()).list_workers(owner).await?;let chats=Chats::new(database.clone());let mut resolutions=Vec::new();
+        let cycles=repository.list(owner).await?;let chats=Chats::new(database.clone());let mut resolutions=Vec::new();
         for cycle in cycles.as_array().context("Eligibility fixture cycles")?{
             if let Some(resolve)=&resume_resolver{let mut probe=cycle.clone();merge(&mut probe,input.get("resumeProbeChanges"));resolutions.push(json!({"cycleId":cycle["id"],"resolution":resolve(probe).await?}));}
             else{let context=chats.execution_context(owner,text(&cycle["chatId"])?).await?.unwrap_or(Value::Null);
-                for worker in workers.as_array().context("Eligibility fixture workers")?{
-                    let mut probe=json!({"cycle":cycle,"taskWorker":worker,"projectId":context["projectId"],"physicalWorkerId":context["workerId"],"worktreeId":context["worktreeId"]});merge(&mut probe,input.get("probeChanges"));
+                { let task=crate_task_configuration(database.clone(),owner,text(&cycle["chatId"])?).await?;
+                    let mut probe=json!({"cycle":cycle,"modelConfiguration":task,"projectId":context["projectId"],"physicalWorkerId":context["workerId"],"worktreeId":context["worktreeId"]});merge(&mut probe,input.get("probeChanges"));
                     let prepared=prepared.as_ref().unwrap();let resolution=prepared.resolve(&probe);
-                    let mut runtime_cycle=cycle.clone();runtime_cycle["selectedTaskWorkerId"]=worker["id"].clone();runtime_cycle["modelRouteId"]=resolution["modelRouteId"].clone();runtime_cycle["providerAccountId"]=resolution["providerAccountId"].clone();merge(&mut runtime_cycle,input.get("runtimeProbeChanges"));
-                    resolutions.push(json!({"cycleId":cycle["id"],"taskWorkerId":worker["id"],"resolution":resolution,"runtime":prepared.runtime_for_claim(&json!({"cycle":runtime_cycle}))}));
+                    let mut runtime_cycle=cycle.clone();runtime_cycle["modelRouteId"]=resolution["modelRouteId"].clone();runtime_cycle["providerAccountId"]=resolution["providerAccountId"].clone();merge(&mut runtime_cycle,input.get("runtimeProbeChanges"));
+                    resolutions.push(json!({"cycleId":cycle["id"],"resolution":resolution,"runtime":prepared.runtime_for_claim(&json!({"cycle":runtime_cycle}))}));
                 }
             }
         }
@@ -147,4 +144,16 @@ pub async fn run(database: Arc<Database>, input: &Value) -> Result<Value> {
     result["hydration"] = json!({"started":counts.0,"finished":counts.1});
     result["logs"] = Value::Array(logs.lock().unwrap().clone());
     Ok(result)
+}
+
+async fn crate_task_configuration(
+    database: Arc<Database>,
+    owner: &str,
+    chat: &str,
+) -> Result<Value> {
+    Ok(cantrip_server::tasks::Repository::new(database)
+        .get(owner, chat)
+        .await?
+        .map(|t| t["modelConfiguration"].clone())
+        .unwrap_or(Value::Null))
 }

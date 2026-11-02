@@ -77,6 +77,7 @@ pub(super) fn summary(row: &Value, dispatch: Option<&Value>) -> Result<Value> {
     for (name, column) in [
         ("chatId", "chat_id"),
         ("planGoalEnabled", "plan_goal_enabled"),
+        ("modelConfiguration", "model_configuration"),
         ("priority", "priority"),
         ("requestedTaskWorkerId", "requested_task_worker_id"),
         ("continuityFamily", "continuity_family"),

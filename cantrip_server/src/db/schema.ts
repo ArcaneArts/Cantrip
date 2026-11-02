@@ -1022,6 +1022,7 @@ export const modelRoutes = pgTable(
   ],
 );
 
+// Historical preset storage retained only to migrate/read older databases.
 export const taskWorkers = pgTable(
   "task_workers",
   {
@@ -1031,17 +1032,12 @@ export const taskWorkers = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     enabled: boolean("enabled").notNull().default(true),
-    modelId: text("model_id")
-      .notNull()
-      .references(() => modelProfiles.id, { onDelete: "restrict" }),
+    modelId: text("model_id").notNull(),
     reasoningEffort: text("reasoning_effort"),
     customSubagentModel: boolean("custom_subagent_model")
       .notNull()
       .default(false),
-    subagentModelId: text("subagent_model_id").references(
-      () => modelProfiles.id,
-      { onDelete: "restrict" },
-    ),
+    subagentModelId: text("subagent_model_id"),
     subagentReasoningEffort: text("subagent_reasoning_effort"),
     maxConcurrency: integer("max_concurrency").notNull().default(1),
     allowsPlanGoal: boolean("allows_plan_goal").notNull().default(false),
@@ -3558,6 +3554,16 @@ export const tasks = pgTable(
       .references(() => chats.id, { onDelete: "cascade" }),
     state: text("state").$type<TaskState>().notNull().default("draft"),
     planGoalEnabled: boolean("plan_goal_enabled").notNull().default(false),
+    modelConfiguration: jsonb("model_configuration")
+      .$type<ModelConfiguration>()
+      .notNull()
+      .default({
+        modelId: null,
+        reasoningEffort: null,
+        customSubagentModel: false,
+        subagentModelId: null,
+        subagentReasoningEffort: null,
+      }),
     priority: integer("priority").notNull().default(0),
     requestedTaskWorkerId: text("requested_task_worker_id").references(
       () => taskWorkers.id,

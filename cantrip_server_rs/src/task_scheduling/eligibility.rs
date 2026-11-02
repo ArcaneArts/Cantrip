@@ -1,5 +1,5 @@
 //! Provider reads precede dispatch transactions; the admitted resolver reads only
-//! this snapshot and rejects changed placement or Task Worker revision fences.
+//! this snapshot and rejects changed placement or model configuration fences.
 use super::*;
 use crate::{
     chats::{
@@ -21,17 +21,12 @@ struct Entry {
     physical_worker: Value,
     project: Value,
     worktree: Value,
-    revision: Value,
+    configuration: Value,
+    fence: Value,
     resolution: Value,
     runtime: Option<Value>,
 }
-type Key = (JsString, JsString);
-fn key(cycle: &Value, worker: &Value) -> Option<Key> {
-    Some((
-        cycle.as_js_string()?.clone(),
-        worker.as_js_string()?.clone(),
-    ))
-}
+type Key = JsString;
 fn unavailable() -> Value {
     json!({"eligible":false,"code":"placement-unavailable"})
 }
@@ -42,14 +37,17 @@ pub struct PreparedDispatch {
 }
 impl PreparedDispatch {
     pub fn resolve(&self, input: &Value) -> Value {
-        let entry = key(&input["cycle"]["id"], &input["taskWorker"]["id"])
+        let entry = input["cycle"]["id"]
+            .as_js_string()
+            .cloned()
             .and_then(|key| self.entries.get(&key));
         match entry {
             Some(entry)
                 if entry.project == input["projectId"]
                     && entry.physical_worker == input["physicalWorkerId"]
                     && entry.worktree == input["worktreeId"]
-                    && entry.revision == input["taskWorker"]["rowVersion"] =>
+                    && entry.configuration == input["modelConfiguration"]
+                    && entry.fence == input["cycle"]["fencingToken"] =>
             {
                 entry.resolution.clone()
             }
@@ -64,7 +62,7 @@ impl PreparedDispatch {
         let cycle = &claim["cycle"];
         let runtime = self
             .entries
-            .get(&key(&cycle["id"], &cycle["selectedTaskWorkerId"])?)?
+            .get(cycle["id"].as_js_string()?)?
             .runtime
             .as_ref()?;
         (runtime.get("routeId") == cycle.get("modelRouteId")
@@ -129,22 +127,12 @@ impl Service {
     pub async fn drained(&self) {
         self.operations.drained().await;
     }
-    fn warn_timeout(
-        &self,
-        error: &anyhow::Error,
-        cycle: &Value,
-        context: &Value,
-        worker: Option<&Value>,
-    ) {
+    fn warn_timeout(&self, error: &anyhow::Error, cycle: &Value, context: &Value, resume: bool) {
         let Some(timeout) = error.downcast_ref::<TaskLaunchStageTimeout>() else {
             return;
         };
-        let resume = worker.is_none();
         let mut fields = json!({"event":if resume{"task.scheduler.resume-eligibility-timeout"}else{"task.scheduler.eligibility-timeout"},"subsystem":"task-scheduler","operation":if resume{"resolve-resume-eligibility"}else{"resolve-eligibility"},"status":"failed","reasonCode":"runtime-resolution-timeout","chatId":cycle["chatId"],"cycleId":cycle["id"],"workerId":context["workerId"],"durationMs":timeout.timeout_ms,"err":logging::error_details(error)});
         fields["err"]["name"] = json!("TaskLaunchStageTimeoutError");
-        if let Some(worker) = worker {
-            fields["taskWorkerId"] = worker["id"].clone();
-        }
         (self.logger)(LogCall::event(
             "warn",
             if resume {
@@ -157,9 +145,7 @@ impl Service {
     }
     async fn dispatch(&self, owner: &str) -> Result<PreparedDispatch> {
         let dispatch = task_dispatch::Repository::new(self.database.clone());
-        let workers = Repository::new(self.database.clone());
-        let (cycles, workers) =
-            tokio::try_join!(dispatch.list(owner), workers.list_workers(owner))?;
+        let cycles = dispatch.list(owner).await?;
         let chats = Chats::new(self.database.clone());
         let physical = WorkerRepository::new(self.database.clone());
         let mut entries = HashMap::new();
@@ -176,13 +162,17 @@ impl Service {
             if context["contextKind"] != "project" || context["experience"] != "task" {
                 continue;
             }
+            let task = crate::tasks::Repository::new(self.database.clone())
+                .get(owner, &text(&cycle["chatId"])?)
+                .await?;
+            let configuration = task
+                .as_ref()
+                .and_then(|t| t.get("modelConfiguration"))
+                .unwrap_or(&cycle["modelConfiguration"]);
             let physical_worker = physical
                 .get_worker(owner, &text(&context["workerId"])?)
                 .await?;
-            for worker in workers.as_array().context("Task Workers")? {
-                if !truthy(worker.get("enabled")) {
-                    continue;
-                }
+            {
                 let mut runtime = None;
                 let resolution = if !(self.connected)(&text(&context["workerId"])?) {
                     json!({"eligible":false,"code":"worker-offline"})
@@ -194,12 +184,14 @@ impl Service {
                     })
                 }) {
                     json!({"eligible":false,"code":"encryption-grant-unavailable"})
+                } else if !truthy(configuration.get("modelId")) {
+                    json!({"eligible":false,"code":"model-unavailable"})
                 } else {
                     let (routing, owner, mut configuration_context, configuration) = (
                         self.routing.clone(),
                         owner.to_owned(),
                         context.clone(),
-                        worker["modelConfiguration"].clone(),
+                        configuration.clone(),
                     );
                     configuration_context["providerAccountId"] = Value::Null;
                     match self
@@ -224,7 +216,7 @@ impl Service {
                             }
                         }
                         Err(error) => {
-                            self.warn_timeout(&error, cycle, &context, Some(worker));
+                            self.warn_timeout(&error, cycle, &context, false);
                             let code = error
                                 .downcast_ref::<ConfigurationFailure>()
                                 .map(|f| &f.0["code"]);
@@ -233,12 +225,16 @@ impl Service {
                     }
                 };
                 entries.insert(
-                    key(&cycle["id"], &worker["id"]).context("Task eligibility identities")?,
+                    cycle["id"]
+                        .as_js_string()
+                        .context("Task eligibility identity")?
+                        .clone(),
                     Entry {
                         physical_worker: context["workerId"].clone(),
                         project: context["projectId"].clone(),
                         worktree: context["worktreeId"].clone(),
-                        revision: worker["rowVersion"].clone(),
+                        configuration: configuration.clone(),
+                        fence: cycle["fencingToken"].clone(),
                         resolution,
                         runtime,
                     },
@@ -264,7 +260,6 @@ impl Service {
                 .await?;
             let resolution = if context.as_ref().is_none_or(|c| {
                 c["experience"] != "task"
-                    || !truthy(cycle.get("selectedTaskWorkerId"))
                     || !truthy(cycle["modelConfiguration"].get("modelId"))
                     || !truthy(cycle.get("modelRouteId"))
                     || !truthy(cycle.get("physicalWorkerId"))
@@ -302,7 +297,7 @@ impl Service {
                         }
                     }
                     Err(error) => {
-                        self.warn_timeout(&error, cycle, context.as_ref().unwrap(), None);
+                        self.warn_timeout(&error, cycle, context.as_ref().unwrap(), true);
                         json!({"eligible":false,"code":"model-unavailable"})
                     }
                 }

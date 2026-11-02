@@ -1,13 +1,4 @@
 import {
-  taskWorkerListSchema,
-  type TaskWorkerCreate,
-  taskWorkerSummarySchema,
-  taskWorkerCreateSchema,
-  type TaskWorkerUpdate,
-  taskWorkerUpdateSchema,
-  taskWorkerDeleteSchema,
-  type TaskWorkerOrderUpdate,
-  taskWorkerOrderUpdateSchema,
   projectTaskPauseStateSchema,
   type ProjectTaskPauseUpdate,
   projectTaskPauseUpdateSchema,
@@ -45,58 +36,6 @@ import type {
 import { chatTitleEncryption } from "@/lib/chat-title-encryption";
 import { openAttachmentOpaqueList } from "@/lib/attachment-encryption";
 import { chatAttachmentOpaqueListSchema } from "@cantrip/protocol/attachment-content";
-
-export async function getTaskWorkers() {
-  return taskWorkerListSchema.parse(
-    await request("/api/settings/task-workers"),
-  );
-}
-
-export async function createTaskWorker(input: TaskWorkerCreate) {
-  return taskWorkerSummarySchema.parse(
-    await request("/api/settings/task-workers", {
-      method: "POST",
-      body: JSON.stringify(taskWorkerCreateSchema.parse(input)),
-    }),
-  );
-}
-
-export async function updateTaskWorker(
-  taskWorkerId: string,
-  input: TaskWorkerUpdate,
-) {
-  return taskWorkerSummarySchema.parse(
-    await request(
-      `/api/settings/task-workers/${encodeURIComponent(taskWorkerId)}`,
-      {
-        method: "PATCH",
-        body: JSON.stringify(taskWorkerUpdateSchema.parse(input)),
-      },
-    ),
-  );
-}
-
-export async function deleteTaskWorker(
-  taskWorkerId: string,
-  rowVersion: number,
-): Promise<void> {
-  await request(
-    `/api/settings/task-workers/${encodeURIComponent(taskWorkerId)}`,
-    {
-      method: "DELETE",
-      body: JSON.stringify(taskWorkerDeleteSchema.parse({ rowVersion })),
-    },
-  );
-}
-
-export async function reorderTaskWorkers(input: TaskWorkerOrderUpdate) {
-  return taskWorkerListSchema.parse(
-    await request("/api/settings/task-workers/order", {
-      method: "PUT",
-      body: JSON.stringify(taskWorkerOrderUpdateSchema.parse(input)),
-    }),
-  );
-}
 
 export async function getProjectTaskPauseState(projectId: string) {
   return projectTaskPauseStateSchema.parse(

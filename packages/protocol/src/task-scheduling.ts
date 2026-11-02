@@ -4,6 +4,8 @@ import { modelConfigurationSchema } from "./model-configuration.js";
 
 export const TASK_PRIORITY_MIN = -1_000_000;
 export const TASK_PRIORITY_MAX = 1_000_000;
+// Legacy preset codecs remain for migration/fixture compatibility. Production
+// task settings and scheduling use per-task model configurations, without slots.
 export const TASK_WORKER_CONCURRENCY_MAX = 64;
 
 export const taskPrioritySchema = z
@@ -172,7 +174,7 @@ export const taskDispatchCycleSummarySchema = z
     selectedTaskWorkerId: z.string().uuid().nullable(),
     taskWorkerRevision: z.number().int().positive().nullable(),
     continuityFamily: taskWorkerContinuityFamilySchema.nullable(),
-    modelConfiguration: taskWorkerModelConfigurationSchema.nullable(),
+    modelConfiguration: modelConfigurationSchema.nullable(),
     modelRouteId: z.string().min(1).max(200).nullable(),
     providerAccountId: z.string().min(1).max(200).nullable(),
     physicalWorkerId: z.string().min(1).max(200).nullable(),

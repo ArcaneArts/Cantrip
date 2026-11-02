@@ -77,15 +77,6 @@ impl Repository {
             let (Some(row),Some(task))=(row,task) else { return Err(Conflict::stale().into()); };
             let allowed=matches!(row["state"].as_str(),Some("running"|"expired"|"failed")) || (options["allowSettled"]==true && row["state"]=="succeeded");
             if latest.as_ref().and_then(|c|c.get("id"))!=row.get("id") || row["operation_kind"]!="finalize" || row["started_at"].is_null() || task["implementation_started_at"].is_null() || task["plan_goal_enabled"]!=true || task["state"]=="complete" || task["has_final_plan"]!=true || task["has_goal_prompt"]!=true || row["operation_id"]!=expected["operationId"] || row["fencing_token"]!=expected["fencingToken"] || row["codex_thread_id"]!=expected["codexThreadId"] || row["worktree_id"]!=expected["worktreeId"] || !allowed { return Err(Conflict::stale().into()); }
-            if options["allowSettled"]==true && row["state"]!="running" {
-                if !crate::wire::coercion::truthy(row.get("selected_task_worker_id")) { return Err(Conflict::stale().into()); }
-                let selected=text(&row["selected_task_worker_id"])?;
-                let worker=one(ex,"SELECT to_jsonb(w)::text FROM task_workers w WHERE w.owner_id=$1 AND w.id=$2 LIMIT 1",&[&owner,&selected]).await?;
-                let counts=tx.query("SELECT count(*)::int FROM task_dispatch_cycles WHERE owner_id=$1 AND selected_task_worker_id=$2 AND state IN ('claimed','running')",&[&owner,&selected]).await?;
-                let active=counts.first().context("Task capacity count")?.get::<i32>(0)? as i64;
-                let Some(worker)=worker.filter(|w|w["enabled"]==true && w["allows_plan_goal"]==true) else { return Err(Conflict::new("active-operation","The selected Task Worker is disabled or no longer allows Plan + Goal. Enable it before resuming.").into()); };
-                if active>=worker["max_concurrency"].as_i64().context("Task worker capacity")? { return Err(Conflict::new("active-operation","The Task Worker has no available capacity. Retry when a running Task finishes.").into()); }
-            }
             let live=row["state"]=="running" && row["lease_expires_at"].as_js_string().and_then(crate::wire::date_milliseconds).zip(clock(&options).ok().and_then(|s|crate::wire::date_milliseconds(&s.into()))).is_some_and(|(expires,now)|expires>now);
             let owner=if live { row["lease_owner"].clone() } else { json!(lease_owner) };
             let token=if live { row["fencing_token"].clone() } else { number_next(&row["fencing_token"])? };

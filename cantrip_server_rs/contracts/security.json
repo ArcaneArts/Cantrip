@@ -426,7 +426,7 @@
     "encryptedLinkedConsoleCreateSchema": 8849,
     "nativeBehaviorAttributionSchema": 6406,
     "encryptedChatPlanWireStateSchema": 8852,
-    "taskDispatchCycleSummarySchema": 4717,
+    "taskDispatchCycleSummarySchema": 4718,
     "taskDispatchWorkerLeaseSchema": 5009,
     "taskOperationRelayRequestSchema": 4979,
     "chatMessageSchema": 8858,
@@ -449,31 +449,31 @@
     "taskOpaqueContentSchema": 4995,
     "taskOpaqueMutationSchema": 8989,
     "taskOpaqueSummarySchema": 4675,
-    "taskOperationRelayResultSchema": 9001,
-    "taskPlanningRoundOpaqueSummarySchema": 9006,
+    "taskOperationRelayResultSchema": 8999,
+    "taskPlanningRoundOpaqueSummarySchema": 9004,
     "taskPlanningRoundOpaqueContentSchema": 8985,
-    "taskWorkerSummarySchema": 9021,
-    "taskDispatchCycleListSchema": 9034,
-    "taskGoalWorkerResultSchema": 9035,
-    "chatGoalResponseSchema": 9052,
-    "taskWorkerContinuityFamilySchema": 4711,
-    "taskWorkerCreateSchema": 9064,
-    "taskWorkerUpdateSchema": 9073,
-    "taskWorkerDeleteSchema": 9082,
-    "taskWorkerOrderUpdateSchema": 9085,
-    "taskWorkerListSchema": 9089,
-    "projectTaskPauseStateSchema": 9090,
-    "projectTaskPauseUpdateSchema": 9097,
-    "chatPauseUpdateSchema": 9101,
-    "chatPauseStateSchema": 9103,
-    "chatPauseRuntimeStateSchema": 9105,
-    "encryptedChatTurnCreateSchema": 9113,
-    "encryptedQueuedPromptListSchema": 9117,
-    "encryptedQueuedPromptUpdateSchema": 9118,
-    "queuedPromptOrderSchema": 9124,
-    "encryptedChatPromptSubmitResultSchema": 9131,
-    "encryptedConversationPromptSubmitResultSchema": 9138,
-    "encryptedChatPromptSteerResultSchema": 9143
+    "taskWorkerSummarySchema": 9019,
+    "taskDispatchCycleListSchema": 9033,
+    "taskGoalWorkerResultSchema": 9034,
+    "chatGoalResponseSchema": 9051,
+    "taskWorkerContinuityFamilySchema": 4712,
+    "taskWorkerCreateSchema": 9063,
+    "taskWorkerUpdateSchema": 9072,
+    "taskWorkerDeleteSchema": 9081,
+    "taskWorkerOrderUpdateSchema": 9084,
+    "taskWorkerListSchema": 9088,
+    "projectTaskPauseStateSchema": 9089,
+    "projectTaskPauseUpdateSchema": 9096,
+    "chatPauseUpdateSchema": 9100,
+    "chatPauseStateSchema": 9102,
+    "chatPauseRuntimeStateSchema": 9104,
+    "encryptedChatTurnCreateSchema": 9112,
+    "encryptedQueuedPromptListSchema": 9116,
+    "encryptedQueuedPromptUpdateSchema": 9117,
+    "queuedPromptOrderSchema": 9123,
+    "encryptedChatPromptSubmitResultSchema": 9130,
+    "encryptedConversationPromptSubmitResultSchema": 9137,
+    "encryptedChatPromptSteerResultSchema": 9142
   },
   "nodes": [
     {
@@ -27555,11 +27555,12 @@
         "automaticRetry": 4693,
         "chatId": 4702,
         "planGoalEnabled": 4703,
-        "priority": 4704,
-        "requestedTaskWorkerId": 4706,
-        "continuityFamily": 4709,
-        "lastTaskWorkerId": 4712,
-        "dispatch": 4715,
+        "modelConfiguration": 4704,
+        "priority": 4705,
+        "requestedTaskWorkerId": 4707,
+        "continuityFamily": 4710,
+        "lastTaskWorkerId": 4713,
+        "dispatch": 4716,
         "activeOperationId": 4767,
         "draftAttachmentIds": 4769,
         "protectedContent": 4771,
@@ -27730,7 +27731,20 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 4705,
+      "innerType": 849,
+      "defaultValue": {
+        "modelId": null,
+        "reasoningEffort": null,
+        "customSubagentModel": false,
+        "subagentModelId": null,
+        "subagentReasoningEffort": null
+      },
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 4706,
       "defaultValue": 0,
       "checks": []
     },
@@ -27746,11 +27760,11 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 4707,
+      "innerType": 4708,
       "defaultValue": null,
       "checks": []
     },
-    { "type": "nullable", "innerType": 4708, "checks": [] },
+    { "type": "nullable", "innerType": 4709, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -27767,11 +27781,11 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 4710,
+      "innerType": 4711,
       "defaultValue": null,
       "checks": []
     },
-    { "type": "nullable", "innerType": 4711, "checks": [] },
+    { "type": "nullable", "innerType": 4712, "checks": [] },
     {
       "type": "string",
       "name": "taskWorkerContinuityFamilySchema",
@@ -27792,11 +27806,11 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 4713,
+      "innerType": 4714,
       "defaultValue": null,
       "checks": []
     },
-    { "type": "nullable", "innerType": 4714, "checks": [] },
+    { "type": "nullable", "innerType": 4715, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -27813,26 +27827,26 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 4716,
+      "innerType": 4717,
       "defaultValue": null,
       "checks": []
     },
-    { "type": "nullable", "innerType": 4717, "checks": [] },
+    { "type": "nullable", "innerType": 4718, "checks": [] },
     {
       "type": "object",
       "name": "taskDispatchCycleSummarySchema",
       "shape": {
-        "id": 4718,
-        "chatId": 4719,
-        "operationId": 4720,
-        "operationKind": 4721,
-        "state": 4722,
-        "fifoCreatedAt": 4723,
-        "requestedTaskWorkerId": 4724,
-        "selectedTaskWorkerId": 4726,
-        "taskWorkerRevision": 4728,
-        "continuityFamily": 4730,
-        "modelConfiguration": 4731,
+        "id": 4719,
+        "chatId": 4720,
+        "operationId": 4721,
+        "operationKind": 4722,
+        "state": 4723,
+        "fifoCreatedAt": 4724,
+        "requestedTaskWorkerId": 4725,
+        "selectedTaskWorkerId": 4727,
+        "taskWorkerRevision": 4729,
+        "continuityFamily": 4731,
+        "modelConfiguration": 4732,
         "modelRouteId": 4733,
         "providerAccountId": 4735,
         "physicalWorkerId": 4737,
@@ -27922,7 +27936,7 @@
         }
       ]
     },
-    { "type": "nullable", "innerType": 4725, "checks": [] },
+    { "type": "nullable", "innerType": 4726, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -27936,7 +27950,7 @@
         }
       ]
     },
-    { "type": "nullable", "innerType": 4727, "checks": [] },
+    { "type": "nullable", "innerType": 4728, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -27950,7 +27964,7 @@
         }
       ]
     },
-    { "type": "nullable", "innerType": 4729, "checks": [] },
+    { "type": "nullable", "innerType": 4730, "checks": [] },
     {
       "type": "number",
       "checks": [
@@ -27958,34 +27972,8 @@
         { "check": "greater_than", "value": 0, "inclusive": false }
       ]
     },
-    { "type": "nullable", "innerType": 4711, "checks": [] },
-    { "type": "nullable", "innerType": 4732, "checks": [] },
-    {
-      "type": "object",
-      "name": "taskWorkerModelConfigurationSchema",
-      "shape": {
-        "modelId": 850,
-        "reasoningEffort": 852,
-        "customSubagentModel": 855,
-        "subagentModelId": 857,
-        "subagentReasoningEffort": 859
-      },
-      "catchall": 861,
-      "checks": [
-        {
-          "check": "refinement",
-          "tag": "model-configuration",
-          "messageAfterPath": false
-        },
-        {
-          "check": "refinement",
-          "tag": "worker-command-task-model",
-          "messageAfterPath": true,
-          "message": "A Task Worker root model must be selected.",
-          "path": ["modelId"]
-        }
-      ]
-    },
+    { "type": "nullable", "innerType": 4712, "checks": [] },
+    { "type": "nullable", "innerType": 849, "checks": [] },
     { "type": "nullable", "innerType": 4734, "checks": [] },
     {
       "type": "string",
@@ -52519,9 +52507,9 @@
         "planGoalEnabled": 8991,
         "draftAttachmentIds": 8993,
         "priority": 8996,
-        "requestedTaskWorkerId": 8997
+        "modelConfiguration": 8997
       },
-      "catchall": 9000,
+      "catchall": 8998,
       "checks": []
     },
     {
@@ -52570,45 +52558,31 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 4705,
+      "innerType": 4706,
       "checks": []
     },
     {
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 8998,
+      "innerType": 849,
       "checks": []
-    },
-    { "type": "nullable", "innerType": 8999, "checks": [] },
-    {
-      "type": "string",
-      "checks": [
-        {
-          "check": "string_format",
-          "format": "uuid",
-          "abort": false,
-          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-          "flags": "",
-          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
-        }
-      ]
     },
     { "type": "never", "checks": [] },
     {
       "type": "object",
       "name": "taskOperationRelayResultSchema",
       "shape": {
-        "chatId": 9002,
-        "operationId": 9003,
+        "chatId": 9000,
+        "operationId": 9001,
         "fingerprint": 48,
         "classification": 4982,
         "protectedResult": 4990,
         "task": 4995,
         "assistantMessage": 1628,
-        "goal": 9004
+        "goal": 9002
       },
-      "catchall": 9005,
+      "catchall": 9003,
       "checks": [
         {
           "check": "refinement",
@@ -52650,17 +52624,17 @@
         "hasOutputQuestions": 4986,
         "hasOutputGoalPrompt": 4987,
         "error": 4988,
-        "id": 9007,
-        "chatId": 9008,
+        "id": 9005,
+        "chatId": 9006,
         "protectedContent": 4990,
-        "userMessageId": 9009,
-        "assistantMessageId": 9011,
-        "executionLaneId": 9013,
-        "turnId": 9015,
-        "startedAt": 9017,
-        "completedAt": 9018
+        "userMessageId": 9007,
+        "assistantMessageId": 9009,
+        "executionLaneId": 9011,
+        "turnId": 9013,
+        "startedAt": 9015,
+        "completedAt": 9016
       },
-      "catchall": 9020,
+      "catchall": 9018,
       "checks": []
     },
     {
@@ -52670,6 +52644,14 @@
         { "check": "max_length", "maximum": 200, "when": "length" }
       ]
     },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 9008, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -52701,14 +52683,6 @@
         { "check": "max_length", "maximum": 200, "when": "length" }
       ]
     },
-    { "type": "nullable", "innerType": 9016, "checks": [] },
-    {
-      "type": "string",
-      "checks": [
-        { "check": "min_length", "minimum": 1, "when": "length" },
-        { "check": "max_length", "maximum": 200, "when": "length" }
-      ]
-    },
     {
       "type": "string",
       "checks": [
@@ -52721,7 +52695,7 @@
         }
       ]
     },
-    { "type": "nullable", "innerType": 9019, "checks": [] },
+    { "type": "nullable", "innerType": 9017, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -52739,21 +52713,21 @@
       "type": "object",
       "name": "taskWorkerSummarySchema",
       "shape": {
-        "id": 9022,
-        "name": 9023,
-        "enabled": 9024,
-        "modelConfiguration": 4732,
-        "maxConcurrency": 9025,
-        "allowsPlanGoal": 9026,
-        "continuityFamily": 4711,
-        "continuityFamilyOverride": 9027,
-        "position": 9028,
-        "activeTaskCount": 9029,
-        "rowVersion": 9030,
-        "createdAt": 9031,
-        "updatedAt": 9032
+        "id": 9020,
+        "name": 9021,
+        "enabled": 9022,
+        "modelConfiguration": 9023,
+        "maxConcurrency": 9024,
+        "allowsPlanGoal": 9025,
+        "continuityFamily": 4712,
+        "continuityFamilyOverride": 9026,
+        "position": 9027,
+        "activeTaskCount": 9028,
+        "rowVersion": 9029,
+        "createdAt": 9030,
+        "updatedAt": 9031
       },
-      "catchall": 9033,
+      "catchall": 9032,
       "checks": []
     },
     {
@@ -52779,6 +52753,32 @@
     },
     { "type": "boolean", "checks": [] },
     {
+      "type": "object",
+      "name": "taskWorkerModelConfigurationSchema",
+      "shape": {
+        "modelId": 850,
+        "reasoningEffort": 852,
+        "customSubagentModel": 855,
+        "subagentModelId": 857,
+        "subagentReasoningEffort": 859
+      },
+      "catchall": 861,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "model-configuration",
+          "messageAfterPath": false
+        },
+        {
+          "check": "refinement",
+          "tag": "worker-command-task-model",
+          "messageAfterPath": true,
+          "message": "A Task Worker root model must be selected.",
+          "path": ["modelId"]
+        }
+      ]
+    },
+    {
       "type": "number",
       "checks": [
         { "check": "number_format", "format": "safeint", "abort": false },
@@ -52787,7 +52787,7 @@
       ]
     },
     { "type": "boolean", "checks": [] },
-    { "type": "nullable", "innerType": 4711, "checks": [] },
+    { "type": "nullable", "innerType": 4712, "checks": [] },
     {
       "type": "number",
       "checks": [
@@ -52837,19 +52837,19 @@
     {
       "type": "array",
       "name": "taskDispatchCycleListSchema",
-      "element": 4717,
+      "element": 4718,
       "checks": [{ "check": "max_length", "maximum": 10000, "when": "length" }]
     },
     {
       "type": "object",
       "name": "taskGoalWorkerResultSchema",
       "shape": {
-        "goal": 9036,
+        "goal": 9035,
         "task": 4995,
-        "message": 9045,
-        "execution": 9046
+        "message": 9044,
+        "execution": 9045
       },
-      "catchall": 9051,
+      "catchall": 9050,
       "checks": [
         {
           "check": "refinement",
@@ -52858,7 +52858,7 @@
         }
       ]
     },
-    { "type": "nullable", "innerType": 9037, "checks": [] },
+    { "type": "nullable", "innerType": 9036, "checks": [] },
     {
       "type": "object",
       "name": "taskGoalObjectiveOpaqueSnapshotSchema",
@@ -52867,16 +52867,16 @@
         "threadId": 5234,
         "status": 5235,
         "protectedObjective": 5237,
-        "tokenBudget": 9038,
-        "tokensUsed": 9040,
-        "timeUsedSeconds": 9041,
-        "createdAt": 9042,
-        "updatedAt": 9043
+        "tokenBudget": 9037,
+        "tokensUsed": 9039,
+        "timeUsedSeconds": 9040,
+        "createdAt": 9041,
+        "updatedAt": 9042
       },
-      "catchall": 9044,
+      "catchall": 9043,
       "checks": []
     },
-    { "type": "nullable", "innerType": 9039, "checks": [] },
+    { "type": "nullable", "innerType": 9038, "checks": [] },
     {
       "type": "number",
       "checks": [
@@ -52918,13 +52918,13 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 9047,
+      "innerType": 9046,
       "checks": []
     },
     {
       "type": "object",
-      "shape": { "threadId": 9048, "status": 9049 },
-      "catchall": 9050,
+      "shape": { "threadId": 9047, "status": 9048 },
+      "catchall": 9049,
       "checks": []
     },
     {
@@ -52937,22 +52937,22 @@
     {
       "type": "object",
       "name": "chatGoalResponseSchema",
-      "shape": { "goal": 9053 },
+      "shape": { "goal": 9052 },
       "checks": []
     },
-    { "type": "nullable", "innerType": 9054, "checks": [] },
+    { "type": "nullable", "innerType": 9053, "checks": [] },
     {
       "type": "object",
       "name": "threadGoalSchema",
       "shape": {
-        "threadId": 9055,
-        "objective": 9056,
-        "status": 9057,
-        "tokenBudget": 9058,
-        "tokensUsed": 9060,
-        "timeUsedSeconds": 9061,
-        "createdAt": 9062,
-        "updatedAt": 9063
+        "threadId": 9054,
+        "objective": 9055,
+        "status": 9056,
+        "tokenBudget": 9057,
+        "tokensUsed": 9059,
+        "timeUsedSeconds": 9060,
+        "createdAt": 9061,
+        "updatedAt": 9062
       },
       "checks": []
     },
@@ -52977,7 +52977,7 @@
       ],
       "checks": []
     },
-    { "type": "nullable", "innerType": 9059, "checks": [] },
+    { "type": "nullable", "innerType": 9058, "checks": [] },
     {
       "type": "number",
       "checks": [
@@ -53017,20 +53017,20 @@
       "type": "object",
       "name": "taskWorkerCreateSchema",
       "shape": {
-        "name": 9023,
-        "enabled": 9065,
-        "modelConfiguration": 4732,
-        "maxConcurrency": 9067,
-        "allowsPlanGoal": 9068,
-        "continuityFamilyOverride": 9070
+        "name": 9021,
+        "enabled": 9064,
+        "modelConfiguration": 9023,
+        "maxConcurrency": 9066,
+        "allowsPlanGoal": 9067,
+        "continuityFamilyOverride": 9069
       },
-      "catchall": 9072,
+      "catchall": 9071,
       "checks": []
     },
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 9066,
+      "innerType": 9065,
       "defaultValue": true,
       "checks": []
     },
@@ -53038,14 +53038,14 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 9025,
+      "innerType": 9024,
       "defaultValue": 1,
       "checks": []
     },
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 9069,
+      "innerType": 9068,
       "defaultValue": false,
       "checks": []
     },
@@ -53053,25 +53053,25 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 9071,
+      "innerType": 9070,
       "defaultValue": null,
       "checks": []
     },
-    { "type": "nullable", "innerType": 4711, "checks": [] },
+    { "type": "nullable", "innerType": 4712, "checks": [] },
     { "type": "never", "checks": [] },
     {
       "type": "object",
       "name": "taskWorkerUpdateSchema",
       "shape": {
-        "rowVersion": 9074,
-        "name": 9075,
-        "enabled": 9076,
-        "modelConfiguration": 9077,
-        "maxConcurrency": 9078,
-        "allowsPlanGoal": 9079,
-        "continuityFamilyOverride": 9080
+        "rowVersion": 9073,
+        "name": 9074,
+        "enabled": 9075,
+        "modelConfiguration": 9076,
+        "maxConcurrency": 9077,
+        "allowsPlanGoal": 9078,
+        "continuityFamilyOverride": 9079
       },
-      "catchall": 9081,
+      "catchall": 9080,
       "checks": [
         {
           "check": "refinement",
@@ -53092,6 +53092,20 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
+      "innerType": 9021,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 9065,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
       "innerType": 9023,
       "checks": []
     },
@@ -53099,43 +53113,29 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 9066,
+      "innerType": 9024,
       "checks": []
     },
     {
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 4732,
+      "innerType": 9068,
       "checks": []
     },
     {
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 9025,
-      "checks": []
-    },
-    {
-      "type": "optional",
-      "optionalIn": true,
-      "optionalOut": true,
-      "innerType": 9069,
-      "checks": []
-    },
-    {
-      "type": "optional",
-      "optionalIn": true,
-      "optionalOut": true,
-      "innerType": 9071,
+      "innerType": 9070,
       "checks": []
     },
     { "type": "never", "checks": [] },
     {
       "type": "object",
       "name": "taskWorkerDeleteSchema",
-      "shape": { "rowVersion": 9083 },
-      "catchall": 9084,
+      "shape": { "rowVersion": 9082 },
+      "catchall": 9083,
       "checks": []
     },
     {
@@ -53149,13 +53149,13 @@
     {
       "type": "object",
       "name": "taskWorkerOrderUpdateSchema",
-      "shape": { "ids": 9086 },
-      "catchall": 9088,
+      "shape": { "ids": 9085 },
+      "catchall": 9087,
       "checks": []
     },
     {
       "type": "array",
-      "element": 9087,
+      "element": 9086,
       "checks": [
         { "check": "min_length", "minimum": 1, "when": "length" },
         { "check": "max_length", "maximum": 256, "when": "length" },
@@ -53184,19 +53184,19 @@
     {
       "type": "array",
       "name": "taskWorkerListSchema",
-      "element": 9021,
+      "element": 9019,
       "checks": [{ "check": "max_length", "maximum": 256, "when": "length" }]
     },
     {
       "type": "object",
       "name": "projectTaskPauseStateSchema",
       "shape": {
-        "projectId": 9091,
-        "paused": 9092,
-        "pausedAt": 9093,
-        "rowVersion": 9095
+        "projectId": 9090,
+        "paused": 9091,
+        "pausedAt": 9092,
+        "rowVersion": 9094
       },
-      "catchall": 9096,
+      "catchall": 9095,
       "checks": []
     },
     {
@@ -53207,7 +53207,7 @@
       ]
     },
     { "type": "boolean", "checks": [] },
-    { "type": "nullable", "innerType": 9094, "checks": [] },
+    { "type": "nullable", "innerType": 9093, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -53231,8 +53231,8 @@
     {
       "type": "object",
       "name": "projectTaskPauseUpdateSchema",
-      "shape": { "paused": 9098, "rowVersion": 9099 },
-      "catchall": 9100,
+      "shape": { "paused": 9097, "rowVersion": 9098 },
+      "catchall": 9099,
       "checks": []
     },
     { "type": "boolean", "checks": [] },
@@ -53247,30 +53247,30 @@
     {
       "type": "object",
       "name": "chatPauseUpdateSchema",
-      "shape": { "paused": 9102 },
+      "shape": { "paused": 9101 },
       "checks": []
     },
     { "type": "boolean", "checks": [] },
     {
       "type": "object",
       "name": "chatPauseStateSchema",
-      "shape": { "paused": 9104 },
+      "shape": { "paused": 9103 },
       "checks": []
     },
     { "type": "boolean", "checks": [] },
     {
       "type": "object",
       "name": "chatPauseRuntimeStateSchema",
-      "shape": { "paused": 9106, "active": 9107 },
-      "catchall": 9112,
+      "shape": { "paused": 9105, "active": 9106 },
+      "catchall": 9111,
       "checks": []
     },
     { "type": "boolean", "checks": [] },
-    { "type": "nullable", "innerType": 9108, "checks": [] },
+    { "type": "nullable", "innerType": 9107, "checks": [] },
     {
       "type": "object",
-      "shape": { "threadId": 9109, "turnId": 9110 },
-      "catchall": 9111,
+      "shape": { "threadId": 9108, "turnId": 9109 },
+      "catchall": 9110,
       "checks": []
     },
     {
@@ -53292,8 +53292,8 @@
     {
       "type": "object",
       "name": "encryptedChatTurnCreateSchema",
-      "shape": { "message": 1569, "queuedPrompt": 5121, "modelId": 9114 },
-      "catchall": 9116,
+      "shape": { "message": 1569, "queuedPrompt": 5121, "modelId": 9113 },
+      "catchall": 9115,
       "checks": [
         {
           "check": "refinement",
@@ -53306,7 +53306,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 9115,
+      "innerType": 9114,
       "checks": []
     },
     {
@@ -53328,17 +53328,17 @@
       "name": "encryptedQueuedPromptUpdateSchema",
       "shape": {
         "prompt": 5121,
-        "expectedItemRevision": 9119,
-        "operationId": 9121
+        "expectedItemRevision": 9118,
+        "operationId": 9120
       },
-      "catchall": 9123,
+      "catchall": 9122,
       "checks": []
     },
     {
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 9120,
+      "innerType": 9119,
       "checks": []
     },
     {
@@ -53352,7 +53352,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 9122,
+      "innerType": 9121,
       "checks": []
     },
     {
@@ -53366,14 +53366,14 @@
     {
       "type": "object",
       "name": "queuedPromptOrderSchema",
-      "shape": { "expectedRevision": 9125, "operationId": 9127, "ids": 9129 },
+      "shape": { "expectedRevision": 9124, "operationId": 9126, "ids": 9128 },
       "checks": []
     },
     {
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 9126,
+      "innerType": 9125,
       "checks": []
     },
     {
@@ -53387,7 +53387,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 9128,
+      "innerType": 9127,
       "checks": []
     },
     {
@@ -53399,7 +53399,7 @@
     },
     {
       "type": "array",
-      "element": 9130,
+      "element": 9129,
       "checks": [{ "check": "max_length", "maximum": 1000, "when": "length" }]
     },
     {
@@ -53409,22 +53409,22 @@
     {
       "type": "union",
       "name": "encryptedChatPromptSubmitResultSchema",
-      "options": [9132, 9135],
+      "options": [9131, 9134],
       "discriminator": "status",
       "checks": []
     },
     {
       "type": "object",
-      "shape": { "status": 9133, "message": 4803 },
-      "catchall": 9134,
+      "shape": { "status": 9132, "message": 4803 },
+      "catchall": 9133,
       "checks": []
     },
     { "type": "literal", "values": ["started"], "checks": [] },
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "status": 9136, "prompt": 8735 },
-      "catchall": 9137,
+      "shape": { "status": 9135, "prompt": 8735 },
+      "catchall": 9136,
       "checks": []
     },
     { "type": "literal", "values": ["queued"], "checks": [] },
@@ -53432,13 +53432,13 @@
     {
       "type": "union",
       "name": "encryptedConversationPromptSubmitResultSchema",
-      "options": [9139, 9131],
+      "options": [9138, 9130],
       "checks": []
     },
     {
       "type": "object",
-      "shape": { "status": 9140, "kind": 9141, "message": 8303 },
-      "catchall": 9142,
+      "shape": { "status": 9139, "kind": 9140, "message": 8303 },
+      "catchall": 9141,
       "checks": []
     },
     { "type": "literal", "values": ["started"], "checks": [] },
@@ -53447,8 +53447,8 @@
     {
       "type": "object",
       "name": "encryptedChatPromptSteerResultSchema",
-      "shape": { "steered": 9144, "message": 4803 },
-      "catchall": 9145,
+      "shape": { "steered": 9143, "message": 4803 },
+      "catchall": 9144,
       "checks": []
     },
     { "type": "literal", "values": [true], "checks": [] },

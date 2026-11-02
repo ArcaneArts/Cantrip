@@ -148,6 +148,13 @@ async function addTask(
     planGoalEnabled: input.planGoalEnabled ?? false,
     priority: input.priority ?? 0,
     requestedTaskWorkerId: input.requestedTaskWorkerId ?? null,
+    modelConfiguration: {
+      modelId: DEFAULT_MODEL_ID,
+      reasoningEffort: null,
+      customSubagentModel: false,
+      subagentModelId: null,
+      subagentReasoningEffort: null,
+    },
     protectedContent: encryptedTaskContent,
     createdAt: input.createdAt,
   });
@@ -300,7 +307,7 @@ describe("Task dispatch scheduling", () => {
       await f.client.close();
     }
   });
-  it("reopens a settled handoff only with real worker capacity and records its new session affinity", async () => {
+  it("reopens a settled handoff without legacy preset capacity and records its new session affinity", async () => {
     const f = await fixture();
     try {
       const worker = await f.repository.taskScheduling.createTaskWorker(
@@ -353,45 +360,11 @@ describe("Task dispatch scheduling", () => {
           "passive",
         ),
       ).rejects.toMatchObject({ code: "stale-lease" });
+      // Retired presets cannot gate recovery, even if disabled or occupied.
       await f.database
         .update(schema.taskWorkers)
-        .set({ enabled: false })
+        .set({ enabled: false, allowsPlanGoal: false })
         .where(eq(schema.taskWorkers.id, worker.id));
-      await expect(recover()).rejects.toMatchObject({
-        code: "active-operation",
-      });
-      await f.database
-        .update(schema.taskWorkers)
-        .set({ enabled: true })
-        .where(eq(schema.taskWorkers.id, worker.id));
-      await f.database
-        .update(schema.taskWorkers)
-        .set({ allowsPlanGoal: false })
-        .where(eq(schema.taskWorkers.id, worker.id));
-      await expect(recover()).rejects.toThrow("no longer allows Plan + Goal");
-      await f.database
-        .update(schema.taskWorkers)
-        .set({ allowsPlanGoal: true })
-        .where(eq(schema.taskWorkers.id, worker.id));
-      const other = await addTask(f, { createdAt: new Date() });
-      const occupied = randomUUID();
-      await f.database.insert(schema.taskDispatchCycles).values({
-        id: occupied,
-        ownerId: LOCAL_USER_ID,
-        chatId: other.chatId,
-        operationId: randomUUID(),
-        operationKind: "direct",
-        state: "claimed",
-        fifoCreatedAt: new Date(),
-        selectedTaskWorkerId: worker.id,
-      });
-      await expect(recover()).rejects.toMatchObject({
-        code: "active-operation",
-      });
-      await f.database
-        .update(schema.taskDispatchCycles)
-        .set({ state: "succeeded" })
-        .where(eq(schema.taskDispatchCycles.id, occupied));
       await f.database
         .update(schema.tasks)
         .set({ state: "complete" })
@@ -403,6 +376,7 @@ describe("Task dispatch scheduling", () => {
         .where(eq(schema.tasks.chatId, task.chatId));
       const lease = await recover();
       expect(lease.fencingToken).toBe(3);
+      const other = await addTask(f, { createdAt: new Date() });
       await f.repository.taskDispatch.markRunning(lease, {
         turnId: "destination-turn",
         affinity: {
@@ -780,7 +754,51 @@ describe("Task dispatch scheduling", () => {
     }
   });
 
-  it("enforces account-global capacity and FIFO independently of priority", async () => {
+  it("claims ten tasks concurrently without any configured presets, including Plan + Goal", async () => {
+    const value = await fixture();
+    try {
+      const tasks = [];
+      for (let index = 0; index < 10; index++) {
+        const task = await addTask(value, {
+          createdAt: new Date(1790000000000 + index),
+          planGoalEnabled: index % 2 === 0,
+        });
+        tasks.push(task);
+        await value.repository.taskDispatch.enqueue(
+          LOCAL_USER_ID,
+          task.chatId,
+          `ten-${index}`,
+          index % 2 === 0 ? "initial-plan" : "direct",
+          1,
+        );
+      }
+      const claims = await Promise.all(
+        tasks.map((_, index) =>
+          value.repository.taskDispatch.claimNext(
+            LOCAL_USER_ID,
+            `scheduler-${index}`,
+            eligible,
+          ),
+        ),
+      );
+      expect(claims).toHaveLength(10);
+      expect(new Set(claims.map((claim) => claim?.cycle.chatId))).toEqual(
+        new Set(tasks.map((task) => task.chatId)),
+      );
+      expect(
+        claims.every(
+          (claim) =>
+            claim?.cycle.state === "claimed" &&
+            claim.cycle.selectedTaskWorkerId === null &&
+            claim.modelConfiguration.modelId === DEFAULT_MODEL_ID,
+        ),
+      ).toBe(true);
+    } finally {
+      await value.client.close();
+    }
+  });
+
+  it("claims all runnable tasks in FIFO order without preset capacity", async () => {
     const value = await fixture();
     try {
       const taskWorker = await value.repository.taskScheduling.createTaskWorker(
@@ -824,31 +842,21 @@ describe("Task dispatch scheduling", () => {
         oldest.chatId,
         middle.chatId,
       ]);
-      expect(first?.taskWorker.id).toBe(taskWorker.id);
-      expect(
-        await value.repository.taskDispatch.claimNext(
-          LOCAL_USER_ID,
-          "scheduler-c",
-          eligible,
-        ),
-      ).toBeNull();
-
-      await value.repository.taskDispatch.settle(first!.lease, "succeeded");
-      expect(
-        (
-          await value.repository.taskDispatch.claimNext(
-            LOCAL_USER_ID,
-            "scheduler-c",
-            eligible,
-          )
-        )?.cycle.chatId,
-      ).toBe(newest.chatId);
+      expect(first?.cycle.modelConfiguration?.modelId).toBe(DEFAULT_MODEL_ID);
+      const third = await value.repository.taskDispatch.claimNext(
+        LOCAL_USER_ID,
+        "scheduler-c",
+        eligible,
+      );
+      expect(third?.cycle.chatId).toBe(newest.chatId);
+      expect(first?.cycle.state).toBe("claimed");
+      expect(second?.cycle.state).toBe("claimed");
     } finally {
       await value.client.close();
     }
   });
 
-  it("uses eligibility before FIFO and configured worker order for Auto", async () => {
+  it("uses FIFO for every model regardless of the retired Plan + Goal capability", async () => {
     const value = await fixture();
     try {
       const direct = await value.repository.taskScheduling.createTaskWorker(
@@ -891,10 +899,8 @@ describe("Task dispatch scheduling", () => {
         "scheduler-b",
         eligible,
       );
-      expect(first?.cycle.chatId).toBe(newerDirect.chatId);
-      expect(first?.taskWorker.id).toBe(direct.id);
-      expect(second?.cycle.chatId).toBe(olderPlan.chatId);
-      expect(second?.taskWorker.id).toBe(plan.id);
+      expect(first?.cycle.chatId).toBe(olderPlan.chatId);
+      expect(second?.cycle.chatId).toBe(newerDirect.chatId);
     } finally {
       await value.client.close();
     }
@@ -1025,7 +1031,7 @@ describe("Task dispatch scheduling", () => {
     }
   });
 
-  it("releases paused capacity and reacquires the exact resident affinity", async () => {
+  it("resumes exact resident affinity while other tasks remain active", async () => {
     const value = await fixture();
     try {
       const taskWorker = await value.repository.taskScheduling.createTaskWorker(
@@ -1064,7 +1070,7 @@ describe("Task dispatch scheduling", () => {
       );
       expect(paused).toMatchObject({
         state: "paused",
-        selectedTaskWorkerId: taskWorker.id,
+        selectedTaskWorkerId: null,
         codexThreadId: "thread-resident",
         turnId: "turn-resident",
       });
@@ -1076,15 +1082,6 @@ describe("Task dispatch scheduling", () => {
         eligible,
       );
       expect(other?.cycle.chatId).toBe(secondTask.chatId);
-      expect(
-        await value.repository.taskDispatch.resumeNextPaused(
-          LOCAL_USER_ID,
-          "scheduler-c",
-          async () => ({ eligible: true }),
-        ),
-      ).toBeNull();
-
-      await value.repository.taskDispatch.settle(other!.lease, "succeeded");
       const resumed = await value.repository.taskDispatch.resumeNextPaused(
         LOCAL_USER_ID,
         "scheduler-c",
@@ -1093,7 +1090,7 @@ describe("Task dispatch scheduling", () => {
       expect(resumed?.cycle).toMatchObject({
         id: paused.id,
         state: "running",
-        selectedTaskWorkerId: taskWorker.id,
+        selectedTaskWorkerId: null,
         physicalWorkerId: resident!.cycle.physicalWorkerId,
         modelRouteId: resident!.cycle.modelRouteId,
         providerAccountId: resident!.cycle.providerAccountId,
@@ -1197,16 +1194,16 @@ describe("Task dispatch scheduling", () => {
             protectedContent: current.protectedContent,
           },
           priority: 50,
-          requestedTaskWorkerId: taskWorker.id,
+          modelConfiguration: taskWorker.modelConfiguration,
         },
       );
       expect(updated).toMatchObject({
         priority: 50,
-        requestedTaskWorkerId: taskWorker.id,
+        modelConfiguration: taskWorker.modelConfiguration,
         dispatch: {
           state: "queued",
           fifoCreatedAt: queued.fifoCreatedAt,
-          requestedTaskWorkerId: taskWorker.id,
+          modelConfiguration: taskWorker.modelConfiguration,
         },
       });
 

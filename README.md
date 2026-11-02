@@ -35,8 +35,9 @@ cross the server only as opaque worker routing handles. See the
   turn; opt-in **Plan + Goal** Tasks run read-only planning, support question
   rounds and revision-safe plan edits, then finalize into Goal implementation
   on the same Codex thread. Every runnable cycle enters the durable
-  account-global scheduler and waits for an eligible configured Task Worker
-  with capacity. Task state survives tab changes, desktop pop-outs, worker
+  account-global scheduler with its own model and reasoning configuration.
+  Every model supports opt-in Plan + Goal, and runnable Tasks start without a
+  task-specific concurrency limit. Task state survives tab changes, desktop pop-outs, worker
   outages, archive/restore, server restarts, and—on Git-capable projects—safe
   relocation between compatible ready sources. See [the Tasks
   contract](docs/TASKS.md).

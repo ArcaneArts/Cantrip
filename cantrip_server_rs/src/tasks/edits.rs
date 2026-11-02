@@ -16,18 +16,25 @@ impl Repository {
             let current=summary(&task,cycle.as_ref())?;
             if current["state"]!="draft" && !(current["state"]=="failed" && current["stableStateBeforeFailure"]=="draft") { return policy::transition_error(&text(&current["state"])?,"draft"); }
             policy::assert_mutation(&current,&input)?;
-            if truthy(input.get("requestedTaskWorkerId")) && tx.query("SELECT id FROM task_workers WHERE id=$1 AND owner_id=$2 AND deleted_at IS NULL LIMIT 1",&[&text(&input["requestedTaskWorkerId"])?,&owner]).await?.is_empty() { return conflict("stale-version","The selected Task Worker is unavailable."); }
+            if let Some(configuration)=input.get("modelConfiguration") {
+                for key in ["modelId","subagentModelId"] {
+                    if key=="subagentModelId" && configuration["customSubagentModel"]!=true { continue; }
+                    if let Some(model)=configuration.get(key).filter(|v|!v.is_null()) {
+                        if tx.query("SELECT id FROM model_profiles WHERE id=$1 AND owner_id=$2 LIMIT 1",&[&text(model)?,&owner]).await?.is_empty() { return conflict("stale-version","The selected model is unavailable."); }
+                    }
+                }
+            }
             let now=now();
             let mut fields=task_columns(&input["task"]);
-            for (key,column) in [("planGoalEnabled","plan_goal_enabled"),("draftAttachmentIds","draft_attachment_ids"),("priority","priority"),("requestedTaskWorkerId","requested_task_worker_id")] { if let Some(v)=input.get(key) { fields[column]=v.clone(); } }
+            for (key,column) in [("planGoalEnabled","plan_goal_enabled"),("draftAttachmentIds","draft_attachment_ids"),("priority","priority"),("modelConfiguration","model_configuration")] { if let Some(v)=input.get(key) { fields[column]=v.clone(); } }
             fields["scheduler_revision"]=increment(&task["scheduler_revision"]);
             fields["row_version"]=increment(&task["row_version"]); fields["updated_at"]=now.clone();
             let Some(updated)=update(tx,Table::Task,&chat,&fields,Some(("row_version",&input["rowVersion"]))).await? else { return conflict("stale-version","The Task draft changed in another client."); };
             let updated_cycle=if let Some(cycle)=cycle {
                 let enabled=input.get("planGoalEnabled").unwrap_or(&updated["plan_goal_enabled"]);
                 let kind=if enabled==&true { "initial-plan" } else { "direct" };
-                let worker=if updated["requested_task_worker_id"].is_null(){None}else{Some(text(&updated["requested_task_worker_id"])?)};
-                let Some(next)=one(Executor::Transaction(tx),"UPDATE task_dispatch_cycles c SET operation_kind=$2,requested_task_worker_id=$3,fencing_token=c.fencing_token+1,eligibility_code=NULL,updated_at=$4::text::timestamptz WHERE c.id=$1 AND c.state='queued' RETURNING to_jsonb(c)::text",&[&text(&cycle["id"])?,&kind,&worker,&text(&now)?]).await? else { return conflict("operation-active","The Task started before this edit could be saved."); };
+                let configuration=updated["model_configuration"].stringify();
+                let Some(next)=one(Executor::Transaction(tx),"UPDATE task_dispatch_cycles c SET operation_kind=$2,model_configuration=$3::text::jsonb,fencing_token=c.fencing_token+1,eligibility_code=NULL,updated_at=$4::text::timestamptz WHERE c.id=$1 AND c.state='queued' RETURNING to_jsonb(c)::text",&[&text(&cycle["id"])?,&kind,&configuration,&text(&now)?]).await? else { return conflict("operation-active","The Task started before this edit could be saved."); };
                 Some(next)
             } else { None };
             summary(&updated,updated_cycle.as_ref()).map(Some)

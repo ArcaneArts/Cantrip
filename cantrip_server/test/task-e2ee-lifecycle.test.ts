@@ -5,7 +5,6 @@ import path from "node:path";
 
 import { PGlite } from "@electric-sql/pglite";
 import {
-  taskWorkerCreateSchema,
   taskWireCreateResultSchema,
   unprobedCodexRuntimeReport,
   encryptedConversationPromptSubmitResultSchema,
@@ -792,15 +791,6 @@ beforeAll(async () => {
     },
     startedAt: new Date().toISOString(),
   });
-  await database.repository.taskScheduling.createTaskWorker(
-    ownerId,
-    taskWorkerCreateSchema.parse({
-      name: "Task lifecycle",
-      modelConfiguration: { modelId: DEFAULT_MODEL_ID },
-      allowsPlanGoal: true,
-      continuityFamilyOverride: "ollama",
-    }),
-  );
   const project = await database.repository.createGithubProject(ownerId, {
     workerId,
     ...protectedProjectFields(),
@@ -866,6 +856,7 @@ describe.sequential("Task E2EE closure lifecycle", () => {
         planGoalEnabled: false,
         priority: -1,
         titleProtection: protectedChatFields(chatId).titleProtection,
+        modelConfiguration: { modelId: DEFAULT_MODEL_ID },
         task,
       },
     });
@@ -977,6 +968,7 @@ describe.sequential("Task E2EE closure lifecycle", () => {
         planGoalEnabled: false,
         priority: -1,
         titleProtection: protectedChatFields(chatId).titleProtection,
+        modelConfiguration: { modelId: DEFAULT_MODEL_ID },
         task,
       },
     });
@@ -1084,6 +1076,7 @@ describe.sequential("Task E2EE closure lifecycle", () => {
         chatId,
         planGoalEnabled: false,
         titleProtection: protectedChatFields(chatId).titleProtection,
+        modelConfiguration: { modelId: DEFAULT_MODEL_ID },
         task: initialTask,
       },
     });
@@ -1169,6 +1162,7 @@ describe.sequential("Task E2EE closure lifecycle", () => {
         chatId,
         planGoalEnabled: false,
         titleProtection: protectedChatFields(chatId).titleProtection,
+        modelConfiguration: { modelId: DEFAULT_MODEL_ID },
         task: initialTask,
       },
     });
@@ -1256,6 +1250,7 @@ describe.sequential("Task E2EE closure lifecycle", () => {
         chatId,
         planGoalEnabled: false,
         titleProtection: protectedChatFields(chatId).titleProtection,
+        modelConfiguration: { modelId: DEFAULT_MODEL_ID },
         task: initial,
       },
     });
@@ -1460,6 +1455,7 @@ describe.sequential("Task E2EE closure lifecycle", () => {
         chatId,
         planGoalEnabled: false,
         titleProtection: protectedChatFields(chatId).titleProtection,
+        modelConfiguration: { modelId: DEFAULT_MODEL_ID },
         task: initialTask,
       },
     });
@@ -1569,6 +1565,7 @@ describe.sequential("Task E2EE closure lifecycle", () => {
           chatId,
           planGoalEnabled: false,
           titleProtection: protectedChatFields(chatId).titleProtection,
+          modelConfiguration: { modelId: DEFAULT_MODEL_ID },
           task: initialTask,
         },
       });
@@ -1628,10 +1625,10 @@ describe.sequential("Task E2EE closure lifecycle", () => {
           codexThreadId: threadId,
           turnId: "turn-direct",
         });
-        expect(
-          (await database.repository.taskScheduling.listTaskWorkers(ownerId))[0]
-            ?.activeTaskCount,
-        ).toBe(0);
+        expect(paused.dispatch?.modelConfiguration?.modelId).toBe(
+          DEFAULT_MODEL_ID,
+        );
+        expect(paused.dispatch?.selectedTaskWorkerId).toBeNull();
       } else {
         expect(
           await database.repository.getChatExecutionContext(ownerId, chatId),
@@ -1714,7 +1711,13 @@ describe.sequential("Task E2EE closure lifecycle", () => {
         task,
         planGoalEnabled: true,
         priority: 0,
-        requestedTaskWorkerId: null,
+        modelConfiguration: {
+          modelId: DEFAULT_MODEL_ID,
+          reasoningEffort: null,
+          customSubagentModel: false,
+          subagentModelId: null,
+          subagentReasoningEffort: null,
+        },
         worktreeMode: "agent-managed",
         titleProtection: protectedChatFields(chatId).titleProtection,
       },
@@ -1883,6 +1886,7 @@ describe.sequential("Task E2EE closure lifecycle", () => {
       chatId,
       planGoalEnabled: true,
       titleProtection: protectedChatFields(chatId).titleProtection,
+      modelConfiguration: { modelId: DEFAULT_MODEL_ID },
       task: initialTask,
     };
     expect(JSON.stringify(createPayload)).not.toContain(sentinel);

@@ -1,3 +1,4 @@
+import { EMPTY_MODEL_CONFIGURATION } from "@cantrip/protocol";
 import { describe, expect, it } from "vitest";
 import type { TaskDetail } from "@cantrip/protocol";
 
@@ -15,6 +16,7 @@ const baseTask = {
   chatId: "chat-one",
   planGoalEnabled: false,
   priority: 0,
+  modelConfiguration: EMPTY_MODEL_CONFIGURATION,
   requestedTaskWorkerId: null,
   continuityFamily: null,
   lastTaskWorkerId: null,
@@ -145,17 +147,18 @@ describe("Task draft presentation", () => {
     expect(taskDraftSignature("Brief", ["a"], false)).not.toBe(
       taskDraftSignature("Brief", ["a"], true),
     );
-    expect(taskDraftSignature("Brief", ["a"], false, 0, null)).not.toBe(
-      taskDraftSignature("Brief", ["a"], false, 1, null),
+    expect(
+      taskDraftSignature("Brief", ["a"], false, 0, EMPTY_MODEL_CONFIGURATION),
+    ).not.toBe(
+      taskDraftSignature("Brief", ["a"], false, 1, EMPTY_MODEL_CONFIGURATION),
     );
-    expect(taskDraftSignature("Brief", ["a"], false, 0, null)).not.toBe(
-      taskDraftSignature(
-        "Brief",
-        ["a"],
-        false,
-        0,
-        "00000000-0000-4000-8000-000000000001",
-      ),
+    expect(
+      taskDraftSignature("Brief", ["a"], false, 0, EMPTY_MODEL_CONFIGURATION),
+    ).not.toBe(
+      taskDraftSignature("Brief", ["a"], false, 0, {
+        ...EMPTY_MODEL_CONFIGURATION,
+        modelId: "another-model",
+      }),
     );
   });
 

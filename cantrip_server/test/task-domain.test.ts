@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
-  taskWorkerCreateSchema,
   projectTabLayoutWireSummarySchema,
   projectSurfaceViewId,
   projectTaskWorkloadOpaqueSchema,
@@ -275,15 +274,6 @@ beforeAll(async () => {
     },
     startedAt: new Date().toISOString(),
   });
-  await database.repository.taskScheduling.createTaskWorker(
-    LOCAL_USER_ID,
-    taskWorkerCreateSchema.parse({
-      name: "Task tests",
-      modelConfiguration: { modelId: DEFAULT_MODEL_ID },
-      allowsPlanGoal: true,
-      continuityFamilyOverride: "ollama",
-    }),
-  );
   const project = await database.repository.createGithubProject(LOCAL_USER_ID, {
     workerId: "task-worker",
     ...protectedProjectFields(),
@@ -336,6 +326,7 @@ describe.sequential("opaque encrypted Task persistence", () => {
       payload: {
         chatId: draftChatId,
         titleProtection: protectedChatFields(draftChatId).titleProtection,
+        modelConfiguration: { modelId: DEFAULT_MODEL_ID },
         task: taskContent("draft", 0, null),
       },
     });
@@ -380,6 +371,7 @@ describe.sequential("opaque encrypted Task persistence", () => {
         payload: {
           chatId: queuedChatId,
           titleProtection: protectedChatFields(queuedChatId).titleProtection,
+          modelConfiguration: { modelId: DEFAULT_MODEL_ID },
           task: taskContent("draft", 0, null),
         },
       });
@@ -414,6 +406,7 @@ describe.sequential("opaque encrypted Task persistence", () => {
         payload: {
           chatId: completedChatId,
           titleProtection: protectedChatFields(completedChatId).titleProtection,
+          modelConfiguration: { modelId: DEFAULT_MODEL_ID },
           task: taskContent("draft", 0, null),
         },
       });
@@ -479,6 +472,7 @@ describe.sequential("opaque encrypted Task persistence", () => {
           chatId: failedChatId,
           planGoalEnabled: true,
           titleProtection: protectedChatFields(failedChatId).titleProtection,
+          modelConfiguration: { modelId: DEFAULT_MODEL_ID },
           task: taskContent("draft", 0, null),
         },
       });
@@ -518,6 +512,7 @@ describe.sequential("opaque encrypted Task persistence", () => {
           chatId: activeChatId,
           planGoalEnabled: true,
           titleProtection: protectedChatFields(activeChatId).titleProtection,
+          modelConfiguration: { modelId: DEFAULT_MODEL_ID },
           task: taskContent("draft", 0, null),
         },
       });
@@ -573,6 +568,7 @@ describe.sequential("opaque encrypted Task persistence", () => {
         chatId,
         planGoalEnabled: true,
         titleProtection: protectedChatFields(chatId).titleProtection,
+        modelConfiguration: { modelId: DEFAULT_MODEL_ID },
         task: taskContent("draft", 0, null),
       },
     });
@@ -608,6 +604,7 @@ describe.sequential("opaque encrypted Task persistence", () => {
       url: `/api/tasks/${chatId}/draft`,
       payload: {
         rowVersion: 1,
+        modelConfiguration: { modelId: DEFAULT_MODEL_ID },
         task: taskContent("draft", 0, null),
         draftAttachmentIds: [],
       },
@@ -689,6 +686,7 @@ describe.sequential("opaque encrypted Task persistence", () => {
       payload: {
         chatId,
         titleProtection: protectedChatFields(chatId).titleProtection,
+        modelConfiguration: { modelId: DEFAULT_MODEL_ID },
         task: taskContent("draft", 0, null),
       },
     });
@@ -766,6 +764,7 @@ describe.sequential("opaque encrypted Task persistence", () => {
         chatId,
         planGoalEnabled: true,
         titleProtection: protectedChatFields(chatId).titleProtection,
+        modelConfiguration: { modelId: DEFAULT_MODEL_ID },
         task: taskContent("draft", 0, null),
       },
     });

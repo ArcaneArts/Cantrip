@@ -42,11 +42,11 @@ impl Repository {
                 return Err(Conflict::new("active-operation","The Task already has an active scheduled operation.").into());
             }
             if let Some(prior)=prior {
-                let mut fields=reset_fields(&clock(&Value::Null)?,Value::Null,true); fields["requested_task_worker_id"]=task["requested_task_worker_id"].clone();
+                let mut fields=reset_fields(&clock(&Value::Null)?,Value::Null,true); fields["requested_task_worker_id"]=Value::Null; fields["model_configuration"]=task["model_configuration"].clone();
                 return summary(&change(ex,&text(&prior["id"])?,&fields,None,None,",fencing_token=c.fencing_token+1").await?.context("Task dispatch requeue returned no row")?);
             }
             let id=uuid::Uuid::new_v4().to_string();
-            let row=one(ex,"INSERT INTO task_dispatch_cycles(id,owner_id,chat_id,operation_id,operation_kind,state,fifo_created_at,requested_task_worker_id) VALUES($1,$2,$3,$4,$5,'queued',$6::text::timestamptz,$7) RETURNING to_jsonb(task_dispatch_cycles)::text",&[&id,&owner,&chat,&operation,&kind,&text(&crate::native_commands::receipt::iso(&task["created_at"])?)?,&task["requested_task_worker_id"].as_str()]).await?.context("Task dispatch enqueue returned no row")?;
+            let row=one(ex,"INSERT INTO task_dispatch_cycles(id,owner_id,chat_id,operation_id,operation_kind,state,fifo_created_at,model_configuration) VALUES($1,$2,$3,$4,$5,'queued',$6::text::timestamptz,$7::text::jsonb) RETURNING to_jsonb(task_dispatch_cycles)::text",&[&id,&owner,&chat,&operation,&kind,&text(&crate::native_commands::receipt::iso(&task["created_at"])?)?,&task["model_configuration"].stringify()]).await?.context("Task dispatch enqueue returned no row")?;
             summary(&row)
         })).await
     }

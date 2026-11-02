@@ -156,7 +156,7 @@ export function createTaskSchedulerRuntime(
                   status: "completed",
                   chatId: claimed.cycle.chatId,
                   cycleId: claimed.cycle.id,
-                  taskWorkerId: claimed.cycle.selectedTaskWorkerId,
+                  modelId: claimed.cycle.modelConfiguration?.modelId,
                   workerId: claimed.cycle.physicalWorkerId,
                   modelRouteId: claimed.cycle.modelRouteId,
                   providerAccountId: claimed.cycle.providerAccountId,

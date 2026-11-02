@@ -1,19 +1,29 @@
+import type { ModelConfiguration } from "@cantrip/protocol";
 import { randomUUID } from "node:crypto";
 
 import {
   taskDispatchCycleListSchema,
   taskDispatchCycleSummarySchema,
   taskDispatchWorkerLeaseSchema,
-  taskWorkerSummarySchema,
   type TaskDispatchCycleState,
   type TaskDispatchCycleSummary,
   type TaskDispatchEligibilityCode,
   type TaskDispatchFence,
   type TaskDispatchOperationKind,
   type TaskDispatchWorkerLease,
-  type TaskWorkerSummary,
 } from "@cantrip/protocol/task-scheduling";
-import { and, asc, eq, gt, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  eq,
+  gt,
+  inArray,
+  isNull,
+  lte,
+  ne,
+  or,
+  sql,
+} from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 
@@ -25,7 +35,6 @@ import {
 
 type TaskDispatchDatabase = PgDatabase<PgQueryResultHKT, typeof schema>;
 type TaskDispatchRow = typeof schema.taskDispatchCycles.$inferSelect;
-type TaskWorkerRow = typeof schema.taskWorkers.$inferSelect;
 
 export const TASK_DISPATCH_LEASE_MS = 2 * 60_000;
 const RETRYABLE_TERMINAL_STATES: readonly TaskDispatchCycleState[] = [
@@ -55,7 +64,7 @@ export interface TaskDispatchEligibilityInput {
   projectId: string;
   physicalWorkerId: string;
   worktreeId: string;
-  taskWorker: TaskWorkerSummary;
+  modelConfiguration: ModelConfiguration;
 }
 
 export type TaskDispatchEligibilityResult =
@@ -81,7 +90,7 @@ export interface ClaimedTaskDispatch {
   cycle: TaskDispatchCycleSummary;
   lease: TaskDispatchWorkerLease;
   projectId: string;
-  taskWorker: TaskWorkerSummary;
+  modelConfiguration: ModelConfiguration;
 }
 
 export interface TaskDispatchSchedulerOwner {
@@ -112,37 +121,6 @@ export function taskDispatchSchedulerPlan(
 
 function iso(value: Date): string {
   return value.toISOString();
-}
-
-function modelConfiguration(row: TaskWorkerRow) {
-  return {
-    modelId: row.modelId,
-    reasoningEffort: row.reasoningEffort,
-    customSubagentModel: row.customSubagentModel,
-    subagentModelId: row.subagentModelId,
-    subagentReasoningEffort: row.subagentReasoningEffort,
-  };
-}
-
-function toTaskWorkerSummary(
-  row: TaskWorkerRow,
-  activeTaskCount: number,
-): TaskWorkerSummary {
-  return taskWorkerSummarySchema.parse({
-    id: row.id,
-    name: row.name,
-    enabled: row.enabled,
-    modelConfiguration: modelConfiguration(row),
-    maxConcurrency: row.maxConcurrency,
-    allowsPlanGoal: row.allowsPlanGoal,
-    continuityFamily: row.continuityFamily,
-    continuityFamilyOverride: row.continuityFamilyOverride,
-    position: row.position,
-    activeTaskCount,
-    rowVersion: row.rowVersion,
-    createdAt: iso(row.createdAt),
-    updatedAt: iso(row.updatedAt),
-  });
 }
 
 export function toTaskDispatchCycleSummary(
@@ -399,11 +377,11 @@ export class TaskDispatchRepository {
           .update(schema.taskDispatchCycles)
           .set({
             state: "queued",
-            requestedTaskWorkerId: task.requestedTaskWorkerId,
+            requestedTaskWorkerId: null,
             selectedTaskWorkerId: null,
             taskWorkerRevision: null,
             continuityFamily: null,
-            modelConfiguration: null,
+            modelConfiguration: task.modelConfiguration,
             modelRouteId: null,
             providerAccountId: null,
             physicalWorkerId: null,
@@ -436,7 +414,8 @@ export class TaskDispatchRepository {
           operationKind,
           state: "queued",
           fifoCreatedAt: task.createdAt,
-          requestedTaskWorkerId: task.requestedTaskWorkerId,
+          requestedTaskWorkerId: null,
+          modelConfiguration: task.modelConfiguration,
         })
         .returning();
       return toTaskDispatchCycleSummary(rows[0]!);
@@ -469,40 +448,7 @@ export class TaskDispatchRepository {
         .limit(1);
       if (!ownerRows[0]) return null;
 
-      const [
-        workerRows,
-        activeCounts,
-        candidateRows,
-        activeLanes,
-        branchLeases,
-      ] = await Promise.all([
-        transaction
-          .select()
-          .from(schema.taskWorkers)
-          .where(
-            and(
-              eq(schema.taskWorkers.ownerId, ownerId),
-              eq(schema.taskWorkers.enabled, true),
-              isNull(schema.taskWorkers.deletedAt),
-            ),
-          )
-          .orderBy(
-            asc(schema.taskWorkers.position),
-            asc(schema.taskWorkers.id),
-          ),
-        transaction
-          .select({
-            taskWorkerId: schema.taskDispatchCycles.selectedTaskWorkerId,
-            count: sql<number>`count(*)::int`,
-          })
-          .from(schema.taskDispatchCycles)
-          .where(
-            and(
-              eq(schema.taskDispatchCycles.ownerId, ownerId),
-              inArray(schema.taskDispatchCycles.state, ["claimed", "running"]),
-            ),
-          )
-          .groupBy(schema.taskDispatchCycles.selectedTaskWorkerId),
+      const [candidateRows, activeLanes, branchLeases] = await Promise.all([
         transaction
           .select({
             cycle: schema.taskDispatchCycles,
@@ -592,157 +538,107 @@ export class TaskDispatchRepository {
           ),
       ]);
 
-      const activeByWorker = new Map(
-        activeCounts.flatMap(({ taskWorkerId, count }) =>
-          taskWorkerId ? [[taskWorkerId, count] as const] : [],
-        ),
-      );
       const activeChatIds = new Set(activeLanes.map(({ chatId }) => chatId));
       const reasons = new Map<string, TaskDispatchEligibilityCode>();
 
-      for (const worker of workerRows) {
-        const activeTaskCount = activeByWorker.get(worker.id) ?? 0;
-        if (activeTaskCount >= worker.maxConcurrency) {
-          for (const candidate of candidateRows) {
-            if (
-              candidate.cycle.requestedTaskWorkerId === worker.id ||
-              candidate.cycle.requestedTaskWorkerId === null
-            ) {
-              reasons.set(candidate.cycle.id, "capacity-unavailable");
-            }
-          }
+      for (const candidate of candidateRows) {
+        const { cycle, task } = candidate;
+        if (candidate.projectPaused) {
+          reasons.set(cycle.id, "project-paused");
           continue;
         }
-        const taskWorker = toTaskWorkerSummary(worker, activeTaskCount);
+        if (candidate.archivedAt || activeChatIds.has(cycle.chatId)) continue;
+        if (
+          candidate.branch &&
+          branchLeases.some(
+            (lease) =>
+              lease.projectId === candidate.projectId &&
+              lease.branch === candidate.branch &&
+              lease.chatId !== cycle.chatId,
+          )
+        ) {
+          reasons.set(cycle.id, "capacity-unavailable");
+          continue;
+        }
+        if (
+          candidate.worktreeState !== "ready" ||
+          candidate.physicalWorkerUnlinkedAt !== null
+        ) {
+          reasons.set(cycle.id, "placement-unavailable");
+          continue;
+        }
 
-        for (const candidate of candidateRows) {
-          const { cycle, task } = candidate;
-          if (candidate.projectPaused) {
-            reasons.set(cycle.id, "project-paused");
-            continue;
-          }
-          if (candidate.archivedAt || activeChatIds.has(cycle.chatId)) continue;
-          if (
-            candidate.branch &&
-            branchLeases.some(
-              (lease) =>
-                lease.projectId === candidate.projectId &&
-                lease.branch === candidate.branch &&
-                lease.chatId !== cycle.chatId,
-            )
-          ) {
-            reasons.set(cycle.id, "capacity-unavailable");
-            continue;
-          }
-          if (
-            cycle.requestedTaskWorkerId !== null &&
-            cycle.requestedTaskWorkerId !== worker.id
-          ) {
-            continue;
-          }
-          if (task.planGoalEnabled && !worker.allowsPlanGoal) {
-            reasons.set(cycle.id, "plan-goal-unsupported");
-            continue;
-          }
-          if (
-            cycle.requestedTaskWorkerId === null &&
-            task.continuityFamily !== null &&
-            task.continuityFamily !== worker.continuityFamily
-          ) {
-            reasons.set(cycle.id, "continuity-mismatch");
-            continue;
-          }
-          if (
-            candidate.worktreeState !== "ready" ||
-            candidate.physicalWorkerUnlinkedAt !== null
-          ) {
-            reasons.set(cycle.id, "placement-unavailable");
-            continue;
-          }
+        const resolution = await resolveEligibility({
+          cycle: toTaskDispatchCycleSummary(cycle),
+          projectId: candidate.projectId,
+          physicalWorkerId: candidate.physicalWorkerId,
+          worktreeId: candidate.worktreeId,
+          modelConfiguration: task.modelConfiguration,
+        });
+        if (!resolution.eligible) {
+          reasons.set(cycle.id, resolution.code);
+          continue;
+        }
 
-          const resolution = await resolveEligibility({
-            cycle: toTaskDispatchCycleSummary(cycle),
-            projectId: candidate.projectId,
+        const leaseExpiresAt = new Date(now.getTime() + leaseMs);
+        const fencingToken = cycle.fencingToken + 1;
+        const claimedRows = await transaction
+          .update(schema.taskDispatchCycles)
+          .set({
+            state: "claimed",
+            selectedTaskWorkerId: null,
+            taskWorkerRevision: null,
+            continuityFamily: null,
+            modelConfiguration: task.modelConfiguration,
+            modelRouteId: resolution.modelRouteId,
+            providerAccountId: resolution.providerAccountId,
             physicalWorkerId: candidate.physicalWorkerId,
             worktreeId: candidate.worktreeId,
-            taskWorker,
-          });
-          if (!resolution.eligible) {
-            reasons.set(cycle.id, resolution.code);
-            continue;
-          }
-
-          const leaseExpiresAt = new Date(now.getTime() + leaseMs);
-          const fencingToken = cycle.fencingToken + 1;
-          const claimedRows = await transaction
-            .update(schema.taskDispatchCycles)
-            .set({
-              state: "claimed",
-              selectedTaskWorkerId: worker.id,
-              taskWorkerRevision: worker.rowVersion,
-              continuityFamily: worker.continuityFamily,
-              modelConfiguration: modelConfiguration(worker),
-              modelRouteId: resolution.modelRouteId,
-              providerAccountId: resolution.providerAccountId,
-              physicalWorkerId: candidate.physicalWorkerId,
-              worktreeId: candidate.worktreeId,
-              codexThreadId: resolution.codexThreadId ?? null,
-              leaseOwner,
-              leaseExpiresAt,
-              lastHeartbeatAt: now,
-              fencingToken,
-              attemptCount: cycle.attemptCount + 1,
-              eligibilityCode: null,
-              claimedAt: now,
-              pausedAt: null,
-              completedAt: null,
-              updatedAt: now,
-            })
-            .where(
-              and(
-                eq(schema.taskDispatchCycles.id, cycle.id),
-                eq(schema.taskDispatchCycles.state, "queued"),
-                eq(schema.taskDispatchCycles.fencingToken, cycle.fencingToken),
-              ),
-            )
-            .returning();
-          const claimed = claimedRows[0];
-          if (!claimed) continue;
-
-          await transaction
-            .update(schema.tasks)
-            .set({
-              lastTaskWorkerId: worker.id,
-              continuityFamily:
-                task.requestedTaskWorkerId === null
-                  ? (task.continuityFamily ?? worker.continuityFamily)
-                  : task.continuityFamily,
-              schedulerRevision: sql`${schema.tasks.schedulerRevision} + 1`,
-              updatedAt: now,
-            })
-            .where(eq(schema.tasks.chatId, cycle.chatId));
-
-          const claimedCycle = toTaskDispatchCycleSummary(claimed);
-          const lease = taskDispatchWorkerLeaseSchema.parse({
-            cycleId: claimed.id,
-            operationId: claimed.operationId,
+            codexThreadId: resolution.codexThreadId ?? null,
             leaseOwner,
-            leaseExpiresAt: iso(leaseExpiresAt),
+            leaseExpiresAt,
+            lastHeartbeatAt: now,
             fencingToken,
-          });
-          return {
-            cycle: claimedCycle,
-            lease,
-            projectId: candidate.projectId,
-            taskWorker,
-          };
-        }
-      }
+            attemptCount: cycle.attemptCount + 1,
+            eligibilityCode: null,
+            claimedAt: now,
+            pausedAt: null,
+            completedAt: null,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(schema.taskDispatchCycles.id, cycle.id),
+              eq(schema.taskDispatchCycles.state, "queued"),
+              eq(schema.taskDispatchCycles.fencingToken, cycle.fencingToken),
+            ),
+          )
+          .returning();
+        const claimed = claimedRows[0];
+        if (!claimed) continue;
 
-      if (workerRows.length === 0) {
-        for (const candidate of candidateRows) {
-          reasons.set(candidate.cycle.id, "task-worker-disabled");
-        }
+        await transaction
+          .update(schema.tasks)
+          .set({
+            schedulerRevision: sql`${schema.tasks.schedulerRevision} + 1`,
+            updatedAt: now,
+          })
+          .where(eq(schema.tasks.chatId, cycle.chatId));
+
+        const claimedCycle = toTaskDispatchCycleSummary(claimed);
+        const lease = taskDispatchWorkerLeaseSchema.parse({
+          cycleId: claimed.id,
+          operationId: claimed.operationId,
+          leaseOwner,
+          leaseExpiresAt: iso(leaseExpiresAt),
+          fencingToken,
+        });
+        return {
+          cycle: claimedCycle,
+          lease,
+          projectId: candidate.projectId,
+          modelConfiguration: task.modelConfiguration,
+        };
       }
       for (const [cycleId, eligibilityCode] of reasons) {
         await transaction
@@ -906,73 +802,37 @@ export class TaskDispatchRepository {
         .for("update")
         .limit(1);
       if (!owner[0]) return null;
-      const [activeCounts, candidates] = await Promise.all([
-        transaction
-          .select({
-            taskWorkerId: schema.taskDispatchCycles.selectedTaskWorkerId,
-            count: sql<number>`count(*)::int`,
-          })
-          .from(schema.taskDispatchCycles)
-          .where(
-            and(
-              eq(schema.taskDispatchCycles.ownerId, ownerId),
-              inArray(schema.taskDispatchCycles.state, ["claimed", "running"]),
-            ),
-          )
-          .groupBy(schema.taskDispatchCycles.selectedTaskWorkerId),
-        transaction
-          .select({
-            cycle: schema.taskDispatchCycles,
-            projectId: schema.projects.id,
-            projectPaused: schema.projects.taskSchedulingPaused,
-            taskWorker: schema.taskWorkers,
-          })
-          .from(schema.taskDispatchCycles)
-          .innerJoin(
-            schema.chats,
-            eq(schema.chats.id, schema.taskDispatchCycles.chatId),
-          )
-          .innerJoin(
-            schema.projects,
-            and(
-              eq(schema.projects.id, schema.chats.projectId),
-              eq(schema.projects.ownerId, ownerId),
-            ),
-          )
-          .innerJoin(
-            schema.taskWorkers,
-            eq(
-              schema.taskWorkers.id,
-              schema.taskDispatchCycles.selectedTaskWorkerId,
-            ),
-          )
-          .where(
-            and(
-              eq(schema.taskDispatchCycles.ownerId, ownerId),
-              eq(schema.taskDispatchCycles.state, "paused"),
-            ),
-          )
-          .orderBy(
-            asc(schema.taskDispatchCycles.fifoCreatedAt),
-            asc(schema.taskDispatchCycles.id),
+      const candidates = await transaction
+        .select({
+          cycle: schema.taskDispatchCycles,
+          projectId: schema.projects.id,
+          projectPaused: schema.projects.taskSchedulingPaused,
+        })
+        .from(schema.taskDispatchCycles)
+        .innerJoin(
+          schema.chats,
+          eq(schema.chats.id, schema.taskDispatchCycles.chatId),
+        )
+        .innerJoin(
+          schema.projects,
+          and(
+            eq(schema.projects.id, schema.chats.projectId),
+            eq(schema.projects.ownerId, ownerId),
           ),
-      ]);
-      const activeByWorker = new Map(
-        activeCounts.flatMap(({ taskWorkerId, count }) =>
-          taskWorkerId ? [[taskWorkerId, count] as const] : [],
-        ),
-      );
+        )
+        .where(
+          and(
+            eq(schema.taskDispatchCycles.ownerId, ownerId),
+            eq(schema.taskDispatchCycles.state, "paused"),
+          ),
+        )
+        .orderBy(
+          asc(schema.taskDispatchCycles.fifoCreatedAt),
+          asc(schema.taskDispatchCycles.id),
+        );
       for (const candidate of candidates) {
         const cycle = toTaskDispatchCycleSummary(candidate.cycle);
         if (candidate.projectPaused) continue;
-        const active = activeByWorker.get(candidate.taskWorker.id) ?? 0;
-        if (active >= candidate.taskWorker.maxConcurrency) {
-          await transaction
-            .update(schema.taskDispatchCycles)
-            .set({ eligibilityCode: "capacity-unavailable", updatedAt: now })
-            .where(eq(schema.taskDispatchCycles.id, cycle.id));
-          continue;
-        }
         const eligibility = await resolveEligibility(cycle);
         if (!eligibility.eligible) {
           await transaction
@@ -1014,7 +874,7 @@ export class TaskDispatchRepository {
           cycle: resumedCycle,
           lease,
           projectId: candidate.projectId,
-          taskWorker: toTaskWorkerSummary(candidate.taskWorker, active + 1),
+          modelConfiguration: resumedCycle.modelConfiguration!,
         };
       }
       return null;
@@ -1161,44 +1021,6 @@ export class TaskDispatchRepository {
         ].includes(row.state)
       )
         throw this.staleLease();
-      if (options.allowSettled && row.state !== "running") {
-        // Reopening a historical handoff must acquire real capacity, just like
-        // a new dispatch. The owner lock serializes this with normal claims.
-        if (!row.selectedTaskWorkerId) throw this.staleLease();
-        const workers = await transaction
-          .select()
-          .from(schema.taskWorkers)
-          .where(
-            and(
-              eq(schema.taskWorkers.ownerId, ownerId),
-              eq(schema.taskWorkers.id, row.selectedTaskWorkerId),
-            ),
-          )
-          .limit(1);
-        const counts = await transaction
-          .select({ count: sql<number>`count(*)::int` })
-          .from(schema.taskDispatchCycles)
-          .where(
-            and(
-              eq(schema.taskDispatchCycles.ownerId, ownerId),
-              eq(
-                schema.taskDispatchCycles.selectedTaskWorkerId,
-                row.selectedTaskWorkerId,
-              ),
-              inArray(schema.taskDispatchCycles.state, ["claimed", "running"]),
-            ),
-          );
-        if (!workers[0]?.enabled || !workers[0].allowsPlanGoal)
-          throw new TaskDispatchConflictError(
-            "The selected Task Worker is disabled or no longer allows Plan + Goal. Enable it before resuming.",
-            "active-operation",
-          );
-        if ((counts[0]?.count ?? 0) >= workers[0].maxConcurrency)
-          throw new TaskDispatchConflictError(
-            "The Task Worker has no available capacity. Retry when a running Task finishes.",
-            "active-operation",
-          );
-      }
       const live =
         row.state === "running" &&
         row.leaseExpiresAt &&

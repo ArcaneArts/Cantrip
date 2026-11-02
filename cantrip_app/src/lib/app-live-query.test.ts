@@ -586,11 +586,7 @@ describe("application live query bridge", () => {
       appLiveEventQueryKeys(
         event({ resource: "settings", scope: { kind: "current-user" } }),
       ),
-    ).toEqual([
-      ["settings"],
-      ["task-workers"],
-      ["code-settings-worker-status"],
-    ]);
+    ).toEqual([["settings"], ["code-settings-worker-status"]]);
     expect(
       appLiveEventQueryKeys(
         event({

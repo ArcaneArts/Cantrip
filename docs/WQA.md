@@ -487,7 +487,7 @@ QA routes; never delete or revoke a personal portable account.
 | MOD-08 | M     | Configure QA ChatGPT/Grok portable account using normal OAuth, cancel one attempt, complete another.                                                                           | Auth progress/cancel/refresh works; tokens never appear in UI errors/log exports.                                                                 |
 | MOD-09 | M     | Inspect multiple QA account usage/reset details and route priority; change priority and reload.                                                                                | Aggregate and per-account values remain distinct; zero usage is not shown as missing; ordering persists.                                          |
 | MOD-10 | M     | Open provider analytics/context ring while changing selected model/account.                                                                                                    | Metrics and reset times belong to displayed provider/account; stale responses do not overwrite selection.                                         |
-| MOD-11 | M     | Remove a QA model/provider referenced by a draft or Task Worker; then retry selection.                                                                                         | References resolve through supported validation; no phantom model or permanently disabled composer.                                               |
+| MOD-11 | M     | Remove a QA model/provider referenced by a Task draft; then retry selection.                                                                                                   | References resolve through supported validation; no phantom model or permanently disabled composer.                                               |
 | MOD-12 | M     | Enable automatic titles for QA chats/tasks, use a separate labeling model; then manually rename.                                                                               | Short title derives from initial submitted brief; manual title remains; labeling failure does not fail main execution.                            |
 | MOD-13 | M     | Toggle random agent naming and independent task/chat title switches.                                                                                                           | Saved choices persist; random naming suppresses chat auto-title without unexpectedly disabling task titles.                                       |
 | MOD-14 | —     | In Models switch General/provider tabs using click, Arrow keys/Home/End; search settings for a provider/model, then remove selected QA provider.                               | Correct model grouping/defaults and selected provider; overflow tab stays visible; search lands correctly and removal falls back to General.      |
@@ -587,29 +587,29 @@ Reference: [Trajectory](TRAJECTORY.md). Use real actions from AGENT/INT/CUA.
 
 ## TASK — Direct, Plan + Goal and global scheduling
 
-Reference: [Tasks](TASKS.md). **Task Workers** are model/concurrency profiles;
-**Workers** are physical machines. Do not conflate them.
+Reference: [Tasks](TASKS.md). Each Task owns its model configuration; physical
+Workers remain the execution hosts. Use disposable projects and accounts.
 
-| ID      | Needs | Browser procedure                                                                                         | Expected observations                                                                                       |
-| ------- | ----- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| TASK-01 | M     | With no Task Workers configured, add Direct Task.                                                         | Task persists/queues; no model execution starts; UI explains configuration need.                            |
-| TASK-02 | M     | Create enabled Direct-only Task Worker at concurrency 1; inspect queued Task.                             | Eligible Task starts automatically; exact configured model/permissions are used.                            |
-| TASK-03 | M     | Add two short Direct Tasks in different projects; hold first with wait prompt.                            | Global capacity is 1; second waits; oldest eligible Task starts when slot is released.                      |
-| TASK-04 | M     | Reload/navigate during execution, then reopen Tasks in two tabs.                                          | Same durable task/status/history; no duplicate launch or reset to draft.                                    |
-| TASK-05 | M     | Change display priority and Auto ordering; queue another Task.                                            | Display priority does not change oldest-eligible-first scheduling; Auto eligibility/order is respected.     |
-| TASK-06 | M     | Pin Task Worker; disable it; compare with Auto Task and re-enable.                                        | Explicit selection remains explicit; ineligible Tasks wait instead of silently changing profiles.           |
-| TASK-07 | M     | Raise concurrency to 2, run two Tasks, lower to 1.                                                        | Existing Tasks continue; further claims wait until active count falls below limit.                          |
-| TASK-08 | M     | Save invalid concurrency 0/65/non-integer and remove referenced profile.                                  | Validation enforces 1–64; referenced profile is disabled/soft-deleted without losing history.               |
-| TASK-09 | M     | Enable Plan + Goal; add planning Task with attachments.                                                   | Planning queues and waits for eligible Plan-capable Task Worker; implementation does not start prematurely. |
-| TASK-10 | M     | Answer planning question rounds, edit plan in two tabs, continue planning.                                | Questions/answers persist; stale revision cannot overwrite newer plan; continuation requeues one cycle.     |
-| TASK-11 | M     | Finalize reviewed plan into Goal implementation.                                                          | Same native thread/context; intended implementation permissions restored; encrypted chat remains usable.    |
-| TASK-12 | M     | Pause/resume/stop Task implementation and pending approvals.                                              | Actual execution and capacity settle correctly; no stale automatic continuation.                            |
-| TASK-13 | M     | Cause controlled failure through unavailable QA provider/command; view Active/Failed/Completed and retry. | Failed list is separate; actual cause visible; retry produces one new attempt.                              |
-| TASK-14 | M     | Open Task chat/activity/Inspect; return to list and reselect.                                             | Back-to-list works; latest activity order/scrolling correct; no previous Task's trajectory.                 |
-| TASK-15 | M     | Leave brief partially typed, autosave, submit, then manually rename.                                      | Partial autosave does not trigger model title request; first submission may title; manual title remains.    |
-| TASK-16 | M     | Stop server/worker during claim, restart preserving state, inspect queued/running Tasks.                  | Lease/recovery yields a coherent outcome; no duplicate execution or permanently consumed capacity.          |
-| TASK-17 | M     | Archive/restore a QA Task/chat and change eligibility while queued.                                       | Durable task lifecycle remains coherent; archived/disabled work does not unexpectedly run.                  |
-| TASK-18 | M,W,G | Relocate eligible Git Task between matching ready sources; interrupt before commit in a separate attempt. | Placement changes atomically; context/permissions persist; no execution on partially prepared target.       |
+| ID      | Scope | Action                                                                   | Expected                                                                                            |
+| ------- | ----- | ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| TASK-01 | M     | Create a Direct Task without any legacy Task Worker configuration.       | Choose a model in the Task and run it; no configuration empty state or preset request.              |
+| TASK-02 | M     | Choose model, reasoning, and optional subagent model; save/reopen draft. | Configuration persists with the brief and is used by execution.                                     |
+| TASK-03 | M     | Queue ten runnable Tasks across ready worktrees using the same model.    | All can execute concurrently; no task-worker or model semaphore blocks them.                        |
+| TASK-04 | M     | Reload or open two windows during execution.                             | Durable state/history is retained and a dispatch is never duplicated.                               |
+| TASK-05 | M     | Change display priorities and queue Tasks.                               | Oldest eligible Task is claimed first; priority changes only display order.                         |
+| TASK-06 | M     | Change a queued Task's model while another client claims it.             | One fenced configuration wins; no stale model or partial draft executes.                            |
+| TASK-07 | M     | Pause one Task while other Tasks run, then resume it.                    | The same physical worker, route/account, thread, and turn resume without waiting for a slot.        |
+| TASK-08 | M     | Open Settings and the former task-worker endpoints.                      | Task Workers category/selector is absent and preset CRUD endpoints return 404.                      |
+| TASK-09 | M     | Enable Plan + Goal for any configured model and attach files.            | Read-only planning starts using the chosen model; implementation awaits review.                     |
+| TASK-10 | M     | Answer questions/edit a plan in two tabs and continue planning.          | Answers persist; stale revisions conflict; one next cycle is queued.                                |
+| TASK-11 | M     | Approve a final plan and begin implementation.                           | The native thread/context is retained and implementation permissions are restored.                  |
+| TASK-12 | M     | Pause a Project, resume it, and inspect an individually paused Task.     | Project pause blocks claims; individual pauses remain respected.                                    |
+| TASK-13 | M     | Trigger a provider/worker failure and retry.                             | Actual reason is visible; retry retains FIFO age and creates no duplicate work.                     |
+| TASK-14 | M     | Open Task overview/chat/activity and return to the list.                 | Back navigation, latest thought, trajectory and progress remain correct.                            |
+| TASK-15 | M     | Edit a brief, choose a model, close immediately, and reopen.             | Close flushes the same encrypted draft/model configuration without lost changes.                    |
+| TASK-16 | M     | Restart during claim/turn execution.                                     | Lease recovery observes possibly running work and never duplicates it.                              |
+| TASK-17 | M     | Upgrade an old database with queued and paused Tasks.                    | Model configuration is migrated; preset enable/capacity/Plan + Goal flags no longer gate execution. |
+| TASK-18 | M,W,G | Relocate an eligible Git Task between matching ready sources.            | Placement/context/permissions stay coherent; conflicts retain their real execution leases.          |
 
 ## DATA — external chats and export to Codex
 

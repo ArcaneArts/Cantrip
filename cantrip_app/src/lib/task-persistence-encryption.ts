@@ -1,3 +1,4 @@
+import type { ModelConfiguration } from "@cantrip/protocol";
 import {
   clearSensitiveBytes,
   decryptTaskProtectedContent,
@@ -195,6 +196,7 @@ export async function openTaskOpaqueSummary(
       automaticRetry: opaque.automaticRetry,
       chatId: opaque.chatId,
       planGoalEnabled: opaque.planGoalEnabled,
+      modelConfiguration: opaque.modelConfiguration,
       priority: opaque.priority,
       requestedTaskWorkerId: opaque.requestedTaskWorkerId,
       continuityFamily: opaque.continuityFamily,
@@ -234,7 +236,7 @@ async function mutationForTask(
   draftAttachmentIds?: string[],
   planGoalEnabled?: boolean,
   priority?: number,
-  requestedTaskWorkerId?: string | null,
+  modelConfiguration?: ModelConfiguration,
 ): Promise<TaskOpaqueMutation> {
   return taskOpaqueMutationSchema.parse({
     rowVersion: task.rowVersion,
@@ -246,7 +248,7 @@ async function mutationForTask(
     ...(draftAttachmentIds ? { draftAttachmentIds } : {}),
     ...(planGoalEnabled !== undefined ? { planGoalEnabled } : {}),
     ...(priority !== undefined ? { priority } : {}),
-    ...(requestedTaskWorkerId !== undefined ? { requestedTaskWorkerId } : {}),
+    ...(modelConfiguration ? { modelConfiguration } : {}),
   });
 }
 
@@ -273,8 +275,8 @@ export async function prepareTaskDraftPersistence(
       ? { draftAttachmentIds: input.draftAttachmentIds }
       : {}),
     ...(input.priority !== undefined ? { priority: input.priority } : {}),
-    ...(input.requestedTaskWorkerId !== undefined
-      ? { requestedTaskWorkerId: input.requestedTaskWorkerId }
+    ...(input.modelConfiguration
+      ? { modelConfiguration: input.modelConfiguration }
       : {}),
   });
   return mutationForTask(
@@ -284,7 +286,7 @@ export async function prepareTaskDraftPersistence(
     input.draftAttachmentIds ?? task.draftAttachmentIds,
     input.planGoalEnabled,
     input.priority,
-    input.requestedTaskWorkerId,
+    input.modelConfiguration,
   );
 }
 
