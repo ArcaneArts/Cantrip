@@ -11,6 +11,7 @@ import {
   getClientSession,
   onClientSessionIdentityChanged,
 } from "@/lib/client-session";
+import { useSidebarAutoExpandFolders } from "@/lib/sidebar-file-preferences";
 
 const changedEvent = "cantrip:sidebar-folders-changed";
 const emptyPaths = "[]";
@@ -75,6 +76,7 @@ function subscribe(listener: () => void): () => void {
 }
 
 export function useSidebarFolderExpansion(explorer: FolderScope) {
+  const autoExpandFolders = useSidebarAutoExpandFolders();
   const key = useSyncExternalStore(
     subscribe,
     () => storageKey(explorer),
@@ -86,9 +88,22 @@ export function useSidebarFolderExpansion(explorer: FolderScope) {
     () => emptyPaths,
   );
   const expandedPaths = useMemo(() => parsePaths(value), [value]);
-  const autoExpansion = useRef({ key, paths: new Set<string>() });
-  if (autoExpansion.current.key !== key) {
-    autoExpansion.current = { key, paths: new Set() };
+  const autoExpansion = useRef({
+    key,
+    enabled: autoExpandFolders,
+    paths: new Set<string>(),
+  });
+  if (
+    autoExpansion.current.key !== key ||
+    autoExpansion.current.enabled !== autoExpandFolders
+  ) {
+    // Changing the preference ends an in-progress automatic traversal. Existing
+    // expanded folders stay open; only a new user expansion starts another one.
+    autoExpansion.current = {
+      key,
+      enabled: autoExpandFolders,
+      paths: new Set(),
+    };
   }
 
   const setExpandedPaths = useCallback(
@@ -127,26 +142,27 @@ export function useSidebarFolderExpansion(explorer: FolderScope) {
           }
         } else {
           next.add(path);
-          autoExpansion.current.paths.add(path);
+          if (autoExpandFolders) autoExpansion.current.paths.add(path);
         }
         return next;
       });
     },
-    [setExpandedPaths],
+    [autoExpandFolders, setExpandedPaths],
   );
 
   const expandChild = useCallback(
     (parentPath: string, path: string) => {
       // Only a user expansion starts automatic single-child traversal. Restoring
       // a saved parent must not reopen a child the user deliberately collapsed.
-      if (!autoExpansion.current.paths.has(parentPath)) return;
+      if (!autoExpandFolders || !autoExpansion.current.paths.has(parentPath))
+        return;
       setExpandedPaths((current) => {
         if (!current.has(parentPath) || current.has(path)) return current;
         autoExpansion.current.paths.add(path);
         return new Set([...current, path]);
       });
     },
-    [setExpandedPaths],
+    [autoExpandFolders, setExpandedPaths],
   );
 
   return { expandedPaths, setExpandedPaths, toggle, expandChild };
