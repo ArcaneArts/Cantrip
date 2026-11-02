@@ -8,8 +8,11 @@ import {
   taskResult,
 } from "./task-wire-fixtures.mjs";
 import { retainedPrompt } from "./native-settlement-fixtures.mjs";
+import { goalContinuationCases } from "./task-goal-continuation-cases.mjs";
 export async function runTaskGoalCases(h) {
   const { observe, seed, owner, reset, reopen } = h;
+  // Started dispatch fixtures deliberately own an unexpired retained lease.
+  h.registerFixedClock(Date.parse("2099-01-01T00:00:00.000Z"));
   const chat = "task";
   const content = () =>
     taskContent("implementing", 1, {
@@ -479,6 +482,16 @@ export async function runTaskGoalCases(h) {
     }
     return result;
   }
+  await goalContinuationCases({
+    ok,
+    bad,
+    seed,
+    owner,
+    finalized,
+    reply,
+    operation,
+    snapshot,
+  });
   let relay = await finalized();
   await ok(
     "prepared encrypted Goal completes finalization before beginning its turn",

@@ -148,6 +148,7 @@ export function createTaskGoalRuntime({
       workerPrompt?: string;
       purpose?: string;
       messageRole?: "system" | "user";
+      goalControlMessage?: TaskGoalSyncContext["message"];
     } = {},
   ): Promise<void> {
     const modelId = await resolveModelId(
@@ -181,13 +182,20 @@ export function createTaskGoalRuntime({
           task,
           automationPaused: context.automationPaused,
           chatStatus: context.status,
-          message: null,
+          message: options.goalControlMessage ?? null,
         },
       }),
     );
+    const failureCode = result.task.classification.lastError?.code ?? "";
     if (
       !result.goal &&
-      result.task.classification.lastError?.code === "task-goal-start-failed"
+      (/^task-goal-start-(failed|timeout|capacity|rate-limit|connection|needs-input|configuration|usage-limit|budget-limit)$/.test(
+        failureCode,
+      ) ||
+        (options.goalControlMessage?.kind === "resume" &&
+          /^implementation-(runtime|timeout|capacity|rate-limit|connection|needs-input|configuration|usage-limit|budget-limit)-failed$/.test(
+            failureCode,
+          )))
     ) {
       throw new TaskGoalLaunchError(result.task);
     }
@@ -1031,6 +1039,7 @@ export function createTaskGoalRuntime({
           message: protectedMessage,
         }),
       );
+      const controlMessageId = randomUUID();
       await startEncryptedTaskGoal(
         { ...context, status: "idle" },
         operation.relayResult.goal,
@@ -1040,6 +1049,11 @@ export function createTaskGoalRuntime({
           ...scheduledTaskGoalTurnOptions(lease),
           userMessage,
           messageRole: "system",
+          goalControlMessage: {
+            kind: "resume",
+            id: controlMessageId,
+            idempotencyKey: `task-goal-resume:${controlMessageId}`,
+          },
           modelConfiguration: dispatch.modelConfiguration ?? undefined,
           purpose: "Continue encrypted Task Goal in worktree",
           workerPrompt: `${input.text}\n\n${GOAL_RESUME_PROMPT}`,

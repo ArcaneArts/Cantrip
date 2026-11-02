@@ -125,6 +125,7 @@ impl Service {
             });
             let mut idle = context.clone();
             idle["status"] = json!("idle");
+            let control_message_id = uuid::Uuid::new_v4().to_string();
             self.start_encrypted_one(
                 owner,
                 &idle,
@@ -134,6 +135,7 @@ impl Service {
                 GoalOptions {
                     hooks: self.scheduled_hooks(owner, &lease),
                     dispatch_lease: Some(lease.clone()),
+                    control_message: Some(json!({"kind":"resume","id":control_message_id,"idempotencyKey":format!("task-goal-resume:{control_message_id}")})),
                     user_message: Some(user),
                     message_role: Some(json!("system")),
                     model_configuration: dispatch

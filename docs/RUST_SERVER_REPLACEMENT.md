@@ -12,6 +12,46 @@ feature set.
 
 Status: **implementation in progress; not a deployable replacement**.
 
+The Task admission milestone mounts six public start, planning, continuation,
+finalization, retry and retained-session recovery endpoints through the actual
+native queue/recovery graph. The current per-Task model changes are integrated;
+retired Task Worker inputs retain their new strict rejection behavior. Fresh
+local comparisons pass all nine storage/authentication profiles: 263 paired
+HTTP observations per store (789 total), 17 decrypted Task results and twelve
+admission Live events per peer/profile. These verify authorization, invalid
+inputs, durable admission identity, replay before revision checks, FIFO/fencing
+identity and post-commit fanout. The scheduler's asynchronous eligibility
+observation is retained separately; the entire settled Task response must match
+and report the actual paused-project decision. These are controlled-worker
+transport tests, not complete client/model execution or packaged acceptance.
+
+Canonical Goal continuation carries the existing resume control marker so the
+worker can preserve an implementation failure without changing finalized
+planning metadata. Initial launch and continuation errors cover all nine
+operational categories. Re-reading a failed Goal preserves its encrypted
+diagnostic and timestamp; an explicit resume clears the failure. The server
+never decrypts or rewrites that content, and the planning guard is unchanged.
+Source/native coordinator comparisons pass 162 cases and six snapshots on each
+store, including exact two-minute lease renewal, retained fencing/ownership and
+durable failed continuations. All 35 focused worker crypto tests, 78 focused
+Source Task/Goal tests, recursive type checks, 46 Rust library tests and strict
+all-target server Clippy pass. The regenerated 475-root/9,150-node manifest
+preserves every root mapping and the complete node prefix of the integrated
+473-root/9,145-node baseline.
+
+The fresh full worker suite has 2,616 passing tests, 133 skipped and one failure:
+the unchanged desktop input test expects a stale-input promise rejection while
+the adapter now dispatches participant input asynchronously. The exact failure
+reproduces on clean Primary `459955f43`; the Task failure regression cases pass.
+The broad `pnpm check` stops earlier at two existing `unnecessary_unwrap` errors
+in `cantrip_cua/src/macos/overlay.rs:422` and `:426`, also reproduced on that
+clean Primary revision. These results do not make
+the broad checks green. Current milestone evidence uses
+`.qa/rust-server/task-lifecycle-integrated-*`, with separate
+`task-lifecycle-main-*-baseline-v1` reports. Public Task creation, deletion,
+attachments/dashboard, Chat Goal controls, full client/worker execution,
+packaging and the remaining replacement requirements are still unfinished.
+
 The execution milestone merged through squash auto-merge in
 [PR #2409](https://github.com/ArcaneArts/Cantrip/pull/2409), at
 `64857ee68469379c8b935440b017c6c5bce4d84d`; clean Primary was fast-forwarded and
@@ -34,8 +74,8 @@ independently decrypted Task results and four Live events per peer/profile.
 These cover owner isolation, HEAD, exact input/state/revision/worker-selection
 errors, rejected-write preservation and ciphertext integrity. Their CI steps are
 configured; no supported-platform pass or full Task lifecycle is claimed. Public
-Task creation, deletion, recovery, scheduling operations, dashboards and Chat
-Goal controls, including the protected continuation failure, remain to finish.
+Task creation, deletion, attachments, dashboards and Chat Goal controls remain
+to finish; the admission and protected-continuation work is described above.
 
 The fresh Windows run passes the repaired 92-case Task recovery suite, then
 exposes the same path-spelling issue in the Source quota timer adapter. Source

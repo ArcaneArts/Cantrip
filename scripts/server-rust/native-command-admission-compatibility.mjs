@@ -206,7 +206,9 @@ function normalized(value, i, key = "") {
     );
   if (typeof value === "string") {
     if (
-      ["task-claimed", "task-background"].includes(report.domain) &&
+      ["task-claimed", "task-background", "task-goal"].includes(
+        report.domain,
+      ) &&
       ["lease_expires_at", "leaseExpiresAt"].includes(key)
     ) {
       const at = Date.parse(value);
@@ -221,7 +223,9 @@ function normalized(value, i, key = "") {
       return new Date(at).toISOString();
     }
     if (
-      ["task-claimed", "task-background"].includes(report.domain) &&
+      ["task-claimed", "task-background", "task-goal"].includes(
+        report.domain,
+      ) &&
       [
         "last_heartbeat_at",
         "claimed_at",
@@ -649,9 +653,23 @@ async function observe(
     if (op === "query-json" && actual.taskQueueSnapshot)
       for (const c of result.value?.cycles ?? [])
         register(c.id, "task-cycle", i);
-    if (op === "query-json" && actual.goalSnapshot)
+    if (op === "query-json" && actual.goalSnapshot) {
       for (const row of result.value?.sessions ?? [])
         register(row.id, "goal-session", i);
+      for (const cycle of result.value?.cycles ?? []) {
+        if (
+          cycle.last_heartbeat_at &&
+          !fixedClocks.has(Date.parse(cycle.last_heartbeat_at))
+        ) {
+          assert.equal(
+            Date.parse(cycle.lease_expires_at) -
+              Date.parse(cycle.last_heartbeat_at),
+            120000,
+            "Goal continuation renews the actual two-minute lease",
+          );
+        }
+      }
+    }
     if (op === "query-json" && actual.recoverySnapshot) {
       const owner = result.value?.dispatch?.owner;
       if (owner?.startsWith("task-goal-continuation:")) {

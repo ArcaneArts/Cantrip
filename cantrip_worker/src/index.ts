@@ -6081,6 +6081,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           return protectTaskGoalLaunchFailure({
             chatId: command.chatId,
             task: command.taskContext.task,
+            continuation: command.taskContext.message?.kind === "resume",
             error,
             getComponentKey: () =>
               workerEncryption.componentKey("task-content"),

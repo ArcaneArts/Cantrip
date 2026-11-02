@@ -38,6 +38,221 @@ const ownerId = "owner-worker-task-relay";
 const chatId = "chat-worker-task-relay";
 const operationId = "11111111-1111-4111-8111-111111111111";
 const keyRevision = 2;
+describe("encrypted Goal launch failure phases", () => {
+  const content = (): TaskProtectedContent => ({
+    version: 1,
+    classification: {
+      state: "implementing",
+      stableStateBeforeFailure: null,
+      activeOperationKind: null,
+      planAuthorship: "agent",
+      planningRound: 2,
+      hasPlan: true,
+      hasQuestions: false,
+      hasFinalPlan: true,
+      hasGoalPrompt: true,
+      lastError: null,
+    },
+    briefMarkdown: "SENTINEL saved brief",
+    planMarkdown: "SENTINEL saved planning draft",
+    currentQuestions: [],
+    currentAnswers: [],
+    additionalDirection: "",
+    finalPlanMarkdown: "SENTINEL finalized plan",
+    goalPrompt: "SENTINEL retained objective",
+    lastError: null,
+  });
+  it.each([false, true])(
+    "preserves encrypted planning content for continuation=%s",
+    async (continuation) => {
+      const componentKey = randomBytes(32);
+      const current = content();
+      const task = {
+        classification: current.classification,
+        protectedContent: await encryptTaskProtectedContent({
+          ownerId,
+          chatId,
+          keyRevision,
+          componentKey,
+          content: current,
+        }),
+      };
+      const failure = await protectTaskGoalLaunchFailure({
+        ownerId,
+        chatId,
+        task,
+        continuation,
+        getComponentKey: () => ({
+          key: new Uint8Array(componentKey),
+          keyRevision,
+        }),
+        error: new Error("SENTINEL native diagnostic"),
+      });
+      expect(JSON.stringify(failure)).not.toContain("SENTINEL");
+      const opened = await decryptTaskProtectedContent({
+        ownerId,
+        chatId,
+        keyRevision,
+        componentKey,
+        encrypted: failure.task.protectedContent,
+        publicClassification: failure.task.classification,
+      });
+      expect(failure.task.classification).toMatchObject({
+        state: "failed",
+        stableStateBeforeFailure: continuation ? null : "review",
+        activeOperationKind: null,
+        planningRound: 2,
+        planAuthorship: "agent",
+        hasFinalPlan: true,
+        hasGoalPrompt: true,
+        lastError: {
+          operationKind: continuation ? "implementation" : "finalize",
+        },
+      });
+      const {
+        classification: _classification,
+        lastError: _lastError,
+        ...saved
+      } = current;
+      const {
+        classification: _failedClassification,
+        lastError,
+        ...retained
+      } = opened;
+      expect(retained).toEqual(saved);
+      expect(lastError?.message).toContain("SENTINEL native diagnostic");
+      if (continuation) {
+        expect(lastError?.message).toContain("progress are retained");
+        expect(lastError?.message).not.toContain(
+          "Implementation has not started",
+        );
+      }
+    },
+  );
+  it.each([
+    "runtime",
+    "timeout",
+    "capacity",
+    "rate-limit",
+    "connection",
+    "needs-input",
+    "configuration",
+    "usage-limit",
+    "budget-limit",
+  ] as const)(
+    "retains %s continuation diagnostics on observation and clears them on explicit resume",
+    async (kind) => {
+      const componentKey = randomBytes(32);
+      const current = content();
+      const getComponentKey = () => ({
+        key: new Uint8Array(componentKey),
+        keyRevision,
+      });
+      const failure = await protectTaskGoalLaunchFailure({
+        ownerId,
+        chatId,
+        taskContent: current,
+        continuation: true,
+        getComponentKey,
+        error: new Error(
+          `implementation-${kind}: SENTINEL private continuation failure`,
+        ),
+      });
+      const open = (task: typeof failure.task) =>
+        decryptTaskProtectedContent({
+          ownerId,
+          chatId,
+          keyRevision,
+          componentKey,
+          encrypted: task.protectedContent,
+          publicClassification: task.classification,
+        });
+      const sealedFailure = await open(failure.task);
+      expect(sealedFailure.lastError?.code).toBe(
+        `implementation-${kind}-failed`,
+      );
+      const observed = await protectTaskGoalResult({
+        ownerId,
+        chatId,
+        getComponentKey,
+        context: {
+          task: failure.task,
+          automationPaused: false,
+          chatStatus: "idle",
+          message: null,
+        },
+        rawResult: { goal: null },
+      });
+      const opened = await open(observed.task);
+      expect(opened.classification.state).toBe(
+        kind === "needs-input" ? "blocked" : "failed",
+      );
+      expect(opened.classification.stableStateBeforeFailure).toBeNull();
+      expect(opened.lastError).toEqual(sealedFailure.lastError);
+      expect(opened.finalPlanMarkdown).toBe(current.finalPlanMarkdown);
+      expect(opened.goalPrompt).toBe(current.goalPrompt);
+      const resumed = await protectTaskGoalResult({
+        ownerId,
+        chatId,
+        getComponentKey,
+        context: {
+          task: observed.task,
+          automationPaused: false,
+          chatStatus: "idle",
+          message: {
+            kind: "resume",
+            id: operationId,
+            idempotencyKey: `task-goal-resume:${operationId}`,
+          },
+        },
+        rawResult: {
+          goal: {
+            threadId: "retained-goal-thread",
+            objective: current.goalPrompt,
+            status: "active",
+            tokenBudget: null,
+            tokensUsed: 1,
+            timeUsedSeconds: 2,
+            createdAt: 3,
+            updatedAt: 4,
+          },
+        },
+      });
+      const resumedContent = await open(resumed.task);
+      expect(resumedContent.classification.state).toBe("implementing");
+      expect(resumedContent.lastError).toBeNull();
+      expect(resumedContent.finalPlanMarkdown).toBe(current.finalPlanMarkdown);
+      expect(resumedContent.goalPrompt).toBe(current.goalPrompt);
+      expect(resumed.message?.id).toBe(operationId);
+      expect(JSON.stringify({ failure, observed, resumed })).not.toContain(
+        "SENTINEL",
+      );
+    },
+  );
+  it("keeps a native overload category during a continuation failure", async () => {
+    const componentKey = randomBytes(32),
+      current = content();
+    const failure = await protectTaskGoalLaunchFailure({
+      ownerId,
+      chatId,
+      taskContent: current,
+      continuation: true,
+      getComponentKey: () => ({
+        key: new Uint8Array(componentKey),
+        keyRevision,
+      }),
+      error: Object.assign(new Error("SENTINEL overload"), {
+        reasonCode: "serverOverloaded",
+      }),
+    });
+    expect(failure.task.classification.lastError).toMatchObject({
+      code: "implementation-capacity-failed",
+      operationKind: "implementation",
+    });
+    expect(failure.task.classification.stableStateBeforeFailure).toBeNull();
+    expect(JSON.stringify(failure)).not.toContain("SENTINEL");
+  });
+});
 it("preserves an actual native overload category without publishing provider diagnostics", () => {
   const error = Object.assign(new Error("SENTINEL provider diagnostic"), {
     reasonCode: "serverOverloaded",

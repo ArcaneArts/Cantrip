@@ -1,5 +1,6 @@
 //! Public Task metadata and encrypted draft/plan edits. The repository owns
 //! revision and state checks; publication follows the committed mutation.
+mod operations;
 use super::{
     body, json_response,
     middleware::{self, Context},
@@ -17,7 +18,7 @@ use axum::{
     extract::{MatchedPath, Path, Request, State},
     http::{Method, StatusCode},
     response::Response,
-    routing::{get, patch},
+    routing::{get, patch, post},
 };
 use std::sync::Arc;
 
@@ -75,6 +76,7 @@ async fn execute(
     path: &str,
     request: Request,
 ) -> Result<Response> {
+    let method = request.method().clone();
     let owner = context
         .principal
         .user
@@ -82,7 +84,7 @@ async fn execute(
         .context("Authenticated Task owner")?
         .id
         .clone();
-    if matches!(*request.method(), Method::GET | Method::HEAD) {
+    if matches!(method, Method::GET | Method::HEAD) {
         return match tasks::Repository::new(service.repository.database.clone())
             .get(&owner, &chat)
             .await?
@@ -95,6 +97,18 @@ async fn execute(
         Ok(body) => body,
         Err(response) => return Ok(response),
     };
+    if method == Method::POST {
+        return service
+            .scratch_roots
+            .owned(operations::execute(
+                service.clone(),
+                owner,
+                chat,
+                path.to_owned(),
+                body,
+            ))
+            .await;
+    }
     let input = match parse("taskOpaqueMutationSchema", body.as_ref())? {
         Ok(input) => input,
         Err(response) => return Ok(response),
@@ -128,5 +142,10 @@ pub(super) fn routes() -> Router<Arc<AuthService>> {
     Router::new()
         .route("/api/tasks/{chatId}", get(handle))
         .route("/api/tasks/{chatId}/draft", patch(handle))
-        .route("/api/tasks/{chatId}/plan", patch(handle))
+        .route("/api/tasks/{chatId}/plan", patch(handle).post(handle))
+        .route("/api/tasks/{chatId}/start", post(handle))
+        .route("/api/tasks/{chatId}/continue", post(handle))
+        .route("/api/tasks/{chatId}/begin-implementation", post(handle))
+        .route("/api/tasks/{chatId}/retry", post(handle))
+        .route("/api/tasks/{chatId}/recover", post(handle))
 }

@@ -473,7 +473,9 @@
     "queuedPromptOrderSchema": 9123,
     "encryptedChatPromptSubmitResultSchema": 9130,
     "encryptedConversationPromptSubmitResultSchema": 9137,
-    "encryptedChatPromptSteerResultSchema": 9142
+    "encryptedChatPromptSteerResultSchema": 9142,
+    "taskOperationStartSchema": 9145,
+    "taskRecoveryStartSchema": 9148
   },
   "nodes": [
     {
@@ -53452,6 +53454,40 @@
       "checks": []
     },
     { "type": "literal", "values": [true], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "taskOperationStartSchema",
+      "shape": { "operationId": 9146, "rowVersion": 9147 },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "taskRecoveryStartSchema",
+      "shape": {},
+      "catchall": 9149,
+      "checks": []
+    },
     { "type": "never", "checks": [] }
   ]
 }
