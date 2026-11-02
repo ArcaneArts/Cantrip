@@ -477,6 +477,19 @@ const binaryWriteExports = [
   "binaryWriteVersionSchema",
 ];
 
+const agentChatExports = [
+  "agentChatReadWireSchema",
+  "agentChatRuntimeText",
+  "agentChatSendWireSchema",
+  "agentChatWireDescriptorSchema",
+  "cantripMcpChatListInputSchema",
+  "cantripMcpChatReadInputSchema",
+  "cantripMcpChatSendInputSchema",
+  "cantripMcpChatWaitInputSchema",
+  "chatCommunicationSchema",
+  "uniqueChatCommunicationMessages",
+].sort();
+
 describe("protocol public surface compatibility", () => {
   it("preserves the root runtime export baseline with reviewed CUA and managed-session additions", () => {
     const exportNames = Object.keys(protocol).sort();
@@ -506,14 +519,18 @@ describe("protocol public surface compatibility", () => {
           !chatFileReferencesExports.includes(name) &&
           !editorBindingExports.includes(name) &&
           !labelingExports.includes(name) &&
-          !gitChangeSummaryExports.includes(name),
+          !gitChangeSummaryExports.includes(name) &&
+          !agentChatExports.includes(name),
       ),
     ].sort();
 
     expect(
       exportNames.filter((name) => retiredWorkbenchExports.includes(name)),
     ).toEqual([]);
-    expect(exportNames).toHaveLength(2126);
+    expect(exportNames).toHaveLength(2136);
+    expect(
+      exportNames.filter((name) => agentChatExports.includes(name)),
+    ).toEqual(agentChatExports);
     expect(
       exportNames.filter((name) => binaryWriteExports.includes(name)),
     ).toEqual(binaryWriteExports);

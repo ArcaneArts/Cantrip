@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { chatCommunicationSchema } from "./chat-communication.js";
 import { chatAttachmentSummarySchema } from "./attachment-content.js";
 import { reasoningEffortSchema } from "./providers.js";
 import { chatContextKindSchema } from "./chats.js";
@@ -16,6 +17,7 @@ export const chatMessageContentSchema = z.array(
     z.object({
       type: z.literal("text"),
       text: z.string().min(1),
+      chatCommunication: chatCommunicationSchema.optional(),
       phase: agentMessagePhaseSchema.nullable().optional(),
       streaming: z.boolean().optional(),
       correlation: codexEventCorrelationSchema.nullable().optional(),
@@ -97,3 +99,44 @@ export type ChatMessageContent = z.infer<typeof chatMessageContentSchema>;
 export type ChatMessageCreate = z.infer<typeof chatMessageCreateSchema>;
 export type ChatMessage = z.infer<typeof chatMessageSchema>;
 export type ChatTurnMode = z.infer<typeof chatTurnModeSchema>;
+
+/** Once execution begins, its attributed prompt replaces the earlier delivery
+ * receipt in presentation. Pending delivery never creates a human turn boundary. */
+export function uniqueChatCommunicationMessages(
+  messages: ChatMessage[],
+): ChatMessage[] {
+  const inputDeliveries = new Set(
+    messages.flatMap((message) =>
+      message.role === "user"
+        ? message.content.flatMap((item) =>
+            item.type === "text" &&
+            item.chatCommunication?.direction === "received"
+              ? [
+                  JSON.stringify([
+                    item.chatCommunication.sourceChatId,
+                    item.chatCommunication.targetChatId,
+                    item.chatCommunication.deliveryId,
+                  ]),
+                ]
+              : [],
+          )
+        : [],
+    ),
+  );
+  return messages.filter(
+    (message) =>
+      message.role !== "assistant" ||
+      !message.content.some(
+        (item) =>
+          item.type === "text" &&
+          item.chatCommunication?.direction === "received" &&
+          inputDeliveries.has(
+            JSON.stringify([
+              item.chatCommunication.sourceChatId,
+              item.chatCommunication.targetChatId,
+              item.chatCommunication.deliveryId,
+            ]),
+          ),
+      ),
+  );
+}

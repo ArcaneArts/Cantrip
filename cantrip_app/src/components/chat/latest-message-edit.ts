@@ -19,6 +19,12 @@ export function latestEditableUserMessage(
   const latest = [...messages]
     .reverse()
     .find((message) => message.role === "user");
+  if (
+    latest?.content.some(
+      (item) => item.type === "text" && item.chatCommunication,
+    )
+  )
+    return null;
   return latest?.modelId && latest.modelRouteId ? latest : null;
 }
 

@@ -8,6 +8,7 @@ import {
 } from "@cantrip/crypto";
 import {
   agentTurnResultSchema,
+  agentChatRuntimeText,
   chatGoalWireResponseSchema,
   type ChatGoalResponse,
   chatMessageContentSchema,
@@ -16,6 +17,7 @@ import {
   type AgentActivity,
   type AgentTurnResult,
   type ChatMessage,
+  type ChatCommunication,
   type ChatAttachmentSummary,
   type ChatMessageCreate,
   type ChatTurnMode,
@@ -84,7 +86,8 @@ function continuationPrompt(messages: ChatMessage[], prompt: string): string {
       if (rootContent.length === 0) return [];
       const content = rootContent
         .flatMap((item) => {
-          if (item.type === "text") return [item.text];
+          if (item.type === "text")
+            return [agentChatRuntimeText(item.text, item.chatCommunication)];
           if (item.type === "attachment") {
             return [
               `[attachment: ${item.attachment.fileName} (${item.attachment.mimeType})]`,
@@ -99,7 +102,7 @@ function continuationPrompt(messages: ChatMessage[], prompt: string): string {
   return `Continue this existing Cantrip conversation. The encrypted endpoint history follows:\n\n${transcript}\n\nUSER: ${prompt}`;
 }
 
-async function openMessage(input: {
+export async function openMessage(input: {
   componentKey: Uint8Array;
   message: ChatMessageOpaqueSummary | ChatMessageOpaqueContent;
   ownerId: string;
@@ -128,7 +131,11 @@ function textFromContent(
   content: ReturnType<typeof chatMessageContentSchema.parse>,
 ) {
   return content
-    .flatMap((item) => (item.type === "text" ? [item.text] : []))
+    .flatMap((item) =>
+      item.type === "text"
+        ? [agentChatRuntimeText(item.text, item.chatCommunication)]
+        : [],
+    )
     .join("\n\n")
     .trim();
 }
@@ -290,6 +297,7 @@ export async function protectChatTurn(input: {
   subagentReasoningEffort?: ReasoningEffort | null;
   service: WorkerEncryptionService;
   text: string;
+  chatCommunication?: ChatCommunication;
 }) {
   const pendingMessage = await protectChatMessage({
     id: input.messageId,
@@ -297,7 +305,17 @@ export async function protectChatTurn(input: {
       role: "user",
       mode: input.mode,
       content: [
-        ...(input.text ? [{ type: "text" as const, text: input.text }] : []),
+        ...(input.text
+          ? [
+              {
+                type: "text" as const,
+                text: input.text,
+                ...(input.chatCommunication
+                  ? { chatCommunication: input.chatCommunication }
+                  : {}),
+              },
+            ]
+          : []),
         ...(input.attachments ?? []).map((attachment) => ({
           type: "attachment" as const,
           attachment,
@@ -323,7 +341,11 @@ export async function protectChatTurn(input: {
         promptId: input.promptId,
         keyRevision: component.keyRevision,
         componentKey: component.key,
-        content: { version: 1, classification, text: input.text },
+        content: {
+          version: 1,
+          classification,
+          text: agentChatRuntimeText(input.text, input.chatCommunication),
+        },
       }),
       modelId: input.modelId,
       reasoningEffort: input.reasoningEffort,

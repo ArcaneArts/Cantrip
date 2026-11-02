@@ -1,3 +1,4 @@
+import { AgentChatDeliveryRepository } from "./repository/agent-chat-delivery.js";
 import { NativeRuntimeHandoffRepository } from "./repository/native-runtime-handoffs.js";
 import { ManagedChatPreparationRepository } from "./repository/managed-chat-preparations.js";
 import { ManagedQueueRepository } from "./repository/managed-queue.js";
@@ -318,6 +319,7 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
   readonly chatRuntimeContext: ChatRuntimeContextRepository;
   readonly agentInteractions: AgentInteractionRepository;
   readonly chatAttachments: ChatAttachmentRepository;
+  readonly agentChatDelivery: AgentChatDeliveryRepository;
   readonly messageQueries: MessageQueryRepository;
   readonly queuedPrompts: QueuedPromptRepository;
   readonly managedQueue: ManagedQueueRepository;
@@ -510,6 +512,10 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
       getChatAttachment: (ownerId, attachmentId) =>
         this.getChatAttachment(ownerId, attachmentId),
     });
+    this.agentChatDelivery = new AgentChatDeliveryRepository(
+      database,
+      (tx) => new ServerRepository(tx, secretVault),
+    );
     this.messageQueries = new MessageQueryRepository(database);
     this.queuedPrompts = new QueuedPromptRepository(database);
     this.managedQueue = new ManagedQueueRepository(

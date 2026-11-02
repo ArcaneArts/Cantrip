@@ -10,6 +10,10 @@ export const cantripCliArgumentsSchema = z
   });
 
 export const cantripAgentOperationNameSchema = z.enum([
+  "chat.list",
+  "chat.read",
+  "chat.send",
+  "chat.wait",
   "context.get",
   "context.compact",
   "tool.help",
@@ -59,6 +63,9 @@ export const cantripAgentOperationNameSchema = z.enum([
 ]);
 
 export const CANTRIP_MCP_READ_OPERATIONS = [
+  "chat.list",
+  "chat.read",
+  "chat.wait",
   "context.get",
   "tool.help",
   "policy.list",
@@ -82,6 +89,9 @@ export const CANTRIP_MCP_READ_OPERATIONS = [
 ] as const satisfies readonly z.infer<typeof cantripAgentOperationNameSchema>[];
 
 export const CANTRIP_MCP_READ_TOOL_NAMES = [
+  "chat_list",
+  "chat_read",
+  "chat_wait",
   "context_get",
   "tool_help",
   "policy_list",
@@ -106,6 +116,7 @@ export const CANTRIP_MCP_READ_TOOL_NAMES = [
 
 export const CANTRIP_MCP_WORKER_MUTATION_OPERATIONS = [
   "context.compact",
+  "chat.send",
   "run-configuration.create",
   "run-configuration.update",
   "run-configuration.delete",
@@ -142,6 +153,7 @@ export const CANTRIP_MCP_MUTATION_OPERATIONS = [
 
 export const CANTRIP_MCP_MUTATION_TOOL_NAMES = [
   "context_compact",
+  "chat_send",
   "run_configuration_create",
   "run_configuration_update",
   "run_configuration_delete",

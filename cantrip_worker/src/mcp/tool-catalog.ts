@@ -1,4 +1,10 @@
 import {
+  cantripMcpChatListInputSchema,
+  cantripMcpChatReadInputSchema,
+  cantripMcpChatSendInputSchema,
+  cantripMcpChatWaitInputSchema,
+} from "@cantrip/protocol";
+import {
   CANTRIP_MCP_TOOL_NAMES,
   cantripMcpBrowserNavigateInputSchema,
   cantripMcpBrowserServicesInputSchema,
@@ -55,6 +61,10 @@ type InputSchema = {
 };
 
 const inputSchemas = {
+  chat_list: cantripMcpChatListInputSchema,
+  chat_read: cantripMcpChatReadInputSchema,
+  chat_send: cantripMcpChatSendInputSchema,
+  chat_wait: cantripMcpChatWaitInputSchema,
   context_get: cantripMcpContextGetInputSchema,
   context_compact: cantripMcpContextCompactInputSchema,
   tool_help: cantripMcpToolHelpInputSchema,
@@ -150,6 +160,15 @@ const examples: Partial<Record<ToolName, Array<Record<string, unknown>>>> = {
 };
 
 const notes: Partial<Record<ToolName, string[]>> = {
+  chat_send: [
+    "Use the exact chatId from chat_list. Reuse operationId only when retrying the same message. Messages use the receiving chat model and queue; paused chats stay paused. Both transcripts show agent attribution.",
+  ],
+  chat_wait: [
+    "Copy afterCursor from chat_read or chat_wait. A wait detects new messages, streaming edits, or status changes and returns within timeoutMs.",
+  ],
+  chat_read: [
+    "History is paginated newest-first by page, with messages in chronological order. Use page.nextBeforeSequence to load older pages. Text is bounded by maxChars; activity/tool payloads are omitted.",
+  ],
   context_compact: [
     "This requests Codex's native compaction operation; it does not submit /compact as chat text.",
     "Compaction runs after the current tool-calling turn reaches its idle boundary. End the turn immediately when continuationScheduled is true.",
