@@ -464,10 +464,9 @@ export function App() {
     !showServerAdmin &&
     !showProjectSettings &&
     (projectOverviewPopoutTarget !== null ||
-      selectedBuiltInDefinitionId !== null ||
-      showProjectOverview);
+      selectedBuiltInDefinitionId !== null);
   const activeProjectOverviewSection =
-    (showProjectOverview ? "overview" : projectOverviewPopoutTarget?.section) ??
+    projectOverviewPopoutTarget?.section ??
     (selectedBuiltInDefinitionId
       ? projectOverviewSectionForBuiltInDefinition(selectedBuiltInDefinitionId)
       : projectOverviewSection);
@@ -699,8 +698,10 @@ export function App() {
     });
   const projectWorkspaceResources = useProjectWorkspaceResources({
     tabLayout,
-    activeProjectOverviewSection,
-    projectOverviewSelected,
+    activeProjectOverviewSection: showProjectOverview
+      ? "overview"
+      : activeProjectOverviewSection,
+    projectOverviewSelected: projectOverviewSelected || showProjectOverview,
     projectResourcesLive,
     projects: projects.data,
     queryClient,
@@ -1934,6 +1935,7 @@ export function App() {
       returnToLegacyCompactProjectOverview();
       return;
     }
+    setDesktopSidebarDrawerOpen(false);
     setShowProjectOverview(true);
   };
   useShellClientControlNavigation({

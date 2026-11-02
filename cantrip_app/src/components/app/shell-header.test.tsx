@@ -88,22 +88,26 @@ describe("desktop settings workspace", () => {
     mouseBack.callback?.();
     expect(close).toHaveBeenCalledExactlyOnceWith(false);
   });
-  it("returns from Overview without selecting or closing a tab", () => {
-    const setShowProjectOverview = vi.fn();
-    const header = ShellHeader({
-      bindings: {
-        appMode: "ide",
-        showProjectOverview: true,
-        setShowProjectOverview,
-        sidebarToggleVisible: true,
-      },
-    });
-    const markup = renderToStaticMarkup(header);
-    expect(markup).toContain("Back to Project");
-    expect(markup).toContain("Overview");
-    expect(markup).not.toContain("Expand sidebar");
-    header.props.children[0].props.onClick();
-    expect(setShowProjectOverview).toHaveBeenCalledExactlyOnceWith(false);
+  it("keeps the file header while Overview is open, and mouse Back closes the dialog", () => {
+    const close = vi.fn();
+    const markup = renderToStaticMarkup(
+      <TooltipProvider>
+        <ShellHeader
+          bindings={{
+            appMode: "ide",
+            showContentTitlebar: true,
+            selectedFileDocument: { path: "src/main.rs" },
+            showProjectOverview: true,
+            setShowProjectOverview: close,
+          }}
+        />
+      </TooltipProvider>,
+    );
+    expect(markup).toContain("main.rs");
+    expect(markup).not.toContain("Back to Project");
+    expect(markup).not.toContain("Overview");
+    mouseBack.callback?.();
+    expect(close).toHaveBeenCalledExactlyOnceWith(false);
   });
   it("closes project settings without changing account settings or the selected tab", () => {
     const setShowSettings = vi.fn();
@@ -154,33 +158,23 @@ describe("desktop settings workspace", () => {
   );
 });
 
-describe("project overview safe area", () => {
+describe("project overview window chrome", () => {
   it.each([
     ["ide", true],
     ["chat", true],
     ["ide", false],
     ["chat", false],
   ])(
-    "reserves the mobile safe area only in compact %s mode (%s)",
+    "does not replace the %s titlebar in compact mode=%s",
     (appMode, compactShell) => {
-      const setShowProjectOverview = vi.fn();
-      const header = ShellHeader({
-        bindings: {
-          appMode,
-          compactShell,
-          showProjectOverview: true,
-          setShowProjectOverview,
-        },
-      });
-
-      expect(
-        header.props.className.split(" ").includes("mobile-safe-top"),
-      ).toBe(compactShell);
-      expect(renderToStaticMarkup(header)).toContain(
-        appMode === "ide" ? "Back to Project" : "Back to Chat",
-      );
-      header.props.children[0].props.onClick();
-      expect(setShowProjectOverview).toHaveBeenCalledExactlyOnceWith(false);
+      const bindings = { appMode, compactShell };
+      const render = (showProjectOverview: boolean) =>
+        renderToStaticMarkup(
+          <TooltipProvider>
+            <ShellHeader bindings={{ ...bindings, showProjectOverview }} />
+          </TooltipProvider>,
+        );
+      expect(render(true)).toBe(render(false));
     },
   );
 });

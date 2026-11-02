@@ -1019,7 +1019,13 @@ labeled **Sources** for a local Git project. Worktrees appears only when the
 project advertises worktree capability. Non-Git folder projects expose neither
 section.
 
-Project overview can show runtime/replica health and aggregate token usage.
+Project overview opens above the current workspace in a nearly fullscreen
+modal dialog with a consistent margin on every edge, including wide desktop
+and browser windows. The workspace remains visible behind the dimmed backdrop;
+Close, Escape, or clicking the backdrop dismisses the dialog without changing
+the selected tab. Opening or creating a surface from Overview closes the dialog
+and navigates to that surface. Overview can show runtime/replica health and
+aggregate token usage.
 
 ### Service logs
 

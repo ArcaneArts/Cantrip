@@ -9,7 +9,6 @@ export function selectedPaneTabStripVisible(bindings: Bindings): boolean {
     !bindings.compactShell &&
     !bindings.showImporter &&
     !bindings.showSettings &&
-    !bindings.showProjectOverview &&
     !bindings.showArchivedStandaloneChats &&
     !bindings.showServerAdmin &&
     !bindings.showProjectSettings &&

@@ -182,10 +182,7 @@ export function ShellHeader({
         }}
       />
     ) : null;
-  if (
-    ((showSettings || showProjectSettings) && !compactShell) ||
-    showProjectOverview
-  ) {
+  if ((showSettings || showProjectSettings) && !compactShell) {
     return (
       <header
         className={cn(
@@ -206,9 +203,7 @@ export function ShellHeader({
           onClick={() =>
             showSettings
               ? setShowSettings(false)
-              : showProjectSettings
-                ? setShowProjectSettings(false)
-                : setShowProjectOverview(false)
+              : setShowProjectSettings(false)
           }
         >
           <ArrowLeft className="size-4" />
@@ -217,11 +212,7 @@ export function ShellHeader({
             : "Back to Chat"}
         </Button>
         <span data-tauri-drag-region={overlayTitlebar ? "" : undefined}>
-          {showSettings
-            ? "Settings"
-            : showProjectSettings
-              ? "Project Settings"
-              : "Overview"}
+          {showSettings ? "Settings" : "Project Settings"}
         </span>
       </header>
     );
