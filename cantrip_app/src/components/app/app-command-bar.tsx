@@ -74,6 +74,7 @@ import {
   type RepositoryImportOptions,
 } from "@/components/projects/repository-import-options-dialog";
 import { resolveProjectWorkspaceForSelection } from "@/lib/project-workspaces";
+import { useCommandBarHeight } from "./use-command-bar-height";
 
 const scopeLabels: Record<CommandBarScope, string> = {
   folder: "Folder",
@@ -248,6 +249,7 @@ export function AppCommandBar({
   >(null);
   const [operationError, setOperationError] = useState<string | null>(null);
   const commandListRef = useRef<HTMLDivElement | null>(null);
+  const paletteHeight = useCommandBarHeight(open, commandListRef);
   const lastShiftAtRef = useRef<number | null>(null);
   const actions = useMemo(() => availableAppActions(context), [context]);
   const activeScope = scopes.at(-1) ?? null;
@@ -568,8 +570,11 @@ export function AppCommandBar({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
+        ref={paletteHeight.contentRef}
+        id={paletteHeight.id}
         data-elite-ignore=""
-        className="self-start flex max-h-[70vh] max-w-2xl flex-col gap-0 overflow-hidden p-0"
+        className="self-start flex max-w-2xl flex-col gap-0 overflow-hidden p-0"
+        style={paletteHeight.style}
         showClose={false}
       >
         <DialogTitle className="sr-only">Cantrip command bar</DialogTitle>
@@ -578,6 +583,7 @@ export function AppCommandBar({
         </DialogDescription>
         <Command
           loop
+          className="h-auto min-h-0 flex-1"
           filter={activeScope === null ? commandBarResultScore : defaultFilter}
           value={selectedCommandValue}
           onValueChange={setSelectedCommandValue}
@@ -630,7 +636,7 @@ export function AppCommandBar({
           </div>
           <CommandList
             ref={commandListRef}
-            className="min-h-32 flex-1 overscroll-contain overflow-y-auto p-2"
+            className="min-h-0 max-h-none flex-1 overscroll-contain overflow-y-auto p-2"
           >
             {showEmpty ? <CommandEmpty>{emptyMessage}</CommandEmpty> : null}
             {activeScope === null ? (
@@ -1057,6 +1063,19 @@ export function AppCommandBar({
             </span>
             <span>esc Close</span>
           </span>
+        </div>
+        <div
+          {...paletteHeight.handleProps}
+          role="separator"
+          aria-label="Resize command palette"
+          aria-orientation="horizontal"
+          tabIndex={0}
+          className="group flex h-3 shrink-0 cursor-row-resize touch-none select-none items-center justify-center outline-none hover:bg-muted/50 focus-visible:bg-muted focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        >
+          <span
+            aria-hidden="true"
+            className="h-0.5 w-8 rounded-full bg-muted-foreground/40 group-hover:bg-muted-foreground/70"
+          />
         </div>
       </DialogContent>
       <RepositoryImportOptionsDialog
