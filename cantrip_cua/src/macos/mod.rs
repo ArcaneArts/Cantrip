@@ -3,6 +3,7 @@
 mod accessibility;
 mod click;
 mod effects;
+mod event_source;
 mod geometry;
 mod gesture;
 mod input_backend;

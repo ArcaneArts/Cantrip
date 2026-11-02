@@ -14,7 +14,6 @@ struct NativePoint {
 }
 #[link(name = "CoreGraphics", kind = "framework")]
 unsafe extern "C" {
-    fn CGEventSourceCreate(state: i32) -> Event;
     fn CGEventCreateMouseEvent(
         source: Event,
         kind: u32,
@@ -157,7 +156,7 @@ pub(super) fn process_click(
 
 fn background_source() -> Result<MouseEvent> {
     // Background input must not join the human's HID button-state table.
-    let source = unsafe { CGEventSourceCreate(-1) }; // kCGEventSourceStatePrivate
+    let source = super::event_source::create();
     if source.is_null() {
         return Err(CuaError::new(
             ErrorCode::InputFailed,

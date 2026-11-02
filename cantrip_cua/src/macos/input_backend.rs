@@ -20,7 +20,6 @@ struct NativePoint {
 }
 #[link(name = "CoreGraphics", kind = "framework")]
 unsafe extern "C" {
-    fn CGEventSourceCreate(state: i32) -> Ref;
     fn CGEventCreate(source: Ref) -> Ref;
     fn CGEventGetTimestamp(event: Ref) -> u64;
     fn CGEventSetTimestamp(event: Ref, timestamp: u64);
@@ -157,7 +156,7 @@ impl NativeInput {
     fn context(&mut self, target: &Destination) -> Result<&Context> {
         if let std::collections::btree_map::Entry::Vacant(entry) = self.contexts.entry(target.group)
         {
-            let source = Event::owned(unsafe { CGEventSourceCreate(-1) })?;
+            let source = Event::owned(super::event_source::create())?;
             let clock_event = Event::owned(unsafe { CGEventCreate(source.0) })?;
             entry.insert(Context {
                 source,
@@ -624,7 +623,7 @@ mod tests {
             fn CGEventGetType(event: Ref) -> u32;
             fn CGEventGetIntegerValueField(event: Ref, field: u32) -> i64;
         }
-        let source = Event::owned(unsafe { CGEventSourceCreate(-1) }).unwrap();
+        let source = Event::owned(super::super::event_source::create()).unwrap();
         let delivery = super::super::skylight::Delivery::load().unwrap();
         for (button, expected_number, types) in [
             (Left, 0, (1, 2)),
@@ -654,7 +653,7 @@ mod tests {
     fn pointer_modifier_flags_do_not_leak_into_keyboard_events() {
         // Construct and inspect event buffers only. Nothing is posted, no app
         // is launched, and no capture, focus or shared input state is touched.
-        let source = Event::owned(unsafe { CGEventSourceCreate(-1) }).unwrap();
+        let source = Event::owned(super::super::event_source::create()).unwrap();
         let key = Event::owned(unsafe { CGEventCreateKeyboardEvent(source.0, 8, true) }).unwrap();
         let original_key_flags = unsafe { CGEventGetFlags(key.0) };
         let point = Point { x: 10.0, y: 20.0 };
