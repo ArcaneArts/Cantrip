@@ -1,20 +1,20 @@
 // @vitest-environment jsdom
 import type { ProjectSummary } from "@cantrip/protocol";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, useEffect, useState } from "react";
+import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { getProjectWorktreeFileHistory } from "@/lib/api";
 import {
   defaultGitHistoryOptions,
-  openGitFileHistoryEvent,
   parseGitHistoryRoute,
   pushGitHistoryRoute,
   requestGitFileHistory,
 } from "@/lib/git-history-navigation";
 import { useGitHistoryNavigation } from "@/lib/use-git-history-navigation";
 import { GitHistoryView } from "./git-history";
+import { GitFileHistoryHost } from "./git-file-history-host";
 
 vi.mock("@/lib/api", async (original) => ({
   ...(await original<typeof import("@/lib/api")>()),
@@ -109,20 +109,17 @@ async function mount({
   function Workspace() {
     const [focused, setFocused] = useState(focus);
     const navigation = useGitHistoryNavigation();
-    // Match the shell's request: select the requested History, then dispatch
-    // popstate in the same event, before the new pane props have committed.
-    useEffect(() => {
-      const handler = (event: Event) => {
-        const detail = (event as CustomEvent).detail;
-        route(detail.path, detail.projectId);
-        setFocused("main");
-        window.dispatchEvent(new PopStateEvent("popstate"));
-      };
-      window.addEventListener(openGitFileHistoryEvent, handler);
-      return () => window.removeEventListener(openGitFileHistoryEvent, handler);
-    }, []);
     return (
       <>
+        <GitFileHistoryHost
+          onOpenFile={(projectId, worktreeId, path) =>
+            openFile(projectId, worktreeId, path)
+          }
+          onOpenHistory={ignore}
+          projects={[project]}
+          statuses={{}}
+          worktrees={[]}
+        />
         <button data-focus="main" onClick={() => setFocused("main")}>
           Focus main
         </button>
@@ -133,7 +130,11 @@ async function mount({
           { id: "main", project },
           ...(dock ? [{ id: "dock", project: dockProject }] : []),
         ].map((pane) => (
-          <section data-pane={pane.id} key={pane.id}>
+          <section
+            data-pane={pane.id}
+            data-focused={pane.id === focused}
+            key={pane.id}
+          >
             <GitHistoryView
               navigationActive={pane.id === focused}
               navigationRequest={navigation.request}
@@ -264,7 +265,10 @@ describe("History pane navigation ownership", () => {
 
   it("restores subsequent popstate navigations in the active pane", async () => {
     await mount();
-    await request("first.txt");
+    await act(async () => {
+      route("first.txt");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
     await act(async () => {
       route("second.txt");
       window.dispatchEvent(new PopStateEvent("popstate"));
@@ -315,10 +319,16 @@ describe("History pane navigation ownership", () => {
     expect(dialogs()).toHaveLength(0);
   });
 
-  it("hands a same-event request from the previously focused dock to the requested main pane", async () => {
+  it("opens file history without changing the focused dock or URL", async () => {
     await mount({ focus: "dock" });
     await request("README.md");
     expect(dialogs()).toHaveLength(1);
+    expect(
+      container
+        .querySelector('[data-pane="dock"]')!
+        .getAttribute("data-focused"),
+    ).toBe("true");
+    expect(window.location.search).toBe("");
     const compare = [
       ...dialogs()[0]!.querySelectorAll<HTMLButtonElement>("button"),
     ].find((button) => button.textContent === "compare")!;
@@ -329,11 +339,10 @@ describe("History pane navigation ownership", () => {
     expect(open).not.toBeNull();
     await act(async () => open.click());
     expect(openFile).toHaveBeenCalledExactlyOnceWith(
-      "main",
+      project.id,
       "primary",
       "README.md",
     );
-    await closeOnce();
     expect(dialogs()).toHaveLength(0);
   });
 
@@ -365,9 +374,7 @@ describe("History pane navigation ownership", () => {
     await mount({ dockProject: { ...project, id: "project-other" } });
     await request("foreground.txt");
     expect(dialogs()).toHaveLength(1);
-    expect(parseGitHistoryRoute(window.location.search).projectId).toBe(
-      project.id,
-    );
+    expect(window.location.search).toBe("");
     expect(getProjectWorktreeFileHistory).not.toHaveBeenCalledWith(
       "project-other",
       expect.anything(),
