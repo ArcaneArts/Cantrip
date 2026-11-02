@@ -2,6 +2,20 @@
 // order. Preserve the exact allocated set, all fields, per-chat ordering, and
 // every database/event identity agreement while comparing those schedules.
 import assert from "node:assert/strict";
+export function backgroundSnapshotObservation(value) {
+  // Generic snapshots order rows by the shared sequence allocator. Compare
+  // independent chats in a stable order while retaining their actual message
+  // order, allocation set and every identity check in backgroundObservation.
+  const messages =
+    value.messages?.toSorted((a, b) =>
+      a.chat_id < b.chat_id
+        ? -1
+        : a.chat_id > b.chat_id
+          ? 1
+          : a.sequence - b.sequence,
+    ) ?? value.messages;
+  return backgroundObservation({ ...value, messages });
+}
 export function backgroundObservation(value) {
   if (!value || typeof value !== "object") return value;
   const records = new Map(),

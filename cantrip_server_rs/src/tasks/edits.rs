@@ -19,9 +19,8 @@ impl Repository {
             if let Some(configuration)=input.get("modelConfiguration") {
                 for key in ["modelId","subagentModelId"] {
                     if key=="subagentModelId" && configuration["customSubagentModel"]!=true { continue; }
-                    if let Some(model)=configuration.get(key).filter(|v|!v.is_null()) {
-                        if tx.query("SELECT id FROM model_profiles WHERE id=$1 AND owner_id=$2 LIMIT 1",&[&text(model)?,&owner]).await?.is_empty() { return conflict("stale-version","The selected model is unavailable."); }
-                    }
+                    if let Some(model)=configuration.get(key).filter(|v|!v.is_null())
+                        && tx.query("SELECT id FROM model_profiles WHERE id=$1 AND owner_id=$2 LIMIT 1",&[&text(model)?,&owner]).await?.is_empty() { return conflict("stale-version","The selected model is unavailable."); }
                 }
             }
             let now=now();

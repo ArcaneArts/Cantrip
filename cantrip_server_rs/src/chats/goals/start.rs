@@ -59,10 +59,48 @@ impl Service {
         let runtime = &pairs
             .first()
             .context("No provider route is currently available.")?["root"]["runtime"];
-        let result=self.request(&context["workerId"],json!({"type":"chat.goal.create","chatId":context["chatId"],"cwd":context["cwd"],"threadId":if super::super::runtime_telemetry::RuntimeTelemetry::can_resume(context,runtime){context["threadId"].clone()}else{Value::Null},"objective":objective,"tokenBudget":Value::Null,"model":runtime["model"],"provider":runtime["provider"],"permissionProfileId":managed_console::permission_profile(context)["effectiveId"],"taskContext":json!({"task":task,"automationPaused":context["automationPaused"],"chatStatus":context["status"],"message":Value::Null})}),"taskGoalWorkerResultSchema").await?;
-        if !truthy(result.get("goal"))
-            && result["task"]["classification"]["lastError"]["code"] == "task-goal-start-failed"
-        {
+        let result=self.request(&context["workerId"],json!({"type":"chat.goal.create","chatId":context["chatId"],"cwd":context["cwd"],"threadId":if super::super::runtime_telemetry::RuntimeTelemetry::can_resume(context,runtime){context["threadId"].clone()}else{Value::Null},"objective":objective,"tokenBudget":Value::Null,"model":runtime["model"],"provider":runtime["provider"],"permissionProfileId":managed_console::permission_profile(context)["effectiveId"],"taskContext":json!({"task":task,"automationPaused":context["automationPaused"],"chatStatus":context["status"],"message":options.control_message.clone().unwrap_or(Value::Null)})}),"taskGoalWorkerResultSchema").await?;
+        let failure = result["task"]["classification"]["lastError"]["code"]
+            .as_str()
+            .unwrap_or("");
+        let initial_failure = failure
+            .strip_prefix("task-goal-start-")
+            .is_some_and(|kind| {
+                matches!(
+                    kind,
+                    "failed"
+                        | "timeout"
+                        | "capacity"
+                        | "rate-limit"
+                        | "connection"
+                        | "needs-input"
+                        | "configuration"
+                        | "usage-limit"
+                        | "budget-limit"
+                )
+            });
+        let continuation_failure = options
+            .control_message
+            .as_ref()
+            .is_some_and(|message| message["kind"] == "resume")
+            && failure
+                .strip_prefix("implementation-")
+                .and_then(|kind| kind.strip_suffix("-failed"))
+                .is_some_and(|kind| {
+                    matches!(
+                        kind,
+                        "runtime"
+                            | "timeout"
+                            | "capacity"
+                            | "rate-limit"
+                            | "connection"
+                            | "needs-input"
+                            | "configuration"
+                            | "usage-limit"
+                            | "budget-limit"
+                    )
+                });
+        if !truthy(result.get("goal")) && (initial_failure || continuation_failure) {
             return Err(LaunchError {
                 failure_task: result["task"].clone(),
             }

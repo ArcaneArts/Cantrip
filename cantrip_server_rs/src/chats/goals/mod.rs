@@ -62,6 +62,7 @@ pub struct GoalOptions {
     pub worker_prompt: Option<Value>,
     pub purpose: Option<Value>,
     pub message_role: Option<Value>,
+    pub control_message: Option<Value>,
 }
 #[derive(Default, Clone)]
 pub struct Observation {

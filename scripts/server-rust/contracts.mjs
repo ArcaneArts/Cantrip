@@ -492,6 +492,8 @@ export const contractRoots = [
   "encryptedChatPromptSubmitResultSchema",
   "encryptedConversationPromptSubmitResultSchema",
   "encryptedChatPromptSteerResultSchema",
+  "taskOperationStartSchema",
+  "taskRecoveryStartSchema",
 ];
 
 // Resolve the actual source schemas, including their separate protocol modules.

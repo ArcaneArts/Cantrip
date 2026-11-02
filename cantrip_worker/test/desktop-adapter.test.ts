@@ -840,7 +840,19 @@ describe("ManagedDesktopRemoteSurfaceAdapter", () => {
       expect(moveMouse).not.toHaveBeenCalled();
       await expect(
         session.handleFrame("a", "control", payload),
-      ).rejects.toThrow(/stale/);
+      ).resolves.toBeUndefined();
+      // Participant input dispatch leaves the control lane available. Its
+      // stale-input guard must still reject the duplicate before native send.
+      await eventually(() =>
+        readWorkerLogs({}).records.some((record) => {
+          const text = JSON.stringify(record);
+          return (
+            text.includes("desktop.input.rejected") &&
+            text.includes("shared-input")
+          );
+        }),
+      );
+      expect(send).toHaveBeenCalledTimes(1);
       await session.attach({
         id: "a",
         viewport: { width: 200, height: 200, devicePixelRatio: 1 },
@@ -853,7 +865,8 @@ describe("ManagedDesktopRemoteSurfaceAdapter", () => {
       expect(renewed.epoch).not.toBe(state.epoch);
       await expect(
         session.handleFrame("a", "control", payload),
-      ).rejects.toThrow(/stale/);
+      ).resolves.toBeUndefined();
+      expect(send).toHaveBeenCalledTimes(1);
       const next = JSON.parse(new TextDecoder().decode(payload));
       next.inputEpoch = renewed.epoch;
       await session.handleFrame(
@@ -861,9 +874,19 @@ describe("ManagedDesktopRemoteSurfaceAdapter", () => {
         "control",
         new TextEncoder().encode(JSON.stringify(next)),
       );
+      await eventually(() => send.mock.calls.length === 2);
+      expect(send).toHaveBeenLastCalledWith(
+        1,
+        {
+          type: "pointerDown",
+          data: { point: { x: 25, y: 40 }, button: "left", modifiers: [] },
+        },
+        expect.any(AbortSignal),
+      );
       expect(open).toHaveBeenCalledTimes(2);
       session.detach("a");
       await eventually(() => close.mock.calls.length === 2);
+      expect(send).toHaveBeenCalledTimes(2);
     } finally {
       await session.close();
       await adapter.shutdown();

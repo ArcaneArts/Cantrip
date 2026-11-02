@@ -414,26 +414,29 @@ fn apply_snapshot(mut snapshot: Snapshot, before_input: bool) {
                                     && a.bounds.height == b.bounds.height
                             })
                 });
-                if before_input
-                    || snapshot.progress.contains_key(&state.participant_id)
-                    || previous.is_none()
-                {
-                    p.motion.remove(&state.participant_id);
-                } else if previous.unwrap().cursor.position != state.cursor.position {
-                    let from = p
-                        .motion
-                        .get(&state.participant_id)
-                        .map_or(previous.unwrap().cursor.position, |motion| {
-                            motion.sample(now)
-                        });
-                    p.motion.insert(
-                        state.participant_id.clone(),
-                        CursorMotion {
-                            from,
-                            to: state.cursor.position,
-                            started: now,
-                        },
-                    );
+                match previous {
+                    Some(previous)
+                        if !before_input
+                            && !snapshot.progress.contains_key(&state.participant_id) =>
+                    {
+                        if previous.cursor.position != state.cursor.position {
+                            let from = p
+                                .motion
+                                .get(&state.participant_id)
+                                .map_or(previous.cursor.position, |motion| motion.sample(now));
+                            p.motion.insert(
+                                state.participant_id.clone(),
+                                CursorMotion {
+                                    from,
+                                    to: state.cursor.position,
+                                    started: now,
+                                },
+                            );
+                        }
+                    }
+                    _ => {
+                        p.motion.remove(&state.participant_id);
+                    }
                 }
             }
             p.motion.retain(|id, _| {

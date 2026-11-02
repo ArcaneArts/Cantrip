@@ -730,7 +730,7 @@ function implementationProjection(input: {
         input.context.chatStatus === "running"
       ) &&
       priorCode?.match(
-        /^implementation-(timeout|capacity|rate-limit|connection|runtime)(?:-failed)?$/,
+        /^implementation-(timeout|capacity|rate-limit|connection|runtime|needs-input|configuration|usage-limit|budget-limit)(?:-failed)?$/,
       )?.[1]);
   if (
     failure &&
@@ -818,7 +818,8 @@ export async function protectTaskGoalResult(input: {
     let task = context.task;
     if (projection) {
       const keepError =
-        current.lastError?.code === projection.code &&
+        (current.lastError?.code === projection.code ||
+          current.lastError?.code === `${projection.code}-failed`) &&
         current.lastError.operationKind === "implementation" &&
         (!context.runtimeFailure ||
           current.lastError.occurredAt === context.runtimeFailure.occurredAt);
@@ -1179,6 +1180,7 @@ export async function protectTaskGoalLaunchFailure(input: {
   getComponentKey(): { key: Uint8Array; keyRevision: number };
   task?: TaskOpaqueContent;
   taskContent?: TaskProtectedContent;
+  continuation?: boolean;
   error?: unknown;
 }) {
   const component = input.getComponentKey();
@@ -1199,22 +1201,24 @@ export async function protectTaskGoalLaunchFailure(input: {
       input.error instanceof Error ? input.error.message.trim() : "";
     const failureKind = taskFailureKindForError(input.error);
     const lastError = {
-      code:
-        failureKind === "runtime"
+      code: input.continuation
+        ? `implementation-${failureKind}-failed`
+        : failureKind === "runtime"
           ? "task-goal-start-failed"
           : `task-goal-start-${failureKind}`,
-      message:
-        `Goal startup failed${reason ? `: ${reason}` : ". Implementation has not started."} You can retry implementation without regenerating the saved plan.`.slice(
-          0,
-          TASK_ERROR_MESSAGE_LIMIT,
-        ),
-      operationKind: "finalize" as const,
+      message: (input.continuation
+        ? `Goal continuation failed${reason ? `: ${reason}` : "."} The saved implementation plan and progress are retained. You can retry continuation without regenerating the saved plan.`
+        : `Goal startup failed${reason ? `: ${reason}` : ". Implementation has not started."} You can retry implementation without regenerating the saved plan.`
+      ).slice(0, TASK_ERROR_MESSAGE_LIMIT),
+      operationKind: input.continuation
+        ? ("implementation" as const)
+        : ("finalize" as const),
       occurredAt: new Date().toISOString(),
     };
     const classification: TaskProtectedClassification = {
       ...current.classification,
       state: "failed",
-      stableStateBeforeFailure: "review",
+      stableStateBeforeFailure: input.continuation ? null : "review",
       activeOperationKind: null,
       lastError: {
         code: lastError.code,

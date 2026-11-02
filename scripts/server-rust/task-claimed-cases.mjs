@@ -48,7 +48,7 @@ export async function runTaskClaimedCases(h) {
       "SELECT setval(pg_get_serial_sequence('chat_messages','sequence'),1,false)",
       "UPDATE chats SET experience='task',status='idle',automation_paused=false,model_id='claimed-model',custom_subagent_model=false,subagent_model_id=NULL,subagent_reasoning_effort=NULL,auto_title_pending=false WHERE id='task'",
       "UPDATE user_settings SET auto_name_tasks=false,auto_name_chats=false,default_model_id='claimed-model'",
-      `INSERT INTO tasks(chat_id,plan_goal_enabled,protected_content,created_at,updated_at) VALUES('task',${kind !== "direct"},${json(taskEnvelope)},${literal(stamp)},${literal(stamp)})`,
+      `INSERT INTO tasks(chat_id,plan_goal_enabled,model_configuration,protected_content,created_at,updated_at) VALUES('task',${kind !== "direct"},${json({ modelId: "claimed-model", reasoningEffort: null, customSubagentModel: false, subagentModelId: null, subagentReasoningEffort: null })},${json(taskEnvelope)},${literal(stamp)},${literal(stamp)})`,
       `INSERT INTO task_workers(id,owner_id,name,model_id,allows_plan_goal,continuity_family,created_at,updated_at) VALUES('${taskWorker}',${literal(owner)},'Claimed worker','claimed-model',true,'claimed-family',${literal(stamp)},${literal(stamp)})`,
       "INSERT INTO chat_runtime_sessions(id,chat_id,worker_id,worktree_id,codex_thread_id,model_route_id,status) VALUES('81818181-8181-4818-8818-000000000003','task','alpha','github-alpha-main','stream-thread','claimed-route','ready')",
     ]);
@@ -237,7 +237,7 @@ export async function runTaskClaimedCases(h) {
     [
       `INSERT INTO model_profiles(id,owner_id,name) VALUES('claimed-child-model',${literal(owner)},'Claimed child') ON CONFLICT DO NOTHING`,
       "INSERT INTO model_routes(id,model_id,provider_id,model_name,position,enabled) VALUES('claimed-child-route','claimed-child-model','claimed-provider','child',1,true) ON CONFLICT(id) DO UPDATE SET enabled=true",
-      "UPDATE task_workers SET custom_subagent_model=true,subagent_model_id='claimed-child-model'",
+      "UPDATE tasks SET model_configuration=jsonb_set(jsonb_set(model_configuration,'{customSubagentModel}','true'::jsonb),'{subagentModelId}','\"claimed-child-model\"'::jsonb)",
       `UPDATE workers SET codex_runtime=jsonb_set(codex_runtime,'{nativeSubagents}',${json({ available: true, protocolVersion: 1, reason: null })}) WHERE id='alpha'`,
     ],
   );
@@ -272,7 +272,7 @@ export async function runTaskClaimedCases(h) {
     ],
     [
       "UPDATE model_routes SET enabled=true WHERE id='claimed-child-route'",
-      "UPDATE task_workers SET custom_subagent_model=true,subagent_model_id='claimed-child-model'",
+      "UPDATE tasks SET model_configuration=jsonb_set(jsonb_set(model_configuration,'{customSubagentModel}','true'::jsonb),'{subagentModelId}','\"claimed-child-model\"'::jsonb)",
     ],
   );
   for (const v of await run(

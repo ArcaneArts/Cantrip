@@ -1187,6 +1187,8 @@ jobs:
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"
         run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-automatic --database pglite --report .qa/rust-server/task-automatic-pglite.json
+      - name: Task snapshots preserve per-tenant order and exact message identity
+        run: node --test scripts/server-rust/task-background-observation.test.mjs
       - name: Coalesced Task scheduler, retry/recovery and owned shutdown with pglite
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"

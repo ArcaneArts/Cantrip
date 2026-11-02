@@ -7,6 +7,10 @@ import { buildRustServer, buildRustExample } from "./build.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
 import { hashPassword } from "../../cantrip_server/src/auth/service.ts";
 import { password } from "./security-fixtures.mjs";
+import {
+  operationTasks,
+  taskOperationHttpCases,
+} from "./task-operation-http-cases.mjs";
 import { literal, json } from "./project-target-state.mjs";
 import { taskContent } from "./task-wire-fixtures.mjs";
 import {
@@ -73,8 +77,18 @@ try {
           : undefined;
       const plain = (state, text) => ({
         version: 1,
-        classification: taskContent(state, state === "review" ? 1 : 0, {
+        classification: taskContent(state, state === "draft" ? 0 : 1, {
           hasPlan: state === "review",
+          ...(state === "failed"
+            ? {
+                stableStateBeforeFailure: "draft",
+                lastError: {
+                  code: "task-operation-failed",
+                  operationKind: "initial-plan",
+                  occurredAt: "2026-10-25T00:00:00.000Z",
+                },
+              }
+            : {}),
         }).classification,
         briefMarkdown: marker,
         planMarkdown: state === "review" ? text : null,
@@ -83,7 +97,15 @@ try {
         additionalDirection: state === "draft" ? text : "",
         finalPlanMarkdown: null,
         goalPrompt: null,
-        lastError: null,
+        lastError:
+          state === "failed"
+            ? {
+                code: "task-operation-failed",
+                operationKind: "initial-plan",
+                occurredAt: "2026-10-25T00:00:00.000Z",
+                message: marker,
+              }
+            : null,
       });
       const protect = async (owner, chat, content) => {
         const protectedContent = await encryptTaskProtectedContent({
@@ -109,12 +131,19 @@ try {
         configure: (owner) => [
           ...seedEventChats(owner),
           `UPDATE user_settings SET auto_name_chats=false,auto_name_tasks=false WHERE user_id=${literal(owner)}`,
+          `UPDATE projects SET task_scheduling_paused=true,task_scheduling_paused_at='2026-10-25' WHERE id=${literal(taskProject)}`,
           `INSERT INTO chats(id,owner_id,project_id,active_worktree_id,active_worker_id,protected_label,experience) SELECT ${literal(review)},owner_id,project_id,active_worktree_id,active_worker_id,protected_label,'task' FROM chats WHERE id=${literal(task)}`,
+          ...operationTasks.map(
+            ({ chat }) =>
+              `INSERT INTO chats(id,owner_id,project_id,active_worktree_id,active_worker_id,protected_label,experience) SELECT ${literal(chat)},owner_id,project_id,active_worktree_id,active_worker_id,protected_label,'task' FROM chats WHERE id=${literal(task)}`,
+          ),
+          `INSERT INTO chat_runtime_sessions(id,chat_id,worker_id,worktree_id) SELECT 'task-ops-runtime-'||id,id,active_worker_id,active_worktree_id FROM chats WHERE id IN (${[review, ...operationTasks.map(({ chat }) => chat)].map(literal).join(",")})`,
         ],
         prepare: async ({ owner, repository }) => {
           for (const [chat, state] of [
             [task, "draft"],
             [review, "review"],
+            ...operationTasks.map(({ chat, state }) => [chat, state]),
           ]) {
             const content = await protect(
               owner,
@@ -125,7 +154,7 @@ try {
             const seeded = await repository.request({
               op: "transaction",
               statements: [
-                `INSERT INTO tasks(chat_id,state,planning_round,has_plan,protected_content,created_at,updated_at) VALUES(${literal(chat)},${literal(state)},${state === "review" ? 1 : 0},${state === "review"},${json(content.protectedContent)},'2026-10-25','2026-10-25')`,
+                `INSERT INTO tasks(chat_id,state,planning_round,has_plan,stable_state_before_failure,last_error,plan_goal_enabled,protected_content,created_at,updated_at) VALUES(${literal(chat)},${literal(state)},${content.classification.planningRound},${state === "review"},${state === "failed" ? "'draft'" : "NULL"},${state === "failed" ? json(content.classification.lastError) : "NULL"},${chat !== operationTasks[0].chat},${json(content.protectedContent)},'2026-10-25','2026-10-25')`,
               ],
             });
             assert.equal(seeded.rejected, false, seeded.diagnostic);
@@ -135,6 +164,7 @@ try {
       await h.live.subscribed("task-controls", [
         { kind: "chat", chatId: task },
         { kind: "chat", chatId: review },
+        ...operationTasks.map(({ chat }) => ({ kind: "chat", chatId: chat })),
         { kind: "project", projectId: taskProject },
       ]);
       async function prove(summary) {
@@ -222,7 +252,7 @@ try {
         status: 409,
       });
       await visit(
-        "unavailable requested Task Worker",
+        "retired Task Worker assignment is rejected",
         "PATCH",
         `/api/tasks/${task}/draft`,
         {
@@ -230,6 +260,25 @@ try {
             rowVersion: 2,
             task: updatedDraft,
             requestedTaskWorkerId: missing,
+          },
+          status: 400,
+        },
+      );
+      await visit(
+        "unavailable per-Task model",
+        "PATCH",
+        `/api/tasks/${task}/draft`,
+        {
+          json: {
+            rowVersion: 2,
+            task: updatedDraft,
+            modelConfiguration: {
+              modelId: missing,
+              reasoningEffort: null,
+              customSubagentModel: false,
+              subagentModelId: null,
+              subagentReasoningEffort: null,
+            },
           },
           status: 409,
         },
@@ -323,6 +372,14 @@ try {
       for (const event of result.taskEvents)
         if (event.scope.kind === "project")
           assert.equal(event.scope.projectId, taskProject);
+      await taskOperationHttpCases({
+        h,
+        result,
+        prove,
+        missing,
+        draft: task,
+        profile,
+      });
       function redact(value) {
         if (Array.isArray(value)) return value.map(redact);
         if (value && typeof value === "object")
@@ -344,7 +401,13 @@ try {
       await h.close();
       active = undefined;
     }
-    for (const key of ["observations", "taskEvents", "encryptedTaskProofs"])
+    for (const key of [
+      "observations",
+      "taskEvents",
+      "encryptedTaskProofs",
+      "queuedOperations",
+      "operationEvents",
+    ])
       assert.deepEqual(outputs[1][key], outputs[0][key], profile + " " + key);
   }
 } catch (error) {
