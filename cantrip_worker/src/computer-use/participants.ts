@@ -78,6 +78,8 @@ const receiptSchema = z.strictObject({
 export type InteractionReceipt = z.infer<typeof receiptSchema>;
 export interface InteractionParticipant {
   readonly initial: z.infer<typeof openedSchema>;
+  /** Presentation only. Replaces pending positions without posting native input. */
+  present?(point: CuaPoint): void;
   send(
     sequence: number,
     event: InteractionEvent,
@@ -104,12 +106,15 @@ interface Record {
   closing: Promise<void> | null;
   retired: boolean;
   lastSequence: number;
+  presentation: { handle: number; point: CuaPoint } | null;
+  presentationSequence: number;
 }
 
 /** Worker-only adapter. Callers derive bindings from authorized remote attachments.
  * Never exposed as agent tools or to arbitrary client-supplied native handles. */
 export class WorkerInputParticipants {
   private readonly records = new Set<Record>();
+  private presenting = false;
   constructor(private readonly owner: Owner) {}
 
   async open(
@@ -139,6 +144,8 @@ export class WorkerInputParticipants {
       closing: null,
       retired: false,
       lastSequence: 0,
+      presentation: null,
+      presentationSequence: 0,
     };
     this.records.add(record);
     const abort = () => record.controller.abort();
@@ -198,6 +205,7 @@ export class WorkerInputParticipants {
       const handle = initial.handle;
       return {
         initial,
+        present: (point) => this.present(record, handle, point),
         send: (sequence, event, operationSignal) =>
           this.send(record, handle, sequence, event, operationSignal),
         close: () => this.retire(record),
@@ -217,6 +225,47 @@ export class WorkerInputParticipants {
       throw new CuaProcessError("cancelled", outcome);
     if (!record.runtime || !this.owner.isCurrent(record.runtime))
       throw new CuaProcessError("process-exited", outcome);
+  }
+  private present(record: Record, handle: number, point: CuaPoint): void {
+    if (record.retired) return;
+    record.presentation = { handle, point: structuredClone(point) };
+    if (this.presenting) return;
+    this.presenting = true;
+    const work = (async () => {
+      try {
+        // One cosmetic request across the helper and one replaceable position
+        // per participant. Round-robin passes keep other viewers responsive.
+        while ([...this.records].some((candidate) => candidate.presentation)) {
+          for (const candidate of this.records) {
+            const latest = candidate.presentation;
+            candidate.presentation = null;
+            if (!latest || candidate.retired) continue;
+            try {
+              this.assertLive(candidate);
+              await candidate.runtime!.transport.request(
+                {
+                  operation: "interaction.request",
+                  request: {
+                    type: "present",
+                    binding: candidate.binding,
+                    handle: latest.handle,
+                    sequence: ++candidate.presentationSequence,
+                    point: latest.point,
+                  },
+                },
+                { presentation: true },
+              );
+            } catch {
+              // Cosmetic failure cannot revoke input or replay an uncertain
+              // action. Drop this position and try the newest one next time.
+            }
+          }
+        }
+      } finally {
+        this.presenting = false;
+      }
+    })();
+    this.owner.background(work);
   }
   private async send(
     record: Record,
@@ -282,6 +331,7 @@ export class WorkerInputParticipants {
   private retire(record: Record): Promise<void> {
     if (record.closing) return record.closing;
     record.retired = true;
+    record.presentation = null;
     record.controller.abort();
     record.closing = (async () => {
       await record.starting.catch(() => {});

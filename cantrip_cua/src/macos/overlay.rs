@@ -1,5 +1,5 @@
 //! Click-through desktop presentation. Main-thread AppKit only; no input posting.
-use crate::target::{Bounds, TargetKind};
+use crate::target::{Bounds, Point, TargetKind};
 use cantrip_interaction::presentation::{CursorPresentation, CursorRenderer, PresentationDelivery};
 use dispatch2::{DispatchQueue, DispatchTime};
 use objc2::{
@@ -8,13 +8,13 @@ use objc2::{
     runtime::{AnyClass, AnyObject},
 };
 use objc2_core_foundation::{CGPoint, CGRect, CGSize};
-use objc2_foundation::NSData;
+use objc2_foundation::NSString;
 use std::{
     cell::RefCell,
     collections::{HashMap, HashSet},
     ffi::c_void,
     sync::{Mutex, OnceLock},
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 #[link(name = "AppKit", kind = "framework")]
@@ -212,23 +212,18 @@ impl Panel {
     ) -> Option<()> {
         // Renderer preserves the same appearance/trail/action feedback as model images.
         let key = format!(
-            "{}:{}:{}:{}:{:?}:{}",
+            "{}:{}:{}:{}:{:?}:{:?}:{}",
             native.id,
             state.cursor.revision,
             native.bounds.width,
             native.bounds.height,
             region,
+            state.cursor.position,
             state.cursor.glow_strength()
         );
         if key != self.rendered {
-            let bytes = cursor_png(state, &native.bounds, region)?;
-            let data = NSData::with_bytes(&bytes);
+            let image = cursor_image(state, &native.bounds, region)?;
             unsafe {
-                let class = AnyClass::get(c"NSImage")?;
-                let allocated: Allocated<AnyObject> = msg_send![class, alloc];
-                let image: Option<Retained<AnyObject>> = msg_send![allocated, initWithData: &*data];
-                let image = image?;
-                let _: () = msg_send![&*image, setSize: CGSize::new(region.width, region.height)];
                 let _: () = msg_send![&*self.image_view, setImage: &*image];
             }
             self.rendered = key;
@@ -253,11 +248,11 @@ impl Panel {
         Some(())
     }
 }
-fn cursor_png(
+fn cursor_image(
     state: &CursorPresentation<crate::target::Target>,
     bounds: &Bounds,
     region: &Bounds,
-) -> Option<Vec<u8>> {
+) -> Option<Retained<AnyObject>> {
     let width = region.width.ceil() as u32;
     let height = region.height.ceil() as u32;
     let pixels = (width as usize).checked_mul(height as usize)?;
@@ -269,22 +264,83 @@ fn cursor_png(
         .cursor
         .render_region(&mut rgba, width, height, bounds, region)
         .ok()?;
-    let mut bytes = vec![];
-    {
-        let mut encoder = png::Encoder::new(&mut bytes, width, height);
-        encoder.set_color(png::ColorType::Rgba);
-        encoder.set_depth(png::BitDepth::Eight);
-        let mut writer = encoder.write_header().ok()?;
-        writer.write_image_data(&rgba).ok()?;
-        writer.finish().ok()?;
+    // AppKit owns the bitmap storage. Copy straight-alpha RGBA directly rather
+    // than PNG-encoding every tile only for NSImage to decode it on this thread.
+    unsafe {
+        let class = AnyClass::get(c"NSBitmapImageRep")?;
+        let allocated: Allocated<AnyObject> = msg_send![class, alloc];
+        let color_space = NSString::from_str("NSDeviceRGBColorSpace");
+        let bitmap: Option<Retained<AnyObject>> = msg_send![allocated,
+            initWithBitmapDataPlanes: std::ptr::null_mut::<*mut u8>(),
+            pixelsWide: width as isize, pixelsHigh: height as isize,
+            bitsPerSample: 8_isize, samplesPerPixel: 4_isize,
+            hasAlpha: true, isPlanar: false, colorSpaceName: &*color_space,
+            bitmapFormat: 2_usize, bytesPerRow: (width * 4) as isize, bitsPerPixel: 32_isize];
+        let bitmap = bitmap?;
+        let data: *mut u8 = msg_send![&*bitmap, bitmapData];
+        let stride: isize = msg_send![&*bitmap, bytesPerRow];
+        let row_bytes = width as usize * 4;
+        if data.is_null() || stride < row_bytes as isize {
+            return None;
+        }
+        for row in 0..height as usize {
+            std::ptr::copy_nonoverlapping(
+                rgba.as_ptr().add(row * row_bytes),
+                data.add(row * stride as usize),
+                row_bytes,
+            );
+        }
+        let class = AnyClass::get(c"NSImage")?;
+        let allocated: Allocated<AnyObject> = msg_send![class, alloc];
+        let image: Option<Retained<AnyObject>> =
+            msg_send![allocated, initWithSize: CGSize::new(region.width, region.height)];
+        let image = image?;
+        let _: () = msg_send![&*image, addRepresentation: &*bitmap];
+        Some(image)
     }
-    Some(bytes)
 }
 #[derive(Default)]
 struct Presentation {
     sessions: Vec<CursorPresentation<crate::target::Target>>,
     panels: HashMap<String, Vec<Panel>>,
+    motion: HashMap<String, CursorMotion>,
     ticking: bool,
+    animating: bool,
+    tick_generation: u64,
+}
+const CURSOR_BLEND: Duration = Duration::from_millis(40);
+struct CursorMotion {
+    from: Point,
+    to: Point,
+    started: Instant,
+}
+impl CursorMotion {
+    fn sample(&self, now: Instant) -> Point {
+        let t = (now.saturating_duration_since(self.started).as_secs_f64()
+            / CURSOR_BLEND.as_secs_f64())
+        .clamp(0.0, 1.0);
+        let t = 1.0 - (1.0 - t).powi(3);
+        Point {
+            x: self.from.x + (self.to.x - self.from.x) * t,
+            y: self.from.y + (self.to.y - self.from.y) * t,
+        }
+    }
+    fn active(&self, now: Instant) -> bool {
+        now.saturating_duration_since(self.started) < CURSOR_BLEND
+    }
+}
+struct Snapshot {
+    sessions: Vec<CursorPresentation<crate::target::Target>>,
+    progress: HashMap<String, crate::input_job::InputProgress>,
+}
+#[derive(Default)]
+struct PendingPresentation {
+    latest: Option<Snapshot>,
+    scheduled: bool,
+}
+fn pending_presentation() -> &'static Mutex<PendingPresentation> {
+    static PENDING: OnceLock<Mutex<PendingPresentation>> = OnceLock::new();
+    PENDING.get_or_init(Mutex::default)
 }
 thread_local! { static PRESENTATION: RefCell<Presentation> = RefCell::default(); }
 pub(super) fn present(sessions: Vec<CursorPresentation<crate::target::Target>>) {
@@ -299,34 +355,116 @@ pub(super) fn present_step(sessions: Vec<CursorPresentation<crate::target::Targe
 /// snapshot. Sample their latest state on the presentation queue so an unrelated
 /// request cannot rewind a cursor or erase its click glow/trail.
 pub(super) fn present_input_cursors(
-    mut sessions: Vec<CursorPresentation<crate::target::Target>>,
+    sessions: Vec<CursorPresentation<crate::target::Target>>,
     progress: HashMap<String, crate::input_job::InputProgress>,
     delivery: PresentationDelivery,
 ) {
-    // Register owners before their first native event is posted.
+    // Register owners before their native input notifications can arrive.
+    // Rendering then advances their visible positions on the main queue.
     crate::effects::live::synchronize(&sessions);
-    let update = move || {
-        autoreleasepool(|_| {
-            for state in &mut sessions {
-                if let Some(live) = progress.get(&state.participant_id) {
-                    state.cursor = live.cursor();
-                }
+    let snapshot = Snapshot { sessions, progress };
+    match delivery {
+        PresentationDelivery::Latest => {
+            let mut pending = pending_presentation().lock().unwrap();
+            pending.latest = Some(snapshot);
+            if pending.scheduled {
+                return;
             }
-            crate::effects::live::synchronize(&sessions);
-            PRESENTATION.with_borrow_mut(|p| {
-                p.sessions = sessions;
-                if !p.ticking {
-                    p.ticking = true;
-                    schedule(true);
+            pending.scheduled = true;
+            drop(pending);
+            // One queued callback samples the newest complete snapshot. Older
+            // positions never accumulate as AppKit redraw work.
+            DispatchQueue::main().exec_async(|| {
+                let snapshot = {
+                    let mut pending = pending_presentation().lock().unwrap();
+                    pending.scheduled = false;
+                    pending.latest.take()
+                };
+                if let Some(snapshot) = snapshot {
+                    apply_snapshot(snapshot, false);
                 }
             });
-            refresh();
-        })
-    };
-    match delivery {
-        PresentationDelivery::Latest => DispatchQueue::main().exec_async(update),
-        PresentationDelivery::BeforeInput => DispatchQueue::main().exec_sync(update),
+        }
+        PresentationDelivery::BeforeInput => {
+            pending_presentation().lock().unwrap().latest = None;
+            DispatchQueue::main().exec_sync(move || apply_snapshot(snapshot, true));
+        }
     }
+}
+fn apply_snapshot(mut snapshot: Snapshot, before_input: bool) {
+    autoreleasepool(|_| {
+        for state in &mut snapshot.sessions {
+            if let Some(live) = snapshot.progress.get(&state.participant_id) {
+                state.cursor = live.cursor();
+            }
+        }
+        let first = PRESENTATION.with_borrow_mut(|p| {
+            let now = Instant::now();
+            for state in &snapshot.sessions {
+                let previous = p.sessions.iter().find(|previous| {
+                    previous.participant_id == state.participant_id
+                        && previous
+                            .target
+                            .as_ref()
+                            .zip(state.target.as_ref())
+                            .is_some_and(|(a, b)| {
+                                a.id == b.id
+                                    && a.generation == b.generation
+                                    && a.bounds.width == b.bounds.width
+                                    && a.bounds.height == b.bounds.height
+                            })
+                });
+                if before_input
+                    || snapshot.progress.contains_key(&state.participant_id)
+                    || previous.is_none()
+                {
+                    p.motion.remove(&state.participant_id);
+                } else if previous.unwrap().cursor.position != state.cursor.position {
+                    let from = p
+                        .motion
+                        .get(&state.participant_id)
+                        .map_or(previous.unwrap().cursor.position, |motion| {
+                            motion.sample(now)
+                        });
+                    p.motion.insert(
+                        state.participant_id.clone(),
+                        CursorMotion {
+                            from,
+                            to: state.cursor.position,
+                            started: now,
+                        },
+                    );
+                }
+            }
+            p.motion.retain(|id, _| {
+                snapshot
+                    .sessions
+                    .iter()
+                    .any(|state| &state.participant_id == id)
+            });
+            p.sessions = snapshot.sessions;
+            let mut visible = p.sessions.clone();
+            for state in &mut visible {
+                if let Some(motion) = p.motion.get(&state.participant_id) {
+                    state.cursor.position = motion.sample(now);
+                }
+            }
+            crate::effects::live::synchronize(&visible);
+            let first = !p.ticking;
+            if first || !p.animating {
+                p.ticking = true;
+                p.animating = true;
+                p.tick_generation = p.tick_generation.wrapping_add(1);
+                schedule(true, p.tick_generation);
+            }
+            first
+        });
+        // Agent travel still has a synchronous presentation barrier before
+        // input. Cosmetic remote positions use the shared animation clock.
+        if first || before_input {
+            refresh();
+        }
+    });
 }
 /// Update only the exact active attachment, without replacing other sessions.
 pub(super) fn move_cursor(
@@ -351,6 +489,7 @@ pub(super) fn move_cursor(
                     let cursor = progress.cursor();
                     crate::effects::live::movement(&session, &target, cursor.position, false);
                     state.cursor = cursor;
+                    p.motion.remove(&session);
                 }
             });
             refresh();
@@ -371,19 +510,25 @@ fn timestamp() -> u64 {
         .unwrap_or_default()
         .as_millis() as u64
 }
-fn schedule(animating: bool) {
+fn schedule(animating: bool, generation: u64) {
     let _ = DispatchQueue::main().after(
-        DispatchTime::try_from(Duration::from_millis(if animating { 33 } else { 100 })).unwrap(),
-        || {
+        DispatchTime::try_from(Duration::from_millis(if animating { 16 } else { 100 })).unwrap(),
+        move || {
             autoreleasepool(|_| {
+                if PRESENTATION.with_borrow(|p| p.tick_generation != generation) {
+                    return;
+                }
                 refresh();
                 PRESENTATION.with_borrow_mut(|p| {
                     if p.sessions.iter().any(|s| s.target.is_some()) {
-                        schedule(
-                            p.sessions
+                        p.animating = p
+                            .motion
+                            .values()
+                            .any(|motion| motion.active(Instant::now()))
+                            || p.sessions
                                 .iter()
-                                .any(|s| s.cursor.presentation(timestamp()).glow_strength() > 0),
-                        );
+                                .any(|s| s.cursor.presentation(timestamp()).glow_strength() > 0);
+                        schedule(p.animating, generation);
                     } else {
                         p.ticking = false;
                     }
@@ -409,6 +554,17 @@ pub(super) fn refresh_with_windows(windows: &[Window]) {
         for stored in &p.sessions {
             let mut displayed = stored.clone();
             displayed.cursor = stored.cursor.presentation(timestamp());
+            if let Some(motion) = p.motion.get(&stored.participant_id) {
+                displayed.cursor.position = motion.sample(Instant::now());
+                if let Some(target) = &displayed.target {
+                    crate::effects::live::movement(
+                        &stored.participant_id,
+                        target,
+                        displayed.cursor.position,
+                        false,
+                    );
+                }
+            }
             let state = &displayed;
             let Some(target) = state
                 .target

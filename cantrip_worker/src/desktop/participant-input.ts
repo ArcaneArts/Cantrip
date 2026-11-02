@@ -183,6 +183,28 @@ export class DesktopParticipantInput {
       );
     entry.sequence = message.inputSequence;
     const submitted = structuredClone(message);
+    if (submitted.type === "pointer") {
+      const point = {
+        x: (submitted.x * dimensions.logicalWidth) / dimensions.pixelWidth,
+        y: (submitted.y * dimensions.logicalHeight) / dimensions.pixelHeight,
+      };
+      entry.position = {
+        x: Math.min(1, submitted.x / dimensions.pixelWidth),
+        y: Math.min(1, submitted.y / dimensions.pixelHeight),
+      };
+      try {
+        // Follow the live pointer independently of ordered input delivery.
+        entry.participant.present?.(point);
+        this.options.cursor?.(
+          entry.epoch,
+          entry.position.x,
+          entry.position.y,
+          submitted.event === "down",
+        );
+      } catch {
+        // A lost cursor update is not a failed native input operation.
+      }
+    }
     const work = entry.queue.then(async () => {
       if (this.entries.get(id) !== entry)
         throw new Error("Remote input target changed; no input was sent.");
@@ -225,20 +247,6 @@ export class DesktopParticipantInput {
                   data: { point, button: submitted.button },
                 },
           );
-        entry.position = {
-          x: Math.min(1, submitted.x / dimensions.pixelWidth),
-          y: Math.min(1, submitted.y / dimensions.pixelHeight),
-        };
-        try {
-          this.options.cursor?.(
-            entry.epoch,
-            entry.position.x,
-            entry.position.y,
-            submitted.event === "down",
-          );
-        } catch {
-          // A lost cursor update is not a failed native input operation.
-        }
       } else if (submitted.type === "key") {
         const key =
           submitted.code.match(/^Key([A-Z])$/)?.[1] ??
