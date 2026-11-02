@@ -504,7 +504,8 @@
     "projectGoalSnapshotSchema": 9373,
     "projectGoalObservationSchema": 9378,
     "projectGoalObservationResultSchema": 9385,
-    "cantripMcpContextGetResultSchema": 9390
+    "cantripMcpContextGetResultSchema": 9390,
+    "archivedChatWireSummarySchema": 9451
   },
   "nodes": [
     {
@@ -55302,6 +55303,53 @@
     { "type": "boolean", "checks": [] },
     { "type": "never", "checks": [] },
     { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "archivedChatWireSummarySchema",
+      "shape": {
+        "id": 8241,
+        "experience": 9452,
+        "messageCount": 8243,
+        "archivedAt": 8244,
+        "expiresAt": 8245,
+        "createdAt": 8246,
+        "updatedAt": 8247,
+        "contextKind": 9454,
+        "projectId": 9456,
+        "titleProtection": 701
+      },
+      "catchall": 9457,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-command-chat-title",
+          "messageAfterPath": true,
+          "message": "Archived chat title classification must be chat.",
+          "path": ["titleProtection", "classification", "recordKind"]
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 9453,
+      "defaultValue": "agent",
+      "checks": []
+    },
+    { "type": "enum", "values": ["agent", "task"], "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 9455,
+      "checks": []
+    },
+    { "type": "literal", "values": ["project"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
     { "type": "never", "checks": [] }
   ]
 }

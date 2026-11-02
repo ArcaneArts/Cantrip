@@ -523,6 +523,7 @@ export const contractRoots = [
   "projectGoalObservationSchema",
   "projectGoalObservationResultSchema",
   "cantripMcpContextGetResultSchema",
+  "archivedChatWireSummarySchema",
 ];
 
 // Resolve the actual source schemas, including their separate protocol modules.
@@ -745,6 +746,9 @@ registerChecks(protocol.standaloneChatScratchArchiveResultSchema, [
   "worker-command-scratch-archive-result",
 ]);
 registerChecks(protocol.archivedStandaloneChatWireSummarySchema, [
+  "worker-command-chat-title",
+]);
+registerChecks(protocol.archivedChatWireSummarySchema, [
   "worker-command-chat-title",
 ]);
 registerChecks(protocol.githubAgentWorkflowContextSchema, [

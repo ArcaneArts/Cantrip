@@ -5067,3 +5067,63 @@ reports, all inspected after verifying ZIP SHA-256
 The corrected observer also passes the fresh local external PostgreSQL matrix,
 including all five races per runtime/auth profile. This scoped evidence does not
 establish a Windows pass or packaged readiness.
+
+## Existing Task client, full worker and native Goal execution
+
+The local macOS acceptance flow now runs the existing browser SDK against each
+server, through the unchanged production worker and bundled Codex 0.166.0. All
+three storage modes pass 14 steps per implementation. The only controlled
+execution boundary is a local public Responses model endpoint; native RPC,
+threads, Goal tools, endpoint encryption, repositories and worker handlers are
+real. This is not a complete UI or packaged-client acceptance claim.
+
+The flow executes a direct Task, then plans and reviews another Task, finalizes
+its approved plan, and completes its native implementation Goal. It compares the
+actual native Goal tool result with the browser-decrypted objective and dashboard,
+including the compiled implementation policy and approved-plan attachment path.
+Planning waits for the previous dispatch to succeed, matching the existing UI's
+admission rule. Native Goal activation and the saved encrypted server control
+message are separate actual turns, both covered by the model endpoint.
+
+A real quota-failure response produces a private failure with manual retry. The
+existing browser retries the same Task and decrypts its completed result. Project
+pause then keeps a queued admission unexecuted through both server and full-worker
+restart. Unpause executes that saved admission once. Completed Task and Goal
+transcripts, native thread identity and encrypted objectives survive restarts
+without duplicate completed inference. Each implementation makes exactly nine
+model requests and completes five worker shutdowns. No private content appears in
+browser-to-server request bodies or server diagnostics.
+
+The actual client uncovered the missing public project Chat list. Rust now
+serves both active and archived project catalogs with Source ownership joins,
+ordering and summary schemas. A separate exact HTTP suite passes all nine
+storage/authentication profiles: 102 paired observations, including HEAD,
+foreign/missing projects, archived Task experience, message counts and the
+Source-derived 90-day retention deadline. Project Chat creation and the remaining
+catalog/conversation APIs are still separate work.
+
+The dedicated `actual-task-worker` CI job builds the production Codex runtime
+using the verified release cache recipe, then runs all three database modes on
+Linux, macOS and Windows. On Windows it builds Codex with MSVC before configuring
+the GNU native PGlite toolchain. These configured jobs still require observed
+results. Run locally with an actual bundled Codex executable:
+
+```sh
+CANTRIP_CODEX_BIN=/absolute/path/to/bundle/codex node --import tsx scripts/server-rust/actual-folder-client.mjs --tasks --database pglite --report .qa/rust-server/actual-task-worker-pglite.json
+node --import tsx scripts/server-rust/project-chat-catalog-http.mjs --database pglite --report .qa/rust-server/project-chat-catalog-pglite.json
+```
+
+Replace `pglite` with `bundled-postgres` or `postgres` to exercise those modes.
+Strict all-target Clippy and the contextual Chat contracts pass locally (46
+library tests and 20,810 Chat validation/error comparisons). Running-turn
+pause/resume, scheduling races, broader faults, supported artifacts, upgrades,
+post-write rollback, Redis coordination, performance and the full app/Winterhold
+cutover remain required. Node remains the default server.
+
+Fresh PR #2440 CI provides scoped Windows message acceptance: all nine artifact
+reports pass, including reads, writes, all storage/authentication combinations,
+encryption and ordered Live. The wider run still has actual failures: Linux
+PostgreSQL project-alert notification order, Windows Task background scheduling,
+and Windows discovery's private PostgreSQL owner shutdown. Their job logs and
+hash-verified artifacts are retained. These results do not establish a passing
+platform matrix; no assertions, workloads or timeouts have been relaxed.

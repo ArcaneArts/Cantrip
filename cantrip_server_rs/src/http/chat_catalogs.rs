@@ -11,7 +11,7 @@ use crate::{
 use anyhow::Result;
 use axum::{
     Extension, Router,
-    extract::{MatchedPath, Request, State},
+    extract::{MatchedPath, Path, Request, State},
     http::{Method, StatusCode},
     response::Response,
     routing::get,
@@ -100,8 +100,36 @@ async fn handle(
         Err(error) => middleware::failure(&service, &ctx.id, &error),
     }
 }
+async fn project_list(
+    State(service): State<Arc<AuthService>>,
+    Extension(context): Extension<Arc<Context>>,
+    Path(project): Path<String>,
+    route: MatchedPath,
+) -> Response {
+    let owner = &context
+        .principal
+        .user
+        .as_ref()
+        .expect("Authenticated Chat owner")
+        .id;
+    let repository = Repository::new(service.repository.database.clone());
+    let result = if route.as_str().ends_with("/archived-chats") {
+        repository.list_archived_project(owner, &project).await
+    } else {
+        repository.list_project(owner, &project).await
+    };
+    match result {
+        Ok(chats) => json_response(StatusCode::OK, Value::Array(chats)),
+        Err(cause) => middleware::failure(&service, &context.id, &cause),
+    }
+}
 pub(super) fn routes() -> Router<Arc<AuthService>> {
     Router::new()
         .route("/api/chats", get(handle).post(handle))
         .route("/api/chats/archived", get(handle))
+        .route("/api/projects/{projectId}/chats", get(project_list))
+        .route(
+            "/api/projects/{projectId}/archived-chats",
+            get(project_list),
+        )
 }

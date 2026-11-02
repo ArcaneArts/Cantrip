@@ -235,6 +235,20 @@ export function standaloneChatWireFixtures(timestamp) {
         updatedAt: timestamp,
       },
     ],
+    archivedChatWireSummarySchema: [
+      {
+        id: job.chatId,
+        contextKind: "project",
+        projectId: "project",
+        titleProtection,
+        experience: "task",
+        messageCount: 2,
+        archivedAt: timestamp,
+        expiresAt: "2027-01-01T00:00:00.000Z",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      },
+    ],
     standaloneChatScratchProvisionResultSchema: [
       {
         status: "ready",
