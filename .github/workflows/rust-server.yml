@@ -1150,7 +1150,7 @@ jobs:
       - name: Native command protocol compatibility
         run: node scripts/server-rust/cargo.mjs test --test native_command_contracts -- --nocapture
       - name: Turn protocol, lifetime and recovery scheduler compatibility
-        run: node scripts/server-rust/cargo.mjs test --test task_contracts --test task_failure_kind --test task_behavior --test turn_orchestration_contracts --test turn_behavior_contracts --test turn_stage_lifetime --test turn_outcome_scheduler -- --nocapture
+        run: node scripts/server-rust/cargo.mjs test --test task_contracts --test task_dashboard --test task_failure_kind --test task_behavior --test turn_orchestration_contracts --test turn_behavior_contracts --test turn_stage_lifetime --test turn_outcome_scheduler -- --nocapture
       - name: native-settings-repository with pglite
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"
@@ -1253,6 +1253,10 @@ jobs:
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"
         run: node --import tsx scripts/server-rust/task-surfaces-http.mjs --database pglite --report .qa/rust-server/task-surfaces-http-pglite.json
+      - name: Public Task dashboard and Chat Goal lifecycle with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/task-dashboard-goals-http.mjs --database pglite --report .qa/rust-server/task-dashboard-goals-http-pglite.json
       - name: native-coordination-http with pglite
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"
@@ -1369,6 +1373,10 @@ jobs:
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"
         run: node --import tsx scripts/server-rust/task-surfaces-http.mjs --database bundled-postgres --report .qa/rust-server/task-surfaces-http-bundled-postgres.json
+      - name: Public Task dashboard and Chat Goal lifecycle with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/task-dashboard-goals-http.mjs --database bundled-postgres --report .qa/rust-server/task-dashboard-goals-http-bundled-postgres.json
       - name: native-coordination-http with bundled-postgres
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"
@@ -1485,6 +1493,10 @@ jobs:
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"
         run: node --import tsx scripts/server-rust/task-surfaces-http.mjs --database postgres --report .qa/rust-server/task-surfaces-http-postgres.json
+      - name: Public Task dashboard and Chat Goal lifecycle with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/task-dashboard-goals-http.mjs --database postgres --report .qa/rust-server/task-dashboard-goals-http-postgres.json
       - name: native-coordination-http with postgres
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"

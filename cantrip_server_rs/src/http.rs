@@ -19,6 +19,7 @@ mod browsers;
 mod chat_catalogs;
 mod chat_execution;
 mod chat_forks;
+mod chat_goals;
 mod chat_lifecycle;
 mod chat_messages;
 mod chat_preparation;
@@ -166,6 +167,7 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(chat_catalogs::routes())
         .merge(chat_execution::routes())
         .merge(task_controls::routes())
+        .merge(chat_goals::routes())
         .merge(chat_lifecycle::routes())
         .merge(chat_forks::routes())
         .merge(chat_messages::routes())

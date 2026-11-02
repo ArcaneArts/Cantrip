@@ -10,6 +10,21 @@ fn text<'a>(value: &'a Value, key: &str) -> Result<&'a str> {
     value[key].as_str().context("Observation path field")
 }
 impl TargetRepository {
+    pub async fn status_snapshot(
+        &self,
+        owner: &str,
+        project: &str,
+        worktree: &str,
+    ) -> Result<Option<Value>> {
+        let rows = self.database.query("SELECT w.status_snapshot::text FROM project_worktrees w JOIN project_sources s ON s.id=w.project_source_id JOIN projects p ON p.id=s.project_id AND p.owner_id=$1 WHERE p.id=$2 AND w.id=$3 AND s.removed_at IS NULL LIMIT 1", &[&owner,&project,&worktree]).await?;
+        rows.first()
+            .map(|row| row.get::<Option<String>>(0))
+            .transpose()?
+            .flatten()
+            .map(|raw| Ok(serde_json::from_str(&raw)?))
+            .transpose()
+    }
+
     pub async fn observation_context(
         &self,
         owner: &str,

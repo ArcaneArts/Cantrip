@@ -14,6 +14,7 @@ pub(super) fn refine(
             | "chat-placement-create"
             | "encrypted-task-create"
             | "chat-root-model"
+            | "chat-goal-update"
     ) {
         return Ok(false);
     }
@@ -30,6 +31,11 @@ pub(super) fn refine(
             .push(json!({"code":"custom","message":message,"path":at}));
     };
     match tag {
+        "chat-goal-update" => {
+            if value.get("status").is_none() && value.get("protectedObjective").is_none() {
+                custom(&[], "A goal update needs a status or encrypted objective.");
+            }
+        }
         "chat-root-model" => {
             if value["modelId"].is_null() {
                 // The generated refine check already includes its declared path.

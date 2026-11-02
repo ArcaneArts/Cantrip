@@ -12,6 +12,38 @@ feature set.
 
 Status: **implementation in progress; not a deployable replacement**.
 
+The Task dashboard and Chat Goal milestone mounts the existing implementation
+dashboard and public Goal GET/POST/PATCH/DELETE controls through the same native
+runtime, routing, encrypted Task synchronization and lease services. Dashboard
+PR associations, warning order, folder placement, observed dirty files and
+worker-unavailable reasons follow Source. Both concurrent PR requests retain
+ownership after an early failure; Task Goal errors remain opaque.
+
+Local comparisons pass all nine database/authentication profiles: 79 anonymous,
+80 password and 85 account observations per store (732 paired HTTP observations
+total), plus 69 complete worker-command comparisons per peer/profile. Actual
+worker cryptography independently verifies Task and Goal ciphertext; the suite
+also checks completion synchronization, unrelated-message rejection, resume
+admission before controlled model completion, owner isolation, missing threads,
+offline behavior, sixteen ordered Task Live events per peer/profile, redacted
+server diagnostics and reopened durable state. All 34,379 Task protocol outcomes
+and exact errors and 224 dashboard association/warning cases pass. The manifest
+has 494 roots and 9,311 nodes, preserving every baseline root mapping and the
+complete 9,237-node prefix. Strict all-target Clippy passes locally. These are
+controlled-worker results; complete unchanged-client/worker execution and
+packaged acceptance remain required.
+
+Fresh PR #2439 Linux and Windows native suites fail at the existing native-event
+comparison: project-alert commit notifications interleave differently with
+application invalidations. The Windows message-write suite also times out at
+Rust/PGlite startup. Actual logs and the Ubuntu artifact were retained. The
+PGlite notification path now publishes its callback inline, preserving Source
+commit-before-application ordering; the original native-event assertions pass
+all three local authentication profiles. External PostgreSQL retains its
+separate LISTEN path and its original comparison also passes locally. Fresh
+supported-platform verification and the Windows startup investigation remain;
+no assertions or deadlines were changed.
+
 The Task catalog milestone implements public creation, deletion, attachment
 listing and Chat model configuration. Creation commits the encrypted Task,
 Chat, runtime session and suspended execution lane together, inherits account
