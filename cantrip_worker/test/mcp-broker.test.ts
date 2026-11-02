@@ -694,6 +694,8 @@ describe("Cantrip MCP worker broker", () => {
           const idempotent =
             readOnly ||
             tool.name === "chat_send" ||
+            tool.name === "alert_raise" ||
+            tool.name === "alert_resolve" ||
             tool.name.startsWith("run_configuration_");
           expect(tool).toMatchObject({
             annotations: {

@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import type { ChatSummary } from "@cantrip/protocol";
 import { useState } from "react";
 import TestRenderer, { act } from "react-test-renderer";
