@@ -2,7 +2,7 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { CodeEditorSettings } from "@/components/settings/code-editor-settings";
+import { EditorsSettings } from "@/components/settings/editors-settings";
 import {
   readCodeEditorLineNumbers,
   saveCodeEditorLineNumbers,
@@ -35,7 +35,7 @@ it("updates mounted settings and consumers for local changes and another window'
     await act(async () =>
       root.render(
         <>
-          <CodeEditorSettings />
+          <EditorsSettings />
           <Consumer />
         </>,
       ),
@@ -77,7 +77,7 @@ it("keeps the default and shows an error if the preference cannot be saved", asy
     throw new Error("Storage unavailable");
   });
   try {
-    await act(async () => root.render(<CodeEditorSettings />));
+    await act(async () => root.render(<EditorsSettings />));
     await act(async () => node.querySelector("input")!.click());
     expect(node.querySelector("input")!.checked).toBe(true);
     expect(node.querySelector('[role="alert"]')!.textContent).toContain(

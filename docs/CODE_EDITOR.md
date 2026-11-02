@@ -20,6 +20,24 @@ In Pro mode the editor stays transparent over the app's existing backdrop tint.
 Clicking into its text does not add a focus rectangle; the caret and selection
 remain visible.
 
+## Editor preferences
+
+Settings → Editors keeps the line-number toggle and saves file-opening defaults
+on this device. Markdown, licenses, and logs default to View mode; each can
+instead open in the code editor. Other text defaults to the code editor and can
+instead open read-only. JSON, TOML, YAML, CSV, environment files, and properties
+each offer Code editor (the default), Visual editor, or View mode.
+
+Specialized viewer options control whether NBT starts in View mode (on by
+default), whether large images fit the panel (on), and whether audio or video
+playback loops (both off). Media does not autoplay. NBT's editing toggle and
+image pan/zoom controls remain available in the viewer.
+
+Opening defaults apply to new views. Existing tabs, explicitly saved modes, and
+window transfers retain their presentation. An explicit Open As choice takes
+priority; Open As → Automatic uses the configured format default. Searching
+settings embeds the matching controls under Editors.
+
 ## Find in the editor
 
 Press Command+F on macOS or Ctrl+F on Windows/Linux to open the compact find

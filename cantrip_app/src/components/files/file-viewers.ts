@@ -12,6 +12,7 @@ import { isLicenseFile } from "@/components/editor/license-file";
 import type { FileAccess } from "@/lib/file-access";
 import type { FileIconKind } from "./file-type";
 import type { NbtViewState } from "@/lib/nbt/view-state";
+import { readEditorOpeningMode } from "@/lib/editor-preferences";
 
 export type FileViewerViewState = NbtViewState;
 
@@ -55,6 +56,8 @@ export interface FileViewerDefinition {
   label: string;
   icon: FileIconKind;
   defaultMode: ExplorerFileMode;
+  /** Modes supported for automatic opening; omitted for dedicated binary viewers. */
+  openingModes?: readonly ExplorerFileMode[];
   openMode?: ExplorerFileMode;
   matches(path: string): boolean;
   syntaxExtension?: string;
@@ -78,6 +81,7 @@ const structured = (
         ? "table"
         : id,
   defaultMode: "edit",
+  openingModes: ["edit", "visual", "preview"],
   openMode: "visual",
   syntaxExtension: id,
   structuredFormat: id,
@@ -128,6 +132,7 @@ export const FILE_VIEWERS: readonly FileViewerDefinition[] = [
     label: "License",
     icon: "license",
     defaultMode: "preview",
+    openingModes: ["preview", "edit"],
     matches: isLicenseFile,
   },
   {
@@ -135,6 +140,7 @@ export const FILE_VIEWERS: readonly FileViewerDefinition[] = [
     label: "Markdown",
     icon: "markdown",
     defaultMode: "preview",
+    openingModes: ["preview", "edit"],
     syntaxExtension: "md",
     matches: explorerMarkdownFileForPath,
   },
@@ -143,6 +149,7 @@ export const FILE_VIEWERS: readonly FileViewerDefinition[] = [
     label: "Log",
     icon: "text",
     defaultMode: "preview",
+    openingModes: ["preview", "edit"],
     matches: isLogFile,
   },
   structured("json", "JSON", ["json"]),
@@ -156,6 +163,7 @@ export const FILE_VIEWERS: readonly FileViewerDefinition[] = [
     label: "Text",
     icon: "text",
     defaultMode: "edit",
+    openingModes: ["edit", "preview"],
     syntaxExtension: "txt",
     matches: () => true,
   },
@@ -193,4 +201,15 @@ export function resolveFileViewer(
     log: selected.id === "log",
     custom: selected.Component,
   };
+}
+
+/** Read device defaults only when opening, never during viewer rendering/detection. */
+export function resolveFileOpeningMode(path: string, override?: string | null) {
+  const viewer = resolveFileViewer(path, override);
+  if (override) return viewer.mode;
+  return readEditorOpeningMode(
+    viewer.definition.id,
+    viewer.definition.defaultMode,
+    viewer.definition.openingModes ?? [],
+  );
 }

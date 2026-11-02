@@ -1,5 +1,7 @@
+// @vitest-environment jsdom
+import { saveEditorOpeningMode } from "@/lib/editor-preferences";
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { CodeAppearance } from "@cantrip/protocol";
 import type { ProjectSurface } from "@/lib/project-surface";
 import { FileDocumentView } from "./file-document-view";
@@ -8,6 +10,7 @@ import { PersistentFileDocumentViews } from "./persistent-file-document-views";
 vi.mock("./file-document-view", () => ({ FileDocumentView: () => null }));
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 let renderer: ReactTestRenderer | undefined;
+beforeEach(() => localStorage.clear());
 afterEach(async () => {
   await act(async () => renderer?.unmount());
   renderer = undefined;
@@ -171,5 +174,38 @@ it("defaults new log document views to preview without changing an explicit save
   await act(async () =>
     renderer!.root.findByType(FileDocumentView).props.onModeChange("edit"),
   );
+  expect(renderer!.root.findByType(FileDocumentView).props.mode).toBe("edit");
+});
+
+it("uses opening preferences for new tabs while preserving current and saved modes", async () => {
+  const json = {
+    ...surface(),
+    entity: { ...document, path: "settings.json" },
+  } as ProjectSurface;
+  saveEditorOpeningMode("json", "visual");
+  await act(async () => {
+    renderer = create(tree([json]));
+  });
+  expect(renderer!.root.findByType(FileDocumentView).props.mode).toBe("visual");
+  await act(async () => {
+    saveEditorOpeningMode("json", "edit");
+    renderer!.update(tree([json]));
+  });
+  expect(renderer!.root.findByType(FileDocumentView).props.mode).toBe("visual");
+  await act(async () =>
+    renderer!.update(tree([{ ...json, fileMode: "preview" }])),
+  );
+  expect(renderer!.root.findByType(FileDocumentView).props.mode).toBe(
+    "preview",
+  );
+  await act(async () => renderer!.unmount());
+  await act(async () => {
+    renderer = create(tree([{ ...json, fileMode: "preview" }]));
+  });
+  expect(renderer!.root.findByType(FileDocumentView).props.mode).toBe(
+    "preview",
+  );
+  await act(async () => renderer!.update(tree([])));
+  await act(async () => renderer!.update(tree([json])));
   expect(renderer!.root.findByType(FileDocumentView).props.mode).toBe("edit");
 });

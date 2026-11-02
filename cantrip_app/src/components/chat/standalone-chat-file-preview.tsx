@@ -5,7 +5,6 @@ import { File, Loader2, Save } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Markdown } from "@/components/chat/markdown";
 import { NativeCodeEditor } from "@/components/editor/native-code-editor";
-import { isLogFile } from "@/components/editor/log-file";
 import { isLicenseFile } from "@/components/editor/license-file";
 import { LicenseFileView } from "@/components/editor/license-file-view";
 import type { EditorDocumentSession } from "@/components/editor/document-session";
@@ -19,6 +18,8 @@ import {
   structuredFileFormatForPath,
 } from "@/components/explorer/explorer-file-language";
 import { StructuredFileVisual } from "@/components/explorer/structured-file-visual";
+import { ExplorerImageViewport } from "@/components/explorer/explorer-image-viewport";
+import { useMediaLoopDefault } from "@/lib/use-media-loop-default";
 import { formatExplorerSize } from "@/components/explorer/explorer-entry-metadata";
 import { Button } from "@/components/ui/button";
 import { getClientSession } from "@/lib/client-session";
@@ -50,6 +51,15 @@ function ChatFileMediaPreview({
     () => (media.data ? URL.createObjectURL(media.data) : null),
     [media.data],
   );
+  const type = media.data?.type ?? "";
+  const loop = useMediaLoopDefault(
+    type.startsWith("audio/")
+      ? "audio"
+      : type.startsWith("video/")
+        ? "video"
+        : "image",
+    source,
+  );
   useEffect(
     () => () => {
       if (source) URL.revokeObjectURL(source);
@@ -68,15 +78,8 @@ function ChatFileMediaPreview({
       </p>
     );
   }
-  const type = media.data.type;
   if (type.startsWith("image/")) {
-    return (
-      <img
-        alt={entry.name}
-        className="m-auto max-h-full max-w-full object-contain p-3"
-        src={source}
-      />
-    );
+    return <ExplorerImageViewport alt={entry.name} source={source} />;
   }
   if (type.startsWith("audio/")) {
     return (
@@ -84,6 +87,7 @@ function ChatFileMediaPreview({
         aria-label={entry.name}
         className="m-auto w-[90%]"
         controls
+        loop={loop}
         src={source}
       />
     );
@@ -93,6 +97,7 @@ function ChatFileMediaPreview({
       aria-label={entry.name}
       className="m-auto max-h-full max-w-full p-3"
       controls
+      loop={loop}
       playsInline
       src={source}
     />
@@ -291,17 +296,13 @@ export function ChatFilePreview({
         >
           {entry.name}
         </span>
-        {entry.markdown ||
-        isLicenseFile(entry.path) ||
-        isLogFile(entry.path) ? (
-          <Button
-            size="sm"
-            variant={mode === "preview" ? "outline" : "ghost"}
-            onClick={() => setMode("preview")}
-          >
-            Preview
-          </Button>
-        ) : null}
+        <Button
+          size="sm"
+          variant={mode === "preview" ? "outline" : "ghost"}
+          onClick={() => setMode("preview")}
+        >
+          Preview
+        </Button>
         {format ? (
           <Button
             size="sm"

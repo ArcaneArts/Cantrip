@@ -3,7 +3,7 @@ import { LabelingSettings } from "./labeling-settings";
 import { Monitor } from "lucide-react";
 import { FileChangeSettings } from "./file-change-settings";
 import { TabDisplaySettings } from "./tab-display-settings";
-import { CodeEditorSettings } from "./code-editor-settings";
+import { EditorsSettings, editorSettingsSearchItems } from "./editors-settings";
 import { FileNavigationSettings } from "./file-navigation-settings";
 import type {
   CodeAppearance,
@@ -187,7 +187,7 @@ export type SettingsSection =
   | "computer-use"
   | "remote-desktop"
   | "appearance"
-  | "code-editor"
+  | "editors"
   | "usage"
   | "elite"
   | "models"
@@ -327,18 +327,11 @@ export const settingsNavigationSections: readonly SettingsNavigationSection<Sett
       ],
     },
     {
-      id: "code-editor",
-      label: "Code Editor",
-      description: "Code editing and viewing preferences",
+      id: "editors",
+      label: "Editors",
+      description: "File editing and viewing preferences",
       icon: Code2,
-      searchItems: [
-        {
-          id: "code-editor-line-numbers",
-          label: "Show line numbers",
-          description: "Show or hide line numbers in code editors and viewers.",
-          keywords: ["gutter margin numbering"],
-        },
-      ],
+      searchItems: editorSettingsSearchItems,
     },
     {
       id: "usage",
@@ -2223,9 +2216,8 @@ export function SettingsPage({
                 </div>
               ) : null}
               {section === "workers" ? <WorkerSettings /> : null}
-              {section === "code-editor" &&
-              matchesSetting("code-editor-line-numbers") ? (
-                <CodeEditorSettings />
+              {section === "editors" ? (
+                <EditorsSettings matchesSetting={matchesSetting} />
               ) : null}
               {section === "usage" ? <AccountUsageSettings /> : null}
               {section === "elite" ? (

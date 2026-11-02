@@ -1,3 +1,4 @@
+import { readEditorBoolean } from "@/lib/editor-preferences";
 import { NbtEditActions } from "./edit-actions";
 import { useNbtExport } from "./use-export";
 import {
@@ -111,7 +112,7 @@ export function NbtBrowser({
     [find, setFind] = useState(false),
     [crumbs, setCrumbs] = useState<NbtDisplayRow[]>([]),
     [navigationError, setNavigationError] = useState<string | null>(null),
-    [editing, setEditing] = useState(false),
+    [editing, setEditing] = useState(() => !readEditorBoolean("nbt-view-mode")),
     [editRequest, setEditRequest] = useState<NbtEditRequest | null>(null),
     [epoch, setEpoch] = useState(0);
   const [saveAsPath, setSaveAsPath] = useState<string | null>(null),
