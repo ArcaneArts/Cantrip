@@ -114,7 +114,7 @@ import { useCompactLayout, useNarrowViewport } from "@/lib/use-compact-layout";
 import { ProjectOverviewNavigation } from "@/components/projects/project-overview-navigation";
 import type { ProjectOverviewSection } from "@/lib/project-overview-section";
 
-import { GitChangesPanel } from "./git-changes-panel";
+import { GitWorkingChangesDialog } from "./git-working-changes-dialog";
 import { GitBranchPanel } from "./git-branch-panel";
 import { GitCommitInspector } from "./git-commit-inspector";
 import { GitPanelSummary } from "./git-panel-summary";
@@ -727,12 +727,18 @@ export function GitHistoryView({
   const repositoryOpen = activeDrawer?.kind === "repository";
   const operationsOpen = activeDrawer?.kind === "operations";
   const activeToolDrawer =
-    activeDrawer?.kind === "commit" ? null : activeDrawer;
+    activeDrawer?.kind === "commit" || activeDrawer?.kind === "changes"
+      ? null
+      : activeDrawer;
   const drawerOpen = activeToolDrawer !== null;
   const presentedActiveDrawer = activeToolDrawer ?? presentedDrawer;
 
   useEffect(() => {
-    if (activeDrawer && activeDrawer.kind !== "commit") {
+    if (
+      activeDrawer &&
+      activeDrawer.kind !== "commit" &&
+      activeDrawer.kind !== "changes"
+    ) {
       setPresentedDrawer(activeDrawer);
     }
   }, [activeDrawer]);
@@ -1502,26 +1508,6 @@ export function GitHistoryView({
 
   const renderDrawerContent = (drawer: GitHistoryDrawer) => (
     <>
-      {drawer.kind === "changes" ? (
-        status ? (
-          <GitChangesPanel
-            projectId={project.id}
-            worktreeId={worktreeId}
-            worktreeName={selectedWorktree?.name ?? "Worktree"}
-            worktrees={worktrees}
-            status={status}
-            onClose={closeDrawer}
-            onOpenFile={(path) => onOpenGraphFile(worktreeId, path)}
-            onSelectWorktree={onSelectWorktree}
-          />
-        ) : (
-          <aside className="grid place-items-center bg-background text-sm text-muted-foreground">
-            <p className="p-6 text-center">
-              Git status is unavailable for this worktree.
-            </p>
-          </aside>
-        )
-      ) : null}
       {drawer.kind === "compare" ? (
         <GitComparisonPanel
           projectId={project.id}
@@ -2429,6 +2415,21 @@ export function GitHistoryView({
           )}
         </GitContentSurface>
       )}
+
+      {navigationActive &&
+      (section === "history" || section === "graph") &&
+      activeDrawer?.kind === "changes" ? (
+        <GitWorkingChangesDialog
+          projectId={project.id}
+          worktreeId={worktreeId}
+          worktreeName={selectedWorktree?.name ?? "Worktree"}
+          worktrees={worktrees}
+          status={status}
+          onClose={closeDrawer}
+          onOpenFile={(path) => onOpenGraphFile(worktreeId, path)}
+          onSelectWorktree={onSelectWorktree}
+        />
+      ) : null}
 
       {navigationActive &&
       (section === "history" || section === "graph") &&
