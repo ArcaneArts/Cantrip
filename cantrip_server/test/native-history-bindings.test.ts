@@ -68,7 +68,7 @@ beforeAll(async () => {
     name: "History fixture",
     platform: "darwin",
     architecture: "arm64",
-    codexVersion: "0.163.0",
+    codexVersion: "0.166.0",
     codexRuntime: unprobedCodexRuntimeReport,
     remoteSurfaces: {
       browser: false,

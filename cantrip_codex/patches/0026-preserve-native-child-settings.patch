@@ -1,8 +1,8 @@
 diff --git a/codex-rs/app-server-protocol/src/protocol/common.rs b/codex-rs/app-server-protocol/src/protocol/common.rs
-index ff411f3b15c779c80c819d56ab00d1570551c90d..53af7f1f8e877224342d8baec0375e00e5c22837 100644
+index a0441e4545e4c15dfca25e7a1c58703e8ce6c011..8b87c1f0afaac24947be63f2164c45dd50560271 100644
 --- a/codex-rs/app-server-protocol/src/protocol/common.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/common.rs
-@@ -4563,6 +4563,9 @@ mod tests {
+@@ -4624,6 +4624,9 @@ mod tests {
                  thread_id: "thr_123".to_string(),
                  thread_settings: v2::ThreadSettings {
                      disabled_plugin_ids: Vec::new(),
@@ -13,10 +13,10 @@ index ff411f3b15c779c80c819d56ab00d1570551c90d..53af7f1f8e877224342d8baec0375e00
                      cwd: absolute_path("/tmp/repo"),
                      approval_policy: v2::AskForApproval::Never,
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/tests.rs b/codex-rs/app-server-protocol/src/protocol/v2/tests.rs
-index 4742cf37efa4a077468a39751a66d09c499e1ade..a87347022059b07d0b6d5b158ad4938a395d7ef5 100644
+index bc9c852690feec713bfcbea8c1e18f45cedb8b09..54300e5bbf9d9f813e2161c22d41d151c4f63d95 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/tests.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/tests.rs
-@@ -5530,3 +5530,27 @@ fn settings_rejection_serializes_operation_identity() {
+@@ -5588,3 +5588,27 @@ fn settings_rejection_serializes_operation_identity() {
          );
      }
  }
@@ -45,7 +45,7 @@ index 4742cf37efa4a077468a39751a66d09c499e1ade..a87347022059b07d0b6d5b158ad4938a
 +    );
 +}
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-index e668ad140996d9fd97272158417058339f746cf1..ba5fe535cf0b8ea86478fbccdd9d4ab927b93a1a 100644
+index c25f985e26266f3e7b2fd36985a6028082361854..16f43b34ddd2aded205233022e8a5ec8fc4e00a0 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
 @@ -293,9 +293,36 @@ pub struct ThreadSettingsUpdateParams {
@@ -121,10 +121,10 @@ index 5fcdc3358788c791d25e47fb66646d214eae817c..3f7871751c9f8c665eb32228f0f49c65
          execution_gate,
          mcp_servers,
 diff --git a/codex-rs/app-server/src/request_processors/persisted_resume_settings.rs b/codex-rs/app-server/src/request_processors/persisted_resume_settings.rs
-index 8305c2a953863c168d4f0fca15f0bb5f39b33451..3e35fefec6a5d403993e76f420d7acb65c298c64 100644
+index d07cfdf1c016d0b5f0beaca2875af5031a9b8c16..0a041ab4ceb92bac0b3cd0a9c70cc0312171e5ef 100644
 --- a/codex-rs/app-server/src/request_processors/persisted_resume_settings.rs
 +++ b/codex-rs/app-server/src/request_processors/persisted_resume_settings.rs
-@@ -88,6 +88,9 @@ pub(super) struct OwnedResumeSettings {
+@@ -264,6 +264,9 @@ pub(super) struct OwnedResumeSettings {
      restore_summary: bool,
      restore_personality: bool,
      restore_permissions: bool,
@@ -134,7 +134,7 @@ index 8305c2a953863c168d4f0fca15f0bb5f39b33451..3e35fefec6a5d403993e76f420d7acb6
  }
  
  pub(super) fn merge_owned_resume_settings(
-@@ -120,6 +123,24 @@ pub(super) fn merge_owned_resume_settings(
+@@ -296,6 +299,24 @@ pub(super) fn merge_owned_resume_settings(
          codex_protocol::config_types::ServiceTier::from_request_value(&tier)
              .map_or(tier, |tier| tier.request_value().to_string())
      });
@@ -159,7 +159,7 @@ index 8305c2a953863c168d4f0fca15f0bb5f39b33451..3e35fefec6a5d403993e76f420d7acb6
      let restore_effort = !contains("model_reasoning_effort");
      let restore_summary = !contains("model_reasoning_summary");
      let restore_personality = overrides.personality.is_none() && !contains("personality");
-@@ -192,11 +213,32 @@ pub(super) fn merge_owned_resume_settings(
+@@ -368,11 +389,32 @@ pub(super) fn merge_owned_resume_settings(
          restore_summary,
          restore_personality,
          restore_permissions,
@@ -193,18 +193,18 @@ index 8305c2a953863c168d4f0fca15f0bb5f39b33451..3e35fefec6a5d403993e76f420d7acb6
              config.model_reasoning_effort = self.snapshot.reasoning_effort;
          }
 diff --git a/codex-rs/app-server/src/request_processors/persisted_resume_settings_tests.rs b/codex-rs/app-server/src/request_processors/persisted_resume_settings_tests.rs
-index 1a1f84376f1448e52c775be2294233fa83045421..3bfa96324bed095f491b76f40f5a307e5a05a42e 100644
+index e1c3f8bb80430850a6dd08a8ab8047239c2de79d..a1aa17066f383a9a9ded0b53719e20362a0af30d 100644
 --- a/codex-rs/app-server/src/request_processors/persisted_resume_settings_tests.rs
 +++ b/codex-rs/app-server/src/request_processors/persisted_resume_settings_tests.rs
-@@ -32,6 +32,7 @@ fn settings_item(
-             thread_id: None,
+@@ -34,6 +34,7 @@ fn settings_item(
+             thread_id,
              thread_settings: ThreadSettingsSnapshot {
                  disabled_plugin_ids: Vec::new(),
 +                child_settings: None,
                  settings_version: None,
                  model: "gpt-5".to_string(),
                  model_provider_id: "openai".to_string(),
-@@ -455,3 +456,69 @@ async fn full_restore_preserves_selected_tier_and_explicit_clear_before_feature_
+@@ -540,3 +541,69 @@ async fn full_restore_preserves_selected_tier_and_explicit_clear_before_feature_
          );
      }
  }
@@ -275,10 +275,10 @@ index 1a1f84376f1448e52c775be2294233fa83045421..3bfa96324bed095f491b76f40f5a307e
 +    }
 +}
 diff --git a/codex-rs/app-server/src/request_processors/thread_processor.rs b/codex-rs/app-server/src/request_processors/thread_processor.rs
-index fa540607d8ce4f0ac15623e53a762f798f688c03..3e5a4efa155a411c44a867dd7ad92fd0b6c5f8f2 100644
+index 5bb01d24a94bf7e71b881b9efc1b3b7bf6a07f5d..90fdecd5f7366010c6103e7fb2e74b17a0f9a016 100644
 --- a/codex-rs/app-server/src/request_processors/thread_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_processor.rs
-@@ -4333,12 +4333,18 @@ impl ThreadRequestProcessor {
+@@ -4463,12 +4463,18 @@ impl ThreadRequestProcessor {
                  return Ok(ControlFlow::Continue(()));
              }
          };
@@ -298,25 +298,17 @@ index fa540607d8ce4f0ac15623e53a762f798f688c03..3e5a4efa155a411c44a867dd7ad92fd0
              config
                  .apply_managed_thread_configuration(managed)
                  .map_err(|err| invalid_params(format!("managed configuration rejected: {err}")))?;
-@@ -4348,11 +4354,13 @@ impl ThreadRequestProcessor {
+@@ -4489,7 +4495,9 @@ impl ThreadRequestProcessor {
          }
  
          if let Some(settings) = owned_settings {
 -            settings.apply(&mut config).map_err(|error| {
--                invalid_params(format!(
--                    "persisted thread settings violate current requirements: {error}"
--                ))
--            })?;
 +            settings
 +                .apply_preserving_child_settings(&mut config, preserve_child_settings)
 +                .map_err(|error| {
-+                    invalid_params(format!(
-+                        "persisted thread settings violate current requirements: {error}"
-+                    ))
-+                })?;
-         }
- 
-         let response_history = thread_history.clone();
+                 invalid_params(format!(
+                     "persisted thread settings violate current requirements: {error}"
+                 ))
 diff --git a/codex-rs/app-server/src/request_processors/thread_summary.rs b/codex-rs/app-server/src/request_processors/thread_summary.rs
 index 5c22180536abac7c1a22479796f946736c0ba8db..c0f3523d6226150e2f982a3568350b7afe0af4a9 100644
 --- a/codex-rs/app-server/src/request_processors/thread_summary.rs
@@ -341,10 +333,10 @@ index 5c22180536abac7c1a22479796f946736c0ba8db..c0f3523d6226150e2f982a3568350b7a
          cwd: snapshot.cwd.clone(),
          approval_policy: snapshot.approval_policy.into(),
 diff --git a/codex-rs/app-server/src/request_processors/turn_processor.rs b/codex-rs/app-server/src/request_processors/turn_processor.rs
-index e7ce85f37fc602b90ca8bc00650d7513f25bcc31..bdd56eac11507bc96e53758d265fcd3fce5b9315 100644
+index d7d4d33c4aea6a4dcf75feafb9f83adb4f7b17ad..eaea39a18cbedd4b44c4d9a5a204fd6ca911ef96 100644
 --- a/codex-rs/app-server/src/request_processors/turn_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/turn_processor.rs
-@@ -129,6 +129,8 @@ struct ThreadEnvironmentOverride {
+@@ -120,6 +120,8 @@ struct ThreadEnvironmentOverride {
  }
  
  struct ThreadSettingsBuildParams {
@@ -353,7 +345,7 @@ index e7ce85f37fc602b90ca8bc00650d7513f25bcc31..bdd56eac11507bc96e53758d265fcd3f
      method: &'static str,
      disabled_plugin_ids: Option<Vec<String>>,
      environment_override: ThreadEnvironmentOverride,
-@@ -138,7 +140,7 @@ struct ThreadSettingsBuildParams {
+@@ -129,7 +131,7 @@ struct ThreadSettingsBuildParams {
      permissions: Option<String>,
      model: Option<String>,
      service_tier: Option<Option<String>>,
@@ -362,7 +354,7 @@ index e7ce85f37fc602b90ca8bc00650d7513f25bcc31..bdd56eac11507bc96e53758d265fcd3f
      summary: Option<ReasoningSummary>,
      collaboration_mode: Option<CollaborationMode>,
      personality: Option<Personality>,
-@@ -706,13 +708,15 @@ impl TurnRequestProcessor {
+@@ -684,13 +686,15 @@ impl TurnRequestProcessor {
                      method: "turn/start",
                      disabled_plugin_ids: params.disabled_plugin_ids,
                      environment_override,
@@ -379,7 +371,7 @@ index e7ce85f37fc602b90ca8bc00650d7513f25bcc31..bdd56eac11507bc96e53758d265fcd3f
                      summary: params.summary,
                      collaboration_mode: params.collaboration_mode,
                      personality: params.personality,
-@@ -860,6 +864,8 @@ impl TurnRequestProcessor {
+@@ -842,6 +846,8 @@ impl TurnRequestProcessor {
          params: ThreadSettingsBuildParams,
      ) -> Result<codex_protocol::protocol::ThreadSettingsOverrides, JSONRPCErrorError> {
          let ThreadSettingsBuildParams {
@@ -388,7 +380,7 @@ index e7ce85f37fc602b90ca8bc00650d7513f25bcc31..bdd56eac11507bc96e53758d265fcd3f
              method,
              disabled_plugin_ids,
              environment_override:
-@@ -879,6 +885,19 @@ impl TurnRequestProcessor {
+@@ -861,6 +867,19 @@ impl TurnRequestProcessor {
              personality,
          } = params;
  
@@ -408,7 +400,7 @@ index e7ce85f37fc602b90ca8bc00650d7513f25bcc31..bdd56eac11507bc96e53758d265fcd3f
          if sandbox_policy.is_some() && permissions.is_some() {
              return Err(invalid_request(
                  "`permissions` cannot be combined with `sandboxPolicy`",
-@@ -897,7 +916,9 @@ impl TurnRequestProcessor {
+@@ -879,7 +898,9 @@ impl TurnRequestProcessor {
              None
          };
  
@@ -419,7 +411,7 @@ index e7ce85f37fc602b90ca8bc00650d7513f25bcc31..bdd56eac11507bc96e53758d265fcd3f
              || disabled_plugin_ids.is_some()
              || approval_policy.is_some()
              || approvals_reviewer.is_some()
-@@ -950,7 +971,6 @@ impl TurnRequestProcessor {
+@@ -932,7 +953,6 @@ impl TurnRequestProcessor {
              } else {
                  (None, None, None)
              };
@@ -427,7 +419,7 @@ index e7ce85f37fc602b90ca8bc00650d7513f25bcc31..bdd56eac11507bc96e53758d265fcd3f
  
          if has_any_overrides {
              thread
-@@ -958,6 +978,8 @@ impl TurnRequestProcessor {
+@@ -940,6 +960,8 @@ impl TurnRequestProcessor {
                      turn_extension_init: None,
                      disabled_plugin_ids: disabled_plugin_ids.clone(),
                      environments: environment_requests.clone(),
@@ -436,7 +428,7 @@ index e7ce85f37fc602b90ca8bc00650d7513f25bcc31..bdd56eac11507bc96e53758d265fcd3f
                      runtime_workspace_roots: runtime_workspace_roots.clone(),
                      approval_policy,
                      approvals_reviewer,
-@@ -982,6 +1004,8 @@ impl TurnRequestProcessor {
+@@ -964,6 +986,8 @@ impl TurnRequestProcessor {
          Ok(codex_protocol::protocol::ThreadSettingsOverrides {
              disabled_plugin_ids,
              environments: environment_requests,
@@ -445,7 +437,7 @@ index e7ce85f37fc602b90ca8bc00650d7513f25bcc31..bdd56eac11507bc96e53758d265fcd3f
              runtime_workspace_roots,
              profile_workspace_roots,
              approval_policy,
-@@ -1023,6 +1047,12 @@ impl TurnRequestProcessor {
+@@ -1005,6 +1029,12 @@ impl TurnRequestProcessor {
                      method: "thread/settings/update",
                      disabled_plugin_ids: params.disabled_plugin_ids,
                      environment_override,
@@ -459,10 +451,10 @@ index e7ce85f37fc602b90ca8bc00650d7513f25bcc31..bdd56eac11507bc96e53758d265fcd3f
                      approvals_reviewer: params.approvals_reviewer,
                      sandbox_policy: params.sandbox_policy,
 diff --git a/codex-rs/app-server/src/thread_state.rs b/codex-rs/app-server/src/thread_state.rs
-index 6e296afdfb47baab5f46a406879117d24a581280..b341ec32f03944514cdc7f45a5435178fa196433 100644
+index 25cb8c14db834a30a41b0201c6f2f2b18372194c..1a05b08ee2b1d371b59cc2ac9d53ab19ff689c25 100644
 --- a/codex-rs/app-server/src/thread_state.rs
 +++ b/codex-rs/app-server/src/thread_state.rs
-@@ -291,6 +291,9 @@ mod tests {
+@@ -316,6 +316,9 @@ mod tests {
      fn thread_settings(model: &str) -> ThreadSettings {
          ThreadSettings {
              disabled_plugin_ids: Vec::new(),
@@ -473,7 +465,7 @@ index 6e296afdfb47baab5f46a406879117d24a581280..b341ec32f03944514cdc7f45a5435178
              cwd: AbsolutePathBuf::from_absolute_path("/tmp").expect("absolute path"),
              approval_policy: AskForApproval::OnRequest,
 diff --git a/codex-rs/app-server/tests/suite/v2/thread_queue.rs b/codex-rs/app-server/tests/suite/v2/thread_queue.rs
-index 887f635e7f556ab12bb35c73d1f8ba46d2475086..ecba483c60f1d41298d3040af543f1b20984e1a9 100644
+index 070393a606f59d1e4ce20a774f7715982ed0fb28..3ea3e82921593494dee61e7fb2d7262a8202cf22 100644
 --- a/codex-rs/app-server/tests/suite/v2/thread_queue.rs
 +++ b/codex-rs/app-server/tests/suite/v2/thread_queue.rs
 @@ -454,7 +454,7 @@ async fn cold_thread_resume_dispatches_a_persisted_queued_submission() -> Result
@@ -486,19 +478,19 @@ index 887f635e7f556ab12bb35c73d1f8ba46d2475086..ecba483c60f1d41298d3040af543f1b2
          })
          .await?;
 diff --git a/codex-rs/app-server/tests/suite/v2/thread_resume.rs b/codex-rs/app-server/tests/suite/v2/thread_resume.rs
-index cd000a012ace5e5008d8dcc767395ee8da0f738b..8463eef9d15f65216c9fa21bdc14314743fe7658 100644
+index 04ad8291c450e9bca7726b3b22e3b6864494f81d..f94d90f0dd966c6c517ea835c05f7f9cd7b146bf 100644
 --- a/codex-rs/app-server/tests/suite/v2/thread_resume.rs
 +++ b/codex-rs/app-server/tests/suite/v2/thread_resume.rs
-@@ -1554,7 +1554,7 @@ async fn thread_resume_preserves_acknowledged_model_effort_and_approvals_reviewe
+@@ -1716,7 +1716,7 @@ async fn thread_resume_preserves_acknowledged_model_effort_and_approvals_reviewe
              .send_thread_settings_update_request(ThreadSettingsUpdateParams {
                  thread_id: thread.id.clone(),
                  model: Some("gpt-5.2-codex".to_string()),
 -                effort: Some(ReasoningEffort::Ultra),
 +                effort: Some(Some(ReasoningEffort::Ultra)),
+                 approval_policy: Some(AskForApproval::OnRequest),
                  approvals_reviewer: Some(ApprovalsReviewer::AutoReview),
-                 cwd: Some(persisted_cwd.clone()),
-                 ..Default::default()
-@@ -6681,7 +6681,7 @@ async fn empty_cold_resume_preserves_owned_settings_without_a_model_turn() -> Re
+                 permissions: Some(":read-only".to_string()),
+@@ -7203,7 +7203,7 @@ async fn empty_cold_resume_preserves_owned_settings_without_a_model_turn() -> Re
              .send_thread_settings_update_request(ThreadSettingsUpdateParams {
                  thread_id: started.thread.id.clone(),
                  model: Some("gpt-5.2-codex".to_string()),
@@ -508,10 +500,10 @@ index cd000a012ace5e5008d8dcc767395ee8da0f738b..8463eef9d15f65216c9fa21bdc143147
                  summary: Some(codex_protocol::config_types::ReasoningSummary::Detailed),
                  personality: Some(Personality::Pragmatic),
 diff --git a/codex-rs/app-server/tests/suite/v2/thread_settings_update.rs b/codex-rs/app-server/tests/suite/v2/thread_settings_update.rs
-index 928cdabc3c1fcc5bc38501f4a53bd106c59b2b77..dba3cd351c7673d1ac0db1acb72c2505297f3ec9 100644
+index e80c137b8ebcdc8eceb86bed3b2cc08e551c0482..1e7845e5f161651c84a1b43468a41975d7391e4a 100644
 --- a/codex-rs/app-server/tests/suite/v2/thread_settings_update.rs
 +++ b/codex-rs/app-server/tests/suite/v2/thread_settings_update.rs
-@@ -768,5 +768,79 @@ async fn thread_settings_update_preserves_session_profiles() -> Result<()> {
+@@ -773,5 +773,79 @@ async fn thread_settings_update_preserves_session_profiles() -> Result<()> {
              );
          }
      }
@@ -605,10 +597,10 @@ index 1bab64b98aa4d200510b18806fdbfc7af61ab93d..e86d1342da3e318a694a81ab9c28248e
                      service_tier: patch.service_tier,
                      ..Default::default()
 diff --git a/codex-rs/core/src/agent/control_tests.rs b/codex-rs/core/src/agent/control_tests.rs
-index ada651d051af569254122840e62927620caf2231..3bd52dde3286219aa05c4e9fcb270a48fea2d5d4 100644
+index aac2d3281e2f4c35afa060b43098958e40580f44..cd9efc318fa0e468c40a6b4adabb9f611e6b5481 100644
 --- a/codex-rs/core/src/agent/control_tests.rs
 +++ b/codex-rs/core/src/agent/control_tests.rs
-@@ -2430,6 +2430,7 @@ async fn spawn_agent_fork_from_paginated_parent_uses_model_context_prefix(
+@@ -2442,6 +2442,7 @@ async fn spawn_agent_fork_from_paginated_parent_uses_model_context_prefix(
                      thread_id: Some(parent_thread_id),
                      thread_settings: ThreadSettingsSnapshot {
                          disabled_plugin_ids: Vec::new(),
@@ -617,10 +609,10 @@ index ada651d051af569254122840e62927620caf2231..3bd52dde3286219aa05c4e9fcb270a48
                          model: "parent-only-model".to_string(),
                          model_provider_id: "parent-only-provider".to_string(),
 diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
-index 4b2c478495fed2d63ec0d6e501bbf9f4b27c9ae3..1d24a9a0d43709dfe4a4405d06e6b1d5c74bd4c4 100644
+index bacb76a88fc8c6ae5e2db18840a98881975c76df..0491fa2928eb5f56ac4fff923723c47b0f96b37a 100644
 --- a/codex-rs/core/src/codex_thread.rs
 +++ b/codex-rs/core/src/codex_thread.rs
-@@ -148,6 +148,8 @@ impl ThreadConfigSnapshot {
+@@ -153,6 +153,8 @@ impl ThreadConfigSnapshot {
  /// Thread settings overrides that app-server validates before starting a turn.
  #[derive(Clone, Default)]
  pub struct CodexThreadSettingsOverrides {
@@ -629,7 +621,7 @@ index 4b2c478495fed2d63ec0d6e501bbf9f4b27c9ae3..1d24a9a0d43709dfe4a4405d06e6b1d5
      /// Replaces the data captured by future turns. Omission preserves it.
      pub turn_extension_init: Option<codex_extension_api::ExtensionDataInit>,
      pub environments: Option<TurnEnvironmentRequests>,
-@@ -864,6 +866,8 @@ impl CodexThread {
+@@ -936,6 +938,8 @@ impl CodexThread {
          overrides: CodexThreadSettingsOverrides,
      ) -> SessionSettingsUpdate {
          let CodexThreadSettingsOverrides {
@@ -638,7 +630,7 @@ index 4b2c478495fed2d63ec0d6e501bbf9f4b27c9ae3..1d24a9a0d43709dfe4a4405d06e6b1d5
              turn_extension_init,
              environments: environment_requests,
              runtime_workspace_roots,
-@@ -884,6 +888,8 @@ impl CodexThread {
+@@ -956,6 +960,8 @@ impl CodexThread {
          } = overrides;
          SessionSettingsUpdate {
              turn_extension_init,
@@ -648,10 +640,10 @@ index 4b2c478495fed2d63ec0d6e501bbf9f4b27c9ae3..1d24a9a0d43709dfe4a4405d06e6b1d5
                  model,
                  effort,
 diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
-index 3e7a810cd5eda9c7bc380647e172b6db34da613b..c5751ba79e1aed95e88184c8718585e77c4ceea6 100644
+index 50b6b49a5f5104dfe9f57c5c63e5afcc908932d7..c99341c99d8579945a35131a59068248fb126a8b 100644
 --- a/codex-rs/core/src/config/mod.rs
 +++ b/codex-rs/core/src/config/mod.rs
-@@ -621,6 +621,7 @@ pub enum ThreadStoreConfig {
+@@ -626,6 +626,7 @@ pub enum ThreadStoreConfig {
  /// This profile is in-memory only; credentials are never written to config or history.
  #[derive(Debug, Clone, PartialEq)]
  pub struct ManagedThreadConfiguration {
@@ -659,7 +651,7 @@ index 3e7a810cd5eda9c7bc380647e172b6db34da613b..c5751ba79e1aed95e88184c8718585e7
      pub canonical_history: Option<bool>,
      pub execution_gate: Option<Arc<crate::managed_execution::ManagedExecutionGate>>,
      pub mcp_servers: HashMap<String, McpServerConfig>,
-@@ -1973,11 +1974,49 @@ impl Config {
+@@ -2036,11 +2037,49 @@ impl Config {
          }
      }
  
@@ -710,10 +702,10 @@ index 3e7a810cd5eda9c7bc380647e172b6db34da613b..c5751ba79e1aed95e88184c8718585e7
              managed.canonical_history = self
                  .managed_thread_configuration
 diff --git a/codex-rs/core/src/session/mod.rs b/codex-rs/core/src/session/mod.rs
-index f97085d06529540dc5d59ad129e9bdacc9fbdd41..58373a631e5adbfc39a8860312a26ca89235fac0 100644
+index 3747afd2752cd3e713b6855f650029016ff35e8b..c6c33725207e7a1e4bbf23e4354d7e53341b24c2 100644
 --- a/codex-rs/core/src/session/mod.rs
 +++ b/codex-rs/core/src/session/mod.rs
-@@ -2389,6 +2389,7 @@ impl Session {
+@@ -2483,6 +2483,7 @@ impl Session {
          subagent_reasoning_effort: Option<ReasoningEffortConfig>,
      ) -> ConstraintResult<()> {
          self.update_managed_configuration(crate::config::ManagedThreadConfiguration {
@@ -721,7 +713,7 @@ index f97085d06529540dc5d59ad129e9bdacc9fbdd41..58373a631e5adbfc39a8860312a26ca8
              canonical_history: None,
              execution_gate: None,
              mcp_servers,
-@@ -2403,7 +2404,11 @@ impl Session {
+@@ -2497,7 +2498,11 @@ impl Session {
          &self,
          managed: crate::config::ManagedThreadConfiguration,
      ) -> ConstraintResult<()> {
@@ -733,7 +725,7 @@ index f97085d06529540dc5d59ad129e9bdacc9fbdd41..58373a631e5adbfc39a8860312a26ca8
          let mut config = (*state.session_configuration.original_config_do_not_use).clone();
          let developer_instructions = managed.developer_instructions.clone();
          let previous_gate = config
-@@ -2425,8 +2430,22 @@ impl Session {
+@@ -2519,8 +2524,22 @@ impl Session {
          }
          state.session_configuration.developer_instructions = developer_instructions;
          state.session_configuration.original_config_do_not_use = Arc::new(config);
@@ -757,10 +749,10 @@ index f97085d06529540dc5d59ad129e9bdacc9fbdd41..58373a631e5adbfc39a8860312a26ca8
          Ok(())
      }
 diff --git a/codex-rs/core/src/session/session.rs b/codex-rs/core/src/session/session.rs
-index add9a252b007209a502c191731627593a50ea440..7a9c952cf01be37de4d82e8444c92fa5131e674d 100644
+index ea9163e6146c596c921b3764e754f32dc8d653cd..511ac78b20dc6bbe727207064c89b0c107daea6d 100644
 --- a/codex-rs/core/src/session/session.rs
 +++ b/codex-rs/core/src/session/session.rs
-@@ -322,6 +322,21 @@ impl SessionConfiguration {
+@@ -327,6 +327,21 @@ impl SessionConfiguration {
          environment_selections: &[TurnEnvironmentSelection],
      ) -> ThreadSettingsSnapshot {
          ThreadSettingsSnapshot {
@@ -782,7 +774,7 @@ index add9a252b007209a502c191731627593a50ea440..7a9c952cf01be37de4d82e8444c92fa5
              settings_version: None,
              model: self.step_settings.collaboration_mode.model().to_string(),
              model_provider_id: self.original_config_do_not_use.model_provider_id.clone(),
-@@ -353,6 +368,25 @@ impl SessionConfiguration {
+@@ -358,6 +373,25 @@ impl SessionConfiguration {
          environment_selections: Vec<TurnEnvironmentSelection>,
      ) -> CodexThreadSettingsOverrides {
          CodexThreadSettingsOverrides {
@@ -808,7 +800,7 @@ index add9a252b007209a502c191731627593a50ea440..7a9c952cf01be37de4d82e8444c92fa5
              environments: Some(TurnEnvironmentRequests::new(
                  self.legacy_fallback_cwd.clone(),
                  environment_selections
-@@ -423,6 +457,28 @@ impl SessionConfiguration {
+@@ -431,6 +465,28 @@ impl SessionConfiguration {
          if let Some(disabled_plugin_ids) = &updates.disabled_plugin_ids {
              next_configuration.disabled_plugin_ids = disabled_plugin_ids.clone();
          }
@@ -837,7 +829,7 @@ index add9a252b007209a502c191731627593a50ea440..7a9c952cf01be37de4d82e8444c92fa5
          let current_file_system_sandbox_policy =
              self.file_system_sandbox_policy(current_environments);
          let file_system_policy_has_rebindable_project_root_write =
-@@ -565,7 +621,7 @@ impl SessionConfiguration {
+@@ -576,7 +632,7 @@ impl SessionConfiguration {
          // Apply step settings last: the proposed permissions and environment
          // selections must be complete before deriving their validation constraints.
          next_configuration.step_settings = Arc::new(self.step_settings.apply(
@@ -846,7 +838,7 @@ index add9a252b007209a502c191731627593a50ea440..7a9c952cf01be37de4d82e8444c92fa5
              &next_configuration.step_settings_constraints(next_environments),
          )?);
          Ok(next_configuration)
-@@ -616,6 +672,8 @@ pub(crate) struct SessionSettingsCommit {
+@@ -627,6 +683,8 @@ pub(crate) struct SessionSettingsCommit {
  
  #[derive(Default, Clone)]
  pub(crate) struct SessionSettingsUpdate {
@@ -856,10 +848,10 @@ index add9a252b007209a502c191731627593a50ea440..7a9c952cf01be37de4d82e8444c92fa5
      /// Omission preserves the current data; an empty initializer clears it.
      pub(crate) turn_extension_init: Option<ExtensionDataInit>,
 diff --git a/codex-rs/core/src/session/tests.rs b/codex-rs/core/src/session/tests.rs
-index 01121586e9b8406f48632a16be3ee12fb8ccc04a..16cc2a5565537b0a908d9d82b8c086a883cf7bc6 100644
+index 9e8d3b840d229ed038c3507b3adcef569bf9171a..c6928479cb243ac1c92ee369b768706045bcc282 100644
 --- a/codex-rs/core/src/session/tests.rs
 +++ b/codex-rs/core/src/session/tests.rs
-@@ -2219,7 +2219,10 @@ async fn managed_config_update_replaces_and_removes_profile_preserving_live_root
+@@ -2265,7 +2265,10 @@ async fn managed_config_update_replaces_and_removes_profile_preserving_live_root
              .developer_instructions,
          config.developer_instructions
      );
@@ -871,7 +863,7 @@ index 01121586e9b8406f48632a16be3ee12fb8ccc04a..16cc2a5565537b0a908d9d82b8c086a8
  
      session
          .update_managed_config(HashMap::new(), None, false, None, None)
-@@ -2241,7 +2244,10 @@ async fn managed_config_update_replaces_and_removes_profile_preserving_live_root
+@@ -2287,7 +2290,10 @@ async fn managed_config_update_replaces_and_removes_profile_preserving_live_root
              .developer_instructions,
          None
      );
@@ -883,7 +875,7 @@ index 01121586e9b8406f48632a16be3ee12fb8ccc04a..16cc2a5565537b0a908d9d82b8c086a8
  }
  
  #[tokio::test]
-@@ -13906,3 +13912,116 @@ mod canonical_history_tests;
+@@ -14154,3 +14160,116 @@ mod canonical_history_tests;
  
  #[path = "canonical_history_failure_tests.rs"]
  mod canonical_history_failure_tests;
@@ -1001,10 +993,10 @@ index 01121586e9b8406f48632a16be3ee12fb8ccc04a..16cc2a5565537b0a908d9d82b8c086a8
 +    assert_eq!(retained.child_settings.enabled, Some(false));
 +}
 diff --git a/codex-rs/core/src/session/thread_settings.rs b/codex-rs/core/src/session/thread_settings.rs
-index 56ed0e2648e464bf9344c3f82a3a189eeb9f7f87..264719f5de3e67ceeb6e224ce8042928a8e4a07e 100644
+index b3b10dc1213a2a0c3233454f02d9a871caac4293..afbc5cbae1f623c4f1e42714418bca3b1eff2c20 100644
 --- a/codex-rs/core/src/session/thread_settings.rs
 +++ b/codex-rs/core/src/session/thread_settings.rs
-@@ -52,6 +52,8 @@ pub(super) fn prepare_update(
+@@ -102,6 +102,8 @@ pub(super) fn prepare_update(
          turn_extension_init,
      } = overrides.into();
      let ThreadSettingsOverrides {
@@ -1013,7 +1005,7 @@ index 56ed0e2648e464bf9344c3f82a3a189eeb9f7f87..264719f5de3e67ceeb6e224ce8042928
          environments: environment_requests,
          runtime_workspace_roots,
          profile_workspace_roots,
-@@ -71,6 +73,8 @@ pub(super) fn prepare_update(
+@@ -121,6 +123,8 @@ pub(super) fn prepare_update(
      } = overrides;
      SessionSettingsUpdate {
          turn_extension_init,
@@ -1023,10 +1015,10 @@ index 56ed0e2648e464bf9344c3f82a3a189eeb9f7f87..264719f5de3e67ceeb6e224ce8042928
              model,
              effort,
 diff --git a/codex-rs/core/tests/suite/settings_constraints.rs b/codex-rs/core/tests/suite/settings_constraints.rs
-index 2f2411243069030cc91597ea94b25d90b3cbda86..64ca5256986685dd12b9a8bb7ef7a1e45e3eac7d 100644
+index 64e8a7f54710587136003986e289834f305b84e4..8e88302b426b7090fc195c441e7641ca9d623890 100644
 --- a/codex-rs/core/tests/suite/settings_constraints.rs
 +++ b/codex-rs/core/tests/suite/settings_constraints.rs
-@@ -197,6 +197,7 @@ async fn protected_model_settings_use_the_proposed_permissions(
+@@ -201,6 +201,7 @@ async fn protected_model_settings_use_the_proposed_permissions(
          .clone()
          .expect("versioned live settings");
      let mut expected = ThreadSettingsSnapshot {
@@ -1035,10 +1027,10 @@ index 2f2411243069030cc91597ea94b25d90b3cbda86..64ca5256986685dd12b9a8bb7ef7a1e4
          model: PROTECTED_MODEL.to_string(),
          collaboration_mode: initial.collaboration_mode.with_updates(
 diff --git a/codex-rs/protocol/src/protocol.rs b/codex-rs/protocol/src/protocol.rs
-index f3405e2680567ed9b40890bfed7ab905609f8348..d74dc0631cb74cd1c103f68d044048a63dccd75d 100644
+index 662c8bbe45b545705fd1b79fdcc766bc39b8f836..3bf059ee30f86962c5cc4d57eb75122bfc16d5bb 100644
 --- a/codex-rs/protocol/src/protocol.rs
 +++ b/codex-rs/protocol/src/protocol.rs
-@@ -568,6 +568,8 @@ pub enum TurnSettingsUpdateOutcome {
+@@ -574,6 +574,8 @@ pub enum TurnSettingsUpdateOutcome {
      }),
  )]
  pub struct ThreadSettingsOverrides {
@@ -1047,7 +1039,7 @@ index f3405e2680567ed9b40890bfed7ab905609f8348..d74dc0631cb74cd1c103f68d044048a6
      /// Updated fallback `cwd` and environments supplied together as a complete pair.
      pub environments: Option<TurnEnvironmentRequests>,
  
-@@ -2379,8 +2381,26 @@ pub struct ThreadSettingsVersion {
+@@ -2487,8 +2489,26 @@ pub struct ThreadSettingsVersion {
      pub revision: String,
  }
  
@@ -1075,10 +1067,10 @@ index f3405e2680567ed9b40890bfed7ab905609f8348..d74dc0631cb74cd1c103f68d044048a6
      #[serde(default, skip_serializing_if = "Option::is_none")]
      #[ts(optional)]
 diff --git a/codex-rs/state/src/extract.rs b/codex-rs/state/src/extract.rs
-index 35ba7991613278d0ba1be7a528acbe201d126586..ec9519d6cce8391e3406d08f327f01a6e35e92dd 100644
+index 63c6bc0dbcfb9ddecc674fd1cecc06f39053e507..a288fe094ec11896ad279f42a8df2ce7a6056f35 100644
 --- a/codex-rs/state/src/extract.rs
 +++ b/codex-rs/state/src/extract.rs
-@@ -731,6 +731,7 @@ mod tests {
+@@ -739,6 +739,7 @@ mod tests {
                  thread_id: Some(metadata.id),
                  thread_settings: ThreadSettingsSnapshot {
                      disabled_plugin_ids: Vec::new(),
@@ -1087,10 +1079,10 @@ index 35ba7991613278d0ba1be7a528acbe201d126586..ec9519d6cce8391e3406d08f327f01a6
                      model: "gpt-5.2-codex".to_string(),
                      model_provider_id: "updated-provider".to_string(),
 diff --git a/codex-rs/thread-store/src/thread_metadata_sync.rs b/codex-rs/thread-store/src/thread_metadata_sync.rs
-index aebb65646636f2f90bf5a859f44b752cfa2064f0..71ce837a0f4fef52c1c5ccc70227462a893db8f2 100644
+index ba38d3fae07d3f96f2aa2b341f51826bb994be0a..f36a48c0c3b1bab5fe6050d05c3589b7b4e15ac6 100644
 --- a/codex-rs/thread-store/src/thread_metadata_sync.rs
 +++ b/codex-rs/thread-store/src/thread_metadata_sync.rs
-@@ -834,6 +834,7 @@ mod tests {
+@@ -836,6 +836,7 @@ mod tests {
                  thread_id: Some(thread_id),
                  thread_settings: ThreadSettingsSnapshot {
                      disabled_plugin_ids: Vec::new(),
@@ -1126,10 +1118,10 @@ index eef5bb0349a467bf867d20bea75e548c58ca9a1b..d792f62ea43deb80b89b8ef8ac4c8767
              service_tier: service_tier_resolution::service_tier_update_for_core(
                  self.chat_widget.config_ref(),
 diff --git a/codex-rs/tui/src/app/tests.rs b/codex-rs/tui/src/app/tests.rs
-index 259b3d97f6370d0657fb0ad19426f4718b80b00e..594dd2b64f54a4f2c0e9fd25de7061e12429d093 100644
+index 0751f8d5f8dbc301ad4a615ba58f4aac6afb2fa9..3580e0660f9e4bb72b007d18f282ecc1c5837e19 100644
 --- a/codex-rs/tui/src/app/tests.rs
 +++ b/codex-rs/tui/src/app/tests.rs
-@@ -9805,6 +9805,7 @@ async fn thread_setting_update_params_sync_model_and_default_reasoning() {
+@@ -10036,6 +10036,7 @@ async fn thread_setting_update_params_sync_model_and_default_reasoning() {
  
      assert_eq!(params.thread_id, thread_id.to_string());
      assert_eq!(params.model, Some("gpt-5.4".to_string()));
@@ -1137,7 +1129,7 @@ index 259b3d97f6370d0657fb0ad19426f4718b80b00e..594dd2b64f54a4f2c0e9fd25de7061e1
      assert_eq!(
          params
              .collaboration_mode
-@@ -9832,7 +9833,7 @@ async fn thread_setting_update_params_sync_model_and_default_reasoning() {
+@@ -10063,7 +10064,7 @@ async fn thread_setting_update_params_sync_model_and_default_reasoning() {
          .expect("active thread should produce update params");
  
      assert_eq!(params.thread_id, thread_id.to_string());
@@ -1146,7 +1138,7 @@ index 259b3d97f6370d0657fb0ad19426f4718b80b00e..594dd2b64f54a4f2c0e9fd25de7061e1
      let collaboration_mode = params
          .collaboration_mode
          .expect("collaboration mode should sync with reasoning");
-@@ -9841,6 +9842,25 @@ async fn thread_setting_update_params_sync_model_and_default_reasoning() {
+@@ -10072,6 +10073,25 @@ async fn thread_setting_update_params_sync_model_and_default_reasoning() {
          collaboration_mode.settings.reasoning_effort,
          Some(ReasoningEffortConfig::High)
      );
@@ -1172,7 +1164,7 @@ index 259b3d97f6370d0657fb0ad19426f4718b80b00e..594dd2b64f54a4f2c0e9fd25de7061e1
  }
  
  #[tokio::test]
-@@ -9885,6 +9905,9 @@ async fn inactive_thread_settings_notification_updates_cached_collaboration_mode
+@@ -10116,6 +10136,9 @@ async fn inactive_thread_settings_notification_updates_cached_collaboration_mode
          thread_id: inactive_thread_id.to_string(),
          thread_settings: ThreadSettings {
              disabled_plugin_ids: Vec::new(),
@@ -1183,7 +1175,7 @@ index 259b3d97f6370d0657fb0ad19426f4718b80b00e..594dd2b64f54a4f2c0e9fd25de7061e1
              cwd: test_absolute_path("/tmp/thread-settings"),
              approval_policy: AskForApproval::OnRequest,
 diff --git a/codex-rs/tui/src/app/tests/backend_banner_fallback_tests.rs b/codex-rs/tui/src/app/tests/backend_banner_fallback_tests.rs
-index dac3c51f343ac1b79b01408834e536dbc0115b12..8348bf707c9d1505d8d65ebb2874a65add55e35a 100644
+index f6b6949f42bd98f69d41d71899f0b093e1b9e38b..7b90c6edf6a3134553a4717c710dbd266e0d9c16 100644
 --- a/codex-rs/tui/src/app/tests/backend_banner_fallback_tests.rs
 +++ b/codex-rs/tui/src/app/tests/backend_banner_fallback_tests.rs
 @@ -101,7 +101,7 @@ async fn backend_banner_fallback_updates_task_settings_and_keeps_notice() -> Res
@@ -1196,7 +1188,7 @@ index dac3c51f343ac1b79b01408834e536dbc0115b12..8348bf707c9d1505d8d65ebb2874a65a
                  service_tier: Some(Some("default".into())),
                  ..Default::default()
 diff --git a/codex-rs/tui/src/app/thread_settings.rs b/codex-rs/tui/src/app/thread_settings.rs
-index 8aee6236497fa90af5a4631b8fce9682e6b30e01..dbdf80c173562d7021090b5584348c36585d310b 100644
+index 6ad9d672b5862afad7f0d5dcf6b1bc497f6e33d6..87731babcb96aa25da09b5519965563ef1507d21 100644
 --- a/codex-rs/tui/src/app/thread_settings.rs
 +++ b/codex-rs/tui/src/app/thread_settings.rs
 @@ -28,7 +28,8 @@ impl App {
@@ -1206,10 +1198,10 @@ index 8aee6236497fa90af5a4631b8fce9682e6b30e01..dbdf80c173562d7021090b5584348c36
 -        params.effort = effort;
 +        // Model-only selection omits effort; an advanced selection supplies one.
 +        params.effort = effort.map(Some);
-         let defaulted_to_auto_review = params.approvals_reviewer
-             == Some(AppServerApprovalsReviewer::AutoReview)
-             && (self.chat_widget.config_ref().approvals_reviewer != ApprovalsReviewer::AutoReview
-@@ -123,7 +124,8 @@ impl App {
+         self.send_model_settings_update(app_server, params).await;
+     }
+ 
+@@ -132,7 +133,8 @@ impl App {
          let thread_id = self.active_thread_id?;
          Some(ThreadSettingsUpdateParams {
              thread_id: thread_id.to_string(),
@@ -1219,7 +1211,7 @@ index 8aee6236497fa90af5a4631b8fce9682e6b30e01..dbdf80c173562d7021090b5584348c36
              collaboration_mode: Some(self.chat_widget.current_collaboration_mode().clone()),
              ..ThreadSettingsUpdateParams::default()
          })
-@@ -175,7 +177,8 @@ impl App {
+@@ -184,7 +186,8 @@ impl App {
                  .as_ref()
                  .map(|profile| profile.id.clone()),
              model: model.clone(),
@@ -1229,7 +1221,7 @@ index 8aee6236497fa90af5a4631b8fce9682e6b30e01..dbdf80c173562d7021090b5584348c36
              summary: *summary,
              service_tier: service_tier.clone(),
              collaboration_mode: collaboration_mode.clone(),
-@@ -280,6 +283,10 @@ fn thread_settings_update_has_changes(params: &ThreadSettingsUpdateParams) -> bo
+@@ -289,6 +292,10 @@ fn thread_settings_update_has_changes(params: &ThreadSettingsUpdateParams) -> bo
          || params.model.is_some()
          || params.service_tier.is_some()
          || params.effort.is_some()
@@ -1241,10 +1233,10 @@ index 8aee6236497fa90af5a4631b8fce9682e6b30e01..dbdf80c173562d7021090b5584348c36
          || params.collaboration_mode.is_some()
  }
 diff --git a/codex-rs/tui/src/chatwidget/tests/app_server.rs b/codex-rs/tui/src/chatwidget/tests/app_server.rs
-index 38fc9b50c6277b208f27b15ec3dcb94096fc26d5..79c098708bdfa925c58b3bef2c5cdc719ceeaeab 100644
+index f06319be3dfd65f314a754e0d1702068a245508d..bd930d7ab837cd1c2b2c0fa96a190ae02187aae9 100644
 --- a/codex-rs/tui/src/chatwidget/tests/app_server.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/app_server.rs
-@@ -17,6 +17,9 @@ fn thread_settings_for_test(
+@@ -18,6 +18,9 @@ fn thread_settings_for_test(
          thread_id: thread_id.to_string(),
          thread_settings: codex_app_server_protocol::ThreadSettings {
              disabled_plugin_ids: Vec::new(),

@@ -12,6 +12,7 @@ function answer(
   id: string,
   text: string,
   phase: string,
+  completeResponse = true,
 ) {
   for (const event of [
     {
@@ -24,16 +25,20 @@ function answer(
         content: [{ type: "output_text", text }],
       },
     },
-    {
-      type: "response.completed",
-      response: {
-        id,
-        usage: { input_tokens: 3, output_tokens: 2, total_tokens: 5 },
-      },
-    },
+    ...(completeResponse
+      ? [
+          {
+            type: "response.completed",
+            response: {
+              id,
+              usage: { input_tokens: 3, output_tokens: 2, total_tokens: 5 },
+            },
+          },
+        ]
+      : []),
   ])
     response.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
-  response.end();
+  if (completeResponse) response.end();
 }
 
 describe.skipIf(!binary)(
@@ -85,6 +90,19 @@ describe.skipIf(!binary)(
             () => expect(f!.terminalText()).toMatch(/esc to interrupt/i),
             { timeout: 15000 },
           );
+          // 0.166 preempts an in-flight response when steering arrives. Commit
+          // the first item while keeping its response and the turn active.
+          answer(
+            requests[0]!.response,
+            "before-steer",
+            "BEFORE_STEER_OUTPUT",
+            "commentary",
+            false,
+          );
+          await vi.waitFor(
+            () => expect(f!.messages).toContain("BEFORE_STEER_OUTPUT"),
+            { timeout: 15000 },
+          );
           if (gui) await f.tuiSend(steering);
           else
             expect(await f.guiSteer(steering)).toEqual({
@@ -108,14 +126,7 @@ describe.skipIf(!binary)(
             },
             { timeout: 15000 },
           );
-          // The provider is still producing the first response when the second
-          // interface steers. Complete it only after real native acceptance.
-          answer(
-            requests[0]!.response,
-            "before-steer",
-            "BEFORE_STEER_OUTPUT",
-            "commentary",
-          );
+          requests[0]!.response.end();
           await vi.waitFor(() => expect(requests).toHaveLength(2), {
             timeout: 15000,
           });

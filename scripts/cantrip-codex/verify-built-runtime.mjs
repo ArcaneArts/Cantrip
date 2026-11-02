@@ -130,6 +130,23 @@ export async function verifyBuiltRuntime(
         `Packaged executable reported unexpected version: ${version.stdout.trim()}`,
       );
     }
+    if (manifest.buildRecipeVersion >= 6) {
+      const executor = path.join(
+        directory,
+        expected.target.startsWith("win32-")
+          ? "codex-exec-server.exe"
+          : "codex-exec-server",
+      );
+      const executorVersion = await run(executor, ["--version"], options);
+      if (
+        executorVersion.stdout.trim() !==
+        `codex-exec-server ${metadata.version}`
+      ) {
+        throw new Error(
+          `Packaged executor reported unexpected version: ${executorVersion.stdout.trim()}`,
+        );
+      }
+    }
     const out = path.join(temporary, "typescript");
     await run(
       binary,

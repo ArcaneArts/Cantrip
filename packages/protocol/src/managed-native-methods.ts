@@ -1,4 +1,4 @@
-/** Explicit inventory for pinned Codex 0.163.0 + the reviewed Cantrip patches.
+/** Explicit inventory for pinned Codex 0.166.0 + the reviewed Cantrip patches.
  * Unknown methods fail closed; a known mutation still requires admission.
  * Read labels describe authority, not whether native discovery allocates clients.
  */
@@ -80,6 +80,9 @@ const groups: Record<ManagedNativeMethodKind, readonly string[]> = {
   mutation: [
     "thread/start",
     "thread/fork",
+    "thread/sample",
+    "thread/sample/cancel",
+    "thread/memory/read",
     "thread/archive",
     "thread/delete",
     "thread/attachment/add",
@@ -183,9 +186,13 @@ const groups: Record<ManagedNativeMethodKind, readonly string[]> = {
     "account/bedrock/setup",
     "account/login/cancel",
     "account/logout",
+    "account/gcp/setup",
+    "accountSession/list",
+    "accountSession/switch",
     "account/rateLimitResetCredit/consume",
     "account/sendAddCreditsNudgeEmail",
     "feedback/upload",
+    "feedback/save",
     "command/exec",
     "command/exec/write",
     "command/exec/terminate",

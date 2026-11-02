@@ -1,8 +1,8 @@
 diff --git a/codex-rs/core/src/stream_events_utils.rs b/codex-rs/core/src/stream_events_utils.rs
-index 2081c42cd2c828864d1672c0603eacf54a71320d..a43c2ce2e97ab2b468b8333e4b2644d2482b2d62 100644
+index 964302c4f111bb117966f3dd913bd9535fb2587b..f5187cfdd1f98ddf61c8bd69cfbbeb2d300b47b2 100644
 --- a/codex-rs/core/src/stream_events_utils.rs
 +++ b/codex-rs/core/src/stream_events_utils.rs
-@@ -322,7 +322,10 @@ pub(crate) async fn handle_output_item_done(
+@@ -324,7 +324,10 @@ pub(crate) async fn handle_output_item_done(
  
      match ToolRouter::build_tool_call(item.clone()) {
          // The model emitted a tool call; log it, persist the item immediately, and queue the tool execution.
@@ -15,10 +15,10 @@ index 2081c42cd2c828864d1672c0603eacf54a71320d..a43c2ce2e97ab2b468b8333e4b2644d2
                  ctx.sess.thread_id,
                  &call.tool_name,
 diff --git a/codex-rs/core/src/tools/mod.rs b/codex-rs/core/src/tools/mod.rs
-index 501ce5fe4eb8395ae84f8b7a1b7f14b530a22e5e..b04ee757afd5d54bcecdd2597dcca039897cf65e 100644
+index 3344ed84b3c0b730ecefa399303294ab672cb3a5..67057a2a0de96d265e2301e35b66d096289f1f1e 100644
 --- a/codex-rs/core/src/tools/mod.rs
 +++ b/codex-rs/core/src/tools/mod.rs
-@@ -15,6 +15,7 @@ mod multi_agent_tool;
+@@ -16,6 +16,7 @@ pub(crate) use native_tool_review::review as review_native_tool_call;
  pub(crate) mod network_approval;
  pub(crate) mod orchestrator;
  pub(crate) mod parallel;
@@ -27,10 +27,10 @@ index 501ce5fe4eb8395ae84f8b7a1b7f14b530a22e5e..b04ee757afd5d54bcecdd2597dcca039
  pub(crate) mod router;
  pub(crate) mod runtimes;
 diff --git a/codex-rs/core/src/tools/parallel.rs b/codex-rs/core/src/tools/parallel.rs
-index e0b50c48dd7ed4558b4423d25bae6e62d99ccea5..add53a2b4043132347dd6695d8ef180ccdfd8c51 100644
+index ffb17eb8a71ff616509860ac39a606d4831ae8e6..27aa5e3723a20dcc45928d66e9d66f7217b5ce8b 100644
 --- a/codex-rs/core/src/tools/parallel.rs
 +++ b/codex-rs/core/src/tools/parallel.rs
-@@ -65,6 +65,13 @@ impl ToolCallRuntime {
+@@ -94,6 +94,13 @@ impl ToolCallRuntime {
          }
      }
  
@@ -44,7 +44,7 @@ index e0b50c48dd7ed4558b4423d25bae6e62d99ccea5..add53a2b4043132347dd6695d8ef180c
      pub(crate) fn create_diff_consumer(
          &self,
          tool_name: &codex_tools::ToolName,
-@@ -81,6 +88,8 @@ impl ToolCallRuntime {
+@@ -110,6 +117,8 @@ impl ToolCallRuntime {
          cancellation_token: CancellationToken,
      ) -> impl std::future::Future<Output = Result<ResponseItemEnvelope, CodexErr>> {
          let error_call = call.clone();
@@ -262,7 +262,7 @@ index 0000000000000000000000000000000000000000..52d4712d1745f72ae08cf557340fe40c
 +    }
 +}
 diff --git a/codex-rs/core/src/tools/router.rs b/codex-rs/core/src/tools/router.rs
-index d816611443e5cd9c49efcaa388f0cf9dd10db44c..0fbeab2a65ed83de4ff71882bae86bcb49d84e60 100644
+index 673a40c5974904fdfa789e3f01ce79f9f0a72fa6..d7203a4c59f2036569668d9cf8b0e043c64443ab 100644
 --- a/codex-rs/core/src/tools/router.rs
 +++ b/codex-rs/core/src/tools/router.rs
 @@ -10,6 +10,7 @@ use crate::tools::context::ToolInvocation;
@@ -343,12 +343,12 @@ index d816611443e5cd9c49efcaa388f0cf9dd10db44c..0fbeab2a65ed83de4ff71882bae86bcb
 +            tool_name: self.canonical_tool_name(&tool_name),
              source,
              payload,
-         };
+             environments: Default::default(),
 diff --git a/codex-rs/core/src/tools/spec_plan.rs b/codex-rs/core/src/tools/spec_plan.rs
-index fd5b5e14eeeb57b5be78af53d3f855702167dcc7..149e83f9b1a91069c9e1e37cb6584e87b211aa13 100644
+index 2602fcb9bbbd9f916444d0c338a161b9fa9b5413..48b9ba84ad8fc3d6778af4724c9926dbcfc96cd9 100644
 --- a/codex-rs/core/src/tools/spec_plan.rs
 +++ b/codex-rs/core/src/tools/spec_plan.rs
-@@ -542,14 +542,41 @@ pub(crate) fn finalize_tool_router(
+@@ -544,14 +544,41 @@ pub(crate) fn finalize_tool_router(
          .filter(|info| !info.is_empty());
      let child_management_tools = required_child_management_tool_names(turn_context, model_info);
  
@@ -393,26 +393,26 @@ index fd5b5e14eeeb57b5be78af53d3f855702167dcc7..149e83f9b1a91069c9e1e37cb6584e87
  
  fn apply_direct_model_only_namespace_overrides(
 diff --git a/codex-rs/model-provider/src/capabilities.rs b/codex-rs/model-provider/src/capabilities.rs
-index 0f8b6e9b930f0e343e04cde8b8ff77423a6bea13..2e76fca007f9152ea29fff19f2346a4b22cf6a56 100644
+index 2642f58d8ec820db9d32696277b107c47dee7b89..8a4b69794c6eca03a474ea09b9ee2e5671affaa0 100644
 --- a/codex-rs/model-provider/src/capabilities.rs
 +++ b/codex-rs/model-provider/src/capabilities.rs
-@@ -10,6 +10,7 @@ use codex_model_provider_info::RemoteCompactionSupport;
- /// can further restrict the functionality exposed to the model.
- #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+@@ -12,6 +12,7 @@ use codex_model_provider_info::RemoteCompactionSupport;
  pub struct ProviderCapabilities {
+     /// Whether requests may include the Responses API `reasoning.summary` parameter.
+     pub reasoning_summaries: bool,
 +    pub namespace_tools: bool,
      pub image_generation: bool,
      pub web_search: bool,
      pub external_web_access: bool,
-@@ -19,6 +20,7 @@ pub struct ProviderCapabilities {
- impl Default for ProviderCapabilities {
+@@ -22,6 +23,7 @@ impl Default for ProviderCapabilities {
      fn default() -> Self {
          Self {
+             reasoning_summaries: true,
 +            namespace_tools: true,
              image_generation: true,
              web_search: true,
              external_web_access: true,
-@@ -32,6 +34,7 @@ impl ProviderCapabilities {
+@@ -35,6 +37,7 @@ impl ProviderCapabilities {
          let supports_openai_extensions = info.is_openai()
              || is_azure_responses_provider(&info.name, info.base_url.as_deref());
          let defaults = Self {

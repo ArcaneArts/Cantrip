@@ -1,8 +1,8 @@
 diff --git a/codex-rs/app-server-protocol/src/protocol/common.rs b/codex-rs/app-server-protocol/src/protocol/common.rs
-index 3588bcf11fb777b07fc5cecb0979b54e66e018ee..ccc582c73cdd9ac58670c4f0902e6c601a57b182 100644
+index c231c419e73d87a29a2d0b5e213fb78412e5c1af..43d6b64df5420ce1a04060c089ebdd644b4d6711 100644
 --- a/codex-rs/app-server-protocol/src/protocol/common.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/common.rs
-@@ -927,6 +927,16 @@ client_request_definitions! {
+@@ -949,6 +949,16 @@ client_request_definitions! {
          serialization: None,
          response: v2::ThreadItemsReadResponse,
      },
@@ -20,10 +20,10 @@ index 3588bcf11fb777b07fc5cecb0979b54e66e018ee..ccc582c73cdd9ac58670c4f0902e6c60
      ThreadManagedContextReset => "thread/managedContext/reset" {
          params: v2::ThreadManagedContextResetParams,
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-index 67cdd7085fb59897cd56f9c180a5456b8df239ff..a8a7c4e7bd64ce64e57ff38a2892675feb39d9a9 100644
+index b24c8f130b7326461bb93f1d816382293f46c1cc..4e2a8a7197532b85d2d9ae2a6adb441b5a231816 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-@@ -2636,3 +2636,46 @@ pub struct ThreadManagedContextResetParams {
+@@ -2664,3 +2664,46 @@ pub struct ThreadManagedContextResetParams {
  #[serde(rename_all = "camelCase")]
  #[ts(export_to = "v2/")]
  pub struct ThreadManagedContextResetResponse {}
@@ -71,10 +71,10 @@ index 67cdd7085fb59897cd56f9c180a5456b8df239ff..a8a7c4e7bd64ce64e57ff38a2892675f
 +    pub path: String,
 +}
 diff --git a/codex-rs/app-server/src/message_processor.rs b/codex-rs/app-server/src/message_processor.rs
-index 4701335d2ad093309d26a31049559c224f5d4fea..5535a356629750cef500f001005614504c591a31 100644
+index e60f484485c1affc61824921adfef68f01433863..c29ebfdf74c51af119af502ee46e179aee473683 100644
 --- a/codex-rs/app-server/src/message_processor.rs
 +++ b/codex-rs/app-server/src/message_processor.rs
-@@ -1695,6 +1695,16 @@ impl MessageProcessor {
+@@ -1749,6 +1749,16 @@ impl MessageProcessor {
                      )
                      .await
              }
@@ -92,7 +92,7 @@ index 4701335d2ad093309d26a31049559c224f5d4fea..5535a356629750cef500f00100561450
                  self.turn_processor
                      .thread_managed_context_reset(&request_id, params)
 diff --git a/codex-rs/app-server/src/request_processors.rs b/codex-rs/app-server/src/request_processors.rs
-index e8c3ebebb03bfc4e736f0cb506cb781509f666eb..6b682e0da124130e39fe96541afe042007e7b038 100644
+index 318500debc9a9beb8f37d505d54ddaad9055160f..7545dcb425c1271b92ac40a9676ee56e37cf78f8 100644
 --- a/codex-rs/app-server/src/request_processors.rs
 +++ b/codex-rs/app-server/src/request_processors.rs
 @@ -1,4 +1,5 @@
@@ -182,10 +182,10 @@ index 0000000000000000000000000000000000000000..3f9d1a13fb8e773a44f67fe21dbed1be
 +    tokio::task::spawn_blocking(move || Ok(serde_json::from_reader(fs::File::open(path)?)?)).await?
 +}
 diff --git a/codex-rs/app-server/src/request_processors/thread_processor.rs b/codex-rs/app-server/src/request_processors/thread_processor.rs
-index 3e5a4efa155a411c44a867dd7ad92fd0b6c5f8f2..052cf6c097ad14f7fad0e166ee91215ffa6dd62f 100644
+index 90fdecd5f7366010c6103e7fb2e74b17a0f9a016..6618a22ea53aa01cdd5aea0a0a4dd74968d06c6e 100644
 --- a/codex-rs/app-server/src/request_processors/thread_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_processor.rs
-@@ -489,6 +489,39 @@ enum RunningThreadResumeResult {
+@@ -536,6 +536,39 @@ enum RunningThreadResumeResult {
  }
  
  impl ThreadRequestProcessor {
@@ -226,10 +226,10 @@ index 3e5a4efa155a411c44a867dd7ad92fd0b6c5f8f2..052cf6c097ad14f7fad0e166ee91215f
      pub(crate) fn new(
          auth_manager: Arc<AuthManager>,
 diff --git a/codex-rs/app-server/src/request_processors/turn_processor.rs b/codex-rs/app-server/src/request_processors/turn_processor.rs
-index 8643523dee9a692ba568e2af186faf5fdf9285cf..342b0cd381742103f57a93a281eca3eaee063978 100644
+index 4e3692fa47c9168c98000d7ba5aef6ab63e1e970..bda7c793ba38186ebd2e1ef109b98d85b3600247 100644
 --- a/codex-rs/app-server/src/request_processors/turn_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/turn_processor.rs
-@@ -197,6 +197,41 @@ impl TurnRequestProcessor {
+@@ -186,6 +186,41 @@ impl TurnRequestProcessor {
          .map(|response| Some(response.into()))
      }
  
@@ -271,7 +271,7 @@ index 8643523dee9a692ba568e2af186faf5fdf9285cf..342b0cd381742103f57a93a281eca3ea
      pub(crate) async fn thread_managed_context_reset(
          &self,
          request_id: &ConnectionRequestId,
-@@ -212,7 +247,9 @@ impl TurnRequestProcessor {
+@@ -201,7 +236,9 @@ impl TurnRequestProcessor {
                  CodexErrorDetails::InvalidRequest(message) => invalid_request(message.clone()),
                  _ => internal_error(format!("failed to reset managed model context: {err}")),
              })?;
@@ -283,10 +283,10 @@ index 8643523dee9a692ba568e2af186faf5fdf9285cf..342b0cd381742103f57a93a281eca3ea
  
      pub(crate) async fn thread_inject_items(
 diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
-index d0b07d1264e67cc69c96af190188617deae3c41f..a92136a00cf37deff5597dd43f203642403746cf 100644
+index 7109f3b3c18931f3974cacf8cacb93a0952df91d..33cfc83176f41768436d8d49664efd75b2e1308c 100644
 --- a/codex-rs/core/src/codex_thread.rs
 +++ b/codex-rs/core/src/codex_thread.rs
-@@ -1009,6 +1009,15 @@ impl CodexThread {
+@@ -1086,6 +1086,15 @@ impl CodexThread {
          Ok(())
      }
  
@@ -358,23 +358,23 @@ index ae7ec0c0bdb1ee743722c1676c955c567f6d53a2..221b4c8266220aa6c1d6a55d127a2fb5
      pub id: String,
      pub thread_id: ThreadId,
 diff --git a/codex-rs/state/src/model/thread_metadata.rs b/codex-rs/state/src/model/thread_metadata.rs
-index 9237a573240b672ac6a763e4f1e0d164e1e41eb8..27da57211cea4264187d503777a9e2b63c3f58fd 100644
+index 223519f50b0eadd2702419949c915185336e8419..f63cd685fe0155b414be1aaa75ada149b8d45c0c 100644
 --- a/codex-rs/state/src/model/thread_metadata.rs
 +++ b/codex-rs/state/src/model/thread_metadata.rs
-@@ -121,7 +121,7 @@ pub struct ExtractionOutcome {
+@@ -123,7 +123,7 @@ pub struct ExtractionOutcome {
  }
  
  /// Canonical persisted thread metadata.
 -#[derive(Debug, Clone, PartialEq, Eq)]
 +#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
  pub struct ThreadMetadata {
-     /// Originator recorded at creation, if available.
-     pub originator: Option<String>,
+     /// The parent of an attached thread, derived from canonical rollout metadata.
+     pub attached_thread_parent_id: Option<ThreadId>,
 diff --git a/codex-rs/state/src/runtime/queued_items.rs b/codex-rs/state/src/runtime/queued_items.rs
-index d9d8139d71ce7cdb323b50edb98c772ab8729cc8..0cdc4e024c32af2f5c23873e796d01a8b055e3ac 100644
+index e3a75fdb3d688705775e572c975bfc096d31dfc4..e9219375959ae52c09f8f275643e58ae987bcb14 100644
 --- a/codex-rs/state/src/runtime/queued_items.rs
 +++ b/codex-rs/state/src/runtime/queued_items.rs
-@@ -74,6 +74,42 @@ impl SqliteQueueStore {
+@@ -76,6 +76,42 @@ impl SqliteQueueStore {
              .collect()
      }
  
@@ -418,7 +418,7 @@ index d9d8139d71ce7cdb323b50edb98c772ab8729cc8..0cdc4e024c32af2f5c23873e796d01a8
          &self,
          thread_id: ThreadId,
 diff --git a/codex-rs/thread-store/src/lib.rs b/codex-rs/thread-store/src/lib.rs
-index 8a71629af0cdbdceda053174f3760994f8bb5a16..6254ba67b9ee43ef9b1a10e4fbca2d677609bdd8 100644
+index 5efeeccab12bb10a4adf46c948a6f0ea8dabb223..fb88bfa8056289f01da8de0942c97fb69054e1e1 100644
 --- a/codex-rs/thread-store/src/lib.rs
 +++ b/codex-rs/thread-store/src/lib.rs
 @@ -8,6 +8,7 @@ mod error;
@@ -439,10 +439,10 @@ index 8a71629af0cdbdceda053174f3760994f8bb5a16..6254ba67b9ee43ef9b1a10e4fbca2d67
  pub use projects::CreatedProject;
  pub use projects::DeletedProject;
 diff --git a/codex-rs/thread-store/src/live_thread.rs b/codex-rs/thread-store/src/live_thread.rs
-index db3cf7ed055b8599a87e89cd08a032a7014df654..33756c733c26aad919e29abb7585fcbf2cc7c171 100644
+index ad031723163b77652120ca1f09476b06880dca6e..5f54fa4b593d1955baa21f321d4d2fe18e8ad41b 100644
 --- a/codex-rs/thread-store/src/live_thread.rs
 +++ b/codex-rs/thread-store/src/live_thread.rs
-@@ -355,6 +355,15 @@ impl LiveThread {
+@@ -364,6 +364,15 @@ impl LiveThread {
          }))
      }
  
@@ -459,7 +459,7 @@ index db3cf7ed055b8599a87e89cd08a032a7014df654..33756c733c26aad919e29abb7585fcbf
          &self,
          include_archived: bool,
 diff --git a/codex-rs/thread-store/src/local/mod.rs b/codex-rs/thread-store/src/local/mod.rs
-index 7f21cd2f1b052a6ef9c2319a8b568d5bb1544d06..e0e5558162e81204b97c913d5dbb006a263b2183 100644
+index b7731e53ae283d24cec2338aa542aab01a59df3f..24349d060213882351189465ff90d18678bdbf0e 100644
 --- a/codex-rs/thread-store/src/local/mod.rs
 +++ b/codex-rs/thread-store/src/local/mod.rs
 @@ -9,6 +9,8 @@ mod model_context;
@@ -471,7 +471,7 @@ index 7f21cd2f1b052a6ef9c2319a8b568d5bb1544d06..e0e5558162e81204b97c913d5dbb006a
  mod projects;
  mod read_thread;
  mod revert_thread;
-@@ -585,6 +587,21 @@ impl ThreadStore for LocalThreadStore {
+@@ -617,6 +619,21 @@ impl ThreadStore for LocalThreadStore {
          Box::pin(LocalThreadStore::load_history(self, params))
      }
  
@@ -1240,10 +1240,10 @@ index 0000000000000000000000000000000000000000..4df43ee405690166da66391ea9dc8002
 +    }
 +}
 diff --git a/codex-rs/thread-store/src/local/thread_history_materialization_tests.rs b/codex-rs/thread-store/src/local/thread_history_materialization_tests.rs
-index 055358c85e4d2273c95e05b3cbc1acdf1a8bb326..67e52c7f53ea551b470731836e0d15aae43d3807 100644
+index 9408b47f31932493d7138e56a072802d7fcab36a..c5ce79ca3851c0dee3bcc8705347078b948e6657 100644
 --- a/codex-rs/thread-store/src/local/thread_history_materialization_tests.rs
 +++ b/codex-rs/thread-store/src/local/thread_history_materialization_tests.rs
-@@ -2994,3 +2994,6 @@ fn append_suffix(rollout_path: &std::path::Path, suffix: &str) {
+@@ -3254,3 +3254,6 @@ fn append_suffix(rollout_path: &std::path::Path, suffix: &str) {
  
  #[path = "history_snapshot_tests.rs"]
  mod history_snapshot_tests;
@@ -1284,10 +1284,10 @@ index 0000000000000000000000000000000000000000..7e5d55de76c263dc8356ee3871f13e3e
 +    pub content: String,
 +}
 diff --git a/codex-rs/thread-store/src/store.rs b/codex-rs/thread-store/src/store.rs
-index d37d82311bd6be804ea770ba70930d0dd5f3de5c..86410c56468810865591bac32525ed14c7f41316 100644
+index b96c33da2aead6a6e772470506514c1a54023cbb..4ef0ec6d5740e4e6a63bb0d02b27f6ea8c0eac9e 100644
 --- a/codex-rs/thread-store/src/store.rs
 +++ b/codex-rs/thread-store/src/store.rs
-@@ -218,6 +218,34 @@ pub trait ThreadStore: Any + Send + Sync {
+@@ -266,6 +266,34 @@ pub trait ThreadStore: Any + Send + Sync {
          })
      }
  

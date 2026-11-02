@@ -130,7 +130,7 @@ use codex_app_server_protocol::ServerRequest;
 use codex_app_server_protocol::SkillErrorInfo;
 use codex_app_server_protocol::SkillsListParams;
 use codex_app_server_protocol::SkillsListResponse;
-use codex_app_server_protocol::ThreadItem;
+use codex_app_server_protocol::ThreadItemPayload;
 use codex_app_server_protocol::ThreadLoadedListParams;
 use codex_app_server_protocol::ThreadMemoryMode;
 use codex_app_server_protocol::ThreadSettingsUpdateParams;
@@ -215,6 +215,8 @@ mod app_server_events;
 pub(crate) mod app_server_requests;
 mod app_server_thread_ownership;
 mod backend_banner_fallback;
+mod backend_events;
+pub(crate) mod backend_sessions;
 mod background_requests;
 mod composer_hints;
 mod config_panel;
@@ -237,6 +239,7 @@ mod managed_worktree_creation;
 mod misalignment_policy;
 mod model_defaults;
 mod new_session;
+mod quick_dials;
 mod turn_tips;
 pub(crate) use new_session::has_launch_setting;
 mod clipboard;
@@ -257,9 +260,11 @@ mod reconnect;
 mod replay_filter;
 mod resize_reflow;
 mod resume_config;
+mod resume_preparation;
 mod right_click_paste;
 pub(crate) use right_click_paste::PasteEnvironment;
 mod safety_buffering;
+mod safety_recourse;
 mod server_version_notice;
 mod session_lifecycle;
 mod session_picker;
@@ -277,6 +282,7 @@ mod thread_settings;
 mod thread_title;
 mod transcript_export;
 mod tui_mode_picker;
+mod user_turn_submission;
 mod user_verification;
 mod user_verification_errors;
 mod user_verification_requests;
@@ -318,15 +324,15 @@ enum ThreadInteractiveRequest {
 /// receiver thread ids. All other notification variants return `None`.
 fn collab_receiver_thread_ids(notification: &ServerNotification) -> Option<&[String]> {
     match notification {
-        ServerNotification::ItemStarted(notification) => match &notification.item {
-            ThreadItem::CollabAgentToolCall {
+        ServerNotification::ItemStarted(notification) => match &notification.item.payload {
+            ThreadItemPayload::CollabAgentToolCall {
                 receiver_thread_ids,
                 ..
             } => Some(receiver_thread_ids),
             _ => None,
         },
-        ServerNotification::ItemCompleted(notification) => match &notification.item {
-            ThreadItem::CollabAgentToolCall {
+        ServerNotification::ItemCompleted(notification) => match &notification.item.payload {
+            ThreadItemPayload::CollabAgentToolCall {
                 receiver_thread_ids,
                 ..
             } => Some(receiver_thread_ids),
@@ -336,14 +342,14 @@ fn collab_receiver_thread_ids(notification: &ServerNotification) -> Option<&[Str
     }
 }
 
-fn sub_agent_activity_item(notification: &ServerNotification) -> Option<&ThreadItem> {
+fn sub_agent_activity_item(notification: &ServerNotification) -> Option<&ThreadItemPayload> {
     match notification {
-        ServerNotification::ItemStarted(notification) => match &notification.item {
-            ThreadItem::SubAgentActivity { .. } => Some(&notification.item),
+        ServerNotification::ItemStarted(notification) => match &notification.item.payload {
+            ThreadItemPayload::SubAgentActivity { .. } => Some(&notification.item.payload),
             _ => None,
         },
-        ServerNotification::ItemCompleted(notification) => match &notification.item {
-            ThreadItem::SubAgentActivity { .. } => Some(&notification.item),
+        ServerNotification::ItemCompleted(notification) => match &notification.item.payload {
+            ThreadItemPayload::SubAgentActivity { .. } => Some(&notification.item.payload),
             _ => None,
         },
         _ => None,
@@ -355,8 +361,8 @@ fn collab_receiver_is_not_found(
     receiver_thread_id: &str,
 ) -> bool {
     match notification {
-        ServerNotification::ItemCompleted(notification) => match &notification.item {
-            ThreadItem::CollabAgentToolCall { agents_states, .. } => {
+        ServerNotification::ItemCompleted(notification) => match &notification.item.payload {
+            ThreadItemPayload::CollabAgentToolCall { agents_states, .. } => {
                 agents_states.get(receiver_thread_id).is_some_and(|state| {
                     matches!(
                         &state.status,
@@ -536,6 +542,7 @@ pub(crate) struct App {
     config_notification_test_pending: Option<u64>,
     model_catalog: Arc<ModelCatalog>,
     pub(crate) session_telemetry: SessionTelemetry,
+    terminal_size_tags: crate::terminal_size_telemetry::LaunchTags,
     pub(crate) app_event_tx: AppEventSender,
     pub(crate) chat_widget: ChatWidget,
     workspace_command_runner: Option<WorkspaceCommandRunner>,
@@ -622,7 +629,7 @@ pub(crate) struct App {
     windows_sandbox: WindowsSandboxState,
 
     thread_event_channels: HashMap<ThreadId, ThreadEventChannel>,
-    pending_realtime_speech_replay: HashMap<ThreadId, Vec<(String, ThreadItem)>>,
+    pending_realtime_speech_replay: HashMap<ThreadId, Vec<(String, ThreadItemPayload)>>,
     pending_realtime_transcript_replay:
         HashMap<ThreadId, VecDeque<crate::chatwidget::RealtimeTranscriptRecord>>,
     realtime_replay_order: VecDeque<ThreadId>,
@@ -875,7 +882,30 @@ impl App {
             self.discard_startup_modal_input(tui)?;
             return Ok(AppRunControl::Continue);
         }
+        if matches!(&event, TuiEvent::Key(key) if key.kind != KeyEventKind::Release)
+            || matches!(&event, TuiEvent::Paste(text) if !text.is_empty())
+            || matches!(&event, TuiEvent::Mouse(mouse) if mouse.kind != crossterm::event::MouseEventKind::Moved)
+        {
+            self.chat_widget.acknowledge_program_status();
+        }
         let idle_draw = matches!(event, TuiEvent::Draw);
+        if let TuiEvent::Key(key) = &event {
+            self.backtrack.observe_pending_select_exit_key(*key);
+        }
+        if let TuiEvent::Key(key) = &event
+            && let Some(binding) = self.backtrack.select_exit_key
+        {
+            if binding.parts() == crate::key_hint::KeyBinding::from_event(*key).parts() {
+                if key.kind == KeyEventKind::Release
+                    || !self.enhanced_keys_supported
+                    || !crate::tui::reports_key_releases()
+                {
+                    self.backtrack.select_exit_key = None;
+                }
+                return Ok(AppRunControl::Continue);
+            }
+            self.backtrack.select_exit_key = None;
+        }
         if self.handle_rendered_selection_event(tui, &event)? {
             return Ok(AppRunControl::Continue);
         }
@@ -982,9 +1012,12 @@ impl App {
                     })
                 && app.keymap.chat.toggle_voice.is_pressed(key)
         };
-        // Find consumes otherwise-unhandled keys; let enabled voice controls reach App.
+        // Transcript interactions consume otherwise-unhandled keys; let enabled voice controls
+        // reach App.
         if !matches!(&event, TuiEvent::Key(key)
-            if voice_toggle(self, *key) && !self.transcript_view.owns_interaction_key(*key))
+            if voice_toggle(self, *key)
+                && (!self.transcript_view.owns_interaction_key(*key)
+                    || self.transcript_view.is_select_mode()))
             && self.handle_owned_transcript_event(tui, app_server, &event)?
         {
             return Ok(AppRunControl::Continue);
@@ -1122,7 +1155,7 @@ impl App {
                     let restrict_disconnected_input = self.reconnect.offline
                         && !self.chat_widget.keymap_contexts().is_warnings()
                         && self.reconnect.presentation
-                            == reconnect::ReconnectPresentation::Conversation
+                            != reconnect::ReconnectPresentation::Overview
                         && !self
                             .chat_widget
                             .active_view_accepts_input_when_disconnected();
@@ -1218,7 +1251,6 @@ impl App {
     }
 
     fn render_chat_widget_frame(&mut self, tui: &mut tui::Tui, screen_size: Size) -> Result<Rect> {
-        self.sync_thread_title_progress();
         self.chat_widget
             .set_sparkle_terminal_focus(tui.is_terminal_focused());
         if tui.is_owned_screen() {

@@ -4,15 +4,14 @@
 mod connection_pool;
 mod execution;
 mod response;
+mod telemetry;
+
+pub(super) use telemetry::SampledScore;
 
 use super::request::PreparedRequest;
 use super::score::PendingScore;
 use connection_pool::ConnectionPool;
-use std::collections::VecDeque;
 use std::sync::Arc;
-use std::sync::Mutex;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
 
 use codex_api::ApiError;
 use codex_api::Reasoning;
@@ -83,19 +82,24 @@ pub struct LunaSamplingRequest {
     /// Trusted classifier instructions with their role and content attribution.
     pub instructions: RenderedFragment,
     /// Composed evidence messages, with roles, annotations and content order intact.
+    #[cfg(test)]
     pub input: Vec<ResponseItem>,
     /// Opaque parent compaction to reuse only for compatible model configurations.
     pub parent_compaction: Option<ResponseItem>,
-    /// Host-selected compatibility hash for the supplied parent checkpoint.
-    pub parent_compaction_hash: Option<String>,
     /// Reasoning budget explicitly selected for this request.
     pub reasoning_effort: ReasoningEffort,
     /// Owning turn that initiated this classification, not the classifier turn.
     pub parent_turn_id: String,
     /// Trusted causal root of the owning turn, absent when unknown or ambiguous.
     pub root_turn_id: Option<String>,
-    /// Snapshot expiry remains active until its response finishes draining.
+    /// Sampling expiry remains active until its response finishes draining.
     pub(super) pending_score: Option<PendingScore>,
+}
+
+/// Admitted retained input and Luna settings consumed together at execution.
+pub(super) struct ConversationSample {
+    pub(super) input: PreparedRequest,
+    pub(super) sampling: LunaSamplingRequest,
 }
 
 /// Failures returned while connecting or sampling the Luna model.
@@ -119,9 +123,6 @@ pub enum LunaSamplerError {
     /// The classification expired, lost its owning generation, or was replaced at capacity.
     #[error("Luna request was superseded by a newer classification")]
     Superseded,
-    /// The supplied parent checkpoint cannot be consumed by this Luna configuration.
-    #[error("parent compaction is incompatible with Luna")]
-    IncompatibleCompaction,
     /// The complete classifier input exceeded the model allowance.
     #[error("Luna input exceeds the complete request budget")]
     InputTooLarge,
@@ -130,16 +131,10 @@ pub enum LunaSamplerError {
     QueueFull,
 }
 
-struct ActiveRequest {
-    supersede: oneshot::Sender<()>,
-    scored: Arc<AtomicBool>,
-}
-
 /// Runs bounded Luna classifications over pooled WebSockets or HTTP.
 pub struct LunaSampler {
     config: Arc<LunaSamplerConfig>,
     connections: Arc<ConnectionPool>,
-    active_requests: Mutex<VecDeque<ActiveRequest>>,
 }
 
 impl LunaSampler {
@@ -157,7 +152,6 @@ impl LunaSampler {
         Self {
             connections: ConnectionPool::new(Arc::clone(&config)),
             config,
-            active_requests: Mutex::new(VecDeque::with_capacity(MAX_CONCURRENT_REQUESTS)),
         }
     }
 
@@ -189,7 +183,7 @@ impl LunaSampler {
                 ResponseItemEnvelope::new(ResponseItem::AdditionalTools {
                     id: None,
                     role: "developer".to_owned(),
-                    tools: Vec::new(),
+                    tools: Arc::from([]),
                 }),
                 ResponseItemEnvelope::new(ResponseItem::from(request.instructions.clone())),
             ];
@@ -270,82 +264,6 @@ impl LunaSampler {
         }
     }
 
-    /// Sends one tool-less classification request using an available transport.
-    pub async fn sample(
-        &self,
-        mut request: LunaSamplingRequest,
-    ) -> Result<String, LunaSamplerError> {
-        if request
-            .pending_score
-            .as_ref()
-            .is_some_and(PendingScore::is_expired)
-        {
-            return Err(LunaSamplerError::Superseded);
-        }
-        let pending_score = request.pending_score.take();
-        let auth_owner_generation = self.auth_owner_generation();
-        if request.parent_compaction.is_some()
-            && !self.supports_parent_compaction(request.parent_compaction_hash.as_deref())
-        {
-            return Err(LunaSamplerError::IncompatibleCompaction);
-        }
-        let evidence = std::mem::take(&mut request.input)
-            .into_iter()
-            .map(ResponseItemEnvelope::new)
-            .collect();
-        let (input, total_tokens) = Self::prepare_input(&request, /*history*/ None, evidence);
-        let input = input
-            .into_iter()
-            .map(ResponseItemEnvelope::into_item)
-            .collect();
-        super::metrics::record_request_tokens(
-            self.config.metrics.as_deref(),
-            /*existing*/ 0,
-            total_tokens,
-        );
-        // Oversized classifications defer to sync with the existing failure score.
-        if total_tokens > self.config.max_input_tokens.saturating_sub(/*rhs*/ 256) {
-            return Err(LunaSamplerError::InputTooLarge);
-        }
-        let (supersede, superseded) = oneshot::channel();
-        let scored = Arc::new(AtomicBool::new(/*v*/ false));
-        {
-            let mut active_requests = self
-                .active_requests
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            active_requests.retain(|request| !request.supersede.is_closed());
-            if active_requests.len() == MAX_CONCURRENT_REQUESTS {
-                let oldest_scored = active_requests
-                    .iter()
-                    .position(|request| request.scored.load(Ordering::Relaxed))
-                    .unwrap_or(0);
-                if let Some(oldest) = active_requests.remove(oldest_scored) {
-                    let _ = oldest.supersede.send(());
-                }
-            }
-            active_requests.push_back(ActiveRequest {
-                supersede,
-                scored: Arc::clone(&scored),
-            });
-        }
-        // The same cancellation future moves into the detached drain after an early score.
-        let superseded = Box::pin(async move {
-            tokio::select! {
-                _ = superseded => {},
-                () = async {
-                    match pending_score {
-                        Some(pending) => pending.expired().await,
-                        None => std::future::pending().await,
-                    }
-                } => {},
-            }
-        });
-        self.execution(&request, input, auth_owner_generation)
-            .run(execution::SamplingMode::Snapshot { superseded, scored })
-            .await
-    }
-
     pub(super) fn max_input_tokens(&self) -> usize {
         self.config.max_input_tokens
     }
@@ -353,9 +271,13 @@ impl LunaSampler {
     /// Publishes the early score and returns only validated, completed history.
     pub(super) async fn sample_retained(
         &self,
-        prepared: PreparedRequest<'_>,
-        ready: oneshot::Sender<Result<String, LunaSamplerError>>,
+        sample: ConversationSample,
+        ready: oneshot::Sender<Result<SampledScore, LunaSamplerError>>,
     ) -> Option<Vec<ResponseItemEnvelope>> {
+        let ConversationSample {
+            input: review_request,
+            sampling,
+        } = sample;
         let auth_owner_generation = self.auth_owner_generation();
         let mut completion = execution::RetainedCompletion {
             ready: Some(ready),
@@ -365,20 +287,25 @@ impl LunaSampler {
                 .config
                 .max_input_tokens
                 .saturating_sub(/*rhs*/ 256)
-                .saturating_sub(prepared.input_tokens),
+                .saturating_sub(review_request.input_tokens),
         };
         // Transport sees model items; delivery proof follows the unchanged input prefix.
-        let (input, metadata): (Vec<_>, Vec<_>) = prepared
+        let (input, metadata): (Vec<_>, Vec<_>) = review_request
             .input
             .into_iter()
             .map(|envelope| (envelope.item, envelope.metadata))
             .unzip();
-        let mut execution = self.execution(prepared.sampling, input, auth_owner_generation);
+        let mut execution = self.execution(&sampling, input, auth_owner_generation);
         execution.request.include = vec!["reasoning.encrypted_content".to_owned()];
-        let result = execution
-            .run(execution::SamplingMode::Retained(&mut completion))
-            .await;
-        execution.request.input.extend(completion.finish(result)?);
+        let mut telemetry = telemetry::SamplingTelemetry::new(
+            self.config.metrics.clone(),
+            sampling.pending_score.clone(),
+        );
+        let result = execution.run(&mut completion, &mut telemetry).await;
+        execution
+            .request
+            .input
+            .extend(completion.finish(result, &mut telemetry)?);
         Some(
             execution
                 .request

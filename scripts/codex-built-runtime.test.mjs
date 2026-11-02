@@ -15,9 +15,9 @@ async function fixture(t, change = {}) {
   const expected = {
     metadata: {
       repository: "https://github.com/openai/codex",
-      ref: "rust-v0.163.0",
-      commit: "83086188ae0614bd882818ff1aa23f3194962012",
-      version: "0.163.0",
+      ref: "rust-v0.166.0",
+      commit: "6ff1e1ca3b30fc8b914720681fcf5fe62e95f856",
+      version: "0.166.0",
     },
     sourceManifestSha256: "source",
     patchesSha256: "patches",
@@ -31,11 +31,19 @@ async function fixture(t, change = {}) {
     sourceManifestSha256: expected.sourceManifestSha256,
     patchesSha256: expected.patchesSha256,
     target: expected.target,
+    buildRecipeVersion: 6,
     entrypoint: "codex",
-    artifacts: [{ path: "codex", sha256: sha256("fixture binary") }],
+    artifacts: [
+      { path: "codex", sha256: sha256("fixture binary") },
+      { path: "codex-exec-server", sha256: sha256("fixture executor") },
+    ],
     ...change,
   };
   await writeFile(path.join(directory, "codex"), "fixture binary");
+  await writeFile(
+    path.join(directory, "codex-exec-server"),
+    "fixture executor",
+  );
   await writeFile(
     path.join(directory, "codex-runtime.json"),
     JSON.stringify(manifest),
@@ -43,7 +51,10 @@ async function fixture(t, change = {}) {
   const calls = [];
   const run = async (binary, args, options) => {
     calls.push({ binary, args, options });
-    if (args[0] === "--version") return { stdout: "codex-cli 0.163.0\n" };
+    if (args[0] === "--version")
+      return {
+        stdout: `${path.basename(binary).startsWith("codex-exec-server") ? "codex-exec-server" : "codex-cli"} 0.166.0\n`,
+      };
     const out = args.at(-1);
     await mkdir(path.join(out, "v2"), { recursive: true });
     await writeFile(
@@ -86,14 +97,14 @@ async function fixture(t, change = {}) {
 test("checks artifact bytes and exercises the packaged executable with an isolated home", async (t) => {
   const f = await fixture(t);
   assert.deepEqual(await verifyBuiltRuntime(f.directory, f), f.manifest);
-  assert.equal(f.calls.length, 2);
+  assert.equal(f.calls.length, 3);
   assert.equal(f.calls[0].binary, path.join(f.directory, "codex"));
   assert.deepEqual(f.calls[0].args, ["--version"]);
-  assert.equal(f.calls[1].args[0], "app-server");
-  assert.ok(f.calls[1].args.includes("--experimental"));
+  assert.equal(f.calls[2].args[0], "app-server");
+  assert.ok(f.calls[2].args.includes("--experimental"));
   assert.notEqual(f.calls[0].options.env.CODEX_HOME, process.env.CODEX_HOME);
   await assert.rejects(
-    readFile(f.calls[1].args.at(-1) + "/ClientRequest.ts"),
+    readFile(f.calls[2].args.at(-1) + "/ClientRequest.ts"),
     /ENOENT/,
   );
 });
@@ -107,9 +118,10 @@ test("uses the Windows executable entrypoint for Windows bundles", async (t) => 
   f.expected.target = "win32-x64";
   await writeFile(path.join(f.directory, "codex.exe"), "fixture binary");
   await verifyBuiltRuntime(f.directory, f);
-  assert.equal(f.calls.length, 2);
-  for (const call of f.calls)
-    assert.equal(path.basename(call.binary), "codex.exe");
+  assert.equal(f.calls.length, 3);
+  assert.equal(path.basename(f.calls[0].binary), "codex.exe");
+  assert.equal(path.basename(f.calls[1].binary), "codex-exec-server.exe");
+  assert.equal(path.basename(f.calls[2].binary), "codex.exe");
 });
 
 test("rejects stale source or patch fingerprints", async (t) => {

@@ -131,10 +131,7 @@ impl ChatWidget {
         }
         if matches!(feature, Feature::FastMode | Feature::UltrafastMode) {
             self.refresh_effective_service_tier();
-            self.sync_service_tier_commands();
-        }
-        if feature == Feature::Worktrees {
-            self.sync_worktrees_enabled();
+            self.refresh_model_dependent_surfaces();
         }
         if feature == Feature::Plugins {
             self.sync_plugins_command_enabled();
@@ -149,21 +146,6 @@ impl ChatWidget {
                 self.turn_lifecycle.budget_limited_turn_ids.clear();
                 self.update_collaboration_mode_indicator();
             }
-        }
-        if feature == Feature::RealtimeConversation && !enabled {
-            self.realtime_conversation_available_for_thread = false;
-            self.bottom_pane
-                .set_voice_command_enabled(/*enabled*/ false);
-            self.stop_realtime_conversation();
-        }
-        if feature == Feature::RealtimeConversation
-            && enabled
-            && !self.realtime_conversation_available_for_thread
-        {
-            self.add_info_message(
-                "Voice conversations will be available in new threads.".into(),
-                /*hint*/ None,
-            );
         }
         if feature == Feature::MentionsV2 {
             self.sync_mentions_v2_enabled();
@@ -231,10 +213,17 @@ impl ChatWidget {
         self.model_catalog.clone()
     }
 
-    pub(crate) fn on_account_email_loaded(&mut self, current_email: Option<String>) {
-        if let Some(StatusAccountDisplay::ChatGpt { email, .. }) = &mut self.status_account_display
+    pub(crate) fn on_account_email_loaded(
+        &mut self,
+        current_email: Option<String>,
+        current_workspace: Option<String>,
+    ) {
+        if let Some(StatusAccountDisplay::ChatGpt {
+            email, workspace, ..
+        }) = &mut self.status_account_display
         {
             *email = current_email;
+            *workspace = current_workspace;
         }
     }
 
@@ -353,9 +342,8 @@ impl ChatWidget {
     }
 
     pub(super) fn sync_worktrees_enabled(&mut self) {
-        self.bottom_pane.set_worktrees_enabled(
-            self.config.features.enabled(Feature::Worktrees) && self.local_worktree_operations,
-        );
+        self.bottom_pane
+            .set_worktrees_enabled(self.local_worktree_operations);
     }
 
     pub(super) fn sync_plugins_command_enabled(&mut self) {

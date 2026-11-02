@@ -11,9 +11,9 @@ import {
 } from "../src/codex/bundled-runtime.js";
 
 const temporaryDirectories: string[] = [];
-const PINNED_CODEX_VERSION = "0.163.0";
-const PINNED_CODEX_REF = "rust-v0.163.0";
-const PINNED_CODEX_COMMIT = "83086188ae0614bd882818ff1aa23f3194962012";
+const PINNED_CODEX_VERSION = "0.166.0";
+const PINNED_CODEX_REF = "rust-v0.166.0";
+const PINNED_CODEX_COMMIT = "6ff1e1ca3b30fc8b914720681fcf5fe62e95f856";
 const BUNDLED_MODELS_PATH = fileURLToPath(
   new URL(
     "../../cantrip_codex/upstream/codex-rs/models-manager/models.json",
@@ -148,7 +148,7 @@ describe("verifyCodexInstallation", () => {
         sourceManifestSha256: "a".repeat(64),
         patchesSha256: "b".repeat(64),
         skillTemplatesSha256: "c".repeat(64),
-        buildRecipeVersion: 5,
+        buildRecipeVersion: 6,
         entrypoint: "codex",
         artifacts: [
           {
@@ -168,7 +168,7 @@ describe("verifyCodexInstallation", () => {
         "arm64",
       ),
     ).resolves.toMatchObject({
-      buildRecipeVersion: 5,
+      buildRecipeVersion: 6,
       patchesSha256: "b".repeat(64),
       skillTemplatesSha256: "c".repeat(64),
     });
@@ -215,41 +215,44 @@ describe("verifyCodexInstallation", () => {
     ).resolves.toMatchObject({ version: PINNED_CODEX_VERSION });
   });
 
-  it("rejects build recipe v5 without a packaged skill digest", async () => {
-    const directory = await mkdtemp(
-      path.join(tmpdir(), "cantrip-codex-bundle-"),
-    );
-    temporaryDirectories.push(directory);
-    const binary = path.join(directory, "codex");
-    const manifestPath = path.join(directory, "codex-runtime.json");
-    await writeFile(binary, "codex binary");
-    await writeFile(
-      manifestPath,
-      JSON.stringify({
-        schemaVersion: 1,
-        component: "codex-cli",
-        version: PINNED_CODEX_VERSION,
-        upstream: {
-          repository: "https://github.com/openai/codex.git",
-          ref: PINNED_CODEX_REF,
-          commit: PINNED_CODEX_COMMIT,
-        },
-        buildRecipeVersion: 5,
-        entrypoint: "codex",
-        artifacts: [{ path: "codex" }],
-        target: "darwin-arm64",
-        profile: "release",
-      }),
-    );
+  it.each([5, 6])(
+    "rejects build recipe v%s without a packaged skill digest",
+    async (buildRecipeVersion) => {
+      const directory = await mkdtemp(
+        path.join(tmpdir(), "cantrip-codex-bundle-"),
+      );
+      temporaryDirectories.push(directory);
+      const binary = path.join(directory, "codex");
+      const manifestPath = path.join(directory, "codex-runtime.json");
+      await writeFile(binary, "codex binary");
+      await writeFile(
+        manifestPath,
+        JSON.stringify({
+          schemaVersion: 1,
+          component: "codex-cli",
+          version: PINNED_CODEX_VERSION,
+          upstream: {
+            repository: "https://github.com/openai/codex.git",
+            ref: PINNED_CODEX_REF,
+            commit: PINNED_CODEX_COMMIT,
+          },
+          buildRecipeVersion,
+          entrypoint: "codex",
+          artifacts: [{ path: "codex" }],
+          target: "darwin-arm64",
+          profile: "release",
+        }),
+      );
 
-    await expect(
-      verifyCodexInstallation(
-        { binary, manifestPath, source: "bundle" },
-        "darwin",
-        "arm64",
-      ),
-    ).rejects.toThrow("Bundled Codex manifest is invalid");
-  });
+      await expect(
+        verifyCodexInstallation(
+          { binary, manifestPath, source: "bundle" },
+          "darwin",
+          "arm64",
+        ),
+      ).rejects.toThrow("Bundled Codex manifest is invalid");
+    },
+  );
 
   it("accepts a signed binary whose bytes no longer match the build manifest", async () => {
     const directory = await mkdtemp(
@@ -307,7 +310,7 @@ describe("verifyCodexInstallation", () => {
           ref: PINNED_CODEX_REF,
           commit: PINNED_CODEX_COMMIT,
         },
-        buildRecipeVersion: 5,
+        buildRecipeVersion: 6,
         skillTemplatesSha256: "c".repeat(64),
         entrypoint: "codex",
         artifacts: [{ path: "codex" }, { path: "missing-helper" }],

@@ -403,7 +403,12 @@ export async function createNativeSharedViewFixture(
         expect(f.receipts.get(resume!.body.operationId)?.status).toBe(
           "applied",
         );
-        expect(stripVTControlCharacters(terminalOutput)).toContain(model.name);
+        // Cursor movement can render spaces without writing them to the PTY.
+        expect(
+          stripVTControlCharacters(terminalOutput).replace(/\s/g, ""),
+        ).toContain(
+          (model.catalog?.displayName ?? model.name).replace(/\s/g, ""),
+        );
       },
       { timeout: 15000 },
     );
@@ -476,7 +481,8 @@ export async function createNativeSharedViewFixture(
             expect(f.receipts.get(resumes[0]!.body.operationId)?.status).toBe(
               "applied",
             );
-            expect(terminalText()).toContain(model.name);
+            // A replayed question or approval covers the model status bar.
+            expect(terminalText()).toContain("OpenAI Codex");
           },
           { timeout: 15000 },
         );
@@ -505,7 +511,8 @@ export async function createNativeSharedViewFixture(
                 f.receipts.get(entry.body.operationId)?.status === "applied",
             );
             expect(applied).toHaveLength(resumes + 1);
-            expect(terminalText()).toContain(model.name);
+            // A replayed question or approval covers the model status bar.
+            expect(terminalText()).toContain("OpenAI Codex");
           },
           { timeout: 15000 },
         );

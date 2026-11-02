@@ -1,11 +1,85 @@
 diff --git a/codex-rs/app-server/src/request_processors/persisted_resume_settings.rs b/codex-rs/app-server/src/request_processors/persisted_resume_settings.rs
-index 5e408b02c94341c9e6de2a71ca282eeb0b2cdc7e..8305c2a953863c168d4f0fca15f0bb5f39b33451 100644
+index a9747d58abe4663d91ce1692d94b45b1cf3265fd..d07cfdf1c016d0b5f0beaca2875af5031a9b8c16 100644
 --- a/codex-rs/app-server/src/request_processors/persisted_resume_settings.rs
 +++ b/codex-rs/app-server/src/request_processors/persisted_resume_settings.rs
-@@ -14,6 +14,16 @@ pub(super) struct PersistedResumeSettings {
- pub(super) fn latest_persisted_resume_settings(
-     history: &[RolloutItem],
- ) -> Option<PersistedResumeSettings> {
+@@ -67,7 +67,7 @@ pub(super) fn latest_owned_thread_settings(
+     })
+ }
+ 
+-fn latest_persisted_resume_settings(history: &[RolloutItem]) -> Option<PersistedResumeSettings> {
++pub(super) fn latest_persisted_resume_settings(history: &[RolloutItem]) -> Option<PersistedResumeSettings> {
+     history
+         .iter()
+         .enumerate()
+@@ -128,3 +128,278 @@ pub(super) fn latest_persisted_model_settings(
+ #[cfg(test)]
+ #[path = "persisted_resume_settings_tests.rs"]
+ mod tests;
++
++pub(super) fn latest_persisted_resume_settings_for_owner(
++    history: &[RolloutItem],
++    owner: Option<codex_protocol::ThreadId>,
++) -> Option<PersistedResumeSettings> {
++    if let Some(owner) = owner
++        && let Some(settings) = latest_owned_thread_settings(history, owner)
++    {
++        return Some(PersistedResumeSettings::from(settings));
++    }
++    let accepts = |event: &codex_protocol::protocol::ThreadSettingsAppliedEvent| {
++        owner.is_none() || event.thread_id == owner
++    };
++    history
++        .iter()
++        .enumerate()
++        .rev()
++        .find_map(|(index, item)| match item {
++            RolloutItem::TurnContext(turn_context) => Some(PersistedResumeSettings {
++                approval_policy: turn_context.approval_policy,
++                approvals_reviewer: turn_context.approvals_reviewer.or_else(|| {
++                    history[..index].iter().rev().find_map(|item| match item {
++                        RolloutItem::TurnContext(turn_context) => turn_context.approvals_reviewer,
++                        RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(event))
++                            if accepts(event) =>
++                        {
++                            Some(event.thread_settings.approvals_reviewer)
++                        }
++                        _ => None,
++                    })
++                }),
++                active_permission_profile: turn_context.active_permission_profile.clone(),
++                unnamed_permission_profile: None,
++            }),
++            RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(event)) if accepts(event) => {
++                Some(PersistedResumeSettings {
++                    approval_policy: event.thread_settings.approval_policy,
++                    approvals_reviewer: Some(event.thread_settings.approvals_reviewer),
++                    active_permission_profile: event
++                        .thread_settings
++                        .active_permission_profile
++                        .clone(),
++                })
++            }
++            _ => None,
++        })
++}
++
++#[cfg(test)]
++#[path = "persisted_resume_settings_tests.rs"]
++mod tests;
++
++/// Full snapshots have authority only over the logical thread that emitted them.
++/// Imported/fork prefixes and old ownerless snapshots never configure a root.
++
++#[derive(Debug, PartialEq, Eq)]
++pub(super) struct PersistedResumeSettings {
++    pub(super) approval_policy: AskForApproval,
++    pub(super) approvals_reviewer: Option<ApprovalsReviewer>,
++    pub(super) active_permission_profile: Option<ActivePermissionProfile>,
++}
++
++pub(super) fn latest_persisted_resume_settings(
++    history: &[RolloutItem],
++) -> Option<PersistedResumeSettings> {
 +    latest_persisted_resume_settings_for_owner(history, None)
 +}
 +
@@ -16,33 +90,40 @@ index 5e408b02c94341c9e6de2a71ca282eeb0b2cdc7e..8305c2a953863c168d4f0fca15f0bb5f
 +    let accepts = |event: &codex_protocol::protocol::ThreadSettingsAppliedEvent| {
 +        owner.is_none() || event.thread_id == owner
 +    };
-     history
-         .iter()
-         .enumerate()
-@@ -24,7 +34,9 @@ pub(super) fn latest_persisted_resume_settings(
-                 approvals_reviewer: turn_context.approvals_reviewer.or_else(|| {
-                     history[..index].iter().rev().find_map(|item| match item {
-                         RolloutItem::TurnContext(turn_context) => turn_context.approvals_reviewer,
--                        RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(event)) => {
++    history
++        .iter()
++        .enumerate()
++        .rev()
++        .find_map(|(index, item)| match item {
++            RolloutItem::TurnContext(turn_context) => Some(PersistedResumeSettings {
++                approval_policy: turn_context.approval_policy,
++                approvals_reviewer: turn_context.approvals_reviewer.or_else(|| {
++                    history[..index].iter().rev().find_map(|item| match item {
++                        RolloutItem::TurnContext(turn_context) => turn_context.approvals_reviewer,
 +                        RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(event))
 +                            if accepts(event) =>
 +                        {
-                             Some(event.thread_settings.approvals_reviewer)
-                         }
-                         _ => None,
-@@ -32,7 +44,7 @@ pub(super) fn latest_persisted_resume_settings(
-                 }),
-                 active_permission_profile: turn_context.active_permission_profile.clone(),
-             }),
--            RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(event)) => {
++                            Some(event.thread_settings.approvals_reviewer)
++                        }
++                        _ => None,
++                    })
++                }),
++                active_permission_profile: turn_context.active_permission_profile.clone(),
++            }),
 +            RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(event)) if accepts(event) => {
-                 Some(PersistedResumeSettings {
-                     approval_policy: event.thread_settings.approval_policy,
-                     approvals_reviewer: Some(event.thread_settings.approvals_reviewer),
-@@ -49,3 +61,169 @@ pub(super) fn latest_persisted_resume_settings(
- #[cfg(test)]
- #[path = "persisted_resume_settings_tests.rs"]
- mod tests;
++                Some(PersistedResumeSettings {
++                    approval_policy: event.thread_settings.approval_policy,
++                    approvals_reviewer: Some(event.thread_settings.approvals_reviewer),
++                    active_permission_profile: event
++                        .thread_settings
++                        .active_permission_profile
++                        .clone(),
++                })
++            }
++            _ => None,
++        })
++}
++
 +
 +/// Full snapshots have authority only over the logical thread that emitted them.
 +/// Imported/fork prefixes and old ownerless snapshots never configure a root.
@@ -210,10 +291,10 @@ index 5e408b02c94341c9e6de2a71ca282eeb0b2cdc7e..8305c2a953863c168d4f0fca15f0bb5f
 +    }
 +}
 diff --git a/codex-rs/app-server/src/request_processors/persisted_resume_settings_tests.rs b/codex-rs/app-server/src/request_processors/persisted_resume_settings_tests.rs
-index 4531226b58a1b19008afaaafae9190122e6386b3..12d99d81a5c42ea7d327eb24507fb54d5aa82136 100644
+index 2a2ea5d3c6cf683d235cd04eb5bc179d28b19ec6..7092366f07044f41c81f4c3cdde082d16a854408 100644
 --- a/codex-rs/app-server/src/request_processors/persisted_resume_settings_tests.rs
 +++ b/codex-rs/app-server/src/request_processors/persisted_resume_settings_tests.rs
-@@ -37,9 +37,12 @@ fn settings_item(
+@@ -39,9 +39,12 @@ fn settings_item(
                  approval_policy,
                  approvals_reviewer,
                  permission_profile: PermissionProfile::read_only(),
@@ -226,13 +307,14 @@ index 4531226b58a1b19008afaaafae9190122e6386b3..12d99d81a5c42ea7d327eb24507fb54d
                  reasoning_effort: None,
                  reasoning_summary: None,
                  personality: None,
-@@ -157,3 +160,295 @@ fn older_reviewer_is_used_when_latest_turn_context_omits_it() {
-         })
-     );
+@@ -241,3 +244,296 @@ fn an_unattributed_snapshot_does_not_restore_unnamed_permissions() {
+         PersistedResumeSettings::from_history(&history, ThreadId::new()).expect("legacy settings");
+     assert_eq!(settings.unnamed_permission_profile, None);
  }
 +
 +fn full_snapshot() -> ThreadSettingsSnapshot {
 +    let RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(event)) = settings_item(
++        /*thread_id*/ None,
 +        AskForApproval::OnRequest,
 +        ApprovalsReviewer::User,
 +        Some(ActivePermissionProfile::read_only()),
@@ -523,35 +605,50 @@ index 4531226b58a1b19008afaaafae9190122e6386b3..12d99d81a5c42ea7d327eb24507fb54d
 +    }
 +}
 diff --git a/codex-rs/app-server/src/request_processors/thread_processor.rs b/codex-rs/app-server/src/request_processors/thread_processor.rs
-index 782696fb5eee9bc5cd378f49c9a30c8e9a16f86f..e2e8886c87855030e330dbe82925334121f128f1 100644
+index fc1b9a42a3dc0fcb5823ce28a92f2bcb5cfc7cc8..081bda04ba2115e93b18b40d8cbc9da4cf311378 100644
 --- a/codex-rs/app-server/src/request_processors/thread_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_processor.rs
-@@ -5,7 +5,10 @@ mod daemon_continuation;
- mod daemon_snapshot;
- 
+@@ -9,6 +9,9 @@ mod workspace_switching;
  use super::persisted_resume_settings::PersistedResumeSettings;
-+use super::persisted_resume_settings::latest_owned_thread_settings;
- use super::persisted_resume_settings::latest_persisted_resume_settings;
+ use super::persisted_resume_settings::latest_owned_thread_settings;
+ use super::persisted_resume_settings::latest_persisted_model_settings;
++use super::persisted_resume_settings::latest_persisted_resume_settings;
 +use super::persisted_resume_settings::latest_persisted_resume_settings_for_owner;
 +use super::persisted_resume_settings::merge_owned_resume_settings;
  use super::thread_enrichment::enrich_loaded_threads;
  use super::thread_fork_goal::inherit_thread_goal_snapshot;
  use super::thread_input::can_accept_direct_input;
-@@ -4163,7 +4166,7 @@ impl ThreadRequestProcessor {
-             })
-             .map(|settings| settings.permission_profile.clone());
-         let mut persisted_settings = match &thread_history {
--            InitialHistory::Resumed(resumed) => latest_persisted_resume_settings(&resumed.history),
+@@ -4249,20 +4252,54 @@ impl ThreadRequestProcessor {
+         let restore_summary = !has_override("model_reasoning_summary");
+         let restore_personality =
+             typesafe_overrides.personality.is_none() && !has_override("personality");
+-        let persisted_settings = match &thread_history {
+-            InitialHistory::Resumed(resumed) => {
+-                PersistedResumeSettings::from_history(&resumed.history, resumed.conversation_id)
+-            }
++        typesafe_overrides.persisted_permission_profile = history_settings
++            .filter(|settings| {
++                settings.active_permission_profile.is_none()
++                    && !has_permission_override(request_overrides.as_ref(), &typesafe_overrides)
++                    && !request_overrides.as_ref().is_some_and(|overrides| {
++                        overrides.keys().any(|key| {
++                            key == "sandbox_workspace_write"
++                                || key.starts_with("sandbox_workspace_write.")
++                        })
++                    })
++            })
++            .map(|settings| settings.permission_profile.clone());
++        let mut persisted_settings = match &thread_history {
 +            InitialHistory::Resumed(resumed) => latest_persisted_resume_settings_for_owner(&resumed.history, Some(resumed.conversation_id)),
              InitialHistory::New | InitialHistory::Cleared | InitialHistory::Forked(_) => None,
          };
-         // A TurnContext can describe an executor's profile, so an owned snapshot
-@@ -4171,14 +4174,33 @@ impl ThreadRequestProcessor {
-         if let (Some(settings), Some(snapshot)) = (&mut persisted_settings, history_settings) {
-             settings.active_permission_profile = snapshot.active_permission_profile.clone();
-         }
 -        let persisted_metadata = self
 -            .load_and_apply_persisted_resume_metadata(
++        // A TurnContext can describe an executor's profile, so an owned snapshot
++        // is authoritative for named permissions too.
++        if let (Some(settings), Some(snapshot)) = (&mut persisted_settings, history_settings) {
++            settings.active_permission_profile = snapshot.active_permission_profile.clone();
++        }
 +        let owned_settings = match &thread_history {
 +            InitialHistory::Resumed(resumed)
 +                if !thread_history
@@ -583,10 +680,11 @@ index 782696fb5eee9bc5cd378f49c9a30c8e9a16f86f..e2e8886c87855030e330dbe829253341
  
          let clear_reasoning_effort = !has_explicit_model_resume_override
              && persisted_metadata
-@@ -4221,6 +4243,14 @@ impl ThreadRequestProcessor {
-             config.model_reasoning_effort = None;
+@@ -4346,6 +4383,15 @@ impl ThreadRequestProcessor {
+                 config.personality = settings.personality;
+             }
          }
- 
++
 +        if let Some(settings) = owned_settings {
 +            settings.apply(&mut config).map_err(|error| {
 +                invalid_params(format!(
@@ -599,10 +697,10 @@ index 782696fb5eee9bc5cd378f49c9a30c8e9a16f86f..e2e8886c87855030e330dbe829253341
  
          match self
 diff --git a/codex-rs/app-server/tests/suite/v2/thread_resume.rs b/codex-rs/app-server/tests/suite/v2/thread_resume.rs
-index 84a1728516c34a25296006d0284c0b42f9703def..373759adae4fb15d7649393fcbf62fd0ec2477e0 100644
+index e4de8255526ec3260103fcd6544228fc76609889..c30dd52bf41de6b08a232a893f9749405b75b7a5 100644
 --- a/codex-rs/app-server/tests/suite/v2/thread_resume.rs
 +++ b/codex-rs/app-server/tests/suite/v2/thread_resume.rs
-@@ -1760,7 +1760,7 @@ async fn thread_resume_restores_collaboration_mode_from_legacy_turn_context() ->
+@@ -1954,7 +1954,7 @@ async fn thread_resume_restores_collaboration_mode_from_legacy_turn_context() ->
  }
  
  #[tokio::test]
@@ -611,7 +709,7 @@ index 84a1728516c34a25296006d0284c0b42f9703def..373759adae4fb15d7649393fcbf62fd0
      let server = create_mock_responses_server_repeating_assistant("Done").await;
      for history_mode in [ThreadHistoryMode::Legacy, ThreadHistoryMode::Paginated] {
          let codex_home = TempDir::new()?;
-@@ -1818,12 +1818,12 @@ async fn cold_resume_reresolves_persisted_active_permission_profile() -> Result<
+@@ -2012,12 +2012,12 @@ async fn cold_resume_reresolves_persisted_active_permission_profile() -> Result<
              ..
          } = timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(resume_id)).await??;
  
@@ -626,7 +724,7 @@ index 84a1728516c34a25296006d0284c0b42f9703def..373759adae4fb15d7649393fcbf62fd0
              })
          );
          assert_eq!(
-@@ -1835,7 +1835,7 @@ async fn cold_resume_reresolves_persisted_active_permission_profile() -> Result<
+@@ -2029,7 +2029,7 @@ async fn cold_resume_reresolves_persisted_active_permission_profile() -> Result<
  }
  
  #[tokio::test]
@@ -635,7 +733,7 @@ index 84a1728516c34a25296006d0284c0b42f9703def..373759adae4fb15d7649393fcbf62fd0
      let server = create_mock_responses_server_repeating_assistant("Done").await;
      for history_mode in [ThreadHistoryMode::Legacy, ThreadHistoryMode::Paginated] {
          let codex_home = TempDir::new()?;
-@@ -1871,12 +1871,13 @@ async fn cold_resume_with_removed_permission_profile_uses_configured_default() -
+@@ -2065,12 +2065,13 @@ async fn cold_resume_with_removed_permission_profile_uses_configured_default() -
              ..
          } = timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(resume_id)).await??;
  
@@ -653,7 +751,7 @@ index 84a1728516c34a25296006d0284c0b42f9703def..373759adae4fb15d7649393fcbf62fd0
          );
      }
      Ok(())
-@@ -2756,7 +2757,8 @@ async fn thread_resume_returns_rollout_history() -> Result<()> {
+@@ -2955,7 +2956,8 @@ async fn thread_resume_returns_rollout_history() -> Result<()> {
      assert_eq!(thread.preview, preview);
      assert_eq!(thread.model_provider, "mock_provider");
      assert!(thread.path.as_ref().expect("thread path").is_absolute());
@@ -663,9 +761,9 @@ index 84a1728516c34a25296006d0284c0b42f9703def..373759adae4fb15d7649393fcbf62fd0
      assert_eq!(cwd, test_absolute_path("/"));
      assert_eq!(thread.cli_version, "0.0.0");
      assert_eq!(thread.source, SessionSource::Cli);
-@@ -6600,3 +6602,177 @@ async fn setup_rollout_fixture(codex_home: &Path, server_uri: &str) -> Result<Ro
-         rollout_file_path,
-     })
+@@ -7122,3 +7124,177 @@ async fn thread_resume_recovers_after_provider_configuration_is_restored(
+     assert_eq!(resumed.model_provider, "old_provider");
+     Ok(())
  }
 +
 +#[tokio::test]
@@ -842,10 +940,10 @@ index 84a1728516c34a25296006d0284c0b42f9703def..373759adae4fb15d7649393fcbf62fd0
 +    Ok(())
 +}
 diff --git a/codex-rs/core/src/agent/control_tests.rs b/codex-rs/core/src/agent/control_tests.rs
-index 6d97eceb2ed4a68f349562e7a3d8cfc5ef53cbe4..619eae84661bf4038ab1ca1d6032a4b9b41df63a 100644
+index 86eaf38a4e23872b72d91efe431977abbbb55534..a90ce8d5737efe0da8a3b0a25bcaea4c43309fd9 100644
 --- a/codex-rs/core/src/agent/control_tests.rs
 +++ b/codex-rs/core/src/agent/control_tests.rs
-@@ -2410,9 +2410,12 @@ async fn spawn_agent_fork_from_paginated_parent_uses_model_context_prefix(
+@@ -2422,9 +2422,12 @@ async fn spawn_agent_fork_from_paginated_parent_uses_model_context_prefix(
                          approval_policy: AskForApproval::Never,
                          approvals_reviewer: ApprovalsReviewer::User,
                          permission_profile: PermissionProfile::workspace_write(),
@@ -859,10 +957,10 @@ index 6d97eceb2ed4a68f349562e7a3d8cfc5ef53cbe4..619eae84661bf4038ab1ca1d6032a4b9
                          reasoning_summary: None,
                          personality: None,
 diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config/config_tests.rs
-index b80ad7569e3fc4406bea5624714344d350f74c8b..0f26119a08becbf4ebf0913121dcf0dbc6b80481 100644
+index b2009cf6cee82f709856f24b4656e7d104da5791..f30aa0444df513fa6b20d4161037cf205809b8a9 100644
 --- a/codex-rs/core/src/config/config_tests.rs
 +++ b/codex-rs/core/src/config/config_tests.rs
-@@ -13597,3 +13597,60 @@ fn sqlite_home_env_conflict_reports_an_override() -> std::io::Result<()> {
+@@ -14109,3 +14109,60 @@ fn sqlite_home_env_conflict_reports_an_override() -> std::io::Result<()> {
  
      Ok(())
  }
@@ -924,10 +1022,10 @@ index b80ad7569e3fc4406bea5624714344d350f74c8b..0f26119a08becbf4ebf0913121dcf0db
 +    Ok(())
 +}
 diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
-index 233604261482c2fc98177b44af591dbc9b5c6438..76424606c567639587ae61de47af2082d85d69cc 100644
+index 649b0d64a4a9a421082fdeaf68e90cabc1dab8f5..e872c1b1ea7a550b542ba616099538ebff9f5e2b 100644
 --- a/codex-rs/core/src/config/mod.rs
 +++ b/codex-rs/core/src/config/mod.rs
-@@ -1047,6 +1047,15 @@ pub struct Config {
+@@ -1064,6 +1064,15 @@ pub struct Config {
      /// Value to use for `reasoning.effort` when making a request using the
      /// Responses API.
      pub model_reasoning_effort: Option<ReasoningEffort>,
@@ -943,7 +1041,7 @@ index 233604261482c2fc98177b44af591dbc9b5c6438..76424606c567639587ae61de47af2082
      /// Optional Plan-mode-specific reasoning effort override used by the TUI.
      ///
      /// When unset, Plan mode uses the built-in Plan preset default (currently
-@@ -4583,6 +4592,8 @@ impl Config {
+@@ -4713,6 +4722,8 @@ impl Config {
                  .and_then(|auto_review| auto_review.circuit_break_action)
                  .unwrap_or_default(),
              model_reasoning_effort: cfg.model_reasoning_effort,
@@ -952,7 +1050,7 @@ index 233604261482c2fc98177b44af591dbc9b5c6438..76424606c567639587ae61de47af2082
              plan_mode_reasoning_effort: cfg.plan_mode_reasoning_effort,
              model_reasoning_summary: cfg.model_reasoning_summary,
              model_catalog,
-@@ -4938,6 +4949,84 @@ impl Config {
+@@ -5074,6 +5085,84 @@ impl Config {
          codex_config::bundled_skills_enabled_from_stack(&self.config_layer_stack)
      }
  
@@ -1038,10 +1136,10 @@ index 233604261482c2fc98177b44af591dbc9b5c6438..76424606c567639587ae61de47af2082
      pub fn is_permission_profile_allowed(
          &self,
 diff --git a/codex-rs/core/src/session/mod.rs b/codex-rs/core/src/session/mod.rs
-index 8a93593bb7d5f950c6901bb5d709ce17d1d136cf..0493783670b5b9becb1bbbcf4118b70a13b4e13f 100644
+index 3a42169077fa94fe3251386832ba41d6ced536e9..27b4df3df80c03d3ff5a5ed50add83ca595c2cd1 100644
 --- a/codex-rs/core/src/session/mod.rs
 +++ b/codex-rs/core/src/session/mod.rs
-@@ -855,56 +855,19 @@ impl Session {
+@@ -872,54 +872,19 @@ impl Session {
          });
          // TODO (aibrahim): Consolidate config.model and config.model_reasoning_effort into config.collaboration_mode
          // to avoid extracting these fields separately and constructing CollaborationMode here.
@@ -1095,8 +1193,6 @@ index 8a93593bb7d5f950c6901bb5d709ce17d1d136cf..0493783670b5b9becb1bbbcf4118b70a
              &config.features,
              &model_info,
          );
--        let service_tier =
--            get_service_tier(config.service_tier.clone(), &config.features, &model_info);
 +        let service_tier = initial_service_tier(
 +            &config,
 +            &conversation_history,
@@ -1106,7 +1202,16 @@ index 8a93593bb7d5f950c6901bb5d709ce17d1d136cf..0493783670b5b9becb1bbbcf4118b70a
          let storage_originator = AuthStorageOriginator::from_client_name(&originator);
          let session_configuration = SessionConfiguration {
              turn_extension_init,
-@@ -1187,6 +1150,69 @@ pub(crate) fn new_submission_id() -> String {
+@@ -930,7 +895,7 @@ impl Session {
+             step_settings: Arc::new(StepSettings {
+                 collaboration_mode,
+                 reasoning_summary: config.model_reasoning_summary,
+-                service_tier: config.service_tier.clone(),
++                service_tier,
+                 personality: config.personality,
+                 approval_policy: config.permissions.approval_policy.clone(),
+                 approvals_reviewer: config.approvals_reviewer,
+@@ -1209,6 +1174,69 @@ pub(crate) fn new_submission_id() -> String {
      Uuid::now_v7().to_string()
  }
  
@@ -1177,10 +1282,10 @@ index 8a93593bb7d5f950c6901bb5d709ce17d1d136cf..0493783670b5b9becb1bbbcf4118b70a
      configured_service_tier: Option<String>,
      features: &Features,
 diff --git a/codex-rs/core/src/session/session.rs b/codex-rs/core/src/session/session.rs
-index 589355aa1e397459bc4e89dc1d848843c7434548..fff4a01c33d361787ea730a08ed88451e06fc920 100644
+index 7df8aee1f4d5b57408100877ab81b84ca92d7c00..0b3bf41712f55e2023fac7ffc4bda177ee40f3bc 100644
 --- a/codex-rs/core/src/session/session.rs
 +++ b/codex-rs/core/src/session/session.rs
-@@ -327,9 +327,16 @@ impl SessionConfiguration {
+@@ -332,9 +332,16 @@ impl SessionConfiguration {
              approval_policy: self.step_settings.approval_policy.value(),
              approvals_reviewer: self.step_settings.approvals_reviewer,
              permission_profile: self.materialized_permission_profile(environment_selections),
@@ -1197,7 +1302,7 @@ index 589355aa1e397459bc4e89dc1d848843c7434548..fff4a01c33d361787ea730a08ed88451
              reasoning_effort: self.step_settings.collaboration_mode.reasoning_effort(),
              reasoning_summary: self.step_settings.reasoning_summary,
              personality: self.step_settings.personality,
-@@ -1872,6 +1879,17 @@ impl Session {
+@@ -1941,6 +1948,17 @@ impl Session {
                  let mut guard = network_policy_decider_session.write().await;
                  *guard = Arc::downgrade(&sess);
              }
@@ -1213,18 +1318,17 @@ index 589355aa1e397459bc4e89dc1d848843c7434548..fff4a01c33d361787ea730a08ed88451
 +                ]).await?;
 +            }
              // Dispatch the SessionConfiguredEvent first and then report any errors.
-             let thread_config =
-                 session_configuration.thread_config_snapshot(turn_environments.selections());
+             let thread_config = sess
+                 .effective_thread_config_snapshot(
 diff --git a/codex-rs/core/src/session/step_settings.rs b/codex-rs/core/src/session/step_settings.rs
-index 83b1edd04c7b6e68c8dcfd3d075786c5af884e60..125ede8c4d141e0ac8f0bd47977bba8943cca26a 100644
+index b66fb1931dde38aa01bbb777350e618bea870255..125ede8c4d141e0ac8f0bd47977bba8943cca26a 100644
 --- a/codex-rs/core/src/session/step_settings.rs
 +++ b/codex-rs/core/src/session/step_settings.rs
-@@ -26,8 +26,9 @@ pub(crate) struct StepSettings {
+@@ -26,7 +26,9 @@ pub(crate) struct StepSettings {
      pub(crate) collaboration_mode: CollaborationMode,
      /// `None` follows the pinned model's default.
      pub(crate) reasoning_summary: Option<ReasoningSummary>,
--    /// Normalized requested tier. Startup retains initial-model filtering;
--    /// resolution filters the effective tier against the pinned model.
+-    /// Normalized requested tier; resolution filters it against the pinned model.
 +    /// Normalized requested tier. New-session defaults retain initial-model
 +    /// filtering; owned cold resumes preserve the selection. Resolution always
 +    /// filters the effective tier against the pinned model.
@@ -1232,10 +1336,10 @@ index 83b1edd04c7b6e68c8dcfd3d075786c5af884e60..125ede8c4d141e0ac8f0bd47977bba89
      pub(crate) personality: Option<Personality>,
      pub(crate) approval_policy: Constrained<AskForApproval>,
 diff --git a/codex-rs/core/src/session/tests.rs b/codex-rs/core/src/session/tests.rs
-index 8555fb296912f74f7e0fdaec3098362d6805ee24..e8b8e3c95869e5c620a940de6ac7fcbe9767cd3a 100644
+index a0a4ba37b3d9e95d37da3dfa74c07054348be6e3..db85a13fdb45cfb9db98b5173a89987e1f94ab54 100644
 --- a/codex-rs/core/src/session/tests.rs
 +++ b/codex-rs/core/src/session/tests.rs
-@@ -13750,3 +13750,131 @@ async fn rejected_mcp_refresh_then_corrected_user_config_blocks_ordinary_replace
+@@ -13998,3 +13998,131 @@ async fn rejected_mcp_refresh_then_corrected_user_config_blocks_ordinary_replace
          "rejection must not permit same-name ordinary-auth replacement in this session"
      );
  }
@@ -1368,10 +1472,10 @@ index 8555fb296912f74f7e0fdaec3098362d6805ee24..e8b8e3c95869e5c620a940de6ac7fcbe
 +    }
 +}
 diff --git a/codex-rs/protocol/src/protocol.rs b/codex-rs/protocol/src/protocol.rs
-index 6776fa9e40acf4d42fbe474a7ecf9c0f4e6d7f1e..c836ce544fbd9251ec468a379684c391fb4752ee 100644
+index d55b09e8d320e2c58ddab21ea7b2d84794eac1c9..b52d393897d2d3b806b80327c6c625934f35257b 100644
 --- a/codex-rs/protocol/src/protocol.rs
 +++ b/codex-rs/protocol/src/protocol.rs
-@@ -2341,6 +2341,11 @@ pub struct ThreadSettingsSnapshot {
+@@ -2449,6 +2449,11 @@ pub struct ThreadSettingsSnapshot {
      pub approval_policy: AskForApproval,
      pub approvals_reviewer: ApprovalsReviewer,
      pub permission_profile: PermissionProfile,
@@ -1383,7 +1487,7 @@ index 6776fa9e40acf4d42fbe474a7ecf9c0f4e6d7f1e..c836ce544fbd9251ec468a379684c391
      #[serde(default, skip_serializing_if = "Option::is_none")]
      #[ts(optional)]
      pub active_permission_profile: Option<ActivePermissionProfile>,
-@@ -2351,6 +2356,13 @@ pub struct ThreadSettingsSnapshot {
+@@ -2459,6 +2464,13 @@ pub struct ThreadSettingsSnapshot {
      #[serde(default, skip_serializing_if = "Option::is_none")]
      #[ts(optional)]
      pub runtime_workspace_roots: Option<Vec<AbsolutePathBuf>>,
@@ -1398,10 +1502,10 @@ index 6776fa9e40acf4d42fbe474a7ecf9c0f4e6d7f1e..c836ce544fbd9251ec468a379684c391
      pub reasoning_effort: Option<ReasoningEffortConfig>,
      #[serde(skip_serializing_if = "Option::is_none")]
 diff --git a/codex-rs/state/src/extract.rs b/codex-rs/state/src/extract.rs
-index f079ebc4ee8c09213df53b234e20d8c94800adf8..3ea04dd58ddd3afe111f08cfdcf1dd4c5a495052 100644
+index 80ce0e086a6341b6e79bfc0f73587bd92fd91ec9..11a608d6564361422eca5b9e974a15c21c77812b 100644
 --- a/codex-rs/state/src/extract.rs
 +++ b/codex-rs/state/src/extract.rs
-@@ -159,7 +159,7 @@ fn apply_event_msg(metadata: &mut ThreadMetadata, event: &EventMsg) {
+@@ -166,7 +166,7 @@ fn apply_event_msg(metadata: &mut ThreadMetadata, event: &EventMsg) {
                  set_preview_if_empty(metadata, Some(objective.to_string()));
              }
          }
@@ -1410,7 +1514,7 @@ index f079ebc4ee8c09213df53b234e20d8c94800adf8..3ea04dd58ddd3afe111f08cfdcf1dd4c
              let settings = &event.thread_settings;
              metadata.model = Some(settings.model.clone());
              metadata.model_provider = settings.model_provider_id.clone();
-@@ -723,9 +723,9 @@ mod tests {
+@@ -731,9 +731,9 @@ mod tests {
          let cwd = std::env::current_dir()
              .expect("current directory")
              .join("updated/workspace");
@@ -1422,7 +1526,7 @@ index f079ebc4ee8c09213df53b234e20d8c94800adf8..3ea04dd58ddd3afe111f08cfdcf1dd4c
                  thread_settings: ThreadSettingsSnapshot {
                      disabled_plugin_ids: Vec::new(),
                      model: "gpt-5.2-codex".to_string(),
-@@ -734,9 +734,12 @@ mod tests {
+@@ -742,9 +742,12 @@ mod tests {
                      approval_policy: AskForApproval::Never,
                      approvals_reviewer: ApprovalsReviewer::User,
                      permission_profile: permission_profile.clone(),
@@ -1435,7 +1539,7 @@ index f079ebc4ee8c09213df53b234e20d8c94800adf8..3ea04dd58ddd3afe111f08cfdcf1dd4c
                      reasoning_effort: Some(ReasoningEffort::Ultra),
                      reasoning_summary: Some(ReasoningSummary::Auto),
                      personality: None,
-@@ -752,6 +755,20 @@ mod tests {
+@@ -760,6 +763,20 @@ mod tests {
              },
          ));
  
@@ -1457,10 +1561,10 @@ index f079ebc4ee8c09213df53b234e20d8c94800adf8..3ea04dd58ddd3afe111f08cfdcf1dd4c
          apply_rollout_item(&mut metadata, &item, "test-provider");
  
 diff --git a/codex-rs/thread-manager-sample/src/main.rs b/codex-rs/thread-manager-sample/src/main.rs
-index 1a0c03a0fd39b5fd08617c9ad4788ce507d8835a..d6ae421739cb74db2ab1b6e598d0277f8b0159df 100644
+index 1d1ad759df683f806bc6ac4d005a4972f35a1a1d..1777e53c33555b93ab922b30d1cb71eb8dff1739 100644
 --- a/codex-rs/thread-manager-sample/src/main.rs
 +++ b/codex-rs/thread-manager-sample/src/main.rs
-@@ -349,6 +349,8 @@ async fn new_config(
+@@ -355,6 +355,8 @@ async fn new_config(
          main_execve_wrapper_exe: None,
          zsh_path: None,
          model_reasoning_effort: None,
@@ -1470,7 +1574,7 @@ index 1a0c03a0fd39b5fd08617c9ad4788ce507d8835a..d6ae421739cb74db2ab1b6e598d0277f
          model_reasoning_summary: None,
          model_catalog: None,
 diff --git a/codex-rs/thread-store/src/thread_metadata_sync.rs b/codex-rs/thread-store/src/thread_metadata_sync.rs
-index ef6749987c3d5cb427904b6d324b3651ed5598b7..91776adc78bfd0e39da4ec1c12066fdd31e1f2d6 100644
+index 68bb68751af67a2e62fe8740fd04bfa65a5ec7b4..87225e042a864cc9a89091ef771c3ee3e6d07d22 100644
 --- a/codex-rs/thread-store/src/thread_metadata_sync.rs
 +++ b/codex-rs/thread-store/src/thread_metadata_sync.rs
 @@ -337,7 +337,9 @@ impl ThreadMetadataSync {
@@ -1484,7 +1588,7 @@ index ef6749987c3d5cb427904b6d324b3651ed5598b7..91776adc78bfd0e39da4ec1c12066fdd
                      let settings = &event.thread_settings;
                      self.cwd_seen = true;
                      update.model = Some(settings.model.clone());
-@@ -825,7 +827,7 @@ mod tests {
+@@ -827,7 +829,7 @@ mod tests {
  
          let mut item = RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(
              ThreadSettingsAppliedEvent {
@@ -1493,7 +1597,7 @@ index ef6749987c3d5cb427904b6d324b3651ed5598b7..91776adc78bfd0e39da4ec1c12066fdd
                  thread_settings: ThreadSettingsSnapshot {
                      disabled_plugin_ids: Vec::new(),
                      model: "gpt-5.2-codex".to_string(),
-@@ -834,9 +836,12 @@ mod tests {
+@@ -836,9 +838,12 @@ mod tests {
                      approval_policy: AskForApproval::Never,
                      approvals_reviewer: ApprovalsReviewer::User,
                      permission_profile: permission_profile.clone(),
@@ -1506,7 +1610,7 @@ index ef6749987c3d5cb427904b6d324b3651ed5598b7..91776adc78bfd0e39da4ec1c12066fdd
                      reasoning_effort: Some(ReasoningEffort::Ultra),
                      reasoning_summary: Some(ReasoningSummary::Auto),
                      personality: None,
-@@ -852,6 +857,23 @@ mod tests {
+@@ -854,6 +859,23 @@ mod tests {
              },
          ));
  

@@ -1,8 +1,8 @@
 diff --git a/codex-rs/app-server-client/src/lib.rs b/codex-rs/app-server-client/src/lib.rs
-index 75544173d1cac8ef44a84aade927c8e57056b89b..6da56e3ca3a56f96da89141ac7e0a55ab9e48adb 100644
+index e7df794ea809c492ae02e32fe2d34dcb63f39132..d3dde1de3c5a1d165cd8244213f14ef21c7017de 100644
 --- a/codex-rs/app-server-client/src/lib.rs
 +++ b/codex-rs/app-server-client/src/lib.rs
-@@ -756,6 +756,13 @@ impl AppServerClient {
+@@ -770,6 +770,13 @@ impl AppServerClient {
          }
      }
  
@@ -173,7 +173,7 @@ index 0000000000000000000000000000000000000000..ee833fe0b8e7de5e77d75da84b087eba
 +    }
 +}
 diff --git a/codex-rs/app-server-client/src/remote.rs b/codex-rs/app-server-client/src/remote.rs
-index c5d9b0321f0574bce819c561fe32faf87f79c6ce..6308158987e56ca6275e1635c7830d80ad123c39 100644
+index ad8d28bceced56bc1f7ad3fcccae811804dab06b..3ff784f2f6875596dcb2e73b7e87e00fd07c96ef 100644
 --- a/codex-rs/app-server-client/src/remote.rs
 +++ b/codex-rs/app-server-client/src/remote.rs
 @@ -15,6 +15,9 @@ use std::collections::VecDeque;
@@ -186,7 +186,7 @@ index c5d9b0321f0574bce819c561fe32faf87f79c6ce..6308158987e56ca6275e1635c7830d80
  use std::time::Duration;
  
  use crate::AppServerEvent;
-@@ -156,6 +159,7 @@ struct RemoteServerMetadata {
+@@ -158,6 +161,7 @@ struct RemoteServerMetadata {
      codex_home: Option<String>,
      platform_family: Option<String>,
      platform_os: Option<String>,
@@ -194,7 +194,7 @@ index c5d9b0321f0574bce819c561fe32faf87f79c6ce..6308158987e56ca6275e1635c7830d80
  }
  
  pub struct RemoteAppServerClient {
-@@ -163,12 +167,15 @@ pub struct RemoteAppServerClient {
+@@ -165,12 +169,15 @@ pub struct RemoteAppServerClient {
      event_rx: mpsc::UnboundedReceiver<AppServerEvent>,
      pending_events: VecDeque<AppServerEvent>,
      metadata: RemoteServerMetadata,
@@ -210,7 +210,7 @@ index c5d9b0321f0574bce819c561fe32faf87f79c6ce..6308158987e56ca6275e1635c7830d80
  }
  
  enum SocketPeerPolicy {
-@@ -236,6 +243,49 @@ impl RemoteAppServerClient {
+@@ -238,6 +245,49 @@ impl RemoteAppServerClient {
          self.metadata.platform_os.as_deref()
      }
  
@@ -260,7 +260,7 @@ index c5d9b0321f0574bce819c561fe32faf87f79c6ce..6308158987e56ca6275e1635c7830d80
      async fn connect_with_stream<S>(
          channel_capacity: usize,
          endpoint: String,
-@@ -523,6 +573,7 @@ impl RemoteAppServerClient {
+@@ -526,6 +576,7 @@ impl RemoteAppServerClient {
              event_rx,
              pending_events: pending_events.into(),
              metadata,
@@ -268,7 +268,7 @@ index c5d9b0321f0574bce819c561fe32faf87f79c6ce..6308158987e56ca6275e1635c7830d80
              worker_handle,
          })
      }
-@@ -530,6 +581,8 @@ impl RemoteAppServerClient {
+@@ -533,6 +584,8 @@ impl RemoteAppServerClient {
      pub fn request_handle(&self) -> RemoteAppServerRequestHandle {
          RemoteAppServerRequestHandle {
              command_tx: self.command_tx.clone(),
@@ -277,7 +277,7 @@ index c5d9b0321f0574bce819c561fe32faf87f79c6ce..6308158987e56ca6275e1635c7830d80
          }
      }
  
-@@ -601,6 +654,7 @@ impl RemoteAppServerClient {
+@@ -604,6 +657,7 @@ impl RemoteAppServerClient {
              event_rx,
              pending_events: _pending_events,
              metadata: _,
@@ -285,7 +285,7 @@ index c5d9b0321f0574bce819c561fe32faf87f79c6ce..6308158987e56ca6275e1635c7830d80
              worker_handle,
          } = self;
          let mut worker_handle = worker_handle;
-@@ -630,6 +684,9 @@ impl RemoteAppServerRequestHandle {
+@@ -633,6 +687,9 @@ impl RemoteAppServerRequestHandle {
          request_id: RequestId,
          result: JsonRpcResult,
      ) -> IoResult<()> {
@@ -295,7 +295,7 @@ index c5d9b0321f0574bce819c561fe32faf87f79c6ce..6308158987e56ca6275e1635c7830d80
          let (response_tx, response_rx) = oneshot::channel();
          self.command_tx
              .send(RemoteClientCommand::ResolveServerRequest {
-@@ -657,6 +714,11 @@ impl RemoteAppServerRequestHandle {
+@@ -660,6 +717,11 @@ impl RemoteAppServerRequestHandle {
          request_id: RequestId,
          error: JSONRPCErrorError,
      ) -> IoResult<()> {
@@ -307,7 +307,7 @@ index c5d9b0321f0574bce819c561fe32faf87f79c6ce..6308158987e56ca6275e1635c7830d80
          let (response_tx, response_rx) = oneshot::channel();
          self.command_tx
              .send(RemoteClientCommand::RejectServerRequest {
-@@ -679,6 +741,7 @@ impl RemoteAppServerRequestHandle {
+@@ -682,6 +744,7 @@ impl RemoteAppServerRequestHandle {
          })?
      }
  
@@ -315,7 +315,7 @@ index c5d9b0321f0574bce819c561fe32faf87f79c6ce..6308158987e56ca6275e1635c7830d80
      pub async fn request(&self, request: ClientRequest) -> IoResult<RequestResult> {
          self.request_json_rpc(jsonrpc_request_from_client_request(request))
              .await
-@@ -891,6 +954,7 @@ where
+@@ -899,6 +962,7 @@ where
                                  .and_then(serde_json::Value::as_str).map(str::to_string);
                              metadata.platform_os = response.result.get("platformOs")
                                  .and_then(serde_json::Value::as_str).map(str::to_string);
@@ -323,7 +323,7 @@ index c5d9b0321f0574bce819c561fe32faf87f79c6ce..6308158987e56ca6275e1635c7830d80
                              break Ok(());
                          }
                          JSONRPCMessage::Error(error) if error.id == initialize_request_id => {
-@@ -986,6 +1050,31 @@ where
+@@ -994,6 +1058,31 @@ where
      Ok((pending_events, metadata))
  }
  
@@ -355,7 +355,7 @@ index c5d9b0321f0574bce819c561fe32faf87f79c6ce..6308158987e56ca6275e1635c7830d80
  fn app_server_event_from_notification(notification: JSONRPCNotification) -> Option<AppServerEvent> {
      match ServerNotification::try_from(notification) {
          Ok(notification) => Some(AppServerEvent::ServerNotification(Box::new(notification))),
-@@ -1086,6 +1175,7 @@ mod tests {
+@@ -1091,6 +1180,7 @@ mod tests {
              event_rx,
              pending_events: VecDeque::new(),
              metadata: RemoteServerMetadata::default(),
@@ -363,7 +363,7 @@ index c5d9b0321f0574bce819c561fe32faf87f79c6ce..6308158987e56ca6275e1635c7830d80
              worker_handle,
          };
  
-@@ -1099,3 +1189,7 @@ mod tests {
+@@ -1104,3 +1194,7 @@ mod tests {
              .expect("an in-flight event must not abort the worker during shutdown");
      }
  }
@@ -372,10 +372,10 @@ index c5d9b0321f0574bce819c561fe32faf87f79c6ce..6308158987e56ca6275e1635c7830d80
 +#[path = "managed_gateway_tests.rs"]
 +mod managed_gateway_tests;
 diff --git a/codex-rs/tui/src/app/event_dispatch.rs b/codex-rs/tui/src/app/event_dispatch.rs
-index a7f7f1e827818386b7417f27ab9a829f34fe1fa7..4918881732c7fc61d2af739ec937aeb3cfb75576 100644
+index 550965d65ebb02b1d4f8bf0af92649037cb64446..acd43c06c3f266108d0da122840ae714075d2189 100644
 --- a/codex-rs/tui/src/app/event_dispatch.rs
 +++ b/codex-rs/tui/src/app/event_dispatch.rs
-@@ -2288,6 +2288,9 @@ impl App {
+@@ -2372,6 +2372,9 @@ impl App {
                  self.sync_active_thread_service_tier_to_cached_session()
                      .await;
  
@@ -385,19 +385,20 @@ index a7f7f1e827818386b7417f27ab9a829f34fe1fa7..4918881732c7fc61d2af739ec937aeb3
                  if let Some(default_effort) = default_effort.as_ref()
                      && let Err(err) = self.persist_model_defaults(
                          app_server.request_handle(),
-@@ -2497,6 +2500,11 @@ impl App {
+@@ -2598,6 +2601,12 @@ impl App {
+                 }
              }
              AppEvent::PersistModelSelection { model, effort } => {
-                 self.app_event_tx.send(AppEvent::FollowTranscript);
-+                // Managed picker selections already submit thread/settings/update.
-+                // Keep account defaults unchanged and do not claim a write succeeded.
++                // The managed picker submits thread/settings/update through Cantrip.
++                // It must never change the account's native defaults.
 +                if app_server.is_managed_gateway_thread(self.chat_widget.thread_id()) {
++                    self.app_event_tx.send(AppEvent::FollowTranscript);
 +                    return Ok(AppRunControl::Continue);
 +                }
-                 match self.persist_model_defaults(
-                     app_server.request_handle(),
-                     crate::config_update::build_model_selection_edits(
-@@ -2600,6 +2608,11 @@ impl App {
+                 self.persist_default_model_selection(app_server.request_handle(), model, effort)
+                     .await;
+             }
+@@ -2686,6 +2695,11 @@ impl App {
                  self.config.service_tier = service_tier.clone();
                  self.sync_active_thread_service_tier_to_cached_session()
                      .await;
@@ -409,7 +410,7 @@ index a7f7f1e827818386b7417f27ab9a829f34fe1fa7..4918881732c7fc61d2af739ec937aeb3
                  let edits = crate::config_update::build_service_tier_selection_edits(
                      service_tier.as_deref(),
                  );
-@@ -2697,6 +2710,10 @@ impl App {
+@@ -2789,6 +2803,10 @@ impl App {
                  self.chat_widget.set_approvals_reviewer(policy);
                  self.sync_active_thread_permission_settings_to_cached_session()
                      .await;
@@ -420,7 +421,7 @@ index a7f7f1e827818386b7417f27ab9a829f34fe1fa7..4918881732c7fc61d2af739ec937aeb3
                  if let Err(err) = crate::config_update::write_config_batch(
                      app_server.request_handle(),
                      vec![crate::config_update::replace_config_value(
-@@ -2769,6 +2786,9 @@ impl App {
+@@ -2861,6 +2879,9 @@ impl App {
              }
              AppEvent::PersistPlanModeReasoningEffort(effort) => {
                  self.app_event_tx.send(AppEvent::FollowTranscript);
@@ -431,13 +432,13 @@ index a7f7f1e827818386b7417f27ab9a829f34fe1fa7..4918881732c7fc61d2af739ec937aeb3
                  let edit = if let Some(effort) = effort {
                      crate::config_update::replace_config_value(
 diff --git a/codex-rs/tui/src/app/tests.rs b/codex-rs/tui/src/app/tests.rs
-index 40c30df9239f3ac5a5680953dfc4ccc64867af8a..c227c324dd60645853cb81c4d1d8058a14b79f14 100644
+index a2d219157e81a9e140b07ad5d505a4bbc030b96e..42bb905b5444c67acc4c4c5ca20b171ac51ed668 100644
 --- a/codex-rs/tui/src/app/tests.rs
 +++ b/codex-rs/tui/src/app/tests.rs
-@@ -10111,3 +10111,6 @@ mod active_reconnect;
- #[cfg(unix)]
- #[path = "tests/navigation_reconnect_tests.rs"]
- mod navigation_reconnect;
+@@ -10345,3 +10345,6 @@ mod navigation_reconnect;
+ 
+ #[path = "tests/backend_event_tests.rs"]
+ mod backend_event_tests;
 +
 +#[path = "tests/managed_gateway_defaults.rs"]
 +mod managed_gateway_defaults;
@@ -602,10 +603,10 @@ index 0000000000000000000000000000000000000000..ba750a124ed1ec256e5096552c032b07
 +    Ok(())
 +}
 diff --git a/codex-rs/tui/src/app_server_session.rs b/codex-rs/tui/src/app_server_session.rs
-index 837fcb13c2a2d9543b89257fa8cab26af8bab8d9..0b6bb57d89b0ebea70873dbd66068cd2ff849b6b 100644
+index 683e7328e2a1992ad5605f0350d606c624e9dc55..7e70e05de2437110bdc0c17fa075aa995bd13ffa 100644
 --- a/codex-rs/tui/src/app_server_session.rs
 +++ b/codex-rs/tui/src/app_server_session.rs
-@@ -587,6 +587,12 @@ impl AppServerSession {
+@@ -628,6 +628,12 @@ impl AppServerSession {
          self.remote_cwd_override.as_deref()
      }
  
@@ -616,9 +617,9 @@ index 837fcb13c2a2d9543b89257fa8cab26af8bab8d9..0b6bb57d89b0ebea70873dbd66068cd2
 +    }
 +
      pub(crate) fn uses_remote_workspace(&self) -> bool {
-         matches!(self.thread_params_mode, ThreadParamsMode::Remote)
-     }
-@@ -1372,7 +1378,8 @@ impl AppServerSession {
+         matches!(
+             self.thread_params_mode,
+@@ -1463,7 +1469,8 @@ impl AppServerSession {
          &mut self,
          params: ThreadSettingsUpdateParams,
      ) -> Result<bool> {
@@ -628,7 +629,7 @@ index 837fcb13c2a2d9543b89257fa8cab26af8bab8d9..0b6bb57d89b0ebea70873dbd66068cd2
              return Ok(false);
          }
          let request_id = self.next_request_id();
-@@ -1386,7 +1393,7 @@ impl AppServerSession {
+@@ -1477,7 +1484,7 @@ impl AppServerSession {
          {
              Ok(_) => Ok(true),
              Err(TypedRequestError::Server { source, .. })
