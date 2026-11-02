@@ -5,7 +5,7 @@ use crate::{
     database::{Database, Transaction},
     wire::Value,
 };
-use anyhow::{Context, Result, ensure};
+use anyhow::{Result, ensure};
 pub(crate) use center::{leaf_ids, remove as remove_center_pane};
 pub use detach::{detach_resource, detach_terminal};
 
@@ -83,9 +83,11 @@ pub async fn attach_resource(
                 &[&group, &project],
             )
             .await?;
-        let pane = rows
-            .first()
-            .context("The destination pane does not belong to this project.")?;
+        let pane = rows.first().ok_or_else(|| {
+            crate::pane_layouts::LegacyInvariant(
+                "The destination pane does not belong to this project.".into(),
+            )
+        })?;
         supports(kind, &pane.get::<String>(1)?)?;
         (group.to_owned(), member_position(tx, group).await?, false)
     } else {

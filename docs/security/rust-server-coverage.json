@@ -4088,6 +4088,67 @@
         "remaining": [
           "Exact local Source/native HTTP comparisons pass all nine storage/authentication profiles, including HEAD, project ownership, missing projects, ordering, archived Task experience, message counts and Source-derived retention deadlines. Supported-platform, packaged and multi-instance acceptance remains required."
         ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/chats",
+        "implementation": "cantrip_server_rs/src/http/chat_catalogs/project_creation.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/project-chat-creation-http.mjs",
+          "scripts/server-rust/project-chat-creation-races.mjs",
+          "scripts/server-rust/actual-folder-client.mjs --project-chats",
+          "scripts/server-rust/actual-project-chat-client.mjs"
+        ],
+        "remaining": [
+          "Supported-platform and packaged acceptance, remaining conversation APIs, Redis/multi-instance behavior and all original upgrade/post-write rollback, packaging, performance, Winterhold rehearsal and default-cutover requirements remain."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/conversations",
+        "implementation": "cantrip_server_rs/src/http/conversations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/project-chat-creation-http.mjs",
+          "scripts/server-rust/project-chat-creation-races.mjs",
+          "scripts/server-rust/actual-folder-client.mjs --project-chats",
+          "scripts/server-rust/actual-project-chat-client.mjs"
+        ],
+        "remaining": [
+          "Supported-platform and packaged acceptance, remaining conversation APIs, Redis/multi-instance behavior and all original upgrade/post-write rollback, packaging, performance, Winterhold rehearsal and default-cutover requirements remain."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/chats/:chatId/usage",
+        "implementation": "cantrip_server_rs/src/http/conversations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/project-chat-creation-http.mjs",
+          "scripts/server-rust/project-chat-creation-races.mjs",
+          "scripts/server-rust/actual-folder-client.mjs --project-chats",
+          "scripts/server-rust/actual-project-chat-client.mjs"
+        ],
+        "remaining": [
+          "Supported-platform and packaged acceptance, remaining conversation APIs, Redis/multi-instance behavior and all original upgrade/post-write rollback, packaging, performance, Winterhold rehearsal and default-cutover requirements remain."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/internal/native-model-inventory",
+        "implementation": "cantrip_server_rs/src/http/native_model_inventory.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/native-model-inventory-http-compatibility.mjs",
+          "scripts/server-rust/actual-project-chat-client.mjs"
+        ],
+        "remaining": [
+          "Supported-platform and packaged acceptance, remaining conversation APIs, Redis/multi-instance behavior and all original upgrade/post-write rollback, packaging, performance, Winterhold rehearsal and default-cutover requirements remain."
+        ]
       }
     ]
   },
@@ -5438,6 +5499,54 @@
         ],
         "remaining": [
           "Resources, active counts, continuity inference, owner isolation, revisions, ordering and soft deletion are implemented. Prepared eligibility is implemented separately; automatic/background scheduling and complete product/platform acceptance remain."
+        ]
+      },
+      {
+        "tableName": "conversation_creation_requests",
+        "exportName": "conversationCreationRequests",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/chats/",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/project-chat-creation-http.mjs",
+          "scripts/server-rust/project-chat-creation-races.mjs",
+          "scripts/server-rust/actual-folder-client.mjs --project-chats",
+          "scripts/server-rust/actual-project-chat-client.mjs"
+        ],
+        "remaining": [
+          "Supported-platform and packaged acceptance, remaining conversation APIs, Redis/multi-instance behavior and all original upgrade/post-write rollback, packaging, performance, Winterhold rehearsal and default-cutover requirements remain."
+        ]
+      },
+      {
+        "tableName": "conversation_usage_clients",
+        "exportName": "conversationUsageClients",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/chats/",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/project-chat-creation-http.mjs",
+          "scripts/server-rust/project-chat-creation-races.mjs",
+          "scripts/server-rust/actual-folder-client.mjs --project-chats",
+          "scripts/server-rust/actual-project-chat-client.mjs"
+        ],
+        "remaining": [
+          "Supported-platform and packaged acceptance, remaining conversation APIs, Redis/multi-instance behavior and all original upgrade/post-write rollback, packaging, performance, Winterhold rehearsal and default-cutover requirements remain."
+        ]
+      },
+      {
+        "tableName": "conversation_usage_receipts",
+        "exportName": "conversationUsageReceipts",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/chats/",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/project-chat-creation-http.mjs",
+          "scripts/server-rust/project-chat-creation-races.mjs",
+          "scripts/server-rust/actual-folder-client.mjs --project-chats",
+          "scripts/server-rust/actual-project-chat-client.mjs"
+        ],
+        "remaining": [
+          "Supported-platform and packaged acceptance, remaining conversation APIs, Redis/multi-instance behavior and all original upgrade/post-write rollback, packaging, performance, Winterhold rehearsal and default-cutover requirements remain."
         ]
       }
     ]
@@ -7218,6 +7327,21 @@
         ],
         "remaining": [
           "Local paired public HTTP comparisons pass all nine storage/authentication profiles. Supported-platform and packaged acceptance remains required."
+        ]
+      },
+      {
+        "method": "createChat",
+        "implementation": "cantrip_server_rs/src/chats/task_creation.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_contracts.rs",
+          "scripts/server-rust/project-chat-creation-http.mjs",
+          "scripts/server-rust/project-chat-creation-races.mjs",
+          "scripts/server-rust/actual-folder-client.mjs --project-chats",
+          "scripts/server-rust/actual-project-chat-client.mjs"
+        ],
+        "remaining": [
+          "Supported-platform and packaged acceptance, remaining conversation APIs, Redis/multi-instance behavior and all original upgrade/post-write rollback, packaging, performance, Winterhold rehearsal and default-cutover requirements remain."
         ]
       }
     ]
@@ -9383,6 +9507,42 @@
         "Complete running pause/resume, scheduling capacity/concurrency faults and every original full replacement requirement."
       ],
       "actualLocalAcceptance": "After the admission change, all three stores pass the existing browser/full production worker/bundled Codex flow: 14 steps, nine public model requests and five worker stops per Node/Rust peer. Claimed and resumed operation comparisons pass on PGlite. Only model HTTP responses are controlled."
+    },
+    "projectConversations": {
+      "status": "partial",
+      "evidence": [
+        "cantrip_server_rs/tests/chat_contracts.rs",
+        "scripts/server-rust/project-chat-creation-http.mjs",
+        "scripts/server-rust/project-chat-creation-races.mjs",
+        "scripts/server-rust/actual-folder-client.mjs --project-chats",
+        "scripts/server-rust/actual-project-chat-client.mjs",
+        "scripts/server-rust/native-model-inventory-http-compatibility.mjs",
+        "cantrip_server/test/chat-archive-api.test.ts"
+      ],
+      "validatedSubset": "Attached and detached encrypted Agent creation, exact defaulted-request JSONB replay, atomic runtime/lane/layout/receipt writes, GitHub context, active/archived microsecond keysets, correlated archived message counts and owner-scoped monotonic usage receipts. Worker model inventory uses the enrolled credential owner and public metadata only. Local HTTP comparison passes all nine auth/storage combinations. Actual client/full-worker/native Goal acceptance additionally requires both completed canonical turns and exact history/receipt/Goal retention through server and worker restart.",
+      "remaining": [
+        "Supported-platform and packaged acceptance, remaining conversation APIs, Redis/multi-instance behavior and all original upgrade/post-write rollback, packaging, performance, Winterhold rehearsal and default-cutover requirements remain."
+      ],
+      "localAcceptance": {
+        "platform": "macOS arm64",
+        "servers": ["node", "rust"],
+        "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+        "pairedHttpObservations": 421,
+        "workerInventoryPairedHttpObservations": 207,
+        "transactionFaultScenariosPerServer": 7,
+        "actualClientStepsPerServer": 12,
+        "actualModelRequestsPerServer": 4,
+        "actualWorkerStopsPerServer": 4,
+        "canonicalTurnsCompletedPerServer": 2,
+        "nativeRuntime": "Production bundled codex-cli 0.166.0; existing browser SDK and full worker. Only the public Responses HTTP endpoint is controlled.",
+        "checks": [
+          "Exact defaulted creation replay and owner isolation; PostgreSQL microsecond keysets and positive archived counts",
+          "Actual concurrent creation/usage receipt contention; SQL failures after lane/usage-receipt writes roll back all earlier writes",
+          "Caller abort at the real receipt write commits once; creation and usage receipts survive server restart",
+          "Canonical completed turn archives preserve original model attribution, then entire encrypted/decrypted transcript survives server restart and worker reconnect",
+          "Native Goal create/complete matches decrypted objective and thread; clear and retained identity replay perform no extra inference"
+        ]
+      }
     }
   },
   "remainingAcceptance": [

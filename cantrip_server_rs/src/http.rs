@@ -24,6 +24,7 @@ mod chat_goals;
 mod chat_lifecycle;
 mod chat_messages;
 mod chat_preparation;
+mod conversations;
 mod direct_attachments;
 mod encryption;
 mod file_documents;
@@ -37,6 +38,7 @@ mod native_coordination;
 mod native_events;
 mod native_handoffs;
 mod native_history;
+mod native_model_inventory;
 mod native_settings;
 mod on_response;
 mod pane_layouts;
@@ -169,6 +171,7 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(projects::routes())
         .merge(folders::routes())
         .merge(chat_catalogs::routes())
+        .merge(conversations::routes())
         .merge(chat_execution::routes())
         .merge(task_controls::routes())
         .merge(chat_goals::routes())
@@ -181,6 +184,7 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(native_events::routes())
         .merge(native_admission::routes())
         .merge(native_history::routes())
+        .merge(native_model_inventory::routes())
         .merge(native_coordination::routes())
         .merge(github_import::routes())
         .merge(github_conversion::routes())

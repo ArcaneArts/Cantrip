@@ -5154,3 +5154,72 @@ manifest. All three storage modes pass 48 paired repository cases, including an
 observation increasing only its owner's row count and byte usage; deletion
 restores the earlier measurement. No database constraint or test assertion is
 relaxed. Supported-platform and broader replacement acceptance remain required.
+
+## Project Agent conversations and creation receipts
+
+The Rust project Chat endpoint now creates the encrypted Agent, initial runtime,
+suspended worktree lane and optional tab placement in one transaction. Detached
+creation retains the parsed request as JSONB and replays the current Chat summary
+for the same owner, project and exact request. Conflicting or archived identities
+retain the Source conflict response. Managed preparation is queued through the
+production preparation runtime after creation. Task creation continues through
+the shared transaction with its existing Task-specific state.
+
+The conversation catalog preserves active/archived scoping, totals and ordering,
+including PostgreSQL microseconds in cursors while public dates remain in
+milliseconds. Usage first authorizes and locks the Agent, then serializes the
+owner/client sequence and operation receipt. Replay returns the original result;
+stale operations cannot move recency backward. Missing, archived, Task and foreign
+Chats do not allocate client bookkeeping. The paired HTTP suite passes all nine
+local authentication/storage combinations. External PostgreSQL also exercises
+concurrent identities, real SQL exceptions after lane and usage-receipt writes, caller abort and retained
+creation/usage across server restart.
+
+An actual comparison exposed a Source archived-message count bug: the ORM
+rendered the nested comparison as `chat_id = id`, binding the inner message ID.
+The count now qualifies the outer Chat table explicitly. The populated-archive
+regression checks both archived Chat and conversation catalogs; all fourteen
+Source archive tests pass. The positive count assertion and microsecond page
+boundaries remain intact.
+
+The existing Agent client now has a full-worker acceptance flow. It creates and
+replays a retained conversation identity, prepares the actual bundled native CLI,
+records usage, decrypts an ordinary response and runs native Goal create/complete
+tools. Before restart it requires both canonical native turns to be completed
+and both answers to carry their original model attribution. It then compares the
+entire transcript before and after server restart and worker reconnect, replays
+the creation/usage identities, reads the same encrypted Goal, and clears it
+without additional inference. The worker's missing native model-inventory HTTP
+route is implemented with its existing credential scope and repository reader.
+The inventory HTTP suite covers browser-only access, wrong worker, insufficient
+credential scope, foreign providers and credential ownership with a foreign
+browser session. The Linux/macOS/Windows CI matrix runs these flows sequentially
+with the existing Task scenarios; configured jobs still require observed results.
+
+```sh
+node --import tsx scripts/server-rust/project-chat-creation-http.mjs --database postgres --report .qa/rust-server/project-chat-creation-postgres.json
+node --import tsx scripts/server-rust/native-model-inventory-http-compatibility.mjs --database pglite --report .qa/rust-server/native-model-inventory-pglite.json
+CANTRIP_CODEX_BIN=/absolute/path/to/bundle/codex node --import tsx scripts/server-rust/actual-folder-client.mjs --project-chats --database pglite --report .qa/rust-server/actual-project-chat-worker-pglite.json
+```
+
+Use each of `pglite`, `bundled-postgres` and `postgres` for storage coverage. This
+milestone passes locally on macOS arm64 for both implementations with all three
+stores: twelve client steps, four model requests, four worker stops and two
+completed canonical native turns per peer. The HTTP suites compare 421 paired
+creation/catalog/usage observations (including the fault/restart cases) and 207
+worker/public inventory observations. Strict all-target Clippy, all 46 library
+tests and 23,965 contextual Chat validation/error comparisons pass. The original
+505 contract roots and entire 9,458-node prefix stay unchanged; six new roots
+bring the manifest to 511 roots and 9,508 nodes. This does not establish the full
+platform matrix, remaining Chat lifecycle
+and synchronization APIs, production multi-instance operation, existing-data
+upgrades/post-write rollback, final artifacts, desktop packaging, performance or
+Winterhold deployment readiness. Node remains the default server.
+
+The broad `pnpm check` run finished in 521.9 seconds with 1,701 Source tests
+passing, 57 skipped and one provider-account pool assertion failure at
+`local-foundation.test.ts:7218`. The same failure is present in the independently
+hash-verified pre-milestone #2447 evidence archive. Recursive bail means later
+worker/app tests and whole-repository formatting did not complete; focused
+formatting and the actual production-worker acceptance above pass. The failing
+assertion and its deadline remain unchanged.

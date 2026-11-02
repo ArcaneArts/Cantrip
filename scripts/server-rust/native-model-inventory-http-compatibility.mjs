@@ -1,5 +1,6 @@
 // Read-only public picker follows a real protected native settings binding.
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -15,6 +16,8 @@ import {
 } from "./native-settings-http-fixture.mjs";
 import { inventorySeed } from "./native-model-inventory-fixtures.mjs";
 import { nativeModelInventoryHttpRaces } from "./native-model-inventory-http-races.mjs";
+import { literal } from "./project-target-state.mjs";
+const restrictedToken = "disposable-model-inventory-connect-only";
 const option = (k) => {
   const i = process.argv.indexOf(k);
   return i < 0 ? undefined : process.argv[i + 1];
@@ -65,6 +68,12 @@ try {
               kind: "openai-compatible",
               worker: workerId,
             }),
+            `INSERT INTO worker_credentials(id,owner_id,worker_id,secret_hash,label,scopes) VALUES('inventory-restricted',${literal(owner)},${literal(workerId)},${literal(createHash("sha256").update(restrictedToken).digest("hex"))},'Restricted inventory fixture','["worker:connect"]')`,
+            ...(profile === "accounts"
+              ? [
+                  `INSERT INTO model_providers(id,owner_id,name,kind,base_url) SELECT 'foreign-inventory-provider',id,'Foreign provider','openai-compatible','http://fixture.invalid' FROM users WHERE id<>${literal(owner)} AND kind='account' LIMIT 1`,
+                ]
+              : []),
             "UPDATE chat_runtime_sessions SET model_route_id='inventory-provider-route-0' WHERE id='settings-runtime'",
           ];
         },
@@ -129,6 +138,115 @@ try {
           JSON.stringify(inventory).includes("Private provider label"),
           false,
         );
+        const workerInventoryPath = "/api/internal/native-model-inventory";
+        const input = {
+          workerId,
+          providerId: "inventory-provider",
+          providerAccountId: null,
+        };
+        const authorized = { authorization: `Bearer ${h.credential}` };
+        await visit(
+          "invalid worker inventory before authentication",
+          "POST",
+          workerInventoryPath,
+          {
+            json: {},
+            status: 400,
+          },
+        );
+        for (const [name, headers] of [
+          ["browser session cannot read worker inventory", {}],
+          [
+            "invalid credential cannot read worker inventory",
+            { authorization: "Bearer invalid" },
+          ],
+          [
+            "connect-only credential cannot read worker inventory",
+            { authorization: `Bearer ${restrictedToken}` },
+          ],
+        ])
+          await visit(name, "POST", workerInventoryPath, {
+            json: input,
+            headers,
+            status: 401,
+          });
+        await visit(
+          "worker inventory rejects credential worker mismatch",
+          "POST",
+          workerInventoryPath,
+          {
+            json: { ...input, workerId: "another-worker" },
+            headers: authorized,
+            status: 401,
+          },
+        );
+        await visit(
+          "worker inventory missing provider",
+          "POST",
+          workerInventoryPath,
+          {
+            json: { ...input, providerId: "missing-provider" },
+            headers: authorized,
+            status: 404,
+          },
+        );
+        await visit(
+          "worker inventory rejects unrelated provider account",
+          "POST",
+          workerInventoryPath,
+          {
+            json: { ...input, providerAccountId: "wrong-account" },
+            headers: authorized,
+            status: 404,
+          },
+        );
+        const workerInventory = await visit(
+          "enrolled worker reads exact scoped model inventory",
+          "POST",
+          workerInventoryPath,
+          {
+            json: input,
+            headers: authorized,
+          },
+        );
+        const { bindingId: _bindingId, ...expectedInventory } = inventory;
+        assert.deepEqual(workerInventory, expectedInventory);
+        if (profile === "accounts") {
+          await visit(
+            "worker credential cannot read another owner's provider",
+            "POST",
+            workerInventoryPath,
+            {
+              json: { ...input, providerId: "foreign-inventory-provider" },
+              headers: authorized,
+              status: 404,
+            },
+          );
+          const foreignCookie = await visit(
+            "worker credential owner takes precedence over browser session",
+            "POST",
+            workerInventoryPath,
+            {
+              json: input,
+              headers: authorized,
+              client: "other",
+            },
+          );
+          assert.deepEqual(foreignCookie, workerInventory);
+        }
+        if (profile === "none")
+          await visit(
+            "development worker inventory requires a retained worker",
+            "POST",
+            workerInventoryPath,
+            {
+              json: { ...input, workerId: "missing-worker" },
+              headers: {
+                authorization: `Bearer ${h.fixture.environment.CANTRIP_WORKER_TOKEN}`,
+              },
+              status: 404,
+            },
+          );
         await visit("head model inventory", "HEAD", base + query);
         await visit(
           "model picker does not mutate native binding",
