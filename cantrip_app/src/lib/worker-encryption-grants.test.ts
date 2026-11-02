@@ -252,3 +252,46 @@ it("keeps optional Alert grant failure from blocking existing Chat capabilities"
     }),
   ).resolves.toBeUndefined();
 });
+
+it("background capability upgrades never approve a replacement pending principal", async () => {
+  const pair = await generateHpkeKeyPair(false);
+  const { api, grants } = apiFor({
+    id: crypto.randomUUID(),
+    ownerId: identity.ownerId,
+    kind: "worker",
+    workerId: "worker-upgrade",
+    label: null,
+    publicKey: await publicKeyForPair(pair),
+    state: "pending",
+    revision: 1,
+    approvedAt: null,
+    revokedAt: null,
+    revokedReason: null,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  });
+  let approvals = 0;
+  const original = api.approvePrincipal;
+  api.approvePrincipal = async (...args) => {
+    approvals++;
+    return original(...args);
+  };
+  const service = new ClientEncryptionService();
+  service.setAccountMasterKey({
+    accountMasterKey: generateAccountMasterKey(),
+    identity,
+    masterKeyRevision: 1,
+  });
+  await expect(
+    authorizeWorkerEncryption({
+      api,
+      approvePending: false,
+      components: ["alert-content"],
+      identity,
+      service,
+      workerId: "worker-upgrade",
+    }),
+  ).rejects.toMatchObject({ code: "principal-unavailable" });
+  expect(approvals).toBe(0);
+  expect(grants).toHaveLength(0);
+});

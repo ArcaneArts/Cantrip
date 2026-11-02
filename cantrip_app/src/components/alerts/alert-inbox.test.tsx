@@ -171,3 +171,47 @@ it("leaves a failed response actionable and retries with the same source idempot
   expect(calls[0]![0]).toBe("request");
   expect(calls[0]![1].idempotencyKey).toBe(calls[1]![1].idempotencyKey);
 });
+
+it.each([
+  [
+    "usageLimited",
+    "Goal waiting for model usage",
+    "The model reported a usage limit.",
+  ],
+  [
+    "budgetLimited",
+    "Goal budget reached",
+    "The Goal reached its configured budget.",
+  ],
+  ["blocked", "Goal blocked", "The agent reported a blocker."],
+])(
+  "explains authoritative Goal attention %s without starting execution",
+  async (status, title, reason) => {
+    const open = vi.fn();
+    const goalAlert = {
+      ...alert,
+      source: "goal",
+      target: { kind: "goal", chatId: "chat", threadId: "thread" },
+    } as ProjectAlert;
+    const ui = await render(
+      <AlertSource
+        alert={goalAlert}
+        chat={chat}
+        workers={[]}
+        onRename={() => {}}
+        onOpenChat={open}
+      />,
+      [
+        [
+          ["alert-goal", "alert", 1],
+          { status, objective: "Protected objective" },
+        ],
+      ],
+    );
+    const markup = JSON.stringify(ui.toJSON());
+    expect(markup).toContain(title);
+    expect(markup).toContain(reason);
+    expect(open).not.toHaveBeenCalled();
+    expect(respondToAgentInteractionRequest).not.toHaveBeenCalled();
+  },
+);

@@ -71,6 +71,7 @@ export async function startEditorRecoveryFixture({
   repositoryProject = false,
   nativeLoopbackOrigin = false,
   cuaBinary,
+  projectAlerts = false,
 } = {}) {
   const runId = randomUUID();
   const directory = path.join(root, ".qa", `editor-${runId}`);
@@ -79,6 +80,15 @@ export async function startEditorRecoveryFixture({
     ? await (
         await import("./editor-repository-fixture.mjs")
       ).seedEditorRepository(directory, `qa-${runId}`)
+    : null;
+  const alertsSeed = projectAlerts
+    ? await (
+        await import("./editor-repository-fixture.mjs")
+      ).seedEditorRepository(
+        path.join(directory, "background"),
+        `qa-${runId}`,
+        "Alerts-Background-QA",
+      )
     : null;
   const events = [];
   const eventCounts = Object.create(null);
@@ -282,6 +292,13 @@ export async function startEditorRecoveryFixture({
       cacheDir: path.join(directory, "vite-cache"),
       configFile: path.join(root, "cantrip_app/vite.config.ts"),
       plugins: [
+        ...(projectAlerts
+          ? [
+              (
+                await import("./project-alerts-fixture.mjs")
+              ).projectAlertsFixturePlugin(controlToken, alertsSeed),
+            ]
+          : []),
         ...(repositorySeed
           ? [
               (
@@ -349,6 +366,7 @@ export async function startEditorRecoveryFixture({
       CANTRIP_WORKER_ID: `qa-${runId}`,
       CANTRIP_WORKER_NAME: `QA ${runId}`,
       CODEX_HOME: path.join(directory, "codex-home"),
+      ...(projectAlerts ? { CANTRIP_QA_ALERTS_TOKEN: controlToken } : {}),
     };
     // Do not let inherited production deployment/enrollment configuration escape isolation.
     for (const name of [
@@ -393,7 +411,12 @@ export async function startEditorRecoveryFixture({
           "--import",
           "tsx",
           name === "server"
-            ? path.join(root, "scripts/qa/editor-recovery-server.mts")
+            ? path.join(
+                root,
+                projectAlerts
+                  ? "scripts/qa/project-alerts-server.mts"
+                  : "scripts/qa/editor-recovery-server.mts",
+              )
             : "src/index.ts",
         ],
         {

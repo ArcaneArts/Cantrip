@@ -14,7 +14,9 @@ if (process.platform !== "darwin")
   );
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const nbt = process.argv.includes("--nbt");
+const alerts = process.argv.includes("--alerts");
 if (nbt) process.env.VITE_CANTRIP_NBT_NATIVE_QA = "true";
+if (alerts) process.env.VITE_CANTRIP_ALERTS_NATIVE_QA = "true";
 const require = createRequire(path.join(root, "cantrip_app/package.json"));
 // Build the helper this worker actually runs, not a stale installed/bundled copy.
 const cuaBinary = buildCantripCua(root);
@@ -22,6 +24,7 @@ const fixture = await startEditorRecoveryFixture({
   repositoryProject: true,
   nativeLoopbackOrigin: true,
   cuaBinary,
+  projectAlerts: alerts,
 });
 const identifier = `art.cantrip.qa.workspace${randomUUID().replaceAll("-", "")}`;
 const config = {

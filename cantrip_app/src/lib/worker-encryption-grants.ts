@@ -129,6 +129,7 @@ function workerPrincipal(
 
 export async function authorizeWorkerEncryption(input: {
   api?: WorkerGrantApi;
+  approvePending?: boolean;
   assertCurrent?: () => void;
   components: WorkerEncryptionComponentScope[];
   identity: ClientEncryptionIdentity;
@@ -153,7 +154,7 @@ export async function authorizeWorkerEncryption(input: {
       "The worker has not registered an encryption key yet.",
     );
   }
-  if (principal.state === "pending") {
+  if (principal.state === "pending" && input.approvePending !== false) {
     try {
       principal = await api.approvePrincipal(principal.id, principal.revision);
     } catch {
