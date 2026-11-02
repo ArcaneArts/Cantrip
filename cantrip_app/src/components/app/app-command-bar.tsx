@@ -7,7 +7,7 @@ import type {
 } from "@cantrip/protocol";
 import { isWorkerBoundFolderProject } from "@cantrip/protocol";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Command as CommandPrimitive } from "cmdk";
+import { Command as CommandPrimitive, defaultFilter } from "cmdk";
 import { isTauri } from "@tauri-apps/api/core";
 import { dumpLocalLogs } from "@/lib/local-service-logs";
 import { getActiveServerUrl } from "@/lib/server-connections";
@@ -80,6 +80,18 @@ const scopeLabels: Record<CommandBarScope, string> = {
   github: "GitHub",
   "new-project": "New Project",
 };
+
+function commandBarResultScore(
+  value: string,
+  search: string,
+  keywords?: string[],
+): number {
+  const score = defaultFilter(value, search, keywords);
+  if (score === 0) return 0;
+  // cmdk ranks groups by their best match. Keep matching actions above files
+  // even when a file has a stronger fuzzy match, preserving rank within each.
+  return value.startsWith("action ") ? 0.6 + score * 0.4 : score * 0.4;
+}
 
 function projectWorkspace(
   projectId: string,
@@ -566,6 +578,7 @@ export function AppCommandBar({
         </DialogDescription>
         <Command
           loop
+          filter={activeScope === null ? commandBarResultScore : defaultFilter}
           value={selectedCommandValue}
           onValueChange={setSelectedCommandValue}
         >
@@ -622,67 +635,6 @@ export function AppCommandBar({
             {showEmpty ? <CommandEmpty>{emptyMessage}</CommandEmpty> : null}
             {activeScope === null ? (
               <>
-                {fileSearchQuery && fileSearchExplorerId ? (
-                  <CommandGroup heading="Files">
-                    {debouncedFileQuery !== fileSearchQuery ||
-                    projectFiles.isPending ? (
-                      <CommandItem
-                        forceMount
-                        disabled
-                        value={`${fileSearchQuery} searching project files`}
-                      >
-                        <Loader2 className="size-4 animate-spin" />
-                        <span className="text-sm text-muted-foreground">
-                          Searching files…
-                        </span>
-                      </CommandItem>
-                    ) : projectFiles.isError ? (
-                      <CommandItem
-                        forceMount
-                        disabled
-                        value={`${fileSearchQuery} file search unavailable`}
-                      >
-                        <FileCode2 className="size-4" />
-                        <span className="truncate text-sm text-destructive">
-                          {errorMessage(projectFiles.error)}
-                        </span>
-                      </CommandItem>
-                    ) : projectFiles.data?.results.length ? (
-                      projectFiles.data.results.map((file) => (
-                        <CommandItem
-                          key={file.path}
-                          value={`file ${file.name} ${file.path}`}
-                          className="gap-3 rounded-lg px-3 py-2.5"
-                          onSelect={() => openFile(file.path)}
-                        >
-                          <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
-                            <FileCode2 className="size-4" />
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-sm font-medium">
-                              {file.name}
-                            </span>
-                            <span className="block truncate font-mono text-xs text-muted-foreground">
-                              {file.path}
-                            </span>
-                          </span>
-                          <CornerDownLeft className="size-3.5 shrink-0 text-muted-foreground" />
-                        </CommandItem>
-                      ))
-                    ) : (
-                      <CommandItem
-                        forceMount
-                        disabled
-                        value={`${fileSearchQuery} no matching files`}
-                      >
-                        <FileCode2 className="size-4" />
-                        <span className="text-sm text-muted-foreground">
-                          No files match this search.
-                        </span>
-                      </CommandItem>
-                    )}
-                  </CommandGroup>
-                ) : null}
                 <CommandGroup heading="Actions">
                   {isTauri() ? (
                     <CommandItem
@@ -746,6 +698,67 @@ export function AppCommandBar({
                     </CommandItem>
                   ))}
                 </CommandGroup>
+                {fileSearchQuery && fileSearchExplorerId ? (
+                  <CommandGroup heading="Files">
+                    {debouncedFileQuery !== fileSearchQuery ||
+                    projectFiles.isPending ? (
+                      <CommandItem
+                        forceMount
+                        disabled
+                        value={`${fileSearchQuery} searching project files`}
+                      >
+                        <Loader2 className="size-4 animate-spin" />
+                        <span className="text-sm text-muted-foreground">
+                          Searching files…
+                        </span>
+                      </CommandItem>
+                    ) : projectFiles.isError ? (
+                      <CommandItem
+                        forceMount
+                        disabled
+                        value={`${fileSearchQuery} file search unavailable`}
+                      >
+                        <FileCode2 className="size-4" />
+                        <span className="truncate text-sm text-destructive">
+                          {errorMessage(projectFiles.error)}
+                        </span>
+                      </CommandItem>
+                    ) : projectFiles.data?.results.length ? (
+                      projectFiles.data.results.map((file) => (
+                        <CommandItem
+                          key={file.path}
+                          value={`file ${file.name} ${file.path}`}
+                          className="gap-3 rounded-lg px-3 py-2.5"
+                          onSelect={() => openFile(file.path)}
+                        >
+                          <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
+                            <FileCode2 className="size-4" />
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-medium">
+                              {file.name}
+                            </span>
+                            <span className="block truncate font-mono text-xs text-muted-foreground">
+                              {file.path}
+                            </span>
+                          </span>
+                          <CornerDownLeft className="size-3.5 shrink-0 text-muted-foreground" />
+                        </CommandItem>
+                      ))
+                    ) : (
+                      <CommandItem
+                        forceMount
+                        disabled
+                        value={`${fileSearchQuery} no matching files`}
+                      >
+                        <FileCode2 className="size-4" />
+                        <span className="text-sm text-muted-foreground">
+                          No files match this search.
+                        </span>
+                      </CommandItem>
+                    )}
+                  </CommandGroup>
+                ) : null}
                 {currentProjectId ? (
                   <CommandGroup heading="Project scripts">
                     {projectScriptCommands.isPending ? (
