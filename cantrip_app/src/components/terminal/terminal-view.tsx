@@ -13,7 +13,12 @@ import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import { getWorkers } from "@/lib/api";
 import { clientLogger, operationalErrorMetadata } from "@/lib/client-log-relay";
 import { SurfaceLoadingVeil } from "@/components/ui/surface-loading-veil";
-import { ResizablePanel } from "@/components/ui/resizable-panel";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { ensureSurfacePrivateStateWorkerEncryption } from "@/lib/surface-private-state-worker-encryption";
 import {
   openSurfaceStreamContent,
@@ -52,11 +57,6 @@ import {
 
 import "@xterm/xterm/css/xterm.css";
 import { registerTerminalTransferLifecycle } from "./terminal-transfer-lifecycle";
-
-const DEFAULT_SERVICE_PANEL_WIDTH = 360;
-const MIN_SERVICE_PANEL_WIDTH = 280;
-const MAX_SERVICE_PANEL_WIDTH = 640;
-const SERVICE_PANEL_WIDTH_STORAGE_KEY = "cantrip:terminal-service-panel-width";
 
 export interface TerminalTransferLifecycle {
   /** Stop accepting new input. Release only after ownership cancellation. */
@@ -1066,25 +1066,30 @@ export function TerminalView({
           ) : null}
         </div>
         {onServicePanelOpenChange ? (
-          <ResizablePanel
-            ariaLabel="Resize terminal service panel"
-            className="absolute inset-y-0 right-0 z-20 max-w-full md:relative md:inset-auto md:z-auto"
-            defaultWidth={DEFAULT_SERVICE_PANEL_WIDTH}
-            handleDataSlot="terminal-service-panel-resize-handle"
-            maxWidth={MAX_SERVICE_PANEL_WIDTH}
-            minWidth={MIN_SERVICE_PANEL_WIDTH}
-            open={servicePanelOpen}
-            shellDataSlot="terminal-service-panel-shell"
-            storageKey={SERVICE_PANEL_WIDTH_STORAGE_KEY}
-            surfaceClassName="max-w-[100vw] bg-background"
-            surfaceDataSlot="terminal-service-panel-surface"
-            title="Drag to resize terminal service panel"
+          <Dialog
+            open={visible && servicePanelOpen}
+            onOpenChange={setServicePanelOpen}
           >
-            <TerminalServicePanel
-              onClose={() => setServicePanelOpen(false)}
-              terminal={terminal}
-            />
-          </ResizablePanel>
+            <DialogContent
+              className="flex max-h-[min(88svh,720px)] max-w-xl flex-col gap-0 overflow-hidden p-0"
+              showClose={false}
+              onCloseAutoFocus={(event) => {
+                event.preventDefault();
+                if (visibleRef.current) xtermRef.current?.focus();
+              }}
+            >
+              <DialogTitle className="sr-only">
+                Configure terminal service
+              </DialogTitle>
+              <DialogDescription className="sr-only">
+                Configure the background command for {terminal.title}.
+              </DialogDescription>
+              <TerminalServicePanel
+                onClose={() => setServicePanelOpen(false)}
+                terminal={terminal}
+              />
+            </DialogContent>
+          </Dialog>
         ) : null}
         {onCommandPaletteOpenChange ? (
           <TerminalScriptCommandDialog

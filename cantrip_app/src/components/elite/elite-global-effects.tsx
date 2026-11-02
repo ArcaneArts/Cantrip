@@ -20,7 +20,6 @@ export const ELITE_GLOBAL_CANDIDATE_SELECTOR = [
   '[data-slot="card"]',
   '[data-slot="dialog-content"]',
   '[data-slot="empty-state"]',
-  '[data-slot="terminal-service-panel-surface"]',
   '[data-slot="agent-inspect-panel"]',
   '[data-slot="git-history-drawer"]',
   "button",
