@@ -83,7 +83,7 @@ export function TerminalServicePanel({
           <h2 className="truncate text-sm font-medium">Terminal service</h2>
         </div>
         <Button
-          aria-label="Close terminal service panel"
+          aria-label="Close terminal service"
           className="size-7"
           onClick={onClose}
           size="icon"
