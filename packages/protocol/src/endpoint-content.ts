@@ -8,6 +8,7 @@ import {
 export const ENDPOINT_CONTENT_PROTECTED_BYTES_LIMIT = 16 * 1_024 * 1_024;
 
 export const endpointContentDomainSchema = z.enum([
+  "alert-content",
   "run-content",
   "customization-content",
   "tunnel-content",

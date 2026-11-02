@@ -25,6 +25,7 @@ export const encryptionComponentScopeSchema = z.enum([
   "customization-content",
   "tunnel-content",
   "client-control-content",
+  "alert-content",
   "private-analytics",
 ]);
 

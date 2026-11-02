@@ -494,6 +494,13 @@ export const contractRoots = [
   "encryptedChatPromptSteerResultSchema",
   "taskOperationStartSchema",
   "taskRecoveryStartSchema",
+  "projectAlertProjectionSchema",
+  "projectAlertSchema",
+  "projectAlertQuerySchema",
+  "projectAlertPageSchema",
+  "projectAlertCountsSchema",
+  "projectAlertChangeSchema",
+  "projectAlertProtectedDetailSchema",
 ];
 
 // Resolve the actual source schemas, including their separate protocol modules.
@@ -518,6 +525,8 @@ export function sourceContractSchema(name) {
 }
 
 const refinements = new Map([
+  [protocol.projectAlertProjectionSchema, "project-alert-projection"],
+  [protocol.projectAlertProtectedDetailSchema, "project-alert-detail"],
   [taskScheduling.taskWorkerUpdateSchema, "task-worker-update"],
   [
     taskScheduling.taskWorkerOrderUpdateSchema.shape.ids,

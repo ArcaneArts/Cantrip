@@ -20,6 +20,7 @@ pub struct LiveService {
     repository: Arc<LiveRepository>,
     publishing: Arc<AtomicBool>,
     validation: AbortHandle,
+    alerts: AbortHandle,
 }
 fn invalidation(
     hub: &Hub,
@@ -54,6 +55,7 @@ impl LiveService {
         config: &ServerConfig,
         usage: Option<super::UsageRecorder>,
     ) -> Result<Arc<Self>> {
+        let alert_database = database.clone();
         let repository = Arc::new(LiveRepository::new(database)?);
         let hub = Hub::new(Options {
             record_usage: usage,
@@ -96,6 +98,7 @@ impl LiveService {
             }
         })
         .abort_handle();
+        let alerts = super::project_alerts::watch(alert_database, hub.clone(), publishing.clone());
         Ok(Arc::new(Self {
             hub,
             sessions,
@@ -103,6 +106,7 @@ impl LiveService {
             repository,
             publishing,
             validation,
+            alerts,
         }))
     }
     pub fn context(&self, owner: String, session: Option<String>) -> ConnectionContext {
@@ -177,6 +181,7 @@ impl LiveService {
     pub fn close(&self) {
         self.publishing.store(false, Ordering::Release);
         self.validation.abort();
+        self.alerts.abort();
         self.sessions.close_all("Server is shutting down");
         self.hub.close();
     }

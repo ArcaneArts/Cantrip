@@ -483,6 +483,20 @@ const binaryWriteExports = [
   "binaryWriteVersionSchema",
 ];
 
+const alertExports = [
+  "projectAlertChangeSchema",
+  "projectAlertCountsSchema",
+  "projectAlertDetailSchema",
+  "projectAlertKindSchema",
+  "projectAlertPageSchema",
+  "projectAlertProjectionSchema",
+  "projectAlertProtectedDetailSchema",
+  "projectAlertQuerySchema",
+  "projectAlertSchema",
+  "projectAlertSourceSchema",
+  "projectAlertTargetSchema",
+].sort();
+
 const agentChatExports = [
   "agentChatReadWireSchema",
   "agentChatRuntimeText",
@@ -527,7 +541,8 @@ describe("protocol public surface compatibility", () => {
           !editorBindingExports.includes(name) &&
           !labelingExports.includes(name) &&
           !gitChangeSummaryExports.includes(name) &&
-          !agentChatExports.includes(name),
+          !agentChatExports.includes(name) &&
+          !alertExports.includes(name),
       ),
     ].sort();
 
@@ -539,7 +554,10 @@ describe("protocol public surface compatibility", () => {
         retiredWorkspaceProfileExports.includes(name),
       ),
     ).toEqual([]);
-    expect(exportNames).toHaveLength(2134);
+    expect(exportNames).toHaveLength(2145);
+    expect(exportNames.filter((name) => alertExports.includes(name))).toEqual(
+      alertExports,
+    );
     expect(
       exportNames.filter((name) => agentChatExports.includes(name)),
     ).toEqual(agentChatExports);

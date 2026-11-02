@@ -110,13 +110,13 @@ const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
     "92b9f36d0de345e6ca867563b30cc5934641604670823883b7d7642cd58a0127",
   applicationRoutes:
-    "d424a614f7e2e8a2e1221d8667aaef84091d34511f43ecac821caf0b761fa5f7",
+    "edffc272eab55781333d975be6f38a32f7453ca1b881d357b09821dff4f360f2",
   clientControlCommands:
     "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
   cliCommands:
     "dac89683226ba9ee6f6211eba252fb0b83a5a022aa9150f107315733a4e44251",
   liveResources:
-    "1df67a68c239eaa16bb27951a17becba63fd86bf36c84ca235846157e1b75b1a",
+    "54dd12b30c184f81d2a8bdd249cc9a91e93dfb3052fcafb425233a5f8dc87a21",
   workerCommands:
     "32c03ddad943054978bbafa0eb83244b49f225c453a6bce9fc937e05c1c50b26",
   tunnelFrameKinds:
@@ -153,6 +153,7 @@ const DURABLE_TABLE_CLASSIFICATIONS = {
   encryptionPrincipals: "endpoint-protected",
   encryptionKeyGrants: "endpoint-protected",
   projects: "endpoint-protected",
+  projectAlerts: "endpoint-protected",
   tunnels: "endpoint-protected",
   tunnelAttachments: "minimized-operational-metadata",
   tunnelAttachmentDirectLeases: "minimized-operational-metadata",
@@ -3452,6 +3453,19 @@ function durableTableContentInventory(schemaText) {
 }
 
 function applicationRouteContentClassification(route) {
+  if (route.path === "/api/projects/:projectId/alerts")
+    return {
+      classification: "endpoint-protected",
+      rationale:
+        "Owner/project-scoped attention projection with protected agent details and opaque source targets; source request content remains protected at its original endpoint.",
+    };
+  if (route.path === "/api/project-alerts/counts")
+    return {
+      classification: "minimized-operational-metadata",
+      rationale:
+        "Nonzero active counts and project routing ids for the current owner; no titles or source content.",
+    };
+
   if (
     [
       "/api/projects/:projectId/file-documents",
@@ -3726,6 +3740,13 @@ function workerCommandContentClassification(command) {
 }
 
 function liveResourceContentClassification(resource) {
+  if (resource === "project-alert")
+    return {
+      classification: "minimized-operational-metadata",
+      rationale:
+        "Post-commit owner-scoped invalidation with project id only; no alert reason or source content.",
+    };
+
   if (resource === "file-document") {
     return {
       classification: "minimized-operational-metadata",
@@ -4536,6 +4557,11 @@ async function buildInventory() {
   };
   const durableTables = durableTableContentInventory(
     schemaText +
+      "\n" +
+      (await readFile(
+        resolve(dirname(schemaPath), "schema-alerts.ts"),
+        "utf8",
+      )) +
       "\n" +
       (await readFile(
         resolve(dirname(schemaPath), "schema-conversation-usage.ts"),

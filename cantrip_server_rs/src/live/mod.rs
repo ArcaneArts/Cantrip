@@ -1,5 +1,6 @@
 //! Application live protocol, scoped replay, connection lifetime and control.
 mod hub;
+mod project_alerts;
 pub mod repository;
 mod service;
 mod transports;

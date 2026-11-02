@@ -153,6 +153,7 @@ const appLiveScopesSchema = z
   });
 
 export const appLiveResourceSchema = z.enum([
+  "project-alert",
   "server",
   "account-session",
   "account-resource-usage",

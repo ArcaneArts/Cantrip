@@ -1,3 +1,4 @@
+import { ProjectAlertRepository } from "./repository/project-alerts.js";
 import { AgentChatDeliveryRepository } from "./repository/agent-chat-delivery.js";
 import { NativeRuntimeHandoffRepository } from "./repository/native-runtime-handoffs.js";
 import { ManagedChatPreparationRepository } from "./repository/managed-chat-preparations.js";
@@ -285,6 +286,7 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
     this.computerUseAuthorityChanges.receive(payload);
   }
 
+  readonly alerts: ProjectAlertRepository;
   readonly accounts: AccountRepository;
   readonly accountResourceUsage: AccountResourceUsageRepository;
   readonly desktopUpdateState: DesktopUpdateStateRepository;
@@ -356,6 +358,7 @@ export class ServerRepository extends ProjectExecutionRepositoryFacade {
     // finish moving out of this repository. Provider and MCP payloads never
     // use this server key.
     void secretVault;
+    this.alerts = new ProjectAlertRepository(database);
     this.accountResourceUsage = new AccountResourceUsageRepository(database);
     this.desktopUpdateState = new DesktopUpdateStateRepository(database);
     this.providerAccounts = new ProviderAccountRepository(database);

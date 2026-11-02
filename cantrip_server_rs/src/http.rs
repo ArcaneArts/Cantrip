@@ -39,6 +39,7 @@ mod native_settings;
 mod on_response;
 mod pane_layouts;
 mod policies;
+mod project_alerts;
 mod project_shares;
 mod project_surfaces;
 mod project_workspaces;
@@ -151,6 +152,7 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .route("/healthz", get(health))
         .route("/readyz", get(ready))
         .merge(sessions::routes())
+        .merge(project_alerts::routes())
         .merge(worker_links::routes())
         .merge(worker_link_sessions::routes())
         .merge(direct_attachments::routes())
