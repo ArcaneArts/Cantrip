@@ -13,6 +13,7 @@ pub(super) fn refine(
             | "task-goal-worker-result"
             | "chat-placement-create"
             | "encrypted-task-create"
+            | "encrypted-chat-create"
             | "chat-root-model"
             | "chat-goal-update"
     ) {
@@ -60,6 +61,14 @@ pub(super) fn refine(
                 custom(
                     &["paneId"],
                     "Specify only one of paneId, the deprecated tabGroupId, or targetRegion.",
+                );
+            }
+        }
+        "encrypted-chat-create" => {
+            if value["titleProtection"]["classification"]["recordKind"] != "chat" {
+                custom(
+                    &["titleProtection", "classification", "recordKind"],
+                    "Chat title classification must be chat.",
                 );
             }
         }

@@ -67,7 +67,9 @@ export class ConversationCatalogRepository {
           messageCount:
             input.state === "active"
               ? sql<number>`0`
-              : sql<number>`(select count(*)::int from ${schema.chatMessages} where ${schema.chatMessages.chatId} = ${c.id})`,
+              : // Single-table selections rewrite Column references as bare
+                // names. Keep the outer Chat qualified inside this subquery.
+                sql<number>`(select count(*)::int from ${schema.chatMessages} where ${schema.chatMessages.chatId} = ${sql.identifier("chats")}.${sql.identifier("id")})`,
         })
         .from(c)
         .where(

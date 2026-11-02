@@ -297,6 +297,14 @@ describe.sequential("chat archive API", () => {
       messageCount: 1,
       titleProtection: chat.titleProtection,
     });
+    const conversationPage = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/conversations?state=archived`,
+    });
+    expect(conversationPage.statusCode, conversationPage.body).toBe(200);
+    expect(
+      conversationCatalogWirePageSchema.parse(conversationPage.json()).items,
+    ).toContainEqual(expect.objectContaining({ id: chat.id, messageCount: 1 }));
     expect(
       await database.repository.getChatExecutionContext(LOCAL_USER_ID, chat.id),
     ).toBeNull();

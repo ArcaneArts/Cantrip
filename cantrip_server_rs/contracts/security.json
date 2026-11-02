@@ -505,7 +505,13 @@
     "projectGoalObservationSchema": 9378,
     "projectGoalObservationResultSchema": 9385,
     "cantripMcpContextGetResultSchema": 9390,
-    "archivedChatWireSummarySchema": 9451
+    "archivedChatWireSummarySchema": 9451,
+    "encryptedChatCreateSchema": 9458,
+    "conversationCatalogQuerySchema": 9466,
+    "conversationCatalogWirePageSchema": 9474,
+    "conversationCursorSchema": 9491,
+    "conversationUsageSchema": 9499,
+    "conversationUsageResultSchema": 9504
   },
   "nodes": [
     {
@@ -55350,6 +55356,357 @@
       "type": "string",
       "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
     },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "encryptedChatCreateSchema",
+      "shape": {
+        "worktreeId": 9220,
+        "worktreeMode": 9222,
+        "paneId": 6930,
+        "tabGroupId": 6932,
+        "targetRegion": 6934,
+        "target": 9224,
+        "attachToTabLayout": 9459,
+        "id": 9461,
+        "titleProtection": 701,
+        "autoTitle": 9462,
+        "githubAgentContext": 9464
+      },
+      "catchall": 9465,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "chat-placement-create",
+          "messageAfterPath": false
+        },
+        {
+          "check": "refinement",
+          "tag": "encrypted-chat-create",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 9460,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 9463,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 807,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "conversationCatalogQuerySchema",
+      "shape": { "state": 9467, "limit": 9469, "cursor": 9471 },
+      "catchall": 9473,
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 9468,
+      "defaultValue": "active",
+      "checks": []
+    },
+    { "type": "enum", "values": ["active", "archived"], "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 9470,
+      "defaultValue": 50,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "coerce": true,
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 1, "inclusive": true },
+        { "check": "less_than", "value": 100, "inclusive": true }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 9472,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 2048, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "union",
+      "name": "conversationCatalogWirePageSchema",
+      "options": [9475, 9486],
+      "discriminator": "state",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "state": 9476,
+        "items": 9477,
+        "total": 9482,
+        "nextCursor": 9483
+      },
+      "catchall": 9485,
+      "checks": []
+    },
+    { "type": "literal", "values": ["active"], "checks": [] },
+    { "type": "array", "element": 9478, "checks": [] },
+    {
+      "type": "object",
+      "name": "conversationWireSummarySchema",
+      "shape": {
+        "id": 776,
+        "experience": 9479,
+        "position": 779,
+        "status": 780,
+        "activeWorkerId": 781,
+        "placementRevision": 783,
+        "modelId": 785,
+        "reasoningEffort": 787,
+        "customSubagentModel": 790,
+        "subagentModelId": 792,
+        "subagentReasoningEffort": 795,
+        "permissionProfileId": 797,
+        "planMode": 799,
+        "hasPendingPlanQuestion": 800,
+        "hasUnreadCompletion": 801,
+        "automationPaused": 803,
+        "githubAgentContext": 805,
+        "createdAt": 813,
+        "updatedAt": 814,
+        "contextKind": 9480,
+        "projectId": 817,
+        "activeWorktreeId": 818,
+        "activeScratchRootId": 819,
+        "worktreeMode": 821,
+        "titleProtection": 701,
+        "lastUsedAt": 9481
+      },
+      "catchall": 822,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "chat-title-kind",
+          "messageAfterPath": true,
+          "message": "Chat title classification must be chat.",
+          "path": ["titleProtection", "classification", "recordKind"]
+        }
+      ]
+    },
+    { "type": "literal", "values": ["agent"], "checks": [] },
+    { "type": "literal", "values": ["project"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "nullable", "innerType": 9484, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "state": 9487,
+        "items": 9488,
+        "total": 9482,
+        "nextCursor": 9483
+      },
+      "catchall": 9490,
+      "checks": []
+    },
+    { "type": "literal", "values": ["archived"], "checks": [] },
+    { "type": "array", "element": 9489, "checks": [] },
+    {
+      "type": "object",
+      "name": "archivedConversationWireSummarySchema",
+      "shape": {
+        "id": 8241,
+        "experience": 9479,
+        "messageCount": 8243,
+        "archivedAt": 8244,
+        "expiresAt": 8245,
+        "createdAt": 8246,
+        "updatedAt": 8247,
+        "contextKind": 9480,
+        "projectId": 9456,
+        "titleProtection": 701,
+        "lastUsedAt": 9481
+      },
+      "catchall": 9457,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-command-chat-title",
+          "messageAfterPath": true,
+          "message": "Archived chat title classification must be chat.",
+          "path": ["titleProtection", "classification", "recordKind"]
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "conversationCursorSchema",
+      "shape": {
+        "version": 9492,
+        "projectId": 9493,
+        "state": 9494,
+        "at": 9495,
+        "createdAt": 9496,
+        "id": 9497
+      },
+      "catchall": 9498,
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "enum", "values": ["active", "archived"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "conversationUsageSchema",
+      "shape": { "clientId": 9500, "operationId": 9501, "sequence": 9502 },
+      "catchall": 9503,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "conversationUsageResultSchema",
+      "shape": { "lastUsedAt": 9505, "applied": 9506 },
+      "catchall": 9507,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
     { "type": "never", "checks": [] }
   ]
 }

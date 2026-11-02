@@ -1,3 +1,4 @@
+mod project_creation;
 use super::{
     body, json_response,
     middleware::{self, Context},
@@ -123,11 +124,52 @@ async fn project_list(
         Err(cause) => middleware::failure(&service, &context.id, &cause),
     }
 }
+async fn project_create(
+    State(service): State<Arc<AuthService>>,
+    Extension(context): Extension<Arc<Context>>,
+    Path(project): Path<String>,
+    request: Request,
+) -> Response {
+    let result = async {
+        let body = match body::parse_js(request, service.config.api_body_limit_bytes).await {
+            Ok(body) => body,
+            Err(response) => return Ok(response),
+        };
+        let input = match parse("encryptedChatCreateSchema", body.as_ref())? {
+            Ok(input) => input,
+            Err(response) => return Ok(response),
+        };
+        let owner = context
+            .principal
+            .user
+            .as_ref()
+            .expect("Authenticated Chat owner")
+            .id
+            .clone();
+        service
+            .scratch_roots
+            .owned(project_creation::create(
+                service.clone(),
+                owner,
+                project,
+                input,
+            ))
+            .await
+    }
+    .await;
+    match result {
+        Ok(response) => response,
+        Err(cause) => middleware::failure(&service, &context.id, &cause),
+    }
+}
 pub(super) fn routes() -> Router<Arc<AuthService>> {
     Router::new()
         .route("/api/chats", get(handle).post(handle))
         .route("/api/chats/archived", get(handle))
-        .route("/api/projects/{projectId}/chats", get(project_list))
+        .route(
+            "/api/projects/{projectId}/chats",
+            get(project_list).post(project_create),
+        )
         .route(
             "/api/projects/{projectId}/archived-chats",
             get(project_list),

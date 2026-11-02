@@ -1634,6 +1634,12 @@ jobs:
         run: node --import tsx scripts/server-rust/actual-folder-client.mjs --tasks --database bundled-postgres --report .qa/rust-server/actual-task-worker-bundled-postgres.json
       - name: Actual browser, full worker and native Task Goals with postgres
         run: node --import tsx scripts/server-rust/actual-folder-client.mjs --tasks --database postgres --report .qa/rust-server/actual-task-worker-postgres.json
+      - name: Actual Agent conversation, canonical history and native Goal with pglite
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --project-chats --database pglite --report .qa/rust-server/actual-project-chat-worker-pglite.json
+      - name: Actual Agent conversation, canonical history and native Goal with bundled-postgres
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --project-chats --database bundled-postgres --report .qa/rust-server/actual-project-chat-worker-bundled-postgres.json
+      - name: Actual Agent conversation, canonical history and native Goal with postgres
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --project-chats --database postgres --report .qa/rust-server/actual-project-chat-worker-postgres.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -1696,6 +1702,8 @@ jobs:
         run: node scripts/server-rust/cargo.mjs test --test chat_contracts -- --nocapture
       - name: Project Chat catalogs and archives with pglite
         run: node --import tsx scripts/server-rust/project-chat-catalog-http.mjs --database pglite --report .qa/rust-server/project-chat-catalog-pglite.json
+      - name: Project Chat creation, conversation keysets and usage with pglite
+        run: node --import tsx scripts/server-rust/project-chat-creation-http.mjs --database pglite --report .qa/rust-server/project-chat-creation-pglite.json
       - name: Message query state with pglite
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"
@@ -1708,6 +1716,8 @@ jobs:
         run: node --import tsx scripts/server-rust/chat-message-http-compatibility.mjs --database pglite --report .qa/rust-server/chat-message-http-compatibility-pglite.json
       - name: Project Chat catalogs and archives with bundled-postgres
         run: node --import tsx scripts/server-rust/project-chat-catalog-http.mjs --database bundled-postgres --report .qa/rust-server/project-chat-catalog-bundled-postgres.json
+      - name: Project Chat creation, conversation keysets and usage with bundled-postgres
+        run: node --import tsx scripts/server-rust/project-chat-creation-http.mjs --database bundled-postgres --report .qa/rust-server/project-chat-creation-bundled-postgres.json
       - name: Message query state with bundled-postgres
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"
@@ -1720,6 +1730,8 @@ jobs:
         run: node --import tsx scripts/server-rust/chat-message-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/chat-message-http-compatibility-bundled-postgres.json
       - name: Project Chat catalogs and archives with postgres
         run: node --import tsx scripts/server-rust/project-chat-catalog-http.mjs --database postgres --report .qa/rust-server/project-chat-catalog-postgres.json
+      - name: Project Chat creation, usage receipt races, SQL faults and aborted callers with postgres
+        run: node --import tsx scripts/server-rust/project-chat-creation-http.mjs --database postgres --report .qa/rust-server/project-chat-creation-postgres.json
       - name: Message query state with postgres
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"

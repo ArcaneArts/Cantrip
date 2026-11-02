@@ -524,6 +524,12 @@ export const contractRoots = [
   "projectGoalObservationResultSchema",
   "cantripMcpContextGetResultSchema",
   "archivedChatWireSummarySchema",
+  "encryptedChatCreateSchema",
+  "conversationCatalogQuerySchema",
+  "conversationCatalogWirePageSchema",
+  "conversationCursorSchema",
+  "conversationUsageSchema",
+  "conversationUsageResultSchema",
 ];
 
 // Resolve the actual source schemas, including their separate protocol modules.
@@ -656,6 +662,10 @@ registerChecks(protocol.encryptedChatTurnCreateSchema, [
 registerChecks(protocol.encryptedTaskCreateSchema, [
   "chat-placement-create",
   "encrypted-task-create",
+]);
+registerChecks(protocol.encryptedChatCreateSchema, [
+  "chat-placement-create",
+  "encrypted-chat-create",
 ]);
 registerChecks(protocol.chatModelConfigurationUpdateSchema, [
   "model-configuration",

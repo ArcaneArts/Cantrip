@@ -9,6 +9,7 @@ import { settingsWireFixtures } from "./settings-wire-fixtures.mjs";
 import { placementWireFixtures } from "./placement-wire-fixtures.mjs";
 import { folderWireFixtures } from "./folder-wire-fixtures.mjs";
 import { standaloneChatWireFixtures } from "./standalone-chat-wire-fixtures.mjs";
+import { projectChatWireFixtures } from "./project-chat-wire-fixtures.mjs";
 import { nativeCommandWireFixtures } from "./native-command-wire-fixtures.mjs";
 import { nativeHistoryWireFixtures } from "./native-history-wire-fixtures.mjs";
 import { nativeSettingsWireFixtures } from "./native-settings-fixtures.mjs";
@@ -754,6 +755,7 @@ export const securityFixtures = {
   ...placementWireFixtures(projectLabel),
   ...folderWireFixtures(projectLabel),
   ...standaloneChatWireFixtures(timestamp),
+  ...projectChatWireFixtures(timestamp),
   ...nativeCommandWireFixtures(timestamp),
   ...nativeHistoryWireFixtures(timestamp),
   ...nativeSettingsWireFixtures(),
