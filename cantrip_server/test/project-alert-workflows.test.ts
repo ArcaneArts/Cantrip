@@ -233,6 +233,16 @@ it("projects explicit native Goal limits, rejects delayed observations, and reco
   const first = (await page())[0];
   expect(first.source).toBe("goal");
   expect(
+    (await f.db.repository.alerts.goalSource(f.owner, f.project, first.id))
+      ?.goal?.status,
+  ).toBe("blocked");
+  expect(
+    await f.db.repository.alerts.goalSource("foreign", f.project, first.id),
+  ).toBeNull();
+  expect(
+    await f.db.repository.alerts.goalSource(f.owner, f.other, first.id),
+  ).toBeNull();
+  expect(
     await f.db.repository.alerts.goalChats(f.owner, "alert-worker"),
   ).toContain(chat);
   expect(
@@ -240,6 +250,9 @@ it("projects explicit native Goal limits, rejects delayed observations, and reco
   ).toEqual([]);
   await apply(4, "active");
   expect(await count()).toBe(0);
+  expect(
+    await f.db.repository.alerts.goalSource(f.owner, f.project, first.id),
+  ).toBeNull();
   await f.db.repository.alerts.observeGoal(f.owner, event);
   expect(await count()).toBe(0);
   await apply(5, "budgetLimited");

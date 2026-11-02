@@ -1,5 +1,6 @@
+import { useAlertDestinationReveal } from "@/lib/alert-navigation";
 import type { ChatSummary } from "@cantrip/protocol";
-import { useState, type ReactNode } from "react";
+import { useState, useRef, useCallback, type ReactNode } from "react";
 
 import { AgentInspectStateContent } from "@/components/chat/agent-inspect-content";
 import { AgentTrajectory } from "@/components/chat/agent-trajectory";
@@ -73,8 +74,11 @@ export function TaskDetailTabs({
   visible: boolean;
 }) {
   const [tab, setTab] = useState<TaskDetailTab>("overview");
+  const root = useRef<HTMLDivElement>(null);
+  const revealOverview = useCallback(() => setTab("overview"), []);
+  useAlertDestinationReveal(chat.projectId, chat.id, root, revealOverview);
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div ref={root} className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <NavigationTabBar<TaskDetailTab>
         activeTab={tab}
         ariaLabel="Task views"

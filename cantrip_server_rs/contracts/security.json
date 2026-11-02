@@ -40472,6 +40472,7 @@
         "project.github-actions",
         "project.overview",
         "project.tasks",
+        "project.alerts",
         "git.history",
         "git.graph",
         "github.issues",
@@ -40498,6 +40499,7 @@
       "values": [
         "project.overview",
         "project.tasks",
+        "project.alerts",
         "git.history",
         "git.graph",
         "github.issues",

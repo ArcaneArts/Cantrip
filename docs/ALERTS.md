@@ -94,5 +94,28 @@ protection; a missing optional grant causes the actual tool call to fail, withou
 blocking ordinary Chat execution. Agents should not duplicate existing structured
 permission, Task review or Goal blocker Alerts.
 
-The Alert Inbox and discovery UI follow in later milestones. Each milestone is
-delivered through its own worktree and merged PR.
+## Alert Inbox
+
+`project.alerts` is an owned project singleton surface. It can close, reopen,
+move between supported panes, and detach/return through the normal workspace
+ownership path. Opening another Alert Inbox focuses its existing view/window.
+An open empty inbox stays open. Lists use bounded 25-row cursor pages.
+
+Expand an alert to see its original request or protected source context. The
+same interaction cards submit exact scoped responses, and Task review reuses
+the current planning round's answers, autosave/version protections, and explicit
+implementation controls. Failed actions remain visible with an error; retries
+reuse their idempotency key. Reading or navigating never executes a decision.
+
+Agent Alerts show the originating Chat's name and protected explanation/next
+step. Normal Goal snapshots are readable from authorized durable storage even
+when their worker is offline. Goal execution controls remain in the current
+Chat so a stale inbox row cannot change a replacement Goal.
+
+Open Chat/Task uses workspace ownership to focus existing destinations. A
+short-lived, account/server-scoped routing hint reveals the exact interaction,
+Goal, turn, or Task review section in the destination window. It carries only
+routing metadata, expires after navigation, and never sends a response.
+
+Conditional discovery and cross-project live counts follow in the next cycle.
+Each milestone is delivered through its own worktree and merged PR.

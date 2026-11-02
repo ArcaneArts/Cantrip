@@ -25,6 +25,11 @@ it("retires the workbench while preserving native tab ciphertext, placement and 
       if (name.startsWith("0229_")) break;
       await client.exec(await readFile(`${migrations}/${name}`, "utf8"));
     }
+    // Current repository fixtures select the additive worker observation cursor.
+    // Keep the historical editor tables intact until the removal migration below.
+    await client.exec(
+      "ALTER TABLE workers ADD COLUMN project_goal_generation text",
+    );
     const database = drizzle(client, { schema });
     const repository = new ServerRepository(
       database,

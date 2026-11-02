@@ -63,7 +63,8 @@ export function projectPaneRenderBindings(
   const projectOverviewGitSection =
     selectedBuiltInSurface &&
     activeProjectOverviewSection !== "overview" &&
-    activeProjectOverviewSection !== "tasks"
+    activeProjectOverviewSection !== "tasks" &&
+    activeProjectOverviewSection !== "alerts"
       ? activeProjectOverviewSection
       : null;
   const gitHistoryProject =

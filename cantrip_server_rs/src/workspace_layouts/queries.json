@@ -249,6 +249,11 @@
       "tabKind": "actions"
     },
     {
+      "id": "project.alerts",
+      "supportedPlacements": ["center", "right", "bottom"],
+      "tabKind": null
+    },
+    {
       "id": "project.tasks",
       "supportedPlacements": ["center", "right", "bottom"],
       "tabKind": null

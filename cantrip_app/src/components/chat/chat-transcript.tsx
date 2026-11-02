@@ -1,3 +1,5 @@
+import { useRef } from "react";
+import { useAlertDestinationReveal } from "@/lib/alert-navigation";
 import { ChatTranscriptView } from "@/components/chat/chat-transcript-view";
 import { useChatTranscriptController } from "@/components/chat/use-chat-transcript-controller";
 import type { ChatTranscriptProps } from "@/components/chat/use-chat-transcript-controller";
@@ -5,9 +7,11 @@ import type { ChatTranscriptProps } from "@/components/chat/use-chat-transcript-
 export type { ChatTranscriptProps };
 
 export function ChatTranscript(props: ChatTranscriptProps) {
+  const root = useRef<HTMLDivElement>(null);
+  useAlertDestinationReveal(props.chat.projectId, props.chat.id, root);
   const controller = useChatTranscriptController(props);
   return (
-    <div className="contents" inert={controller.transferLocked}>
+    <div ref={root} className="contents" inert={controller.transferLocked}>
       <ChatTranscriptView controller={controller} />
     </div>
   );

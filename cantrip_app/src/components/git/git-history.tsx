@@ -1584,7 +1584,7 @@ export function GitHistoryView({
             gitEnabled
             includeOverview={includeOverviewTab}
             onTabChange={(next) => {
-              if (next === "overview" || next === "tasks")
+              if (next === "overview" || next === "tasks" || next === "alerts")
                 onSectionChange?.(next);
               else setSection(next);
             }}

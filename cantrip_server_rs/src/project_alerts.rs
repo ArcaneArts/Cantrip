@@ -34,6 +34,26 @@ impl Repository {
             .await?;
         Ok(())
     }
+    pub async fn goal_source(
+        &self,
+        owner: &str,
+        project: &str,
+        alert: &str,
+    ) -> Result<Option<Value>> {
+        let rows = self
+            .database
+            .query(
+                "SELECT project_alert_goal_source($1,$2,$3)::text",
+                &[&owner, &project, &alert],
+            )
+            .await?;
+        optional(
+            rows.first()
+                .context("Alert source")?
+                .get::<Option<String>>(0)?,
+            "projectGoalSnapshotSchema",
+        )
+    }
     pub async fn goal_chats(
         &self,
         owner: &str,

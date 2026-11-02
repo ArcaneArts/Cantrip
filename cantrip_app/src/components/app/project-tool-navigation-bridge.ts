@@ -20,7 +20,10 @@ export interface ProjectToolNavigationBridgeInput {
   layoutReady: boolean;
   views: ProjectViewSummary[] | undefined;
   viewsReady: boolean;
-  openBuiltInSurface(projectId: string, section: "overview" | "tasks"): unknown;
+  openBuiltInSurface(
+    projectId: string,
+    section: "overview" | "tasks" | "alerts",
+  ): unknown;
   openSurface(projectId: string, surface: ProjectSurfaceResourceRef): unknown;
   createSurface(input: {
     kind: Exclude<ProjectViewKind, "remote-desktop">;
@@ -60,12 +63,13 @@ export function useProjectToolNavigationBridge(
       return;
     }
     if (!layoutReady || layout?.projectId !== selectedProjectId) return;
-    if (section !== "tasks" && (!viewsReady || !views)) return;
+    if (section !== "tasks" && section !== "alerts" && (!viewsReady || !views))
+      return;
     // A layout write is an outcome of this navigation, not a new request.
     const attempt = JSON.stringify([selectedProjectId, section, worktreeId]);
     if (attemptRef.current === attempt) return;
     attemptRef.current = attempt;
-    if (section === "tasks") {
+    if (section === "tasks" || section === "alerts") {
       void openBuiltInSurface(selectedProjectId, section);
       return;
     }

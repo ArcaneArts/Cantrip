@@ -110,7 +110,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
     "691b6132f5052c9af8e83552661910d6619cf238fe20bb07869f932df7989b85",
   applicationRoutes:
-    "6dedf25c560513c90d27e464a65cca5a83cdfaf4ecf9222bcd9b19a6100308e9",
+    "0c32570a30c39d2969932ef3f668bfaf8720a7ac56385e8b14ec8127c6afc5d6",
   clientControlCommands:
     "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
   cliCommands:
@@ -3460,7 +3460,10 @@ function applicationRouteContentClassification(route) {
       rationale:
         "Authenticated current worker process facts with protected Chat Goal objective, exact thread binding and bounded lifecycle metadata; never plaintext Goal text.",
     };
-  if (route.path === "/api/projects/:projectId/alerts")
+  if (
+    route.path === "/api/projects/:projectId/alerts" ||
+    route.path === "/api/projects/:projectId/alerts/:alertId/goal"
+  )
     return {
       classification: "endpoint-protected",
       rationale:

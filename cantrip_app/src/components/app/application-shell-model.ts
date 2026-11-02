@@ -33,6 +33,7 @@ export function modelDisplayName(model: ModelProfileSummary): string {
 export function projectOverviewSectionLabel(
   section: ProjectOverviewSection,
 ): string {
+  if (section === "alerts") return "Alert Inbox";
   if (section === "prs") return "Pull requests";
   return `${section.slice(0, 1).toUpperCase()}${section.slice(1)}`;
 }

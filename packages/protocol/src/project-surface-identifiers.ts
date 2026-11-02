@@ -3,6 +3,7 @@ import { z } from "zod";
 export const PROJECT_BUILT_IN_SURFACE_DEFINITION_IDS = [
   "project.overview",
   "project.tasks",
+  "project.alerts",
   "git.history",
   "git.graph",
   "github.issues",

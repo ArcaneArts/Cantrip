@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import {
   projectAlertQuerySchema,
+  projectGoalSnapshotSchema,
   projectAlertPageSchema,
   projectAlertCountsSchema,
 } from "@cantrip/protocol";
@@ -17,6 +18,21 @@ export function installProjectAlertRoutes(
     repository: Pick<ServerRepository, "alerts">;
   },
 ) {
+  app.get<{ Params: { projectId: string; alertId: string } }>(
+    "/api/projects/:projectId/alerts/:alertId/goal",
+    async (request, reply) => {
+      const value = await repository.alerts.goalSource(
+        applicationOwnerId(),
+        request.params.projectId,
+        request.params.alertId,
+      );
+      return value
+        ? reply.send(projectGoalSnapshotSchema.parse(value))
+        : reply
+            .code(404)
+            .send({ error: "Alert source is no longer available." });
+    },
+  );
   app.get("/api/project-alerts/counts", async (_request, reply) =>
     reply.send(
       projectAlertCountsSchema.parse(
