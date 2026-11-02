@@ -1,3 +1,4 @@
+import { threadSyncWireFixtures } from "./chat-thread-sync-fixtures.mjs";
 import { projectSurfaceWireFixtures } from "./project-surface-wire-fixtures.mjs";
 import * as p from "../../packages/protocol/dist/index.js";
 import { workerIngressFixtures } from "./worker-wire-fixtures.mjs";
@@ -756,6 +757,7 @@ export const securityFixtures = {
   ...folderWireFixtures(projectLabel),
   ...standaloneChatWireFixtures(timestamp),
   ...projectChatWireFixtures(timestamp),
+  ...threadSyncWireFixtures(),
   ...nativeCommandWireFixtures(timestamp),
   ...nativeHistoryWireFixtures(timestamp),
   ...nativeSettingsWireFixtures(),

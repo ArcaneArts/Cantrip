@@ -258,6 +258,46 @@ export async function actualProjectChatClient({
       "the actual Agent native Goal tools create and complete a persistent Goal; the browser decrypts exactly the native objective and history",
     );
 
+    const synchronize = async (name) => {
+      const before = await readMessages();
+      const sync = await page.evaluate(
+        async (chatId) =>
+          (await import("/src/lib/api/chats.ts")).syncChat(chatId),
+        chat.id,
+      );
+      assert.equal(sync.threadId, completedTurns[0].threadId, name);
+      assert.equal(sync.status, "idle", name);
+      assert.equal(sync.statusSource, "native-thread", name);
+      assert.deepEqual(
+        sync.turns,
+        [],
+        "protected canonical history is omitted from the legacy console reply",
+      );
+      assert.deepEqual(
+        await readMessages(),
+        before,
+        "console synchronization preserves the complete protected transcript",
+      );
+      assert.equal(
+        model.requests.filter((r) => r.method === "POST").length,
+        4,
+        "console observation does not repeat model inference",
+      );
+      (result.projectChatSynchronizations ??= []).push({
+        name,
+        threadId: sync.threadId,
+        status: sync.status,
+        statusSource: sync.statusSource,
+        turns: sync.turns.length,
+      });
+    };
+    await synchronize(
+      "existing SDK synchronizes the live managed native runtime",
+    );
+    result.steps.push(
+      "the existing browser syncChat SDK reads the actual managed native thread without exposing or duplicating canonical history or starting inference",
+    );
+
     await stopWorker();
     // Graceful worker shutdown drains canonical history writes. Capture that
     // committed transcript before restarting the server, then require exact
@@ -287,6 +327,9 @@ export async function actualProjectChatClient({
       });
     }, workerId);
     assert.deepEqual(await readMessages(), messages);
+    await synchronize(
+      "existing SDK synchronizes after server and full-worker restart",
+    );
     const retained = await page.evaluate(async (chatId) => {
       const conversations = await import("/src/lib/api/conversations.ts");
       return {
@@ -344,6 +387,7 @@ export async function actualProjectChatClient({
       completed: true,
       nativeGoalCompleted: true,
       retainedAfterRestart: true,
+      synchronizedBeforeAndAfterRestart: true,
       modelRequests: 4,
       modelFailures: [],
       chatId: chat.id,

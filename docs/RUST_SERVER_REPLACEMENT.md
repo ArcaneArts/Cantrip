@@ -5223,3 +5223,84 @@ hash-verified pre-milestone #2447 evidence archive. Recursive bail means later
 worker/app tests and whole-repository formatting did not complete; focused
 formatting and the actual production-worker acceptance above pass. The failing
 assertion and its deadline remain unchanged.
+
+## Chat console synchronization and passive thread observation
+
+The Rust server now implements `POST /api/chats/:chatId/sync` and enrolled-worker
+`chat.thread.changed` reconciliation. Both paths use the actual model routing,
+native admission repository, execution lanes, shared token accounting, protected
+Live message writers, worktree transitions and queue dispatcher. Public requests
+preserve the existing missing/archived/foreign-owner, Task, standalone,
+threadless, missing-model and offline behavior. Empty history is terminal
+lifecycle evidence only when the worker supplies `statusSource: native-thread`;
+a running response or retained turns also provide lifecycle evidence.
+
+Passive observations lock the project and Chat and revalidate every placement,
+runtime-route, thread and execution-lane binding. An active native admission
+prevents a console read from finishing or relabeling its turn. A linked console
+can acquire its own real execution lane, finish that exact lane or update an
+otherwise idle Chat. Failure after lane insertion rolls back the complete
+transaction. Existing worker-owned encryption protects projected legacy console
+messages before they are persisted; protected canonical native history stays out
+of the legacy synchronization response.
+
+The bounded production revision reconciler rejects stale revisions, merges
+changes arriving during an active callback, preserves per-thread order, consumes
+failed revisions once, evicts only inactive entries and fences callbacks queued
+before clear. It uses lossless UTF-16 keys. Notifications require exactly one
+current, owner-scoped Agent binding and revalidate it before publishing Goal,
+queue and plan invalidations and reading the native thread.
+
+The base local Source/native repository comparisons pass 92 cases and 40 snapshots
+per storage mode, including thirteen canonical projections and seven controlled
+production-reconciler scenarios. External PostgreSQL additionally exercises
+three contention orders with homogeneous and mixed Node/Rust server processes
+(twelve server-pair entries), plus an actual AFTER lane-insert SQL exception.
+All 46 Rust library tests, 27,184 contextual Chat validation/error comparisons
+and nineteen focused Source synchronization/reconciliation tests pass. The two
+new protocol roots bring the manifest to 513 roots and 9,536 nodes while
+preserving all 511 prior roots and the complete 9,508-node prefix.
+
+The public HTTP suite passes 288 paired observations across all nine local
+storage/authentication profiles, including actual endpoint decryption, encrypted
+message replay/revision/restart, lifecycle transitions, negative notification
+bindings and exactly-once console usage accounting. After server shutdown, each
+profile retains three protected messages, zero plaintext message rows, no active
+lane and one owner-scoped console usage record. Generated identities and
+timestamps use the existing harness aliases; each normalized
+message ciphertext is decrypted and compared against the actual worker input.
+
+The existing browser `syncChat` SDK, full production worker and bundled
+`codex-cli 0.166.0` pass on PGlite, private PostgreSQL and external PostgreSQL.
+Each peer completes thirteen client steps, two real synchronizations before and
+after server/full-worker restart, and exactly four model requests. Synchronizing
+retains the native thread identity, authoritative idle status, empty legacy turn
+list and exact decrypted canonical transcript without repeating inference.
+
+```bash
+node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain thread-observation --database pglite --report .qa/rust-server/chat-thread-observation-pglite.json
+node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain thread-observation --database postgres --report .qa/rust-server/chat-thread-observation-postgres.json
+node --import tsx scripts/server-rust/chat-thread-sync-http.mjs --database pglite --report .qa/rust-server/chat-thread-sync-http-pglite.json
+CANTRIP_CODEX_BIN=/absolute/path/to/bundle/codex node --import tsx scripts/server-rust/actual-folder-client.mjs --project-chats --database pglite --report .qa/rust-server/actual-project-chat-worker-pglite.json
+```
+
+Use each of `pglite`, `bundled-postgres` and `postgres` for storage coverage.
+The supported-platform workflow now includes the focused Source tests, passive
+repository/race cases and public HTTP/worker tests; configuring CI does not prove
+platform acceptance. Archive cleanup, other unfinished domains, Redis and
+multi-instance behavior, complete upgrade/post-write rollback acceptance, final
+artifacts, desktop packaging, performance, Winterhold rehearsal and default
+cutover remain required. The actual Task/full-worker PGlite regression and final
+strict all-target Clippy and focused formatting also pass. Node remains the
+default server and the worker remains Node. This milestone does not establish complete replacement or deployment
+readiness.
+
+The fresh broad `pnpm check` finished in 574.3 seconds with 1,700 Source tests
+passing, 57 skipped and two failures: the unchanged provider-pool assertion at
+`local-foundation.test.ts:7218` and the administrator encryption-registry test's
+original five-second timeout. All four tests in the unchanged registry file pass
+on the focused rerun with the original deadlines. The pool assertion is also
+present in the independently hash-verified pre-milestone archive. No assertions
+or deadlines were relaxed. Recursive bail prevented later worker/app tests and
+whole-repository formatting from running; the focused format and real-worker
+checks above pass. The broad check remains failing and requires follow-up.

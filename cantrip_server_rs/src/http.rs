@@ -24,6 +24,7 @@ mod chat_goals;
 mod chat_lifecycle;
 mod chat_messages;
 mod chat_preparation;
+mod chat_sync;
 mod conversations;
 mod direct_attachments;
 mod encryption;
@@ -179,6 +180,7 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(chat_forks::routes())
         .merge(chat_messages::routes())
         .merge(chat_preparation::routes())
+        .merge(chat_sync::routes())
         .merge(native_settings::routes())
         .merge(native_handoffs::routes())
         .merge(native_events::routes())

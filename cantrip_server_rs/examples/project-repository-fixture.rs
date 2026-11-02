@@ -95,6 +95,8 @@ mod task_scheduler;
 mod task_workers;
 #[path = "support/tasks.rs"]
 mod tasks;
+#[path = "support/thread_changes.rs"]
+mod thread_changes;
 #[path = "support/tunnels.rs"]
 mod tunnels;
 #[path = "support/turn_behavior.rs"]

@@ -1,3 +1,6 @@
+import { threadChangeReconcilerFixture } from "./thread-change-reconciler-fixture.mjs";
+import { canonicalMessagesFromThreadSync } from "../../cantrip_server/src/chats/thread-sync.ts";
+import { agentThreadSyncSchema } from "../../packages/protocol/dist/index.js";
 import { taskEligibilityFixture } from "./task-eligibility-node-fixture.mjs";
 import { taskWorkersFixture } from "./task-workers-node-fixture.mjs";
 import {
@@ -265,6 +268,24 @@ export async function nativeCommandFixture(repository, input) {
     );
   if (input.op === "native-command-dispatch")
     return repository.nativeCommands.dispatch(owner, input.input);
+  if (input.op === "native-command-thread-changes")
+    return threadChangeReconcilerFixture(input);
+  if (input.op === "native-command-thread-sync-project")
+    return canonicalMessagesFromThreadSync(
+      agentThreadSyncSchema.parse(input.input),
+      {
+        ...input.options,
+        externalAttachments: input.attachments
+          ? new Map(Object.entries(input.attachments))
+          : undefined,
+      },
+    );
+  if (input.op === "native-command-observe-thread")
+    return repository.nativeCommands.reconcileThreadObservation(
+      owner,
+      input.expected,
+      input.status,
+    );
   if (input.op === "native-command-admit")
     return repository.nativeCommands.admit(
       owner,

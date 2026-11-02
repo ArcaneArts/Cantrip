@@ -1,3 +1,5 @@
+import { runThreadObservationRaces } from "./chat-thread-observation-races.mjs";
+import { runThreadObservationCases } from "./chat-thread-observation-cases.mjs";
 import {
   backgroundObservation,
   backgroundSnapshotObservation,
@@ -967,43 +969,45 @@ try {
   }
   await reset();
   const runCases =
-    report.domain === "task-background"
-      ? runTaskBackgroundCases
-      : report.domain === "automation-pause"
-        ? runAutomationPauseCases
-        : report.domain === "task-claimed"
-          ? runTaskClaimedCases
-          : report.domain === "task-automatic"
-            ? runTaskAutomaticCases
-            : report.domain === "task-queue"
-              ? runTaskQueueCases
-              : report.domain === "task-eligibility"
-                ? runTaskEligibilityCases
-                : report.domain === "task-workers"
-                  ? runTaskWorkerCases
-                  : report.domain === "task-recovery"
-                    ? runTaskRecoveryCases
-                    : report.domain === "task-goal"
-                      ? runTaskGoalCases
-                      : report.domain === "task-retry"
-                        ? runTaskRetryCases
-                        : report.domain === "task-dispatch"
-                          ? runTaskSchedulerCases
-                          : report.domain === "tasks"
-                            ? runTaskRepositoryCases
-                            : report.domain === "gui"
-                              ? runGuiAdmissionCases
-                              : report.domain === "prompts"
-                                ? runQueuedPromptCases
-                                : report.domain === "managed-queue"
-                                  ? runManagedQueueCases
-                                  : report.domain === "events"
-                                    ? runNativeEventContextCases
-                                    : report.domain === "models"
-                                      ? runNativeModelInventoryCases
-                                      : report.domain === "interactions"
-                                        ? runAgentInteractionCases
-                                        : runAdmissionCases;
+    report.domain === "thread-observation"
+      ? runThreadObservationCases
+      : report.domain === "task-background"
+        ? runTaskBackgroundCases
+        : report.domain === "automation-pause"
+          ? runAutomationPauseCases
+          : report.domain === "task-claimed"
+            ? runTaskClaimedCases
+            : report.domain === "task-automatic"
+              ? runTaskAutomaticCases
+              : report.domain === "task-queue"
+                ? runTaskQueueCases
+                : report.domain === "task-eligibility"
+                  ? runTaskEligibilityCases
+                  : report.domain === "task-workers"
+                    ? runTaskWorkerCases
+                    : report.domain === "task-recovery"
+                      ? runTaskRecoveryCases
+                      : report.domain === "task-goal"
+                        ? runTaskGoalCases
+                        : report.domain === "task-retry"
+                          ? runTaskRetryCases
+                          : report.domain === "task-dispatch"
+                            ? runTaskSchedulerCases
+                            : report.domain === "tasks"
+                              ? runTaskRepositoryCases
+                              : report.domain === "gui"
+                                ? runGuiAdmissionCases
+                                : report.domain === "prompts"
+                                  ? runQueuedPromptCases
+                                  : report.domain === "managed-queue"
+                                    ? runManagedQueueCases
+                                    : report.domain === "events"
+                                      ? runNativeEventContextCases
+                                      : report.domain === "models"
+                                        ? runNativeModelInventoryCases
+                                        : report.domain === "interactions"
+                                          ? runAgentInteractionCases
+                                          : runAdmissionCases;
   await runCases({
     pair,
     urls,
@@ -1022,6 +1026,21 @@ try {
     reopen,
     registerFixedClock,
   });
+  if (databaseMode === "postgres" && report.domain === "thread-observation")
+    await runThreadObservationRaces({
+      pair,
+      urls,
+      root,
+      executable,
+      owner,
+      reset,
+      seed,
+      observe,
+      snapshot,
+      report,
+      register,
+      normalized,
+    });
   if (
     databaseMode === "postgres" &&
     report.domain !== "prompts" &&
@@ -1043,6 +1062,7 @@ try {
       "task-claimed",
       "automation-pause",
       "task-background",
+      "thread-observation",
     ].includes(report.domain)
   )
     await runAdmissionRaces({
@@ -1078,6 +1098,7 @@ try {
       "task-claimed",
       "automation-pause",
       "task-background",
+      "thread-observation",
     ].includes(report.domain)
   )
     await runEvidenceRaces({
@@ -1115,6 +1136,7 @@ try {
       "task-claimed",
       "automation-pause",
       "task-background",
+      "thread-observation",
     ].includes(report.domain)
   )
     await runLogicalRaces({
@@ -1151,6 +1173,7 @@ try {
       "task-claimed",
       "automation-pause",
       "task-background",
+      "thread-observation",
     ].includes(report.domain)
   )
     await runQueuedPromptRaces({
@@ -1186,6 +1209,7 @@ try {
       "task-claimed",
       "automation-pause",
       "task-background",
+      "thread-observation",
     ].includes(report.domain)
   )
     await runManagedQueueRaces({

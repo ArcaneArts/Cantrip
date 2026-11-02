@@ -530,6 +530,8 @@ export const contractRoots = [
   "conversationCursorSchema",
   "conversationUsageSchema",
   "conversationUsageResultSchema",
+  "agentThreadSyncSchema",
+  "agentThreadSyncItemSchema",
 ];
 
 // Resolve the actual source schemas, including their separate protocol modules.
@@ -666,6 +668,9 @@ registerChecks(protocol.encryptedTaskCreateSchema, [
 registerChecks(protocol.encryptedChatCreateSchema, [
   "chat-placement-create",
   "encrypted-chat-create",
+]);
+registerChecks(protocol.agentThreadSyncItemSchema.options[0], [
+  "agent-sync-user-message",
 ]);
 registerChecks(protocol.chatModelConfigurationUpdateSchema, [
   "model-configuration",
