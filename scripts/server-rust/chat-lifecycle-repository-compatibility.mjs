@@ -329,7 +329,7 @@ try {
     );
     assert.equal(
       state[0].tab_groups.find((g) => g.id === member.group_id).region,
-      profile === "ide" ? "right" : "center",
+      "center",
     );
   }
   await addProject("empty-delete");

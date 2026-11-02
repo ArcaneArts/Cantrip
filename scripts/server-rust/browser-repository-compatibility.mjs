@@ -194,7 +194,7 @@ try {
       owner: who,
       browser: id,
     });
-  const created = await create("hybrid profile defaults to right dock", 0);
+  const created = await create("browser defaults to right dock", 0);
   assert.equal(created[0].stateRevision, 1);
   assert.equal(created[0].workerId, "alpha");
   let snap = await snapshot("first browser and default dock");
@@ -208,7 +208,9 @@ try {
   await seed(
     `UPDATE user_settings SET workspace_layout_profile='agent' WHERE user_id=${literal(owner)}`,
   );
-  await create("agent profile appends center pane", 4);
+  await create("retired agent profile still uses right dock", 4);
+  snap = await snapshot("retired profile does not create another center pane");
+  assert.equal(snap[0].panes.filter((p) => p.region === "center").length, 1);
   await snapshot("center split and all dock members");
   await observe("explicit current pane", (i) => ({
     op: "browser-create",

@@ -289,12 +289,7 @@ describe("account settings", () => {
     ]);
     expect(
       settingsSearchResults("hybrid panes", settingsNavigationSections),
-    ).toEqual([
-      expect.objectContaining({
-        id: "workspace-layout-profile",
-        sectionId: "general",
-      }),
-    ]);
+    ).toEqual([]);
   });
 
   it("exposes account usage as its own settings section", () => {
@@ -304,15 +299,10 @@ describe("account settings", () => {
     expect(markup).toContain("Loading account usage…");
   });
 
-  it("indexes the project workspace profile", () => {
+  it("does not index the retired project workspace profile", () => {
     expect(
       settingsSearchResults("hybrid panes", settingsNavigationSections),
-    ).toEqual([
-      expect.objectContaining({
-        id: "workspace-layout-profile",
-        sectionId: "general",
-      }),
-    ]);
+    ).toEqual([]);
   });
 
   it("does not expose editor extension settings", () => {
@@ -383,16 +373,10 @@ describe("account settings", () => {
     );
   });
 
-  it("exposes prospective Agent, Hybrid, and IDE workspace profiles", () => {
-    const markup = renderSettings("general");
-
-    expect(markup).toContain('aria-label="Project workspace profile"');
-    expect(markup).toContain('<option value="agent">Agent</option>');
-    expect(markup).toContain(
-      '<option value="hybrid" selected="">Hybrid</option>',
+  it("does not expose the retired workspace profile control", () => {
+    expect(renderSettings("general")).not.toContain(
+      "Project workspace profile",
     );
-    expect(markup).toContain('<option value="ide">IDE</option>');
-    expect(markup).toContain("Existing tab placements never move.");
   });
 
   it("keeps the current prompt header enabled by default and exposes its toggle", () => {

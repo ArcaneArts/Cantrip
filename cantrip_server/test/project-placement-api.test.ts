@@ -403,7 +403,6 @@ beforeEach(async () => {
   connectedWorkers.add("worker-beta");
   await database.repository.updateSettings(LOCAL_USER_ID, {
     defaultWorkerId: "worker-alpha",
-    workspaceLayoutProfile: "hybrid",
   });
   await database.repository.updateProjectPreferredWorker(
     LOCAL_USER_ID,
@@ -3155,7 +3154,7 @@ describe.sequential("project execution placement API", () => {
     expect(targetClosed.statusCode, targetClosed.body).toBe(200);
   });
 
-  it("applies layout profiles only to first-open placements", async () => {
+  it("uses fixed surface defaults and ignores retired profile updates", async () => {
     const layoutBefore = projectTabLayoutWireSummarySchema.parse(
       (
         await app.inject({
@@ -3170,6 +3169,9 @@ describe.sequential("project execution placement API", () => {
       payload: { workspaceLayoutProfile: "agent" },
     });
     expect(profileUpdate.statusCode, profileUpdate.body).toBe(200);
+    expect(profileUpdate.json().preferences).not.toHaveProperty(
+      "workspaceLayoutProfile",
+    );
     const unchangedLayout = projectTabLayoutWireSummarySchema.parse(
       (
         await app.inject({
@@ -3205,7 +3207,7 @@ describe.sequential("project execution placement API", () => {
     const agentBrowserPane = layout.panes.find(({ members }) =>
       members.some(({ tabId }) => tabId === agentBrowser.id),
     )!;
-    expect(agentBrowserPane.region).toBe("center");
+    expect(agentBrowserPane.region).toBe("right");
 
     const focused = await app.inject({
       method: "POST",
@@ -3260,7 +3262,7 @@ describe.sequential("project execution placement API", () => {
       layout.panes.find(({ members }) =>
         members.some(({ tabId }) => tabId === ideChat.id),
       )?.region,
-    ).toBe("right");
+    ).toBe("center");
 
     const explicitBrowserResponse = await app.inject({
       method: "POST",

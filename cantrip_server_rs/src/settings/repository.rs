@@ -30,7 +30,6 @@ const PREFERENCES: &[&str] = &[
     "eliteMode",
     "eliteRevealConfig",
     "sidebarWidth",
-    "workspaceLayoutProfile",
     "showChatPromptOverlay",
     "randomAgentNames",
     "autoNameTasks",

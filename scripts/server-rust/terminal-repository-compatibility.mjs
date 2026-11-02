@@ -247,7 +247,7 @@ try {
   await seed(
     "UPDATE terminals SET active_worker_id='alpha' WHERE id='terminal'",
   );
-  await create("hybrid profile creates bottom pane", 0);
+  await create("terminal defaults to bottom pane", 0);
   let snap = await snapshot("new bottom membership and revision");
   assert.equal(snap[0].groups.length, 1);
   assert.equal(snap[0].groups[0].region, "bottom");
@@ -267,8 +267,9 @@ try {
   await seed(
     `UPDATE user_settings SET workspace_layout_profile='agent' WHERE user_id=${literal(owner)}`,
   );
-  await create("agent profile creates another center pane", 4);
-  await snapshot("agent default updates center topology");
+  await create("retired agent profile still uses bottom dock", 4);
+  snap = await snapshot("retired profile does not add a center pane");
+  assert.equal(snap[0].groups.filter((p) => p.region === "center").length, 2);
   await seed(
     `UPDATE user_settings SET workspace_layout_profile='ide' WHERE user_id=${literal(owner)}`,
   );

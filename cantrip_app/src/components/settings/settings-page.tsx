@@ -16,7 +16,6 @@ import type {
   ProviderModelCatalogResult,
   ThemePreference,
   UserSettings,
-  WorkspaceLayoutProfile,
   TunnelSummary,
 } from "@cantrip/protocol";
 import {
@@ -216,12 +215,6 @@ export const settingsNavigationSections: readonly SettingsNavigationSection<Sett
           description:
             "Labeling model and automatic task, chat, and agent names.",
           keywords: ["random generated first request short thinking effort"],
-        },
-        {
-          id: "workspace-layout-profile",
-          label: "Project workspace profile",
-          description: "First-open destinations for new project tabs.",
-          keywords: ["agent hybrid ide layout tabs panes docks"],
         },
         {
           id: "sidebar-auto-expand-folders",
@@ -1900,48 +1893,6 @@ export function SettingsPage({
                   {section === "general" &&
                   matchesSetting("sidebar-auto-expand-folders") ? (
                     <FileNavigationSettings />
-                  ) : null}
-
-                  {section === "general" &&
-                  matchesSetting("workspace-layout-profile") ? (
-                    <section>
-                      <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-3">
-                        <div className="flex min-w-0 items-center gap-2.5">
-                          <Layers3 className="size-4 shrink-0 text-muted-foreground" />
-                          <div>
-                            <h2 className="text-sm font-semibold">
-                              Project workspace profile
-                            </h2>
-                            <p className="text-xs text-muted-foreground">
-                              Chooses destinations only for newly opened tabs.
-                              Existing tab placements never move.
-                            </p>
-                          </div>
-                        </div>
-                        <label className="flex items-center gap-2 text-xs">
-                          <span className="text-muted-foreground">Profile</span>
-                          <NativeSelect
-                            aria-label="Project workspace profile"
-                            size="sm"
-                            value={
-                              settings.data?.preferences
-                                .workspaceLayoutProfile ?? "hybrid"
-                            }
-                            disabled={preferences.isPending}
-                            onChange={(event) =>
-                              preferences.mutate({
-                                workspaceLayoutProfile: event.target
-                                  .value as WorkspaceLayoutProfile,
-                              })
-                            }
-                          >
-                            <option value="agent">Agent</option>
-                            <option value="hybrid">Hybrid</option>
-                            <option value="ide">IDE</option>
-                          </NativeSelect>
-                        </label>
-                      </div>
-                    </section>
                   ) : null}
 
                   {section === "computer-use" &&

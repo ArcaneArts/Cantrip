@@ -25,12 +25,6 @@ const manifest = {
       definitionId: definition.id,
       resourceId: "resource",
     }),
-    profiles: Object.fromEntries(
-      protocol.workspaceLayoutProfileSchema.options.map((profile) => [
-        profile,
-        protocol.workspaceLayoutProfilePlacement(profile, definition.id),
-      ]),
-    ),
   })),
   queries: {},
 };
@@ -388,7 +382,6 @@ await prefix(
   [
     claim,
     ["builtin_create", []],
-    ["placement_profile", [["hybrid"]]],
     ["region_panes", []],
     ["insert_pane", []],
     ["insert_member", []],

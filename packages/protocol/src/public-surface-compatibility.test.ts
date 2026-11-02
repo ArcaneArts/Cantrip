@@ -58,6 +58,12 @@ function stableFingerprint(value: unknown) {
   return `${firstHex}${secondHex}:${input.length}`;
 }
 
+// Reviewed retirement of selectable workspace profiles. Preserve the unrelated
+// export baseline while asserting the removed APIs stay absent.
+const retiredWorkspaceProfileExports = [
+  "workspaceLayoutProfilePlacement",
+  "workspaceLayoutProfileSchema",
+];
 // Reviewed removal of the embedded workbench. Adding these names back only to
 // the historical fingerprint keeps every unrelated compatibility assertion intact.
 const retiredWorkbenchExports = [
@@ -495,6 +501,7 @@ describe("protocol public surface compatibility", () => {
     const exportNames = Object.keys(protocol).sort();
     const baselineNames = [
       ...retiredWorkbenchExports,
+      ...retiredWorkspaceProfileExports,
       ...exportNames.filter(
         (name) =>
           !cuaRuntimeExports.includes(name) &&
@@ -527,7 +534,12 @@ describe("protocol public surface compatibility", () => {
     expect(
       exportNames.filter((name) => retiredWorkbenchExports.includes(name)),
     ).toEqual([]);
-    expect(exportNames).toHaveLength(2136);
+    expect(
+      exportNames.filter((name) =>
+        retiredWorkspaceProfileExports.includes(name),
+      ),
+    ).toEqual([]);
+    expect(exportNames).toHaveLength(2134);
     expect(
       exportNames.filter((name) => agentChatExports.includes(name)),
     ).toEqual(agentChatExports);

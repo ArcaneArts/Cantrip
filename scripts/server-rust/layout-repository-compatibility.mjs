@@ -723,7 +723,7 @@ try {
   await mutate("close grouped chat repairs remaining title", "close", {
     viewId: "chat:chat",
   });
-  await mutate("reopen existing chat through profile placement", "open", {
+  await mutate("reopen existing chat through default placement", "open", {
     surfaceRef: entity("project.agent", "chat"),
   });
   await mutate("close final center chat collapses branch", "close", {
@@ -733,15 +733,15 @@ try {
     `INSERT INTO user_settings(user_id,workspace_layout_profile) VALUES(${literal(localOwner)},'ide') ON CONFLICT(user_id) DO UPDATE SET workspace_layout_profile='ide'`,
   );
   const ideChat = await mutate(
-    "IDE profile opens agent in right region",
+    "retired IDE profile still opens agent in center",
     "open",
     { surfaceRef: entity("project.agent", "chat") },
   );
   assert.equal(
     ideChat.layout.panes.find((p) => p.id === ideChat.paneId).region,
-    "right",
+    "center",
   );
-  await mutate("close right profile placement", "close", {
+  await mutate("close default center placement", "close", {
     viewId: "chat:chat",
   });
   for (const id of [
