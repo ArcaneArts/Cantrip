@@ -1,3 +1,4 @@
+import { foundationAccountHandoff } from "./foundation-account-handoff-fixture.js";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -320,6 +321,11 @@ let beginQueuedNativeCommand:
   | ((
       command: QueuedNativeCommand,
     ) => Promise<(() => Promise<void>) | undefined>)
+  | undefined;
+let advanceAccountHandoff:
+  | ((
+      command: Extract<WorkerCommand, { type: "chat.runtime.handoff" }>,
+    ) => Promise<void>)
   | undefined;
 const pauseCommands: Array<{ chatId: string; paused: boolean }> = [];
 const interruptCommands: Array<
@@ -2105,6 +2111,11 @@ const workerBridge = {
           structuredResult,
         };
       }
+      case "chat.runtime.handoff":
+        if (!advanceAccountHandoff)
+          throw new Error("Unexpected foundation runtime handoff");
+        await advanceAccountHandoff(command);
+        return null;
       case "chat.compact":
         compactRequests += 1;
         return { accepted: true };
@@ -7190,6 +7201,17 @@ describe("local server foundation", () => {
       resetsAt: null,
       usedPercent: 37,
     });
+    // Chat creation prepares its native runtime from the selected default.
+    // A later turn body must not be used to replace that prepared binding.
+    const selectNewChatModel = async (modelId: string) => {
+      const response = await firstApp.inject({
+        method: "PATCH",
+        url: "/api/settings",
+        payload: { defaultModelId: modelId },
+      });
+      expect(response.statusCode, response.body).toBe(200);
+    };
+    await selectNewChatModel(routedModel.id);
     const pooledChat = chatWireSummarySchema.parse(
       (
         await firstApp.inject({
@@ -7199,6 +7221,28 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
+    const pooledThreadId = (
+      await firstDatabase.repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        pooledChat.id,
+      )
+    )?.threadId;
+    expect(pooledThreadId).toBe("codex-console-thread-1");
+    const poolHandoff = await foundationAccountHandoff({
+      repository: firstDatabase.repository,
+      ownerId: LOCAL_USER_ID,
+      chatId: pooledChat.id,
+      targetAccountId: primaryChatGptAccount.id,
+      encryption: {
+        ownerId: () => LOCAL_USER_ID,
+        serverIdentity: () => bootstrap.server.id,
+        componentKey: () => ({
+          key: Uint8Array.from(chatComponentKey),
+          keyRevision: 1,
+        }),
+      },
+    });
+    advanceAccountHandoff = poolHandoff.run;
     const pooledTurn = await firstApp.inject({
       method: "POST",
       url: `/api/chats/${pooledChat.id}/turns`,
@@ -7256,7 +7300,7 @@ describe("local server foundation", () => {
     await vi.waitFor(() =>
       expect(turnProviderAccountIds.at(-1)).toBe(additionalAccount.id),
     );
-    expect(turnThreadIds.at(-1)).toBe("codex-thread-1");
+    expect(turnThreadIds.at(-1)).toBe(pooledThreadId);
     await vi.waitFor(async () => {
       expect(
         (
@@ -7286,6 +7330,51 @@ describe("local server foundation", () => {
       resetsAt: null,
       usedPercent: 98,
     });
+    const reserveTurn = await firstApp.inject({
+      method: "POST",
+      url: `/api/chats/${pooledChat.id}/turns`,
+      payload: await protectChatTurn({
+        service: chatEncryptionService,
+        messageId: randomUUID(),
+        promptId: randomUUID(),
+        mode: "default",
+        reasoningEffort: null,
+        text: "Continue with remaining weekly allowance.",
+        idempotencyKey: "pooled-account-reserve-turn",
+        modelId: routedModel.id,
+      }),
+    });
+    expect(reserveTurn.statusCode).toBe(202);
+    await vi.waitFor(() =>
+      expect(turnPrompts.at(-1)).toBe(
+        "Continue with remaining weekly allowance.",
+      ),
+    );
+    await vi.waitFor(async () =>
+      expect(
+        (
+          await firstDatabase.repository.getChatExecutionContext(
+            LOCAL_USER_ID,
+            pooledChat.id,
+          )
+        )?.status,
+      ).toBe("idle"),
+    );
+    expect(turnProviderAccountIds.at(-1)).toBe(additionalAccount.id);
+    expect(turnCredentialHomeKeys.at(-1)).toBe(additionalAccount.id);
+    expect(turnThreadIds.at(-1)).toBe(pooledThreadId);
+    expect(poolHandoff.count()).toBe(0);
+
+    authUsageByCredentialHomeKey.set(additionalAccount.id, 100);
+    await firstDatabase.repository.recordModelProviderAccountUsage({
+      accountId: additionalAccount.id,
+      ownerId: LOCAL_USER_ID,
+      planType: "plus",
+      providerId: chatGptProvider.id,
+      resetsAt: null,
+      usedPercent: 100,
+    });
+    const beforeHandoff = await readChatMessages(pooledChat.id);
     const switchedTurn = await firstApp.inject({
       method: "POST",
       url: `/api/chats/${pooledChat.id}/turns`,
@@ -7295,7 +7384,7 @@ describe("local server foundation", () => {
         promptId: randomUUID(),
         mode: "default",
         reasoningEffort: null,
-        text: "Move past the account below reserve.",
+        text: "Move past the exhausted account.",
         idempotencyKey: "pooled-account-switch-turn",
         modelId: routedModel.id,
       }),
@@ -7307,19 +7396,9 @@ describe("local server foundation", () => {
       ),
     );
     expect(turnCredentialHomeKeys.at(-1)).toBe(chatGptProvider.id);
-    expect(turnThreadIds.at(-1)).toBeNull();
-    expect(turnPrompts.at(-1)).toContain(
-      "Continue this existing Cantrip conversation. The encrypted endpoint history follows:",
-    );
-    expect(turnPrompts.at(-1)).toContain(
-      "USER: Use the account with healthy weekly usage.",
-    );
-    expect(turnPrompts.at(-1)).toContain(
-      "USER: Continue on the current account.",
-    );
-    expect(turnPrompts.at(-1)).toContain(
-      "USER: Move past the account below reserve.",
-    );
+    expect(turnThreadIds.at(-1)).toBe(pooledThreadId);
+    expect(poolHandoff.count()).toBe(1);
+    expect(turnPrompts.at(-1)).toBe("Move past the exhausted account.");
     await vi.waitFor(async () => {
       expect(
         (
@@ -7330,6 +7409,45 @@ describe("local server foundation", () => {
         )?.status,
       ).toBe("idle");
     });
+    const afterHandoff = await readChatMessages(pooledChat.id);
+    expect(afterHandoff.slice(0, beforeHandoff.length)).toEqual(beforeHandoff);
+    // The controlled worker emits a command and file-change activity as well
+    // as the user/assistant pair. Verify every new row without duplicating the
+    // history preserved by the account transfer.
+    expect(afterHandoff).toHaveLength(beforeHandoff.length + 4);
+    expect(afterHandoff.slice(beforeHandoff.length)).toMatchObject([
+      {
+        role: "user",
+        content: [{ type: "text", text: "Move past the exhausted account." }],
+      },
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "activity",
+            activity: { type: "command", status: "completed", exitCode: 0 },
+          },
+        ],
+      },
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "activity",
+            activity: {
+              type: "fileChange",
+              status: "completed",
+              changes: [{ path: "README.md", kind: "update" }],
+            },
+          },
+        ],
+      },
+      {
+        role: "assistant",
+        content: [{ type: "text", text: "The local agent replied." }],
+      },
+    ]);
+    advanceAccountHandoff = undefined;
     authUsageByCredentialHomeKey.clear();
 
     const grokModel = modelProfileSummarySchema.parse(
@@ -7350,6 +7468,7 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
+    await selectNewChatModel(grokModel.id);
     const grokChat = chatWireSummarySchema.parse(
       (
         await firstApp.inject({
@@ -7401,6 +7520,7 @@ describe("local server foundation", () => {
         usedPercent: 100,
       });
     }
+    await selectNewChatModel(routedModel.id);
     const routedChat = chatWireSummarySchema.parse(
       (
         await firstApp.inject({
@@ -7436,6 +7556,7 @@ describe("local server foundation", () => {
     await vi.waitFor(() => expect(turnProviderIds.at(-1)).toBe(provider.id));
     expect(turnRouteIds.at(-1)).toBe(routedModel.routes[1]?.id);
 
+    await selectNewChatModel(selectedModel.id);
     const planChat = chatWireSummarySchema.parse(
       (
         await firstApp.inject({

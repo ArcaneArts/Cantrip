@@ -38,6 +38,8 @@ const option = (key) => {
 const databaseMode = option("--database") ?? "pglite",
   root = await mkdtemp(path.join(tmpdir(), "cantrip-thread-sync-"));
 const id = (n) => `f7f7f7f7-7777-4777-8777-${String(n).padStart(12, "0")}`;
+const notificationChat = id(7),
+  notificationThread = "notification-thread";
 const report = {
   suite: "chat-thread-sync-http",
   databaseMode,
@@ -94,19 +96,31 @@ try {
               `INSERT INTO chats(id,owner_id,project_id,active_worktree_id,active_worker_id,protected_label,experience,model_id,archived_at) SELECT ${literal(id(n))},owner_id,project_id,active_worktree_id,active_worker_id,protected_label,'agent',${n >= 4 ? literal("inventory-provider-model-1") : "NULL"},${n === 3 ? "now()" : "NULL"} FROM chats WHERE id=${literal(chat)}`,
               `INSERT INTO chat_runtime_sessions(id,chat_id,worker_id,worktree_id,codex_thread_id) VALUES(${literal("sync-runtime-" + n)},${literal(id(n))},${literal(worker)},${literal(n === 6 ? "77777777-7777-4777-8777-777777777777" : tree)},${n === 1 ? "NULL" : literal(n >= 4 ? (n === 6 ? "stale-placement-thread" : "ambiguous-thread") : "missing-model-thread")})`,
             ]),
+            // A separate paused Chat isolates this notification's wire effects
+            // from asynchronous queue dispatch after the earlier history reads.
+            `INSERT INTO chats(id,owner_id,project_id,active_worktree_id,active_worker_id,protected_label,experience,model_id,automation_paused) SELECT ${literal(notificationChat)},owner_id,project_id,active_worktree_id,active_worker_id,protected_label,'agent','inventory-provider-model-1',true FROM chats WHERE id=${literal(chat)}`,
+            `INSERT INTO chat_runtime_sessions(id,chat_id,worker_id,worktree_id,codex_thread_id,model_route_id) VALUES('notification-runtime',${literal(notificationChat)},${literal(worker)},${literal(tree)},${literal(notificationThread)},'inventory-provider-route-1')`,
           ];
         },
         onCommand: async (command, _emit, { encryption }) => {
           if (command.type === "chat.sync") {
             result.commands.push(command);
             assert.equal(command.executionProfile, "ide");
-            assert.equal(command.threadId, "thread");
+            assert.ok([chat, notificationChat].includes(command.chatId));
+            assert.equal(
+              command.threadId,
+              command.chatId === notificationChat
+                ? notificationThread
+                : "thread",
+            );
             assert.equal(command.model.id, "inventory-provider-model-1");
             if (mode === "worker-error")
               throw new Error("Controlled thread synchronization failure.");
             if (mode === "invalid")
               return { threadId: "thread", status: "invalid", turns: [] };
-            return response;
+            return command.chatId === notificationChat
+              ? { ...response, threadId: notificationThread }
+              : response;
           }
           if (command.type === "chat.message.protect") {
             expected.set(command.message.id, command.message);
@@ -120,6 +134,9 @@ try {
       });
       await h.live.subscribed("sync-project", [
         { kind: "project", projectId: project },
+      ]);
+      await h.live.subscribed("sync-observed-chat", [
+        { kind: "chat", chatId: notificationChat },
       ]);
       const visit = h.visit,
         sync = (name, options = {}) =>
@@ -292,7 +309,7 @@ try {
       assert.equal(
         h.worker.sendNotification({
           type: "chat.thread.changed",
-          threadId: "thread",
+          threadId: notificationThread,
           revision: 1,
           changes: ["goal", "queue", "plan"],
         }),
@@ -307,7 +324,12 @@ try {
         () =>
           h.live.history
             .slice(eventOffset)
-            .filter((e) => e.type === "event")
+            .filter(
+              (e) =>
+                e.type === "event" &&
+                e.scope.kind === "chat" &&
+                e.scope.chatId === notificationChat,
+            )
             .map((e) => e.resource),
         (resources) => {
           for (const resource of ["chat-goal", "chat-queue", "chat-plan"])
@@ -320,6 +342,8 @@ try {
         .filter(
           (e) =>
             e.type === "event" &&
+            e.scope.kind === "chat" &&
+            e.scope.chatId === notificationChat &&
             ["chat-goal", "chat-queue", "chat-plan"].includes(e.resource),
         );
       assert.deepEqual(
@@ -327,7 +351,10 @@ try {
         ["chat-goal", "chat-queue", "chat-plan"],
       );
       for (const [i, event] of invalidations.entries()) {
-        assert.deepEqual(event.scope, { kind: "chat", chatId: chat });
+        assert.deepEqual(event.scope, {
+          kind: "chat",
+          chatId: notificationChat,
+        });
         if (i)
           assert.ok(
             event.cursor > invalidations[i - 1].cursor,
@@ -342,7 +369,7 @@ try {
         result.notificationInvalidations,
         ["chat-goal", "chat-queue", "chat-plan"].map((resource) => ({
           type: "event",
-          scope: { kind: "chat", chatId: chat },
+          scope: { kind: "chat", chatId: notificationChat },
           resource,
           action: "invalidated",
           entityId: null,

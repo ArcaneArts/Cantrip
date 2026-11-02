@@ -9650,6 +9650,71 @@
           ],
           "limits": "Later worker/app tests and whole-repository formatting did not run after recursive bail. Focused formatting and actual worker suites pass."
         }
+      },
+      "notificationFixtureScope": {
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": ["scripts/server-rust/chat-thread-sync-http.mjs"],
+        "scope": "Original unpaused Chat retains public history/replay/lifecycle coverage. A separate paused Agent Chat isolates exact notification effects from unrelated asynchronous queue invalidations. All original ordering/cursor/null-metadata/negative-binding assertions and deadlines remain.",
+        "platformFailures": [
+          {
+            "run": "https://github.com/ArcaneArts/Cantrip/actions/runs/41531759000",
+            "jobId": 125573465899,
+            "platform": "ubuntu-24.04",
+            "archiveSha256": "3e243f7baeb6fb0c7ba4099512443a7d7566473a6d3083e5b77452d118a1d62a",
+            "failure": "Rust bundled-PostgreSQL observer captured an extra chat-queue frame before the expected Goal/queue/plan sequence; Linux PGlite suite passed."
+          },
+          {
+            "run": "https://github.com/ArcaneArts/Cantrip/actions/runs/41531759000",
+            "jobId": 125573466403,
+            "platform": "windows-2025",
+            "archiveSha256": "8f5cfc7f315b44e92672b627c515eeaaecff36c333ba8d4a8277dedb3d2b7cf7",
+            "failure": "Rust password/PGlite observer captured the same extra leading queue frame. Not platform acceptance."
+          }
+        ],
+        "localPairedHttpObservations": 288
+      }
+    },
+    "referencePreparedAccountFlow": {
+      "status": "partial",
+      "evidence": [
+        "cantrip_server/test/local-foundation.test.ts",
+        "cantrip_server/test/foundation-account-handoff-fixture.ts",
+        "cantrip_server/test/managed-chat-account-failover.test.ts",
+        "cantrip_server/test/native-runtime-handoffs.test.ts"
+      ],
+      "validatedSubset": "Existing public settings select the intended native model before Chat creation. Fresh account reserve selection, sticky account/thread, no transfer with remaining weekly quota, and fully depleted transfer through actual durable handoff repositories. Endpoint-encrypted settings are decrypted and compared; original ciphertext and decrypted transcript prefix remain identical across account transfer; exact next-turn row count/order is asserted. No production server behavior changes.",
+      "remaining": [
+        "Full native account/file transfer through the unchanged client and full worker on all supported deployments/platforms remains required.",
+        "All original full-server replacement requirements remain; Node is still the default server."
+      ],
+      "localAcceptance": {
+        "platform": "macOS arm64",
+        "foundationFlow": "Entire original foundation scenario passes with original deadlines.",
+        "serverTypecheck": "passed",
+        "focusedAccountAndHandoffTests": {
+          "passed": 50,
+          "skipped": 2
+        },
+        "broadCheck": {
+          "exitCode": 1,
+          "elapsedSeconds": 598.8,
+          "sourcePassed": 1702,
+          "sourceSkipped": 57,
+          "sourceFailed": 0,
+          "appPassed": 4385,
+          "appSkipped": 3,
+          "appFailed": 6,
+          "appFailedFiles": 4,
+          "baselineReproduction": "All six app failures reproduce on clean Primary 4692c643d; all four affected test files are byte-identical to the baseline.",
+          "limits": "Worker tests interrupted by recursive bail; whole-repository formatting did not run. Focused formatting passes."
+        },
+        "independentWorkerCheck": {
+          "exitCode": 1,
+          "passed": 2623,
+          "skipped": 133,
+          "failed": 1,
+          "failure": "MCP broker alert_raise idempotentHint expected false, actual true. Reproduced on clean Primary 4692c643d; 15 other focused broker tests pass."
+        }
       }
     }
   },
