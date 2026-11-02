@@ -423,7 +423,6 @@ try {
       proModeOpacity: 73,
       contentGutters: true,
       eliteMode: true,
-      workspaceLayoutProfile: "ide",
       defaultReasoningEffort: "high",
       defaultChatReasoningEffort: "none",
       defaultSubagentReasoningEffort: "low",

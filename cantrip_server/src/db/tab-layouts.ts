@@ -25,14 +25,9 @@ import type {
   ProjectPaneMemberMove,
   ProjectPaneMemberOrder,
   ProjectPaneOrder,
-  WorkspaceLayoutProfile,
   PrivateDisplayLabelOpaque,
 } from "@cantrip/protocol";
-import {
-  projectSurfaceTabKind,
-  projectSurfaceViewId,
-  workspaceLayoutProfilePlacement,
-} from "@cantrip/protocol";
+import { projectSurfaceTabKind, projectSurfaceViewId } from "@cantrip/protocol";
 import {
   PROJECT_SURFACE_DEFINITIONS,
   projectCenterLayoutNodeSchema,
@@ -77,25 +72,12 @@ export type TabLayoutExecutor = Pick<
 
 export { surfaceDefinitionIdForTab } from "./tab-layout-surface-policy.js";
 
-async function suggestedPlacementForTab(
-  database: TabLayoutExecutor,
-  projectId: string,
+function suggestedPlacementForTab(
   tabKind: ProjectTabKind,
   tabId: string,
   definitionId = surfaceDefinitionIdForTab(tabKind, tabId),
-): Promise<ProjectPaneRegion> {
-  const definition = definitionForTab(tabKind, tabId, definitionId);
-  const rows = await database
-    .select({ profile: schema.userSettings.workspaceLayoutProfile })
-    .from(schema.projects)
-    .innerJoin(
-      schema.userSettings,
-      eq(schema.userSettings.userId, schema.projects.ownerId),
-    )
-    .where(eq(schema.projects.id, projectId))
-    .limit(1);
-  const profile = (rows[0]?.profile ?? "hybrid") as WorkspaceLayoutProfile;
-  return workspaceLayoutProfilePlacement(profile, definition.id);
+): ProjectPaneRegion {
+  return definitionForTab(tabKind, tabId, definitionId).suggestedPlacement;
 }
 
 function isSinglePaneDockRegion(
@@ -293,13 +275,7 @@ async function attachProjectTabPlacement(
   } else {
     const region =
       input.region ??
-      (await suggestedPlacementForTab(
-        database,
-        input.projectId,
-        input.tabKind,
-        input.tabId,
-        input.definitionId,
-      ));
+      suggestedPlacementForTab(input.tabKind, input.tabId, input.definitionId);
     assertTabSupportsRegion(
       input.tabKind,
       input.tabId,

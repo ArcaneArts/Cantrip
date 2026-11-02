@@ -155,18 +155,9 @@ async fn attach(
                         resource["definitionId"].as_js_string().unwrap().lossy()
                     ))
                 })?;
-                let rows = run(executor, "placement_profile", &[json!(project), json!(1)]).await?;
-                let profile = rows
-                    .first()
-                    .map(|r| r.get::<Option<String>>(0))
-                    .transpose()?
-                    .flatten()
-                    .unwrap_or_else(|| "hybrid".into());
-                definition["profiles"]
-                    .get(&profile)
-                    .unwrap_or(&definition["profiles"]["hybrid"])
+                definition["suggestedPlacement"]
                     .as_str()
-                    .context("Surface profile placement")?
+                    .context("Surface default placement")?
                     .to_owned()
             };
             placement::supports(kind, id, &region, Some(&resource["definitionId"]))?;

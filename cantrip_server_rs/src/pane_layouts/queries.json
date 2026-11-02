@@ -48,12 +48,7 @@
         "command-palette"
       ],
       "launcherPinnedByDefault": false,
-      "tabKind": "chat",
-      "profiles": {
-        "agent": "center",
-        "hybrid": "center",
-        "ide": "right"
-      }
+      "tabKind": "chat"
     },
     {
       "id": "project.terminal",
@@ -73,12 +68,7 @@
         "command-palette"
       ],
       "launcherPinnedByDefault": false,
-      "tabKind": "terminal",
-      "profiles": {
-        "agent": "center",
-        "hybrid": "bottom",
-        "ide": "bottom"
-      }
+      "tabKind": "terminal"
     },
     {
       "id": "project.explorer",
@@ -98,12 +88,7 @@
         "command-palette"
       ],
       "launcherPinnedByDefault": false,
-      "tabKind": "explorer",
-      "profiles": {
-        "agent": "center",
-        "hybrid": "center",
-        "ide": "center"
-      }
+      "tabKind": "explorer"
     },
     {
       "id": "project.file",
@@ -119,12 +104,7 @@
       "archivable": false,
       "launcherLocations": ["project-navigator", "surface-catalog"],
       "launcherPinnedByDefault": false,
-      "tabKind": "explorer",
-      "profiles": {
-        "agent": "center",
-        "hybrid": "center",
-        "ide": "center"
-      }
+      "tabKind": "explorer"
     },
     {
       "id": "project.browser",
@@ -144,12 +124,7 @@
         "command-palette"
       ],
       "launcherPinnedByDefault": false,
-      "tabKind": "browser",
-      "profiles": {
-        "agent": "center",
-        "hybrid": "right",
-        "ide": "right"
-      }
+      "tabKind": "browser"
     },
     {
       "id": "project.code",
@@ -169,12 +144,7 @@
         "command-palette"
       ],
       "launcherPinnedByDefault": false,
-      "tabKind": "code",
-      "profiles": {
-        "agent": "center",
-        "hybrid": "center",
-        "ide": "center"
-      }
+      "tabKind": "code"
     },
     {
       "id": "project.remote-desktop",
@@ -194,12 +164,7 @@
         "command-palette"
       ],
       "launcherPinnedByDefault": false,
-      "tabKind": "remote-desktop",
-      "profiles": {
-        "agent": "center",
-        "hybrid": "right",
-        "ide": "right"
-      }
+      "tabKind": "remote-desktop"
     },
     {
       "id": "project.git-history",
@@ -219,12 +184,7 @@
         "command-palette"
       ],
       "launcherPinnedByDefault": false,
-      "tabKind": "history",
-      "profiles": {
-        "agent": "center",
-        "hybrid": "right",
-        "ide": "right"
-      }
+      "tabKind": "history"
     },
     {
       "id": "project.git-graph",
@@ -244,12 +204,7 @@
         "command-palette"
       ],
       "launcherPinnedByDefault": false,
-      "tabKind": "graph",
-      "profiles": {
-        "agent": "center",
-        "hybrid": "right",
-        "ide": "right"
-      }
+      "tabKind": "graph"
     },
     {
       "id": "project.github-issues",
@@ -269,12 +224,7 @@
         "command-palette"
       ],
       "launcherPinnedByDefault": false,
-      "tabKind": "issues",
-      "profiles": {
-        "agent": "center",
-        "hybrid": "right",
-        "ide": "right"
-      }
+      "tabKind": "issues"
     },
     {
       "id": "project.github-pull-requests",
@@ -294,12 +244,7 @@
         "command-palette"
       ],
       "launcherPinnedByDefault": false,
-      "tabKind": "prs",
-      "profiles": {
-        "agent": "center",
-        "hybrid": "right",
-        "ide": "right"
-      }
+      "tabKind": "prs"
     },
     {
       "id": "project.github-actions",
@@ -319,12 +264,7 @@
         "command-palette"
       ],
       "launcherPinnedByDefault": false,
-      "tabKind": "actions",
-      "profiles": {
-        "agent": "center",
-        "hybrid": "right",
-        "ide": "right"
-      }
+      "tabKind": "actions"
     },
     {
       "id": "project.tasks",
@@ -344,12 +284,7 @@
         "command-palette"
       ],
       "launcherPinnedByDefault": true,
-      "tabKind": null,
-      "profiles": {
-        "agent": "center",
-        "hybrid": "center",
-        "ide": "center"
-      }
+      "tabKind": null
     },
     {
       "id": "git.history",
@@ -369,12 +304,7 @@
         "command-palette"
       ],
       "launcherPinnedByDefault": false,
-      "tabKind": null,
-      "profiles": {
-        "agent": "center",
-        "hybrid": "right",
-        "ide": "right"
-      }
+      "tabKind": null
     },
     {
       "id": "git.graph",
@@ -394,12 +324,7 @@
         "command-palette"
       ],
       "launcherPinnedByDefault": false,
-      "tabKind": null,
-      "profiles": {
-        "agent": "center",
-        "hybrid": "right",
-        "ide": "right"
-      }
+      "tabKind": null
     },
     {
       "id": "github.issues",
@@ -419,12 +344,7 @@
         "command-palette"
       ],
       "launcherPinnedByDefault": false,
-      "tabKind": null,
-      "profiles": {
-        "agent": "center",
-        "hybrid": "right",
-        "ide": "right"
-      }
+      "tabKind": null
     },
     {
       "id": "github.pull-requests",
@@ -444,12 +364,7 @@
         "command-palette"
       ],
       "launcherPinnedByDefault": false,
-      "tabKind": null,
-      "profiles": {
-        "agent": "center",
-        "hybrid": "right",
-        "ide": "right"
-      }
+      "tabKind": null
     },
     {
       "id": "github.actions",
@@ -469,12 +384,7 @@
         "command-palette"
       ],
       "launcherPinnedByDefault": false,
-      "tabKind": null,
-      "profiles": {
-        "agent": "center",
-        "hybrid": "right",
-        "ide": "right"
-      }
+      "tabKind": null
     }
   ],
   "queries": {
@@ -647,10 +557,6 @@
     "insert_member": {
       "source": "insert into \"tab_group_members\" (\"tab_key\", \"group_id\", \"project_id\", \"tab_kind\", \"tab_id\", \"position\", \"created_at\", \"updated_at\") values ($1, $2, $3, $4, $5, $6, default, default)",
       "types": ["text", "text", "text", "text", "text", "integer"]
-    },
-    "placement_profile": {
-      "source": "select \"user_settings\".\"workspace_layout_profile\" from \"projects\" inner join \"user_settings\" on \"user_settings\".\"user_id\" = \"projects\".\"owner_id\" where \"projects\".\"id\" = $1 limit $2",
-      "types": ["text", "integer"]
     }
   }
 }

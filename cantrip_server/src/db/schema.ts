@@ -1140,6 +1140,7 @@ export const userSettings = pgTable(
         },
       }),
     sidebarWidth: integer("sidebar_width").notNull().default(288),
+    // Retained for database compatibility only; tab placement uses surface defaults.
     workspaceLayoutProfile: text("workspace_layout_profile")
       .notNull()
       .default("hybrid"),

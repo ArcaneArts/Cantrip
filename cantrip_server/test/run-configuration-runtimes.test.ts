@@ -168,30 +168,21 @@ function observation(
 }
 
 describe("Run configuration runtime persistence", () => {
-  it("opens a new Run terminal in the bottom dock even with the agent layout profile", async () => {
-    await database.repository.updateSettings(LOCAL_USER_ID, {
-      workspaceLayoutProfile: "agent",
-    });
-    try {
-      const result =
-        await database.repository.requestRunConfigurationRuntimeOperation(
-          LOCAL_USER_ID,
-          startRequest(randomUUID()),
-        );
-      const layout = await database.repository.tabLayouts.get(
+  it("opens a new Run terminal in the bottom dock", async () => {
+    const result =
+      await database.repository.requestRunConfigurationRuntimeOperation(
         LOCAL_USER_ID,
-        projectId,
+        startRequest(randomUUID()),
       );
-      const pane = layout?.panes.find(({ members }) =>
-        members.some(({ tabId }) => tabId === result.runtime?.terminalId),
-      );
-      expect(result.runtime?.terminalId).toBeTruthy();
-      expect(pane?.region).toBe("bottom");
-    } finally {
-      await database.repository.updateSettings(LOCAL_USER_ID, {
-        workspaceLayoutProfile: "hybrid",
-      });
-    }
+    const layout = await database.repository.tabLayouts.get(
+      LOCAL_USER_ID,
+      projectId,
+    );
+    const pane = layout?.panes.find(({ members }) =>
+      members.some(({ tabId }) => tabId === result.runtime?.terminalId),
+    );
+    expect(result.runtime?.terminalId).toBeTruthy();
+    expect(pane?.region).toBe("bottom");
   });
 
   it("durably binds an idempotent start to one configuration/worktree identity", async () => {

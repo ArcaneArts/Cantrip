@@ -129,13 +129,12 @@ describe("inline settings search", () => {
     ).toHaveLength(1);
   });
 
-  it("shows the real workspace profile option for a multi-word search", async () => {
+  it("does not find the removed workspace profile setting", async () => {
     await search("hybrid panes");
-    const group = container.querySelector('[data-settings-section="general"]')!;
+    expect(container.textContent).toContain("No settings match");
     expect(
-      group.querySelector('select[aria-label="Project workspace profile"]'),
-    ).not.toBeNull();
-    expect(group.textContent).not.toContain("Default agent permissions");
+      container.querySelector('select[aria-label="Project workspace profile"]'),
+    ).toBeNull();
   });
 
   it("opens a matching provider's real options inside Models", async () => {
@@ -176,7 +175,7 @@ describe("inline settings search", () => {
       container.querySelector('[data-slot="settings-search-results"]'),
     ).toBeNull();
     expect(
-      container.querySelector('select[aria-label="Project workspace profile"]'),
+      container.querySelector('[aria-label="Show current prompt header"]'),
     ).not.toBeNull();
   });
 
