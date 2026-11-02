@@ -3,6 +3,7 @@
 import assert from "node:assert/strict";
 import { eventually } from "./full-worker.mjs";
 import { taskModelProvider } from "./task-model-provider.mjs";
+import { actualTaskRecovery } from "./actual-task-recovery.mjs";
 
 export async function actualTaskClient({
   page,
@@ -295,7 +296,23 @@ export async function actualTaskClient({
       ),
       goalMessages,
     );
-    for (const marker of [brief, answer, planText, objective]) {
+    const recovery = await actualTaskRecovery({
+      page,
+      fixture,
+      projectId,
+      workerId,
+      startWorker,
+      stopWorker,
+      model,
+      result,
+    });
+    for (const marker of [
+      brief,
+      answer,
+      planText,
+      objective,
+      ...recovery.privateMarkers,
+    ]) {
       assert.equal(
         JSON.stringify(requests).includes(marker),
         false,
@@ -313,12 +330,17 @@ export async function actualTaskClient({
     result.taskExecution = {
       completed: true,
       plannedGoalCompleted: true,
+      failedOperationRetried: recovery.failedOperationRetried,
+      pausedAdmissionRecovered: recovery.pausedAdmissionRecovered,
       modelRequests: model.requests.filter(
         (request) => request.method === "POST",
       ).length,
       modelFailures: model.failures,
       chatId: created.chat.id,
     };
+  } catch (error) {
+    result.taskFailure = { message: error.message, stack: error.stack };
+    throw error;
   } finally {
     result.taskModel = {
       failures: model.failures,

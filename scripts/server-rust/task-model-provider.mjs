@@ -82,6 +82,15 @@ export async function taskModelProvider() {
         "cache-control": "no-cache",
       });
       send(response, { type: "response.created", response: { id } });
+      if (plan.failure) {
+        send(response, {
+          type: "response.failed",
+          response: { id, status: "failed", error: plan.failure },
+        });
+        response.end();
+        record.completed = true;
+        return;
+      }
       if (plan.text !== undefined) {
         const item = {
           type: "message",

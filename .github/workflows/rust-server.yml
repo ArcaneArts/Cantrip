@@ -10,6 +10,7 @@ on:
       - cantrip_server/src/auth/**
       - cantrip_server/src/app/routes/auth-sessions.ts
       - cantrip_server/src/app/routes/system-status.ts
+      - cantrip_server/src/app/routes/chat-catalogs.ts
       - cantrip_server/src/app/routes/account-security.ts
       - cantrip_server/src/app/routes/account-live-traffic.ts
       - cantrip_server/src/account-usage/**
@@ -1518,6 +1519,127 @@ jobs:
         with:
           name: rust-server-native-commands-${{ matrix.os }}
           path: .qa/rust-server/
+  actual-task-worker:
+    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.conversion_lifetime_diagnostic && !inputs.discovery_lifetime_diagnostic && !inputs.native_stack_diagnostic) }}
+    # Use the production worker and bundled Codex; only model HTTP is controlled.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: linux-x64
+            suffix: ""
+          - os: macos-15
+            target: darwin-arm64
+            suffix: ""
+          - os: windows-2025
+            target: win32-x64
+            suffix: ".exe"
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 240
+    env:
+      CANTRIP_CODEX_BIN: ${{ github.workspace }}/cantrip_codex/.build/${{ matrix.target }}/bundle/codex${{ matrix.suffix }}
+    steps:
+      - run: git config --global core.autocrlf false
+      - name: Enable long Windows paths
+        if: runner.os == 'Windows'
+        run: git config --global core.longpaths true
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+          components: rustfmt, clippy
+      - name: Install Windows assembler
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install nasm --no-progress --yes
+          nasm -v
+      - name: Linux build tools and PostgreSQL
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql build-essential pkg-config libssl-dev libclang-dev cmake libcap-dev
+          echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(pg_config --bindir)" >> "$GITHUB_ENV"
+      - name: macOS PostgreSQL
+        if: runner.os == 'macOS'
+        run: |
+          brew install postgresql@18
+          echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(brew --prefix postgresql@18)/bin" >> "$GITHUB_ENV"
+      - name: Restore verified Codex runtime
+        id: codex-runtime-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: cantrip_codex/.build/${{ matrix.target }}/bundle
+          key: cantrip-codex-bundle-${{ matrix.target }}-${{ hashFiles('cantrip_codex/upstream.json', 'cantrip_codex/upstream.files.json', 'cantrip_codex/patches/**', 'scripts/cantrip-codex/**') }}
+      - name: Restore Codex rusty_v8 downloads
+        id: codex-v8-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: cantrip_codex/.build/${{ matrix.target }}/rusty-v8
+          key: cantrip-codex-rusty-v8-${{ matrix.target }}-${{ hashFiles('cantrip_codex/upstream/codex-rs/Cargo.lock') }}
+          restore-keys: |
+            cantrip-codex-rusty-v8-${{ matrix.target }}-
+      - run: pnpm install --frozen-lockfile
+      # Build Codex with its native MSVC toolchain before configuring GNU PGlite.
+      - name: Build the production bundled Codex runtime
+        env:
+          CARGO_BUILD_JOBS: "2"
+        run: pnpm codex:build
+      - name: Save verified Codex runtime
+        if: steps.codex-runtime-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: cantrip_codex/.build/${{ matrix.target }}/bundle
+          key: cantrip-codex-bundle-${{ matrix.target }}-${{ hashFiles('cantrip_codex/upstream.json', 'cantrip_codex/upstream.files.json', 'cantrip_codex/patches/**', 'scripts/cantrip-codex/**') }}
+      - name: Save Codex rusty_v8 downloads
+        if: steps.codex-runtime-cache.outputs.cache-hit != 'true' && steps.codex-v8-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: cantrip_codex/.build/${{ matrix.target }}/rusty-v8
+          key: cantrip-codex-rusty-v8-${{ matrix.target }}-${{ hashFiles('cantrip_codex/upstream/codex-rs/Cargo.lock') }}
+      - name: Windows native PGlite toolchain
+        if: runner.os == 'Windows'
+        id: mingw
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-zlib mingw-w64-x86_64-openssl
+      - name: Windows Rust target and PostgreSQL
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          CANTRIP_MINGW_BIN: ${{ steps.mingw.outputs.msys2-location }}\mingw64\bin
+        run: |
+          rustup target add x86_64-pc-windows-gnu
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "CARGO_BUILD_TARGET=x86_64-pc-windows-gnu" >> $env:GITHUB_ENV
+          "$env:CANTRIP_MINGW_BIN" >> $env:GITHUB_PATH
+          "CANTRIP_TEST_POSTGRES_BIN_DIR=$env:PGBIN" >> $env:GITHUB_ENV
+      - name: Build the existing browser dependencies and full worker
+        run: pnpm --filter '@cantrip/app^...' --filter @cantrip/worker -r build
+      - name: Browser for encrypted Task clients
+        run: node node_modules/playwright-core/cli.js install --with-deps chromium
+      - name: Allow the downloaded Chromium to use its namespace sandbox on Ubuntu
+        if: runner.os == 'Linux'
+        run: node scripts/server-rust/linux-chromium-sandbox.mjs
+      - name: Actual browser, full worker and native Task Goals with pglite
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --tasks --database pglite --report .qa/rust-server/actual-task-worker-pglite.json
+      - name: Actual browser, full worker and native Task Goals with bundled-postgres
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --tasks --database bundled-postgres --report .qa/rust-server/actual-task-worker-bundled-postgres.json
+      - name: Actual browser, full worker and native Task Goals with postgres
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --tasks --database postgres --report .qa/rust-server/actual-task-worker-postgres.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rust-server-actual-task-worker-${{ matrix.os }}
+          path: .qa/rust-server/
+
   chat-messages:
     if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.conversion_lifetime_diagnostic && !inputs.discovery_lifetime_diagnostic && !inputs.native_stack_diagnostic) }}
     # Compare protected message writes and archive reads through real sockets.
@@ -1572,6 +1694,8 @@ jobs:
       - run: pnpm --filter '@cantrip/app^...' -r build
       - name: Protected message validation contracts
         run: node scripts/server-rust/cargo.mjs test --test chat_contracts -- --nocapture
+      - name: Project Chat catalogs and archives with pglite
+        run: node --import tsx scripts/server-rust/project-chat-catalog-http.mjs --database pglite --report .qa/rust-server/project-chat-catalog-pglite.json
       - name: Message query state with pglite
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"
@@ -1582,6 +1706,8 @@ jobs:
         run: node --import tsx scripts/server-rust/chat-message-write-repository-compatibility.mjs --database pglite --report .qa/rust-server/chat-message-write-repository-compatibility-pglite.json
       - name: Message HTTP, endpoint encryption and ordered Live with pglite
         run: node --import tsx scripts/server-rust/chat-message-http-compatibility.mjs --database pglite --report .qa/rust-server/chat-message-http-compatibility-pglite.json
+      - name: Project Chat catalogs and archives with bundled-postgres
+        run: node --import tsx scripts/server-rust/project-chat-catalog-http.mjs --database bundled-postgres --report .qa/rust-server/project-chat-catalog-bundled-postgres.json
       - name: Message query state with bundled-postgres
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"
@@ -1592,6 +1718,8 @@ jobs:
         run: node --import tsx scripts/server-rust/chat-message-write-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/chat-message-write-repository-compatibility-bundled-postgres.json
       - name: Message HTTP, endpoint encryption and ordered Live with bundled-postgres
         run: node --import tsx scripts/server-rust/chat-message-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/chat-message-http-compatibility-bundled-postgres.json
+      - name: Project Chat catalogs and archives with postgres
+        run: node --import tsx scripts/server-rust/project-chat-catalog-http.mjs --database postgres --report .qa/rust-server/project-chat-catalog-postgres.json
       - name: Message query state with postgres
         env:
           CANTRIP_FIXTURE_STACK_BYTES: "1048576"
