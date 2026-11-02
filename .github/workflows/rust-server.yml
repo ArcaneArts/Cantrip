@@ -69,6 +69,10 @@ on:
       - cantrip_server/src/app/runtime/chat-recovery-runtime.ts
       - cantrip_server/src/app/runtime/chat-turn-*.ts
       - cantrip_server/src/app/runtime/chat-thread-sync-runtime.ts
+      - cantrip_server/src/app/runtime/managed-chat-account-failover.ts
+      - cantrip_server/test/local-foundation.test.ts
+      - cantrip_server/test/foundation-account-handoff-fixture.ts
+      - cantrip_server/test/managed-chat-account-failover.test.ts
       - cantrip_server/src/app/runtime/worker-notification-runtime.ts
       - cantrip_server/src/app/routes/chat-messages-and-sync.ts
       - cantrip_server/src/chats/thread-sync.ts
@@ -1706,6 +1710,8 @@ jobs:
       - run: pnpm --filter '@cantrip/app^...' -r build
       - name: Protected message validation contracts
         run: node scripts/server-rust/cargo.mjs test --test chat_contracts -- --nocapture
+      - name: Reference prepared account selection and durable handoff
+        run: pnpm --filter @cantrip/server exec vitest run --maxWorkers=2 test/local-foundation.test.ts test/managed-chat-account-failover.test.ts
       - name: Reference thread synchronization and observation contracts
         run: pnpm --filter @cantrip/server exec vitest run --maxWorkers=2 test/chat-thread-sync-admission.test.ts test/chat-thread-sync-observation.test.ts test/chat-thread-change-reconciliation.test.ts
       - name: Project Chat catalogs and archives with pglite

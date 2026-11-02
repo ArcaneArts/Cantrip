@@ -5304,3 +5304,64 @@ present in the independently hash-verified pre-milestone archive. No assertions
 or deadlines were relaxed. Recursive bail prevented later worker/app tests and
 whole-repository formatting from running; the focused format and real-worker
 checks above pass. The broad check remains failing and requires follow-up.
+
+## Reference account selection and notification fixture lifetimes
+
+The local foundation test now selects each model through the existing settings
+API before creating its Chat, matching the browser flow and the native
+preparation boundary. A turn body cannot replace an already prepared provider
+binding. The original fresh-account reserve selection remains checked. An
+existing managed conversation keeps its account and native thread at 98% usage;
+100% usage without credits triggers the existing durable account handoff. This
+matches `managed-chat-account-failover.ts` and its existing focused tests; no
+production routing or wire contract changes are made.
+
+The controlled-worker fixture supplies real endpoint-encrypted source and
+destination settings and advances the actual prepare/commit/finish repositories.
+It requires a completed durable acknowledgement, the selected account and
+credential home, an unchanged native thread, exact existing encrypted message
+rows and the same decrypted transcript prefix. The next turn adds exactly the
+user, command activity, file-change activity and assistant rows in their actual
+order. It does not substitute a new thread or a plaintext reconstructed prompt.
+Native file transfer remains covered by its separate real-Codex acceptance work.
+
+The #2449 Linux and Windows Chat-message jobs exposed an overlapping queue
+invalidation in the synchronization fixture. Their original artifacts are retained
+with verified zip SHA-256 digests. The public history/replay lifecycle cases
+continue to use the original unpaused Chat. Notification ordering now has its
+own paused Agent Chat, so unrelated queued work cannot enter its measured scope.
+The exact Goal/queue/plan order, strictly increasing cursors, complete null event
+metadata, negative binding checks and original deadlines are unchanged. This is
+a fixture isolation correction; the production queue dispatcher stays asynchronous.
+Platform reruns remain required.
+
+Focused commands:
+
+```bash
+pnpm --filter @cantrip/server exec vitest run --maxWorkers=2 test/local-foundation.test.ts test/managed-chat-account-failover.test.ts test/native-runtime-handoffs.test.ts
+node --import tsx scripts/server-rust/chat-thread-sync-http.mjs --database pglite --report .qa/rust-server/chat-thread-sync-http-pglite.json
+```
+
+Use all three storage modes for HTTP comparisons. The focused foundation flow,
+server typecheck and 50 focused account/handoff tests pass locally; two existing
+real-native tests remain skipped without their explicit native test binary.
+Full replacement, supported-platform/package acceptance and default cutover are
+still unfinished. Node remains the default server.
+
+The refreshed local sync matrix passes all nine storage/authentication profiles
+(288 paired HTTP observations), retaining the exact notification assertions.
+The broad `pnpm check` now passes all 1,702 Source tests with 57 existing skips,
+then fails on six app assertions across four unchanged app test files (4,385 app
+tests pass and three skip). All six reproduce in a focused run on clean Primary
+`4692c643d`; their logs and file hashes are retained. They concern Explorer
+controls, Git history URL ownership, the Node-only Task tab environment and an
+empty running-menu fixture. The root run ends after 598.8 seconds; worker tests
+were interrupted by recursive bail and whole-repository formatting did not run.
+These app failures remain follow-up work; no assertion or deadline was relaxed.
+
+The independent complete worker suite finishes with 2,623 passing tests, 133
+existing skips and one MCP broker metadata failure: `alert_raise` advertises
+`idempotentHint: true` while the test expects false. The same test fails on clean
+Primary with the worker files unchanged (15 other focused broker tests pass).
+This additional baseline issue remains to resolve; the worker suite is not
+reported as green.
