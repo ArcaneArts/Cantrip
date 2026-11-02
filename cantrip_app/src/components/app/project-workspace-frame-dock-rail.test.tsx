@@ -235,7 +235,7 @@ function renderRail({
 
 describe("dock rail tabs", () => {
   it.each(["right", "bottom"] as const)(
-    "distinguishes tab and pane popouts in the %s rail",
+    "offers tab popout and hides pane popout in the %s rail",
     async (region) => {
       const item = surface("terminal", "one", "Terminal", 0);
       const onPopOut = vi.fn();
@@ -251,16 +251,18 @@ describe("dock rail tabs", () => {
         });
       });
       try {
-        for (const [label, callback] of [
-          ["Pop Out", onPopOut],
-          ["Move Pane to New Window", onPopOutPane],
-        ] as const) {
-          const action = renderer.root
-            .findAllByType("button")
-            .find((node) => textContent(node).trim() === label)!;
-          await act(async () => action.props.onClick());
-          expect(callback).toHaveBeenCalledExactlyOnceWith(item);
-        }
+        const actions = renderer.root.findAllByType("button");
+        expect(
+          actions.some(
+            (node) => textContent(node).trim() === "Move Pane to New Window",
+          ),
+        ).toBe(false);
+        const action = actions.find(
+          (node) => textContent(node).trim() === "Pop Out",
+        )!;
+        await act(async () => action.props.onClick());
+        expect(onPopOut).toHaveBeenCalledExactlyOnceWith(item);
+        expect(onPopOutPane).not.toHaveBeenCalled();
       } finally {
         await act(async () => renderer.unmount());
       }
