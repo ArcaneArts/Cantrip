@@ -1,3 +1,4 @@
+import { createAgentChatOperations } from "../agent-tools/chat-operations.js";
 import { installManagedNativeRoutes } from "./routes/internal-native.js";
 import { installNativeHistoryRuntime } from "./runtime/native-history-runtime.js";
 import { randomUUID } from "node:crypto";
@@ -1281,12 +1282,23 @@ export async function buildApp({
     },
   });
   installNativeHistoryRuntime(app, liveHub, { config, repository, runAsOwner });
+  const executeChatOperation = createAgentChatOperations({
+    applicationOwnerId,
+    repository,
+    publishEncryptedChatMessage,
+    dispatchNextQueuedPrompt,
+  });
   installInternalAgentToolRoutes(app, {
     appendAudit,
     cliCommandIsMutation,
     config,
     executeAgentOperation: (context, request) =>
-      agentOperationExecutor.execute(chatOperationContext(context), request),
+      request.operation.startsWith("chat.")
+        ? executeChatOperation(context, request)
+        : agentOperationExecutor.execute(
+            chatOperationContext(context),
+            request,
+          ),
     executeCliCommand,
     repository,
     runAsOwner,

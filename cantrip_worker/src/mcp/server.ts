@@ -1,3 +1,10 @@
+import {
+  cantripAgentOperationResultSchema,
+  cantripMcpChatListInputSchema,
+  cantripMcpChatReadInputSchema,
+  cantripMcpChatSendInputSchema,
+  cantripMcpChatWaitInputSchema,
+} from "@cantrip/protocol";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
@@ -1351,6 +1358,55 @@ export function createCantripMcpServer(
       }
     },
   );
+  for (const [name, operation, inputSchema, description] of [
+    [
+      "chat_list",
+      "chat.list",
+      cantripMcpChatListInputSchema,
+      "List accessible Agent chats in the current project, with exact chat IDs and status.",
+    ],
+    [
+      "chat_read",
+      "chat.read",
+      cantripMcpChatReadInputSchema,
+      "Read a bounded page of another project Agent chat. Returns a cursor for chat_wait and a page cursor for older messages.",
+    ],
+    [
+      "chat_send",
+      "chat.send",
+      cantripMcpChatSendInputSchema,
+      "Send a message to another project Agent chat. It is visibly attributed to your chat in both transcripts. Reuse operationId when retrying the same message. Busy or paused chats queue it; this does not resume paused chats.",
+    ],
+    [
+      "chat_wait",
+      "chat.wait",
+      cantripMcpChatWaitInputSchema,
+      "Wait up to 30 seconds for chat messages, streaming updates, or status changes. Use afterCursor from chat_read or chat_wait. Does not start or interrupt work.",
+    ],
+  ] as const) {
+    registerTool(
+      name,
+      {
+        title: name.replaceAll("_", " "),
+        description,
+        inputSchema,
+        outputSchema: cantripAgentOperationResultSchema,
+        annotations:
+          operation === "chat.send"
+            ? idempotentMutationAnnotations
+            : readAnnotations,
+      },
+      async (arguments_: Record<string, unknown>) => {
+        try {
+          return operationResult(
+            await gateway({ operation, arguments: arguments_ }),
+          );
+        } catch (error) {
+          return operationError(error);
+        }
+      },
+    );
+  }
   return {
     connect: (transport: Transport) => server.connect(transport),
     close: () => server.close(),

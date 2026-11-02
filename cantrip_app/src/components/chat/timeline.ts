@@ -1,3 +1,4 @@
+import { uniqueChatCommunicationMessages } from "@cantrip/protocol";
 import {
   isPreviewActivity,
   previewActivityGroupKey,
@@ -167,6 +168,12 @@ export function resolveChatTurnIdentity(input: {
 
 function terminalMessage(message: ChatMessage | undefined): boolean {
   if (!message) return false;
+  if (
+    message.content.some(
+      (item) => item.type === "text" && item.chatCommunication,
+    )
+  )
+    return false;
   if (message.role === "system") return true;
   if (message.role !== "assistant") return false;
   return message.content.some(
@@ -179,7 +186,12 @@ function terminalMessage(message: ChatMessage | undefined): boolean {
 
 function workMessage(message: ChatMessage | undefined): boolean {
   return Boolean(
-    message && message.role === "assistant" && !terminalMessage(message),
+    message &&
+    message.role === "assistant" &&
+    !message.content.some(
+      (item) => item.type === "text" && item.chatCommunication,
+    ) &&
+    !terminalMessage(message),
   );
 }
 
@@ -622,7 +634,9 @@ function buildAgentChatTimeline(messages: ChatMessage[]): ChatTimelineEntry[] {
 export function buildChatTimeline(
   messages: ChatMessage[],
 ): ChatTimelineEntry[] {
-  const { agentMessages, previewGroups } = splitPreviewMessages(messages);
+  const { agentMessages, previewGroups } = splitPreviewMessages(
+    uniqueChatCommunicationMessages(messages),
+  );
   const entries = buildAgentChatTimeline(agentMessages);
   if (!previewGroups.size) return entries;
   for (const [turnKey, group] of previewGroups) {

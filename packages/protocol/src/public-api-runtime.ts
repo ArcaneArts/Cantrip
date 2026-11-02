@@ -498,6 +498,7 @@ export {
   chatComposerDraftSchema,
   chatMessageCreateSchema,
   chatMessageSchema,
+  uniqueChatCommunicationMessages,
 } from "./chat-messages.js";
 
 export type {

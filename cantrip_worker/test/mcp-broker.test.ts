@@ -692,7 +692,9 @@ describe("Cantrip MCP worker broker", () => {
             "browser_navigate",
           ]).has(tool.name);
           const idempotent =
-            readOnly || tool.name.startsWith("run_configuration_");
+            readOnly ||
+            tool.name === "chat_send" ||
+            tool.name.startsWith("run_configuration_");
           expect(tool).toMatchObject({
             annotations: {
               readOnlyHint: readOnly,

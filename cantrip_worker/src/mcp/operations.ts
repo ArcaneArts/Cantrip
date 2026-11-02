@@ -1,3 +1,4 @@
+import { executeCantripMcpChatOperation } from "./chat-operations.js";
 import {
   CANTRIP_MCP_CLIENT_CONTROL_OPERATIONS,
   CANTRIP_MCP_MUTATION_OPERATIONS,
@@ -23,6 +24,8 @@ const clientControlOperations = new Set<string>(
 export function executeCantripMcpOperation(
   options: CantripMcpOperationOptions,
 ): Promise<CantripAgentOperationResult> {
+  if (options.request.operation.startsWith("chat."))
+    return executeCantripMcpChatOperation(options);
   if (options.request.operation.startsWith("run-configuration.")) {
     return executeCantripMcpRunConfigurationOperation(options);
   }

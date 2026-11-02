@@ -19,6 +19,7 @@ async function prepareGuiQueueMutation(
   mutation: ManagedQueueMutation,
   options: {
     operationId: string;
+    resumeAutonomy?: boolean;
     expectedRevision?: number;
     payloadDigest?: string;
   },
@@ -72,7 +73,8 @@ async function prepareGuiQueueMutation(
         scope: "thread",
         settingKeys: [],
         expectedTurnId: null,
-        ...(["add", "start"].includes(mutation.kind)
+        ...(options.resumeAutonomy !== false &&
+        ["add", "start"].includes(mutation.kind)
           ? { resumeAutonomy: true }
           : {}),
       },
