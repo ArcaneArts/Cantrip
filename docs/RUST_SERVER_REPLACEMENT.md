@@ -12,7 +12,42 @@ feature set.
 
 Status: **implementation in progress; not a deployable replacement**.
 
-The current execution milestone is integrated with main at implementation
+The execution milestone merged through squash auto-merge in
+[PR #2409](https://github.com/ArcaneArts/Cantrip/pull/2409), at
+`64857ee68469379c8b935440b017c6c5bce4d84d`; clean Primary was fast-forwarded and
+the completed worktree was removed after all 2,990 archived evidence files were
+hash-verified. The final local combined browser/full-worker flow passes 35 steps
+per peer on all three stores, and the refreshed worker suite passes 2,605 tests
+with 133 skipped. The original 1,024-attachment early-failure cleanup case passes
+locally with its original deadline. Host-global service-discovery tests must run
+sequentially on one host: a retained concurrent run captured another suite's
+actual HTTP/TLS probes in its TCP fixture; exact HTTP bytes were identified and
+the serialized rerun passes unchanged assertions. Fresh
+[platform run 41441145506](https://github.com/ArcaneArts/Cantrip/actions/runs/41441145506)
+remains in progress; merge does not establish full platform acceptance.
+
+The public Task editing milestone adds reads and encrypted draft/plan edits
+using the native repositories and actual
+post-commit chat/project Live fanout. Local comparisons pass all nine
+storage/authentication profiles: 86 paired HTTP observations per store, six
+independently decrypted Task results and four Live events per peer/profile.
+These cover owner isolation, HEAD, exact input/state/revision/worker-selection
+errors, rejected-write preservation and ciphertext integrity. Their CI steps are
+configured; no supported-platform pass or full Task lifecycle is claimed. Public
+Task creation, deletion, recovery, scheduling operations, dashboards and Chat
+Goal controls, including the protected continuation failure, remain to finish.
+
+The fresh Windows run passes the repaired 92-case Task recovery suite, then
+exposes the same path-spelling issue in the Source quota timer adapter. Source
+missed the two reset timers while Rust produced the required four captures. The
+quota adapter now normalizes actual frames, and an additional forced-Windows
+scenario retains exact capture times, trigger identities and timer cleanup.
+The complete local GUI matrices pass 698 cases/173 snapshots each on PGlite and
+private PostgreSQL, and 710 cases/179 snapshots on external PostgreSQL. This
+fixture repair still requires a Windows rerun; production Source behavior and
+all reset deadlines remain unchanged.
+
+The execution implementation was verified at
 revision `cee3dc0c1f2cc02371ab4da068d4c2cbb2eb47e0`. It mounts twelve public
 encrypted Chat/queue and Chat/Project Task pause routes through concrete native
 admission, receipts, recovery, Goal/Task scheduling, worker commands and Live
@@ -46,7 +81,7 @@ app-dependency build in all three release jobs; its six-package closure actually
 builds and all twelve focused workflow tests pass. Reports use
 `.qa/rust-server/gui-milestone-*` and `gui-integrated-*`.
 
-The [current platform run](https://github.com/ArcaneArts/Cantrip/actions/runs/41336630442)
+The [preceding platform run](https://github.com/ArcaneArts/Cantrip/actions/runs/41336630442)
 finished with seventeen passing and four failing main jobs across Linux, macOS
 and Windows. The Windows recovery fixture now normalizes actual stack paths,
 with an additional Windows-spelling regression passing all three stores locally.
