@@ -56,5 +56,19 @@ not plaintext questions, permission details, titles, or blocker explanations.
 5. Conditional sidebar tile and live project-switcher counts.
 6. Full-flow browser/compatibility qualification and final documentation.
 
-The foundation by itself does not wire source producers or expose discovery UI.
-Each subsequent milestone is delivered through its own worktree and merged PR.
+Interaction requests now project permissions and user-input alerts transactionally
+from their authoritative source rows, including native computer-use approvals.
+The migration reconciles pending requests once. Existing resolution,
+interruption, expiration, and deletion operations close the exact request alert.
+The expiry sweep runs once per server; inbox/count reads also expire due requests.
+
+Stop and archive create terminal alert tombstones. Restoring a Chat does not
+restore retired alerts. A deliberate automation pause leaves pending attention
+intact. Native terminal turn records retire only requests with the matching
+owner, worker, Chat, thread, and turn; late deliveries for those turns remain
+closed. Released execution lanes also retire their requests. Existing legacy
+turn cleanup continues to terminalize its own exact requests. Classification
+never depends on an idle status or a missing runtime observation.
+
+The Alert Inbox and discovery UI follow in later milestones. Each milestone is
+delivered through its own worktree and merged PR.

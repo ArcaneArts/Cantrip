@@ -1,83 +1,21 @@
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
 import Fastify from "fastify";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import {
   projectAlertProjectionSchema,
-  unprobedCodexRuntimeReport,
   type ProjectAlertProjection,
 } from "@cantrip/protocol";
-import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
-import { LOCAL_USER_ID } from "../src/db/repository.js";
-import {
-  protectedProjectFields,
-  protectedDisplayLabelFields,
-} from "./private-label-fixture.js";
 import { installProjectAlertRoutes } from "../src/app/routes/project-alerts.js";
-
-let db: DatabaseConnection,
-  directory: string,
+import { projectAlertFixture } from "./project-alert-fixture.js";
+let fixture: Awaited<ReturnType<typeof projectAlertFixture>>;
+let db: Awaited<ReturnType<typeof projectAlertFixture>>["db"],
   project: string,
   other: string,
-  chat: string;
-let owner = LOCAL_USER_ID;
+  chat: string,
+  owner: string;
 const app = Fastify();
 beforeAll(async () => {
-  directory = await mkdtemp(path.join(tmpdir(), "cantrip-alerts-"));
-  db = await connectDatabase({
-    databaseUrl: process.env.CANTRIP_ALERT_TEST_DATABASE_URL,
-    agentModel: "gemma4:26b",
-    agentModelProvider: "ollama",
-    appOrigins: [],
-    authMode: "none",
-    bootstrapMode: "pnpm-dev",
-    dataDirectory: directory,
-    deploymentMode: "local",
-    host: "127.0.0.1",
-    port: 4310,
-    ollamaBaseUrl: "http://127.0.0.1:11434/v1",
-    workerToken: "test",
-  });
-  await db.repository.recordWorker(owner, {
-    workerId: "alert-worker",
-    name: "Worker",
-    platform: "darwin",
-    architecture: "arm64",
-    codexVersion: "0.166.0",
-    codexRuntime: unprobedCodexRuntimeReport,
-    startedAt: new Date().toISOString(),
-  });
-  const create = async (name: string, blind: string) => {
-    const result = await db.repository.createGithubProject(owner, {
-      workerId: "alert-worker",
-      ...protectedProjectFields(),
-      repositoryBlindIndex: blind.repeat(43),
-      repositoryId: name,
-      nameWithOwner: `qa/${name}`,
-      url: `https://github.com/qa/${name}`,
-    });
-    await db.repository.completeGithubProjectSetup(
-      owner,
-      result.id,
-      "alert-worker",
-      {
-        path: `/test/${name}`,
-        displayPath: `/test/${name}`,
-        reused: false,
-        updated: false,
-        warning: null,
-      },
-    );
-    return result.id;
-  };
-  project = await create("alerts", "A");
-  other = await create("other", "B");
-  await db.repository.ensureAccountConfiguration(owner);
-  chat = (await db.repository.createChat(owner, project, {
-    ...protectedDisplayLabelFields("chat"),
-    modelId: null,
-  }))!.id;
+  fixture = await projectAlertFixture();
+  ({ db, project, other, chat, owner } = fixture);
   installProjectAlertRoutes(app, {
     applicationOwnerId: () => owner,
     repository: db.repository,
@@ -85,8 +23,7 @@ beforeAll(async () => {
 }, 30_000);
 afterAll(async () => {
   await app.close();
-  await db?.close();
-  if (directory) await rm(directory, { recursive: true, force: true });
+  await fixture?.close();
 });
 function event(
   sourceId: string,
@@ -251,6 +188,6 @@ it("exposes bounded read-only HTTP APIs and does not leak unknown owners or proj
     ).toBe(404);
     expect((await app.inject("/api/project-alerts/counts")).json()).toEqual([]);
   } finally {
-    owner = LOCAL_USER_ID;
+    owner = fixture.owner;
   }
 });
