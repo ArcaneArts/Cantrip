@@ -3,8 +3,8 @@
   "completeReplacement": false,
   "inventory": {
     "path": "docs/security/server-route-inventory.json",
-    "sha256": "870d4799222a40728b68f8341bc1819f0fbe457785c24857fc9853543037a75e",
-    "baselineCommit": "2dd1ca594939e3b2696892e086d14d9bfea0a2c9",
+    "sha256": "cab8d5e113b4d4c224cd8d0b1f1c107d84df6fd0a70f308767eaf58876b0b371",
+    "baselineCommit": "1af8bec0b9037d912e71d2e61195cab2560d1d89",
     "counts": {
       "routes": 520,
       "workerCommands": 278,
