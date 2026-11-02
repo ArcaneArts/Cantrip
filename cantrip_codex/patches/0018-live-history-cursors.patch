@@ -1,8 +1,8 @@
 diff --git a/codex-rs/app-server-protocol/src/protocol/common.rs b/codex-rs/app-server-protocol/src/protocol/common.rs
-index 91b47917779e9c7a0b6d8d47631808eda074fccd..8e05b73fd1d85f18f57aab6d1ba665cd920c9092 100644
+index be228905549df26ce7e6d4cbaf497626949211f6..cf7992b6781a05a9ecd675f8fa612dc8e371f213 100644
 --- a/codex-rs/app-server-protocol/src/protocol/common.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/common.rs
-@@ -2119,6 +2119,10 @@ server_notification_definitions! {
+@@ -2170,6 +2170,10 @@ server_notification_definitions! {
  #[derive(Serialize, Deserialize, Debug, Clone, TS)]
  #[serde(rename_all = "camelCase")]
  pub struct ServerNotificationEnvelope {
@@ -26,10 +26,10 @@ index de9a2ee0333de724da66827f0320cfdefe88c833..db01ef193b531ad92aeb46e774479f04
          current_turn_id,
          current_turn_state: if live { "live" } else { "notLoaded" }.into(),
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-index 6a46bc833b6d25fe7870671da1a58024c2821a4c..17492ee9f964b7a9198c03c3bea9c0204220715b 100644
+index 7b31b02052d689ce8a07fb03dedcfc33419ea4b8..2a3c6fc0c4835d50da785fdeaaad05ecc72d6773 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-@@ -2354,6 +2354,9 @@ mod managed_config_tests {
+@@ -2382,6 +2382,9 @@ mod managed_config_tests {
  #[serde(rename_all = "camelCase")]
  #[ts(export_to = "v2/")]
  pub struct ThreadHistoryMetadata {
@@ -39,7 +39,7 @@ index 6a46bc833b6d25fe7870671da1a58024c2821a4c..17492ee9f964b7a9198c03c3bea9c020
      pub version: u32,
      pub current_turn_id: Option<String>,
      /// `live` observes the engine; `notLoaded` has no live execution authority.
-@@ -2409,3 +2412,34 @@ pub struct ThreadHistoryResponseUsage {
+@@ -2437,3 +2440,34 @@ pub struct ThreadHistoryResponseUsage {
      pub root_turn_id: String,
      pub usage: TokenUsageBreakdown,
  }
@@ -75,10 +75,10 @@ index 6a46bc833b6d25fe7870671da1a58024c2821a4c..17492ee9f964b7a9198c03c3bea9c020
 +    pub items: Vec<LiveHistoryItem>,
 +}
 diff --git a/codex-rs/app-server-transport/src/transport/mod.rs b/codex-rs/app-server-transport/src/transport/mod.rs
-index 232ce948b0293ff9e45a008ca4a2e5da379cf0c0..8ab51bf49a7afaefc541b2e5c01fd94d6abb11d8 100644
+index cd7557810bd82a77af16e7e9ba5ad29122b07b3a..96e277bf3f0a8cec4bf9469a59df26b4700745aa 100644
 --- a/codex-rs/app-server-transport/src/transport/mod.rs
 +++ b/codex-rs/app-server-transport/src/transport/mod.rs
-@@ -324,6 +324,7 @@ mod tests {
+@@ -327,6 +327,7 @@ mod tests {
      #[test]
      fn serialize_outgoing_message_preserves_wire_shape() {
          let message = OutgoingMessage::AppServerNotification(ServerNotificationEnvelope {
@@ -86,7 +86,7 @@ index 232ce948b0293ff9e45a008ca4a2e5da379cf0c0..8ab51bf49a7afaefc541b2e5c01fd94d
              notification: ServerNotification::ConfigWarning(ConfigWarningNotification {
                  summary: "summary".to_string(),
                  details: None,
-@@ -551,6 +552,7 @@ mod tests {
+@@ -554,6 +555,7 @@ mod tests {
          writer_tx
              .send(QueuedOutgoingMessage::new(
                  OutgoingMessage::AppServerNotification(ServerNotificationEnvelope {
@@ -119,10 +119,10 @@ index 3b2406b6f12bfb63249d921bee06c8b140957b7c..62f0721513ce3ff2068869ce4ed1e6bd
                          summary: "x".repeat(REMOTE_CONTROL_SEGMENT_MAX_BYTES),
                          details: None,
 diff --git a/codex-rs/app-server-transport/src/transport/remote_control/tests.rs b/codex-rs/app-server-transport/src/transport/remote_control/tests.rs
-index 490ac1e37b7a293f7c44c6d120f5e303a5f6b842..9245d4b3b1e89f67276f6847f7422d98ee2efb21 100644
+index 8cd8793bdf7912e4396baabee609f64595f31405..cc746b0a7c09aa3e363e608ba11eb57bf92d4b85 100644
 --- a/codex-rs/app-server-transport/src/transport/remote_control/tests.rs
 +++ b/codex-rs/app-server-transport/src/transport/remote_control/tests.rs
-@@ -1005,6 +1005,7 @@ async fn remote_control_transport_manages_virtual_clients_and_routes_messages()
+@@ -1007,6 +1007,7 @@ async fn remote_control_transport_manages_virtual_clients_and_routes_messages()
      writer
          .send(QueuedOutgoingMessage::new(
              OutgoingMessage::AppServerNotification(ServerNotificationEnvelope {
@@ -130,7 +130,7 @@ index 490ac1e37b7a293f7c44c6d120f5e303a5f6b842..9245d4b3b1e89f67276f6847f7422d98
                  notification: ServerNotification::ConfigWarning(ConfigWarningNotification {
                      summary: "test".to_string(),
                      details: None,
-@@ -1617,6 +1618,7 @@ async fn remote_control_transport_clears_outgoing_buffer_when_backend_acks() {
+@@ -1619,6 +1620,7 @@ async fn remote_control_transport_clears_outgoing_buffer_when_backend_acks() {
      writer
          .send(QueuedOutgoingMessage::new(
              OutgoingMessage::AppServerNotification(ServerNotificationEnvelope {
@@ -138,7 +138,7 @@ index 490ac1e37b7a293f7c44c6d120f5e303a5f6b842..9245d4b3b1e89f67276f6847f7422d98
                  notification: ServerNotification::ConfigWarning(ConfigWarningNotification {
                      summary: "stale".to_string(),
                      details: None,
-@@ -1920,6 +1922,7 @@ async fn remote_control_http_mode_enrolls_before_connecting() {
+@@ -1922,6 +1924,7 @@ async fn remote_control_http_mode_enrolls_before_connecting() {
      writer
          .send(QueuedOutgoingMessage::new(
              OutgoingMessage::AppServerNotification(ServerNotificationEnvelope {
@@ -147,10 +147,10 @@ index 490ac1e37b7a293f7c44c6d120f5e303a5f6b842..9245d4b3b1e89f67276f6847f7422d98
                      summary: "backend".to_string(),
                      details: None,
 diff --git a/codex-rs/app-server-transport/src/transport/remote_control/websocket.rs b/codex-rs/app-server-transport/src/transport/remote_control/websocket.rs
-index 7bede8dc653d7bb149efce5cfb2d4c4840d6f75a..a1da6b4c91f3d6b7ab71935ed514c76c5838e9e9 100644
+index d74d3dfd8a4d5e19616bfac256f9e093e1ee7bc2..51126cbf5f97ea13c4061ba7080ca62a5fb6ccdd 100644
 --- a/codex-rs/app-server-transport/src/transport/remote_control/websocket.rs
 +++ b/codex-rs/app-server-transport/src/transport/remote_control/websocket.rs
-@@ -3428,6 +3428,7 @@ mod tests {
+@@ -3430,6 +3430,7 @@ mod tests {
              event: ServerEvent::ServerMessage {
                  message: Box::new(OutgoingMessage::AppServerNotification(
                      ServerNotificationEnvelope {
@@ -159,10 +159,10 @@ index 7bede8dc653d7bb149efce5cfb2d4c4840d6f75a..a1da6b4c91f3d6b7ab71935ed514c76c
                              ConfigWarningNotification {
                                  summary: summary.to_string(),
 diff --git a/codex-rs/app-server/src/lib.rs b/codex-rs/app-server/src/lib.rs
-index 70e8519ab84031347d837877582f57202102fdf3..4653c37cb7bd14b964a6952c56c169c1712844c4 100644
+index b3aa3b978b07b23f6cb33ee560fc0929efd632fc..24780a9a1dd1eb4ba729e136bffb1db9a137eff6 100644
 --- a/codex-rs/app-server/src/lib.rs
 +++ b/codex-rs/app-server/src/lib.rs
-@@ -124,6 +124,7 @@ pub mod in_process;
+@@ -130,6 +130,7 @@ pub mod in_process;
  mod log_write_warning;
  #[cfg(unix)]
  mod managed_daemon;
@@ -500,18 +500,18 @@ index 0000000000000000000000000000000000000000..6b25969cc475e075a55081ccbea755d8
 +    }
 +}
 diff --git a/codex-rs/app-server/src/outgoing_message.rs b/codex-rs/app-server/src/outgoing_message.rs
-index 311094f405f4757bd5d215ef9269e680a7273a6a..ab5036d782820cff01272ea816d8cb02e92a0c49 100644
+index fe401d15ac95a88d88df48ea8f067b76a6f0c897..2e615d730f2b1fed7c7f6ac275dc00e1e1025b8b 100644
 --- a/codex-rs/app-server/src/outgoing_message.rs
 +++ b/codex-rs/app-server/src/outgoing_message.rs
-@@ -139,6 +139,7 @@ pub(crate) struct OutgoingMessageSender {
+@@ -146,6 +146,7 @@ pub(crate) struct OutgoingMessageSender {
          >,
      >,
      next_server_request_id: AtomicI64,
 +    live_history: Mutex<crate::live_history::LiveHistory>,
      sender: mpsc::Sender<OutgoingEnvelope>,
+     process_reply_sender: mpsc::Sender<OutgoingEnvelope>,
      request_id_to_callback: Mutex<HashMap<RequestId, PendingCallbackEntry>>,
-     /// Incoming requests that are still waiting on a final response or error.
-@@ -216,6 +217,11 @@ impl ThreadScopedOutgoingMessageSender {
+@@ -224,6 +225,11 @@ impl ThreadScopedOutgoingMessageSender {
              .analytics_events_client
              .track_notification(&notification);
          if self.connection_ids.is_empty() {
@@ -523,7 +523,7 @@ index 311094f405f4757bd5d215ef9269e680a7273a6a..ab5036d782820cff01272ea816d8cb02
              return;
          }
          self.outgoing
-@@ -253,6 +259,22 @@ impl ThreadScopedOutgoingMessageSender {
+@@ -261,6 +267,22 @@ impl ThreadScopedOutgoingMessageSender {
  }
  
  impl OutgoingMessageSender {
@@ -546,15 +546,15 @@ index 311094f405f4757bd5d215ef9269e680a7273a6a..ab5036d782820cff01272ea816d8cb02
      pub(crate) fn new(
          sender: mpsc::Sender<OutgoingEnvelope>,
          analytics_events_client: AnalyticsEventsClient,
-@@ -262,6 +284,7 @@ impl OutgoingMessageSender {
-             verification_connections: Mutex::new(HashSet::new()),
+@@ -271,6 +293,7 @@ impl OutgoingMessageSender {
              managed_execution_gates: std::sync::Mutex::new(HashMap::new()),
              next_server_request_id: AtomicI64::new(0),
+             process_reply_sender: sender.clone(),
 +            live_history: Mutex::new(Default::default()),
              sender,
              request_id_to_callback: Mutex::new(HashMap::new()),
              request_contexts: Mutex::new(HashMap::new()),
-@@ -813,7 +836,11 @@ impl OutgoingMessageSender {
+@@ -842,7 +865,11 @@ impl OutgoingMessageSender {
              targeted_connections = connection_ids.len(),
              "app-server event: {notification}"
          );
@@ -567,7 +567,7 @@ index 311094f405f4757bd5d215ef9269e680a7273a6a..ab5036d782820cff01272ea816d8cb02
          if connection_ids.is_empty() {
              if let Err(err) = self
                  .sender
-@@ -847,7 +874,11 @@ impl OutgoingMessageSender {
+@@ -877,7 +904,11 @@ impl OutgoingMessageSender {
          notification: ServerNotification,
      ) -> bool {
          tracing::trace!("app-server event: {notification}");
@@ -580,7 +580,7 @@ index 311094f405f4757bd5d215ef9269e680a7273a6a..ab5036d782820cff01272ea816d8cb02
          let (write_complete_tx, write_complete_rx) = oneshot::channel();
          if let Err(err) = self
              .sender
-@@ -943,6 +974,7 @@ fn now_unix_timestamp_ms() -> u64 {
+@@ -988,6 +1019,7 @@ fn now_unix_timestamp_ms() -> u64 {
  
  fn timestamped_server_notification(notification: ServerNotification) -> OutgoingMessage {
      OutgoingMessage::AppServerNotification(ServerNotificationEnvelope {
@@ -588,7 +588,7 @@ index 311094f405f4757bd5d215ef9269e680a7273a6a..ab5036d782820cff01272ea816d8cb02
          notification,
          emitted_at_ms: Some(now_unix_timestamp_ms().try_into().unwrap_or_default()),
      })
-@@ -1001,6 +1033,7 @@ mod tests {
+@@ -1050,6 +1082,7 @@ mod tests {
  
          let jsonrpc_notification =
              OutgoingMessage::AppServerNotification(ServerNotificationEnvelope {
@@ -597,10 +597,10 @@ index 311094f405f4757bd5d215ef9269e680a7273a6a..ab5036d782820cff01272ea816d8cb02
                  emitted_at_ms: Some(1_234),
              });
 diff --git a/codex-rs/app-server/src/request_processors/thread_lifecycle.rs b/codex-rs/app-server/src/request_processors/thread_lifecycle.rs
-index a7754975b5a47ff2b46b818145a5e66d6eccf528..da9810ad8c7199b0c27b6552c0ba27e09abbca59 100644
+index a6d8250d60259befb9c233b0bfdb6bbffffc76e2..118e57dcc275e86539677c6b4dc48bc64c7ce412 100644
 --- a/codex-rs/app-server/src/request_processors/thread_lifecycle.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_lifecycle.rs
-@@ -338,6 +338,14 @@ pub(super) async fn ensure_listener_task_running(
+@@ -543,6 +543,14 @@ async fn start_listener(
                          );
                      }
  
@@ -615,7 +615,7 @@ index a7754975b5a47ff2b46b818145a5e66d6eccf528..da9810ad8c7199b0c27b6552c0ba27e0
                      // Track the event before emitting any typed translations
                      // so thread-local state such as raw event opt-in stays
                      // synchronized with the conversation.
-@@ -542,6 +550,9 @@ pub(super) async fn ensure_listener_task_running(
+@@ -836,6 +844,9 @@ async fn start_listener(
          let mut thread_state = thread_state.lock().await;
          if thread_state.listener_generation == listener_generation {
              thread_state_manager.unregister_listener_command_tx(conversation_id);
@@ -626,10 +626,10 @@ index a7754975b5a47ff2b46b818145a5e66d6eccf528..da9810ad8c7199b0c27b6552c0ba27e0
          }
      });
 diff --git a/codex-rs/app-server/src/request_processors/thread_processor.rs b/codex-rs/app-server/src/request_processors/thread_processor.rs
-index f240e091df79d72bcdfaa0431206fc292d4228aa..fa540607d8ce4f0ac15623e53a762f798f688c03 100644
+index 4b6ffa91802b587e28787459a0ef093f2845bba5..5bb01d24a94bf7e71b881b9efc1b3b7bf6a07f5d 100644
 --- a/codex-rs/app-server/src/request_processors/thread_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_processor.rs
-@@ -3049,12 +3049,16 @@ impl ThreadRequestProcessor {
+@@ -3184,12 +3184,16 @@ impl ThreadRequestProcessor {
              } else {
                  None
              };
@@ -649,7 +649,7 @@ index f240e091df79d72bcdfaa0431206fc292d4228aa..fa540607d8ce4f0ac15623e53a762f79
              None
          };
 diff --git a/codex-rs/app-server/src/transport_tests.rs b/codex-rs/app-server/src/transport_tests.rs
-index 5b98f9bbc888748b8f95a9b44c49c32f9591f8cf..338cf8f764a6a4c9cfd3d1db8b37a2ddbb294bb6 100644
+index fe591ccbce02f2644766181254b7096cb98abc7b..d07488a5f960df2e8cd63e2388e59324b93d51c2 100644
 --- a/codex-rs/app-server/src/transport_tests.rs
 +++ b/codex-rs/app-server/src/transport_tests.rs
 @@ -26,6 +26,7 @@ fn thread_realtime_started_notification() -> ServerNotification {
@@ -676,7 +676,7 @@ index 5b98f9bbc888748b8f95a9b44c49c32f9591f8cf..338cf8f764a6a4c9cfd3d1db8b37a2dd
              notification: ServerNotification::ThreadRealtimeStarted(_),
              ..
          })
-@@ -487,6 +490,7 @@ async fn broadcast_does_not_block_on_slow_connection() {
+@@ -537,6 +540,7 @@ async fn broadcast_does_not_block_on_slow_connection() {
      assert!(matches!(
          fast_message.message,
          OutgoingMessage::AppServerNotification(ServerNotificationEnvelope {
@@ -684,7 +684,7 @@ index 5b98f9bbc888748b8f95a9b44c49c32f9591f8cf..338cf8f764a6a4c9cfd3d1db8b37a2dd
              notification: ServerNotification::ConfigWarning(ConfigWarningNotification { summary, .. }),
              ..
          }) if summary == "test"
-@@ -498,6 +502,7 @@ async fn broadcast_does_not_block_on_slow_connection() {
+@@ -548,6 +552,7 @@ async fn broadcast_does_not_block_on_slow_connection() {
      assert!(matches!(
          slow_message.message,
          OutgoingMessage::AppServerNotification(ServerNotificationEnvelope {
@@ -692,7 +692,7 @@ index 5b98f9bbc888748b8f95a9b44c49c32f9591f8cf..338cf8f764a6a4c9cfd3d1db8b37a2dd
              notification: ServerNotification::ConfigWarning(ConfigWarningNotification { summary, .. }),
              ..
          }) if summary == "already-buffered"
-@@ -563,6 +568,7 @@ async fn to_connection_stdio_waits_instead_of_disconnecting_when_writer_queue_is
+@@ -613,6 +618,7 @@ async fn to_connection_stdio_waits_instead_of_disconnecting_when_writer_queue_is
      assert!(matches!(
          first.message,
          OutgoingMessage::AppServerNotification(ServerNotificationEnvelope {
@@ -700,7 +700,7 @@ index 5b98f9bbc888748b8f95a9b44c49c32f9591f8cf..338cf8f764a6a4c9cfd3d1db8b37a2dd
              notification: ServerNotification::ConfigWarning(ConfigWarningNotification { summary, .. }),
              ..
          }) if summary == "queued"
-@@ -573,6 +579,7 @@ async fn to_connection_stdio_waits_instead_of_disconnecting_when_writer_queue_is
+@@ -623,6 +629,7 @@ async fn to_connection_stdio_waits_instead_of_disconnecting_when_writer_queue_is
      assert!(matches!(
          second.message,
          OutgoingMessage::AppServerNotification(ServerNotificationEnvelope {

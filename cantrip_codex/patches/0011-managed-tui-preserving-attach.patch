@@ -1,5 +1,5 @@
 diff --git a/codex-rs/tui/src/app/startup.rs b/codex-rs/tui/src/app/startup.rs
-index 4c329f378702414c3c17cc31802c778a8dbb2266..2b4256f65bc510acd0104a33cbe6b2a144371ca1 100644
+index f1e83e5a5fc6c5aeb6490314de65a4c1ad3fe686..3cfc950f60adbc598fd161155e77bed9ce7d15cb 100644
 --- a/codex-rs/tui/src/app/startup.rs
 +++ b/codex-rs/tui/src/app/startup.rs
 @@ -16,6 +16,31 @@ use crate::session_start::cancel_session_start;
@@ -34,9 +34,9 @@ index 4c329f378702414c3c17cc31802c778a8dbb2266..2b4256f65bc510acd0104a33cbe6b2a1
  fn spawn_startup_thread_start(
      app_server: &AppServerSession,
      local_settings: crate::local_settings::LocalSettings,
-@@ -269,6 +294,17 @@ impl App {
+@@ -305,6 +330,17 @@ impl App {
          // Adopt actual launch ownership before constructing session-local preferences.
-         tui.prepare_owned_screen(config.tui_fullscreen_transcript)?;
+         startup_try!(tui.prepare_owned_screen(config.tui_fullscreen_transcript));
          let mut local_settings = crate::local_settings::LocalSettings::for_tui(&config, tui);
 +        let managed_attachment = match &session_selection {
 +            SessionSelection::Resume(target) => cantrip_managed_attachment(
@@ -50,33 +50,31 @@ index 4c329f378702414c3c17cc31802c778a8dbb2266..2b4256f65bc510acd0104a33cbe6b2a1
 +        };
 +
          let startup_started_at = Instant::now();
-         let (app_event_tx, mut app_event_rx) = unbounded_channel();
-         let app_event_tx = AppEventSender::new(app_event_tx);
-@@ -411,7 +447,7 @@ impl App {
-             return shutdown_on_startup_error(app_server, err).await;
+         if let SessionSelection::Resume(target) | SessionSelection::Fork(target) =
+             &session_selection
+@@ -467,7 +503,7 @@ impl App {
+             return shutdown_on_startup_error(app_server, &mut other_backends, err).await;
          }
          let exit_info =
 -            if matches!(&session_selection, SessionSelection::Fork(_)) && config.model.is_none() {
 +            if managed_attachment || (matches!(&session_selection, SessionSelection::Fork(_)) && config.model.is_none()) {
                  None
              } else {
-                 handle_model_migration_prompt_if_needed(
-@@ -607,10 +643,16 @@ impl App {
+                 let result = handle_model_migration_prompt_if_needed(
+@@ -662,10 +698,16 @@ impl App {
                  if let Some(history_mode) = target_session.history_mode {
                      app_server.remember_thread_history_mode(target_session.thread_id, history_mode);
                  }
 -                let model_settings = config_persistence::resume_model_settings_for_overrides(
--                    &config,
--                    &harness_overrides,
--                );
 +                // Cantrip explicitly binds this view to one preconfigured remote thread.
 +                // Keep ordinary CLI resumes and later explicit settings changes unchanged.
 +                let model_settings = if managed_attachment {
 +                    crate::app_server_session::ResumeModelSettings::PreserveExistingThread
 +                } else {
 +                    config_persistence::resume_model_settings_for_overrides(
-+                        &config,
-+                        &harness_overrides,
+                     &config,
+                     &harness_overrides,
+-                );
 +                    )
 +                };
                  let resumed = match startup_draft

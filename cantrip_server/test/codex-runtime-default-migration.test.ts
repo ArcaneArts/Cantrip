@@ -3,6 +3,41 @@ import { PGlite } from "@electric-sql/pglite";
 import { describe, expect, it } from "vitest";
 import { codexRuntimeReportSchema } from "@cantrip/protocol";
 
+describe("Codex 0.166 runtime default migration", () => {
+  it("advances new-worker defaults without rewriting existing runtime reports", async () => {
+    const database = new PGlite();
+    try {
+      await database.exec(`
+        CREATE TABLE workers (id text PRIMARY KEY, codex_runtime jsonb DEFAULT '{}');
+        INSERT INTO workers VALUES ('existing', '{"version":{"semantic":"0.163.0"},"testedRange":">=0.163.0 <0.164.0"}');
+      `);
+      const sql = await readFile(
+        new URL("../drizzle/0237_codex_0_166_runtime.sql", import.meta.url),
+        "utf8",
+      );
+      await database.exec(sql);
+      await database.exec("INSERT INTO workers (id) VALUES ('new')");
+      const { rows } = await database.query<{
+        id: string;
+        codex_runtime: unknown;
+      }>("SELECT id, codex_runtime FROM workers ORDER BY id");
+      expect(rows[0]?.codex_runtime).toEqual({
+        version: { semantic: "0.163.0" },
+        testedRange: ">=0.163.0 <0.164.0",
+      });
+      expect(
+        codexRuntimeReportSchema.parse(rows[1]?.codex_runtime),
+      ).toMatchObject({
+        compatibility: "missing",
+        version: null,
+        testedRange: ">=0.166.0 <0.167.0",
+      });
+    } finally {
+      await database.close();
+    }
+  }, 30_000);
+});
+
 describe("Codex 0.163 runtime default migration", () => {
   it("advances new-worker defaults without rewriting existing runtime reports", async () => {
     const database = new PGlite();

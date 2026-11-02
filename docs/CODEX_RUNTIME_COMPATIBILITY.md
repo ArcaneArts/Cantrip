@@ -6,24 +6,24 @@ to Codex App Server directly.
 
 ## Tested range
 
-Cantrip currently pins and builds `codex-cli 0.163.0` from the official
-`rust-v0.163.0` source tag at `83086188ae0614bd882818ff1aa23f3194962012`. Its imported source manifest and
+Cantrip currently pins and builds `codex-cli 0.166.0` from the official
+`rust-v0.166.0` source tag at `6ff1e1ca3b30fc8b914720681fcf5fe62e95f856`. Its imported source manifest and
 manual update workflow live under `cantrip_codex/`. The protocol validators and
 fixtures were checked against the TypeScript and JSON Schema bindings generated
-by that CLI on October 21, 2026:
+by that CLI on November 2, 2026:
 
 ```sh
 codex app-server generate-ts --experimental --out <temporary-directory>
 codex app-server generate-json-schema --experimental --out <temporary-directory>
 ```
 
-The adapter's compatibility range is `>=0.163.0 <0.164.0`, but packaged
-workers contain exactly `0.163.0`; they do not select another compatible patch
+The adapter's compatibility range is `>=0.166.0 <0.167.0`, but packaged
+workers contain exactly `0.166.0`; they do not select another compatible patch
 from the host. Advancing even within the tested range is a Cantrip source and
 worker release. Expanding the range requires regenerating the bindings,
 reviewing schema changes, and updating compatibility tests.
 
-The 0.163.0 catalog lists `gpt-6-astra` and now gives `gpt-6.1-sol` the highest
+The 0.166.0 catalog includes `gpt-6.1-terra` and gives `gpt-6.1-sol` the highest
 priority, making Sol the bundled Codex default when no model is explicitly configured. Cantrip
 continues to use its server-owned model configuration for managed turns.
 
@@ -34,9 +34,16 @@ polling or repeatedly launching the worker. The phase comes from the model
 resolver's explicit missing-selection result, not a separate readiness gate.
 Provider-route and native runtime failures retain their normal failure states.
 
-All 42 existing Cantrip source patches are rebased onto this tag. Patch `0044`
+All 43 existing Cantrip source patches are rebased onto this tag. Patch `0045`
 adapts the new native interfaces and regenerates both
-stable and experimental protocol exports. Managed TUI attachment keeps the new
+stable and experimental protocol exports. Recipe 6 packages the new standalone
+executor alongside the CLI, code-mode host, and responses proxy. Canonical
+history preserves item payloads and lifecycle timestamps through the new
+`ThreadItem` wrapper while retaining bounded, cancellable upstream replay.
+Cold resume combines Cantrip-owned settings with upstream acknowledgement and
+current permission constraints. Portable imports bind their destination metadata
+to the currently configured provider; historical segment bytes and provider
+provenance remain intact, and ordinary resume admission remains enforced. Managed TUI attachment keeps the new
 screen-reader probe read-only, preserving account preferences. The GUI's
 precise history revert uses `thread/revert`; upstream removed `thread/rollback`.
 Revert remains limited to paginated native threads, and actual native errors
@@ -214,10 +221,10 @@ external thread. See
 
 ## Endpoint-protected ChatGPT authentication
 
-Portable ChatGPT accounts depend on an experimental Codex 0.163 App Server
+Portable ChatGPT accounts depend on an experimental Codex 0.166 App Server
 surface. Before starting a portable ChatGPT runtime, the worker requires:
 
-- semantic version `>=0.163.0 <0.164.0`;
+- semantic version `>=0.166.0 <0.167.0`;
 - `initialize.capabilities.experimentalApi` support; and
 - an available `account/login/start` method.
 

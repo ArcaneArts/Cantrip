@@ -64,7 +64,7 @@ function sourceWithResponses(
   responses: unknown[],
   requests: Array<{ method: string; params: unknown }>,
   attachmentStore?: ExternalChatAttachmentStagingStore,
-  runtimeVersion = "0.163.0",
+  runtimeVersion = "0.166.0",
 ) {
   return new CodexExternalChatHistorySource({
     binary: "/bin/codex",
@@ -111,7 +111,7 @@ describe("external Codex chat history discovery", () => {
       pathExists: async () => false,
       resolvePath: async (candidate) => candidate,
       resolveGitOrigin: async () => null,
-      readRuntimeVersion: async () => "codex-cli 0.163.0",
+      readRuntimeVersion: async () => "codex-cli 0.166.0",
       createClient: () => {
         created = true;
         throw new Error("Unexpected Codex client creation.");
@@ -146,7 +146,7 @@ describe("external Codex chat history discovery", () => {
       pathExists: async () => true,
       resolvePath: async (candidate) => candidate,
       resolveGitOrigin: async () => null,
-      readRuntimeVersion: async () => "codex-cli 0.163.0",
+      readRuntimeVersion: async () => "codex-cli 0.166.0",
       createClient: (codexHome) => {
         openedHomes.push(codexHome);
         return {
@@ -156,7 +156,7 @@ describe("external Codex chat history discovery", () => {
               return {
                 id: 1,
                 result: {
-                  userAgent: "codex-cli/0.163.0",
+                  userAgent: "codex-cli/0.166.0",
                   platformFamily: "windows",
                   platformOs: "windows",
                 },
@@ -273,7 +273,7 @@ describe("external Codex chat history discovery", () => {
     });
   });
 
-  it.each(["0.160.1", "0.164.0"])(
+  it.each(["0.160.1", "0.167.0"])(
     "rejects unsupported reader %s before requesting history",
     async (version) => {
       const requests: Array<{ method: string; params: unknown }> = [];

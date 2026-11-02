@@ -1,8 +1,8 @@
 diff --git a/codex-rs/tui/src/lib.rs b/codex-rs/tui/src/lib.rs
-index 3ebb6a7c201178b0b1fde11aa990dc349c5a83aa..11d6037eede7b2e0dc99e87a7f7af950afd11436 100644
+index 9a93b3a0ceb343ec99a73627c662766ebdad896f..a3ffda5a67e396adc96defc4421bd944f5fd14c4 100644
 --- a/codex-rs/tui/src/lib.rs
 +++ b/codex-rs/tui/src/lib.rs
-@@ -439,7 +439,7 @@ fn remote_addr_has_explicit_port(addr: &str, parsed: &Url) -> bool {
+@@ -458,7 +458,7 @@ fn remote_addr_has_explicit_port(addr: &str, parsed: &Url) -> bool {
          "wss" => 443,
          _ => return false,
      };
@@ -11,7 +11,7 @@ index 3ebb6a7c201178b0b1fde11aa990dc349c5a83aa..11d6037eede7b2e0dc99e87a7f7af950
          format!("[{host}]")
      } else {
          host.to_string()
-@@ -481,7 +481,6 @@ pub fn resolve_remote_addr(addr: &str) -> color_eyre::Result<RemoteAppServerEndp
+@@ -500,7 +500,6 @@ pub fn resolve_remote_addr(addr: &str) -> color_eyre::Result<RemoteAppServerEndp
      if matches!(parsed.scheme(), "ws" | "wss")
          && parsed.host_str().is_some()
          && remote_addr_has_explicit_port(addr, &parsed)
@@ -19,52 +19,54 @@ index 3ebb6a7c201178b0b1fde11aa990dc349c5a83aa..11d6037eede7b2e0dc99e87a7f7af950
          && parsed.query().is_none()
          && parsed.fragment().is_none()
      {
-@@ -3019,6 +3018,48 @@ requires_openai_auth = {requires_openai_auth}
-         );
-     }
- 
-+    #[test]
-+    fn resolve_remote_addr_preserves_websocket_gateway_paths() {
-+        for (address, normalized) in [
-+            (
-+                "ws://127.0.0.1:4500/managed/capability",
-+                "ws://127.0.0.1:4500/managed/capability",
-+            ),
-+            (
-+                "wss://example.com:443/managed/capability",
-+                "wss://example.com/managed/capability",
-+            ),
-+            (
-+                "ws://[::1]:80/managed/capability",
-+                "ws://[::1]/managed/capability",
-+            ),
-+            (
-+                "wss://example.com:4500/a%20b/session",
-+                "wss://example.com:4500/a%20b/session",
-+            ),
-+        ] {
-+            assert_eq!(
-+                resolve_remote_addr(address).expect("WebSocket paths should be preserved"),
-+                RemoteAppServerEndpoint::WebSocket {
-+                    websocket_url: normalized.to_string(),
-+                    auth_token: None,
-+                }
-+            );
-+        }
-+    }
+diff --git a/codex-rs/tui/src/lib_tests.rs b/codex-rs/tui/src/lib_tests.rs
+index bec5b5f2adbebf61cc1f654799eb0041c6068b28..f2587765ec8ce57013d9f60d075bf6446c4048db 100644
+--- a/codex-rs/tui/src/lib_tests.rs
++++ b/codex-rs/tui/src/lib_tests.rs
+@@ -1732,3 +1732,46 @@ mod daemon_startup_tests;
+ pub(crate) mod test_backend;
+ #[path = "test_support.rs"]
+ pub(crate) mod test_support;
 +
-+    #[test]
-+    fn resolve_remote_addr_rejects_gateway_queries_and_fragments() {
-+        for address in [
-+            "ws://127.0.0.1:4500/managed/capability?other=1",
-+            "ws://127.0.0.1:4500/managed/capability#fragment",
-+            "https://127.0.0.1:4500/managed/capability",
-+            "ws://127.0.0.1/managed/capability",
-+        ] {
-+            assert!(resolve_remote_addr(address).is_err());
-+        }
++#[test]
++fn resolve_remote_addr_preserves_websocket_gateway_paths() {
++    for (address, normalized) in [
++        (
++            "ws://127.0.0.1:4500/managed/capability",
++            "ws://127.0.0.1:4500/managed/capability",
++        ),
++        (
++            "wss://example.com:443/managed/capability",
++            "wss://example.com/managed/capability",
++        ),
++        (
++            "ws://[::1]:80/managed/capability",
++            "ws://[::1]/managed/capability",
++        ),
++        (
++            "wss://example.com:4500/a%20b/session",
++            "wss://example.com:4500/a%20b/session",
++        ),
++    ] {
++        assert_eq!(
++            resolve_remote_addr(address).expect("WebSocket paths should be preserved"),
++            RemoteAppServerEndpoint::WebSocket {
++                websocket_url: normalized.to_string(),
++                auth_token: None,
++            }
++        );
 +    }
++}
 +
-     #[test]
-     fn resolve_remote_addr_accepts_default_socket() -> color_eyre::Result<()> {
-         let codex_home = find_codex_home().wrap_err("failed to resolve CODEX_HOME")?;
++#[test]
++fn resolve_remote_addr_rejects_gateway_queries_and_fragments() {
++    for address in [
++        "ws://127.0.0.1:4500/managed/capability?other=1",
++        "ws://127.0.0.1:4500/managed/capability#fragment",
++        "https://127.0.0.1:4500/managed/capability",
++        "ws://127.0.0.1/managed/capability",
++    ] {
++        assert!(resolve_remote_addr(address).is_err());
++    }
++}
++

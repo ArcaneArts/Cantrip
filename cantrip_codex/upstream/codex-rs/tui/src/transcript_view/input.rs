@@ -93,15 +93,19 @@ impl TranscriptView {
     /// Automatic copies may deselect but still publish PRIMARY, so retain their source.
     pub(crate) fn selection_copy(&self, action: &ViewAction) -> SelectionCopy {
         match action {
-            ViewAction::CopyOnSelect(_) => SelectionCopy::OnSelect {
-                clear_selection: self.copy_on_select_clear_selection,
-            },
+            ViewAction::CopyOnSelect(_) => SelectionCopy::on_select(
+                /*clipboard*/ true,
+                self.primary_selection,
+                self.copy_on_select_clear_selection,
+            ),
+            ViewAction::PrimarySelection(_) => SelectionCopy::on_select(
+                /*clipboard*/ false, /*primary*/ true, /*clear_selection*/ false,
+            ),
             ViewAction::Changed
             | ViewAction::ExitSelectMode
-            | ViewAction::PrimarySelection(_)
             | ViewAction::Copy(_)
             | ViewAction::CopyAndFollow(_)
-            | ViewAction::OpenLink(_) => SelectionCopy::Explicit,
+            | ViewAction::OpenLink(_) => SelectionCopy::EXPLICIT,
         }
     }
 
@@ -198,6 +202,21 @@ impl TranscriptView {
             return Some(action);
         }
         if self.select_mode.is_some() {
+            if self.is_search_editing() {
+                let (code, modifiers) =
+                    crate::key_hint::normalize_key_parts(key.code, key.modifiers);
+                let accepting = code == KeyCode::Enter && modifiers == KeyModifiers::NONE;
+                let cancelling = code == KeyCode::Esc
+                    || (code == KeyCode::Char('c') && modifiers == KeyModifiers::CONTROL);
+                if self.handle_search_key(key, cells) {
+                    if accepting && self.search.is_reading() {
+                        self.accept_search_into_select_mode(cells);
+                    } else if cancelling {
+                        self.restore_select_search_origin();
+                    }
+                    return Some(ViewAction::Changed);
+                }
+            }
             return self
                 .handle_select_mode_key(key, cells)
                 .or(Some(ViewAction::Changed));
@@ -243,7 +262,25 @@ impl TranscriptView {
         event: MouseEvent,
         cells: &[Arc<dyn HistoryCell>],
     ) -> Option<ViewAction> {
-        self.handle_mouse_with_mode(event, cells, MouseMode::Selection)
+        let endpoint_changed = matches!(
+            event.kind,
+            MouseEventKind::Down(MouseButton::Left)
+                | MouseEventKind::Drag(MouseButton::Left)
+                | MouseEventKind::Up(MouseButton::Left)
+        );
+        let before = self
+            .selection
+            .as_ref()
+            .map(|selection| (selection.start, selection.end, selection.unit()));
+        let action = self.handle_mouse_with_mode(event, cells, MouseMode::Selection);
+        let after = self
+            .selection
+            .as_ref()
+            .map(|selection| (selection.start, selection.end, selection.unit()));
+        if endpoint_changed && before != after {
+            self.adopt_select_mouse_range();
+        }
+        action
     }
 
     fn handle_mouse_with_mode(

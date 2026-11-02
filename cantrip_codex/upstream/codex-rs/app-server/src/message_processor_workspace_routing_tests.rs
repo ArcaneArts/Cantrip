@@ -64,9 +64,11 @@ async fn background_routing_call_sites_skip_config(api_key: Option<&str>) -> any
         analytics_events_client.clone(),
     ));
     let processor = Arc::new(MessageProcessor::new(MessageProcessorArgs {
+        cloud_skill_provider: None,
         outgoing,
         analytics_events_client,
         arg0_paths: Arg0DispatchPaths::default(),
+        startup_cwd: Some(config.cwd.to_path_buf()),
         config,
         config_manager,
         environment_manager: Arc::new(EnvironmentManager::default_for_tests()),
@@ -74,6 +76,7 @@ async fn background_routing_call_sites_skip_config(api_key: Option<&str>) -> any
         log_db: None,
         state_db: None,
         config_warnings: Vec::new(),
+        startup_warnings_tx: mpsc::unbounded_channel().0,
         session_source: SessionSource::VSCode,
         user_verification: Arc::new(crate::user_verification::Service::new(Arc::clone(
             &auth_manager,

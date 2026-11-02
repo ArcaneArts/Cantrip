@@ -23,7 +23,7 @@ This verifies the snapshot and patch series, then runs Cargo with the upstream
 lockfile and pinned Rust toolchain. Output is cached below
 `cantrip_codex/.build/` and is never
 committed. Worker packages copy the resulting native CLI, code-mode host,
-responses proxy, platform sandbox helpers, and a hash-checked runtime manifest
+standalone executor, responses proxy, platform sandbox helpers, and a hash-checked runtime manifest
 into `bin/`. The bundle also carries the upstream Apache-2.0 `LICENSE` and
 `NOTICE`. The native release verifier checks every listed artifact's bytes;
 the Worker requires the manifest and declared artifacts before starting Codex.
@@ -37,7 +37,7 @@ versions, checksums, and revisions remain exactly as pinned upstream, and the
 tracked source snapshot is never modified. The runtime manifest fingerprints
 the ordered patch set so changing a patch invalidates cached binaries.
 
-Codex 0.163.0 continues to use Rusty V8's heap sandbox for the code-mode host.
+Codex 0.166.0 continues to use Rusty V8's heap sandbox for the code-mode host.
 Those artifacts are published on a separate official OpenAI Codex release
 rather than the upstream Rusty V8 release. The build resolves the pinned `v8`
 crate version and native Rust host target, downloads the same archive and
@@ -52,12 +52,23 @@ generated experimental protocol includes the Cantrip settings, pause, canonical
 history, and portable history/context extensions. Native release jobs also run
 this check against the worker's packaged `bin/` directory on macOS and Windows.
 
-The 0.163.0 upgrade rebases all 42 existing patches and adds `0044` for native
+The 0.166.0 upgrade rebases all 43 existing patches and adds `0045` for native
 interface adaptations and regenerated stable/experimental protocol exports.
 It preserves Cantrip's managed history, settings, queue, permission transitions,
-pause, account configuration, and TUI admission paths alongside upstream's
-updated MCP, settings, and TUI interfaces. The imported upstream snapshot
-remains unpatched; these adaptations belong only to the build copy.
+pause, account configuration, stateless labeling, and TUI admission paths.
+Portable import binds destination metadata to its current configured provider
+while retaining the original immutable history segments and source provenance.
+The new item payload wrapper retains lifecycle timestamps, and history replay
+keeps upstream's bounded, cancellable projection pipeline. Cold resume keeps
+acknowledged owned settings and upstream's current permission constraints.
+The imported upstream snapshot remains unpatched; adaptations belong to the
+build copy. Recipe 6 also packages the upstream standalone `codex-exec-server`
+and exercises its actual version alongside the CLI during runtime verification.
+
+The official 0.163.0 and 0.166.0 release commits have diverged ancestry. This
+upgrade advances the vendored source projection to exact tag `rust-v0.166.0`
+at `6ff1e1ca3b30fc8b914720681fcf5fe62e95f856` and rebases the patch series; it
+does not force or rewrite a separate fork branch.
 
 Upstream 0.163.0 retired numeric fork-history selection and the patched-zsh
 executor. Their obsolete compatibility tests are removed; supported full-history
@@ -100,7 +111,7 @@ durable threads, and validation/provider failures. It does not establish live
 ChatGPT account latency or full GUI behavior. The native release verifier also
 requires this RPC in the executable's generated experimental protocol.
 Upstream production schema export uses embedded precomputed archives. Patch
-`0043` defines the RPC; `0044` regenerates both 0.163.0 archives with all Cantrip
+`0043` defines the RPC; `0045` regenerates both 0.166.0 archives with all Cantrip
 extensions, including the experimental inference method.
 Native protocol tests check that the method and types are exported only with
 the experimental API and that the archive matches freshly generated schemas.

@@ -1,14 +1,16 @@
 use std::io;
 
 use codex_terminal_detection::Multiplexer;
+use codex_terminal_detection::TerminalBackend;
 use codex_terminal_detection::TerminalInfo;
 use codex_terminal_detection::TerminalName;
 use crossterm::Command;
 use pretty_assertions::assert_eq;
 
+use super::CachedStatus;
 use super::ClearTerminalProgramStatus;
-use super::NO_EMITTED_STATUS;
 use super::ProgramStatus;
+use super::ProgramStatusKind;
 use super::SessionStatusState;
 use super::SetTerminalProgramStatus;
 use super::TerminalProgramStatusSupport;
@@ -21,7 +23,11 @@ fn encodes_iterm_session_status_fields() {
     for (status, detail) in [
         (ProgramStatus::Idle, ""),
         (ProgramStatus::Working, "Reading source"),
-        (ProgramStatus::Blocked, ""),
+        (ProgramStatus::Blocked(ProgramStatusKind::Permission), ""),
+        (ProgramStatus::Blocked(ProgramStatusKind::Question), ""),
+        (ProgramStatus::Blocked(ProgramStatusKind::Auth), ""),
+        (ProgramStatus::Done, ""),
+        (ProgramStatus::Error, ""),
     ] {
         let mut value = String::new();
         SetTerminalProgramStatus {
@@ -94,58 +100,54 @@ fn clear_empties_every_owned_field() {
 fn cache_changes_only_after_a_successful_write() {
     let state = SessionStatusState::new();
     let mut emitted = Vec::new();
+    let working = CachedStatus::Reported(ProgramStatus::Working);
     state
-        .update(ProgramStatus::Working as u8, "Thinking", || {
+        .update(working, "Thinking", || {
             Err(io::Error::other("write failed"))
         })
         .expect_err("failed write should be returned");
 
     state
-        .update(ProgramStatus::Working as u8, "Thinking", || {
-            emitted.push(ProgramStatus::Working as u8);
+        .update(working, "Thinking", || {
+            emitted.push(working);
             Ok(())
         })
         .expect("retry status write");
     state
-        .update(ProgramStatus::Working as u8, "Thinking", || {
-            emitted.push(ProgramStatus::Blocked as u8);
+        .update(working, "Thinking", || {
+            emitted.push(CachedStatus::Reported(ProgramStatus::Blocked(
+                ProgramStatusKind::Question,
+            )));
             Ok(())
         })
         .expect("deduplicate status write");
     state
-        .update(ProgramStatus::Working as u8, "Reading", || {
-            emitted.push(ProgramStatus::Working as u8);
+        .update(working, "Reading", || {
+            emitted.push(working);
             Ok(())
         })
         .expect("emit changed detail");
     state.invalidate();
     state
-        .update(ProgramStatus::Working as u8, "Thinking", || {
-            emitted.push(ProgramStatus::Working as u8);
+        .update(working, "Thinking", || {
+            emitted.push(working);
             Ok(())
         })
         .expect("re-emit status after terminal handoff");
     state
-        .update(NO_EMITTED_STATUS, "", || {
-            emitted.push(NO_EMITTED_STATUS);
+        .update(CachedStatus::Cleared, "", || {
+            emitted.push(CachedStatus::Cleared);
             Ok(())
         })
         .expect("clear status");
 
-    assert_eq!(
-        emitted,
-        [
-            ProgramStatus::Working as u8,
-            ProgramStatus::Working as u8,
-            ProgramStatus::Working as u8,
-            NO_EMITTED_STATUS,
-        ]
-    );
+    assert_eq!(emitted, [working, working, working, CachedStatus::Cleared,]);
 }
 
 #[test]
 fn selects_protocols_for_terminal_environment() {
     let direct_iterm = TerminalInfo {
+        backend: None,
         name: TerminalName::Iterm2,
         term_program: Some("iTerm.app".to_string()),
         version: Some("3.7.0".to_string()),
@@ -206,4 +208,50 @@ fn selects_protocols_for_terminal_environment() {
         ),
         generic_protocol
     );
+    assert_eq!(
+        terminal_program_status_support(
+            &TerminalInfo {
+                backend: Some(TerminalBackend::Vte {
+                    version: Some(5204)
+                }),
+                ..direct_iterm
+            },
+            /*stdout_is_terminal*/ true,
+            /*screen_active*/ false,
+        ),
+        no_protocols
+    );
+}
+
+#[test]
+fn selects_protocols_for_vte_backends() {
+    for name in [TerminalName::GnomeTerminal, TerminalName::Vte] {
+        for (version, osc_7501) in [
+            (Some(5204), false),
+            (Some(5300), false),
+            (Some(5399), false),
+            (Some(5400), true),
+            (Some(7600), true),
+            (None, true),
+        ] {
+            let terminal = TerminalInfo {
+                name,
+                term_program: None,
+                version: None,
+                term: None,
+                multiplexer: None,
+                backend: Some(TerminalBackend::Vte { version }),
+            };
+            assert_eq!(
+                terminal_program_status_support(
+                    &terminal, /*stdout_is_terminal*/ true, /*screen_active*/ false,
+                ),
+                TerminalProgramStatusSupport {
+                    osc_7501,
+                    osc_21337: false,
+                },
+                "terminal {name:?}, VTE backend version={version:?}"
+            );
+        }
+    }
 }

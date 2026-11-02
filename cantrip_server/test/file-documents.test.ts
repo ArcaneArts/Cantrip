@@ -50,7 +50,7 @@ beforeAll(async () => {
     name: "Worker",
     platform: "darwin",
     architecture: "arm64",
-    codexVersion: "0.163.0",
+    codexVersion: "0.166.0",
     codexRuntime: unprobedCodexRuntimeReport,
     startedAt: new Date().toISOString(),
   });

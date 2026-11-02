@@ -1,8 +1,8 @@
 diff --git a/codex-rs/app-server-protocol/src/protocol/thread_history.rs b/codex-rs/app-server-protocol/src/protocol/thread_history.rs
-index 818fb692effd7bd7361923de3f553973909681b2..66c66f48b234fdc0b447c0cd6b7a5fae29d1f544 100644
+index cb4f82e67a0c13e097146b8ce870d44a3360b2c3..b7137b5e7c3abd1f4f07a5826ba42dc6e89958ce 100644
 --- a/codex-rs/app-server-protocol/src/protocol/thread_history.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/thread_history.rs
-@@ -4997,6 +4997,43 @@ mod tests {
+@@ -5274,6 +5274,43 @@ mod tests {
          assert_eq!(turns[0].error, None);
      }
  
@@ -47,10 +47,10 @@ index 818fb692effd7bd7361923de3f553973909681b2..66c66f48b234fdc0b447c0cd6b7a5fae
      fn out_of_turn_error_does_not_create_or_fail_a_turn() {
          let events = vec![
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/shared.rs b/codex-rs/app-server-protocol/src/protocol/v2/shared.rs
-index 65c7db5aebe8bb5e3d5653a9109d412f099e1edb..58077c1f5dd591d95ba7c7a00e1aa7430d0ee915 100644
+index 1edd7b4a44f9c4ac8bd7b08087cfba12a3a2885a..692866e006f96fbf3faf84ac8654ee441b3296e2 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/shared.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/shared.rs
-@@ -98,6 +98,12 @@ pub enum CodexErrorInfo {
+@@ -101,6 +101,12 @@ pub enum CodexErrorInfo {
      Unauthorized,
      BadRequest,
      ThreadRollbackFailed,
@@ -63,7 +63,7 @@ index 65c7db5aebe8bb5e3d5653a9109d412f099e1edb..58077c1f5dd591d95ba7c7a00e1aa743
      SandboxError,
      /// The response SSE stream disconnected in the middle of a turn before completion.
      ResponseStreamDisconnected {
-@@ -172,6 +178,9 @@ impl From<CoreCodexErrorInfo> for CodexErrorInfo {
+@@ -179,6 +185,9 @@ impl From<CoreCodexErrorInfo> for CodexErrorInfo {
              CoreCodexErrorInfo::BadRequest => CodexErrorInfo::BadRequest,
              CoreCodexErrorInfo::InvalidPrompt => CodexErrorInfo::Other,
              CoreCodexErrorInfo::ThreadRollbackFailed => CodexErrorInfo::ThreadRollbackFailed,
@@ -74,10 +74,10 @@ index 65c7db5aebe8bb5e3d5653a9109d412f099e1edb..58077c1f5dd591d95ba7c7a00e1aa743
              CoreCodexErrorInfo::ResponseStreamDisconnected { http_status_code } => {
                  CodexErrorInfo::ResponseStreamDisconnected { http_status_code }
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/tests.rs b/codex-rs/app-server-protocol/src/protocol/v2/tests.rs
-index b797f5f1ee2d9b8a62760ee8071b8af18607546e..4742cf37efa4a077468a39751a66d09c499e1ade 100644
+index cb12a47dbed11593555e0f57029a398ef20056be..bc9c852690feec713bfcbea8c1e18f45cedb8b09 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/tests.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/tests.rs
-@@ -5510,3 +5510,23 @@ fn inter_agent_communication_items_preserve_identity_and_encrypted_payload_bound
+@@ -5568,3 +5568,23 @@ fn inter_agent_communication_items_preserve_identity_and_encrypted_payload_bound
          assert_eq!(serde_json::from_value::<ThreadItem>(value).unwrap(), item);
      }
  }
@@ -102,10 +102,10 @@ index b797f5f1ee2d9b8a62760ee8071b8af18607546e..4742cf37efa4a077468a39751a66d09c
 +    }
 +}
 diff --git a/codex-rs/app-server/src/bespoke_event_handling.rs b/codex-rs/app-server/src/bespoke_event_handling.rs
-index 2fd7aa1aafd67db70e3603a26644aaafc4a0f900..c711d9e8185faf82dacb58f386f8d46fab6c73b5 100644
+index 7e2a45a204a99123086210073ea36de8be0e4183..6bfac0ad7a8a3070f3d087adae04288c3aad1d86 100644
 --- a/codex-rs/app-server/src/bespoke_event_handling.rs
 +++ b/codex-rs/app-server/src/bespoke_event_handling.rs
-@@ -1032,14 +1032,35 @@ pub(crate) async fn apply_bespoke_event_handling(
+@@ -1030,14 +1030,35 @@ pub(crate) async fn apply_bespoke_event_handling(
                  .await;
          }
          EventMsg::Error(ev) => {
@@ -144,7 +144,7 @@ index 2fd7aa1aafd67db70e3603a26644aaafc4a0f900..c711d9e8185faf82dacb58f386f8d46f
              let turn_error = TurnError {
                  misalignment: ev.misalignment.map(Into::into),
                  message: ev.message,
-@@ -3048,6 +3069,163 @@ mod tests {
+@@ -3082,6 +3103,163 @@ mod tests {
          assert!(response.strict_auto_review);
      }
  
@@ -309,10 +309,10 @@ index 2fd7aa1aafd67db70e3603a26644aaafc4a0f900..c711d9e8185faf82dacb58f386f8d46f
      async fn test_handle_error_records_message() -> Result<()> {
          let conversation_id = ThreadId::new();
 diff --git a/codex-rs/core/src/agent/control_tests.rs b/codex-rs/core/src/agent/control_tests.rs
-index 34fb68d73dd5a2096c43d590dbb9f51bcccbf3b8..59951797e9a0e3432319f90e74a634c3bb6ca1c5 100644
+index 999d48eb6a8d8fdac9c8ccbac084e2b21af17da7..fb7d593e824e3467aed7dd0d2ebbfc7e6df587d6 100644
 --- a/codex-rs/core/src/agent/control_tests.rs
 +++ b/codex-rs/core/src/agent/control_tests.rs
-@@ -640,6 +640,29 @@ async fn on_event_updates_status_from_error() {
+@@ -649,6 +649,29 @@ async fn on_event_updates_status_from_error() {
      assert_eq!(status, Some(expected));
  }
  
@@ -358,10 +358,10 @@ index 0ec7e96d4be9ab89bc4068451044be40318c2f0a..4781ab4ea7246a010f565320106970e3
          _ => None,
      }
 diff --git a/codex-rs/core/src/session/handlers.rs b/codex-rs/core/src/session/handlers.rs
-index 8b6d1f82955c475e968cec1af83d1ca7fa416980..b7e26c1553205b69071960f9c5a59356210985b0 100644
+index e89d0475645442d0c0a19d115e746b59885a4b42..64f51f92efc4960450c8192dec211d053f433edc 100644
 --- a/codex-rs/core/src/session/handlers.rs
 +++ b/codex-rs/core/src/session/handlers.rs
-@@ -634,7 +634,7 @@ pub(super) async fn submission_loop(
+@@ -639,7 +639,7 @@ pub(super) async fn submission_loop(
                                      msg: EventMsg::Error(ErrorEvent {
                                          misalignment: None,
                                          message,
@@ -371,26 +371,24 @@ index 8b6d1f82955c475e968cec1af83d1ca7fa416980..b7e26c1553205b69071960f9c5a59356
                                  })
                                  .await;
 diff --git a/codex-rs/core/tests/suite/client.rs b/codex-rs/core/tests/suite/client.rs
-index b607c33fed721bb0ebf427e78190e70e2605235d..7361f3a8189a5f634f5505af5400dda368c7a029 100644
+index 335406a8f730505e37f9a0f167e4a65d9f3b1bd5..20a1ed78d545a8fcc8890f52d0e462ac858ef4a1 100644
 --- a/codex-rs/core/tests/suite/client.rs
 +++ b/codex-rs/core/tests/suite/client.rs
-@@ -2735,16 +2735,10 @@ async fn model_without_reasoning_configuration_omits_reasoning() -> anyhow::Resu
+@@ -2803,16 +2803,10 @@ async fn model_without_reasoning_configuration_omits_reasoning() -> anyhow::Resu
          .await?;
  
      codex
 -        .submit(Op::UserInput {
 -            items: vec![UserInput::Text {
--                text: "hello".into(),
--                text_elements: Vec::new(),
++        .start_or_steer_turn(TurnInputRequest::user_input(vec![UserInput::Text {
+                 text: "hello".into(),
+                 text_elements: Vec::new(),
 -            }],
 -            final_output_json_schema: None,
 -            responsesapi_client_metadata: None,
 -            additional_context: Default::default(),
 -            thread_settings: Default::default(),
 -        })
-+        .start_or_steer_turn(TurnInputRequest::user_input(vec![UserInput::Text {
-+            text: "hello".into(),
-+            text_elements: Vec::new(),
 +        }]))
          .await?;
  
@@ -525,7 +523,7 @@ index 1b4339cd6a4ccabc3d82ab782e3736ce2a571aad..fc71c4f6b5ee347704adff2cb5c8633b
  
      Ok(())
 diff --git a/codex-rs/core/tests/suite/settings_constraints.rs b/codex-rs/core/tests/suite/settings_constraints.rs
-index 1264b66e6e9a8f1792b88d0ae875eb8efb60c5b4..6adf6dc0df6f9680b535350eac063c9a1f1d05f8 100644
+index 7e4b0d73d9710d7cf2b6511fb35cd890b28db464..a29dffb94dfca25e96fcdab6c96c4697ac473b0d 100644
 --- a/codex-rs/core/tests/suite/settings_constraints.rs
 +++ b/codex-rs/core/tests/suite/settings_constraints.rs
 @@ -102,7 +102,13 @@ impl SettingsOperation {
@@ -543,7 +541,7 @@ index 1264b66e6e9a8f1792b88d0ae875eb8efb60c5b4..6adf6dc0df6f9680b535350eac063c9a
                          anyhow::bail!(error.message);
                      }
                      _ => {}
-@@ -195,6 +201,7 @@ async fn protected_model_settings_use_the_proposed_permissions(
+@@ -199,6 +205,7 @@ async fn protected_model_settings_use_the_proposed_permissions(
          ),
          approvals_reviewer: ApprovalsReviewer::AutoReview,
          permission_profile: PermissionProfile::read_only(),
@@ -552,10 +550,10 @@ index 1264b66e6e9a8f1792b88d0ae875eb8efb60c5b4..6adf6dc0df6f9680b535350eac063c9a
          ..initial
      };
 diff --git a/codex-rs/protocol/src/protocol.rs b/codex-rs/protocol/src/protocol.rs
-index 255e98c4291358110e57f0c5f5dbd1967dd8a1b5..cb78933c2ad38e07f2a6029c653a38ccbd985a44 100644
+index f1caf27a2b9dc766df95ed7e1b48a7bf486ac83c..c688c65615ca45073c6893d5684ea58cdc4ecd22 100644
 --- a/codex-rs/protocol/src/protocol.rs
 +++ b/codex-rs/protocol/src/protocol.rs
-@@ -2005,6 +2005,10 @@ pub enum CodexErrorInfo {
+@@ -2097,6 +2097,10 @@ pub enum CodexErrorInfo {
      },
      // Retained to deserialize errors recorded in legacy rollouts.
      ThreadRollbackFailed,
@@ -566,7 +564,7 @@ index 255e98c4291358110e57f0c5f5dbd1967dd8a1b5..cb78933c2ad38e07f2a6029c653a38cc
      Other,
  }
  
-@@ -2012,7 +2016,9 @@ impl CodexErrorInfo {
+@@ -2104,7 +2108,9 @@ impl CodexErrorInfo {
      /// Whether this error should mark the current turn as failed when replaying history.
      pub fn affects_turn_status(&self) -> bool {
          match self {
@@ -577,7 +575,7 @@ index 255e98c4291358110e57f0c5f5dbd1967dd8a1b5..cb78933c2ad38e07f2a6029c653a38cc
              Self::ContextWindowExceeded
              | Self::SessionBudgetExceeded
              | Self::UsageLimitExceeded
-@@ -6003,6 +6009,25 @@ mod tests {
+@@ -6119,6 +6125,25 @@ mod tests {
          assert!(!event.affects_turn_status());
      }
  
@@ -604,10 +602,10 @@ index 255e98c4291358110e57f0c5f5dbd1967dd8a1b5..cb78933c2ad38e07f2a6029c653a38cc
      fn generic_error_affects_turn_status() {
          let event = ErrorEvent {
 diff --git a/codex-rs/tui/src/chatwidget/protocol.rs b/codex-rs/tui/src/chatwidget/protocol.rs
-index 358c94dfb02408b67dcf50f8e985ef084cca51f5..54d989ae69b3c65a88a51f7965ea53ac7bb137a9 100644
+index da11fe41626ceffd093f72f029e03f74dfd58115..58dfaca4bc9aac573fb7b4130f01bac8f197e268 100644
 --- a/codex-rs/tui/src/chatwidget/protocol.rs
 +++ b/codex-rs/tui/src/chatwidget/protocol.rs
-@@ -208,7 +208,12 @@ impl ChatWidget {
+@@ -222,7 +222,12 @@ impl ChatWidget {
                  self.on_hook_completed(notification.run);
              }
              ServerNotification::Error(notification) => {
@@ -622,10 +620,10 @@ index 358c94dfb02408b67dcf50f8e985ef084cca51f5..54d989ae69b3c65a88a51f7965ea53ac
                          self.on_stream_error(
                              notification.error.message,
 diff --git a/codex-rs/tui/src/chatwidget/tests/app_server.rs b/codex-rs/tui/src/chatwidget/tests/app_server.rs
-index 9e75c629ea380e8761aa98766e23c047b9f0ffad..8eb30e52936a125a662117cae27fda3b5708635f 100644
+index 9754347d3375ddf50c52c8245d562a47fcc189ac..3db2daa3427ff9c0a03cda90709084d78dabb0e6 100644
 --- a/codex-rs/tui/src/chatwidget/tests/app_server.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/app_server.rs
-@@ -1581,6 +1581,76 @@ async fn live_app_server_collab_spawn_completed_renders_requested_model_and_effo
+@@ -1621,6 +1621,76 @@ async fn live_app_server_collab_spawn_completed_renders_requested_model_and_effo
      );
  }
  
@@ -703,10 +701,10 @@ index 9e75c629ea380e8761aa98766e23c047b9f0ffad..8eb30e52936a125a662117cae27fda3b
  async fn live_app_server_failed_turn_does_not_duplicate_error_history() {
      let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
 diff --git a/codex-rs/tui/src/chatwidget/turn_runtime.rs b/codex-rs/tui/src/chatwidget/turn_runtime.rs
-index 575410965b354ef2c156f466613714230a991836..e9cef310ea2f23c7d9a53228d1ed3f0e8bec7df8 100644
+index ef5954a853e340b35fc1bf3470c495af1091cf06..3e11e087fab07948315ec33def53af74f2f4d239 100644
 --- a/codex-rs/tui/src/chatwidget/turn_runtime.rs
 +++ b/codex-rs/tui/src/chatwidget/turn_runtime.rs
-@@ -498,6 +498,10 @@ impl ChatWidget {
+@@ -537,6 +537,10 @@ impl ChatWidget {
          message: String,
          codex_error_info: Option<AppServerCodexErrorInfo>,
      ) {
