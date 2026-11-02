@@ -391,6 +391,9 @@
 .pro-mode [data-slot="app-sidebar"],
 .pro-mode [data-slot="terminal-view"],
 .pro-mode [data-slot="run-terminal-view"],
+.pro-mode [data-slot="remote-desktop-view"],
+.pro-mode [data-slot="remote-desktop-view"] > [data-slot="panel-toolbar"],
+.pro-mode [data-slot="remote-desktop-viewport"],
 .pro-mode [data-slot="terminal-service-panel"],
 .pro-mode [data-slot="app-shell"] > section > [class~="bg-background"] {
   background-color: transparent;

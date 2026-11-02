@@ -1,6 +1,6 @@
 //! Worker-owned capture leases, independent of agent authority and input holds.
 use crate::{
-    backend::CaptureBackend,
+    backend::{Capture, CaptureBackend},
     cancellation::Cancellation,
     error::{CuaError, ErrorCode, Result},
     interaction::Binding,
@@ -39,13 +39,69 @@ pub enum Request {
 struct Lease {
     binding: Binding,
     target: Target,
+    flight: Option<Cancellation>,
 }
+pub(crate) struct FramePlan {
+    binding: Binding,
+    handle: u64,
+    cancellation: Cancellation,
+}
+pub(crate) struct EncodedFrame {
+    target: Target,
+    width: u32,
+    height: u32,
+    png: Vec<u8>,
+}
+pub(crate) type FrameWork = Box<dyn FnOnce() -> Result<EncodedFrame> + Send>;
 #[derive(Default)]
 pub struct Captures {
     next: u64,
     live: HashMap<u64, Lease>,
 }
 impl Captures {
+    pub(crate) fn prepare_frame(
+        &mut self,
+        backend: &mut impl CaptureBackend,
+        binding: &Binding,
+        handle: u64,
+        cancel: &Cancellation,
+    ) -> Result<Option<(FramePlan, FrameWork)>> {
+        let lease = self.get(binding, handle)?;
+        cancel.check()?;
+        if lease.flight.is_some() {
+            return Err(CuaError::new(
+                ErrorCode::Capacity,
+                "A frame is already pending for this capture.",
+            ));
+        }
+        let selected = lease.target.clone();
+        let Some(work) = backend.capture_work(&selected, cancel)? else {
+            return Ok(None);
+        };
+        self.live.get_mut(&handle).unwrap().flight = Some(cancel.clone());
+        let cancellation = cancel.clone();
+        Ok(Some((
+            FramePlan {
+                binding: binding.clone(),
+                handle,
+                cancellation: cancel.clone(),
+            },
+            Box::new(move || encode_frame(&selected, work()?, &cancellation)),
+        )))
+    }
+    pub(crate) fn finish_frame(
+        &mut self,
+        plan: FramePlan,
+        result: Result<EncodedFrame>,
+    ) -> Result<OperationResult> {
+        // A closed/replaced lease cannot publish a late frame or resurrect capture.
+        self.get(&plan.binding, plan.handle)?;
+        self.live.get_mut(&plan.handle).unwrap().flight = None;
+        plan.cancellation.check()?;
+        let frame = result?;
+        self.live.get_mut(&plan.handle).unwrap().target = frame.target.clone();
+        Ok(frame_result(plan.handle, frame))
+    }
     fn get(&self, binding: &Binding, handle: u64) -> Result<&Lease> {
         binding.validate()?;
         let lease = self.live.get(&handle).ok_or_else(|| {
@@ -111,7 +167,14 @@ impl Captures {
                     })?;
                 let handle = self.next;
                 let data = json!({"handle":handle,"target":target});
-                self.live.insert(handle, Lease { binding, target });
+                self.live.insert(
+                    handle,
+                    Lease {
+                        binding,
+                        target,
+                        flight: None,
+                    },
+                );
                 Ok(OperationResult {
                     data,
                     payload: vec![],
@@ -122,54 +185,73 @@ impl Captures {
                 let selected = self.get(&binding, handle)?.target.clone();
                 // Capture resolves identity itself; no extra inventory or focus request.
                 let capture = backend.capture(&selected, cancel)?;
-                capture.target.validate()?;
-                if capture.target.id != selected.id
-                    || capture.target.generation != selected.generation
-                    || capture.target.process_id != selected.process_id
-                {
-                    return Err(CuaError::new(
-                        ErrorCode::StaleTarget,
-                        "Remote capture target was replaced.",
-                    ));
-                }
-                capture.raster.validate()?;
-                cancel.check()?;
-                let mut encoded = BoundedImage(Vec::new());
-                {
-                    let mut encoder = png::Encoder::new(
-                        &mut encoded,
-                        capture.raster.width,
-                        capture.raster.height,
-                    );
-                    encoder.set_color(png::ColorType::Rgba);
-                    encoder.set_depth(png::BitDepth::Eight);
-                    encoder.set_compression(png::Compression::Fast);
-                    let mut writer = encoder.write_header().map_err(encode_error)?;
-                    writer
-                        .write_image_data(&capture.raster.rgba)
-                        .map_err(encode_error)?;
-                    writer.finish().map_err(encode_error)?;
-                }
-                cancel.check()?;
-                let data = json!({"handle":handle,"target":capture.target,"image":{"mediaType":"image/png","width":capture.raster.width,"height":capture.raster.height,"cursorIncluded":false}});
-                self.live.get_mut(&handle).unwrap().target = capture.target;
-                Ok(OperationResult {
-                    data,
-                    payload: encoded.0,
-                    event: None,
-                })
+                let frame = encode_frame(&selected, capture, cancel)?;
+                self.live.get_mut(&handle).unwrap().target = frame.target.clone();
+                Ok(frame_result(handle, frame))
             }
             Request::Close { binding, handle } => {
                 self.get(&binding, handle)?;
-                self.live.remove(&handle);
+                if let Some(flight) = self.live.remove(&handle).and_then(|lease| lease.flight) {
+                    flight.cancel();
+                }
                 Ok(empty())
             }
             Request::CloseBinding { binding } => {
                 binding.validate()?;
+                for lease in self.live.values().filter(|lease| lease.binding == binding) {
+                    if let Some(flight) = &lease.flight {
+                        flight.cancel();
+                    }
+                }
                 self.live.retain(|_, v| v.binding != binding);
                 Ok(empty())
             }
         }
+    }
+}
+fn encode_frame(
+    selected: &Target,
+    capture: Capture,
+    cancel: &Cancellation,
+) -> Result<EncodedFrame> {
+    capture.target.validate()?;
+    if capture.target.id != selected.id
+        || capture.target.generation != selected.generation
+        || capture.target.process_id != selected.process_id
+    {
+        return Err(CuaError::new(
+            ErrorCode::StaleTarget,
+            "Remote capture target was replaced.",
+        ));
+    }
+    capture.raster.validate()?;
+    cancel.check()?;
+    let mut encoded = BoundedImage(Vec::new());
+    {
+        let mut encoder =
+            png::Encoder::new(&mut encoded, capture.raster.width, capture.raster.height);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        encoder.set_compression(png::Compression::Fast);
+        let mut writer = encoder.write_header().map_err(encode_error)?;
+        writer
+            .write_image_data(&capture.raster.rgba)
+            .map_err(encode_error)?;
+        writer.finish().map_err(encode_error)?;
+    }
+    cancel.check()?;
+    Ok(EncodedFrame {
+        target: capture.target,
+        width: capture.raster.width,
+        height: capture.raster.height,
+        png: encoded.0,
+    })
+}
+fn frame_result(handle: u64, frame: EncodedFrame) -> OperationResult {
+    OperationResult {
+        data: json!({"handle":handle,"target":frame.target,"image":{"mediaType":"image/png","width":frame.width,"height":frame.height,"cursorIncluded":false}}),
+        payload: frame.png,
+        event: None,
     }
 }
 fn encode_error(_: png::EncodingError) -> CuaError {

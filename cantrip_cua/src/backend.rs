@@ -15,6 +15,8 @@ pub struct Capture {
     pub raster: Raster,
 }
 
+pub type CaptureWork = Box<dyn FnOnce() -> Result<Capture> + Send>;
+
 impl Raster {
     pub fn validate(&self) -> Result<()> {
         let pixels = (self.width as usize)
@@ -29,6 +31,15 @@ impl Raster {
 }
 
 pub trait CaptureBackend: Send {
+    /// Own the native capture wait without holding the service/input executor.
+    /// Backends without an independent capture path keep the synchronous path.
+    fn capture_work(
+        &mut self,
+        _target: &Target,
+        _cancellation: &Cancellation,
+    ) -> Result<Option<CaptureWork>> {
+        Ok(None)
+    }
     /// Capture owners are independent of agent and input lifetimes.
     fn retain_remote_captures(&mut self, _targets: Vec<Target>) {}
     /// Trusted worker participants share the native input host, not agent bindings.

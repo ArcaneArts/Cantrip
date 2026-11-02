@@ -679,6 +679,7 @@ export function ManagedRemoteDesktopView({
   return (
     <div
       className="flex min-h-0 flex-1 flex-col bg-background"
+      data-slot="remote-desktop-view"
       inert={transfer.locked}
     >
       <PanelToolbar
@@ -918,6 +919,7 @@ export function ManagedRemoteDesktopView({
         <div
           ref={surfaceRef}
           className="relative flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden bg-black"
+          data-slot="remote-desktop-viewport"
         >
           <RemoteSurfaceCanvas
             ref={remoteCanvasRef}
@@ -946,7 +948,7 @@ export function ManagedRemoteDesktopView({
             }
             onPointer={send}
             onRendered={() => setRenderedSurfaceId(desktop.id)}
-            pointerMoveThrottleMs={32}
+            pointerMoveThrottleMs={16}
             preventContextMenu
             style={{ width: canvasSize.width, height: canvasSize.height }}
           />

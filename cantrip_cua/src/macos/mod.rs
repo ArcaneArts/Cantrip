@@ -633,17 +633,57 @@ impl CaptureBackend for MacOsBackend {
         self.registry.identity_for(id, generation)?;
         Ok(target)
     }
-    fn capture(&mut self, target: &Target, cancellation: &Cancellation) -> Result<Capture> {
+    fn capture_work(
+        &mut self,
+        target: &Target,
+        cancellation: &Cancellation,
+    ) -> Result<Option<crate::backend::CaptureWork>> {
         if !available() {
             return unsupported();
         }
         let identity = self.registry.identity(target)?;
         let selected = target.clone();
-        let (pending, receiver) = self.calls.begin(cancellation)?;
-        let request = pending.clone();
-        request.stage(pending::CaptureStage::Inventory);
-        diagnostic_phase("capture-queued");
-        DispatchQueue::main().exec_async(move || {
+        let calls = self.calls.clone();
+        let cancellation = cancellation.clone();
+        Ok(Some(Box::new(move || {
+            capture_native(&calls, selected, identity, &cancellation)
+        })))
+    }
+    fn capture(&mut self, target: &Target, cancellation: &Cancellation) -> Result<Capture> {
+        if !available() {
+            return unsupported();
+        }
+        let result = capture_native(
+            &self.calls,
+            target.clone(),
+            self.registry.identity(target)?,
+            cancellation,
+        );
+        if result.as_ref().is_err_and(|error| {
+            matches!(
+                error.code,
+                ErrorCode::TargetNotFound | ErrorCode::StaleTarget
+            )
+        }) {
+            self.registry.remove(&target.id);
+        }
+        result
+    }
+}
+
+/// The wait and raster conversion run on a capture job. ObjC capture objects
+/// remain on their existing native queues; only owned pixels cross threads.
+fn capture_native(
+    calls: &NativeCalls,
+    selected: Target,
+    identity: Identity,
+    cancellation: &Cancellation,
+) -> Result<Capture> {
+    let (pending, receiver) = calls.begin(cancellation)?;
+    let request = pending.clone();
+    request.stage(pending::CaptureStage::Inventory);
+    diagnostic_phase("capture-queued");
+    DispatchQueue::main().exec_async(move || {
             if request.cancelled() { return; }
             let completion = RcBlock::new(move |content: *mut SCShareableContent, error: *mut NSError| {
                 diagnostic_phase("capture-inventory-completion");
@@ -664,30 +704,17 @@ impl CaptureBackend for MacOsBackend {
             diagnostic_phase("capture-inventory-requested");
             unsafe { SCShareableContent::getShareableContentExcludingDesktopWindows_onScreenWindowsOnly_completionHandler(false, false, &completion); }
         });
-        let mut capture = match pending.wait(&receiver) {
-            Ok(capture) => capture,
-            Err(error) => {
-                if matches!(
-                    error.code,
-                    ErrorCode::TargetNotFound | ErrorCode::StaleTarget
-                ) {
-                    self.registry.remove(&target.id);
-                }
-                return Err(error);
-            }
-        };
-        cancellation.check()?;
-        capture.target.focused =
-            accessibility::FocusSample::capture().target_focused(&capture.target);
-        Ok(Capture {
-            target: capture.target.clone(),
-            raster: Raster {
-                width: capture.target.pixel_width,
-                height: capture.target.pixel_height,
-                rgba: std::mem::take(&mut capture.rgba),
-            },
-        })
-    }
+    let mut capture = pending.wait(&receiver)?;
+    cancellation.check()?;
+    capture.target.focused = accessibility::FocusSample::capture().target_focused(&capture.target);
+    Ok(Capture {
+        target: capture.target.clone(),
+        raster: Raster {
+            width: capture.target.pixel_width,
+            height: capture.target.pixel_height,
+            rgba: std::mem::take(&mut capture.rgba),
+        },
+    })
 }
 
 struct NativeCapture {
