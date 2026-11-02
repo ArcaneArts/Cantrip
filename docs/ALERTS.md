@@ -117,5 +117,21 @@ short-lived, account/server-scoped routing hint reveals the exact interaction,
 Goal, turn, or Task review section in the destination window. It carries only
 routing metadata, expires after navigation, and never sends a response.
 
-Conditional discovery and cross-project live counts follow in the next cycle.
-Each milestone is delivered through its own worktree and merged PR.
+## Discovery and synchronization
+
+The selected project's sidebar shows `1 Alert` or `3 Alerts` above the Files /
+Chats pages, only while its count is positive. It opens or focuses the owned
+Alert Inbox. Project switchers show compact badges for positive counts,
+including projects that have never been opened. Count changes do not enter the
+project ordering/search computation.
+
+One owner-scoped aggregate query supplies all visible counts. Current-user
+`project-alert` events invalidate that aggregate and only the affected Inbox.
+Reconnect scope recovery reloads authoritative state. A foreground 30-second
+aggregate reconciliation and focus/network recovery cover missed notifications;
+there is no interval work in a hidden window. Inbox lists reconcile while open.
+Badge reads never load/decrypt transcripts, open projects, or contact workers.
+
+Resolving the last alert removes discovery badges without closing an existing
+Inbox tab. Its empty state remains usable. Full-flow browser qualification
+follows in the final cycle.

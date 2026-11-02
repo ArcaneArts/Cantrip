@@ -2071,3 +2071,42 @@ it("keeps run definitions and unrelated preparation cached during a chat activit
     client.clear();
   }
 });
+
+it("invalidates only the affected Inbox and aggregate counts for unopened project Alerts", async () => {
+  const counts = ["project-alert-counts"],
+    affected = ["project-alerts", "unopened"],
+    other = ["project-alerts", "selected"];
+  expect(
+    appLiveEventQueryKeys(
+      event({
+        resource: "project-alert",
+        scope: { kind: "current-user" },
+        entityId: "unopened",
+      }),
+    ),
+  ).toEqual([counts, affected]);
+  const client = new QueryClient();
+  for (const key of [counts, affected, other]) client.setQueryData(key, []);
+  const bridge = new AppLiveQueryBridge(client);
+  bridge.handleEvent(
+    event({
+      resource: "project-alert",
+      scope: { kind: "current-user" },
+      entityId: "unopened",
+    }),
+  );
+  await bridge.recoverScopes([], "client-requested");
+  expect(client.getQueryState(counts)?.isInvalidated).toBe(true);
+  expect(client.getQueryState(affected)?.isInvalidated).toBe(true);
+  expect(client.getQueryState(other)?.isInvalidated).toBe(false);
+  expect(appLiveScopeQueryKeys({ kind: "current-user" })).toContainEqual(
+    counts,
+  );
+  expect(appLiveScopeQueryKeys({ kind: "current-user" })).toContainEqual([
+    "project-alerts",
+  ]);
+  expect(
+    appLiveScopeQueryKeys({ kind: "project", projectId: "unopened" }),
+  ).toContainEqual(affected);
+  client.clear();
+});

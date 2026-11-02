@@ -1,3 +1,4 @@
+import { useProjectAlertCounts } from "@/lib/project-alert-counts";
 import {
   readAlertNavigation,
   subscribeAlertNavigation,
@@ -274,6 +275,7 @@ export function App() {
     seedWorkspaceSelection,
   );
   const workspaceSelection = workspaceConnection.workspaceSelection;
+  const projectAlertCounts = useProjectAlertCounts();
   const [conversationArchiveRequest, setConversationArchiveRequest] = useState<{
     projectId: string;
     id: string;
@@ -2228,7 +2230,7 @@ export function App() {
     pinSidebarFilePath, popOutActiveView, popOutTab, popOutPane, popOutProjectOverviewView, popoutError, popoutPending,
     prepareExplorerRebind, projectOverviewGitProject, projectOverviewGitSection, projectOverviewPopoutTarget, projectOverviewSelected,
     projectInventorySurfaces, projectRevealButtonLabel, projectRevealLabel, projectSettingsSection, projectSetupJobs, projectSurfaceIndex, projectSurfaces,
-    projectTaskChatIds, projectTokenUsage, projectViews, projectWorkspaces,
+    projectAlertCounts, projectTaskChatIds, projectTokenUsage, projectViews, projectWorkspaces,
     projects, queryClient, remoteDesktop,
     removeProjectMutation, renameChatMutation, renameExplorerMutation, renameProjectViewMutation, renameSidebarFileEntry,
     renamePaneMutation, renameStandaloneChat, renameSurface, renameTerminalMutation, repositoryStats,

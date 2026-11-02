@@ -145,3 +145,43 @@ describe("project switcher", () => {
     expect(markup).not.toContain('aria-label="Add tab to Cantrip"');
   });
 });
+
+it("adds only nonzero Alert counts without changing recency order", () => {
+  recency.ids = ["project-2", "project-1"];
+  const render = (alertCounts: ReadonlyMap<string, number>) =>
+    renderToStaticMarkup(
+      <ProjectSwitcher
+        activeWorkspaceId="default"
+        alertCounts={alertCounts}
+        projects={projects}
+        selectedProjectId={null}
+        workspaces={[
+          { ...workspaces[0]!, projectIds: ["project-1", "project-2"] },
+        ]}
+        onAddProject={vi.fn()}
+        onManageWorkspaces={vi.fn()}
+        onOpenProjectSettings={vi.fn()}
+        onRemoveProject={vi.fn()}
+        onSelectProject={vi.fn()}
+        onSelectWorkspace={vi.fn()}
+      />,
+    );
+  for (const counts of [
+    new Map([
+      ["project-1", 3],
+      ["project-2", 0],
+    ]),
+    new Map([
+      ["project-1", 0],
+      ["project-2", 1],
+    ]),
+  ]) {
+    const html = render(counts);
+    expect(html.indexOf(">CareMap<")).toBeLessThan(html.indexOf(">Cantrip<"));
+    expect(html.match(/data-slot="project-alert-count"/g)).toHaveLength(1);
+    expect(html).not.toContain('aria-label="0 Alerts"');
+  }
+  expect(render(new Map([["project-1", 3]]))).toContain(
+    'aria-label="3 Alerts"',
+  );
+});
