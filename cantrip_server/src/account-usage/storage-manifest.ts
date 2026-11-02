@@ -154,6 +154,7 @@ export const STORAGE_ACCOUNTING_MANIFEST: readonly StorageAccountingManifestEntr
     accountOwned(schema.encryptionPrincipals, "account"),
     accountOwned(schema.encryptionKeyGrants, "account"),
     accountOwned(schema.projects, "projects"),
+    accountOwned(schema.projectAlerts, "projects"),
     accountOwned(schema.workspaceLayouts, "projects"),
     accountOwned(schema.workspaceCommandReceipts, "projects"),
     accountOwned(schema.conversationUsageClients, "conversations"),

@@ -231,6 +231,11 @@ impl Service {
         self.queue_delivery.start();
     }
 
+    pub fn name_task(&self, owner: &str, chat: &str, task: &Value) {
+        // Title generation owns its work and is drained by this execution graph.
+        drop(self.titles.generate_task(owner, chat, task));
+    }
+
     /// Stop sources of new background work before closing the worker bridge.
     pub fn stop(&self) {
         self.queue_delivery.stop();

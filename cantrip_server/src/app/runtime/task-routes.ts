@@ -39,6 +39,7 @@ import {
   type ModelRuntime,
 } from "../../db/repository.js";
 import { TaskConflictError } from "../../db/tasks.js";
+import { toChatAttachmentOpaqueSummary } from "../../db/repository/chat-attachments.js";
 import { TaskDispatchConflictError } from "../../db/task-dispatch.js";
 import { TaskSchedulingConflictError } from "../../db/task-scheduling.js";
 import { errorMessage, invalidBody } from "../../http/request-helpers.js";
@@ -689,7 +690,11 @@ export function installTaskRouteRuntime(
         request.params.chatId,
         task.draftAttachmentIds,
       );
-      return reply.send(chatAttachmentOpaqueListSchema.parse(attachments));
+      return reply.send(
+        chatAttachmentOpaqueListSchema.parse(
+          attachments.map(toChatAttachmentOpaqueSummary),
+        ),
+      );
     },
   );
 

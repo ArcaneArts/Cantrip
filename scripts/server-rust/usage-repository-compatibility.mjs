@@ -147,6 +147,46 @@ try {
     assert.equal(row.rowCount, "1");
     assert.ok(BigInt(row.logicalBytes) > 0n);
   }
+  for (const principal of [owner, other])
+    await seed(
+      `INSERT INTO projects(id,owner_id,protected_label,github_repository_blind_index,created_at,updated_at) VALUES(${literal("usage-alert-" + principal)},${literal(principal)},'{}',${literal("usage-alert-" + principal)},${literal(stamp)},${literal(stamp)});`,
+    );
+  const alertBaseline = await compare("project storage before alert episodes", {
+    op: "measure",
+  });
+  for (const principal of [owner, other])
+    await seed(
+      `INSERT INTO project_alerts(id,owner_id,project_id,source,source_id,episode_id,source_revision,kind,priority,target,created_at,updated_at) VALUES(${literal("usage-alert-" + principal)},${literal(principal)},${literal("usage-alert-" + principal)},'interaction','usage-request','usage-episode',1,'permission',1,'{"kind":"interaction","chatId":null,"requestId":"usage-request"}',${literal(stamp)},${literal(stamp)});`,
+    );
+  const alertUsage = await compare(
+    "project alert episodes contribute to their authenticated owner's project storage",
+    { op: "measure" },
+  );
+  for (const principal of [owner, other]) {
+    const projectRow = (rows) =>
+      rows.find(
+        (row) =>
+          row.ownerId === principal &&
+          row.storageClass === "server" &&
+          row.category === "projects",
+      );
+    assert.equal(projectRow(alertBaseline).rowCount, "1");
+    assert.equal(projectRow(alertUsage).rowCount, "2");
+    assert.ok(
+      BigInt(projectRow(alertUsage).logicalBytes) >
+        BigInt(projectRow(alertBaseline).logicalBytes),
+    );
+  }
+  for (const principal of [owner, other])
+    await seed(
+      `DELETE FROM projects WHERE id=${literal("usage-alert-" + principal)};`,
+    );
+  assert.deepEqual(
+    await compare("deleted project alert episodes leave no retained storage", {
+      op: "measure",
+    }),
+    conversationUsage,
+  );
   await compare("empty current projection", { op: "current", owner });
   const entries = [
     entry(owner),

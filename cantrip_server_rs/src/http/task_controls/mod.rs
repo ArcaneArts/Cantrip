@@ -1,5 +1,8 @@
 //! Public Task metadata and encrypted draft/plan edits. The repository owns
 //! revision and state checks; publication follows the committed mutation.
+mod creation;
+mod deletion;
+mod models;
 mod operations;
 use super::{
     body, json_response,
@@ -89,6 +92,21 @@ async fn execute(
             .get(&owner, &chat)
             .await?
         {
+            Some(task) if path.ends_with("/attachments") => {
+                let attachments = crate::native_commands::attachments::get(
+                    crate::database::Executor::Database(&service.repository.database),
+                    &owner,
+                    &chat,
+                    &task["draftAttachmentIds"],
+                )
+                .await?;
+                let attachments = attachments.iter().map(|attachment| json!({"id":attachment["id"],"chatId":attachment["chatId"],"sizeBytes":attachment["sizeBytes"],"status":attachment["status"],"protectedMetadata":attachment["protectedMetadata"],"createdAt":attachment["createdAt"]})).collect();
+                output(
+                    200,
+                    "chatAttachmentOpaqueListSchema",
+                    &Value::Array(attachments),
+                )
+            }
             Some(task) => output(200, "taskOpaqueSummarySchema", &task),
             None => Ok(error(404, "Task not found.")),
         };
@@ -97,7 +115,33 @@ async fn execute(
         Ok(body) => body,
         Err(response) => return Ok(response),
     };
+    if method == Method::DELETE {
+        return service
+            .scratch_roots
+            .owned(deletion::delete(service.clone(), owner, chat))
+            .await;
+    }
+    if path == "/api/chats/{chatId}/model-configuration" {
+        let input = match parse("chatModelConfigurationUpdateSchema", body.as_ref())? {
+            Ok(input) => input,
+            Err(response) => return Ok(response),
+        };
+        return service
+            .worker_maintenance
+            .owned(models::update(service.clone(), owner, chat, input))
+            .await;
+    }
     if method == Method::POST {
+        if path == "/api/projects/{projectId}/tasks" {
+            let input = match parse("encryptedTaskCreateSchema", body.as_ref())? {
+                Ok(input) => input,
+                Err(response) => return Ok(response),
+            };
+            return service
+                .scratch_roots
+                .owned(creation::create(service.clone(), owner, chat, input))
+                .await;
+        }
         return service
             .scratch_roots
             .owned(operations::execute(
@@ -140,7 +184,10 @@ async fn handle(
 
 pub(super) fn routes() -> Router<Arc<AuthService>> {
     Router::new()
-        .route("/api/tasks/{chatId}", get(handle))
+        .route("/api/chats/{chatId}/model-configuration", patch(handle))
+        .route("/api/projects/{projectId}/tasks", post(handle))
+        .route("/api/tasks/{chatId}", get(handle).delete(handle))
+        .route("/api/tasks/{chatId}/attachments", get(handle))
         .route("/api/tasks/{chatId}/draft", patch(handle))
         .route("/api/tasks/{chatId}/plan", patch(handle).post(handle))
         .route("/api/tasks/{chatId}/start", post(handle))

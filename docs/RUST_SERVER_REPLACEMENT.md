@@ -12,6 +12,45 @@ feature set.
 
 Status: **implementation in progress; not a deployable replacement**.
 
+The Task catalog milestone implements public creation, deletion, attachment
+listing and Chat model configuration. Creation commits the encrypted Task,
+Chat, runtime session and suspended execution lane together, inherits account
+defaults, and publishes through the existing title/Live execution graph after
+commit. Deletion attempts worker interruption and continues after a failed or
+malformed response. Model changes retain the existing route-resolution errors
+and runtime write fence; the Chat and Task keep separate model configurations.
+
+Fresh local comparisons pass all nine storage/authentication profiles: 150
+paired HTTP observations per store (450 total), five independently decrypted
+Task results per peer/profile, project-scoped creation publication and reopened
+database checks for atomic rollback, lane identity, absent pane membership and
+deletion cascades. These are controlled-worker tests, not complete model or
+packaged-product acceptance. The populated attachment case exposed an existing
+Source bug: repository records include `workerId`, which the strict public
+schema rejects. Both implementations now apply the existing public attachment
+projection before validating that response. No routing field is made public.
+
+All 29,036 Task protocol outcomes/exact errors, 46 Rust library tests, recursive
+type checks, 43 focused Source Task/Goal tests and strict all-target server
+Clippy pass locally. After integrating the project-alert foundation and current
+UI changes, the 487-root/9,237-node manifest preserves the complete
+482-root/9,219-node baseline prefix and mappings. The previous Linux and Windows
+CI runs stopped at a persistence fixture still using retired Task Worker input;
+the current per-Task model fixture passes all 158 cases and six snapshots on
+every store.
+Fresh platform reruns and the remaining Task dashboard/Goal controls are still
+required. The combined broad check passes 1,684 Source server tests with 57
+skipped and four failures. Three integration failures are repaired: the Task
+model migration fixture now selects migration 0236 by its journal identity,
+and project alerts have owner-scoped storage accounting in both servers.
+All twelve focused Source migration/accounting/alert tests, both native usage
+contract tests and all 46 usage repository comparisons per store pass. The
+comparisons include populated alerts for two owners and accounting after their
+project deletion. The previously reproduced account-pooling fixture failure
+remains; its investigated setup changes were not retained. The broad check has
+not passed, and its recursive bail does not establish complete worker/app test
+acceptance.
+
 The Task admission work in
 [PR #2425](https://github.com/ArcaneArts/Cantrip/pull/2425) mounts six public start, planning, continuation,
 finalization, retry and retained-session recovery endpoints through the actual

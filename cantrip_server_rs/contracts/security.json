@@ -482,7 +482,12 @@
     "projectAlertPageSchema": 9209,
     "projectAlertCountsSchema": 9213,
     "projectAlertChangeSchema": 9217,
-    "projectAlertProtectedDetailSchema": 9180
+    "projectAlertProtectedDetailSchema": 9180,
+    "encryptedTaskCreateSchema": 9219,
+    "taskWireCreateResultSchema": 9233,
+    "chatAttachmentOpaqueListSchema": 4671,
+    "chatInterruptAcceptedSchema": 9234,
+    "chatModelConfigurationUpdateSchema": 9236
   },
   "nodes": [
     {
@@ -53907,6 +53912,147 @@
       "catchall": 9218,
       "checks": []
     },
-    { "type": "never", "checks": [] }
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "encryptedTaskCreateSchema",
+      "shape": {
+        "worktreeId": 9220,
+        "worktreeMode": 9222,
+        "paneId": 6930,
+        "tabGroupId": 6932,
+        "targetRegion": 6934,
+        "target": 9224,
+        "chatId": 9225,
+        "planGoalEnabled": 9226,
+        "priority": 9228,
+        "modelConfiguration": 9229,
+        "task": 4995,
+        "titleProtection": 701,
+        "autoTitle": 9230
+      },
+      "catchall": 9232,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "chat-placement-create",
+          "messageAfterPath": false
+        },
+        {
+          "check": "refinement",
+          "tag": "encrypted-task-create",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 9221,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 9223,
+      "defaultValue": "agent-managed",
+      "checks": []
+    },
+    { "type": "enum", "values": ["agent-managed", "pinned"], "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 734,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 9227,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 4706,
+      "defaultValue": 0,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 849,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 9231,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "taskWireCreateResultSchema",
+      "shape": { "chat": 775, "task": 4675 },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "chatInterruptAcceptedSchema",
+      "shape": { "interrupted": 9235 },
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "object",
+      "name": "chatModelConfigurationUpdateSchema",
+      "shape": {
+        "modelId": 850,
+        "reasoningEffort": 852,
+        "customSubagentModel": 855,
+        "subagentModelId": 857,
+        "subagentReasoningEffort": 859
+      },
+      "catchall": 861,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "model-configuration",
+          "messageAfterPath": false
+        },
+        {
+          "check": "refinement",
+          "tag": "chat-root-model",
+          "messageAfterPath": true,
+          "message": "A root model must be selected.",
+          "path": ["modelId"]
+        }
+      ]
+    }
   ]
 }
