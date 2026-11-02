@@ -799,17 +799,35 @@ export function App() {
     () => ({
       pendingActionIds: new Set<AppActionId>([
         ...(newChat.isPending ? [APP_ACTION_IDS.newAgentChat] : []),
+        ...(newTask.isPending ? [APP_ACTION_IDS.newTask] : []),
         ...(newTerminal.isPending ? [APP_ACTION_IDS.newTerminal] : []),
       ]),
       projectId: projectActionProjectId,
     }),
-    [newChat.isPending, newTerminal.isPending, projectActionProjectId],
+    [
+      newChat.isPending,
+      newTask.isPending,
+      newTerminal.isPending,
+      projectActionProjectId,
+    ],
   );
   const executeAppAction = (actionId: AppActionId) => {
     const projectId = appActionContext.projectId;
     if (!projectId) return;
     if (actionId === APP_ACTION_IDS.newAgentChat) {
       newChat.mutate({ projectId });
+    } else if (actionId === APP_ACTION_IDS.newTask) {
+      newTask.mutate(
+        { projectId },
+        {
+          onError: (error) =>
+            showAppToast({
+              title: "Could not create task",
+              tone: "error",
+              message: errorText(error),
+            }),
+        },
+      );
     } else if (actionId === APP_ACTION_IDS.newTerminal) {
       newTerminal.mutate({ projectId });
     }
