@@ -18,8 +18,9 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-// Sixteen ordinary correlations, sixteen native closes, four JS resets.
-const MAX_PENDING: usize = 36;
+// Sixteen ordinary correlations, one cosmetic cursor request, sixteen native
+// closes and four JS resets. Matches the worker transport's reserved lanes.
+const MAX_PENDING: usize = 37;
 const MAX_OUTBOUND: usize = 4;
 pub(crate) type Pending = Arc<Mutex<HashMap<u64, Cancellation>>>;
 
@@ -150,7 +151,7 @@ fn cancel_all(pending: &Pending) {
     }
 }
 
-/// At most 36 accepted jobs and four outgoing images can be pending. Rejected
+/// At most 37 accepted jobs and four outgoing images can be pending. Rejected
 /// overload never blocks the reader. Exhausted output capacity terminates the
 /// stream rather than accumulating memory or replaying ambiguous operations.
 pub fn run<B: CaptureBackend + 'static>(

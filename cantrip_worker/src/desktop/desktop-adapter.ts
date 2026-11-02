@@ -349,10 +349,12 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
       await this.publishTargetIcons(attachmentId, message.keys);
       return;
     }
-    try {
-      if (this.#participantInput) await this.applyInput(attachmentId, message);
-      else await this.enqueue(() => this.applyInput(attachmentId, message));
-    } catch (error) {
+    const independentInput = Boolean(this.#participantInput);
+    const input = (
+      independentInput
+        ? this.applyInput(attachmentId, message)
+        : this.enqueue(() => this.applyInput(attachmentId, message))
+    ).catch((error) => {
       workerLogger.rateLimited(
         `desktop-input-rejected:${this.#surfaceId}:${message.type}`,
         "warn",
@@ -367,7 +369,15 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
           attachmentId,
         },
       );
-      throw error;
+      if (!independentInput) throw error;
+    });
+    if (independentInput) {
+      // The participant owns native event ordering and failure cleanup. Do not
+      // hold the encrypted control lane until delivery: newer visual positions
+      // and input-cancel must be able to reach that participant immediately.
+      void input;
+    } else {
+      await input;
     }
   }
 

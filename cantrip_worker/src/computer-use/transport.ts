@@ -28,6 +28,8 @@ export interface CuaRequestOptions {
   timeoutMs?: number;
   /** Trusted owner cleanup only; never populate from an agent/client request. */
   lifecycle?: boolean;
+  /** Trusted cosmetic cursor lane; does not consume native-input reservations. */
+  presentation?: boolean;
   /** Trusted execution owner authorizes each host action; never supplied by JS. */
   onHostCall?: (action: unknown, signal: AbortSignal) => Promise<unknown>;
 }
@@ -51,9 +53,10 @@ interface Pending {
   hostCallPending: boolean;
 }
 
-// Sixteen ordinary correlations plus sixteen native closes and four JS resets.
+// Sixteen ordinary correlations, one cosmetic cursor request, sixteen native
+// closes and four JS resets. Presentation cannot take an input/cleanup slot.
 // The lifecycle owners retain their resource reservations until cleanup settles.
-const MAX_OUTSTANDING = 36;
+const MAX_OUTSTANDING = 37;
 const MAX_ORDINARY_OUTSTANDING = 16;
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
 const CANCELLATION_GRACE_MS = 2_000;
@@ -90,6 +93,7 @@ class ChildTransport implements CuaTransport {
   readonly #decoder: CuaFrameDecoder;
   readonly #pending = new Map<number, Pending>();
   readonly #cancelled = new Map<number, NodeJS.Timeout>();
+  readonly #presentations = new Set<number>();
   readonly #exit: Promise<void>;
   #requestId = 0;
   #eventSequence = 0;
@@ -168,10 +172,11 @@ class ChildTransport implements CuaTransport {
     return this.#closing || this.#failure !== undefined || this.#exited;
   }
 
-  #settlePending(id: number): Pending | undefined {
+  #settlePending(id: number, retainPresentation = false): Pending | undefined {
     const pending = this.#pending.get(id);
     if (pending) {
       this.#pending.delete(id);
+      if (!retainPresentation) this.#presentations.delete(id);
       clearTimeout(pending.timer);
       pending.disposeSignal();
       pending.hostController.abort();
@@ -190,6 +195,7 @@ class ChildTransport implements CuaTransport {
     }
     for (const timer of this.#cancelled.values()) clearTimeout(timer);
     this.#cancelled.clear();
+    this.#presentations.clear();
   }
 
   #terminate(): void {
@@ -239,6 +245,7 @@ class ChildTransport implements CuaTransport {
     if (cancelled) {
       clearTimeout(cancelled);
       this.#cancelled.delete(message.requestId);
+      this.#presentations.delete(message.requestId);
       return;
     }
     // An evaluator cannot report successful completion before its dispatched
@@ -333,7 +340,7 @@ class ChildTransport implements CuaTransport {
   }
 
   #cancel(id: number, code: "cancelled" | "timeout"): void {
-    const pending = this.#settlePending(id);
+    const pending = this.#settlePending(id, true);
     if (!pending) return;
     // An accepted mutation might have completed before cancellation arrived.
     // Report ambiguity and never replay it; retain only its bounded correlation.
@@ -359,6 +366,7 @@ class ChildTransport implements CuaTransport {
       signal,
       timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
       lifecycle = false,
+      presentation = false,
       onHostCall,
     }: CuaRequestOptions = {},
   ): Promise<{ data: unknown; payload: Buffer }> {
@@ -395,9 +403,16 @@ class ChildTransport implements CuaTransport {
     // Settled cancellation still consumes a native correlation until its reply
     // arrives. Reserve slots here, not in the owner's pending-promise count, so
     // a burst of cancelled reads cannot prevent all session.close requests.
+    const outstanding = this.#pending.size + this.#cancelled.size;
     const limit =
-      lifecycle === true ? MAX_OUTSTANDING : MAX_ORDINARY_OUTSTANDING;
-    if (this.#pending.size + this.#cancelled.size >= limit)
+      MAX_OUTSTANDING - (presentation || this.#presentations.size ? 0 : 1);
+    if (
+      outstanding >= limit ||
+      (!lifecycle &&
+        (presentation
+          ? this.#presentations.size >= 1
+          : outstanding - this.#presentations.size >= MAX_ORDINARY_OUTSTANDING))
+    )
       return Promise.reject(new CuaProcessError("capacity", "not-sent"));
     const requestId = this.#requestId + 1;
     let encoded: Buffer;
@@ -425,6 +440,7 @@ class ChildTransport implements CuaTransport {
         lastHostCallId: 0,
         hostCallPending: false,
       });
+      if (presentation) this.#presentations.add(requestId);
       signal?.addEventListener("abort", abort, { once: true });
       this.#child.stdin.write(encoded, (error) => {
         if (error) this.#fail("transport-failed");

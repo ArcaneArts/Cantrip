@@ -5,7 +5,7 @@ use crate::{
     cancellation::Cancellation,
     cursor::{CursorAppearance, CursorState},
     error::{CuaError, ErrorCode, Result},
-    target::{MAX_SEQUENCE, Target, TargetKind, validate_id},
+    target::{MAX_SEQUENCE, Point, Target, TargetKind, validate_id},
 };
 use cantrip_interaction::{
     input::{InputEvent, InputScope},
@@ -55,6 +55,13 @@ pub enum Request {
         sequence: u64,
         event: InputEvent,
     },
+    /// Cosmetic position only; never posts input or advances its sequence.
+    Present {
+        binding: Binding,
+        handle: u64,
+        sequence: u64,
+        point: Point,
+    },
     Close {
         binding: Binding,
         handle: u64,
@@ -70,6 +77,8 @@ struct Participant {
     target: Target,
     cursor: CursorState,
     sequence: u64,
+    presentation: CursorState,
+    presentation_sequence: u64,
 }
 #[derive(Default)]
 pub struct Participants {
@@ -114,7 +123,11 @@ impl Participants {
                     participant_id: state.native_id.clone(),
                     appearance_identity: state.binding.participant_id.clone(),
                     target: Some(state.target.clone()),
-                    cursor: state.cursor.clone(),
+                    cursor: if state.presentation_sequence > 0 {
+                        state.presentation.clone()
+                    } else {
+                        state.cursor.clone()
+                    },
                 })
                 .collect(),
         );
@@ -176,8 +189,10 @@ impl Participants {
                         binding,
                         native_id: format!("remote\0{handle}"),
                         target,
+                        presentation: cursor.clone(),
                         cursor,
                         sequence: 0,
+                        presentation_sequence: 0,
                     },
                 );
                 Ok(result)
@@ -205,6 +220,27 @@ impl Participants {
                 // Cleanup is allowed even if the originating request was cancelled.
                 self.close(backend, handle)?;
                 Ok(json!({"closed":true}))
+            }
+            Request::Present {
+                binding,
+                handle,
+                sequence,
+                point,
+            } => {
+                let state = self.get(handle, &binding)?;
+                if sequence == 0
+                    || sequence > MAX_SEQUENCE
+                    || sequence <= state.presentation_sequence
+                {
+                    return Err(CuaError::invalid("Stale cursor presentation sequence."));
+                }
+                cancel.check()?;
+                let state = self.live.get_mut(&handle).unwrap();
+                state
+                    .presentation
+                    .move_to(point, &state.target.bounds, now)?;
+                state.presentation_sequence = sequence;
+                Ok(json!({"handle":handle,"sequence":sequence}))
             }
             Request::Input {
                 binding,
@@ -267,6 +303,13 @@ impl Participants {
                         state
                             .cursor
                             .mark_action("remote-pointer", "dispatched", now);
+                        // Only flash a dispatched click if the live pointer is
+                        // still there. A delayed receipt cannot rewind it.
+                        if state.presentation.position == state.cursor.position {
+                            state
+                                .presentation
+                                .mark_action("remote-pointer", "dispatched", now);
+                        }
                     }
                     Ok(
                         json!({"handle":handle,"sequence":sequence,"outcome":"dispatched","windowDelivery":"unverified","cursor":state.cursor}),
