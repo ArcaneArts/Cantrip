@@ -115,19 +115,20 @@ export function ExplorerHeaderActions({
                       <Check className="size-3.5" />
                     ) : null}
                   </StyledDropdownMenuItem>
-                  <StyledDropdownMenuItem
-                    className="justify-between"
-                    disabled={!header.canVisual}
-                    onSelect={() => header.setFileMode("visual")}
-                  >
-                    <span className="flex items-center gap-2">
-                      <TableProperties className="size-3.5" />
-                      Visual
-                    </span>
-                    {header.fileMode === "visual" ? (
-                      <Check className="size-3.5" />
-                    ) : null}
-                  </StyledDropdownMenuItem>
+                  {header.canVisual ? (
+                    <StyledDropdownMenuItem
+                      className="justify-between"
+                      onSelect={() => header.setFileMode("visual")}
+                    >
+                      <span className="flex items-center gap-2">
+                        <TableProperties className="size-3.5" />
+                        Visual
+                      </span>
+                      {header.fileMode === "visual" ? (
+                        <Check className="size-3.5" />
+                      ) : null}
+                    </StyledDropdownMenuItem>
+                  ) : null}
                   <StyledDropdownMenuItem
                     className="justify-between"
                     disabled={!header.canEdit}
