@@ -33,7 +33,6 @@ import { MobileBottomNavigation } from "@/components/mobile/mobile-bottom-naviga
 import { MobileProjectSelector } from "@/components/mobile/mobile-project-selector";
 import { ProjectSettingsPage } from "@/components/projects/project-settings-page";
 import { ProjectOverview } from "@/components/projects/project-overview";
-import { ProjectOverviewWorkspace } from "./project-overview-workspace";
 import { ProjectTasksDashboard } from "@/components/projects/project-tasks-dashboard";
 import { ProjectCreateMenu } from "@/components/projects/project-create-menu";
 import { RepositoryImporter } from "@/components/projects/repository-importer";
@@ -250,9 +249,7 @@ export function GlobalContentHost({
   const queryClient = untypedQueryClient as QueryClient;
   return (
     <>
-      {bindings.showProjectOverview && selectedProject ? (
-        <ProjectOverviewWorkspace bindings={bindings} />
-      ) : mobileProjectSelectorOpen ? (
+      {mobileProjectSelectorOpen ? (
         <MobileProjectSelector
           activeWorkspace={activeProjectWorkspace}
           currentUserName={
@@ -1059,7 +1056,6 @@ export function GlobalContentHost({
       {appMode === "ide" &&
       compactShell &&
       selectedProject &&
-      !bindings.showProjectOverview &&
       !showImporter &&
       !showSettings &&
       !showServerAdmin &&

@@ -111,8 +111,7 @@ export function PersistentSurfaceLayer({
     !showSettings &&
     !showServerAdmin &&
     !showProjectSettings &&
-    !showArchivedStandaloneChats &&
-    !bindings.showProjectOverview;
+    !showArchivedStandaloneChats;
   const surfaceDockPanePresentations = projectContentVisible
     ? dockPanePresentations
     : dockPanePresentations
@@ -308,7 +307,6 @@ export function PersistentSurfaceLayer({
           appMode === "ide" &&
           !showImporter &&
           !showSettings &&
-          !bindings.showProjectOverview &&
           !showArchivedStandaloneChats &&
           !showServerAdmin &&
           !showProjectSettings &&
@@ -341,7 +339,6 @@ export function PersistentSurfaceLayer({
           appMode === "ide" &&
           !showImporter &&
           !showSettings &&
-          !bindings.showProjectOverview &&
           !showArchivedStandaloneChats &&
           !showServerAdmin &&
           !showProjectSettings &&
@@ -369,7 +366,6 @@ export function PersistentSurfaceLayer({
             appMode === "ide" &&
             !showImporter &&
             !showSettings &&
-            !bindings.showProjectOverview &&
             !showArchivedStandaloneChats &&
             !showServerAdmin &&
             !showProjectSettings &&

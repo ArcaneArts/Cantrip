@@ -1,4 +1,5 @@
 import { AppCommandBar } from "@/components/app/app-command-bar";
+import { ProjectOverviewWorkspace } from "./project-overview-workspace";
 import { MobileSurfacePicker } from "@/components/mobile/mobile-surface-picker";
 import { CustomizationPanel } from "@/components/chat/customization-panel";
 import { ChatRelocationDialog } from "@/components/chat/chat-relocation-dialog";
@@ -78,6 +79,12 @@ export function ShellOverlays({
   } = bindings;
   return (
     <>
+      {bindings.showProjectOverview && selectedProject ? (
+        <ProjectOverviewWorkspace
+          key={selectedProject.id}
+          bindings={bindings}
+        />
+      ) : null}
       <FolderProjectDialog
         activeWorkspaceId={activeProjectWorkspace?.id ?? null}
         defaultWorkerId={onlineWorker?.workerId ?? null}

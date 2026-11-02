@@ -89,7 +89,7 @@ describe("persistent surface layer", () => {
       "showArchivedStandaloneChats",
     ].flatMap((screen) => [false, true].map((docked) => ({ screen, docked }))),
   )(
-    "hides retained file content for $screen (docked=$docked) and restores selection on return",
+    "preserves the right file visibility for $screen (docked=$docked) and restores selection on return",
     async ({ screen, docked }) => {
       (
         globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -129,10 +129,16 @@ describe("persistent surface layer", () => {
           <PersistentSurfaceLayer bindings={{ ...bindings, [screen]: true }} />,
         );
       });
-      expect(surfaceProps.documents?.activeTabId).toBeNull();
-      expect(surfaceProps.documents?.placements).toEqual(
-        docked ? [] : undefined,
+      expect(surfaceProps.documents?.activeTabId).toBe(
+        screen === "showProjectOverview" ? "readme" : null,
       );
+      if (docked && screen === "showProjectOverview") {
+        expect(surfaceProps.documents?.placements).toHaveLength(1);
+      } else {
+        expect(surfaceProps.documents?.placements).toEqual(
+          docked ? [] : undefined,
+        );
+      }
       expect(surfaceProps.documents?.surfaces).toEqual([surface]);
       await act(async () => {
         tree.update(<PersistentSurfaceLayer bindings={bindings} />);

@@ -46,7 +46,6 @@ function ShellContent({
     showProjectSettings,
     showServerAdmin,
     showSettings,
-    showProjectOverview,
     tabLayout,
     workspaceSelection,
   } = bindings;
@@ -65,7 +64,6 @@ function ShellContent({
     showProjectSettings,
     showServerAdmin,
     showSettings,
-    showProjectOverview,
     workspaceDestination: workspaceSelection.destination,
   });
   return (
@@ -322,10 +320,9 @@ export function ApplicationShellRender({
     ) : null;
   const renderBindings = {
     ...bindings,
-    codeSurfaceVisible: codeSurfaceVisible && !bindings.showProjectOverview,
+    codeSurfaceVisible,
     renderAgentPanelActions,
-    explorerSurfaceVisible:
-      explorerSurfaceVisible && !bindings.showProjectOverview,
+    explorerSurfaceVisible,
     mobileSettingsSectionOpen,
     mobileSurfacePickerOpen,
     renderProjectRunConfigurationControl,
@@ -333,8 +330,7 @@ export function ApplicationShellRender({
     setMobileSurfacePickerOpen,
     sidebarExpanded,
     sidebarToggleVisible,
-    terminalSurfaceVisible:
-      terminalSurfaceVisible && !bindings.showProjectOverview,
+    terminalSurfaceVisible,
   };
 
   return (

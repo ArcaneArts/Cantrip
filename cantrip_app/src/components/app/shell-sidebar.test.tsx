@@ -167,7 +167,7 @@ describe("desktop app mode menu", () => {
     bindings.showProjectSettings = false;
     expect(render()).not.toContain("display:none");
     bindings.showProjectOverview = true;
-    expect(render()).toContain("display:none");
+    expect(render()).not.toContain("display:none");
     bindings.showProjectOverview = false;
     expect(render()).not.toContain("display:none");
   });
