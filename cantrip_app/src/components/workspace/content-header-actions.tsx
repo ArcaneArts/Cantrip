@@ -198,19 +198,21 @@ export function ExplorerHeaderActions({
           ) : null}
         </>
       ) : null}
-      <TooltipButton
-        className="size-8"
-        disabled={header.isFetching}
-        onClick={header.refresh}
-        size="icon"
-        tooltip="Refresh Explorer"
-        variant="ghost"
-      >
-        <RefreshCw
-          className={cn("size-4", header.isFetching && "animate-spin")}
-        />
-        <span className="sr-only">Refresh Explorer</span>
-      </TooltipButton>
+      {!header.selectedPath ? (
+        <TooltipButton
+          className="size-8"
+          disabled={header.isFetching}
+          onClick={header.refresh}
+          size="icon"
+          tooltip="Refresh Explorer"
+          variant="ghost"
+        >
+          <RefreshCw
+            className={cn("size-4", header.isFetching && "animate-spin")}
+          />
+          <span className="sr-only">Refresh Explorer</span>
+        </TooltipButton>
+      ) : null}
     </div>
   );
 }
