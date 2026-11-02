@@ -37,10 +37,18 @@ impl Operations {
         self.active.fetch_add(1, Ordering::SeqCst);
         let active = Active(self.clone());
         let (send, receive) = oneshot::channel();
-        let operation = Box::pin(operation);
+        let mut operation = Box::pin(operation);
+        // Source async launchers execute through their first await before the
+        // scheduler admits its next claim. Submit that initial work now; only
+        // its pending continuation belongs on the executor's later queue.
+        let initial = operation.as_mut().now_or_never();
         tokio::spawn(async move {
             let _active = active;
-            let _ = send.send(operation.await);
+            let result = match initial {
+                Some(result) => result,
+                None => operation.await,
+            };
+            let _ = send.send(result);
         });
         receive
     }

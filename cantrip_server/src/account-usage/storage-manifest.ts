@@ -256,6 +256,7 @@ export const STORAGE_ACCOUNTING_MANIFEST: readonly StorageAccountingManifestEntr
     ),
     chatOwned(schema.nativeHistoryItems),
     chatOwned(schema.chatRuntimeSessions),
+    chatOwned(schema.chatGoalObservations),
     chatOwned(schema.chatExecutionLanes),
     accountOwned(schema.agentInteractionRequests, "conversations"),
     chatOwned(schema.chatMessages),

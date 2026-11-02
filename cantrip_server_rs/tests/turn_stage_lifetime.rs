@@ -21,6 +21,39 @@ fn observer(operations: Arc<Operations>, options: &str) -> (Observer, Arc<Mutex<
     )
 }
 
+#[tokio::test]
+async fn fire_and_forget_launch_starts_before_the_next_admission() {
+    let operations = Arc::new(Operations::default());
+    let stages = Arc::new(Mutex::new(Vec::new()));
+    let (release, held) = oneshot::channel();
+    let first_stages = stages.clone();
+    let first = operations.run(async move {
+        first_stages.lock().unwrap().push("first launch");
+        held.await?;
+        first_stages.lock().unwrap().push("first completion");
+        Ok(())
+    });
+    let next_stages = stages.clone();
+    let next = operations.run(async move {
+        next_stages.lock().unwrap().push("next launch");
+        Ok(())
+    });
+    // Source invokes both async launchers before continuing its claim loop.
+    // Neither returned promise needs an observer to start or retain the work.
+    let admitted = stages.lock().unwrap().clone();
+    drop(first);
+    drop(next);
+    release.send(()).unwrap();
+    operations.drained().await;
+    assert_eq!(admitted, ["first launch", "next launch"]);
+    let stages = stages.lock().unwrap();
+    assert_eq!(stages.iter().filter(|&&s| s == "first launch").count(), 1);
+    assert_eq!(
+        stages.iter().filter(|&&s| s == "first completion").count(),
+        1
+    );
+}
+
 #[tokio::test(start_paused = true)]
 async fn deadline_keeps_the_actual_operation_owned_until_it_settles() {
     let operations = Arc::new(Operations::default());
