@@ -611,6 +611,7 @@ async function flow(
       process.argv.includes("--worktrees") ||
       process.argv.includes("--replicas") ||
       process.argv.includes("--github-conversion") ||
+      process.argv.includes("--tasks") ||
       process.argv.includes("--workspace-discovery")
         ? Number(new URL(fixture.server.origin).port)
         : 0;

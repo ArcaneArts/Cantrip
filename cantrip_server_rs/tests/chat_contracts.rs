@@ -15,6 +15,7 @@ fn contextual_chat_contracts_match_actual_protocol() -> Result<()> {
         "standaloneChatScratchReconciliationResultSchema",
         "encryptedStandaloneChatCreateSchema",
         "archivedStandaloneChatWireSummarySchema",
+        "archivedChatWireSummarySchema",
         "conversationRestoreSchema",
         "encryptedChatUpdateSchema",
         "chatRuntimeSelectionSchema",

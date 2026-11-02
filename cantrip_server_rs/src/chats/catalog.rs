@@ -68,6 +68,15 @@ pub(super) fn iso(value: &Value) -> Result<Value> {
     ))
 }
 impl Repository {
+    pub async fn list_project(&self, owner: &str, project: &str) -> Result<Vec<Value>> {
+        self.database.query("SELECT to_jsonb(c)::text FROM chats c INNER JOIN projects p ON p.id=c.project_id AND p.owner_id=$1 WHERE c.project_id=$2 AND c.archived_at IS NULL ORDER BY c.position ASC,c.created_at ASC", &[&owner,&project]).await?.iter().map(|row|wire_summary(&raw(row)?)).collect()
+    }
+    pub async fn list_archived_project(&self, owner: &str, project: &str) -> Result<Vec<Value>> {
+        let rows = self.database.query("SELECT to_jsonb(c)::text,(SELECT count(*)::int FROM chat_messages m WHERE m.chat_id=c.id) FROM chats c INNER JOIN projects p ON p.id=c.project_id AND p.owner_id=$1 WHERE c.project_id=$2 AND c.archived_at IS NOT NULL ORDER BY c.archived_at DESC", &[&owner,&project]).await?;
+        rows.iter()
+            .map(|row| super::archive::archived_project_summary(&raw(row)?, row.get::<i32>(1)?))
+            .collect()
+    }
     pub async fn list_standalone(&self, owner: &str) -> Result<Vec<Value>> {
         self.database.query("SELECT to_jsonb(c)::text FROM chats c WHERE owner_id=$1 AND context_kind='standalone' AND archived_at IS NULL ORDER BY position ASC,created_at ASC",&[&owner]).await?.iter().map(|r|wire_summary(&raw(r)?)).collect()
     }

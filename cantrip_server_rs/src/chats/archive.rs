@@ -21,14 +21,24 @@ async fn detach(tx: &Transaction<'_>, owner: &str, project: &str, id: &str) -> R
     crate::project_layout::detach_resource(tx, project, "chat", id).await
 }
 pub(super) fn archived_summary(chat: &Value, count: i32) -> Result<Value> {
+    archived_summary_for(chat, count, true)
+}
+pub(super) fn archived_project_summary(chat: &Value, count: i32) -> Result<Value> {
+    archived_summary_for(chat, count, false)
+}
+fn archived_summary_for(chat: &Value, count: i32, standalone: bool) -> Result<Value> {
     let at = chat["archived_at"]
         .as_js_string()
         .and_then(crate::wire::date_milliseconds)
         .context("Cannot summarize an active Chat as archived.")?;
     crate::settings::parse_response(
-        "archivedStandaloneChatWireSummarySchema",
+        if standalone {
+            "archivedStandaloneChatWireSummarySchema"
+        } else {
+            "archivedChatWireSummarySchema"
+        },
         Some(
-            &json!({"id":chat["id"],"contextKind":"standalone","projectId":Value::Null,"titleProtection":chat["protected_label"],"experience":"agent","messageCount":count,"archivedAt":iso(&chat["archived_at"])? ,"expiresAt":crate::wire::date_iso_milliseconds(at+90*24*60*60*1000).context("Invalid time value")?,"createdAt":iso(&chat["created_at"])? ,"updatedAt":iso(&chat["updated_at"])?}),
+            &json!({"id":chat["id"],"contextKind":if standalone {json!("standalone")} else {chat["context_kind"].clone()},"projectId":if standalone {Value::Null} else {chat["project_id"].clone()},"titleProtection":chat["protected_label"],"experience":if standalone {json!("agent")} else {chat["experience"].clone()},"messageCount":count,"archivedAt":iso(&chat["archived_at"])? ,"expiresAt":crate::wire::date_iso_milliseconds(at+90*24*60*60*1000).context("Invalid time value")?,"createdAt":iso(&chat["created_at"])? ,"updatedAt":iso(&chat["updated_at"])?}),
         ),
     )
 }

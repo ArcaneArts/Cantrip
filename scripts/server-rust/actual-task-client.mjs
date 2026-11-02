@@ -18,12 +18,13 @@ export async function actualTaskClient({
   const brief = "Private full-worker direct Task brief 🍄";
   const answer = "Private full-worker direct Task answer 🌲";
   try {
+    await page.evaluate(() => window.folderLive.start());
     await startWorker();
     await page.evaluate(
       async ({ workerId, baseUrl, nativeModel }) => {
         const models = await import("/src/lib/api/models.ts");
         const settings = await import("/src/lib/api/settings.ts");
-        const workers = await import("/src/lib/api/workers.ts");
+        const workers = await import("/src/lib/api/worker-wire.ts");
         const encryption = await import("/src/lib/task-worker-encryption.ts");
         const provider = await models.createModelProvider({
           name: "Disposable Task provider",
@@ -81,7 +82,10 @@ export async function actualTaskClient({
       },
       { chatId: created.chat.id, rowVersion: created.task.rowVersion },
     );
-    assert.ok(["implementing", "complete"].includes(admitted.state));
+    assert.equal(admitted.dispatch.state, "queued");
+    assert.equal(admitted.dispatch.operationKind, "direct");
+    assert.equal(admitted.state, created.task.state);
+    assert.equal(admitted.rowVersion, created.task.rowVersion);
     const readTask = () =>
       page.evaluate(
         async (chat) => (await import("/src/lib/api/tasks.ts")).getTask(chat),
@@ -119,6 +123,139 @@ export async function actualTaskClient({
     result.steps.push(
       "existing browser creates and encrypts a Task, the full worker executes it through real Codex, and browser APIs decrypt its result and dashboard",
     );
+    const planned = await page.evaluate(async (projectId) => {
+      const api = await import("/src/lib/api/tasks.ts");
+      const created = await api.createTask(
+        projectId,
+        "Private actual Goal Task",
+      );
+      const task = await api.updateTaskDraft(created.chat.id, {
+        rowVersion: created.task.rowVersion,
+        briefMarkdown: "Private full-worker planning brief 🍄",
+        planGoalEnabled: true,
+      });
+      window.folderLive.retainScope({ kind: "chat", chatId: created.chat.id });
+      return { chat: created.chat, task };
+    }, projectId);
+    const planText = "Private full-worker implementation plan 🌲";
+    model.reply({
+      text: JSON.stringify({ planMarkdown: planText, questions: [] }),
+    });
+    await page.evaluate(
+      async ({ chatId, rowVersion }) =>
+        (await import("/src/lib/api/tasks.ts")).startTaskPlanning(chatId, {
+          rowVersion,
+          operationId: crypto.randomUUID(),
+        }),
+      { chatId: planned.chat.id, rowVersion: planned.task.rowVersion },
+    );
+    const review = await eventually(
+      () =>
+        page.evaluate(
+          async (chat) => (await import("/src/lib/api/tasks.ts")).getTask(chat),
+          planned.chat.id,
+        ),
+      (task) => {
+        assert.equal(task.state, "review");
+        assert.equal(task.dispatch?.state, "succeeded");
+      },
+    );
+    assert.equal(review.planMarkdown, planText);
+    assert.equal(review.planningRound, 1);
+    const objective = "Private full-worker implementation objective 🌙";
+    model.reply({
+      text: JSON.stringify({
+        finalPlanMarkdown: planText,
+        goalPrompt: objective,
+      }),
+    });
+    model.reply({
+      calls: [{ name: "update_goal", arguments: { status: "complete" } }],
+    });
+    const implementation = model.reply({
+      text: "Private full-worker implementation result 🌤",
+    });
+    // Native Goal activation drives its first turn. The existing server then
+    // submits its saved encrypted Task control message as a separate turn.
+    model.reply({ text: "Private full-worker implementation result 🌤" });
+    await page.evaluate(
+      async ({ chatId, rowVersion }) =>
+        (await import("/src/lib/api/tasks.ts")).beginTaskImplementation(
+          chatId,
+          { rowVersion, operationId: crypto.randomUUID() },
+        ),
+      { chatId: planned.chat.id, rowVersion: review.rowVersion },
+    );
+    const goalTask = await eventually(
+      () =>
+        page.evaluate(
+          async (chat) => (await import("/src/lib/api/tasks.ts")).getTask(chat),
+          planned.chat.id,
+        ),
+      (task) => assert.equal(task.state, "complete"),
+    );
+    await eventually(
+      () =>
+        page.evaluate(
+          async (project) =>
+            (await import("/src/lib/api/chats.ts")).getChats(project),
+          projectId,
+        ),
+      (chats) =>
+        assert.equal(
+          chats.find((chat) => chat.id === planned.chat.id)?.status,
+          "idle",
+        ),
+    );
+    assert.equal(goalTask.finalPlanMarkdown, planText);
+    assert.ok(
+      goalTask.goalPrompt.startsWith(
+        "# Cantrip Task implementation objective\n",
+      ),
+    );
+    assert.ok(goalTask.goalPrompt.endsWith(objective));
+    assert.equal(implementation.request.completed, true);
+    const nativeGoal = implementation.request.input.input
+      .filter((item) => item.type === "function_call_output")
+      .map((item) => JSON.parse(item.output))
+      .find((item) => item.goal?.status === "complete");
+    assert.ok(
+      nativeGoal,
+      "the actual Codex Goal tool completes the implementation Goal",
+    );
+    const openedGoal = await page.evaluate(
+      async (chat) => (await import("/src/lib/api/chats.ts")).getChatGoal(chat),
+      planned.chat.id,
+    );
+    assert.equal(openedGoal.goal.status, "complete");
+    assert.ok(nativeGoal.goal.objective.startsWith(goalTask.goalPrompt));
+    assert.equal(openedGoal.goal.objective, nativeGoal.goal.objective);
+    assert.ok(openedGoal.goal.objective.includes(objective));
+    assert.ok(openedGoal.goal.objective.includes("implementation-plan.md"));
+    const goalDashboard = await page.evaluate(
+      async (chat) =>
+        (await import("/src/lib/api/tasks.ts")).getTaskImplementationDashboard(
+          chat,
+        ),
+      planned.chat.id,
+    );
+    assert.equal(goalDashboard.task.state, "complete");
+    assert.equal(goalDashboard.goal.status, "complete");
+    assert.equal(goalDashboard.goal.objective, openedGoal.goal.objective);
+    assert.equal(goalDashboard.placement.kind, "folder");
+    const goalMessages = await page.evaluate(
+      async (chat) => (await import("/src/lib/api/chats.ts")).getMessages(chat),
+      planned.chat.id,
+    );
+    assert.ok(
+      JSON.stringify(goalMessages).includes(
+        "Private full-worker implementation result 🌤",
+      ),
+    );
+    assert.deepEqual(model.failures, []);
+    result.steps.push(
+      "the existing Task APIs plan, review and finalize through real Codex; its native Goal tool completes implementation and the browser decrypts the objective and transcript",
+    );
     await stopWorker();
     const port = Number(new URL(fixture.server.origin).port);
     await fixture.close();
@@ -130,10 +267,35 @@ export async function actualTaskClient({
     assert.deepEqual(await readMessages(), messages);
     assert.equal(
       model.requests.filter((request) => request.method === "POST").length,
-      1,
+      6,
       "restart does not repeat completed Task inference",
     );
-    for (const marker of [brief, answer]) {
+    await page.evaluate(async (workerId) => {
+      const workers = await import("/src/lib/api/worker-wire.ts");
+      await (
+        await import("/src/lib/task-worker-encryption.ts")
+      ).ensureTaskWorkerEncryption({
+        worker: (await workers.getWorkers()).find(
+          (worker) => worker.workerId === workerId,
+        ),
+      });
+    }, workerId);
+    const retainedGoal = await page.evaluate(
+      async (chat) => (await import("/src/lib/api/chats.ts")).getChatGoal(chat),
+      planned.chat.id,
+    );
+    assert.equal(retainedGoal.goal.status, "complete");
+    assert.equal(retainedGoal.goal.objective, openedGoal.goal.objective);
+    assert.equal(retainedGoal.goal.threadId, openedGoal.goal.threadId);
+    assert.deepEqual(
+      await page.evaluate(
+        async (chat) =>
+          (await import("/src/lib/api/chats.ts")).getMessages(chat),
+        planned.chat.id,
+      ),
+      goalMessages,
+    );
+    for (const marker of [brief, answer, planText, objective]) {
       assert.equal(
         JSON.stringify(requests).includes(marker),
         false,
@@ -150,6 +312,7 @@ export async function actualTaskClient({
     );
     result.taskExecution = {
       completed: true,
+      plannedGoalCompleted: true,
       modelRequests: model.requests.filter(
         (request) => request.method === "POST",
       ).length,
@@ -157,6 +320,19 @@ export async function actualTaskClient({
       chatId: created.chat.id,
     };
   } finally {
+    result.taskModel = {
+      failures: model.failures,
+      requests: model.requests.map(({ method, path, completed, input }) => ({
+        method,
+        path,
+        completed,
+        model: input?.model,
+        format: input?.text?.format,
+        toolResults: input?.input?.filter(
+          (item) => item.type === "function_call_output",
+        ),
+      })),
+    };
     await stopWorker();
     await model.close();
   }
