@@ -3,6 +3,7 @@ import {
   replicaProductJobEvents,
 } from "./actual-project-replicas.mjs";
 import { actualProjectWorktrees } from "./actual-project-worktrees.mjs";
+import { actualTaskClient } from "./actual-task-client.mjs";
 import { actualGithubConversion } from "./actual-github-conversion.mjs";
 import { actualWorkspaceDiscovery } from "./actual-workspace-discovery.mjs";
 import {
@@ -117,6 +118,7 @@ async function flow(
     if (
       pathname.startsWith("/api/projects") ||
       pathname.startsWith("/api/chats/") ||
+      pathname.startsWith("/api/tasks/") ||
       pathname.startsWith("/api/tunnel") ||
       pathname.startsWith("/api/project-shares/") ||
       pathname.endsWith("/repository-operation") ||
@@ -799,6 +801,17 @@ async function flow(
         startWorker,
         stopWorker,
         result,
+      });
+    if (process.argv.includes("--tasks"))
+      await actualTaskClient({
+        page,
+        fixture,
+        projectId: first.id,
+        workerId,
+        startWorker,
+        stopWorker,
+        result,
+        requests,
       });
     result.requests = requests;
     result.events = await page.evaluate(() => window.folderEvents);
