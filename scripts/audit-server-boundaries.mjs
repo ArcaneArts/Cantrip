@@ -108,9 +108,9 @@ const CONTENT_CLASSIFICATIONS = new Set([
 // digest; regenerating the inventory alone cannot silently accept it.
 const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
-    "92b9f36d0de345e6ca867563b30cc5934641604670823883b7d7642cd58a0127",
+    "691b6132f5052c9af8e83552661910d6619cf238fe20bb07869f932df7989b85",
   applicationRoutes:
-    "edffc272eab55781333d975be6f38a32f7453ca1b881d357b09821dff4f360f2",
+    "6dedf25c560513c90d27e464a65cca5a83cdfaf4ecf9222bcd9b19a6100308e9",
   clientControlCommands:
     "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
   cliCommands:
@@ -154,6 +154,7 @@ const DURABLE_TABLE_CLASSIFICATIONS = {
   encryptionKeyGrants: "endpoint-protected",
   projects: "endpoint-protected",
   projectAlerts: "endpoint-protected",
+  chatGoalObservations: "endpoint-protected",
   tunnels: "endpoint-protected",
   tunnelAttachments: "minimized-operational-metadata",
   tunnelAttachmentDirectLeases: "minimized-operational-metadata",
@@ -3453,6 +3454,12 @@ function durableTableContentInventory(schemaText) {
 }
 
 function applicationRouteContentClassification(route) {
+  if (route.path === "/api/internal/project-alerts/goals")
+    return {
+      classification: "endpoint-protected",
+      rationale:
+        "Authenticated current worker process facts with protected Chat Goal objective, exact thread binding and bounded lifecycle metadata; never plaintext Goal text.",
+    };
   if (route.path === "/api/projects/:projectId/alerts")
     return {
       classification: "endpoint-protected",
@@ -3827,6 +3834,12 @@ function cliCommandContentClassification(command) {
 }
 
 function agentOperationContentClassification(operation) {
+  if (operation.startsWith("alert."))
+    return {
+      classification: "endpoint-protected",
+      rationale:
+        "Current Chat-scoped agent Alert mutations with operation-bound alert-content ciphertext; cannot mutate system requests or another Chat namespace.",
+    };
   if (operation.startsWith("chat."))
     return {
       classification: "endpoint-protected",

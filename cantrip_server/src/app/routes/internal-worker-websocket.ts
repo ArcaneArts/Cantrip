@@ -56,6 +56,11 @@ export interface InternalWorkerWebsocketRouteDependencies {
     resource: "worker-availability",
     input: { entityId: string },
   ) => void;
+  reconcileProjectGoalSourcesForWorker?: (
+    ownerId: string,
+    workerId: string,
+    generation: string,
+  ) => Promise<void>;
   reconcileRunConfigurationRuntimesForWorker: (
     ownerId: string,
     workerId: string,
@@ -109,6 +114,7 @@ export function installInternalWorkerWebsocketRoute(
     providerCredentialMigrations,
     publishLiveInvalidation,
     reconcileRunConfigurationRuntimesForWorker,
+    reconcileProjectGoalSourcesForWorker,
     refreshWorkerScopedCatalogs,
     repository,
     resumePendingWorktreeTransitionsForWorker,
@@ -332,6 +338,18 @@ export function installInternalWorkerWebsocketRoute(
           workerProcessGeneration: resolvedWorkerProcessGeneration,
         });
         catalogWorkers.set(workerId, workerAuth.ownerId);
+        void runAsOwner(workerAuth.ownerId, async () => {
+          await reconcileProjectGoalSourcesForWorker?.(
+            workerAuth.ownerId,
+            workerId,
+            resolvedWorkerProcessGeneration,
+          );
+        }).catch(() =>
+          app.log.warn(
+            { event: "project-alert.goal-reconciliation-pending", workerId },
+            "Goal observation reconciliation remains pending",
+          ),
+        );
         void runAsOwner(workerAuth.ownerId, () =>
           resumeNativeRuntimeHandoffsForWorker(workerAuth.ownerId, workerId),
         ).catch((error) => {

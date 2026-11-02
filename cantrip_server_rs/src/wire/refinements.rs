@@ -7,6 +7,9 @@ pub(super) fn apply(
     path: &[Value],
     message: Option<&str>,
 ) -> Result<(), ValidationError> {
+    if super::mcp::refine(tag, result, path)? {
+        return Ok(());
+    }
     if super::public_chats::refine(tag, result, path)? {
         return Ok(());
     }
@@ -57,6 +60,16 @@ pub(super) fn apply(
         .as_ref()
         .ok_or(ValidationError::Operation)?
         .clone();
+    if tag == "project-goal-observation" {
+        if !value["snapshot"]["goal"].is_null()
+            && value["snapshot"]["goal"]["threadId"] != value["threadId"]
+        {
+            let mut at = path.to_vec();
+            at.extend([json!("snapshot"), json!("goal"), json!("threadId")]);
+            result.issues.push(json!({"code":"custom","path":at,"message":"Goal observation belongs to a different thread."}));
+        }
+        return Ok(());
+    }
     if matches!(
         tag,
         "native-history-archive-evidence" | "native-history-evidence-revision"

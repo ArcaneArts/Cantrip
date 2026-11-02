@@ -494,7 +494,17 @@
     "chatGoalCreateSchema": 9296,
     "chatGoalUpdateSchema": 9297,
     "chatGoalClearSchema": 9299,
-    "chatGoalWireResponseSchema": 9301
+    "chatGoalWireResponseSchema": 9301,
+    "agentAlertMutationWireSchema": 9311,
+    "cantripMcpAlertRaiseInputSchema": 9317,
+    "cantripMcpAlertResolveInputSchema": 9324,
+    "workerCantripMcpOperationCallSchema": 9326,
+    "workerCantripMcpCapabilitiesQuerySchema": 9357,
+    "cantripAgentOperationResultSchema": 9360,
+    "projectGoalSnapshotSchema": 9373,
+    "projectGoalObservationSchema": 9378,
+    "projectGoalObservationResultSchema": 9385,
+    "cantripMcpContextGetResultSchema": 9390
   },
   "nodes": [
     {
@@ -54427,6 +54437,869 @@
     },
     { "type": "literal", "values": ["task-encrypted"], "checks": [] },
     { "type": "nullable", "innerType": 9036, "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "agentAlertMutationWireSchema",
+      "shape": {
+        "key": 9312,
+        "revision": 9313,
+        "kind": 9314,
+        "status": 9315,
+        "protectedDetail": 9180
+      },
+      "catchall": 9316,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 1, "inclusive": true },
+        { "check": "less_than", "value": 2147483647, "inclusive": true }
+      ]
+    },
+    { "type": "enum", "values": ["blocked", "action-required"], "checks": [] },
+    { "type": "enum", "values": ["open", "resolved"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "cantripMcpAlertRaiseInputSchema",
+      "shape": {
+        "title": 9318,
+        "message": 9319,
+        "nextStep": 9320,
+        "key": 9312,
+        "revision": 9313,
+        "kind": 9321
+      },
+      "catchall": 9323,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 160, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 8000, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "max_length", "maximum": 2000, "when": "length" }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 9322,
+      "defaultValue": "blocked",
+      "checks": []
+    },
+    { "type": "enum", "values": ["blocked", "action-required"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "cantripMcpAlertResolveInputSchema",
+      "shape": { "key": 9312, "revision": 9313 },
+      "catchall": 9325,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "workerCantripMcpOperationCallSchema",
+      "shape": { "requestId": 9327, "binding": 9328, "request": 9351 },
+      "catchall": 9356,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "union",
+      "name": "cantripMcpBindingSchema",
+      "options": [9329, 9344],
+      "discriminator": "contextKind",
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "mcp-binding-dates",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "bindingId": 9330,
+        "ownerId": 9331,
+        "chatId": 9332,
+        "executionLaneId": 9333,
+        "workerId": 9334,
+        "permissionProfileId": 4459,
+        "allowedOperations": 9335,
+        "issuedAt": 9337,
+        "expiresAt": 9338,
+        "contextKind": 9339,
+        "projectId": 9340,
+        "worktreeId": 9341,
+        "rootKind": 4256,
+        "scratchRootId": 9342
+      },
+      "catchall": 9343,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 9336,
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 52, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "worker-command-unique",
+          "messageAfterPath": true,
+          "message": "Cantrip MCP binding operations must be unique."
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "cantripAgentOperationNameSchema",
+      "values": [
+        "chat.list",
+        "chat.read",
+        "alert.raise",
+        "alert.resolve",
+        "chat.send",
+        "chat.wait",
+        "context.get",
+        "context.compact",
+        "tool.help",
+        "policy.list",
+        "policy.read",
+        "target.list",
+        "target.inspect",
+        "run-configuration.list",
+        "run-configuration.get",
+        "run-configuration.detect",
+        "run-configuration.create",
+        "run-configuration.update",
+        "run-configuration.delete",
+        "run-configuration.start",
+        "run-configuration.restart",
+        "run-configuration.stop",
+        "run-configuration.status",
+        "run-configuration.read-output",
+        "run-configuration.secret-set",
+        "worktree.list",
+        "worktree.status",
+        "worktree.create",
+        "worktree.acquire",
+        "worktree.switch",
+        "worktree.release",
+        "worktree.remove",
+        "explorer.list",
+        "explorer.read",
+        "explorer.write",
+        "terminal.read",
+        "terminal.send",
+        "terminal.restart",
+        "web.search",
+        "web.read",
+        "web.session.snapshot",
+        "web.session.open",
+        "web.session.click",
+        "web.session.pointer",
+        "web.session.type",
+        "web.session.close",
+        "browser.services",
+        "browser.open",
+        "client.notify",
+        "client.focus-project",
+        "client.focus-surface",
+        "client.show-interaction"
+      ],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "literal", "values": ["project"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "null", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "bindingId": 9330,
+        "ownerId": 9331,
+        "chatId": 9332,
+        "executionLaneId": 9333,
+        "workerId": 9334,
+        "permissionProfileId": 4459,
+        "allowedOperations": 9335,
+        "issuedAt": 9337,
+        "expiresAt": 9338,
+        "contextKind": 9345,
+        "projectId": 9346,
+        "worktreeId": 9347,
+        "rootKind": 9348,
+        "scratchRootId": 9349
+      },
+      "catchall": 9350,
+      "checks": []
+    },
+    { "type": "literal", "values": ["standalone"], "checks": [] },
+    { "type": "null", "checks": [] },
+    { "type": "null", "checks": [] },
+    { "type": "null", "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "cantripAgentOperationRequestSchema",
+      "shape": { "operation": 9336, "arguments": 9352 },
+      "catchall": 9355,
+      "checks": []
+    },
+    {
+      "type": "record",
+      "name": "cantripAgentOperationArgumentsSchema",
+      "keyType": 9353,
+      "valueType": 9354,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "mcp-arguments-size",
+          "messageAfterPath": true,
+          "message": "Cantrip agent operations accept at most 32 arguments."
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100, "when": "length" }
+      ]
+    },
+    { "type": "unknown", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "workerCantripMcpCapabilitiesQuerySchema",
+      "shape": { "workerId": 9358 },
+      "catchall": 9359,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "cantripCliCommandResultSchema",
+      "shape": {
+        "summary": 9361,
+        "target": 9362,
+        "worktreeId": 9364,
+        "continuationScheduled": 9367,
+        "mutated": 9369,
+        "data": 9371
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 2000, "when": "length" }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 9363,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 734, "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 9365,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 9366, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 9368,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 9370,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 9372,
+      "checks": []
+    },
+    { "type": "unknown", "checks": [] },
+    {
+      "type": "object",
+      "name": "projectGoalSnapshotSchema",
+      "shape": { "kind": 9303, "goal": 9374 },
+      "catchall": 9377,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 9375, "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "threadId": 9054,
+        "status": 9056,
+        "tokenBudget": 9057,
+        "tokensUsed": 9059,
+        "timeUsedSeconds": 9060,
+        "createdAt": 9061,
+        "updatedAt": 9062,
+        "protectedObjective": 1569
+      },
+      "catchall": 9376,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "projectGoalObservationSchema",
+      "shape": {
+        "chatId": 9379,
+        "workerId": 9380,
+        "threadId": 9381,
+        "generation": 9382,
+        "revision": 9383,
+        "snapshot": 9373
+      },
+      "catchall": 9384,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "project-goal-observation",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 1, "inclusive": true },
+        { "check": "less_than", "value": 9007199254740991, "inclusive": true }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "projectGoalObservationResultSchema",
+      "shape": { "accepted": 9386, "reason": 9387 },
+      "catchall": 9389,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 9388,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": [
+        "retired-worker",
+        "retired-chat",
+        "not-project-agent",
+        "unbound-thread",
+        "retired-thread"
+      ],
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "cantripMcpContextGetResultSchema",
+      "shape": {
+        "summary": 9391,
+        "target": 9392,
+        "worktreeId": 9394,
+        "continuationScheduled": 9397,
+        "mutated": 9399,
+        "data": 9401
+      },
+      "catchall": 9450,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 2000, "when": "length" }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 9393,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "null", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 9395,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 9396, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 9398,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "literal", "values": [false], "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 9400,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "literal", "values": [false], "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "worker": 9402,
+        "context": 9407,
+        "binding": 9421,
+        "contextWindow": 9430
+      },
+      "catchall": 9449,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "id": 9403, "name": 9404, "online": 9405 },
+      "catchall": 9406,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "chatId": 9408,
+        "executionLaneId": 9410,
+        "permissionProfileId": 9412,
+        "projectId": 9413,
+        "rootKind": 4256,
+        "terminalId": 9414,
+        "workerId": 9416,
+        "worktreeId": 9417,
+        "worktreeMode": 9418
+      },
+      "catchall": 9420,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 9409, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 9411, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 4459, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 9415, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 9419, "checks": [] },
+    { "type": "enum", "values": ["agent-managed", "pinned"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "cantripMcpBindingReadinessSchema",
+      "shape": {
+        "status": 9422,
+        "mutationReady": 9423,
+        "staleClaims": 9424,
+        "recoveryInstruction": 9426,
+        "expiresAt": 9428
+      },
+      "catchall": 9429,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": ["ready", "read-only", "refresh-required"],
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "array",
+      "element": 9425,
+      "checks": [{ "check": "max_length", "maximum": 10, "when": "length" }]
+    },
+    {
+      "type": "enum",
+      "name": "cantripMcpBindingStaleClaimSchema",
+      "values": [
+        "context-kind",
+        "chat",
+        "project",
+        "scratch-root",
+        "worker",
+        "execution-lane",
+        "worktree",
+        "root-kind",
+        "permission-profile",
+        "chat-status"
+      ],
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 9427, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 500, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 9431,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 9432, "checks": [] },
+    {
+      "type": "object",
+      "name": "cantripMcpContextWindowSchema",
+      "shape": {
+        "threadId": 9433,
+        "turnId": 9434,
+        "usedTokens": 9435,
+        "contextWindowTokens": 9437,
+        "remainingTokens": 9439,
+        "usedPercent": 9441,
+        "remainingPercent": 9443,
+        "usageUpdatedAtMs": 9445,
+        "compactionScheduled": 9447
+      },
+      "catchall": 9448,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 9436, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "nullable", "innerType": 9438, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    { "type": "nullable", "innerType": 9440, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "nullable", "innerType": 9442, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 100, "inclusive": true }
+      ]
+    },
+    { "type": "nullable", "innerType": 9444, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 100, "inclusive": true }
+      ]
+    },
+    { "type": "nullable", "innerType": 9446, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
     { "type": "never", "checks": [] }
   ]
 }

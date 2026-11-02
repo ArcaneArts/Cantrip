@@ -16,6 +16,7 @@ import { describe, expect, it } from "vitest";
 import { ClientEncryptionService } from "./client-encryption";
 import {
   authorizeWorkerEncryption,
+  authorizeWorkerAlertEncryption,
   revokeWorkerEncryptionGrant,
   type WorkerGrantApi,
 } from "./worker-encryption-grants";
@@ -233,4 +234,21 @@ describe("client-created worker encryption grants", () => {
     expect(createCalls).toBe(1);
     expect(second[0]?.id).toBe(first[0]?.id);
   });
+});
+
+it("keeps optional Alert grant failure from blocking existing Chat capabilities", async () => {
+  const api = {
+    listPrincipals: async () => {
+      throw new Error("optional grant unavailable");
+    },
+  } as unknown as WorkerGrantApi;
+  await expect(
+    authorizeWorkerAlertEncryption({
+      api,
+      identity,
+      workerId: "worker",
+      keyRevision: 1,
+      grants: [],
+    }),
+  ).resolves.toBeUndefined();
 });

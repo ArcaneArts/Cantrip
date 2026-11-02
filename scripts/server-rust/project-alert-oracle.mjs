@@ -80,6 +80,42 @@ for (const input of [
   },
 ])
   cases.push(["projectAlertProtectedDetailSchema", input]);
+const observation = {
+  chatId: "chat",
+  workerId: "worker",
+  threadId: "thread",
+  generation: "11111111-1111-4111-8111-111111111111",
+  revision: 1,
+  snapshot: { kind: "chat-encrypted", goal: null },
+};
+for (const input of [
+  observation,
+  { ...observation, generation: "2026-11-02T00:00:00.000Z" },
+  { ...observation, revision: 0 },
+  {
+    ...observation,
+    snapshot: { kind: "chat-encrypted", goal: { objective: "SECRET" } },
+  },
+])
+  cases.push(["projectGoalObservationSchema", input]);
+for (const input of [
+  {
+    key: observation.generation,
+    revision: 1,
+    title: "Blocked",
+    message: "Need input",
+    nextStep: "Answer",
+  },
+  {
+    key: observation.generation,
+    revision: 1,
+    kind: "permission",
+    title: "Forged",
+    message: "Bad",
+    nextStep: "Approve",
+  },
+])
+  cases.push(["cantripMcpAlertRaiseInputSchema", input]);
 process.stdout.write(
   JSON.stringify(
     cases.map(([schema, input]) => {

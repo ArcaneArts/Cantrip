@@ -1681,6 +1681,13 @@
       "when": 1793636800000,
       "tag": "0239_project_alert_interactions",
       "breakpoints": true
+    },
+    {
+      "idx": 240,
+      "version": "7",
+      "when": 1793637500000,
+      "tag": "0240_project_alert_task_agent",
+      "breakpoints": true
     }
   ]
 }

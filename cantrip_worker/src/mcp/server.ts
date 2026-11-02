@@ -1,4 +1,8 @@
 import {
+  cantripMcpAlertRaiseInputSchema,
+  cantripMcpAlertResolveInputSchema,
+} from "@cantrip/protocol";
+import {
   cantripAgentOperationResultSchema,
   cantripMcpChatListInputSchema,
   cantripMcpChatReadInputSchema,
@@ -1360,6 +1364,18 @@ export function createCantripMcpServer(
   );
   for (const [name, operation, inputSchema, description] of [
     [
+      "alert_raise",
+      "alert.raise",
+      cantripMcpAlertRaiseInputSchema,
+      "Raise or update an actionable project Alert attributed to your current Chat. Include the problem and next step. Reuse key/revision on retry; increment revision on update. Resolved keys never reopen; use a fresh key for a new episode. Cannot forge permission requests.",
+    ],
+    [
+      "alert_resolve",
+      "alert.resolve",
+      cantripMcpAlertResolveInputSchema,
+      "Resolve your current Chat’s AI-created Alert using its key and a higher revision. Cannot resolve system requests or other Chats’ Alerts.",
+    ],
+    [
       "chat_list",
       "chat.list",
       cantripMcpChatListInputSchema,
@@ -1392,7 +1408,7 @@ export function createCantripMcpServer(
         inputSchema,
         outputSchema: cantripAgentOperationResultSchema,
         annotations:
-          operation === "chat.send"
+          operation === "chat.send" || operation.startsWith("alert.")
             ? idempotentMutationAnnotations
             : readAnnotations,
       },

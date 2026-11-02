@@ -12,6 +12,8 @@ export const cantripCliArgumentsSchema = z
 export const cantripAgentOperationNameSchema = z.enum([
   "chat.list",
   "chat.read",
+  "alert.raise",
+  "alert.resolve",
   "chat.send",
   "chat.wait",
   "context.get",
@@ -116,6 +118,8 @@ export const CANTRIP_MCP_READ_TOOL_NAMES = [
 
 export const CANTRIP_MCP_WORKER_MUTATION_OPERATIONS = [
   "context.compact",
+  "alert.raise",
+  "alert.resolve",
   "chat.send",
   "run-configuration.create",
   "run-configuration.update",
@@ -153,6 +157,8 @@ export const CANTRIP_MCP_MUTATION_OPERATIONS = [
 
 export const CANTRIP_MCP_MUTATION_TOOL_NAMES = [
   "context_compact",
+  "alert_raise",
+  "alert_resolve",
   "chat_send",
   "run_configuration_create",
   "run_configuration_update",
@@ -213,9 +219,14 @@ export function cantripMcpOperationsForPermissionProfile(
   permissionProfileId: string,
 ): readonly z.infer<typeof cantripAgentOperationNameSchema>[] {
   return permissionProfileId === ":read-only"
-    ? CANTRIP_MCP_READ_OPERATIONS.filter(
-        (operation) => operation !== "web.session.snapshot",
-      )
+    ? [
+        ...CANTRIP_MCP_READ_OPERATIONS.filter(
+          (operation) => operation !== "web.session.snapshot",
+        ),
+        // Reporting attention does not grant file, command, or surface writes.
+        "alert.raise",
+        "alert.resolve",
+      ]
     : CANTRIP_MCP_OPERATIONS;
 }
 

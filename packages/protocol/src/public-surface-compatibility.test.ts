@@ -484,6 +484,12 @@ const binaryWriteExports = [
 ];
 
 const alertExports = [
+  "agentAlertMutationWireSchema",
+  "cantripMcpAlertRaiseInputSchema",
+  "cantripMcpAlertResolveInputSchema",
+  "projectGoalSnapshotSchema",
+  "projectGoalObservationSchema",
+  "projectGoalObservationResultSchema",
   "projectAlertChangeSchema",
   "projectAlertCountsSchema",
   "projectAlertDetailSchema",
@@ -554,7 +560,7 @@ describe("protocol public surface compatibility", () => {
         retiredWorkspaceProfileExports.includes(name),
       ),
     ).toEqual([]);
-    expect(exportNames).toHaveLength(2145);
+    expect(exportNames).toHaveLength(2151);
     expect(exportNames.filter((name) => alertExports.includes(name))).toEqual(
       alertExports,
     );

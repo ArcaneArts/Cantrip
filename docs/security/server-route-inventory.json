@@ -79,6 +79,7 @@
       "cantrip_server/src/app/routes/live.ts",
       "cantrip_server/src/app/routes/managed-chat-preparation.ts",
       "cantrip_server/src/app/routes/policies.ts",
+      "cantrip_server/src/app/routes/project-alert-goals.ts",
       "cantrip_server/src/app/routes/project-alerts.ts",
       "cantrip_server/src/app/routes/project-automations.ts",
       "cantrip_server/src/app/routes/project-catalog-and-placement.ts",
@@ -169,6 +170,7 @@
       "cantrip_server/src/app/runtime/native-history-publication-delivery.ts",
       "cantrip_server/src/app/runtime/native-history-runtime.ts",
       "cantrip_server/src/app/runtime/native-logical-completion-delivery.ts",
+      "cantrip_server/src/app/runtime/project-goal-observations.ts",
       "cantrip_server/src/app/runtime/project-task-pause-runtime.ts",
       "cantrip_server/src/app/runtime/protect-chat-input.ts",
       "cantrip_server/src/app/runtime/run-configuration-runtime.ts",
@@ -213,15 +215,15 @@
     "external-credential": 1,
     "public-authentication": 3,
     "public-bootstrap": 3,
-    "worker-control": 38,
-    "http": 513,
+    "worker-control": 39,
+    "http": 514,
     "legacyLocalOwnerRoutes": 0,
     "requestPrincipalRoutes": 425,
-    "total": 520,
+    "total": 521,
     "websocket": 7,
-    "workerCredentialRoutes": 38,
-    "durableTables": 114,
-    "agentOperations": 50,
+    "workerCredentialRoutes": 39,
+    "durableTables": 115,
+    "agentOperations": 52,
     "workerCommands": 278,
     "liveResources": 46,
     "clientControlCommands": 4,
@@ -237,8 +239,8 @@
     }
   },
   "contractSetDigests": {
-    "agentOperations": "92b9f36d0de345e6ca867563b30cc5934641604670823883b7d7642cd58a0127",
-    "applicationRoutes": "edffc272eab55781333d975be6f38a32f7453ca1b881d357b09821dff4f360f2",
+    "agentOperations": "691b6132f5052c9af8e83552661910d6619cf238fe20bb07869f932df7989b85",
+    "applicationRoutes": "6dedf25c560513c90d27e464a65cca5a83cdfaf4ecf9222bcd9b19a6100308e9",
     "cliCommands": "dac89683226ba9ee6f6211eba252fb0b83a5a022aa9150f107315733a4e44251",
     "clientControlCommands": "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
     "liveResources": "54dd12b30c184f81d2a8bdd249cc9a91e93dfb3052fcafb425233a5f8dc87a21",
@@ -310,6 +312,11 @@
       "exportName": "chatExecutionLanes",
       "tableName": "chat_execution_lanes",
       "classification": "intentionally-public-control-plane"
+    },
+    {
+      "exportName": "chatGoalObservations",
+      "tableName": "chat_goal_observations",
+      "classification": "endpoint-protected"
     },
     {
       "exportName": "chatImportJobs",
@@ -3147,6 +3154,19 @@
     },
     {
       "boundary": "worker-control",
+      "file": "cantrip_server/src/app/routes/project-alert-goals.ts",
+      "line": 20,
+      "method": "POST",
+      "ownerEvidence": "worker-credential",
+      "path": "/api/internal/project-alerts/goals",
+      "transport": "http",
+      "contentBoundary": {
+        "classification": "endpoint-protected",
+        "rationale": "Authenticated current worker process facts with protected Chat Goal objective, exact thread binding and bounded lifecycle metadata; never plaintext Goal text."
+      }
+    },
+    {
+      "boundary": "worker-control",
       "file": "cantrip_server/src/app/routes/internal-worker-automations.ts",
       "line": 78,
       "method": "GET",
@@ -3174,7 +3194,7 @@
     {
       "boundary": "worker-control",
       "file": "cantrip_server/src/app/routes/internal-worker-websocket.ts",
-      "line": 126,
+      "line": 132,
       "method": "GET",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/workers/connect",
@@ -7580,6 +7600,16 @@
     }
   ],
   "agentOperationContentBoundaries": [
+    {
+      "operation": "alert.raise",
+      "classification": "endpoint-protected",
+      "rationale": "Current Chat-scoped agent Alert mutations with operation-bound alert-content ciphertext; cannot mutate system requests or another Chat namespace."
+    },
+    {
+      "operation": "alert.resolve",
+      "classification": "endpoint-protected",
+      "rationale": "Current Chat-scoped agent Alert mutations with operation-bound alert-content ciphertext; cannot mutate system requests or another Chat namespace."
+    },
     {
       "operation": "browser.open",
       "classification": "endpoint-protected",

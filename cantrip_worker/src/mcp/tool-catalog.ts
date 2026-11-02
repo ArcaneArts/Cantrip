@@ -1,4 +1,8 @@
 import {
+  cantripMcpAlertRaiseInputSchema,
+  cantripMcpAlertResolveInputSchema,
+} from "@cantrip/protocol";
+import {
   cantripMcpChatListInputSchema,
   cantripMcpChatReadInputSchema,
   cantripMcpChatSendInputSchema,
@@ -61,6 +65,8 @@ type InputSchema = {
 };
 
 const inputSchemas = {
+  alert_raise: cantripMcpAlertRaiseInputSchema,
+  alert_resolve: cantripMcpAlertResolveInputSchema,
   chat_list: cantripMcpChatListInputSchema,
   chat_read: cantripMcpChatReadInputSchema,
   chat_send: cantripMcpChatSendInputSchema,
@@ -160,6 +166,12 @@ const examples: Partial<Record<ToolName, Array<Record<string, unknown>>>> = {
 };
 
 const notes: Partial<Record<ToolName, string[]>> = {
+  alert_raise: [
+    "Raise an actionable Alert for this Chat only, with a reason and next step. Reuse key for retries/updates; increment revision for an update. Resolved keys stay resolved; a new attention episode needs a new key. Do not duplicate an existing structured permission, task review, or Goal blocker. This cannot request permissions or approve anything.",
+  ],
+  alert_resolve: [
+    "Resolve only an Alert raised by this Chat. Use its exact key and a higher revision. System permissions, tasks, goals, and other Chats cannot be resolved by this tool.",
+  ],
   chat_send: [
     "Use the exact chatId from chat_list. Reuse operationId only when retrying the same message. Messages use the receiving chat model and queue; paused chats stay paused. Both transcripts show agent attribution.",
   ],

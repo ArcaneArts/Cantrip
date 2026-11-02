@@ -283,6 +283,12 @@ async fn run(
     }
     state.invalidate(&owner, "worker-availability", &worker);
     service.execution.worker_connected(&worker);
+    crate::project_alerts::worker_connected(
+        service.clone(),
+        owner.clone(),
+        worker.clone(),
+        peer.identity.process_generation.clone(),
+    );
     service
         .run_configuration_observations
         .worker_connected(owner.clone(), worker.clone());

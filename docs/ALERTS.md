@@ -9,7 +9,7 @@ alert never approves a request, starts implementation, or resumes a goal.
 | Source       | Identity / episode                                          | Opens or updates                                                 | Resolves                                                              |
 | ------------ | ----------------------------------------------------------- | ---------------------------------------------------------------- | --------------------------------------------------------------------- |
 | Interaction  | Exact request id and immutable request episode              | Pending permission, approval, input, or elicitation              | Response, expiration, interruption, source retirement                 |
-| Task review  | Task chat id and planning round                             | Questions, plan review, implementation decision                  | Next planning round, accepted finalization/implementation, retirement |
+| Task review  | Task chat id, planning round and attention occurrence       | Questions, plan review, implementation decision                  | Next planning round, accepted finalization/implementation, retirement |
 | Task blocker | Task chat id and execution/blocker episode                  | Explicit actionable blocker/failure                              | Blocker resolved, execution resumes, completion/retirement            |
 | Goal         | Chat id and goal execution episode                          | Explicit blocked, budget-limited, or actionable failed execution | Execution resumes, completion/retirement                              |
 | Agent        | Authenticated originating chat, logical key, and occurrence | Scoped agent attention tool                                      | Originating agent resolves it or source advances/retires              |
@@ -69,6 +69,30 @@ owner, worker, Chat, thread, and turn; late deliveries for those turns remain
 closed. Released execution lanes also retire their requests. Existing legacy
 turn cleanup continues to terminalize its own exact requests. Classification
 never depends on an idle status or a missing runtime observation.
+
+Task state now projects review readiness and explicit actionable failures in the
+same transaction. An accepted dispatch hides review readiness immediately;
+canceling that dispatch exposes a fresh review occurrence. Explicit blockers
+remain actionable on paused execution leases. Scheduled automatic retries and
+intentional pauses do not create attention. Completion retires agent Alerts too.
+
+Normal Agent Goals use actual native Goal observations. The worker encrypts
+objectives with existing Chat protection and persists an atomic private outbox.
+Delivery preserves resume boundaries, retries independently per source, and uses
+the authenticated worker process UUID plus a durable sequence. The server checks
+the current Chat/root/thread binding. Old processes and delayed revisions cannot
+revive retired attention. Reconnect refreshes known noncomplete Goals using the
+bound runtime; badge reads never open runtimes or choose another model/account.
+Task Goals use the Task source, avoiding a second representation of the same wait.
+
+Agents can call `alert_raise` with a UUID key, increasing revision, reason and
+next step; `alert_resolve` closes only that Chat's exact key. Retired keys remain
+closed. These tools are available with read-only file permissions, but still
+require the current authenticated execution lane. They cannot forge a system
+permission request or clear another Chat's Alert. Details use `alert-content`
+protection; a missing optional grant causes the actual tool call to fail, without
+blocking ordinary Chat execution. Agents should not duplicate existing structured
+permission, Task review or Goal blocker Alerts.
 
 The Alert Inbox and discovery UI follow in later milestones. Each milestone is
 delivered through its own worktree and merged PR.

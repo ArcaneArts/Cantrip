@@ -1,4 +1,4 @@
-export { projectAlerts } from "./schema-alerts.js";
+export { projectAlerts, chatGoalObservations } from "./schema-alerts.js";
 import type { CuaEffectConfiguration } from "@cantrip/protocol/computer-use-effects";
 export {
   conversationUsageClients,
@@ -1328,6 +1328,7 @@ export const policies = pgTable(
 );
 
 export const workers = pgTable("workers", {
+  projectGoalGeneration: text("project_goal_generation"),
   id: text("id").primaryKey(),
   ownerId: text("owner_id")
     .notNull()
@@ -3550,6 +3551,7 @@ export const standaloneChatRoots = pgTable(
 export const tasks = pgTable(
   "tasks",
   {
+    alertAttentionEpoch: integer("alert_attention_epoch").notNull().default(0),
     chatId: text("chat_id")
       .primaryKey()
       .references(() => chats.id, { onDelete: "cascade" }),

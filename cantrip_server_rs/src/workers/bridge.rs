@@ -338,6 +338,9 @@ impl WorkerBridge {
         }
         true
     }
+    pub fn connection_identity(&self, worker: &str) -> Option<Continuity> {
+        self.state.lock().unwrap().identities.get(worker).cloned()
+    }
     pub fn is_connected(&self, worker: &str) -> bool {
         self.state
             .lock()

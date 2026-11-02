@@ -71,6 +71,9 @@ export interface WorkerCommandBus {
   close(): Promise<void> | void;
   disconnect?(workerId: string, reason?: string, code?: number): void;
   isConnected(workerId: string): boolean;
+  connectionIdentity?(
+    workerId: string,
+  ): WorkerConnectionContinuityIdentity | null;
   sendSurfaceFrame(
     workerId: string,
     header: RemoteSurfaceFrameHeader,
@@ -608,6 +611,12 @@ export class WorkerBridge implements WorkerCommandBus {
     );
   }
 
+  connectionIdentity(
+    workerId: string,
+  ): WorkerConnectionContinuityIdentity | null {
+    const identity = this.#continuityIdentities.get(workerId);
+    return identity ? { ...identity } : null;
+  }
   isConnected(workerId: string): boolean {
     return this.#sockets.get(workerId)?.readyState === 1;
   }

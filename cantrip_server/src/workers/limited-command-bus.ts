@@ -73,6 +73,9 @@ export class LimitedWorkerCommandBus implements WorkerCommandBus {
     else this.delegate.disconnect?.(workerId, reason, code);
   }
 
+  connectionIdentity(workerId: string) {
+    return this.delegate.connectionIdentity?.(workerId) ?? null;
+  }
   isConnected(workerId: string): boolean {
     return this.delegate.isConnected(workerId);
   }
