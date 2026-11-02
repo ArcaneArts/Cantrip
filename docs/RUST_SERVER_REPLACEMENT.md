@@ -12,6 +12,60 @@ feature set.
 
 Status: **implementation in progress; not a deployable replacement**.
 
+The current execution milestone is integrated with main at implementation
+revision `cee3dc0c1f2cc02371ab4da068d4c2cbb2eb47e0`. It mounts twelve public
+encrypted Chat/queue and Chat/Project Task pause routes through concrete native
+admission, receipts, recovery, Goal/Task scheduling, worker commands and Live
+services. Owned timers and admitted work drain before database shutdown.
+
+Current local macOS comparisons pass all nine database/authentication profiles:
+268 paired HTTP observations per database (804 across native PGlite, private
+PostgreSQL and external PostgreSQL), including encrypted transcripts, immutable
+queue-input/claim/hash/generation bindings, automatic continuation, caller
+abort and worker disconnect. All 45 Rust library tests and strict all-target
+Clippy pass. The integrated 473-root/9,141-node manifest passes 421,047 full
+protocol cases, 69,648 ECMAScript JSON round trips, 9,636 public Chat outcomes
+and exact errors, 22,078 workspace validation/error cases, 862 seed/import/strict
+identity cases and 147 resource-deletion ownership cases. The app build passes.
+Model execution, rollback and pause acknowledgments in the public fixture are
+controlled boundaries; actual CLI preparation/resume/exit/retry has separate
+retained evidence. These are not full worker/client or packaged-product results.
+
+The fresh integrated `pnpm check` remains failing: 1,662 server tests passed,
+57 were skipped, four cases timed out at their original five-second limits,
+and the account-pooling assertion at `local-foundation.test.ts:7218` failed.
+All four timeout cases pass in the focused three-file run with their original
+limits. Clean Primary `dab13cde2` reproduces the same pooling assertion unchanged.
+The fixture creates a chat already prepared with its default native model, then
+expects the turn body's model ID to replace that binding. Actual routing and
+the completed encrypted transcript retain the prepared model, as Source's
+explicit native-session rule requires. No assertion or native binding guard is
+weakened to hide this baseline. The older release-workflow assertion failures
+were separately reproduced on clean Primary and fixed to require the recursive
+app-dependency build in all three release jobs; its six-package closure actually
+builds and all twelve focused workflow tests pass. Reports use
+`.qa/rust-server/gui-milestone-*` and `gui-integrated-*`.
+
+The [current platform run](https://github.com/ArcaneArts/Cantrip/actions/runs/41336630442)
+finished with seventeen passing and four failing main jobs across Linux, macOS
+and Windows. The Windows recovery fixture now normalizes actual stack paths,
+with an additional Windows-spelling regression passing all three stores locally.
+The browser fixture uses Vite's real HTML transformation for the React preamble;
+the file/workspace flow passes locally with native PGlite and the full worker.
+The Run exit probe now observes both SIGTERM and SIGHUP, retaining process-death
+and directory-before-deletion assertions; the full PGlite worktree flow passes
+locally. These repairs still require platform revalidation. The Windows browser
+cleanup failure remains under investigation: Source did not finish all 1,023
+successful siblings within the original deadline. A middle-failure variant passes
+locally but is retained only as a diagnostic; the original early-failure scenario,
+workload and deadline remain unchanged. Public Task/Goal lifecycle controls,
+complete unchanged-worker/client
+acceptance, the documented protected Goal-continuation failure, distributed
+coordination, complete old-data upgrade/post-write rollback, supported artifacts,
+desktop packaging, Winterhold rehearsal, performance, default cutover and Node
+server removal remain. Normal builds still launch Node. Detailed milestone
+records below retain their original tested scopes and historical results.
+
 The canonical-history milestone's fresh `pnpm check` exited 1 with 1,662
 server tests passing, one failing and 57 skipped. The provider-pooling assertion
 at `local-foundation.test.ts:7218` also fails in a fresh focused run on clean
@@ -120,7 +174,8 @@ run unchanged; model execution and rollback are controlled fixture boundaries.
 This is not full worker-process, client or packaged-product acceptance.
 
 Seven additional public wire schema roots preserve all prior 466 root mappings
-and the entire 9,105-node prefix. The new manifest has 473 roots and 9,138 nodes.
+and the entire 9,105-node prefix. The initial manifest had 473 roots and 9,138 nodes; integration with current
+main preserves all 473 roots and brings it to 9,141 nodes.
 The Source/native comparison passes 9,636 additional public contract outcomes
 and errors, 421,047 full protocol cases and 69,648 ECMAScript JSON round trips.
 Actual public-route testing exposed a URL-suffix dispatch error for an invalid

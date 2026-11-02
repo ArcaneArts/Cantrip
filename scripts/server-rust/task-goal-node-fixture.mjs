@@ -230,13 +230,22 @@ export async function taskGoalFixture(original, input) {
   });
   const savedNow = Date.now;
   let recoveryClock = input.recoveryClock;
+  const recoveryClockReads = [];
   if (input.recoveryClock !== undefined)
-    Date.now = () =>
-      new Error().stack
-        .split("\n")[2]
-        ?.includes("app/runtime/task-execution-recovery.ts")
-        ? recoveryClock
-        : savedNow();
+    Date.now = () => {
+      const frame = new Error().stack.split("\n")[2] ?? "";
+      // Exercise the real recovery clock with either platform's frame spelling.
+      const caller = (
+        input.recoveryClockFrames === "windows"
+          ? frame.replaceAll("/", "\\")
+          : frame
+      ).replaceAll("\\", "/");
+      if (caller?.includes("app/runtime/task-execution-recovery.ts")) {
+        recoveryClockReads.push(recoveryClock);
+        return recoveryClock;
+      }
+      return savedNow();
+    };
   const recovery = createTaskExecutionRecovery({
     repository,
     bridge,
@@ -340,6 +349,10 @@ export async function taskGoalFixture(original, input) {
           Array(input.count ?? 1).fill(recoveryClock)) {
           recoveryClock = at;
           await recovery.reconcile(input.owner);
+          if (input.reconcileClocks && recoveryClockReads.at(-1) !== at)
+            throw new Error(
+              "Task recovery did not read its injected boundary clock.",
+            );
         }
         result = null;
         break;

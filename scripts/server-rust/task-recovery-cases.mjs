@@ -471,6 +471,21 @@ export async function runTaskRecoveryCases(h) {
   );
   await clean();
   await ok(
+    "background boundary reads the actual Source clock with Windows stack paths",
+    {
+      action: "recover-reconcile",
+      connected: false,
+      recoveryClockFrames: "windows",
+      reconcileClocks: [60000, 89999, 90000],
+    },
+    (v) =>
+      assert.equal(
+        v.trace.filter((t) => t.kind === "recovery-error").length,
+        2,
+      ),
+  );
+  await clean();
+  await ok(
     "recovery survives a detached caller and drains its actual SQL work",
     { action: "recover-detached" },
     (v) => {
