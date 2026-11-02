@@ -306,6 +306,38 @@ it("restricts searches to a selected subtree", async () => {
     await engine.close();
   }
 });
+it("does not release a replacement search context while the old search finishes cancellation", async () => {
+  const { engine } = await fixture([str("name", "hit")]);
+  let status: NbtSearchStatus | undefined;
+  const service = new NbtDocumentSearch(engine, crypto.randomUUID(), (next) => {
+    status = next;
+  });
+  const query: NbtSearchQuery = {
+    text: "hit",
+    fields: ["value"],
+    caseSensitive: false,
+    exactNumber: false,
+  };
+  try {
+    service.start("old", query);
+    const cancelled = service.cancel("old");
+    service.start("replacement", query);
+    expect(await cancelled).toBe(false);
+    const deadline = Date.now() + 5000;
+    while (status?.id !== "replacement" || status.state === "searching") {
+      if (Date.now() > deadline)
+        throw new Error("Replacement search timed out");
+      await new Promise((resolve) => setTimeout(resolve, 2));
+    }
+    expect((await service.results("replacement", 0, 1))[0]?.nodeId).toBe(
+      "node:1",
+    );
+    expect(await service.cancel("old")).toBe(false);
+  } finally {
+    await service.close();
+    await engine.close();
+  }
+});
 it("matches across text page boundaries and a split supplementary case mapping", async () => {
   const query = {
     text: "𐐨needle",

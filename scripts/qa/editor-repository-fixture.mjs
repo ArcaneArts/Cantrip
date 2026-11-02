@@ -160,6 +160,17 @@ if (import.meta.env.VITE_CANTRIP_CODE_MIGRATION_QA === 'true') {
   }, 'code', import.meta.env.VITE_CANTRIP_DRAFT_CONFLICT_QA === 'true' ? {'second.txt':'Alternative recovered second.txt\\n'} : {}).then(() => {button.textContent = 'Code drafts seeded';}).catch(error => {button.textContent = String(error);}).finally(() => {button.disabled = false;}); };
   void import('@tauri-apps/api/window').then(({getCurrentWindow}) => {if (getCurrentWindow().label === 'main') document.body.append(button);});
 }
+if (import.meta.env.VITE_CANTRIP_NBT_NATIVE_QA === 'true') {
+  const button = document.createElement('button');
+  button.textContent = 'QA create NBT project';
+  button.style.cssText = 'position:fixed;bottom:8px;left:8px;z-index:2147483647;background:#222;color:white;padding:8px';
+  button.onclick = () => {
+    button.disabled = true;
+    void globalThis.__qaRepositoryFixture.create().then(() => {button.textContent = 'QA NBT project created';})
+      .catch(error => {button.textContent = String(error);}).finally(() => {button.disabled = false;});
+  };
+  void import('@tauri-apps/api/window').then(({getCurrentWindow}) => {if (getCurrentWindow().label === 'main') document.body.append(button);});
+}
 globalThis.__qaRepositoryFixture = {
   async openBinary(path) {
     const worktree=(await qaGetWorktrees(qaProjectId)).find(worktree=>worktree.isPrimary);

@@ -219,6 +219,8 @@ export interface ExplorerTransferState {
   selectedPath: string | null;
   fileMode: ExplorerFileMode;
   fileViewer?: string | null;
+  /** Private encrypted transfer data, never workspace layout metadata. */
+  viewerState?: import("@/components/files/file-viewers").FileViewerViewState;
   documents: EditorSessionTransfer;
 }
 
@@ -462,6 +464,10 @@ export function ExplorerView({
   const [installedTransfer, setInstalledTransfer] = useState<{
     snapshot: ExplorerTransferState;
     resource: object;
+  } | null>(null);
+  const [viewerRestore, setViewerRestore] = useState<{
+    path: string | null;
+    state: import("@/components/files/file-viewers").FileViewerViewState;
   } | null>(null);
   const [transferInstallError, setTransferInstallError] = useState<
     string | null
@@ -1589,10 +1595,11 @@ export function ExplorerView({
         flushSync(() => setTransferRetired(true));
       },
       captureTransfer: async () => {
+        const custom = customSessionRef.current;
+        const viewerState = await custom?.checkpoint?.();
         if (
-          customSessionRef.current?.dirty ||
-          customSessionRef.current?.pending ||
-          customSessionRef.current?.saving
+          !custom?.checkpoint &&
+          (custom?.dirty || custom?.pending || custom?.saving)
         )
           throw new Error(
             "Save this NBT draft before moving or quitting its window.",
@@ -1622,6 +1629,7 @@ export function ExplorerView({
             ? { fileViewer: fileViewerRef.current }
             : {}),
           documents,
+          ...(viewerState ? { viewerState } : {}),
         };
         await documentRecovery?.checkpoint(state);
         assertTransferResource();
@@ -1657,6 +1665,11 @@ export function ExplorerView({
           worktreeId: explorer.worktreeId,
         });
         sessions.current!.restoreTransfer(state.documents);
+        setViewerRestore(
+          state.viewerState
+            ? { path: state.selectedPath, state: state.viewerState }
+            : null,
+        );
         applyViewState({
           selectedPath: state.selectedPath,
           fileMode: state.fileMode,
@@ -1807,6 +1820,7 @@ export function ExplorerView({
   }, [initialTransfer, initialTransferResource]);
 
   const onTransferredViewReady = useCallback(() => {
+    setViewerRestore(null);
     if (
       !mountedRef.current ||
       !initialTransfer ||
@@ -2074,6 +2088,11 @@ export function ExplorerView({
                 </p>
               ) : CustomFileViewer ? (
                 <CustomFileViewer
+                  initialViewState={
+                    viewerRestore?.path === selectedPath
+                      ? viewerRestore.state
+                      : undefined
+                  }
                   path={selectedPath}
                   explorerId={explorer.id}
                   documentId={
@@ -2084,7 +2103,9 @@ export function ExplorerView({
                   workerId={explorer.activeWorkerId}
                   appearance={appearance}
                   fileAccess={fileAccess}
-                  active={active && !transferSuspended}
+                  active={
+                    Boolean(transferStaging) || (active && !transferSuspended)
+                  }
                   readOnly={transferSuspended}
                   onSessionChange={reportCustomSession}
                   onOpenDocument={

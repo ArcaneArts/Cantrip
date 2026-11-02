@@ -139,6 +139,20 @@ export async function* nbtEditedPayload(
       yield* copy(model, node.data, signal);
     } else if (nbtArray(node.type)) {
       yield i32(node.length!, encoding);
+      if (model.arrayBytes) {
+        let chunks = 0;
+        for await (const bytes of model.arrayBytes(
+          node.id,
+          0,
+          node.length!,
+          signal,
+        )) {
+          signal.throwIfAborted();
+          yield bytes;
+          if (++chunks % 16 === 0) await model.work(signal, false);
+        }
+        continue;
+      }
       const width =
         node.type === NbtTag.ByteArray
           ? 1

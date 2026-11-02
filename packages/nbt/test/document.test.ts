@@ -1,4 +1,4 @@
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { gzipSync, gunzipSync } from "node:zlib";
 import {
   JAVA_NBT,
@@ -10,6 +10,7 @@ import {
 import { NbtDocumentEngine } from "../src/document/engine.js";
 import { NbtDocumentClient } from "../src/document/client.js";
 import { installNbtDocumentWorker } from "../src/document/host.js";
+import { NbtSearchResults } from "../src/search/results.js";
 import type {
   NbtMessageEndpoint,
   NbtDocumentRequest,
@@ -153,6 +154,55 @@ it("does not mutate a borrowed raw source buffer", async () => {
     await engine.close();
   }
 });
+it.each(["none", "gzip"] as const)(
+  "pins %s original bytes in bounded encrypted pages before their backing source is retired",
+  async (compression) => {
+    const length = 2 * 1024 ** 2 + 3,
+      head = Buffer.from([10, 0, 0, 7, 0, 1, 97, 0, 0, 0, 0]);
+    head.writeInt32BE(length, 7);
+    const expanded = Buffer.concat([
+        head,
+        Buffer.alloc(length, 42),
+        Buffer.from([0]),
+      ]),
+      bytes = compression === "gzip" ? gzipSync(expanded) : expanded,
+      expected = Buffer.from(bytes);
+    let retired = false,
+      reads = 0,
+      maxRead = 0;
+    const engine = await NbtDocumentEngine.open(
+      {
+        size: bytes.length,
+        async read(offset, limit, signal) {
+          signal?.throwIfAborted();
+          if (retired) throw new Error("The source journal was retired");
+          reads++;
+          maxRead = Math.max(maxRead, limit);
+          return bytes.subarray(offset, offset + limit);
+        },
+      },
+      {
+        ...options,
+        format: { ...JAVA_NBT, compression },
+        retainOriginal: true,
+      },
+    );
+    try {
+      await engine.completed;
+      const atComplete = reads;
+      retired = true;
+      bytes.fill(0);
+      expect(await collect(engine.serialize(true))).toEqual(expected);
+      expect(reads).toBe(atComplete);
+      expect(maxRead).toBeLessThanOrEqual(65536);
+      expect(engine.snapshot().cacheBytes).toBeLessThanOrEqual(
+        options.cacheBytes,
+      );
+    } finally {
+      await engine.close();
+    }
+  },
+);
 it.each([false, true])(
   "never completes corrupt compressed streams (fallback=%s)",
   async (fallbackCompression) => {
@@ -433,6 +483,64 @@ it("serves bounded tree, table, full-value search and ancestor pages through wor
     await expect(client.searchResults("find", 0, 129)).rejects.toThrow();
     await client.cancelSearch("find");
   } finally {
+    await client.close();
+    await dispose();
+  }
+});
+it("retains a replacement search while a prior RPC cancellation waits for storage cleanup", async () => {
+  const bytes = await fixture(),
+    channel = pair(),
+    dispose = installNbtDocumentWorker(channel.worker),
+    client = await NbtDocumentClient.open(
+      channel.main,
+      new Blob([bytes]),
+      options,
+    );
+  let release = () => {},
+    reached = () => {};
+  const held = new Promise<void>((resolve) => {
+      release = resolve;
+    }),
+    entered = new Promise<void>((resolve) => {
+      reached = resolve;
+    });
+  const close = NbtSearchResults.prototype.close;
+  let calls = 0;
+  const spy = vi
+    .spyOn(NbtSearchResults.prototype, "close")
+    .mockImplementation(async function (this: NbtSearchResults) {
+      if (++calls === 1) {
+        reached();
+        await held;
+      }
+      return close.call(this);
+    });
+  const query = {
+    text: "long",
+    fields: ["name" as const],
+    caseSensitive: false,
+    exactNumber: false,
+  };
+  try {
+    await waitFor(() => client.getSnapshot()?.state === "complete");
+    await client.startSearch("old", query);
+    await waitFor(() => client.getSearchSnapshot()?.state === "complete");
+    const cancelled = client.cancelSearch("old");
+    await entered;
+    await client.startSearch("next", query);
+    release();
+    await cancelled;
+    await waitFor(
+      () =>
+        client.getSearchSnapshot()?.id === "next" &&
+        client.getSearchSnapshot()?.state === "complete",
+    );
+    expect((await client.searchResults("next", 0))[0]?.nodeId).toBe("node:1");
+    await client.cancelSearch("old");
+    expect((await client.searchResults("next", 0))[0]?.nodeId).toBe("node:1");
+  } finally {
+    release();
+    spy.mockRestore();
     await client.close();
     await dispose();
   }

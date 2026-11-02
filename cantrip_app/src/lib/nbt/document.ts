@@ -6,8 +6,10 @@ import {
 
 /** Same production document worker for protected project sources and phone-selected Files. */
 export async function openNbtDocument(
-  input: Blob | NbtDocumentSource,
+  input: Blob | NbtDocumentSource | null,
   options: NbtDocumentOpenOptions,
+  signal?: AbortSignal,
+  onCreated?: (client: NbtDocumentClient) => void,
 ) {
   let worker: Worker;
   try {
@@ -15,7 +17,7 @@ export async function openNbtDocument(
       type: "module",
     });
   } catch (error) {
-    if (!(input instanceof Blob)) input.close?.();
+    if (input && !(input instanceof Blob)) input.close?.();
     throw error;
   }
   let client: NbtDocumentClient | undefined;
@@ -36,7 +38,8 @@ export async function openNbtDocument(
         worker.removeEventListener("error", failed);
         worker.terminate();
       },
-      opening.signal,
+      signal ? AbortSignal.any([opening.signal, signal]) : opening.signal,
+      onCreated,
     );
     return client;
   } catch (error) {

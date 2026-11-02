@@ -1,34 +1,92 @@
-import { useCallback, useEffect, useId, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useId,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type Ref,
+} from "react";
 import type {
   NbtDocumentClient,
   NbtDisplayRow,
   NbtTablePage,
 } from "@cantrip/nbt/document";
-import { NbtVirtualList } from "./virtual-list";
+import { NbtVirtualList, type NbtVirtualHandle } from "./virtual-list";
+import type { NbtTableViewState, NbtViewHandle } from "@/lib/nbt/view-state";
 import { nbtControl, nbtRowValue, NBT_TYPE_NAMES } from "./format";
 export function NbtTable({
   client,
+  active = true,
   row,
   nodes,
   revision = 0,
   onSelect,
+  initialState,
+  stateRef,
+  complete = true,
 }: {
   client: NbtDocumentClient;
+  active?: boolean;
   row: NbtDisplayRow;
   nodes: number;
   revision?: number;
   onSelect(row: NbtDisplayRow): void;
+  initialState?: NbtTableViewState;
+  stateRef?: Ref<NbtViewHandle<NbtTableViewState>>;
+  complete?: boolean;
 }) {
   const [range, setRange] = useState({ offset: 0, limit: 32 }),
-    [columnOffset, setColumnOffset] = useState(0),
-    [reference, setReference] = useState(0),
-    [reverse, setReverse] = useState(false),
+    [columnOffset, setColumnOffset] = useState(initialState?.columnOffset ?? 0),
+    [reference, setReference] = useState(initialState?.reference ?? 0),
+    [reverse, setReverse] = useState(initialState?.reverse ?? false),
     [loaded, setLoaded] = useState<{
       page: NbtTablePage;
       offset: number;
+      key: string;
     } | null>(null),
     [error, setError] = useState<string | null>(null),
-    [referenceDraft, setReferenceDraft] = useState("0");
+    [referenceDraft, setReferenceDraft] = useState(
+      String(initialState?.reference ?? 0),
+    );
+  const list = useRef<NbtVirtualHandle>(null),
+    horizontal = useRef<HTMLDivElement>(null),
+    restoredHorizontal = useRef(false);
+  const pageKey = JSON.stringify([
+    row.node.id,
+    nodes,
+    revision,
+    columnOffset,
+    reference,
+    reverse,
+    complete,
+  ]);
+  useImperativeHandle(
+    stateRef,
+    () => ({
+      capture: () => ({
+        position:
+          list.current?.capturePosition() ?? initialState?.position ?? 0,
+        scrollLeft: horizontal.current?.scrollLeft ?? 0,
+        columnOffset,
+        reference,
+        reverse,
+      }),
+    }),
+    [initialState, columnOffset, reference, reverse],
+  );
+  useLayoutEffect(() => {
+    if (!loaded || restoredHorizontal.current || !horizontal.current) return;
+    if (
+      horizontal.current.scrollWidth - horizontal.current.clientWidth <
+        (initialState?.scrollLeft ?? 0) &&
+      !(complete && loaded.key === pageKey)
+    )
+      return;
+    restoredHorizontal.current = true;
+    horizontal.current.scrollLeft = initialState?.scrollLeft ?? 0;
+  }, [loaded, initialState, complete, pageKey]);
   const page = loaded?.page,
     id = useId();
   const onRange = useCallback(
@@ -41,6 +99,7 @@ export function NbtTable({
     [],
   );
   useEffect(() => {
+    if (!active) return;
     const controller = new AbortController();
     setError(null);
     void (async () => {
@@ -63,7 +122,9 @@ export function NbtTable({
         if (at >= part.totalRows) break;
       }
       if (!controller.signal.aborted)
-        setLoaded(result ? { page: result, offset: range.offset } : null);
+        setLoaded(
+          result ? { page: result, offset: range.offset, key: pageKey } : null,
+        );
     })().catch((reason) => {
       if (!controller.signal.aborted)
         setError(String(reason.message ?? reason));
@@ -71,6 +132,7 @@ export function NbtTable({
     return () => controller.abort();
   }, [
     client,
+    active,
     row.node.id,
     nodes,
     revision,
@@ -79,6 +141,7 @@ export function NbtTable({
     columnOffset,
     reference,
     reverse,
+    pageKey,
   ]);
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col" data-nbt-table="">
@@ -155,7 +218,10 @@ export function NbtTable({
           {error}
         </p>
       ) : null}
-      <div className="flex min-h-0 flex-1 flex-col overflow-x-auto">
+      <div
+        ref={horizontal}
+        className="flex min-h-0 flex-1 flex-col overflow-x-auto"
+      >
         <div
           className="flex min-h-0 flex-1 flex-col"
           style={{
@@ -187,6 +253,9 @@ export function NbtTable({
             ))}
           </div>
           <NbtVirtualList
+            ref={list}
+            initialPosition={initialState?.position}
+            complete={complete && loaded?.key === pageKey}
             count={page?.totalRows ?? row.node.childCount}
             onRange={onRange}
             label="NBT table rows"

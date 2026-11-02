@@ -5,6 +5,7 @@ import type {
 } from "@/components/editor/document-session";
 import type { EditorHistoryState } from "@/components/editor/input-history";
 import type { ExplorerTransferState } from "./explorer-view";
+import { validateNbtViewState } from "@/lib/nbt/view-state";
 
 export interface ExplorerTransferScope {
   documentId?: string;
@@ -174,6 +175,9 @@ export function validateExplorerTransfer(
       ? { fileViewer: state.fileViewer as string | null }
       : {}),
     selectedPath,
+    ...(state.viewerState === undefined
+      ? {}
+      : { viewerState: validateNbtViewState(state.viewerState) }),
     documents: { scope: accountScope, documents },
   };
 }

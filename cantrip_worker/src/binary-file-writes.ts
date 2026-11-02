@@ -199,6 +199,7 @@ export class BinaryFileWrites {
     let record = await this.load(context, key, request);
     if (request.type === "explorer.binary.write.begin") {
       if (record) {
+        if (record.state === "aborted") return this.receipt(record);
         if (record.expected !== request.version)
           throw new Error("The binary upload baseline changed.");
         return this.reconcile(record);
@@ -242,6 +243,32 @@ export class BinaryFileWrites {
       return this.receipt(record);
     }
     if (!record) {
+      if (request.type === "explorer.binary.write.abort") {
+        // Cancellation may arrive before a delayed begin request. Persist its
+        // tombstone under the same per-upload queue so that begin cannot later
+        // resurrect an upload which the recovering client already abandoned.
+        record = {
+          formatVersion: 1,
+          key,
+          root: context.root,
+          path: request.path,
+          uploadId: request.uploadId,
+          target: "",
+          publication: "",
+          publicationVersion: null,
+          expected: null,
+          mode: 0,
+          offset: 0,
+          frames: 0,
+          final: false,
+          state: "aborted",
+          size: null,
+          sha256: null,
+          error: null,
+        };
+        await this.save(record);
+        return this.receipt(record);
+      }
       if (request.type !== "explorer.binary.write.status")
         throw new Error("Binary upload is unavailable. Start a new save.");
       return {
@@ -267,7 +294,7 @@ export class BinaryFileWrites {
       record.error = null;
       await this.save(record);
       await this.storage.discard(key);
-      await rm(record.publication, { force: true });
+      if (record.publication) await rm(record.publication, { force: true });
       return this.receipt(record);
     }
     if (request.type === "explorer.binary.write.commit") {

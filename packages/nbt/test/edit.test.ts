@@ -122,6 +122,83 @@ it("uses persistent weighted sequences and maps without changing retained roots"
     expect(map.get("key:" + i)).toBe(i % 2 ? i : undefined);
   }
 });
+it.each([JAVA_NBT, BEDROCK_NBT, NETWORK_NBT])(
+  "streams edited and duplicated numeric arrays without decoding value pages for %j",
+  async (format) => {
+    for (const type of [
+      NbtTag.ByteArray,
+      NbtTag.IntArray,
+      NbtTag.LongArray,
+    ] as const) {
+      const values = Array.from({ length: 16385 }, (_, i) =>
+        type === NbtTag.LongArray ? BigInt(i % 128) : i % 128,
+      );
+      const f = await open(
+        [
+          {
+            name: "array",
+            tag: {
+              type,
+              length: values.length,
+              value: values,
+            } as NbtEntry["tag"],
+          },
+        ],
+        format,
+      );
+      try {
+        const id = (await named(f.session, f.root))[0]!.node.id;
+        await edit(f.session, {
+          type: "array.splice",
+          id,
+          index: values.length - 1,
+          remove: 1,
+          values: ["-1", "-2"],
+        });
+        await edit(f.session, {
+          type: "duplicate",
+          id,
+          parent: f.root,
+          index: 1,
+          name: "snapshot",
+        });
+        await edit(f.session, {
+          type: "array.splice",
+          id,
+          index: values.length,
+          remove: 1,
+          values: ["3"],
+        });
+        const view = f.session.view(),
+          decoded = vi.spyOn(view, "array"),
+          baselineDecoded = vi.spyOn(f.engine, "array");
+        const bytes = await collect(serializeNbtEdits(view, format));
+        expect(decoded).not.toHaveBeenCalled();
+        expect(baselineDecoded).not.toHaveBeenCalled();
+        const reopened = await NbtDocumentEngine.open(memoryNbtSource(bytes), {
+          binding: crypto.randomUUID(),
+          format,
+        });
+        try {
+          const result = await reopened.completed,
+            rows = await reopened.rows(result.root, 0, 2);
+          const n = (value: number) =>
+            type === NbtTag.LongArray ? BigInt(value) : value;
+          expect(
+            await reopened.array(rows[0]!.node.id, values.length - 1, 2),
+          ).toEqual([n(-1), n(3)]);
+          expect(
+            await reopened.array(rows[1]!.node.id, values.length - 1, 2),
+          ).toEqual([n(-1), n(-2)]);
+        } finally {
+          await reopened.close();
+        }
+      } finally {
+        await f.close();
+      }
+    }
+  },
+);
 it("validates typed scalar edits, preserves exact Longs, and commits transactions atomically", async () => {
   const f = await open([
     int("int", 1),

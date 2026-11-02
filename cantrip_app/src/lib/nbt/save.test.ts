@@ -1,3 +1,4 @@
+import "fake-indexeddb/auto";
 import { expect, it, vi } from "vitest";
 import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -42,7 +43,7 @@ function pair() {
   }
   return { main: end(main, worker), worker: end(worker, main) };
 }
-async function fixture() {
+async function fixture(durable = false) {
   const directory = await mkdtemp(
       path.join(tmpdir(), "cantrip-nbt-save-client-"),
     ),
@@ -71,17 +72,28 @@ async function fixture() {
     parts.push(part);
   const original = Buffer.concat(parts);
   await writeFile(filename, original);
+  const recovery = durable
+    ? {
+        id: randomUUID(),
+        key: await crypto.subtle.generateKey(
+          { name: "AES-GCM", length: 256 },
+          false,
+          ["encrypt", "decrypt"],
+        ),
+      }
+    : undefined;
   const source = await openProtectedBinarySource(
-      "file.nbt",
-      (offset, limit, version) =>
-        readExplorerBinaryFile(directory, "file.nbt", offset, limit, version),
-    ),
-    endpoints = pair(),
+    "file.nbt",
+    (offset, limit, version) =>
+      readExplorerBinaryFile(directory, "file.nbt", offset, limit, version),
+  );
+  let endpoints = pair(),
     dispose = installNbtDocumentWorker(endpoints.worker),
     client = await NbtDocumentClient.open(endpoints.main, source, {
       binding: randomUUID(),
       version: source.version,
       format: JAVA_NBT,
+      recovery,
     });
   const until = Date.now() + 5000;
   while (client.getSnapshot()?.state !== "complete") {
@@ -106,12 +118,26 @@ async function fixture() {
       root: directory,
     };
   return {
-    client,
+    get client() {
+      return client;
+    },
     long,
     original,
     filename,
     backend,
     context,
+    async reopen() {
+      await client.close();
+      await dispose();
+      endpoints = pair();
+      dispose = installNbtDocumentWorker(endpoints.worker);
+      client = await NbtDocumentClient.open(endpoints.main, null, {
+        binding: randomUUID(),
+        version: source.version,
+        format: JAVA_NBT,
+        recovery,
+      });
+    },
     async close() {
       await client.close();
       await dispose();
@@ -301,6 +327,150 @@ it("resumes an interrupted Save As at its original destination without requiring
       pendingSaveId: undefined,
     });
     expect(await readFile(f.filename)).toEqual(f.original);
+  } finally {
+    await f.close();
+  }
+}, 30_000);
+it("reconciles a committed save after the renderer reloads without serializing a new stream", async () => {
+  const f = await fixture(true);
+  let offline = false;
+  const transport = async (request: BinaryWriteRequest) => {
+    if (offline) throw new Error("Offline");
+    const receipt = await f.backend.execute(f.context, request);
+    if (request.type === "explorer.binary.write.commit") {
+      offline = true;
+      throw new Error("Offline");
+    }
+    return receipt;
+  };
+  try {
+    const controller = new NbtSaveController(f.client, "file.nbt", transport);
+    await expect(controller.save()).rejects.toThrow("Offline");
+    const pending = f.client.getEditSnapshot()!.pendingSave!;
+    expect(pending.metadata?.sha256).toMatch(/^[a-f0-9]{64}$/u);
+    await f.reopen();
+    expect(f.client.getEditSnapshot()).toMatchObject({
+      pendingSaveId: pending.id,
+      uncertain: true,
+      saving: false,
+    });
+    const serialize = vi.spyOn(f.client, "serialize"),
+      restored = new NbtSaveController(f.client, "file.nbt", (request) =>
+        f.backend.execute(f.context, request),
+      );
+    expect(await restored.save()).toMatchObject({
+      state: "committed",
+      uploadId: pending.id,
+      sha256: pending.metadata!.sha256,
+    });
+    expect(serialize).not.toHaveBeenCalled();
+    expect(f.client.getEditSnapshot()).toMatchObject({
+      dirty: false,
+      pendingSaveId: undefined,
+      uncertain: false,
+    });
+  } finally {
+    await f.close();
+  }
+}, 30_000);
+it("cancels a partial compressed upload after reload before starting a fresh upload", async () => {
+  const f = await fixture(true);
+  let dropped = false;
+  try {
+    const controller = new NbtSaveController(
+      f.client,
+      "file.nbt",
+      async (request) => {
+        const receipt = await f.backend.execute(f.context, request);
+        if (request.type === "explorer.binary.write.chunk" && !dropped) {
+          dropped = true;
+          throw new Error("Disconnected");
+        }
+        return receipt;
+      },
+    );
+    await expect(controller.save()).rejects.toThrow("Disconnected");
+    const pending = f.client.getEditSnapshot()!.pendingSave!;
+    expect(pending.metadata).toBeUndefined();
+    await f.reopen();
+    const restored = new NbtSaveController(f.client, "file.nbt", (request) =>
+      f.backend.execute(f.context, request),
+    );
+    const receipt = await restored.save();
+    expect(receipt.state).toBe("committed");
+    expect(receipt.uploadId).not.toBe(pending.id);
+    expect(
+      await f.backend.execute(f.context, {
+        type: "explorer.binary.write.status",
+        path: "file.nbt",
+        uploadId: pending.id,
+      }),
+    ).toMatchObject({ state: "aborted" });
+    expect(f.client.getEditSnapshot()?.dirty).toBe(false);
+    expect((await f.client.describe(f.long)).value).toBe(9007199254740993n);
+  } finally {
+    await f.close();
+  }
+}, 30_000);
+it("recovers the Save As destination and leaves the original dirty when its committed receipt is reconciled", async () => {
+  const f = await fixture(true);
+  let offline = false;
+  try {
+    const session = new NbtViewSession(f.client);
+    await expect(
+      session.saveAs("recovered-copy.nbt", async (request) => {
+        if (offline) throw new Error("Offline");
+        const receipt = await f.backend.execute(f.context, request);
+        if (request.type === "explorer.binary.write.commit") {
+          offline = true;
+          throw new Error("Offline");
+        }
+        return receipt;
+      }),
+    ).rejects.toThrow("Offline");
+    await f.reopen();
+    const restored = new NbtViewSession(f.client);
+    restored.setTransportResolver(async (path) => {
+      expect(path).toBe("recovered-copy.nbt");
+      return (request) => f.backend.execute(f.context, request);
+    });
+    expect(restored.pendingCopyPath).toBe("recovered-copy.nbt");
+    expect(await restored.resumeCopy()).toMatchObject({
+      state: "committed",
+      path: "recovered-copy.nbt",
+    });
+    expect(restored.pendingCopyPath).toBeUndefined();
+    expect(f.client.getEditSnapshot()).toMatchObject({
+      dirty: true,
+      uncertain: false,
+      pendingSaveId: undefined,
+    });
+    expect(await readFile(f.filename)).toEqual(f.original);
+  } finally {
+    await f.close();
+  }
+}, 30_000);
+it("retries after reload when the previous renderer never reached upload begin", async () => {
+  const f = await fixture(true);
+  try {
+    const original = new NbtSaveController(f.client, "file.nbt", async () => {
+      throw new Error("Offline before begin");
+    });
+    await expect(original.save()).rejects.toThrow("Offline before begin");
+    const id = f.client.getEditSnapshot()!.pendingSaveId!;
+    await f.reopen();
+    const restored = new NbtSaveController(f.client, "file.nbt", (request) =>
+      f.backend.execute(f.context, request),
+    );
+    expect(await restored.save()).toMatchObject({ state: "committed" });
+    expect(
+      await f.backend.execute(f.context, {
+        type: "explorer.binary.write.status",
+        path: "file.nbt",
+        uploadId: id,
+      }),
+    ).toMatchObject({ state: "aborted" });
+    expect(f.client.getEditSnapshot()?.dirty).toBe(false);
   } finally {
     await f.close();
   }

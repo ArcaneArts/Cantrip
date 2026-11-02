@@ -31,6 +31,9 @@ type Job = {
 };
 export class NbtDocumentSearch {
   private current: Job | undefined;
+  get currentId() {
+    return this.current?.id;
+  }
   constructor(
     private provider: NbtReadModel | (() => NbtReadModel),
     private binding: string,
@@ -367,12 +370,16 @@ export class NbtDocumentSearch {
   }
   async cancel(id: string) {
     const job = this.current;
-    if (!job || job.id !== id) return;
+    if (!job || job.id !== id) return false;
     job.controller.abort();
     await job.done;
     await job.results?.close();
     job.results = undefined;
-    if (this.current === job) this.current = undefined;
+    // A newer search may start while encrypted result cleanup is awaiting I/O.
+    // Its owner must retain this context instead of deleting the replacement.
+    if (this.current !== job) return false;
+    this.current = undefined;
+    return true;
   }
   async close() {
     if (this.current) await this.cancel(this.current.id);

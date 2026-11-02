@@ -1,4 +1,5 @@
 import { NbtEditActions } from "./edit-actions";
+import { useNbtExport } from "./use-export";
 import {
   useCallback,
   useEffect,
@@ -15,9 +16,22 @@ import {
   discardNbtSession,
 } from "@/lib/nbt/session-registry";
 import type { NbtBinaryTransport } from "@/lib/nbt/save";
+import type { NbtRecoveryVault } from "@/lib/nbt/recovery";
+import { nbtSharedDocument } from "@/lib/nbt/shared-document";
+import { readNbtEditTarget } from "@/lib/nbt/edit-target";
+import { resolveNbtView } from "@/lib/nbt/restore-view";
+import type {
+  NbtViewState,
+  NbtViewHandle,
+  NbtTreeViewState,
+  NbtArrayViewState,
+  NbtTableViewState,
+  NbtFindViewState,
+} from "@/lib/nbt/view-state";
 import type {
   NbtDisplayRow,
   NbtDocumentSource,
+  NbtDocumentClient,
   NbtSearchResult,
 } from "@cantrip/nbt/document";
 import { openNbtViewerClient, useNbtClient } from "./use-client";
@@ -26,7 +40,13 @@ import { NbtTree, type NbtAnchor } from "./tree";
 import { NbtArray } from "./array";
 import { NbtTable } from "./table";
 import { NbtFind } from "./find";
-import { nbtControl, NBT_PROFILES, NBT_TYPE_NAMES } from "./format";
+import {
+  container,
+  numericArray,
+  nbtControl,
+  NBT_PROFILES,
+  NBT_TYPE_NAMES,
+} from "./format";
 import {
   NbtEditSheet,
   type NbtEditAction,
@@ -42,10 +62,16 @@ export function NbtBrowser({
   onError,
   onLocalFile,
   saveTarget,
-  readOnly = false,
+  readOnly: externalReadOnly = false,
   onSessionChange,
   saveAsTarget,
   onOpenDocument,
+  openRecovery,
+  initialViewState,
+  preparingSource = false,
+  onClientReady,
+  onDiscardSource,
+  exportName,
 }: {
   openSource: (signal: AbortSignal) => Promise<Blob | NbtDocumentSource>;
   scope: string;
@@ -53,15 +79,26 @@ export function NbtBrowser({
   label?: string;
   onReady?(): void;
   onError?(error: unknown): void;
-  onLocalFile?(file: File): void;
+  onLocalFile?(file: File): void | Promise<void>;
+  preparingSource?: boolean;
+  onClientReady?(
+    client: NbtDocumentClient,
+    signal: AbortSignal,
+  ): void | Promise<void>;
+  onDiscardSource?(): Promise<void>;
+  exportName?: string;
   saveTarget?: { path: string; write: NbtBinaryTransport };
   readOnly?: boolean;
   onSessionChange?(session: FileViewerSession | null): void;
   saveAsTarget?(path: string): Promise<NbtBinaryTransport>;
   onOpenDocument?(path: string): void | Promise<void>;
+  openRecovery?(): Promise<NbtRecoveryVault>;
+  initialViewState?: NbtViewState;
 }) {
-  const [profile, setProfile] = useState("auto"),
-    [compression, setCompression] = useState("auto"),
+  const [profile, setProfile] = useState(initialViewState?.profile ?? "auto"),
+    [compression, setCompression] = useState(
+      initialViewState?.compression ?? "auto",
+    ),
     [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set()),
     [selected, setSelected] = useState<NbtDisplayRow | null>(null),
     [target, setTarget] = useState<NbtDisplayRow | null>(null),
@@ -82,6 +119,14 @@ export function NbtBrowser({
     [copyError, setCopyError] = useState<string | null>(null);
   const [copyPreparing, setCopyPreparing] = useState(false),
     copyOpening = useRef(false);
+  const resolveWrite = useCallback(
+    async (path: string) => {
+      if (saveTarget?.path === path) return saveTarget.write;
+      if (saveAsTarget) return saveAsTarget(path);
+      throw new Error("The NBT save destination is unavailable.");
+    },
+    [saveTarget, saveAsTarget],
+  );
   const { client, session, status, edit, progress, error, sessionKey } =
       useNbtClient(
         openSource,
@@ -89,6 +134,8 @@ export function NbtBrowser({
         profile,
         compression,
         active,
+        openRecovery,
+        resolveWrite,
       ),
     input = useRef<HTMLInputElement>(null),
     local = useRef<HTMLInputElement>(null),
@@ -96,10 +143,84 @@ export function NbtBrowser({
     nonce = useRef(0),
     ready = useRef<unknown>(null),
     initialRoot = useRef<unknown>(null),
-    navigation = useRef<AbortController | null>(null);
+    navigation = useRef<AbortController | null>(null),
+    editOpening = useRef<AbortController | null>(null);
+  const exporter = useNbtExport(
+    client,
+    exportName ?? saveTarget?.path ?? "document.nbt",
+  );
+  const treeView = useRef<NbtViewHandle<NbtTreeViewState>>(null),
+    arrayView = useRef<NbtViewHandle<NbtArrayViewState>>(null),
+    tableView = useRef<NbtViewHandle<NbtTableViewState>>(null),
+    findView = useRef<NbtViewHandle<NbtFindViewState>>(null),
+    lastTree = useRef<NbtTreeViewState>({ position: 0, rank: 0 }),
+    consumedView = useRef<NbtViewState | undefined>(undefined),
+    captureView = useRef<() => NbtViewState | undefined>(() => undefined);
+  const [restoredView, setRestoredView] = useState<{
+    input?: NbtViewState;
+    seed?: NbtViewState;
+    nonce: number;
+  }>({ nonce: 0 });
+  const viewReady =
+    !initialViewState || restoredView.input === initialViewState;
+  const sourcePreparing = useRef(preparingSource);
+  sourcePreparing.current = preparingSource;
+  const generation = status?.shared?.generation ?? 0;
+  const viewKey = generation + "/" + restoredView.nonce;
+  captureView.current = () => {
+    const current = client?.getSnapshot();
+    if (!current?.format || !current.baselineVersion) return;
+    return {
+      viewer: "nbt",
+      version: 1,
+      baselineVersion: current.baselineVersion,
+      format: { ...current.format },
+      profile,
+      compression,
+      expanded: [...expanded],
+      selected: selected?.node.id ?? null,
+      target: target?.node.id ?? null,
+      mode,
+      editing,
+      findOpen: find,
+      tree: treeView.current?.capture() ?? lastTree.current,
+      ...(arrayView.current ? { array: arrayView.current.capture() } : {}),
+      ...(tableView.current ? { table: tableView.current.capture() } : {}),
+      ...(findView.current ? { find: findView.current.capture() } : {}),
+    };
+  };
+  const readOnly =
+    externalReadOnly ||
+    exporter.busy ||
+    preparingSource ||
+    Boolean(status?.shared?.changing || status?.shared?.unavailable);
+  useEffect(() => {
+    if (!active || readOnly) editOpening.current?.abort();
+    return () => editOpening.current?.abort();
+  }, [client, generation, active, readOnly]);
+  useEffect(() => {
+    if (!client || !onClientReady) return;
+    const controller = new AbortController();
+    void Promise.resolve(onClientReady(client, controller.signal)).catch(
+      (error) => {
+        if (!controller.signal.aborted)
+          setNavigationError(
+            error instanceof Error
+              ? error.message
+              : "The NBT source could not be prepared.",
+          );
+      },
+    );
+    return () =>
+      controller.abort(new Error("The NBT source view was retired."));
+  }, [client, onClientReady]);
   const reloading = useRef(false),
     replacement = useRef<{ key: string; release(): void } | null>(null);
+  const [interpreting, setInterpreting] = useState(false);
   const reloadAbort = useRef<AbortController | null>(null);
+  useEffect(() => {
+    session?.setTransportResolver(resolveWrite);
+  }, [session, resolveWrite]);
   useEffect(() => {
     if (client && replacement.current?.key === sessionKey) {
       replacement.current.release();
@@ -115,7 +236,13 @@ export function NbtBrowser({
     [],
   );
   const save = useCallback(async () => {
-    if (!session || copyOpening.current) return false;
+    if (
+      !session ||
+      copyOpening.current ||
+      sourcePreparing.current ||
+      exporter.busyRef.current
+    )
+      return false;
     const copy = session.pendingCopyPath;
     if (!copy && !saveTarget) return false;
     try {
@@ -141,122 +268,250 @@ export function NbtBrowser({
     }
   }, [session, saveTarget, client, onOpenDocument]);
   const discard = useCallback(async () => {
+    if (sourcePreparing.current || exporter.busyRef.current)
+      throw new Error("Wait for the local file operation to finish.");
     const release = client?.freezeEdits();
     try {
-      await discardNbtSession(sessionKey);
-      setEpoch((value) => value + 1);
+      if (client) await discardNbtSession(sessionKey);
+      await onDiscardSource?.();
     } finally {
+      setEpoch((value) => value + 1);
       release?.();
     }
-  }, [sessionKey, client]);
-  const reload = useCallback(async () => {
-    if (!client || reloading.current)
-      throw new Error("NBT reload is already in progress.");
-    const release = client.freezeEdits();
-    reloading.current = true;
-    const controller = new AbortController();
-    reloadAbort.current = controller;
-    const nextEpoch = epoch + 1,
-      key = JSON.stringify([
-        scope + "/reload-" + nextEpoch,
-        profile,
-        compression,
-      ]);
-    const lease = acquireNbtSession(
-      key,
-      (signal) =>
-        openNbtViewerClient(openSource, key, profile, compression, signal),
-      true,
-    );
-    controller.signal.addEventListener("abort", lease.release, { once: true });
-    let adopted = false;
-    try {
-      const next = await lease.promise;
-      controller.signal.throwIfAborted();
-      await new Promise<void>((resolve, reject) => {
-        let unsubscribe = () => {};
-        const cleanup = () => {
-          unsubscribe();
-          controller.signal.removeEventListener("abort", abort);
-        };
-        const abort = () => {
-          cleanup();
-          reject(controller.signal.reason);
-        };
-        controller.signal.addEventListener("abort", abort, { once: true });
-        const check = () => {
-          const status = next.client.getSnapshot();
-          if (status?.state === "complete") {
-            cleanup();
-            resolve();
-          } else if (status?.state === "error" || status?.state === "closed") {
-            cleanup();
-            reject(
-              new Error(
-                status.error?.message ??
-                  "The replacement NBT file could not be read.",
-              ),
-            );
-          }
-        };
-        unsubscribe = next.client.subscribe(check);
-        check();
+  }, [sessionKey, client, onDiscardSource]);
+  const reload = useCallback(
+    async (interpretation?: { profile?: string; compression?: string }) => {
+      if (!client || reloading.current || exporter.busyRef.current)
+        throw new Error("Wait for the current NBT operation to finish.");
+      const shared = nbtSharedDocument(client);
+      if (shared) {
+        const release = client.freezeEdits();
+        reloading.current = true;
+        setInterpreting(true);
+        try {
+          await shared.replace(
+            interpretation
+              ? {
+                  profile: interpretation.profile ?? profile,
+                  compression: interpretation.compression ?? compression,
+                }
+              : undefined,
+          );
+          if (interpretation?.profile) setProfile(interpretation.profile);
+          if (interpretation?.compression)
+            setCompression(interpretation.compression);
+        } finally {
+          release();
+          reloading.current = false;
+          setInterpreting(false);
+        }
+        return;
+      }
+      const release = client.freezeEdits();
+      reloading.current = true;
+      setInterpreting(true);
+      const controller = new AbortController();
+      reloadAbort.current = controller;
+      const nextProfile = interpretation?.profile ?? profile,
+        nextCompression = interpretation?.compression ?? compression,
+        nextEpoch = epoch + 1,
+        key = JSON.stringify([
+          scope + "/reload-" + nextEpoch,
+          nextProfile,
+          nextCompression,
+        ]);
+      const lease = acquireNbtSession(
+        key,
+        (signal) =>
+          openNbtViewerClient(
+            openSource,
+            key,
+            nextProfile,
+            nextCompression,
+            signal,
+          ),
+        true,
+      );
+      controller.signal.addEventListener("abort", lease.release, {
+        once: true,
       });
-      controller.signal.throwIfAborted();
-      await discardNbtSession(sessionKey);
-      controller.signal.throwIfAborted();
-      replacement.current = { key, release: lease.release };
-      adopted = true;
-      setEpoch(nextEpoch);
-    } finally {
-      release();
-      reloading.current = false;
-      if (reloadAbort.current === controller) reloadAbort.current = null;
-      controller.signal.removeEventListener("abort", lease.release);
-      if (!adopted) lease.release();
-    }
-  }, [client, epoch, scope, profile, compression, openSource, sessionKey]);
+      let adopted = false;
+      try {
+        const next = await lease.promise;
+        controller.signal.throwIfAborted();
+        await new Promise<void>((resolve, reject) => {
+          let unsubscribe = () => {};
+          const cleanup = () => {
+            unsubscribe();
+            controller.signal.removeEventListener("abort", abort);
+          };
+          const abort = () => {
+            cleanup();
+            reject(controller.signal.reason);
+          };
+          controller.signal.addEventListener("abort", abort, { once: true });
+          const check = () => {
+            const status = next.client.getSnapshot();
+            if (status?.state === "complete") {
+              cleanup();
+              resolve();
+            } else if (
+              status?.state === "error" ||
+              status?.state === "closed"
+            ) {
+              cleanup();
+              reject(
+                new Error(
+                  status.error?.message ??
+                    "The replacement NBT file could not be read.",
+                ),
+              );
+            }
+          };
+          unsubscribe = next.client.subscribe(check);
+          check();
+        });
+        controller.signal.throwIfAborted();
+        await discardNbtSession(sessionKey);
+        controller.signal.throwIfAborted();
+        if (openRecovery) {
+          const vault = await openRecovery();
+          await next.client.attachRecovery({ id: vault.id, key: vault.key });
+        }
+        replacement.current = { key, release: lease.release };
+        adopted = true;
+        setProfile(nextProfile);
+        setCompression(nextCompression);
+        setEpoch(nextEpoch);
+      } finally {
+        release();
+        reloading.current = false;
+        setInterpreting(false);
+        if (reloadAbort.current === controller) reloadAbort.current = null;
+        controller.signal.removeEventListener("abort", lease.release);
+        if (!adopted) lease.release();
+      }
+    },
+    [
+      client,
+      epoch,
+      scope,
+      profile,
+      compression,
+      openSource,
+      sessionKey,
+      openRecovery,
+    ],
+  );
   const lifecycle = useMemo<FileViewerSession | null>(
     () =>
       client && edit
         ? {
             get revision() {
-              return client.getEditSnapshot()?.revision ?? 0;
+              return (
+                session?.revision ?? client.getEditSnapshot()?.revision ?? 0
+              );
             },
             get dirty() {
               return client.getEditSnapshot()?.dirty ?? false;
             },
             get saving() {
               return Boolean(
+                sourcePreparing.current ||
+                exporter.busyRef.current ||
                 client.getEditSnapshot()?.saving ||
                 session?.busy ||
-                copyOpening.current,
+                copyOpening.current ||
+                reloading.current ||
+                client.getSnapshot()?.shared?.changing,
               );
             },
             get pending() {
               const status = client.getEditSnapshot();
-              return Boolean(status?.pendingSaveId || status?.editing);
+              return Boolean(
+                sourcePreparing.current ||
+                exporter.busyRef.current ||
+                status?.pendingSaveId ||
+                status?.editing ||
+                client.getSnapshot()?.shared?.changing,
+              );
             },
             save,
             discard,
             reload,
+            ...(nbtSharedDocument(client)
+              ? {
+                  checkpoint: async () => {
+                    if (sourcePreparing.current || exporter.busyRef.current)
+                      throw new Error(
+                        "Wait for the local file operation to finish before moving this view.",
+                      );
+                    await nbtSharedDocument(client)!.checkpoint();
+                    return captureView.current();
+                  },
+                }
+              : {}),
           }
-        : null,
-    [client, edit, save, discard, reload, session, progress, copyPreparing],
+        : preparingSource
+          ? {
+              revision: 0,
+              dirty: false,
+              saving: true,
+              pending: true,
+              save: async () => false,
+              discard: async () => {
+                throw new Error("Wait for the local file to finish opening.");
+              },
+              reload: async () => {
+                throw new Error("Wait for the local file to finish opening.");
+              },
+              checkpoint: async () => {
+                throw new Error(
+                  "Wait for the local file to finish opening before moving this view.",
+                );
+              },
+            }
+          : null,
+    [
+      client,
+      edit,
+      save,
+      discard,
+      reload,
+      session,
+      progress,
+      copyPreparing,
+      interpreting,
+      preparingSource,
+      exporter.busy,
+    ],
   );
   useEffect(() => {
     onSessionChange?.(lifecycle);
   }, [lifecycle, onSessionChange]);
   useEffect(() => () => onSessionChange?.(null), [onSessionChange]);
   useEffect(() => {
-    if (!edit?.dirty && !edit?.pendingSaveId && !edit?.editing) return;
+    if (
+      !edit?.dirty &&
+      !edit?.pendingSaveId &&
+      !edit?.editing &&
+      !preparingSource &&
+      !exporter.busy
+    )
+      return;
     const prevent = (event: BeforeUnloadEvent) => {
       event.preventDefault();
       event.returnValue = "";
     };
     window.addEventListener("beforeunload", prevent);
     return () => window.removeEventListener("beforeunload", prevent);
-  }, [edit?.dirty, edit?.pendingSaveId, edit?.editing]);
+  }, [
+    edit?.dirty,
+    edit?.pendingSaveId,
+    edit?.editing,
+    preparingSource,
+    exporter.busy,
+  ]);
   useEffect(() => {
     setExpanded(new Set());
     setSelected(null);
@@ -265,13 +520,82 @@ export function NbtBrowser({
     setAnchor(null);
     setArrayFocus(null);
     setEditRequest(null);
+    setCrumbs([]);
+    setNavigationError(null);
+    setCopyNotice(null);
+    setCopyError(null);
+    setSaveAsPath(null);
     ready.current = null;
     initialRoot.current = null;
+    lastTree.current = { position: 0, rank: 0 };
+    setRestoredView((current) => ({
+      input: current.input,
+      nonce: current.nonce + 1,
+    }));
     navigation.current?.abort();
     return () => navigation.current?.abort();
-  }, [client]);
+  }, [client, generation]);
   useEffect(() => {
-    if (!client) return;
+    if (
+      !initialViewState ||
+      consumedView.current === initialViewState ||
+      !client ||
+      !active ||
+      !status?.root ||
+      status.shared?.changing ||
+      status.shared?.unavailable
+    )
+      return;
+    const controller = new AbortController();
+    void resolveNbtView(client, initialViewState, controller.signal)
+      .then((resolved) => {
+        controller.signal.throwIfAborted();
+        consumedView.current = initialViewState;
+        if (resolved) {
+          setProfile(initialViewState.profile);
+          setCompression(initialViewState.compression);
+        }
+        initialRoot.current = client;
+        lastTree.current = resolved
+          ? initialViewState.tree
+          : { position: 0, rank: 0 };
+        setExpanded(
+          new Set(resolved ? initialViewState.expanded : [status.root!]),
+        );
+        setSelected(resolved?.selected ?? null);
+        setTarget(resolved?.target ?? null);
+        setMode(resolved?.mode ?? "tree");
+        setEditing(initialViewState.editing);
+        setFind(Boolean(resolved && initialViewState.findOpen));
+        setRestoredView((current) => ({
+          input: initialViewState,
+          seed: resolved ? initialViewState : undefined,
+          nonce: current.nonce + 1,
+        }));
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted) {
+          setNavigationError(
+            error instanceof Error
+              ? error.message
+              : "NBT view could not be restored.",
+          );
+          onError?.(error);
+        }
+      });
+    return () => controller.abort();
+  }, [
+    initialViewState,
+    client,
+    active,
+    generation,
+    status?.root,
+    status?.shared?.changing,
+    status?.shared?.unavailable,
+    onError,
+  ]);
+  useEffect(() => {
+    if (!client || !active) return;
     const controller = new AbortController();
     const refresh = async (
       row: NbtDisplayRow | null,
@@ -292,21 +616,37 @@ export function NbtBrowser({
     void refresh(selected, setSelected);
     void refresh(target, setTarget);
     return () => controller.abort();
-  }, [client, edit?.revision, selected?.node.id, target?.node.id]);
+  }, [
+    client,
+    active,
+    generation,
+    edit?.revision,
+    selected?.node.id,
+    target?.node.id,
+  ]);
   useEffect(() => {
-    if (client && status?.root) {
+    if (client && status?.root && viewReady) {
       if (initialRoot.current !== client) {
         initialRoot.current = client;
         setExpanded(new Set([status.root!]));
       }
-      if (ready.current !== client) {
+      if (!preparingSource && ready.current !== client) {
         ready.current = client;
         onReady?.();
       }
     }
     if (status?.state === "error")
       onError?.(new Error(status.error?.message ?? "NBT could not be read."));
-  }, [client, status?.root, status?.state, onReady, onError]);
+  }, [
+    client,
+    generation,
+    status?.root,
+    status?.state,
+    viewReady,
+    preparingSource,
+    onReady,
+    onError,
+  ]);
   useEffect(() => {
     if (error) onError?.(new Error(error));
   }, [error, onError]);
@@ -359,11 +699,13 @@ export function NbtBrowser({
   }, [active, readOnly, editing, client, save]);
   const select = useCallback((row: NbtDisplayRow) => {
     navigation.current?.abort();
+    editOpening.current?.abort();
     setSelected(row);
   }, []);
   const reveal = useCallback(
     async (result: NbtSearchResult, signal?: AbortSignal) => {
       if (!client) return;
+      editOpening.current?.abort();
       navigation.current?.abort();
       const controller = new AbortController();
       navigation.current = controller;
@@ -384,7 +726,13 @@ export function NbtBrowser({
         if (result.elementIndex !== undefined) {
           setTarget(row);
           setMode("array");
-          setArrayFocus({ index: result.elementIndex, nonce: ++nonce.current });
+          setArrayFocus({
+            index: Math.min(
+              result.elementIndex,
+              Math.max(0, (row.node.length ?? 1) - 1),
+            ),
+            nonce: ++nonce.current,
+          });
         } else {
           setMode("tree");
           setAnchor({ id: row.node.id, center: true, nonce: ++nonce.current });
@@ -396,9 +744,10 @@ export function NbtBrowser({
         signal?.removeEventListener("abort", abort);
       }
     },
-    [client],
+    [client, generation],
   );
   useEffect(() => {
+    if (!active) return;
     if (!client || !selected) {
       setCrumbs([]);
       return;
@@ -415,8 +764,10 @@ export function NbtBrowser({
       })
       .catch(() => {});
     return () => controller.abort();
-  }, [client, selected?.node.id, edit?.revision]);
+  }, [client, active, generation, selected?.node.id, edit?.revision]);
   const open = useCallback((row: NbtDisplayRow, next: "array" | "table") => {
+    editOpening.current?.abort();
+    if (treeView.current) lastTree.current = treeView.current.capture();
     setSelected(row);
     setTarget(row);
     setMode(next);
@@ -427,16 +778,49 @@ export function NbtBrowser({
     row = selected,
     element?: number,
   ) => {
-    if (row && edit && !readOnly)
-      setEditRequest({ action, row, element, revision: edit.revision });
+    if (!client || !row || !edit || readOnly) return;
+    editOpening.current?.abort();
+    const controller = new AbortController();
+    editOpening.current = controller;
+    void readNbtEditTarget(client, row.node.id, controller.signal)
+      .then(({ row, revision }) => {
+        setSelected(row);
+        setTarget((current) =>
+          current?.node.id === row.node.id ? row : current,
+        );
+        if (
+          (action === "value" &&
+            (container(row.node) || numericArray(row.node))) ||
+          (action === "insert" && !container(row.node)) ||
+          (action === "array" && !numericArray(row.node))
+        )
+          throw new Error(
+            "The selected tag changed type. Select an available action for it.",
+          );
+        setEditRequest({ action, row, element, revision });
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted)
+          setNavigationError(
+            error instanceof Error
+              ? error.message
+              : "The NBT tag could not be opened for editing.",
+          );
+      });
   };
-  const protectedDraft = Boolean(
+  const sourceBusy = Boolean(
+    exporter.busy ||
+    preparingSource ||
+    interpreting ||
+    status?.shared?.changing ||
     session?.busy ||
-    edit?.dirty ||
     edit?.editing ||
     edit?.saving ||
     edit?.pendingSaveId,
   );
+  const protectedDraft = sourceBusy || Boolean(edit?.dirty),
+    localOpenBlocked =
+      sourceBusy || readOnly || Boolean(edit?.dirty && !onDiscardSource);
   return (
     <div
       ref={root}
@@ -444,6 +828,8 @@ export function NbtBrowser({
       className="relative flex h-full min-h-0 min-w-0 flex-col outline-none"
       data-nbt-viewer=""
       data-nbt-binding={scope}
+      data-nbt-generation={generation}
+      data-nbt-shared-views={status?.shared?.views}
     >
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border/45 px-3 py-2 text-xs">
         <span className="mr-1 max-w-40 truncate font-medium" title={label}>
@@ -456,7 +842,19 @@ export function NbtBrowser({
             aria-label="NBT encoding"
             value={profile}
             disabled={protectedDraft}
-            onChange={(event) => setProfile(event.target.value)}
+            onChange={(event) => {
+              if (!client) {
+                setProfile(event.target.value);
+                setEpoch((value) => value + 1);
+              } else
+                void reload({ profile: event.target.value }).catch((error) =>
+                  setNavigationError(
+                    error instanceof Error
+                      ? error.message
+                      : "The NBT encoding could not be opened.",
+                  ),
+                );
+            }}
           >
             {NBT_PROFILES.map((item) => (
               <option key={item.id} value={item.id}>
@@ -472,7 +870,20 @@ export function NbtBrowser({
             aria-label="NBT compression"
             value={compression}
             disabled={protectedDraft}
-            onChange={(event) => setCompression(event.target.value)}
+            onChange={(event) => {
+              if (!client) {
+                setCompression(event.target.value);
+                setEpoch((value) => value + 1);
+              } else
+                void reload({ compression: event.target.value }).catch(
+                  (error) =>
+                    setNavigationError(
+                      error instanceof Error
+                        ? error.message
+                        : "The NBT compression could not be opened.",
+                    ),
+                );
+            }}
           >
             <option value="auto">Automatic</option>
             <option value="none">Raw</option>
@@ -552,6 +963,27 @@ export function NbtBrowser({
             Save As…
           </button>
         ) : null}
+        <button
+          type="button"
+          className={nbtControl}
+          disabled={
+            !client ||
+            sourceBusy ||
+            Boolean(status?.shared?.unavailable || status?.error)
+          }
+          onClick={exporter.start}
+        >
+          Export Copy…
+        </button>
+        {exporter.busy ? (
+          <button
+            type="button"
+            className={nbtControl}
+            onClick={exporter.cancel}
+          >
+            Cancel export
+          </button>
+        ) : null}
         <span
           className="text-[10px] text-muted-foreground"
           data-nbt-dirty={edit?.dirty ? "true" : "false"}
@@ -578,13 +1010,37 @@ export function NbtBrowser({
               aria-label="Choose local NBT file"
               onChange={(event) => {
                 const file = event.target.files?.[0];
-                if (file && !protectedDraft) onLocalFile(file);
                 event.target.value = "";
+                if (!file || localOpenBlocked) return;
+                const release = client?.freezeEdits();
+                void Promise.resolve()
+                  .then(async () => {
+                    if (onDiscardSource) {
+                      if (
+                        (client?.getEditSnapshot()?.dirty ||
+                          client?.getEditSnapshot()?.pendingSaveId) &&
+                        !(await confirmEditorAction(
+                          "Open another local file and discard this local file's unsaved changes?",
+                        ))
+                      )
+                        return;
+                      await discard();
+                    }
+                    await onLocalFile(file);
+                  })
+                  .catch((error) =>
+                    setNavigationError(
+                      error instanceof Error
+                        ? error.message
+                        : "The local file could not be opened.",
+                    ),
+                  )
+                  .finally(() => release?.());
               }}
             />
             <button
               className={nbtControl}
-              disabled={protectedDraft}
+              disabled={localOpenBlocked}
               onClick={() => local.current?.click()}
               aria-label="Open local NBT file"
             >
@@ -593,6 +1049,54 @@ export function NbtBrowser({
           </>
         ) : null}
       </div>
+      {exporter.busy || exporter.message ? (
+        <div
+          role={exporter.error ? "alert" : "status"}
+          data-nbt-export={
+            exporter.busy ? "streaming" : exporter.error ? "error" : "complete"
+          }
+          className="shrink-0 px-3 py-1 text-xs text-muted-foreground"
+        >
+          {exporter.busy
+            ? "Exporting " + (exporter.bytes / 1024 ** 2).toFixed(1) + " MiB…"
+            : exporter.message}
+        </div>
+      ) : null}
+      {preparingSource ? (
+        <div
+          role="status"
+          className="shrink-0 px-3 py-1 text-xs text-muted-foreground"
+        >
+          Preparing local recovery…
+        </div>
+      ) : null}
+      {onDiscardSource ? (
+        <button
+          className={nbtControl + " mx-3 my-1 self-start"}
+          type="button"
+          disabled={readOnly || sourceBusy}
+          onClick={() =>
+            void (async () => {
+              if (
+                (edit?.dirty || edit?.pendingSaveId) &&
+                !(await confirmEditorAction(
+                  "Close this local file and discard its unsaved changes?",
+                ))
+              )
+                return;
+              await discard();
+            })().catch((error) =>
+              setNavigationError(
+                error instanceof Error
+                  ? error.message
+                  : "The local file could not be closed.",
+              ),
+            )
+          }
+        >
+          Return to project file
+        </button>
+      ) : null}
       {saveAsPath !== null && saveAsTarget && session ? (
         <form
           className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border/30 p-3 text-xs"
@@ -746,8 +1250,33 @@ export function NbtBrowser({
         >
           {error ?? navigationError ?? status?.error?.message}
           <p className="mt-1 text-muted-foreground">
-            Check the encoding and compression options for this file.
+            {status?.shared?.unavailable
+              ? "The encrypted journal is retained. Recover this document to resume."
+              : "Check the encoding and compression options for this file."}
           </p>
+          {client && status?.shared?.unavailable ? (
+            <button
+              className={nbtControl + " mt-2"}
+              disabled={
+                externalReadOnly ||
+                status.shared.changing ||
+                Boolean(session?.busy)
+              }
+              onClick={() =>
+                void nbtSharedDocument(client)!
+                  .recover()
+                  .catch((error) =>
+                    setNavigationError(
+                      error instanceof Error
+                        ? error.message
+                        : "NBT recovery failed.",
+                    ),
+                  )
+              }
+            >
+              Recover NBT document
+            </button>
+          ) : null}
         </div>
       ) : null}
       {progress?.error ? (
@@ -795,7 +1324,14 @@ export function NbtBrowser({
         <div className="relative flex min-h-0 flex-1 flex-col">
           {mode === "array" && target ? (
             <NbtArray
-              key={target.node.id}
+              key={"array/" + viewKey + "/" + target.node.id}
+              stateRef={arrayView}
+              initialState={
+                restoredView.seed?.target === target.node.id
+                  ? restoredView.seed.array
+                  : undefined
+              }
+              active={active}
               client={client}
               row={target}
               focus={arrayFocus}
@@ -809,7 +1345,15 @@ export function NbtBrowser({
             />
           ) : mode === "table" && target ? (
             <NbtTable
-              key={target.node.id}
+              key={"table/" + viewKey + "/" + target.node.id}
+              stateRef={tableView}
+              initialState={
+                restoredView.seed?.target === target.node.id
+                  ? restoredView.seed.table
+                  : undefined
+              }
+              complete={status?.state === "complete"}
+              active={active}
               client={client}
               row={target}
               nodes={status?.nodes ?? 0}
@@ -818,6 +1362,11 @@ export function NbtBrowser({
             />
           ) : (
             <NbtTree
+              key={"tree/" + viewKey}
+              stateRef={treeView}
+              initialState={lastTree.current}
+              complete={status?.state === "complete"}
+              active={active}
               client={client}
               root={status?.root ?? null}
               nodes={status?.nodes ?? 0}
@@ -831,7 +1380,11 @@ export function NbtBrowser({
             />
           )}
           <NbtFind
+            key={"find/" + viewKey}
+            stateRef={findView}
+            initialState={restoredView.seed?.find}
             client={client}
+            active={active}
             revision={edit?.revision ?? 0}
             open={find}
             onClose={() => {
@@ -863,7 +1416,21 @@ export function NbtBrowser({
               readOnly={readOnly}
               onClose={() => setEditRequest(null)}
               onApplied={(id) =>
-                void reveal({ id: "edit", nodeId: id, fields: [] })
+                void reveal({
+                  id: "edit",
+                  nodeId: id,
+                  fields: [],
+                  ...(editRequest.action === "array" &&
+                  mode === "array" &&
+                  target?.node.id === id
+                    ? {
+                        elementIndex:
+                          editRequest.element ??
+                          arrayView.current?.capture().firstElement ??
+                          0,
+                      }
+                    : {}),
+                })
               }
             />
           ) : null}

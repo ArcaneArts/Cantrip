@@ -1,8 +1,9 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
+import { writeFile } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { startEditorRecoveryFixture } from "./editor-recovery-fixture.mjs";
 import { startWorkspaceBrowserFixture } from "./workspace-browser-fixture.mjs";
 import { buildCantripCua } from "../cantrip-cua/build.mjs";
@@ -12,6 +13,8 @@ if (process.platform !== "darwin")
     "This native QA launcher creates a macOS application bundle.",
   );
 const root = fileURLToPath(new URL("../../", import.meta.url));
+const nbt = process.argv.includes("--nbt");
+if (nbt) process.env.VITE_CANTRIP_NBT_NATIVE_QA = "true";
 const require = createRequire(path.join(root, "cantrip_app/package.json"));
 // Build the helper this worker actually runs, not a stale installed/bundled copy.
 const cuaBinary = buildCantripCua(root);
@@ -33,6 +36,53 @@ let child;
 let browserFixture;
 let stop;
 try {
+  if (nbt) {
+    const { encodeNbtPayload, JAVA_NBT, NbtTag } = await import(
+      pathToFileURL(path.join(root, "packages/nbt/dist/index.js")).href
+    );
+    const parts = [];
+    for await (const part of encodeNbtPayload(
+      {
+        name: "Native QA",
+        tag: {
+          type: NbtTag.Compound,
+          value: [
+            {
+              name: "long",
+              tag: { type: NbtTag.Long, value: 9223372036854775807n },
+            },
+            {
+              name: "array",
+              tag: {
+                type: NbtTag.ByteArray,
+                length: 1024 ** 2,
+                value: new Uint8Array(1024 ** 2).fill(42),
+              },
+            },
+            {
+              name: "nested",
+              tag: {
+                type: NbtTag.Compound,
+                value: Array.from({ length: 500 }, (_, i) => ({
+                  name: "key" + i,
+                  tag: {
+                    type: NbtTag.String,
+                    value: "Native fixture value " + i,
+                  },
+                })),
+              },
+            },
+          ],
+        },
+      },
+      JAVA_NBT,
+    ))
+      parts.push(part.slice());
+    await writeFile(
+      path.join(fixture.repositorySeed.repository, "native.nbt"),
+      Buffer.concat(parts),
+    );
+  }
   browserFixture = await startWorkspaceBrowserFixture();
   console.log(
     `QA_EVT ${JSON.stringify({ event: "native.browser.fixture", status: "info", origin: browserFixture.origin })}`,
