@@ -7755,6 +7755,17 @@
         "reports": 141,
         "conclusion": "success; all reports parsed and inspected, artifact SHA256 digests verified and native job coverage receipts retained",
         "scope": "Accepted outgoing-command, usage, JSON, pool/TLS/ownership and prior transport regressions at this head. Policy changes and complete server/packaged replacement are not covered by this run."
+      },
+      "currentGoalObservationAcceptance": {
+        "status": "local-acceptance-pending-platform",
+        "tables": 115,
+        "evidence": [
+          "cantrip_server/test/account-resource-usage.test.ts",
+          "cantrip_server/src/account-usage/storage-manifest.ts",
+          "scripts/server-rust/usage-repository-compatibility.mjs",
+          "cantrip_server_rs/contracts/resource-usage.json"
+        ],
+        "scope": "Goal observations are Chat-owned conversation storage, resolved through the owning project. Source manifest coverage fails before the classification and all four tests pass after it. All three local storage modes pass 48 paired repository cases, including one added observation increasing only its owning account row count/bytes and cleanup restoring the earlier measurement. Existing platform evidence predates this addition."
       }
     },
     "privatePostgresOwnership": {
@@ -9357,6 +9368,21 @@
         "Running-turn pause/resume/stop, capacity/concurrency, automatic retry and broader failure/reconnect/lease scenarios.",
         "Every original product, migration/post-write rollback, Redis/multi-instance, deployment, packaging, performance and production Node removal requirement."
       ]
+    },
+    "taskLaunchAdmission": {
+      "status": "partial",
+      "evidence": [
+        "cantrip_server_rs/src/chats/turn_runtime/stages.rs",
+        "cantrip_server_rs/tests/turn_stage_lifetime.rs",
+        "scripts/server-rust/native-command-admission-compatibility.mjs --domain task-background",
+        "scripts/server-rust/actual-folder-client.mjs --tasks"
+      ],
+      "validatedSubset": "Owned async launchers now execute through their first await before returning, preserving the Source async invocation order before the scheduler admits another claim. A deterministic regression fails before the fix and passes afterward; all 46 library and five lifetime tests pass. Background comparisons pass 180 cases on each local storage mode. Strict all-target Clippy passes.",
+      "remaining": [
+        "Observe supported-platform scheduling results; this local admission fix alone does not prove the earlier Windows scheduling failure resolved.",
+        "Complete running pause/resume, scheduling capacity/concurrency faults and every original full replacement requirement."
+      ],
+      "actualLocalAcceptance": "After the admission change, all three stores pass the existing browser/full production worker/bundled Codex flow: 14 steps, nine public model requests and five worker stops per Node/Rust peer. Claimed and resumed operation comparisons pass on PGlite. Only model HTTP responses are controlled."
     }
   },
   "remainingAcceptance": [

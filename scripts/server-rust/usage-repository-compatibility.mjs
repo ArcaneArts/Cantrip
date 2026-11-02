@@ -177,10 +177,65 @@ try {
         BigInt(projectRow(alertBaseline).logicalBytes),
     );
   }
-  for (const principal of [owner, other])
+  for (const principal of [owner, other]) {
+    await seed(
+      `INSERT INTO workers(id,owner_id,name,platform,architecture,started_at,last_seen_at,created_at,updated_at) VALUES(${literal("usage-goal-" + principal)},${literal(principal)},'Usage worker','linux','x64',${literal(stamp)},${literal(stamp)},${literal(stamp)},${literal(stamp)});`,
+    );
+    await seed(
+      `INSERT INTO project_sources(id,project_id,worker_id,source_kind,absolute_path,display_path,created_at,updated_at) VALUES(${literal("usage-goal-" + principal)},${literal("usage-alert-" + principal)},${literal("usage-goal-" + principal)},'git','/usage','/usage',${literal(stamp)},${literal(stamp)});`,
+    );
+    await seed(
+      `INSERT INTO project_worktrees(id,project_source_id,worker_id,name,absolute_path,display_path,is_primary,origin,lifecycle_state,created_at,updated_at) VALUES(${literal("usage-goal-" + principal)},${literal("usage-goal-" + principal)},${literal("usage-goal-" + principal)},'main','/usage','/usage',true,'cantrip','ready',${literal(stamp)},${literal(stamp)});`,
+    );
+    await seed(
+      `INSERT INTO chats(id,owner_id,project_id,active_worker_id,active_worktree_id,protected_label,created_at,updated_at) VALUES(${literal("usage-goal-" + principal)},${literal(principal)},${literal("usage-alert-" + principal)},${literal("usage-goal-" + principal)},${literal("usage-goal-" + principal)},'{}',${literal(stamp)},${literal(stamp)});`,
+    );
+  }
+  const goalBaseline = await compare(
+    "conversation storage before Goal observation",
+    {
+      op: "measure",
+    },
+  );
+  await seed(
+    `INSERT INTO chat_goal_observations(chat_id,thread_id,source_generation,source_revision,snapshot,updated_at) VALUES(${literal("usage-goal-" + owner)},'usage-native-thread','11111111-1111-4111-8111-111111111111',1,'{"kind":"chat-encrypted","goal":null}',${literal(stamp)});`,
+  );
+  const goalUsage = await compare(
+    "Goal observation is charged only to its Chat project owner",
+    {
+      op: "measure",
+    },
+  );
+  const conversationRow = (rows, principal) =>
+    rows.find(
+      (row) =>
+        row.ownerId === principal &&
+        row.storageClass === "server" &&
+        row.category === "conversations",
+    );
+  assert.equal(
+    BigInt(conversationRow(goalUsage, owner).rowCount),
+    BigInt(conversationRow(goalBaseline, owner).rowCount) + 1n,
+  );
+  assert.ok(
+    BigInt(conversationRow(goalUsage, owner).logicalBytes) >
+      BigInt(conversationRow(goalBaseline, owner).logicalBytes),
+  );
+  assert.deepEqual(
+    conversationRow(goalUsage, other),
+    conversationRow(goalBaseline, other),
+  );
+  for (const principal of [owner, other]) {
+    await seed(
+      `DELETE FROM chats WHERE id=${literal("usage-goal-" + principal)};`,
+    );
     await seed(
       `DELETE FROM projects WHERE id=${literal("usage-alert-" + principal)};`,
     );
+    await seed(
+      `DELETE FROM workers WHERE id=${literal("usage-goal-" + principal)};`,
+    );
+  }
   assert.deepEqual(
     await compare("deleted project alert episodes leave no retained storage", {
       op: "measure",

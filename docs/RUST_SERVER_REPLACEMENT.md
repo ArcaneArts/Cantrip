@@ -5127,3 +5127,30 @@ PostgreSQL project-alert notification order, Windows Task background scheduling,
 and Windows discovery's private PostgreSQL owner shutdown. Their job logs and
 hash-verified artifacts are retained. These results do not establish a passing
 platform matrix; no assertions, workloads or timeouts have been relaxed.
+
+## Task launch admission and Goal observation accounting
+
+Owned Rust operations now execute through their first await when admitted,
+matching the Source async launcher before its scheduler requests the next claim.
+The pending continuation stays owned by the executor, so dropping an unobserved
+result or timing out the caller still cannot cancel admitted work. A deterministic
+regression captures no launched operations before the fix and both launches in
+invocation order afterward. All 46 library tests and five lifetime tests pass,
+including the existing deadline, cancellation and worker-error contracts.
+The unchanged background scheduler comparison passes 180 cases on each local
+storage mode. Claimed and resumed operation comparisons also pass on PGlite.
+The actual browser/full-worker/native Codex Task flow passes all 14 steps per
+implementation on all three stores after this change, with nine model requests
+and five worker stops per peer. Strict all-target Clippy passes. These local results do not prove
+the earlier Windows scheduling failure resolved; fresh platform evidence remains
+required.
+
+The full repository check also found the recently added Goal observation table
+missing from Source's storage manifest. Both servers now charge those rows to
+Chat-owned conversation storage through the owning project. Source's manifest
+coverage test fails before the addition and its complete four-test file passes
+afterward. The regenerated native accounting SQL stays derived from the same
+manifest. All three storage modes pass 48 paired repository cases, including an
+observation increasing only its owner's row count and byte usage; deletion
+restores the earlier measurement. No database constraint or test assertion is
+relaxed. Supported-platform and broader replacement acceptance remain required.
