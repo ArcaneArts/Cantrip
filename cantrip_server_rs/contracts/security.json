@@ -487,7 +487,14 @@
     "taskWireCreateResultSchema": 9233,
     "chatAttachmentOpaqueListSchema": 4671,
     "chatInterruptAcceptedSchema": 9234,
-    "chatModelConfigurationUpdateSchema": 9236
+    "chatModelConfigurationUpdateSchema": 9236,
+    "taskImplementationOpaqueDashboardSchema": 9237,
+    "githubPullRequestListSchema": 9292,
+    "githubIssueListFiltersSchema": 2604,
+    "chatGoalCreateSchema": 9296,
+    "chatGoalUpdateSchema": 9297,
+    "chatGoalClearSchema": 9299,
+    "chatGoalWireResponseSchema": 9301
   },
   "nodes": [
     {
@@ -54053,6 +54060,373 @@
           "path": ["modelId"]
         }
       ]
-    }
+    },
+    {
+      "type": "object",
+      "name": "taskImplementationOpaqueDashboardSchema",
+      "shape": {
+        "goalUnavailableReason": 9238,
+        "placement": 9240,
+        "pullRequests": 9257,
+        "pullRequestsUnavailableReason": 9280,
+        "warnings": 9282,
+        "task": 4675,
+        "goal": 9290
+      },
+      "catchall": 9291,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 9239, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 2000, "when": "length" }
+      ]
+    },
+    {
+      "type": "union",
+      "name": "taskImplementationPlacementSchema",
+      "options": [9241, 9252],
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "kind": 9242,
+        "workerId": 9244,
+        "worktreeId": 9245,
+        "worktreeName": 9246,
+        "branch": 9247,
+        "isPrimary": 9249,
+        "dirty": 9250,
+        "dirtyFileCount": 9251
+      },
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 9243,
+      "defaultValue": "git",
+      "checks": []
+    },
+    { "type": "literal", "values": ["git"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 9248, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "kind": 9253,
+        "workerId": 9254,
+        "rootId": 9255,
+        "displayPath": 9256
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["folder"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "array",
+      "element": 9258,
+      "checks": [{ "check": "max_length", "maximum": 200, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "taskAssociatedPullRequestSchema",
+      "shape": {
+        "number": 9259,
+        "title": 9260,
+        "url": 9261,
+        "state": 9262,
+        "draft": 9263,
+        "merged": 9264,
+        "headRef": 9265,
+        "headSha": 9266,
+        "baseRef": 9267,
+        "baseSha": 9268,
+        "createdAt": 9269,
+        "updatedAt": 9270,
+        "closedAt": 9271,
+        "associationKind": 9273,
+        "associationSource": 9274,
+        "confidence": 9275,
+        "worktreeId": 9276,
+        "worktreeName": 9278
+      },
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "string_format", "format": "url", "abort": false }]
+    },
+    { "type": "enum", "values": ["open", "closed"], "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 9272, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "taskPullRequestAssociationKindSchema",
+      "values": ["explicit", "inferred"],
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "taskPullRequestAssociationSourceSchema",
+      "values": ["lane-branch", "worktree", "message-url"],
+      "checks": []
+    },
+    { "type": "enum", "values": ["high", "medium"], "checks": [] },
+    { "type": "nullable", "innerType": 9277, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 9279, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 9281, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 2000, "when": "length" }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 9283,
+      "checks": [{ "check": "max_length", "maximum": 200, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "taskAdvisoryWarningSchema",
+      "shape": {
+        "code": 9284,
+        "message": 9285,
+        "pullRequestNumber": 9286,
+        "worktreeId": 9288
+      },
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": [
+        "multiple-open-pull-requests",
+        "new-worktree-before-merge",
+        "closed-unmerged",
+        "dirty-after-merge",
+        "complete-with-open-pull-request"
+      ],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 2000, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 9287, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    { "type": "nullable", "innerType": 9289, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 9036, "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "githubPullRequestListSchema",
+      "shape": {
+        "state": 2597,
+        "total": 9293,
+        "pullRequests": 9295,
+        "nextCursor": 2598
+      },
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 9294, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "array", "element": 6850, "checks": [] },
+    {
+      "type": "object",
+      "name": "chatGoalCreateSchema",
+      "shape": { "objective": 5230, "tokenBudget": 5244 },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "chatGoalUpdateSchema",
+      "shape": { "status": 5261, "protectedObjective": 5263 },
+      "catchall": 9298,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "chat-goal-update",
+          "messageAfterPath": true,
+          "message": "A goal update needs a status or encrypted objective."
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "chatGoalClearSchema",
+      "shape": { "cleared": 9300 },
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "union",
+      "name": "chatGoalWireResponseSchema",
+      "options": [9302, 9307, 9051],
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "kind": 9303, "goal": 9304 },
+      "catchall": 9306,
+      "checks": []
+    },
+    { "type": "literal", "values": ["chat-encrypted"], "checks": [] },
+    { "type": "nullable", "innerType": 9305, "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "threadId": 9054,
+        "status": 9056,
+        "tokenBudget": 9057,
+        "tokensUsed": 9059,
+        "timeUsedSeconds": 9060,
+        "createdAt": 9061,
+        "updatedAt": 9062,
+        "protectedObjective": 1569
+      },
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "kind": 9308, "goal": 9309 },
+      "catchall": 9310,
+      "checks": []
+    },
+    { "type": "literal", "values": ["task-encrypted"], "checks": [] },
+    { "type": "nullable", "innerType": 9036, "checks": [] },
+    { "type": "never", "checks": [] }
   ]
 }

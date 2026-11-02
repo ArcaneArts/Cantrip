@@ -39,6 +39,7 @@ import { publicChatWireFixtures } from "./public-chat-wire-fixtures.mjs";
 import { nativeHandoffWireFixtures } from "./native-handoff-wire-fixtures.mjs";
 import { taskSchedulingWireFixtures } from "./task-wire-fixtures.mjs";
 import { taskWireFixtures } from "./task-wire-fixtures.mjs";
+import { taskDashboardWireFixtures } from "./task-dashboard-fixtures.mjs";
 
 export const owner = "11111111-1111-4111-8111-111111111111";
 export const clientId = "22222222-2222-4222-8222-222222222222";
@@ -323,6 +324,7 @@ export const securityFixtures = {
   ...publicChatWireFixtures(timestamp),
   ...nativeHandoffWireFixtures(timestamp),
   ...taskWireFixtures(timestamp),
+  ...taskDashboardWireFixtures(timestamp),
   ...taskSchedulingWireFixtures(timestamp),
   chatPauseUpdateSchema: [{ paused: true }, { paused: false, ignored: true }],
   chatPauseStateSchema: [{ paused: true }, { paused: false, active: null }],

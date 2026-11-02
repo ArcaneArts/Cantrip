@@ -506,6 +506,13 @@ export const contractRoots = [
   "chatAttachmentOpaqueListSchema",
   "chatInterruptAcceptedSchema",
   "chatModelConfigurationUpdateSchema",
+  "taskImplementationOpaqueDashboardSchema",
+  "githubPullRequestListSchema",
+  "githubIssueListFiltersSchema",
+  "chatGoalCreateSchema",
+  "chatGoalUpdateSchema",
+  "chatGoalClearSchema",
+  "chatGoalWireResponseSchema",
 ];
 
 // Resolve the actual source schemas, including their separate protocol modules.
@@ -530,6 +537,7 @@ export function sourceContractSchema(name) {
 }
 
 const refinements = new Map([
+  [protocol.chatGoalUpdateSchema, "chat-goal-update"],
   [protocol.projectAlertProjectionSchema, "project-alert-projection"],
   [protocol.projectAlertProtectedDetailSchema, "project-alert-detail"],
   [taskScheduling.taskWorkerUpdateSchema, "task-worker-update"],

@@ -13,6 +13,20 @@ use std::{
 };
 use tokio::task::AbortHandle;
 
+fn publish(hub: &Hub, enabled: &AtomicBool, payload: &str) {
+    if payload.len() > 4096 || !enabled.load(Ordering::Acquire) {
+        return;
+    }
+    let Ok(change) = serde_json::from_str::<Value>(payload) else {
+        return;
+    };
+    let Ok(change) = crate::settings::parse_response("projectAlertChangeSchema", Some(&change))
+    else {
+        return;
+    };
+    let _ = hub.publish(json!({"ownerId":change["ownerId"],"scope":json!({"kind":"current-user"}),"resource":"project-alert","action":"invalidated","entityId":change["projectId"],"revision":Value::Null,"payload":Value::Null}));
+}
+
 pub(super) fn watch(
     database: Arc<Database>,
     hub: Arc<Hub>,
@@ -22,8 +36,15 @@ pub(super) fn watch(
         let mut expiry = tokio::time::interval(Duration::from_secs(1));
         expiry.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         let mut expiry_failed = false;
+        let inline = database.engine() == "pglite";
         while enabled.load(Ordering::Acquire) {
-            let Ok(mut notifications) = database.listen("cantrip_project_alerts").await else {
+            let (inline_hub, inline_enabled) = (hub.clone(), enabled.clone());
+            let Ok(mut notifications) = database
+                .listen_with_pglite_callback("cantrip_project_alerts", move |payload| {
+                    publish(&inline_hub, &inline_enabled, payload);
+                })
+                .await
+            else {
                 tokio::time::sleep(Duration::from_secs(1)).await;
                 continue;
             };
@@ -44,11 +65,8 @@ pub(super) fn watch(
                 };
                 match notification {
                     Ok((channel, payload)) => {
-                        if channel != "cantrip_project_alerts" || payload.len() > 4096 { continue; }
-                        let Ok(change) = serde_json::from_str::<Value>(&payload) else { continue; };
-                        let Ok(change) = crate::settings::parse_response("projectAlertChangeSchema",Some(&change)) else { continue; };
-                        if enabled.load(Ordering::Acquire) {
-                            let _ = hub.publish(json!({"ownerId":change["ownerId"],"scope":json!({"kind":"current-user"}),"resource":"project-alert","action":"invalidated","entityId":change["projectId"],"revision":Value::Null,"payload":Value::Null}));
+                        if channel == "cantrip_project_alerts" && !inline {
+                            publish(&hub, &enabled, &payload);
                         }
                     }
                     Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
@@ -56,5 +74,6 @@ pub(super) fn watch(
                 }
             }
         }
-    }).abort_handle()
+    })
+    .abort_handle()
 }

@@ -234,6 +234,17 @@ impl Database {
     }
 
     pub async fn listen(&self, channel: &str) -> Result<broadcast::Receiver<(String, String)>> {
+        self.listen_with_pglite_callback(channel, |_| {}).await
+    }
+
+    /// PGlite delivers committed notifications before the query resolves. A
+    /// synchronous observer preserves that order relative to application events;
+    /// external PostgreSQL keeps its separate LISTEN connection and receiver.
+    pub(crate) async fn listen_with_pglite_callback(
+        &self,
+        channel: &str,
+        observe: impl Fn(&str) + Send + Sync + 'static,
+    ) -> Result<broadcast::Receiver<(String, String)>> {
         let receiver = self.notifications.subscribe();
         match &self.backend {
             Backend::Pglite(database) => {
@@ -245,6 +256,7 @@ impl Database {
                     .as_ref()
                     .context("database is closed")?
                     .listen(channel, move |payload| {
+                        observe(payload);
                         let _ = emitter.send((channel_name.clone(), payload.to_owned()));
                     })
                     .await?;

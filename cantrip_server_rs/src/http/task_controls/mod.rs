@@ -1,6 +1,7 @@
 //! Public Task metadata and encrypted draft/plan edits. The repository owns
 //! revision and state checks; publication follows the committed mutation.
 mod creation;
+mod dashboard;
 mod deletion;
 mod models;
 mod operations;
@@ -88,6 +89,12 @@ async fn execute(
         .id
         .clone();
     if matches!(method, Method::GET | Method::HEAD) {
+        if path.ends_with("/dashboard") {
+            return service
+                .scratch_roots
+                .owned(dashboard::get(service.clone(), owner, chat))
+                .await;
+        }
         return match tasks::Repository::new(service.repository.database.clone())
             .get(&owner, &chat)
             .await?
@@ -188,6 +195,7 @@ pub(super) fn routes() -> Router<Arc<AuthService>> {
         .route("/api/projects/{projectId}/tasks", post(handle))
         .route("/api/tasks/{chatId}", get(handle).delete(handle))
         .route("/api/tasks/{chatId}/attachments", get(handle))
+        .route("/api/tasks/{chatId}/dashboard", get(handle))
         .route("/api/tasks/{chatId}/draft", patch(handle))
         .route("/api/tasks/{chatId}/plan", patch(handle).post(handle))
         .route("/api/tasks/{chatId}/start", post(handle))

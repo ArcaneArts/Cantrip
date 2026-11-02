@@ -3939,6 +3939,81 @@
         "remaining": [
           "Merged admission/continuation milestone has controlled-worker local evidence; complete client/model execution, supported-platform and packaged-client acceptance remain."
         ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/tasks/:chatId/dashboard",
+        "implementation": "cantrip_server_rs/src/http/task_controls/dashboard.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/task-dashboard-goals-http.mjs",
+          "scripts/server-rust/task-dashboard-goal-worker.mjs",
+          "cantrip_server_rs/tests/task_dashboard.rs",
+          "cantrip_server_rs/tests/task_contracts.rs"
+        ],
+        "remaining": [
+          "Controlled-worker HTTP/command/crypto comparisons pass all nine local storage/authentication profiles (244 paired HTTP observations per store). Full unchanged client/worker model execution, supported-platform acceptance, packaging and replacement requirements remain."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/chats/:chatId/goal",
+        "implementation": "cantrip_server_rs/src/http/chat_goals.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/task-dashboard-goals-http.mjs",
+          "scripts/server-rust/task-dashboard-goal-worker.mjs",
+          "cantrip_server_rs/tests/task_dashboard.rs",
+          "cantrip_server_rs/tests/task_contracts.rs"
+        ],
+        "remaining": [
+          "Controlled-worker HTTP/command/crypto comparisons pass all nine local storage/authentication profiles (244 paired HTTP observations per store). Full unchanged client/worker model execution, supported-platform acceptance, packaging and replacement requirements remain."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/chats/:chatId/goal",
+        "implementation": "cantrip_server_rs/src/http/chat_goals.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/task-dashboard-goals-http.mjs",
+          "scripts/server-rust/task-dashboard-goal-worker.mjs",
+          "cantrip_server_rs/tests/task_dashboard.rs",
+          "cantrip_server_rs/tests/task_contracts.rs"
+        ],
+        "remaining": [
+          "Controlled-worker HTTP/command/crypto comparisons pass all nine local storage/authentication profiles (244 paired HTTP observations per store). Full unchanged client/worker model execution, supported-platform acceptance, packaging and replacement requirements remain."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/chats/:chatId/goal",
+        "implementation": "cantrip_server_rs/src/http/chat_goals.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/task-dashboard-goals-http.mjs",
+          "scripts/server-rust/task-dashboard-goal-worker.mjs",
+          "cantrip_server_rs/tests/task_dashboard.rs",
+          "cantrip_server_rs/tests/task_contracts.rs"
+        ],
+        "remaining": [
+          "Controlled-worker HTTP/command/crypto comparisons pass all nine local storage/authentication profiles (244 paired HTTP observations per store). Full unchanged client/worker model execution, supported-platform acceptance, packaging and replacement requirements remain."
+        ]
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/chats/:chatId/goal",
+        "implementation": "cantrip_server_rs/src/http/chat_goals.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/task-dashboard-goals-http.mjs",
+          "scripts/server-rust/task-dashboard-goal-worker.mjs",
+          "cantrip_server_rs/tests/task_dashboard.rs",
+          "cantrip_server_rs/tests/task_contracts.rs"
+        ],
+        "remaining": [
+          "Controlled-worker HTTP/command/crypto comparisons pass all nine local storage/authentication profiles (244 paired HTTP observations per store). Full unchanged client/worker model execution, supported-platform acceptance, packaging and replacement requirements remain."
+        ]
       }
     ]
   },
@@ -7030,6 +7105,20 @@
           "The current Agent-project managed admission and event flow is compared against Node on all three database and authentication modes, using the unchanged worker transport and production endpoint crypto. Historical Task event fanout, actual SQL failure rollback and HTTP lock/commit fencing are verified on external PostgreSQL. Task/standalone managed admission retains the Source rejection behavior; full product Task/Goal and standalone execution are separate acceptance requirements.",
           "Full native command/GUI queue orchestration, canonical history ingestion, background delivery/recovery, supported-platform and app/worker acceptance, Redis/multi-instance, upgrade/post-write rollback, packaging, Winterhold rehearsal and default cutover remain required."
         ]
+      },
+      {
+        "method": "getProjectWorktreeStatusSnapshot",
+        "implementation": "cantrip_server_rs/src/projects/targets/observations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/task-dashboard-goals-http.mjs",
+          "scripts/server-rust/task-dashboard-goal-worker.mjs",
+          "cantrip_server_rs/tests/task_dashboard.rs",
+          "cantrip_server_rs/tests/task_contracts.rs"
+        ],
+        "remaining": [
+          "Controlled-worker HTTP/command/crypto comparisons pass all nine local storage/authentication profiles (244 paired HTTP observations per store). Full unchanged client/worker model execution, supported-platform acceptance, packaging and replacement requirements remain."
+        ]
       }
     ]
   },
@@ -9112,12 +9201,29 @@
         "cantrip_server_rs/src/tasks/",
         "cantrip_server_rs/src/chats/live_mutations/"
       ],
-      "evidence": ["scripts/server-rust/task-controls-http.mjs"],
-      "validatedSubset": "Unmerged native GETTask and PATCHdraft/plan use the real repositories and post-commit chat/project Live publication. Local macOS all9storage/auth profiles match Source:86pairedHTTP observations per store(27none/28password/31accounts),6independently decrypted Task results and4Live events per peer/profile. Owner and foreign-owner404, HEAD, malformed-body400, exact state/revision/worker-selection409, rejected-write preservation and admitted ciphertext identity are verified. WorkerConnection is unchanged but this is not a full worker-process/client Task execution proof. No wire schema or production Source behavior changes.",
+      "evidence": [
+        "scripts/server-rust/task-controls-http.mjs",
+        "scripts/server-rust/task-dashboard-goals-http.mjs",
+        "scripts/server-rust/task-dashboard-goal-worker.mjs",
+        "cantrip_server_rs/tests/task_dashboard.rs"
+      ],
+      "validatedSubset": "Task metadata/draft/plan, creation/deletion/attachments/model configuration and execution admission/retry/recovery have merged controlled-worker local comparisons. Dashboard and public Chat Goal lifecycle controls now pass all9storage/auth profiles locally:732pairedHTTP observations,69completeworkercommands/peer/profile,16Taskdecryptions and9Goaldecryptions/peer/profile. Completion synchronizes durable state; resume rejects an unrelated message and admits one actual encrypted Task user message before controlled model completion. Native Goal/scheduler/runtime/lease service graph is reused. This does not establish complete unchanged-client/worker or packaged acceptance.",
       "remaining": [
-        "Public Task create/delete/recover/attachments/dashboard and start/plan/continue/finalize/retry operations.",
-        "Full Chat Goal lifecycle and protected continuation failure correction.",
-        "All supported-platform, real-client/worker, coordination, migration/rollback, packaging, Winterhold rehearsal, performance and final cutover acceptance."
+        "Complete unchanged-worker/client Task and Goal execution across success, failure, reconnect, restart and shutdown, supported-platform acceptance and packaged-product acceptance."
+      ]
+    },
+    "taskDashboardGoalControls": {
+      "status": "implemented-pending-platform-acceptance",
+      "evidence": [
+        "scripts/server-rust/task-dashboard-goals-http.mjs",
+        "scripts/server-rust/task-dashboard-goal-worker.mjs",
+        "cantrip_server_rs/tests/task_dashboard.rs",
+        "cantrip_server_rs/tests/task_contracts.rs",
+        "scripts/server-rust/native-event-http-compatibility.mjs"
+      ],
+      "validatedSubset": "Native dashboard/Goal HTTP and full command contracts match Source locally on all three stores and all three authentication modes. Initial494root/9311node manifest preserves487rootmappings/9237nodeprefix;34379Taskprotocoloutcomes/exacterrors and224dashboardcases pass. Original native-event PGlite assertions pass after publishing committed alert callbacks inline, matching actual Source callback timing; PostgreSQL retains separate LISTEN semantics. No production Source or worker runtime behavior changed. All9profiles also verify16ordered Task chat/project Live events, durable revision11, one resumed encrypted user message and absence of the private Task marker from server diagnostics.",
+      "remaining": [
+        "Fresh supported-platform verification, complete unchanged client/worker Task lifecycles, shutdown/drain/rollback and all original full replacement acceptance."
       ]
     }
   },
@@ -9252,6 +9358,16 @@
       "scope": "Source/Rust message queries (46 operations/9 snapshots) and writes/archive reads (62/8) on all three stores with a 1 MiB fixture stack; HTTP/Live compares three authentication profiles per backend, endpoint encryption, restart state and external PostgreSQL fault/lock races. This is scoped Linux message evidence, not native execution/history ingestion, all-platform, packaged or full-replacement acceptance.",
       "artifactId": 13035975785,
       "artifactZipSha256": "ac61057e3a2fe2a7bd10d02eb00a24fa9e283650313861e2a42503bb06df14ff"
+    },
+    {
+      "observedHead": "05321e753c11274c98cb79ba4b9dff42f2051b75",
+      "observedRun": "https://github.com/ArcaneArts/Cantrip/actions/runs/41487002021",
+      "platforms": ["ubuntu-24.04", "windows-2025"],
+      "conclusion": "Native event comparison failed on both platforms; Windows message-write repository fixture timed out during Rust/PGlite server startup. Not platform acceptance.",
+      "scope": "Actual job logs retained. Downloaded Ubuntu native artifact shows project-alert commit notifications interleaving differently with agent-interaction and chat invalidations. Ordering and notification fencing investigation remains; original assertions/deadlines are unchanged.",
+      "artifactId": 13163607477,
+      "artifactZipSha256": "b5cd70faf62fe78fdc9c3a419e842ce09330f18810057c3ed3a4618e3e4ad41d",
+      "localRemediation": "Original native-event PGlite comparison now passes all three auth profiles after inline commit callback publication; original external PostgreSQL comparison plus SQL fault cases passes. No assertions/deadlines modified. Fresh platform acceptance still required."
     }
   ]
 }

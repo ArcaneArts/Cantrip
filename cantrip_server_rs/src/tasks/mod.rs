@@ -1,5 +1,6 @@
 //! Server-owned Task metadata and opaque worker results. Plaintext stays with
 //! the worker; the repository preserves the existing operation/Goal boundary.
+pub mod dashboard;
 mod edits;
 pub mod failure_kind;
 mod finish;
