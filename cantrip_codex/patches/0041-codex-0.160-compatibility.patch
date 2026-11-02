@@ -1,8 +1,8 @@
 diff --git a/codex-rs/app-server-protocol/schema/json/ClientRequest.json b/codex-rs/app-server-protocol/schema/json/ClientRequest.json
-index 4e9211b36a4128bce7c000a84679788e99e743cf..5eb689bccd0d45bd6e8c0bf07502e16f6a13f8e2 100644
+index ccb590e3a95b3eda04fc971a46a5472fc36accfd..f2a98749284a086b1744e1c7c86b60b02c067ef7 100644
 --- a/codex-rs/app-server-protocol/schema/json/ClientRequest.json
 +++ b/codex-rs/app-server-protocol/schema/json/ClientRequest.json
-@@ -2016,6 +2016,1684 @@
+@@ -2083,6 +2083,1684 @@
        ],
        "type": "string"
      },
@@ -1687,7 +1687,7 @@ index 4e9211b36a4128bce7c000a84679788e99e743cf..5eb689bccd0d45bd6e8c0bf07502e16f
      "MarketplaceAddParams": {
        "properties": {
          "refName": {
-@@ -4940,6 +6618,217 @@
+@@ -5006,6 +6684,217 @@
        },
        "type": "object"
      },
@@ -1905,7 +1905,7 @@ index 4e9211b36a4128bce7c000a84679788e99e743cf..5eb689bccd0d45bd6e8c0bf07502e16f
      "ThreadMemoryMode": {
        "enum": [
          "enabled",
-@@ -4997,6 +6886,9 @@
+@@ -5063,6 +6952,9 @@
      },
      "ThreadReadParams": {
        "properties": {
@@ -1915,7 +1915,7 @@ index 4e9211b36a4128bce7c000a84679788e99e743cf..5eb689bccd0d45bd6e8c0bf07502e16f
          "includeTurns": {
            "description": "When true, include turns and their items from rollout history. Full-history hydration is deprecated for paginated threads; prefer a metadata-only read and page with `thread/turns/list` and `thread/items/list`.",
            "type": "boolean"
-@@ -5252,6 +7144,17 @@
+@@ -5318,6 +7210,17 @@
            "description": "When true, return only thread metadata and live-resume state without populating `thread.turns`. This is useful when the client plans to call `thread/turns/list` immediately after resuming. Full-history hydration is deprecated for paginated threads; use this with `thread/turns/list` and `thread/items/list` instead.",
            "type": "boolean"
          },
@@ -1933,7 +1933,7 @@ index 4e9211b36a4128bce7c000a84679788e99e743cf..5eb689bccd0d45bd6e8c0bf07502e16f
          "model": {
            "description": "Configuration overrides for the resumed thread, if any.",
            "type": [
-@@ -5475,6 +7378,12 @@
+@@ -5541,6 +7444,12 @@
        ],
        "type": "object"
      },
@@ -1946,7 +1946,7 @@ index 4e9211b36a4128bce7c000a84679788e99e743cf..5eb689bccd0d45bd6e8c0bf07502e16f
      "ThreadShellCommandParams": {
        "properties": {
          "command": {
-@@ -5580,6 +7489,17 @@
+@@ -5646,6 +7555,17 @@
              "null"
            ]
          },
@@ -1964,7 +1964,7 @@ index 4e9211b36a4128bce7c000a84679788e99e743cf..5eb689bccd0d45bd6e8c0bf07502e16f
          "model": {
            "type": [
              "string",
-@@ -5792,6 +7712,25 @@
+@@ -5858,6 +7778,25 @@
          }
        ]
      },
@@ -1990,7 +1990,7 @@ index 4e9211b36a4128bce7c000a84679788e99e743cf..5eb689bccd0d45bd6e8c0bf07502e16f
      "TurnStartParams": {
        "properties": {
          "approvalPolicy": {
-@@ -6652,6 +8591,150 @@
+@@ -6718,6 +8657,150 @@
        "title": "Thread/section/moveRequest",
        "type": "object"
      },
@@ -2141,7 +2141,7 @@ index 4e9211b36a4128bce7c000a84679788e99e743cf..5eb689bccd0d45bd6e8c0bf07502e16f
      {
        "properties": {
          "id": {
-@@ -6988,6 +9071,79 @@
+@@ -7054,6 +9137,79 @@
        "title": "Thread/items/listRequest",
        "type": "object"
      },
@@ -2221,7 +2221,7 @@ index 4e9211b36a4128bce7c000a84679788e99e743cf..5eb689bccd0d45bd6e8c0bf07502e16f
      {
        "description": "Append raw Responses API items to the thread history without starting a user turn.",
        "properties": {
-@@ -7829,6 +9985,30 @@
+@@ -7895,6 +10051,30 @@
        "title": "Turn/interruptRequest",
        "type": "object"
      },
@@ -2252,7 +2252,7 @@ index 4e9211b36a4128bce7c000a84679788e99e743cf..5eb689bccd0d45bd6e8c0bf07502e16f
      {
        "properties": {
          "id": {
-@@ -7853,6 +10033,30 @@
+@@ -7919,6 +10099,30 @@
        "title": "Review/startRequest",
        "type": "object"
      },
@@ -2284,10 +2284,10 @@ index 4e9211b36a4128bce7c000a84679788e99e743cf..5eb689bccd0d45bd6e8c0bf07502e16f
        "properties": {
          "id": {
 diff --git a/codex-rs/app-server-protocol/schema/json/ServerNotification.json b/codex-rs/app-server-protocol/schema/json/ServerNotification.json
-index ed40f2f769c02f2874df9209f51384254feef54f..30de7aea063e68a4360ac13cb8922abf613adc6f 100644
+index d97a0ac6f479a22b859763a273fbc7cf9047a43e..67eb204b25b3f648013a24817c71ab6df3a8d78b 100644
 --- a/codex-rs/app-server-protocol/schema/json/ServerNotification.json
 +++ b/codex-rs/app-server-protocol/schema/json/ServerNotification.json
-@@ -722,6 +722,28 @@
+@@ -724,6 +724,28 @@
            "title": "ResponseStreamConnectionFailedCodexErrorInfo",
            "type": "object"
          },
@@ -2316,7 +2316,7 @@ index ed40f2f769c02f2874df9209f51384254feef54f..30de7aea063e68a4360ac13cb8922abf
          {
            "additionalProperties": false,
            "description": "The response SSE stream disconnected in the middle of a turn before completion.",
-@@ -2738,6 +2760,74 @@
+@@ -2759,6 +2781,74 @@
      "LegacyAppPathString": {
        "type": "string"
      },
@@ -2391,7 +2391,7 @@ index ed40f2f769c02f2874df9209f51384254feef54f..30de7aea063e68a4360ac13cb8922abf
      "McpAppDisplayMode": {
        "enum": [
          "inline",
-@@ -4682,6 +4772,58 @@
+@@ -4713,6 +4803,58 @@
            "title": "HookPromptThreadItem",
            "type": "object"
          },
@@ -2450,7 +2450,7 @@ index ed40f2f769c02f2874df9209f51384254feef54f..30de7aea063e68a4360ac13cb8922abf
          {
            "properties": {
              "delivery": {
-@@ -6159,6 +6301,12 @@
+@@ -6249,6 +6391,12 @@
          "modelProvider": {
            "type": "string"
          },
@@ -2463,7 +2463,7 @@ index ed40f2f769c02f2874df9209f51384254feef54f..30de7aea063e68a4360ac13cb8922abf
          "personality": {
            "anyOf": [
              {
-@@ -6179,6 +6327,33 @@
+@@ -6269,6 +6417,33 @@
              "null"
            ]
          },
@@ -2497,7 +2497,7 @@ index ed40f2f769c02f2874df9209f51384254feef54f..30de7aea063e68a4360ac13cb8922abf
          "summary": {
            "anyOf": [
              {
-@@ -6197,12 +6372,68 @@
+@@ -6287,12 +6462,68 @@
          "cwd",
          "model",
          "modelProvider",
@@ -2566,7 +2566,7 @@ index ed40f2f769c02f2874df9209f51384254feef54f..30de7aea063e68a4360ac13cb8922abf
          "threadId": {
            "type": "string"
          },
-@@ -6216,6 +6447,23 @@
+@@ -6306,6 +6537,23 @@
        ],
        "type": "object"
      },
@@ -2590,7 +2590,7 @@ index ed40f2f769c02f2874df9209f51384254feef54f..30de7aea063e68a4360ac13cb8922abf
      "ThreadSource": {
        "type": "string"
      },
-@@ -6601,6 +6849,66 @@
+@@ -6691,6 +6939,66 @@
        ],
        "type": "object"
      },
@@ -2657,7 +2657,7 @@ index ed40f2f769c02f2874df9209f51384254feef54f..30de7aea063e68a4360ac13cb8922abf
      "TurnItemsView": {
        "oneOf": [
          {
-@@ -6696,6 +7004,17 @@
+@@ -6786,6 +7094,17 @@
      },
      "TurnStartedNotification": {
        "properties": {
@@ -2675,7 +2675,7 @@ index ed40f2f769c02f2874df9209f51384254feef54f..30de7aea063e68a4360ac13cb8922abf
          "threadId": {
            "type": "string"
          },
-@@ -7398,6 +7717,46 @@
+@@ -7488,6 +7807,46 @@
        "title": "Thread/goal/clearedNotification",
        "type": "object"
      },
@@ -2723,7 +2723,7 @@ index ed40f2f769c02f2874df9209f51384254feef54f..30de7aea063e68a4360ac13cb8922abf
        "properties": {
          "method": {
 diff --git a/codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json b/codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json
-index b96da225040e5648d8232cadbc8c560b293c4a14..41172febb12086a3ce1d47e318162b48e518b828 100644
+index afeb27696a4b74c297c161062e97bd2d1453d1ff..5b30dd71c1972f28d745fb7441d2adcbd6233176 100644
 --- a/codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json
 +++ b/codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json
 @@ -612,6 +612,150 @@
@@ -3019,7 +3019,7 @@ index b96da225040e5648d8232cadbc8c560b293c4a14..41172febb12086a3ce1d47e318162b48
          {
            "properties": {
              "id": {
-@@ -4923,6 +5188,46 @@
+@@ -4947,6 +5212,46 @@
            "title": "Thread/goal/clearedNotification",
            "type": "object"
          },
@@ -3066,7 +3066,7 @@ index b96da225040e5648d8232cadbc8c560b293c4a14..41172febb12086a3ce1d47e318162b48
          {
            "properties": {
              "method": {
-@@ -8563,12 +8868,34 @@
+@@ -8753,12 +9058,34 @@
            },
            {
              "additionalProperties": false,
@@ -3105,7 +3105,7 @@ index b96da225040e5648d8232cadbc8c560b293c4a14..41172febb12086a3ce1d47e318162b48
                      "minimum": 0.0,
                      "type": [
                        "integer",
-@@ -14110,6 +14437,85 @@
+@@ -14422,6 +14749,85 @@
          "title": "ListMcpServerStatusResponse",
          "type": "object"
        },
@@ -3191,7 +3191,7 @@ index b96da225040e5648d8232cadbc8c560b293c4a14..41172febb12086a3ce1d47e318162b48
        "LocalShellAction": {
          "oneOf": [
            {
-@@ -14464,161 +14870,128 @@
+@@ -14776,175 +15182,69 @@
          "title": "LogoutAccountResponse",
          "type": "object"
        },
@@ -3223,6 +3223,13 @@ index b96da225040e5648d8232cadbc8c560b293c4a14..41172febb12086a3ce1d47e318162b48
 -            },
 -            "type": "array"
 -          },
+-          "PostModelRequest": {
+-            "default": [],
+-            "items": {
+-              "$ref": "#/definitions/v2/ConfiguredHookMatcherGroup"
+-            },
+-            "type": "array"
+-          },
 -          "PostToolUse": {
 -            "items": {
 -              "$ref": "#/definitions/v2/ConfiguredHookMatcherGroup"
@@ -3230,6 +3237,13 @@ index b96da225040e5648d8232cadbc8c560b293c4a14..41172febb12086a3ce1d47e318162b48
 -            "type": "array"
 -          },
 -          "PreCompact": {
+-            "items": {
+-              "$ref": "#/definitions/v2/ConfiguredHookMatcherGroup"
+-            },
+-            "type": "array"
+-          },
+-          "PreModelRequest": {
+-            "default": [],
 -            "items": {
 -              "$ref": "#/definitions/v2/ConfiguredHookMatcherGroup"
 -            },
@@ -3345,35 +3359,59 @@ index b96da225040e5648d8232cadbc8c560b293c4a14..41172febb12086a3ce1d47e318162b48
              "type": [
 -              "array",
 +              "string",
-+              "null"
-+            ]
-+          },
+               "null"
+             ]
+-          }
+-        },
+-        "required": [
+-          "source"
+-        ],
+-        "title": "MarketplaceAddParams",
+-        "type": "object"
+-      },
+-      "MarketplaceAddResponse": {
+-        "$schema": "http://json-schema.org/draft-07/schema#",
+-        "properties": {
+-          "alreadyAdded": {
+-            "type": "boolean"
+           },
+-          "installedRoot": {
+-            "$ref": "#/definitions/v2/AbsolutePathBuf"
 +          "rejection_instructions": {
 +            "type": [
 +              "string",
 +              "null"
 +            ]
-+          },
-+          "timeout_instructions": {
-+            "type": [
-+              "string",
-               "null"
-             ]
-           }
-         },
+           },
+-          "marketplaceName": {
+-            "type": "string"
+-          }
+-        },
 -        "required": [
--          "source"
+-          "alreadyAdded",
+-          "installedRoot",
+-          "marketplaceName"
 -        ],
--        "title": "MarketplaceAddParams",
+-        "title": "MarketplaceAddResponse",
+-        "type": "object"
+-      },
+-      "MarketplaceInterface": {
+-        "properties": {
+-          "displayName": {
++          "timeout_instructions": {
+             "type": [
+               "string",
+               "null"
+@@ -14953,16 +15253,1971 @@
+         },
          "type": "object"
        },
--      "MarketplaceAddResponse": {
--        "$schema": "http://json-schema.org/draft-07/schema#",
+-      "MarketplaceLoadErrorInfo": {
 +      "ManagedCatalogCodeModeToolMessages": {
 +        "description": "Model-owned instructions for Code Mode's exec and wait tools.",
          "properties": {
--          "alreadyAdded": {
--            "type": "boolean"
+-          "marketplacePath": {
+-            "$ref": "#/definitions/v2/AbsolutePathBuf"
 +          "deferred_nested_tools_guidance": {
 +            "description": "Literal guidance appended when deferred nested tools exist. Missing or null uses bundled text; an empty string omits the section.",
 +            "type": [
@@ -3381,8 +3419,11 @@ index b96da225040e5648d8232cadbc8c560b293c4a14..41172febb12086a3ce1d47e318162b48
 +              "null"
 +            ]
            },
--          "installedRoot": {
--            "$ref": "#/definitions/v2/AbsolutePathBuf"
+-          "message": {
+-            "type": "string"
+-          }
+-        },
+-        "required": [
 +          "exec": {
 +            "anyOf": [
 +              {
@@ -3393,9 +3434,7 @@ index b96da225040e5648d8232cadbc8c560b293c4a14..41172febb12086a3ce1d47e318162b48
 +              }
 +            ],
 +            "description": "Instructional template supporting `{{ default_exec_yield_time_ms }}` and `{{ image_helper }}`. Runtime tool declarations are appended. Unknown placeholders remain literal. Exec accepts raw JavaScript; `parameters` is not consumed and its grammar is unchanged."
-           },
--          "marketplaceName": {
--            "type": "string"
++          },
 +          "mcp_typescript_preamble": {
 +            "description": "Literal shared TypeScript definitions, emitted when Code Mode Only exposes MCP results. Missing or null uses bundled definitions; an empty string omits the section. Custom definitions must remain compatible with the generated tool declarations.",
 +            "type": [
@@ -3413,20 +3452,12 @@ index b96da225040e5648d8232cadbc8c560b293c4a14..41172febb12086a3ce1d47e318162b48
 +              }
 +            ],
 +            "description": "Complete description and JSON parameter schema, selected independently."
-           }
-         },
--        "required": [
--          "alreadyAdded",
--          "installedRoot",
--          "marketplaceName"
--        ],
--        "title": "MarketplaceAddResponse",
-         "type": "object"
-       },
--      "MarketplaceInterface": {
++          }
++        },
++        "type": "object"
++      },
 +      "ManagedCatalogCollaborationModeMessages": {
-         "properties": {
--          "displayName": {
++        "properties": {
 +          "default": {
 +            "type": [
 +              "string",
@@ -3434,14 +3465,14 @@ index b96da225040e5648d8232cadbc8c560b293c4a14..41172febb12086a3ce1d47e318162b48
 +            ]
 +          },
 +          "plan": {
-             "type": [
-               "string",
-               "null"
-@@ -14627,7 +15000,1889 @@
-         },
-         "type": "object"
-       },
--      "MarketplaceLoadErrorInfo": {
++            "type": [
++              "string",
++              "null"
++            ]
++          }
++        },
++        "type": "object"
++      },
 +      "ManagedCatalogConfigShellToolType": {
 +        "description": "Shell execution capability for a model.",
 +        "enum": [
@@ -5141,6 +5172,13 @@ index b96da225040e5648d8232cadbc8c560b293c4a14..41172febb12086a3ce1d47e318162b48
 +            },
 +            "type": "array"
 +          },
++          "PostModelRequest": {
++            "default": [],
++            "items": {
++              "$ref": "#/definitions/v2/ConfiguredHookMatcherGroup"
++            },
++            "type": "array"
++          },
 +          "PostToolUse": {
 +            "items": {
 +              "$ref": "#/definitions/v2/ConfiguredHookMatcherGroup"
@@ -5148,6 +5186,13 @@ index b96da225040e5648d8232cadbc8c560b293c4a14..41172febb12086a3ce1d47e318162b48
 +            "type": "array"
 +          },
 +          "PreCompact": {
++            "items": {
++              "$ref": "#/definitions/v2/ConfiguredHookMatcherGroup"
++            },
++            "type": "array"
++          },
++          "PreModelRequest": {
++            "default": [],
 +            "items": {
 +              "$ref": "#/definitions/v2/ConfiguredHookMatcherGroup"
 +            },
@@ -5325,10 +5370,19 @@ index b96da225040e5648d8232cadbc8c560b293c4a14..41172febb12086a3ce1d47e318162b48
 +        "type": "object"
 +      },
 +      "MarketplaceLoadErrorInfo": {
-         "properties": {
-           "marketplacePath": {
-             "$ref": "#/definitions/v2/AbsolutePathBuf"
-@@ -21955,6 +24210,12 @@
++        "properties": {
++          "marketplacePath": {
++            "$ref": "#/definitions/v2/AbsolutePathBuf"
++          },
++          "message": {
++            "type": "string"
++          }
++        },
++        "required": [
+           "marketplacePath",
+           "message"
+         ],
+@@ -22603,6 +24858,12 @@
                  "type": "null"
                }
              ]
@@ -5341,7 +5395,7 @@ index b96da225040e5648d8232cadbc8c560b293c4a14..41172febb12086a3ce1d47e318162b48
            }
          },
          "title": "ThreadGoalGetResponse",
-@@ -22020,10 +24281,14 @@
+@@ -22668,10 +24929,14 @@
          "properties": {
            "goal": {
              "$ref": "#/definitions/v2/ThreadGoal"
@@ -5357,7 +5411,7 @@ index b96da225040e5648d8232cadbc8c560b293c4a14..41172febb12086a3ce1d47e318162b48
          ],
          "title": "ThreadGoalSetResponse",
          "type": "object"
-@@ -22062,6 +24327,78 @@
+@@ -22710,6 +24975,78 @@
          "title": "ThreadGoalUpdatedNotification",
          "type": "object"
        },
@@ -5436,7 +5490,7 @@ index b96da225040e5648d8232cadbc8c560b293c4a14..41172febb12086a3ce1d47e318162b48
        "ThreadHistoryMode": {
          "enum": [
            "legacy",
-@@ -22069,6 +24406,190 @@
+@@ -22717,6 +25054,190 @@
          ],
          "type": "string"
        },
@@ -5627,7 +5681,7 @@ index b96da225040e5648d8232cadbc8c560b293c4a14..41172febb12086a3ce1d47e318162b48
        "ThreadId": {
          "type": "string"
        },
-@@ -22128,34 +24649,86 @@
+@@ -22777,34 +25298,86 @@
                "id",
                "type"
              ],
@@ -5722,7 +5776,7 @@ index b96da225040e5648d8232cadbc8c560b293c4a14..41172febb12086a3ce1d47e318162b48
              "type": "object"
            },
            {
-@@ -23287,48 +25860,324 @@
+@@ -23995,48 +26568,324 @@
        "ThreadLoadedListParams": {
          "$schema": "http://json-schema.org/draft-07/schema#",
          "properties": {
@@ -6077,7 +6131,7 @@ index b96da225040e5648d8232cadbc8c560b293c4a14..41172febb12086a3ce1d47e318162b48
          "type": "object"
        },
        "ThreadMemoryMode": {
-@@ -23519,6 +26368,9 @@
+@@ -24227,6 +27076,9 @@
        "ThreadReadParams": {
          "$schema": "http://json-schema.org/draft-07/schema#",
          "properties": {
@@ -6087,7 +6141,7 @@ index b96da225040e5648d8232cadbc8c560b293c4a14..41172febb12086a3ce1d47e318162b48
            "includeTurns": {
              "description": "When true, include turns and their items from rollout history. Full-history hydration is deprecated for paginated threads; prefer a metadata-only read and page with `thread/turns/list` and `thread/items/list`.",
              "type": "boolean"
-@@ -23536,6 +26388,16 @@
+@@ -24244,6 +27096,16 @@
        "ThreadReadResponse": {
          "$schema": "http://json-schema.org/draft-07/schema#",
          "properties": {
@@ -6104,7 +6158,7 @@ index b96da225040e5648d8232cadbc8c560b293c4a14..41172febb12086a3ce1d47e318162b48
            "thread": {
              "$ref": "#/definitions/v2/Thread"
            }
-@@ -24225,6 +27087,17 @@
+@@ -24933,6 +27795,17 @@
              "description": "When true, return only thread metadata and live-resume state without populating `thread.turns`. This is useful when the client plans to call `thread/turns/list` immediately after resuming. Full-history hydration is deprecated for paginated threads; use this with `thread/turns/list` and `thread/items/list` instead.",
              "type": "boolean"
            },
@@ -6122,7 +6176,7 @@ index b96da225040e5648d8232cadbc8c560b293c4a14..41172febb12086a3ce1d47e318162b48
            "model": {
              "description": "Configuration overrides for the resumed thread, if any.",
              "type": [
-@@ -24775,6 +27648,12 @@
+@@ -25483,6 +28356,12 @@
            "modelProvider": {
              "type": "string"
            },
@@ -6135,7 +6189,7 @@ index b96da225040e5648d8232cadbc8c560b293c4a14..41172febb12086a3ce1d47e318162b48
            "personality": {
              "anyOf": [
                {
-@@ -24795,6 +27674,33 @@
+@@ -25503,6 +28382,33 @@
                "null"
              ]
            },
@@ -6169,7 +6223,7 @@ index b96da225040e5648d8232cadbc8c560b293c4a14..41172febb12086a3ce1d47e318162b48
            "summary": {
              "anyOf": [
                {
-@@ -24813,6 +27719,60 @@
+@@ -25521,6 +28427,60 @@
            "cwd",
            "model",
            "modelProvider",
@@ -6230,7 +6284,7 @@ index b96da225040e5648d8232cadbc8c560b293c4a14..41172febb12086a3ce1d47e318162b48
            "sandboxPolicy"
          ],
          "type": "object"
-@@ -24820,6 +27780,28 @@
+@@ -25528,6 +28488,28 @@
        "ThreadSettingsUpdatedNotification": {
          "$schema": "http://json-schema.org/draft-07/schema#",
          "properties": {
@@ -6259,7 +6313,7 @@ index b96da225040e5648d8232cadbc8c560b293c4a14..41172febb12086a3ce1d47e318162b48
            "threadId": {
              "type": "string"
            },
-@@ -24834,6 +27816,23 @@
+@@ -25542,6 +28524,23 @@
          "title": "ThreadSettingsUpdatedNotification",
          "type": "object"
        },
@@ -6283,7 +6337,7 @@ index b96da225040e5648d8232cadbc8c560b293c4a14..41172febb12086a3ce1d47e318162b48
        "ThreadShellCommandParams": {
          "$schema": "http://json-schema.org/draft-07/schema#",
          "properties": {
-@@ -24947,6 +27946,17 @@
+@@ -25655,6 +28654,17 @@
                "null"
              ]
            },
@@ -6301,7 +6355,7 @@ index b96da225040e5648d8232cadbc8c560b293c4a14..41172febb12086a3ce1d47e318162b48
            "model": {
              "type": [
                "string",
-@@ -25990,6 +29000,66 @@
+@@ -26706,6 +29716,66 @@
          ],
          "type": "object"
        },
@@ -6368,7 +6422,7 @@ index b96da225040e5648d8232cadbc8c560b293c4a14..41172febb12086a3ce1d47e318162b48
        "TurnInterruptParams": {
          "$schema": "http://json-schema.org/draft-07/schema#",
          "properties": {
-@@ -26056,6 +29126,40 @@
+@@ -26772,6 +29842,40 @@
          "title": "TurnModerationMetadataNotification",
          "type": "object"
        },
@@ -6409,7 +6463,7 @@ index b96da225040e5648d8232cadbc8c560b293c4a14..41172febb12086a3ce1d47e318162b48
        "TurnPlanStep": {
          "properties": {
            "status": {
-@@ -26289,6 +29393,17 @@
+@@ -27005,6 +30109,17 @@
        "TurnStartedNotification": {
          "$schema": "http://json-schema.org/draft-07/schema#",
          "properties": {
@@ -6428,10 +6482,10 @@ index b96da225040e5648d8232cadbc8c560b293c4a14..41172febb12086a3ce1d47e318162b48
              "type": "string"
            },
 diff --git a/codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json b/codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json
-index 6d7bfd893788632926754fb2a39828609fb11fb8..a5e7976820040ba9437a189ab091ffc5bdca71d7 100644
+index b6a76228a4c33c4eddf5bee3a541c42d83665bef..68ab88d524341992bc3da6d0eeabe096b4503eab 100644
 --- a/codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json
 +++ b/codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json
-@@ -2185,6 +2185,150 @@
+@@ -2349,6 +2349,150 @@
            "title": "Thread/section/moveRequest",
            "type": "object"
          },
@@ -6582,7 +6636,7 @@ index 6d7bfd893788632926754fb2a39828609fb11fb8..a5e7976820040ba9437a189ab091ffc5
          {
            "properties": {
              "id": {
-@@ -2521,6 +2665,79 @@
+@@ -2685,6 +2829,79 @@
            "title": "Thread/items/listRequest",
            "type": "object"
          },
@@ -6662,7 +6716,7 @@ index 6d7bfd893788632926754fb2a39828609fb11fb8..a5e7976820040ba9437a189ab091ffc5
          {
            "description": "Append raw Responses API items to the thread history without starting a user turn.",
            "properties": {
-@@ -3362,6 +3579,30 @@
+@@ -3526,6 +3743,30 @@
            "title": "Turn/interruptRequest",
            "type": "object"
          },
@@ -6693,7 +6747,7 @@ index 6d7bfd893788632926754fb2a39828609fb11fb8..a5e7976820040ba9437a189ab091ffc5
          {
            "properties": {
              "id": {
-@@ -3386,6 +3627,30 @@
+@@ -3550,6 +3791,30 @@
            "title": "Review/startRequest",
            "type": "object"
          },
@@ -6724,7 +6778,7 @@ index 6d7bfd893788632926754fb2a39828609fb11fb8..a5e7976820040ba9437a189ab091ffc5
          {
            "properties": {
              "id": {
-@@ -4377,6 +4642,28 @@
+@@ -4567,6 +4832,28 @@
            "title": "ResponseStreamConnectionFailedCodexErrorInfo",
            "type": "object"
          },
@@ -6753,7 +6807,7 @@ index 6d7bfd893788632926754fb2a39828609fb11fb8..a5e7976820040ba9437a189ab091ffc5
          {
            "additionalProperties": false,
            "description": "The response SSE stream disconnected in the middle of a turn before completion.",
-@@ -10102,25 +10389,104 @@
+@@ -10414,25 +10701,104 @@
        "title": "ListMcpServerStatusResponse",
        "type": "object"
      },
@@ -6877,7 +6931,7 @@ index 6d7bfd893788632926754fb2a39828609fb11fb8..a5e7976820040ba9437a189ab091ffc5
              "timeout_ms": {
                "format": "uint64",
                "minimum": 0.0,
-@@ -10333,127 +10699,1935 @@
+@@ -10645,127 +11011,1935 @@
            "type": "object"
          }
        ],
@@ -8922,7 +8976,7 @@ index 6d7bfd893788632926754fb2a39828609fb11fb8..a5e7976820040ba9437a189ab091ffc5
        "type": "object"
      },
      "ManagedHooksRequirements": {
-@@ -10559,6 +12733,47 @@
+@@ -10885,6 +13059,47 @@
        ],
        "type": "object"
      },
@@ -8970,7 +9024,7 @@ index 6d7bfd893788632926754fb2a39828609fb11fb8..a5e7976820040ba9437a189ab091ffc5
      "MarketplaceAddParams": {
        "$schema": "http://json-schema.org/draft-07/schema#",
        "properties": {
-@@ -16531,38 +18746,78 @@
+@@ -17179,38 +19394,78 @@
                "enum": [
                  "thread/prediction/updated"
                ],
@@ -9056,7 +9110,7 @@ index 6d7bfd893788632926754fb2a39828609fb11fb8..a5e7976820040ba9437a189ab091ffc5
            "type": "object"
          },
          {
-@@ -19669,6 +21924,12 @@
+@@ -20317,6 +22572,12 @@
                "type": "null"
              }
            ]
@@ -9069,7 +9123,7 @@ index 6d7bfd893788632926754fb2a39828609fb11fb8..a5e7976820040ba9437a189ab091ffc5
          }
        },
        "title": "ThreadGoalGetResponse",
-@@ -19734,10 +21995,14 @@
+@@ -20382,10 +22643,14 @@
        "properties": {
          "goal": {
            "$ref": "#/definitions/ThreadGoal"
@@ -9085,7 +9139,7 @@ index 6d7bfd893788632926754fb2a39828609fb11fb8..a5e7976820040ba9437a189ab091ffc5
        ],
        "title": "ThreadGoalSetResponse",
        "type": "object"
-@@ -19776,6 +22041,78 @@
+@@ -20424,6 +22689,78 @@
        "title": "ThreadGoalUpdatedNotification",
        "type": "object"
      },
@@ -9164,7 +9218,7 @@ index 6d7bfd893788632926754fb2a39828609fb11fb8..a5e7976820040ba9437a189ab091ffc5
      "ThreadHistoryMode": {
        "enum": [
          "legacy",
-@@ -19783,6 +22120,190 @@
+@@ -20431,6 +22768,190 @@
        ],
        "type": "string"
      },
@@ -9355,7 +9409,7 @@ index 6d7bfd893788632926754fb2a39828609fb11fb8..a5e7976820040ba9437a189ab091ffc5
      "ThreadId": {
        "type": "string"
      },
-@@ -19842,34 +22363,86 @@
+@@ -20491,34 +23012,86 @@
              "id",
              "type"
            ],
@@ -9450,7 +9504,7 @@ index 6d7bfd893788632926754fb2a39828609fb11fb8..a5e7976820040ba9437a189ab091ffc5
            "type": "object"
          },
          {
-@@ -21001,48 +23574,324 @@
+@@ -21709,48 +24282,324 @@
      "ThreadLoadedListParams": {
        "$schema": "http://json-schema.org/draft-07/schema#",
        "properties": {
@@ -9805,7 +9859,7 @@ index 6d7bfd893788632926754fb2a39828609fb11fb8..a5e7976820040ba9437a189ab091ffc5
        "type": "object"
      },
      "ThreadMemoryMode": {
-@@ -21233,6 +24082,9 @@
+@@ -21941,6 +24790,9 @@
      "ThreadReadParams": {
        "$schema": "http://json-schema.org/draft-07/schema#",
        "properties": {
@@ -9815,7 +9869,7 @@ index 6d7bfd893788632926754fb2a39828609fb11fb8..a5e7976820040ba9437a189ab091ffc5
          "includeTurns": {
            "description": "When true, include turns and their items from rollout history. Full-history hydration is deprecated for paginated threads; prefer a metadata-only read and page with `thread/turns/list` and `thread/items/list`.",
            "type": "boolean"
-@@ -21250,6 +24102,16 @@
+@@ -21958,6 +24810,16 @@
      "ThreadReadResponse": {
        "$schema": "http://json-schema.org/draft-07/schema#",
        "properties": {
@@ -9832,7 +9886,7 @@ index 6d7bfd893788632926754fb2a39828609fb11fb8..a5e7976820040ba9437a189ab091ffc5
          "thread": {
            "$ref": "#/definitions/Thread"
          }
-@@ -21939,6 +24801,17 @@
+@@ -22647,6 +25509,17 @@
            "description": "When true, return only thread metadata and live-resume state without populating `thread.turns`. This is useful when the client plans to call `thread/turns/list` immediately after resuming. Full-history hydration is deprecated for paginated threads; use this with `thread/turns/list` and `thread/items/list` instead.",
            "type": "boolean"
          },
@@ -9850,7 +9904,7 @@ index 6d7bfd893788632926754fb2a39828609fb11fb8..a5e7976820040ba9437a189ab091ffc5
          "model": {
            "description": "Configuration overrides for the resumed thread, if any.",
            "type": [
-@@ -22489,6 +25362,12 @@
+@@ -23197,6 +26070,12 @@
          "modelProvider": {
            "type": "string"
          },
@@ -9863,7 +9917,7 @@ index 6d7bfd893788632926754fb2a39828609fb11fb8..a5e7976820040ba9437a189ab091ffc5
          "personality": {
            "anyOf": [
              {
-@@ -22509,6 +25388,33 @@
+@@ -23217,6 +26096,33 @@
              "null"
            ]
          },
@@ -9897,7 +9951,7 @@ index 6d7bfd893788632926754fb2a39828609fb11fb8..a5e7976820040ba9437a189ab091ffc5
          "summary": {
            "anyOf": [
              {
-@@ -22527,6 +25433,60 @@
+@@ -23235,6 +26141,60 @@
          "cwd",
          "model",
          "modelProvider",
@@ -9958,7 +10012,7 @@ index 6d7bfd893788632926754fb2a39828609fb11fb8..a5e7976820040ba9437a189ab091ffc5
          "sandboxPolicy"
        ],
        "type": "object"
-@@ -22534,6 +25494,28 @@
+@@ -23242,6 +26202,28 @@
      "ThreadSettingsUpdatedNotification": {
        "$schema": "http://json-schema.org/draft-07/schema#",
        "properties": {
@@ -9987,7 +10041,7 @@ index 6d7bfd893788632926754fb2a39828609fb11fb8..a5e7976820040ba9437a189ab091ffc5
          "threadId": {
            "type": "string"
          },
-@@ -22548,6 +25530,23 @@
+@@ -23256,6 +26238,23 @@
        "title": "ThreadSettingsUpdatedNotification",
        "type": "object"
      },
@@ -10011,7 +10065,7 @@ index 6d7bfd893788632926754fb2a39828609fb11fb8..a5e7976820040ba9437a189ab091ffc5
      "ThreadShellCommandParams": {
        "$schema": "http://json-schema.org/draft-07/schema#",
        "properties": {
-@@ -22661,6 +25660,17 @@
+@@ -23369,6 +26368,17 @@
              "null"
            ]
          },
@@ -10029,7 +10083,7 @@ index 6d7bfd893788632926754fb2a39828609fb11fb8..a5e7976820040ba9437a189ab091ffc5
          "model": {
            "type": [
              "string",
-@@ -23704,6 +26714,66 @@
+@@ -24420,6 +27430,66 @@
        ],
        "type": "object"
      },
@@ -10096,7 +10150,7 @@ index 6d7bfd893788632926754fb2a39828609fb11fb8..a5e7976820040ba9437a189ab091ffc5
      "TurnInterruptParams": {
        "$schema": "http://json-schema.org/draft-07/schema#",
        "properties": {
-@@ -23770,6 +26840,40 @@
+@@ -24486,6 +27556,40 @@
        "title": "TurnModerationMetadataNotification",
        "type": "object"
      },
@@ -10137,7 +10191,7 @@ index 6d7bfd893788632926754fb2a39828609fb11fb8..a5e7976820040ba9437a189ab091ffc5
      "TurnPlanStep": {
        "properties": {
          "status": {
-@@ -24003,6 +27107,17 @@
+@@ -24719,6 +27823,17 @@
      "TurnStartedNotification": {
        "$schema": "http://json-schema.org/draft-07/schema#",
        "properties": {
@@ -10156,10 +10210,10 @@ index 6d7bfd893788632926754fb2a39828609fb11fb8..a5e7976820040ba9437a189ab091ffc5
            "type": "string"
          },
 diff --git a/codex-rs/app-server-protocol/schema/json/v2/ErrorNotification.json b/codex-rs/app-server-protocol/schema/json/v2/ErrorNotification.json
-index 108ebe232e070231a3d223cee7b6c1254bf5bd77..557d046919365096974dc3ff2eb2e1871ad4ade0 100644
+index 808a08aa98d2c63c895b90f2fbd3b650876370b7..4d2b770ee73713e0fe66d3fd56468646eb8bdc7b 100644
 --- a/codex-rs/app-server-protocol/schema/json/v2/ErrorNotification.json
 +++ b/codex-rs/app-server-protocol/schema/json/v2/ErrorNotification.json
-@@ -70,6 +70,28 @@
+@@ -72,6 +72,28 @@
            "title": "ResponseStreamConnectionFailedCodexErrorInfo",
            "type": "object"
          },
@@ -10189,10 +10243,10 @@ index 108ebe232e070231a3d223cee7b6c1254bf5bd77..557d046919365096974dc3ff2eb2e187
            "additionalProperties": false,
            "description": "The response SSE stream disconnected in the middle of a turn before completion.",
 diff --git a/codex-rs/app-server-protocol/schema/json/v2/ItemCompletedNotification.json b/codex-rs/app-server-protocol/schema/json/v2/ItemCompletedNotification.json
-index 31e915e4e875a273208677f839afc29ff43fb0cb..137b9f74fbc52eb8785a7f375ee612a8f9d3eb13 100644
+index 692617e9570aac762f7d69629f7f0641b53a1b7a..8fe376f6a96a2a2d48c32bad053e4cb483fde1d2 100644
 --- a/codex-rs/app-server-protocol/schema/json/v2/ItemCompletedNotification.json
 +++ b/codex-rs/app-server-protocol/schema/json/v2/ItemCompletedNotification.json
-@@ -841,6 +841,58 @@
+@@ -859,6 +859,58 @@
            "title": "HookPromptThreadItem",
            "type": "object"
          },
@@ -10252,10 +10306,10 @@ index 31e915e4e875a273208677f839afc29ff43fb0cb..137b9f74fbc52eb8785a7f375ee612a8
            "properties": {
              "delivery": {
 diff --git a/codex-rs/app-server-protocol/schema/json/v2/ItemStartedNotification.json b/codex-rs/app-server-protocol/schema/json/v2/ItemStartedNotification.json
-index 0ea615c48c45bad2cca511b62fd7af73560e0535..8feddc92b6325aab8383639cdf52932925283ac5 100644
+index 286ce308fb4a2a86962fa8bc935509e75a20bee8..7015eb845271f37a84fb57ec89722de05febd37d 100644
 --- a/codex-rs/app-server-protocol/schema/json/v2/ItemStartedNotification.json
 +++ b/codex-rs/app-server-protocol/schema/json/v2/ItemStartedNotification.json
-@@ -841,6 +841,58 @@
+@@ -859,6 +859,58 @@
            "title": "HookPromptThreadItem",
            "type": "object"
          },
@@ -12509,10 +12563,10 @@ index 0000000000000000000000000000000000000000..3c2ed8adfd48479bdbfd536f86cbba5e
 +}
 \ No newline at end of file
 diff --git a/codex-rs/app-server-protocol/schema/json/v2/ReviewStartResponse.json b/codex-rs/app-server-protocol/schema/json/v2/ReviewStartResponse.json
-index f1f9c0dcb8e1a6c40cc802f800bfe352774aaac0..ad21bdd0023671628441b8d00b7ad4099d5488b0 100644
+index bc7b9ad49b6bbe5a173a9f3dd9c4af2c1f0f9c72..cf8c20398ce2068f8642a86ba24065964e455f58 100644
 --- a/codex-rs/app-server-protocol/schema/json/v2/ReviewStartResponse.json
 +++ b/codex-rs/app-server-protocol/schema/json/v2/ReviewStartResponse.json
-@@ -120,6 +120,28 @@
+@@ -122,6 +122,28 @@
            "title": "ResponseStreamConnectionFailedCodexErrorInfo",
            "type": "object"
          },
@@ -12541,7 +12595,7 @@ index f1f9c0dcb8e1a6c40cc802f800bfe352774aaac0..ad21bdd0023671628441b8d00b7ad409
          {
            "additionalProperties": false,
            "description": "The response SSE stream disconnected in the middle of a turn before completion.",
-@@ -1044,6 +1066,58 @@
+@@ -1064,6 +1086,58 @@
            "title": "HookPromptThreadItem",
            "type": "object"
          },
@@ -12601,10 +12655,10 @@ index f1f9c0dcb8e1a6c40cc802f800bfe352774aaac0..ad21bdd0023671628441b8d00b7ad409
            "properties": {
              "delivery": {
 diff --git a/codex-rs/app-server-protocol/schema/json/v2/ThreadForkResponse.json b/codex-rs/app-server-protocol/schema/json/v2/ThreadForkResponse.json
-index b1aff21738ad67f7b53a18f2d49712d6bd64acbc..d219844ecade44cc6020eb51746e8e9988fe0edf 100644
+index a025f8b78d91cfaa5777d91b5ef4d50740050b13..69ab193d1aabddd39f4a330f61e090331b8eeef1 100644
 --- a/codex-rs/app-server-protocol/schema/json/v2/ThreadForkResponse.json
 +++ b/codex-rs/app-server-protocol/schema/json/v2/ThreadForkResponse.json
-@@ -201,6 +201,28 @@
+@@ -203,6 +203,28 @@
            "title": "ResponseStreamConnectionFailedCodexErrorInfo",
            "type": "object"
          },
@@ -12633,7 +12687,7 @@ index b1aff21738ad67f7b53a18f2d49712d6bd64acbc..d219844ecade44cc6020eb51746e8e99
          {
            "additionalProperties": false,
            "description": "The response SSE stream disconnected in the middle of a turn before completion.",
-@@ -1658,6 +1680,58 @@
+@@ -1678,6 +1700,58 @@
            "title": "HookPromptThreadItem",
            "type": "object"
          },
@@ -12730,10 +12784,10 @@ index a0d17a84a2fa25c10656d269e0dba235348d9ffc..f01efd67f3cfdcb8415998dfa407a07b
    "title": "ThreadGoalSetResponse",
    "type": "object"
 diff --git a/codex-rs/app-server-protocol/schema/json/v2/ThreadItemsListResponse.json b/codex-rs/app-server-protocol/schema/json/v2/ThreadItemsListResponse.json
-index 5bb7c64b9781b18d90babcec5bb64d70652e074f..4c71d7ca9d37a523d4e25395a54f297d0eb59bcb 100644
+index eb54f49826f4a64cab37d93e9ec3a0b7136dc0fe..626844e5f21fce55c333ece8ce27f0f386054750 100644
 --- a/codex-rs/app-server-protocol/schema/json/v2/ThreadItemsListResponse.json
 +++ b/codex-rs/app-server-protocol/schema/json/v2/ThreadItemsListResponse.json
-@@ -841,6 +841,58 @@
+@@ -859,6 +859,58 @@
            "title": "HookPromptThreadItem",
            "type": "object"
          },
@@ -12793,10 +12847,10 @@ index 5bb7c64b9781b18d90babcec5bb64d70652e074f..4c71d7ca9d37a523d4e25395a54f297d
            "properties": {
              "delivery": {
 diff --git a/codex-rs/app-server-protocol/schema/json/v2/ThreadListResponse.json b/codex-rs/app-server-protocol/schema/json/v2/ThreadListResponse.json
-index bbf8ed7d34e643d3723861573331d02ab8f5b91d..640d0009953e8266552c3c9ed39f5914ca992332 100644
+index 8446a6a4da808839ee46235c1d42792d30f1beca..f8589dadc750946c3b411a3ca0395ed9dd33267f 100644
 --- a/codex-rs/app-server-protocol/schema/json/v2/ThreadListResponse.json
 +++ b/codex-rs/app-server-protocol/schema/json/v2/ThreadListResponse.json
-@@ -123,6 +123,28 @@
+@@ -125,6 +125,28 @@
            "title": "ResponseStreamConnectionFailedCodexErrorInfo",
            "type": "object"
          },
@@ -12825,7 +12879,7 @@ index bbf8ed7d34e643d3723861573331d02ab8f5b91d..640d0009953e8266552c3c9ed39f5914
          {
            "additionalProperties": false,
            "description": "The response SSE stream disconnected in the middle of a turn before completion.",
-@@ -1449,6 +1471,58 @@
+@@ -1469,6 +1491,58 @@
            "title": "HookPromptThreadItem",
            "type": "object"
          },
@@ -13165,10 +13219,10 @@ index 0000000000000000000000000000000000000000..f0bb5c820d35499629277cb6ce4fe03d
 +}
 \ No newline at end of file
 diff --git a/codex-rs/app-server-protocol/schema/json/v2/ThreadMetadataUpdateResponse.json b/codex-rs/app-server-protocol/schema/json/v2/ThreadMetadataUpdateResponse.json
-index fe79128b0a241a0aabb238d10c229a9fe1a31953..28d26ea67b074cd501142d3f3b026c705a4b40c6 100644
+index d167771d36668b1bb02e5f7429f84ff736500ad4..025b5fa3e5886f338c84cbe183131247f81fd136 100644
 --- a/codex-rs/app-server-protocol/schema/json/v2/ThreadMetadataUpdateResponse.json
 +++ b/codex-rs/app-server-protocol/schema/json/v2/ThreadMetadataUpdateResponse.json
-@@ -123,6 +123,28 @@
+@@ -125,6 +125,28 @@
            "title": "ResponseStreamConnectionFailedCodexErrorInfo",
            "type": "object"
          },
@@ -13197,7 +13251,7 @@ index fe79128b0a241a0aabb238d10c229a9fe1a31953..28d26ea67b074cd501142d3f3b026c70
          {
            "additionalProperties": false,
            "description": "The response SSE stream disconnected in the middle of a turn before completion.",
-@@ -1449,6 +1471,58 @@
+@@ -1469,6 +1491,58 @@
            "title": "HookPromptThreadItem",
            "type": "object"
          },
@@ -13494,10 +13548,10 @@ index 65211ef5fd5800791955d4e40bc124feed8d3941..f7699a32a7d2ae2b5ef0f68c2994dcfd
        "description": "Configuration overrides for the resumed thread, if any.",
        "type": [
 diff --git a/codex-rs/app-server-protocol/schema/json/v2/ThreadResumeResponse.json b/codex-rs/app-server-protocol/schema/json/v2/ThreadResumeResponse.json
-index b7e1f4cbfa9ecaf70cd40f7db19515fe0385cf80..0b0be2d9e873c846c71d92f0fd6ded38bef4ebca 100644
+index baa806edccc0fef888e95ce30af85d1e4ce97e38..adb5d9da6bb292d5664cb56a9d08054b5e5aa8e5 100644
 --- a/codex-rs/app-server-protocol/schema/json/v2/ThreadResumeResponse.json
 +++ b/codex-rs/app-server-protocol/schema/json/v2/ThreadResumeResponse.json
-@@ -201,6 +201,28 @@
+@@ -203,6 +203,28 @@
            "title": "ResponseStreamConnectionFailedCodexErrorInfo",
            "type": "object"
          },
@@ -13526,7 +13580,7 @@ index b7e1f4cbfa9ecaf70cd40f7db19515fe0385cf80..0b0be2d9e873c846c71d92f0fd6ded38
          {
            "additionalProperties": false,
            "description": "The response SSE stream disconnected in the middle of a turn before completion.",
-@@ -1710,6 +1732,58 @@
+@@ -1730,6 +1752,58 @@
            "title": "HookPromptThreadItem",
            "type": "object"
          },
@@ -13586,10 +13640,10 @@ index b7e1f4cbfa9ecaf70cd40f7db19515fe0385cf80..0b0be2d9e873c846c71d92f0fd6ded38
            "properties": {
              "delivery": {
 diff --git a/codex-rs/app-server-protocol/schema/json/v2/ThreadRevertResponse.json b/codex-rs/app-server-protocol/schema/json/v2/ThreadRevertResponse.json
-index 7a8a97b9d9bbc5ccc1e29fd5a34ff7d9c7646b6f..fb8b9d1cadeab98f9b38c162cc155b8f80c193ba 100644
+index b06f6b9efcda7f84f80147680d4490e18c64b04f..2becf33678f68103fe9a52f8ee0c8bfcc5a43a25 100644
 --- a/codex-rs/app-server-protocol/schema/json/v2/ThreadRevertResponse.json
 +++ b/codex-rs/app-server-protocol/schema/json/v2/ThreadRevertResponse.json
-@@ -123,6 +123,28 @@
+@@ -125,6 +125,28 @@
            "title": "ResponseStreamConnectionFailedCodexErrorInfo",
            "type": "object"
          },
@@ -13618,7 +13672,7 @@ index 7a8a97b9d9bbc5ccc1e29fd5a34ff7d9c7646b6f..fb8b9d1cadeab98f9b38c162cc155b8f
          {
            "additionalProperties": false,
            "description": "The response SSE stream disconnected in the middle of a turn before completion.",
-@@ -1449,6 +1471,58 @@
+@@ -1469,6 +1491,58 @@
            "title": "HookPromptThreadItem",
            "type": "object"
          },
@@ -13946,10 +14000,10 @@ index 5164caf6a208e4e0aa1d21baff108df8430c9d54..f6a04a5646d56418f0d5383110770b0e
        "type": [
          "string",
 diff --git a/codex-rs/app-server-protocol/schema/json/v2/ThreadStartResponse.json b/codex-rs/app-server-protocol/schema/json/v2/ThreadStartResponse.json
-index 00d698b329014cfff62391d33403624db6befdef..19a35f6bf2b8e01e7ff353d597c49107b63afd8d 100644
+index 0e44e3042cbd49cc55f93b6860ac00bd5a83cd2c..c01ae5d5bb01d58d0091a951da71df17124c4534 100644
 --- a/codex-rs/app-server-protocol/schema/json/v2/ThreadStartResponse.json
 +++ b/codex-rs/app-server-protocol/schema/json/v2/ThreadStartResponse.json
-@@ -201,6 +201,28 @@
+@@ -203,6 +203,28 @@
            "title": "ResponseStreamConnectionFailedCodexErrorInfo",
            "type": "object"
          },
@@ -13978,7 +14032,7 @@ index 00d698b329014cfff62391d33403624db6befdef..19a35f6bf2b8e01e7ff353d597c49107
          {
            "additionalProperties": false,
            "description": "The response SSE stream disconnected in the middle of a turn before completion.",
-@@ -1658,6 +1680,58 @@
+@@ -1678,6 +1700,58 @@
            "title": "HookPromptThreadItem",
            "type": "object"
          },
@@ -14038,10 +14092,10 @@ index 00d698b329014cfff62391d33403624db6befdef..19a35f6bf2b8e01e7ff353d597c49107
            "properties": {
              "delivery": {
 diff --git a/codex-rs/app-server-protocol/schema/json/v2/ThreadStartedNotification.json b/codex-rs/app-server-protocol/schema/json/v2/ThreadStartedNotification.json
-index b0cee0b30a2f913d8d4f6ceaf8ddc4ce237b0d1c..0e39e9fa72df0bd1a45493b058c81478b70f833d 100644
+index 326694cf14e3ac159dd38e3c5198619a27f776fa..8fb31c87fbafa48fab7bb2da76f3cf3af0db567c 100644
 --- a/codex-rs/app-server-protocol/schema/json/v2/ThreadStartedNotification.json
 +++ b/codex-rs/app-server-protocol/schema/json/v2/ThreadStartedNotification.json
-@@ -123,6 +123,28 @@
+@@ -125,6 +125,28 @@
            "title": "ResponseStreamConnectionFailedCodexErrorInfo",
            "type": "object"
          },
@@ -14070,7 +14124,7 @@ index b0cee0b30a2f913d8d4f6ceaf8ddc4ce237b0d1c..0e39e9fa72df0bd1a45493b058c81478
          {
            "additionalProperties": false,
            "description": "The response SSE stream disconnected in the middle of a turn before completion.",
-@@ -1449,6 +1471,58 @@
+@@ -1469,6 +1491,58 @@
            "title": "HookPromptThreadItem",
            "type": "object"
          },
@@ -14130,10 +14184,10 @@ index b0cee0b30a2f913d8d4f6ceaf8ddc4ce237b0d1c..0e39e9fa72df0bd1a45493b058c81478
            "properties": {
              "delivery": {
 diff --git a/codex-rs/app-server-protocol/schema/json/v2/ThreadTurnsListResponse.json b/codex-rs/app-server-protocol/schema/json/v2/ThreadTurnsListResponse.json
-index ea56799c418d6748a126352db8da07bb74880f10..30550f7bbfe660a19625507591a7ca415c724b41 100644
+index 74ef9915886d29434b7a5d5425efb1756244da3b..72512327235a0aada64c8b8e5e61734c372a0cfd 100644
 --- a/codex-rs/app-server-protocol/schema/json/v2/ThreadTurnsListResponse.json
 +++ b/codex-rs/app-server-protocol/schema/json/v2/ThreadTurnsListResponse.json
-@@ -120,6 +120,28 @@
+@@ -122,6 +122,28 @@
            "title": "ResponseStreamConnectionFailedCodexErrorInfo",
            "type": "object"
          },
@@ -14162,7 +14216,7 @@ index ea56799c418d6748a126352db8da07bb74880f10..30550f7bbfe660a19625507591a7ca41
          {
            "additionalProperties": false,
            "description": "The response SSE stream disconnected in the middle of a turn before completion.",
-@@ -1044,6 +1066,58 @@
+@@ -1064,6 +1086,58 @@
            "title": "HookPromptThreadItem",
            "type": "object"
          },
@@ -14222,10 +14276,10 @@ index ea56799c418d6748a126352db8da07bb74880f10..30550f7bbfe660a19625507591a7ca41
            "properties": {
              "delivery": {
 diff --git a/codex-rs/app-server-protocol/schema/json/v2/ThreadUnarchiveResponse.json b/codex-rs/app-server-protocol/schema/json/v2/ThreadUnarchiveResponse.json
-index e2039c8c3209e111df25168926f9be11aec525dc..9f5aabb35f83667dabc8eb0175f46a93ec40e4e7 100644
+index bcfd2f2571d13446e8d54126698caad96ad22558..bd8566973d09dc73caab203353741fbe91a027b1 100644
 --- a/codex-rs/app-server-protocol/schema/json/v2/ThreadUnarchiveResponse.json
 +++ b/codex-rs/app-server-protocol/schema/json/v2/ThreadUnarchiveResponse.json
-@@ -123,6 +123,28 @@
+@@ -125,6 +125,28 @@
            "title": "ResponseStreamConnectionFailedCodexErrorInfo",
            "type": "object"
          },
@@ -14254,7 +14308,7 @@ index e2039c8c3209e111df25168926f9be11aec525dc..9f5aabb35f83667dabc8eb0175f46a93
          {
            "additionalProperties": false,
            "description": "The response SSE stream disconnected in the middle of a turn before completion.",
-@@ -1449,6 +1471,58 @@
+@@ -1469,6 +1491,58 @@
            "title": "HookPromptThreadItem",
            "type": "object"
          },
@@ -14314,10 +14368,10 @@ index e2039c8c3209e111df25168926f9be11aec525dc..9f5aabb35f83667dabc8eb0175f46a93
            "properties": {
              "delivery": {
 diff --git a/codex-rs/app-server-protocol/schema/json/v2/TurnCompletedNotification.json b/codex-rs/app-server-protocol/schema/json/v2/TurnCompletedNotification.json
-index a0c543c01f2f6f9e785560506064e60bae17c8f5..419b9aaff77a5b78ea3844abf083531bdb10e01e 100644
+index 0c0cf075df44cf4f2abe2735caf4c6427e78a216..99b298aa9cad5f177f1b14793b2839da28245ed9 100644
 --- a/codex-rs/app-server-protocol/schema/json/v2/TurnCompletedNotification.json
 +++ b/codex-rs/app-server-protocol/schema/json/v2/TurnCompletedNotification.json
-@@ -120,6 +120,28 @@
+@@ -122,6 +122,28 @@
            "title": "ResponseStreamConnectionFailedCodexErrorInfo",
            "type": "object"
          },
@@ -14346,7 +14400,7 @@ index a0c543c01f2f6f9e785560506064e60bae17c8f5..419b9aaff77a5b78ea3844abf083531b
          {
            "additionalProperties": false,
            "description": "The response SSE stream disconnected in the middle of a turn before completion.",
-@@ -1044,6 +1066,58 @@
+@@ -1064,6 +1086,58 @@
            "title": "HookPromptThreadItem",
            "type": "object"
          },
@@ -14454,10 +14508,10 @@ index 0000000000000000000000000000000000000000..10e3414132adc0d11798014db45b5054
 +}
 \ No newline at end of file
 diff --git a/codex-rs/app-server-protocol/schema/json/v2/TurnStartResponse.json b/codex-rs/app-server-protocol/schema/json/v2/TurnStartResponse.json
-index f2f5c903f33f047f43c4a66e69e05dc3ad9c5a57..023d54b5cbe16054036ea478a6ba24ddb6668318 100644
+index fbe2695c5d39c9cac6999d0bec7baa390697760b..c5282405bb27008072324b0f5970c9b7840b6985 100644
 --- a/codex-rs/app-server-protocol/schema/json/v2/TurnStartResponse.json
 +++ b/codex-rs/app-server-protocol/schema/json/v2/TurnStartResponse.json
-@@ -120,6 +120,28 @@
+@@ -122,6 +122,28 @@
            "title": "ResponseStreamConnectionFailedCodexErrorInfo",
            "type": "object"
          },
@@ -14486,7 +14540,7 @@ index f2f5c903f33f047f43c4a66e69e05dc3ad9c5a57..023d54b5cbe16054036ea478a6ba24dd
          {
            "additionalProperties": false,
            "description": "The response SSE stream disconnected in the middle of a turn before completion.",
-@@ -1044,6 +1066,58 @@
+@@ -1064,6 +1086,58 @@
            "title": "HookPromptThreadItem",
            "type": "object"
          },
@@ -14546,10 +14600,10 @@ index f2f5c903f33f047f43c4a66e69e05dc3ad9c5a57..023d54b5cbe16054036ea478a6ba24dd
            "properties": {
              "delivery": {
 diff --git a/codex-rs/app-server-protocol/schema/json/v2/TurnStartedNotification.json b/codex-rs/app-server-protocol/schema/json/v2/TurnStartedNotification.json
-index 6f5969c8e93c13da9c93416151b67019eb9125d4..bca28f5d8f738da6c59fca6c6b82c6836a1859ea 100644
+index d4ba38ae892d29ba11b272fc9a09abc84d911664..be28c4f942eed6744913a4ba5cb49d68d9d28605 100644
 --- a/codex-rs/app-server-protocol/schema/json/v2/TurnStartedNotification.json
 +++ b/codex-rs/app-server-protocol/schema/json/v2/TurnStartedNotification.json
-@@ -120,6 +120,28 @@
+@@ -122,6 +122,28 @@
            "title": "ResponseStreamConnectionFailedCodexErrorInfo",
            "type": "object"
          },
@@ -14578,7 +14632,7 @@ index 6f5969c8e93c13da9c93416151b67019eb9125d4..bca28f5d8f738da6c59fca6c6b82c683
          {
            "additionalProperties": false,
            "description": "The response SSE stream disconnected in the middle of a turn before completion.",
-@@ -871,6 +893,14 @@
+@@ -890,6 +912,14 @@
        ],
        "type": "object"
      },
@@ -14593,7 +14647,7 @@ index 6f5969c8e93c13da9c93416151b67019eb9125d4..bca28f5d8f738da6c59fca6c6b82c683
      "NonSteerableTurnKind": {
        "enum": [
          "review",
-@@ -1044,6 +1074,58 @@
+@@ -1064,6 +1094,58 @@
            "title": "HookPromptThreadItem",
            "type": "object"
          },
@@ -14652,7 +14706,7 @@ index 6f5969c8e93c13da9c93416151b67019eb9125d4..bca28f5d8f738da6c59fca6c6b82c683
          {
            "properties": {
              "delivery": {
-@@ -1972,6 +2054,66 @@
+@@ -2051,6 +2133,66 @@
        ],
        "type": "object"
      },
@@ -14719,7 +14773,7 @@ index 6f5969c8e93c13da9c93416151b67019eb9125d4..bca28f5d8f738da6c59fca6c6b82c683
      "TurnItemsView": {
        "oneOf": [
          {
-@@ -2313,6 +2455,17 @@
+@@ -2392,6 +2534,17 @@
      }
    },
    "properties": {
@@ -15480,7 +15534,7 @@ index 0000000000000000000000000000000000000000..9f0907a6167f7469a88bb6fcee24fdbb
 +
 +export type WebSearchToolType = "text" | "text_and_image";
 diff --git a/codex-rs/app-server-protocol/schema/typescript/index.ts b/codex-rs/app-server-protocol/schema/typescript/index.ts
-index 79f9f52ffc8b74d6de4e71d98d086c3f6ca82b28..57e4c1ec7150f9f96ac76c314a663c4538933cc4 100644
+index 3135f430e9c08aeb265034da85e1913bb81b282d..d74cf2f6c7f3a3bc51478386109641ccfc93efd8 100644
 --- a/codex-rs/app-server-protocol/schema/typescript/index.ts
 +++ b/codex-rs/app-server-protocol/schema/typescript/index.ts
 @@ -5,18 +5,26 @@ export type { AgentMessageInputContent } from "./AgentMessageInputContent";
@@ -15510,7 +15564,7 @@ index 79f9f52ffc8b74d6de4e71d98d086c3f6ca82b28..57e4c1ec7150f9f96ac76c314a663c45
  export type { ExecCommandApprovalParams } from "./ExecCommandApprovalParams";
  export type { ExecCommandApprovalResponse } from "./ExecCommandApprovalResponse";
  export type { ExecPolicyAmendment } from "./ExecPolicyAmendment";
-@@ -37,9 +45,15 @@ export type { GetConversationSummaryResponse } from "./GetConversationSummaryRes
+@@ -37,10 +45,16 @@ export type { GetConversationSummaryResponse } from "./GetConversationSummaryRes
  export type { GitDiffToRemoteParams } from "./GitDiffToRemoteParams";
  export type { GitDiffToRemoteResponse } from "./GitDiffToRemoteResponse";
  export type { GitSha } from "./GitSha";
@@ -15521,12 +15575,13 @@ index 79f9f52ffc8b74d6de4e71d98d086c3f6ca82b28..57e4c1ec7150f9f96ac76c314a663c45
 +export type { GuardianV2TranscriptModelConfig } from "./GuardianV2TranscriptModelConfig";
  export type { ImageDetail } from "./ImageDetail";
  export type { ImageGenerationFailure } from "./ImageGenerationFailure";
+ export type { ImageGenerationInputImage } from "./ImageGenerationInputImage";
  export type { ImageGenerationItem } from "./ImageGenerationItem";
 +export type { IndirectDescriptionPrefixes } from "./IndirectDescriptionPrefixes";
  export type { InitializeCapabilities } from "./InitializeCapabilities";
  export type { InitializeParams } from "./InitializeParams";
  export type { InitializeResponse } from "./InitializeResponse";
-@@ -50,14 +64,30 @@ export type { LegacyAppPathString } from "./LegacyAppPathString";
+@@ -51,14 +65,30 @@ export type { LegacyAppPathString } from "./LegacyAppPathString";
  export type { LocalShellAction } from "./LocalShellAction";
  export type { LocalShellExecAction } from "./LocalShellExecAction";
  export type { LocalShellStatus } from "./LocalShellStatus";
@@ -15557,7 +15612,7 @@ index 79f9f52ffc8b74d6de4e71d98d086c3f6ca82b28..57e4c1ec7150f9f96ac76c314a663c45
  export type { Personality } from "./Personality";
  export type { PlanType } from "./PlanType";
  export type { RealtimeConversationVersion } from "./RealtimeConversationVersion";
-@@ -65,6 +95,7 @@ export type { RealtimeOutputModality } from "./RealtimeOutputModality";
+@@ -66,6 +96,7 @@ export type { RealtimeOutputModality } from "./RealtimeOutputModality";
  export type { RealtimeVoice } from "./RealtimeVoice";
  export type { RealtimeVoicesList } from "./RealtimeVoicesList";
  export type { ReasoningEffort } from "./ReasoningEffort";
@@ -15565,7 +15620,7 @@ index 79f9f52ffc8b74d6de4e71d98d086c3f6ca82b28..57e4c1ec7150f9f96ac76c314a663c45
  export type { ReasoningItemContent } from "./ReasoningItemContent";
  export type { ReasoningItemReasoningSummary } from "./ReasoningItemReasoningSummary";
  export type { ReasoningSummary } from "./ReasoningSummary";
-@@ -84,8 +115,16 @@ export type { SleepItem } from "./SleepItem";
+@@ -85,8 +116,16 @@ export type { SleepItem } from "./SleepItem";
  export type { SubAgentSource } from "./SubAgentSource";
  export type { ThreadId } from "./ThreadId";
  export type { ThreadMemoryMode } from "./ThreadMemoryMode";
@@ -15582,7 +15637,7 @@ index 79f9f52ffc8b74d6de4e71d98d086c3f6ca82b28..57e4c1ec7150f9f96ac76c314a663c45
  export type { Verbosity } from "./Verbosity";
  export type { WebSearchAction } from "./WebSearchAction";
  export type { WebSearchContextSize } from "./WebSearchContextSize";
-@@ -93,4 +132,5 @@ export type { WebSearchItem } from "./WebSearchItem";
+@@ -94,4 +133,5 @@ export type { WebSearchItem } from "./WebSearchItem";
  export type { WebSearchLocation } from "./WebSearchLocation";
  export type { WebSearchMode } from "./WebSearchMode";
  export type { WebSearchToolConfig } from "./WebSearchToolConfig";
@@ -15953,23 +16008,6 @@ index 0000000000000000000000000000000000000000..34abdc770811bb69bc6ff4087843e6e0
 + * Sum of distinct response usage for this physical thread only. Null on conflict/overflow.
 + */
 +total: TokenUsageBreakdown | null, conflictingResponseIds: Array<string>, };
-diff --git a/codex-rs/app-server-protocol/schema/typescript/v2/ThreadItem.ts b/codex-rs/app-server-protocol/schema/typescript/v2/ThreadItem.ts
-index 1f132df8daf86a68640e5533bfbd52819bd85bed..76ce182a26bb9aecbda4ad89221b332f5dfa8ba2 100644
---- a/codex-rs/app-server-protocol/schema/typescript/v2/ThreadItem.ts
-+++ b/codex-rs/app-server-protocol/schema/typescript/v2/ThreadItem.ts
-@@ -31,7 +31,11 @@ import type { PatchApplyStatus } from "./PatchApplyStatus";
- import type { SubAgentActivityKind } from "./SubAgentActivityKind";
- import type { UserInput } from "./UserInput";
- 
--export type ThreadItem = { "type": "userMessage", id: string, clientId: string | null, content: Array<UserInput>, } | { "type": "hookPrompt", id: string, fragments: Array<HookPromptFragment>, } | { "type": "agentMessage", id: string, text: string, phase: MessagePhase | null, memoryCitation: MemoryCitation | null, delivery: AgentMessageDelivery | null, questions: Array<AsyncUserInputQuestion> | null, } | { "type": "functionCallOutput", id: string, name: string, namespace: string | null, output: FunctionCallOutputBody, } | { "type": "plan", id: string, text: string, } | { "type": "reasoning", id: string, summary: Array<string>, content: Array<string>, } | { "type": "commandExecution", id: string,
-+export type ThreadItem = { "type": "userMessage", id: string, clientId: string | null, content: Array<UserInput>, } | { "type": "hookPrompt", id: string, fragments: Array<HookPromptFragment>, } | { "type": "interAgentCommunication", id: string, author: string, recipient: string, otherRecipients: Array<string>,
-+/**
-+ * None means the payload is encrypted and cannot be displayed as text.
-+ */
-+text: string | null, encryptedContent: string | null, triggerTurn: boolean, } | { "type": "agentMessage", id: string, text: string, phase: MessagePhase | null, memoryCitation: MemoryCitation | null, delivery: AgentMessageDelivery | null, questions: Array<AsyncUserInputQuestion> | null, } | { "type": "functionCallOutput", id: string, name: string, namespace: string | null, output: FunctionCallOutputBody, } | { "type": "plan", id: string, text: string, } | { "type": "reasoning", id: string, summary: Array<string>, content: Array<string>, } | { "type": "commandExecution", id: string,
- /**
-  * Trusted first-party plugin id when this command resolves to one plugin script.
-  */
 diff --git a/codex-rs/app-server-protocol/schema/typescript/v2/ThreadManagedConfigUpdateParams.ts b/codex-rs/app-server-protocol/schema/typescript/v2/ThreadManagedConfigUpdateParams.ts
 new file mode 100644
 index 0000000000000000000000000000000000000000..8ff25f1cd6cf10f3d96c58a8c19ff00a6c13d003
@@ -16314,10 +16352,10 @@ index 34f71b246560bf389d2498c10bd3320528364478..91b7f99686dd2cd8210c55794c8d4107
 + */
 +initialSettings?: TurnInitialSettings, threadId: string, turn: Turn, };
 diff --git a/codex-rs/app-server-protocol/schema/typescript/v2/index.ts b/codex-rs/app-server-protocol/schema/typescript/v2/index.ts
-index 40723453437c27dd37397fde205ed5b2d4638418..cfcb76f321bf922bc1907b78489701b43c523e43 100644
+index 4ec94e59a4e7a974bb231e306dbb7d8e483107cd..d4f70022843f4bb6d47778153698033357e9b678 100644
 --- a/codex-rs/app-server-protocol/schema/typescript/v2/index.ts
 +++ b/codex-rs/app-server-protocol/schema/typescript/v2/index.ts
-@@ -244,11 +244,29 @@ export type { ItemGuardianApprovalReviewStartedNotification } from "./ItemGuardi
+@@ -250,11 +250,29 @@ export type { ItemGuardianApprovalReviewStartedNotification } from "./ItemGuardi
  export type { ItemStartedNotification } from "./ItemStartedNotification";
  export type { ListMcpServerStatusParams } from "./ListMcpServerStatusParams";
  export type { ListMcpServerStatusResponse } from "./ListMcpServerStatusResponse";
@@ -16347,7 +16385,7 @@ index 40723453437c27dd37397fde205ed5b2d4638418..cfcb76f321bf922bc1907b78489701b4
  export type { MarketplaceAddParams } from "./MarketplaceAddParams";
  export type { MarketplaceAddResponse } from "./MarketplaceAddResponse";
  export type { MarketplaceInterface } from "./MarketplaceInterface";
-@@ -516,7 +534,13 @@ export type { ThreadGoalSetParams } from "./ThreadGoalSetParams";
+@@ -528,7 +546,13 @@ export type { ThreadGoalSetParams } from "./ThreadGoalSetParams";
  export type { ThreadGoalSetResponse } from "./ThreadGoalSetResponse";
  export type { ThreadGoalStatus } from "./ThreadGoalStatus";
  export type { ThreadGoalUpdatedNotification } from "./ThreadGoalUpdatedNotification";
@@ -16361,7 +16399,7 @@ index 40723453437c27dd37397fde205ed5b2d4638418..cfcb76f321bf922bc1907b78489701b4
  export type { ThreadInjectItemsParams } from "./ThreadInjectItemsParams";
  export type { ThreadInjectItemsResponse } from "./ThreadInjectItemsResponse";
  export type { ThreadItem } from "./ThreadItem";
-@@ -529,6 +553,15 @@ export type { ThreadListParams } from "./ThreadListParams";
+@@ -541,6 +565,15 @@ export type { ThreadListParams } from "./ThreadListParams";
  export type { ThreadListResponse } from "./ThreadListResponse";
  export type { ThreadLoadedListParams } from "./ThreadLoadedListParams";
  export type { ThreadLoadedListResponse } from "./ThreadLoadedListResponse";
@@ -16377,7 +16415,7 @@ index 40723453437c27dd37397fde205ed5b2d4638418..cfcb76f321bf922bc1907b78489701b4
  export type { ThreadMetadataGitInfoUpdateParams } from "./ThreadMetadataGitInfoUpdateParams";
  export type { ThreadMetadataUpdateParams } from "./ThreadMetadataUpdateParams";
  export type { ThreadMetadataUpdateResponse } from "./ThreadMetadataUpdateResponse";
-@@ -583,6 +616,9 @@ export type { ThreadSectionUpdateResponse } from "./ThreadSectionUpdateResponse"
+@@ -595,6 +628,9 @@ export type { ThreadSectionUpdateResponse } from "./ThreadSectionUpdateResponse"
  export type { ThreadSetNameParams } from "./ThreadSetNameParams";
  export type { ThreadSetNameResponse } from "./ThreadSetNameResponse";
  export type { ThreadSettings } from "./ThreadSettings";
@@ -16387,7 +16425,7 @@ index 40723453437c27dd37397fde205ed5b2d4638418..cfcb76f321bf922bc1907b78489701b4
  export type { ThreadSettingsUpdatedNotification } from "./ThreadSettingsUpdatedNotification";
  export type { ThreadShellCommandParams } from "./ThreadShellCommandParams";
  export type { ThreadShellCommandResponse } from "./ThreadShellCommandResponse";
-@@ -625,6 +661,8 @@ export type { TurnInterruptParams } from "./TurnInterruptParams";
+@@ -637,6 +673,8 @@ export type { TurnInterruptParams } from "./TurnInterruptParams";
  export type { TurnInterruptResponse } from "./TurnInterruptResponse";
  export type { TurnItemsView } from "./TurnItemsView";
  export type { TurnModerationMetadataNotification } from "./TurnModerationMetadataNotification";
@@ -16397,10 +16435,10 @@ index 40723453437c27dd37397fde205ed5b2d4638418..cfcb76f321bf922bc1907b78489701b4
  export type { TurnPlanStepStatus } from "./TurnPlanStepStatus";
  export type { TurnPlanUpdatedNotification } from "./TurnPlanUpdatedNotification";
 diff --git a/codex-rs/app-server/src/bespoke_event_handling.rs b/codex-rs/app-server/src/bespoke_event_handling.rs
-index 244b339f558b758b9f78cb6e9b0f418e9968a9d6..94fd0db4bcb3e049cc8bd848aab97a1c5d2d1d94 100644
+index ae800c9d1adafa6f0a4b22ce933df91e1c362bdc..91510a46420025ae49c192033929bed24a6322ef 100644
 --- a/codex-rs/app-server/src/bespoke_event_handling.rs
 +++ b/codex-rs/app-server/src/bespoke_event_handling.rs
-@@ -3165,6 +3165,7 @@ mod tests {
+@@ -3199,6 +3199,7 @@ mod tests {
              .codex
              .submit(Op::ThreadSettings {
                  operation_id: Some("rejected-settings".to_string()),
@@ -16409,10 +16447,10 @@ index 244b339f558b758b9f78cb6e9b0f418e9968a9d6..94fd0db4bcb3e049cc8bd848aab97a1c
                      approval_policy: Some(AskForApproval::OnRequest),
                      ..Default::default()
 diff --git a/codex-rs/core/src/agent/control.rs b/codex-rs/core/src/agent/control.rs
-index 50084a2068c840ec27b9dab53db319cc8776f230..5263c3b3287cf96eabf091b2d17a784dbbb79e64 100644
+index 014ceed566b6d1e4e16806320d5b9e95b9da4460..a9e20212ccbfa538c491bb77eb606b431f3fcd01 100644
 --- a/codex-rs/core/src/agent/control.rs
 +++ b/codex-rs/core/src/agent/control.rs
-@@ -92,7 +92,6 @@ mod watch;
+@@ -95,7 +95,6 @@ mod watch;
  /// Local startup preserves that state when creating or resuming children.
  #[derive(Clone)]
  pub(crate) struct LocalAgentControl {
@@ -16420,7 +16458,7 @@ index 50084a2068c840ec27b9dab53db319cc8776f230..5263c3b3287cf96eabf091b2d17a784d
      /// session_id is equal to the root thread's ID.
      session_id: SessionId,
      pub(crate) runtime: LocalAgentRuntime,
-@@ -117,7 +116,6 @@ impl LocalAgentControl {
+@@ -120,7 +119,6 @@ impl LocalAgentControl {
      ) -> Self {
          let runtime = LocalAgentRuntime::new(manager, thread_id_generator, rollout_budget);
          Self {
@@ -16429,10 +16467,10 @@ index 50084a2068c840ec27b9dab53db319cc8776f230..5263c3b3287cf96eabf091b2d17a784d
              runtime,
          }
 diff --git a/codex-rs/core/src/agent/control/runtime.rs b/codex-rs/core/src/agent/control/runtime.rs
-index 86c2ef201128c08cb3596bb7cee5262c6c885ad5..519f28b98659fc35c690caf75f1de54937edc90b 100644
+index f123ce5d592ba159a70c5344acb972d5811350c9..14f00d632133aaf4f6228fc853144c2bb13291c1 100644
 --- a/codex-rs/core/src/agent/control/runtime.rs
 +++ b/codex-rs/core/src/agent/control/runtime.rs
-@@ -182,7 +182,8 @@ impl Drop for AgentTreeTeardownGuard {
+@@ -186,7 +186,8 @@ impl Drop for AgentTreeTeardownGuard {
  /// Local tree state, kept separate from the shared agent operation interface.
  #[derive(Clone)]
  pub(crate) struct LocalAgentRuntime {
@@ -16442,7 +16480,7 @@ index 86c2ef201128c08cb3596bb7cee5262c6c885ad5..519f28b98659fc35c690caf75f1de549
      /// Weak handle back to the global thread registry/state.
      /// This is `Weak` to avoid reference cycles and shadow persistence of the form
      /// `ThreadManagerState -> CodexThread -> Session -> SessionServices -> ThreadManagerState`.
-@@ -234,7 +235,6 @@ impl LocalAgentRuntime {
+@@ -238,7 +239,6 @@ impl LocalAgentRuntime {
      /// Bind local startup to the same tree state with this session's identity.
      pub(crate) fn control(&self, session_id: SessionId) -> LocalAgentControl {
          LocalAgentControl {
@@ -16451,10 +16489,10 @@ index 86c2ef201128c08cb3596bb7cee5262c6c885ad5..519f28b98659fc35c690caf75f1de549
              runtime: self.clone(),
          }
 diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
-index cc767c7cf3d1aa38bf33f21b9045ebb32a287bcb..f24a900bc584640b3bc84005ca430c77c121dd7a 100644
+index bedde655f75415317600b05562e17d8362f70136..31908d98f91f7259e03c5cd4d03360f3cfd46859 100644
 --- a/codex-rs/core/src/codex_thread.rs
 +++ b/codex-rs/core/src/codex_thread.rs
-@@ -818,7 +818,13 @@ impl CodexThread {
+@@ -872,7 +872,13 @@ impl CodexThread {
          overrides: codex_protocol::protocol::ThreadSettingsOverrides,
      ) -> codex_protocol::error::Result<codex_protocol::protocol::ThreadSettingsOperationRecord>
      {
@@ -16469,7 +16507,7 @@ index cc767c7cf3d1aa38bf33f21b9045ebb32a287bcb..f24a900bc584640b3bc84005ca430c77
          let record = coordinator
              .enqueue(
                  &self.session,
-@@ -839,7 +845,11 @@ impl CodexThread {
+@@ -893,7 +899,11 @@ impl CodexThread {
          &self,
          operation_id: &str,
      ) -> Option<codex_protocol::protocol::ThreadSettingsOperationRecord> {
@@ -16482,7 +16520,7 @@ index cc767c7cf3d1aa38bf33f21b9045ebb32a287bcb..f24a900bc584640b3bc84005ca430c77
          if let Err(error) = coordinator.settle().await {
              tracing::warn!(%error, "settings operation read retained pending recovery");
          }
-@@ -871,6 +881,7 @@ impl CodexThread {
+@@ -925,6 +935,7 @@ impl CodexThread {
          self.io
              .submit(WithTurnExtensionData {
                  request: Op::ThreadSettings {
@@ -16491,10 +16529,10 @@ index cc767c7cf3d1aa38bf33f21b9045ebb32a287bcb..f24a900bc584640b3bc84005ca430c77
                      reply: Some(reply),
                  },
 diff --git a/codex-rs/core/src/session/handlers.rs b/codex-rs/core/src/session/handlers.rs
-index 2ff650e064ea5891126849bb33d1648146746200..4fa3b2d46ab612814dd6f85ac5a8f2dd291c20b5 100644
+index 7c555f8debf4c44b8eaa887066369a97264f4379..56475bfa21a0c5cc6a49b6036bf3e363f5ef8466 100644
 --- a/codex-rs/core/src/session/handlers.rs
 +++ b/codex-rs/core/src/session/handlers.rs
-@@ -107,7 +107,7 @@ pub async fn run_user_shell_command(
+@@ -110,7 +110,7 @@ pub async fn run_user_shell_command(
      {
          let Some(security_execution) = sess
              .services
@@ -16503,7 +16541,7 @@ index 2ff650e064ea5891126849bb33d1648146746200..4fa3b2d46ab612814dd6f85ac5a8f2dd
              .security_transitions
              .admit_auxiliary(sess, &turn_context)
              .await
-@@ -640,7 +640,13 @@ pub(super) async fn submission_loop(
+@@ -645,7 +645,13 @@ pub(super) async fn submission_loop(
                              if let Some(reply) = reply {
                                  let _ = reply.send(Ok(()));
                              }
@@ -16518,7 +16556,7 @@ index 2ff650e064ea5891126849bb33d1648146746200..4fa3b2d46ab612814dd6f85ac5a8f2dd
                          }
                          Err(error) => {
                              let message = format!("invalid thread settings override: {error}");
-@@ -652,7 +658,11 @@ pub(super) async fn submission_loop(
+@@ -657,7 +663,11 @@ pub(super) async fn submission_loop(
                                      msg: EventMsg::Error(ErrorEvent {
                                          misalignment: None,
                                          message,
@@ -16532,10 +16570,10 @@ index 2ff650e064ea5891126849bb33d1648146746200..4fa3b2d46ab612814dd6f85ac5a8f2dd
                                  })
                                  .await;
 diff --git a/codex-rs/core/src/session/mod.rs b/codex-rs/core/src/session/mod.rs
-index 76170aa306fcababaf5cbec8ad20fd3a42af38bb..ad7962c9cc98c64502694589c8cc2ed72a0e62fa 100644
+index a902026a096316ec7e084f261a24baca6802417b..8f981fe2e07798ef5be9072e8b7e36638c36613f 100644
 --- a/codex-rs/core/src/session/mod.rs
 +++ b/codex-rs/core/src/session/mod.rs
-@@ -2050,7 +2050,7 @@ impl Session {
+@@ -2113,7 +2113,7 @@ impl Session {
          } else {
              Some(
                  self.services
@@ -16544,7 +16582,7 @@ index 76170aa306fcababaf5cbec8ad20fd3a42af38bb..ad7962c9cc98c64502694589c8cc2ed7
                      .security_transitions
                      .mutation_gate
                      .lock()
-@@ -2429,7 +2429,7 @@ impl Session {
+@@ -2523,7 +2523,7 @@ impl Session {
          let _settings_guard = thread_settings::acquire_persistence_lock(self).await;
          let _security_mutation = self
              .services
@@ -16567,10 +16605,10 @@ index 9a1ead32bee35e0465399114c030f1dc9c7483af..b1266a700614931a135a4131bad36793
              .admit(self, &sub_id)
              .await
 diff --git a/codex-rs/core/src/session/session.rs b/codex-rs/core/src/session/session.rs
-index defe09a8bffc2ad89600d86da19e7ab4cdb78790..dc23b2d407cf7a782ff9f182538c3fa009766c6b 100644
+index 302c60044cf67ca95b3e17e219c4bfc7aa92f3af..014afa258403648f0707084d195c9ada409d7323 100644
 --- a/codex-rs/core/src/session/session.rs
 +++ b/codex-rs/core/src/session/session.rs
-@@ -2010,7 +2010,7 @@ impl Session {
+@@ -2079,7 +2079,7 @@ impl Session {
                          .then_some(codex_protocol::protocol::ChildSecurityProvenance { permission_profile_inherited: true, approval_policy_inherited: true, approvals_reviewer_inherited: true })
                  });
              }
@@ -16579,9 +16617,9 @@ index defe09a8bffc2ad89600d86da19e7ab4cdb78790..dc23b2d407cf7a782ff9f182538c3fa0
              if let Some(network_policy_decider_session) = network_policy_decider_session {
                  let mut guard = network_policy_decider_session.write().await;
                  *guard = Arc::downgrade(&sess);
-@@ -2104,8 +2104,8 @@ impl Session {
-                 mcp_runtime_cwd,
-             )
+@@ -2178,8 +2178,8 @@ impl Session {
+                 &resolved_environments,
+             ))
              .await?;
 -            sess.services.agent_control.security_transitions.reconcile_loaded_child(&sess).await?;
 -            sess.services.agent_control.security_transitions.settle().await?;
@@ -16591,10 +16629,10 @@ index defe09a8bffc2ad89600d86da19e7ab4cdb78790..dc23b2d407cf7a782ff9f182538c3fa0
              sess.follow_inherited_environment_configurations(
                  &inherited_environments,
 diff --git a/codex-rs/core/src/session/turn_input.rs b/codex-rs/core/src/session/turn_input.rs
-index 9161114848c799eee4b18d40226d5748e8d31321..8841e5f8e73aa20a65bd89259afa14be398b59be 100644
+index 9386ce26728a36e2d25dd021188c1bbad0d08186..fe8f44ffdda13789cce839845013bf3beed5bc6e 100644
 --- a/codex-rs/core/src/session/turn_input.rs
 +++ b/codex-rs/core/src/session/turn_input.rs
-@@ -414,7 +414,7 @@ async fn start_or_steer(
+@@ -431,7 +431,7 @@ async fn start_or_steer(
              };
              let Some(security_execution) = session
                  .services
@@ -16603,7 +16641,7 @@ index 9161114848c799eee4b18d40226d5748e8d31321..8841e5f8e73aa20a65bd89259afa14be
                  .security_transitions
                  .admit(session, &submission_id)
                  .await?
-@@ -581,7 +581,7 @@ async fn start_if_idle(
+@@ -595,7 +595,7 @@ async fn start_if_idle(
      };
      let Some(security_execution) = session
          .services
@@ -16613,11 +16651,11 @@ index 9161114848c799eee4b18d40226d5748e8d31321..8841e5f8e73aa20a65bd89259afa14be
          .admit(session, &submission_id)
          .await?
 diff --git a/codex-rs/core/src/tasks/mod.rs b/codex-rs/core/src/tasks/mod.rs
-index 8a987eae00660140a464133a636ca6a3e0c13951..7b7932f0e18c98ba9f79be136b6dcec14dd35a17 100644
+index 8e89102c5bd9d66fbda94c860eddd4acae0887be..cf8b82d722e136b2c31a9d5ee6ddafabebbaabf5 100644
 --- a/codex-rs/core/src/tasks/mod.rs
 +++ b/codex-rs/core/src/tasks/mod.rs
-@@ -482,7 +482,7 @@ impl Session {
-         }
+@@ -503,7 +503,7 @@ impl Session {
+         };
          let security_execution = match self
              .services
 -            .agent_control
@@ -16689,7 +16727,7 @@ index 4df43ee405690166da66391ea9dc800255fc2009..16c14ea8886f1458bb10608b0b74cca5
              sort_direction: SortDirection::Asc,
              sort_key: ItemSortKey::CreatedAtOrdinal,
 diff --git a/codex-rs/thread-store/src/local/thread_history/segment_paging.rs b/codex-rs/thread-store/src/local/thread_history/segment_paging.rs
-index b79474f4108b64166502868aa818ac1aa9205f75..203d08a3135787dadc412e6daac6c1bbdd0efb38 100644
+index 1a60438170da599e54399500411a8a9059b39a84..22ea1e4f8395cb177052d911a4db2f452feb2e57 100644
 --- a/codex-rs/thread-store/src/local/thread_history/segment_paging.rs
 +++ b/codex-rs/thread-store/src/local/thread_history/segment_paging.rs
 @@ -259,7 +259,7 @@ pub(in crate::local) async fn page_item_rows(
@@ -16702,10 +16740,10 @@ index b79474f4108b64166502868aa818ac1aa9205f75..203d08a3135787dadc412e6daac6c1bb
                  .map_err(thread_history_error)?
              {
 diff --git a/codex-rs/tui/src/chatwidget/interaction.rs b/codex-rs/tui/src/chatwidget/interaction.rs
-index 3094667d22fe2d67b2499b80364ef7f7c9a4f63b..bd6333c79dbba1e86d084b9574ea5f87fbcea24d 100644
+index 9caeca9460781078924dfc290fe04acf84f5551f..6deaccb6a1a47f0188126cc1c306f225f6b3806a 100644
 --- a/codex-rs/tui/src/chatwidget/interaction.rs
 +++ b/codex-rs/tui/src/chatwidget/interaction.rs
-@@ -94,7 +94,7 @@ impl ChatWidget {
+@@ -111,7 +111,7 @@ impl ChatWidget {
              && key_event.code == KeyCode::Char('q')
          {
              self.refresh_managed_queue(true);

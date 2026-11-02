@@ -21,6 +21,7 @@ pub use codex_protocol::config_types::AltScreenMode;
 pub use codex_protocol::config_types::ApprovalsReviewer;
 pub use codex_protocol::config_types::ModeKind;
 pub use codex_protocol::config_types::Personality;
+use codex_protocol::config_types::SERVICE_TIER_DEFAULT_REQUEST_VALUE;
 pub use codex_protocol::config_types::ServiceTier;
 use codex_protocol::config_types::ToolExposureSurface;
 pub use codex_protocol::config_types::WebSearchMode;
@@ -29,6 +30,7 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fmt;
 
+use codex_utils_redacted_string::RedactedString;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde::Serialize;
@@ -254,7 +256,7 @@ pub struct AnalyticsConfigToml {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema)]
 #[schemars(deny_unknown_fields)]
 pub struct FeedbackConfigToml {
-    /// When `false`, disables the feedback flow across Codex product surfaces.
+    /// When `false`, disables feedback uploads and background Guardian review retention. Explicit local exports remain available.
     pub enabled: Option<bool>,
 }
 
@@ -320,9 +322,10 @@ pub use codex_protocol::MemoryVersion;
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema)]
 #[schemars(deny_unknown_fields)]
 pub struct MemoriesToml {
-    /// Selects the memory pipeline; v1 remains the default.
+    /// Selects the memory pipeline. Fresh profiles default to v2 when memories are enabled,
+    /// unless dual-write is explicitly disabled; existing v1 profiles default to v1.
     pub version: Option<MemoryVersion>,
-    /// Generate both versions while the selected version supplies context.
+    /// Generate both versions while v1 is selected; v2 runs alone after cutover.
     pub dual_write: Option<bool>,
     /// When `true`, external context sources mark the thread `memory_mode` as `"polluted"`.
     #[serde(alias = "no_memories_if_mcp_or_web_search")]
@@ -352,6 +355,8 @@ pub struct MemoriesToml {
     pub extract_model: Option<String>,
     /// Model used for memory consolidation.
     pub consolidation_model: Option<String>,
+    /// Service tier for memory consolidation. Defaults to Standard (`"default"`).
+    pub consolidation_service_tier: Option<String>,
 }
 
 /// Effective memories settings after defaults are applied.
@@ -371,6 +376,7 @@ pub struct MemoriesConfig {
     pub min_rate_limit_remaining_percent: i64,
     pub extract_model: Option<String>,
     pub consolidation_model: Option<String>,
+    pub consolidation_service_tier: String,
 }
 
 impl Default for MemoriesConfig {
@@ -390,6 +396,7 @@ impl Default for MemoriesConfig {
             min_rate_limit_remaining_percent: DEFAULT_MEMORIES_MIN_RATE_LIMIT_REMAINING_PERCENT,
             extract_model: None,
             consolidation_model: None,
+            consolidation_service_tier: SERVICE_TIER_DEFAULT_REQUEST_VALUE.to_string(),
         }
     }
 }
@@ -438,6 +445,13 @@ impl From<MemoriesToml> for MemoriesConfig {
                 .clamp(0, 100),
             extract_model: toml.extract_model,
             consolidation_model: toml.consolidation_model,
+            consolidation_service_tier: toml
+                .consolidation_service_tier
+                .map(|tier| {
+                    ServiceTier::from_request_value(&tier)
+                        .map_or(tier, |tier| tier.request_value().to_string())
+                })
+                .unwrap_or(defaults.consolidation_service_tier),
         }
     }
 }
@@ -603,7 +617,8 @@ pub enum OtelExporterKind {
     OtlpHttp {
         endpoint: String,
         #[serde(default)]
-        headers: HashMap<String, String>,
+        #[schemars(with = "HashMap<String, String>")]
+        headers: HashMap<String, RedactedString>,
         protocol: OtelHttpProtocol,
         #[serde(default)]
         tls: Option<OtelTlsConfig>,
@@ -611,7 +626,8 @@ pub enum OtelExporterKind {
     OtlpGrpc {
         endpoint: String,
         #[serde(default)]
-        headers: HashMap<String, String>,
+        #[schemars(with = "HashMap<String, String>")]
+        headers: HashMap<String, RedactedString>,
         #[serde(default)]
         tls: Option<OtelTlsConfig>,
     },
@@ -622,8 +638,7 @@ pub enum OtelExporterKind {
 #[schemars(deny_unknown_fields)]
 pub struct OtelConfigToml {
     /// Byte limit for tool-result log output; independent of model-visible output.
-    #[serde(default)]
-    pub tool_result: codex_protocol::config_types::ToolResultLogConfig,
+    pub tool_result: Option<codex_protocol::config_types::ToolResultLogConfig>,
     /// Log user prompt in traces
     pub log_user_prompt: Option<bool>,
     /// Opt in to logging final main-agent and spawned-subagent responses to an OTLP log exporter.
@@ -647,7 +662,7 @@ pub struct OtelConfigToml {
     pub metrics_exporter: Option<OtelExporterKind>,
 
     /// Attributes to add to every exported trace span.
-    pub span_attributes: Option<BTreeMap<String, String>>,
+    pub span_attributes: Option<HashMap<String, String>>,
 
     /// Semicolon-separated `key:value` fields to upsert into W3C tracestate members.
     pub tracestate: Option<BTreeMap<String, BTreeMap<String, String>>>,
@@ -664,7 +679,7 @@ pub struct OtelConfig {
     pub exporter: OtelExporterKind,
     pub trace_exporter: OtelExporterKind,
     pub metrics_exporter: OtelExporterKind,
-    pub span_attributes: BTreeMap<String, String>,
+    pub span_attributes: HashMap<String, String>,
     pub tracestate: BTreeMap<String, BTreeMap<String, String>>,
 }
 
@@ -679,7 +694,7 @@ impl Default for OtelConfig {
             exporter: OtelExporterKind::None,
             trace_exporter: OtelExporterKind::None,
             metrics_exporter: OtelExporterKind::Statsig,
-            span_attributes: BTreeMap::new(),
+            span_attributes: HashMap::new(),
             tracestate: BTreeMap::new(),
         }
     }
@@ -786,7 +801,7 @@ pub enum CopyOnSelect {
     /// Use the terminal-specific default.
     #[default]
     Auto,
-    /// Copy every nonempty transcript or footer mouse selection on release.
+    /// Copy every nonempty transcript, footer, or composer mouse selection on release.
     Always,
     /// Require an explicit copy action.
     Never,
@@ -821,6 +836,32 @@ pub struct ModelAvailabilityNuxConfig {
 
 /// Fallback resize-reflow row cap when Codex cannot identify a terminal-specific scrollback size.
 pub const DEFAULT_TERMINAL_RESIZE_REFLOW_FALLBACK_MAX_ROWS: usize = 1_000;
+
+/// One reusable prompt or slash command submitted through the TUI composer.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema)]
+#[schemars(deny_unknown_fields, rename = "Preset")]
+pub struct QuickDial {
+    /// Plain-text input, limited to 8,000 UTF-8 bytes.
+    pub input: String,
+    /// Optional short name for the picker and shortcut hints.
+    pub label: Option<String>,
+}
+
+impl QuickDial {
+    /// Keep stored inputs nonempty and below the context-item limit even with byte tokenization.
+    pub fn validate(&self) -> Result<(), &'static str> {
+        if self.input.trim().is_empty() {
+            return Err("Preset input cannot be empty.");
+        }
+        if self.input.trim_start().starts_with('!') {
+            return Err("Presets support prompts and slash commands, not shell commands.");
+        }
+        if self.input.len() > 8_000 {
+            return Err("Preset input cannot exceed 8,000 UTF-8 bytes.");
+        }
+        Ok(())
+    }
+}
 
 /// Collection of settings that are specific to the TUI.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema)]
@@ -891,15 +932,16 @@ pub struct Tui {
     #[schemars(schema_with = "crate::tui_mouse_scroll::schema")]
     pub mouse_scroll_speed: Option<f64>,
 
-    /// Copy selected transcript or footer text when the mouse button is released.
+    /// Copy selected transcript, footer, or composer text when the mouse button is released.
     /// Defaults to `auto`: enabled except in direct terminals known to forward their native
     /// copy shortcut (Ghostty 1.2+, Kitty on macOS, Windows Terminal, and VS Code on Windows).
     /// Unknown terminals, Ghostty without a recognized version, and tmux/Zellij default to copying.
     #[serde(default)]
     pub copy_on_select: CopyOnSelect,
 
-    /// Deselect transcript text after Copy on select confirms clipboard delivery.
-    /// Defaults to `false` and has no effect when Copy on select is off.
+    /// Deselect read-only transcript or footer text after Copy on select confirms delivery.
+    /// Editable composer selections remain visible. Defaults to `false` and has no effect when
+    /// Copy on select is off.
     #[serde(default)]
     pub copy_on_select_clear_selection: bool,
 
@@ -976,6 +1018,10 @@ pub struct Tui {
     /// Context bindings take precedence over `global` bindings.
     #[serde(default)]
     pub keymap: TuiKeymap,
+
+    /// Saved inputs keyed by a single digit (`0` through `9`).
+    #[serde(default, rename = "presets")]
+    pub quick_dials: BTreeMap<String, QuickDial>,
 
     /// Startup tooltip availability NUX state persisted by the TUI.
     #[serde(default)]
@@ -1084,6 +1130,26 @@ pub struct PluginConfig {
     /// Explicit activation override. Omission inherits the installed-plugin default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub enabled: Option<bool>,
+
+    /// Stable, unique identifier of a ChatGPT-hosted remote plugin.
+    /// Availability to the requesting user is determined by Plugin Service at
+    /// provisioning time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_plugin_id: Option<String>,
+
+    /// Release identifier used to pin the remote plugin to a specific release.
+    /// Omission leaves release selection unchanged.
+    /// Core stores this metadata without selecting or fetching a release.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub release_id: Option<String>,
+
+    /// Provisioning metadata. Omission does not request provisioning.
+    /// Only applies with `remote_plugin_id` and Plugin Service availability to the
+    /// requesting user at provisioning time. Effective enablement, trusted
+    /// provisioning policy, and authentication and authorization restrictions still apply.
+    /// This value is not trusted authorization and does not trigger provisioning.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto_provision: Option<bool>,
 
     /// Per-MCP-server policy overlays for MCP servers contributed by this plugin.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]

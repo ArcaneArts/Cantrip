@@ -1,8 +1,8 @@
 diff --git a/codex-rs/app-server-protocol/src/protocol/common.rs b/codex-rs/app-server-protocol/src/protocol/common.rs
-index b710f18f14e711a748318ee980bcdc4168a7d843..ee24f5351fc4285ea35f8da10b70f46cd7ed28f6 100644
+index 2936c01855e463275d8306df8583ec0303e5c854..47660608e61752ad0fc8f9486dc280c94634e4d4 100644
 --- a/codex-rs/app-server-protocol/src/protocol/common.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/common.rs
-@@ -1077,6 +1077,11 @@ client_request_definitions! {
+@@ -1099,6 +1099,11 @@ client_request_definitions! {
          serialization: thread_id(params.thread_id),
          response: v2::TurnInterruptResponse,
      },
@@ -15,10 +15,10 @@ index b710f18f14e711a748318ee980bcdc4168a7d843..ee24f5351fc4285ea35f8da10b70f46c
      ThreadRealtimeStart => "thread/realtime/start" {
          params: v2::ThreadRealtimeStartParams,
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/turn.rs b/codex-rs/app-server-protocol/src/protocol/v2/turn.rs
-index b09a191289349a68e6602a30ec9d887664dab73f..d71006b9b3e295b59a61961d3e1147f6d77cef8f 100644
+index bf2444553ab39c8da4cca84ece98f0bd7fd36865..5fe6f428637ca4950c2a13d0f5b4bb3a912744c8 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/turn.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/turn.rs
-@@ -352,6 +352,22 @@ pub struct TurnInterruptParams {
+@@ -367,6 +367,22 @@ pub struct TurnInterruptParams {
  #[ts(export_to = "v2/")]
  pub struct TurnInterruptResponse {}
  
@@ -42,10 +42,10 @@ index b09a191289349a68e6602a30ec9d887664dab73f..d71006b9b3e295b59a61961d3e1147f6
  #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
  #[serde(rename_all = "camelCase")]
 diff --git a/codex-rs/app-server/src/message_processor.rs b/codex-rs/app-server/src/message_processor.rs
-index c9858cd9d513c69a917f6505410ee89b16bdd955..22d017649edbb06162404a472794e26c1a3c478b 100644
+index 417165a6352dbf2ad44a40d155f570f596a1c594..7cb30cb256fcbb9e845936c2e045957592996b78 100644
 --- a/codex-rs/app-server/src/message_processor.rs
 +++ b/codex-rs/app-server/src/message_processor.rs
-@@ -1668,6 +1668,9 @@ impl MessageProcessor {
+@@ -1722,6 +1722,9 @@ impl MessageProcessor {
                      .turn_interrupt(&request_id, params)
                      .await
              }
@@ -53,13 +53,13 @@ index c9858cd9d513c69a917f6505410ee89b16bdd955..22d017649edbb06162404a472794e26c
 +                self.turn_processor.turn_pause(&request_id, params).await
 +            }
              ClientRequest::ThreadRealtimeStart { params, .. } => {
+                 let sideband_base_url = None;
                  self.turn_processor
-                     .thread_realtime_start(&request_id, params)
 diff --git a/codex-rs/app-server/src/request_processors.rs b/codex-rs/app-server/src/request_processors.rs
-index a40486e0d512af66aeef1c1307696b2740053500..643d470f5a6e235d33ebdce5cceb9176685fe8df 100644
+index 8162ca9f7c68906221bec5423c75e253eb8491e4..a99d5790007009aa18a202278590aa2f80d879e6 100644
 --- a/codex-rs/app-server/src/request_processors.rs
 +++ b/codex-rs/app-server/src/request_processors.rs
-@@ -304,6 +304,8 @@ use codex_app_server_protocol::TurnItemsView;
+@@ -303,6 +303,8 @@ use codex_app_server_protocol::TurnItemsView;
  use codex_app_server_protocol::TurnSettingsUpdateParams;
  use codex_app_server_protocol::TurnSettingsUpdateResponse;
  use codex_app_server_protocol::TurnSettingsUpdateStatus;
@@ -69,10 +69,10 @@ index a40486e0d512af66aeef1c1307696b2740053500..643d470f5a6e235d33ebdce5cceb9176
  use codex_app_server_protocol::TurnStartResponse;
  use codex_app_server_protocol::TurnStatus;
 diff --git a/codex-rs/app-server/src/request_processors/turn_processor.rs b/codex-rs/app-server/src/request_processors/turn_processor.rs
-index 1b9a253becc97a7a2c1b0de9e92def7c192691c2..263e748051bbaf38b683e99dc153623107a6439c 100644
+index f310c4ac65a9ff2ce3a6ff50efee326223b35c77..f49e4e148840580348fcce71ffba39a771cecfce 100644
 --- a/codex-rs/app-server/src/request_processors/turn_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/turn_processor.rs
-@@ -278,6 +278,16 @@ impl TurnRequestProcessor {
+@@ -267,6 +267,16 @@ impl TurnRequestProcessor {
          result.map(|response| response.map(Into::into))
      }
  
@@ -89,7 +89,7 @@ index 1b9a253becc97a7a2c1b0de9e92def7c192691c2..263e748051bbaf38b683e99dc1536231
      pub(crate) async fn thread_realtime_start(
          &self,
          request_id: &ConnectionRequestId,
-@@ -1680,6 +1690,43 @@ impl TurnRequestProcessor {
+@@ -1480,6 +1490,43 @@ impl TurnRequestProcessor {
          }
      }
  
@@ -134,10 +134,10 @@ index 1b9a253becc97a7a2c1b0de9e92def7c192691c2..263e748051bbaf38b683e99dc1536231
          ListenerTaskContext {
              thread_manager: Arc::clone(&self.thread_manager),
 diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
-index a63dc8f4d231e215513606e7e534a4900203718f..a56afc1a3e05d30ba77be0a2b3a630d460e58e06 100644
+index 968d331a5e303cccef4d6c340a571ffc33f8bff7..2fa42ffffa35959f2bb3518cbee6dd3bdee81633 100644
 --- a/codex-rs/core/src/codex_thread.rs
 +++ b/codex-rs/core/src/codex_thread.rs
-@@ -396,6 +396,34 @@ impl CodexThread {
+@@ -448,6 +448,34 @@ impl CodexThread {
              .await;
      }
  
@@ -173,10 +173,10 @@ index a63dc8f4d231e215513606e7e534a4900203718f..a56afc1a3e05d30ba77be0a2b3a630d4
          &self,
          op: Op,
 diff --git a/codex-rs/core/src/session/handlers.rs b/codex-rs/core/src/session/handlers.rs
-index 91bf8de9bf91ffd98895e976c9dc1b0e2d238968..42625ee042fffbc5d7a44f8b937440f2ee94cba5 100644
+index 128bc7d5bf772695ae43632f9c806f6f0f799c79..116f65d1bd0b5d13b7c8b5f0a57d37018935b6f5 100644
 --- a/codex-rs/core/src/session/handlers.rs
 +++ b/codex-rs/core/src/session/handlers.rs
-@@ -499,6 +499,10 @@ pub(super) async fn submission_loop(
+@@ -504,6 +504,10 @@ pub(super) async fn submission_loop(
                          .await;
                      false
                  }
@@ -188,10 +188,10 @@ index 91bf8de9bf91ffd98895e976c9dc1b0e2d238968..42625ee042fffbc5d7a44f8b937440f2
                      clean_background_terminals(&sess).await;
                      false
 diff --git a/codex-rs/core/src/session/mod.rs b/codex-rs/core/src/session/mod.rs
-index a541c5529fea30aa0f7b9f32df049f22228d1d15..6ef36e29b8456d1c520d9185e5fe20fbb2fde332 100644
+index cc418ca5ed5bcc695784212f3682e94d74c0e5e3..04c678e6773fff524ed655fe5b6a2762a6940b9b 100644
 --- a/codex-rs/core/src/session/mod.rs
 +++ b/codex-rs/core/src/session/mod.rs
-@@ -1474,6 +1474,23 @@ impl Session {
+@@ -1496,6 +1496,23 @@ impl Session {
          self.services.elicitations.subscribe()
      }
  
@@ -216,10 +216,10 @@ index a541c5529fea30aa0f7b9f32df049f22228d1d15..6ef36e29b8456d1c520d9185e5fe20fb
          self.agent_status.send_replace(AgentStatus::Interrupted);
      }
 diff --git a/codex-rs/core/src/session/session.rs b/codex-rs/core/src/session/session.rs
-index a617d9367bc34a265c60c540ef8cd7b3d954c888..589355aa1e397459bc4e89dc1d848843c7434548 100644
+index a41f1471e4300986b7b5e0c7b80f82eba8407156..7df8aee1f4d5b57408100877ab81b84ca92d7c00 100644
 --- a/codex-rs/core/src/session/session.rs
 +++ b/codex-rs/core/src/session/session.rs
-@@ -90,6 +90,8 @@ pub(crate) struct Session {
+@@ -93,6 +93,8 @@ pub(crate) struct Session {
      pub(crate) conversation: Arc<RealtimeConversationManager>,
      pub(crate) realtime_history: Option<Mutex<crate::realtime_history::RealtimeHistoryState>>,
      pub(crate) active_turn: Mutex<Option<ActiveTurn>>,
@@ -228,7 +228,7 @@ index a617d9367bc34a265c60c540ef8cd7b3d954c888..589355aa1e397459bc4e89dc1d848843
      pub(crate) async_hook_results: async_channel::Receiver<HookCompletedEvent>,
      pub(crate) input_queue: InputQueue,
      pub(crate) services: SessionServices,
-@@ -1820,6 +1822,8 @@ impl Session {
+@@ -1888,6 +1890,8 @@ impl Session {
                  turn_environments: Arc::clone(&turn_environments),
              };
              let (mcp_prewarm_tx, mcp_prewarm_rx) = async_channel::bounded(1);
@@ -237,7 +237,7 @@ index a617d9367bc34a265c60c540ef8cd7b3d954c888..589355aa1e397459bc4e89dc1d848843
              let sess = Arc::new(Session {
                  thread_id,
                  installation_id,
-@@ -1847,6 +1851,8 @@ impl Session {
+@@ -1916,6 +1920,8 @@ impl Session {
                      && services.live_thread.is_some())
                  .then(|| Mutex::new(Default::default())),
                  active_turn: Mutex::new(None),
@@ -247,10 +247,10 @@ index a617d9367bc34a265c60c540ef8cd7b3d954c888..589355aa1e397459bc4e89dc1d848843
                  input_queue: InputQueue::with_controller(
                      thread_id,
 diff --git a/codex-rs/core/src/session/tests.rs b/codex-rs/core/src/session/tests.rs
-index 2cde3795393f3da412d7d9c4e516033e5896901d..4740820e7b26146de66d057a64791c886aacfc7e 100644
+index 68022ae9d2ebc55f0fb98d7c745bbb3d5331b862..917d043c18183e60e81d68d3b52609636fe4f12b 100644
 --- a/codex-rs/core/src/session/tests.rs
 +++ b/codex-rs/core/src/session/tests.rs
-@@ -6961,6 +6961,8 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
+@@ -7131,6 +7131,8 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
          turn_environments: Arc::clone(&turn_environments),
      };
  
@@ -259,7 +259,7 @@ index 2cde3795393f3da412d7d9c4e516033e5896901d..4740820e7b26146de66d057a64791c88
      let session = Session {
          thread_id,
          installation_id: "11111111-1111-4111-8111-111111111111".to_string(),
-@@ -6987,6 +6989,8 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
+@@ -7158,6 +7160,8 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
          conversation: Arc::new(RealtimeConversationManager::new()),
          realtime_history: None,
          active_turn: Mutex::new(None),
@@ -268,7 +268,7 @@ index 2cde3795393f3da412d7d9c4e516033e5896901d..4740820e7b26146de66d057a64791c88
          async_hook_results,
          input_queue: super::input_queue::InputQueue::new(),
          services,
-@@ -9229,6 +9233,8 @@ where
+@@ -9425,6 +9429,8 @@ where
          turn_environments: Arc::clone(&turn_environments),
      };
  
@@ -277,7 +277,7 @@ index 2cde3795393f3da412d7d9c4e516033e5896901d..4740820e7b26146de66d057a64791c88
      let session = Arc::new(Session {
          thread_id,
          installation_id: "11111111-1111-4111-8111-111111111111".to_string(),
-@@ -9255,6 +9261,8 @@ where
+@@ -9452,6 +9458,8 @@ where
          conversation: Arc::new(RealtimeConversationManager::new()),
          realtime_history: None,
          active_turn: Mutex::new(None),
@@ -287,10 +287,10 @@ index 2cde3795393f3da412d7d9c4e516033e5896901d..4740820e7b26146de66d057a64791c88
          input_queue: super::input_queue::InputQueue::new(),
          services,
 diff --git a/codex-rs/core/src/session/turn.rs b/codex-rs/core/src/session/turn.rs
-index d1d43621210c979e2a98e2c2bc49698e825d71c1..53ddbb80eb80970b93f7a724d01eeda0bf03344d 100644
+index e4a092ed65e5ddfe3e2adf990039fd36fc41b9e6..8062dce30ed6934f47da903406ae97924cc899b8 100644
 --- a/codex-rs/core/src/session/turn.rs
 +++ b/codex-rs/core/src/session/turn.rs
-@@ -149,6 +149,34 @@ pub(crate) struct McpStartupRequirements {
+@@ -158,6 +158,34 @@ pub(crate) struct McpStartupRequirements {
      required_plugins: HashSet<String>,
  }
  
@@ -325,7 +325,7 @@ index d1d43621210c979e2a98e2c2bc49698e825d71c1..53ddbb80eb80970b93f7a724d01eeda0
  /// Takes initial turn input and runs a loop where, at each sampling request,
  /// the model replies with either:
  ///
-@@ -451,7 +479,9 @@ pub(crate) async fn run_turn(
+@@ -471,7 +499,9 @@ pub(crate) async fn run_turn(
  
      let mut next_step_context = Some(first_step_context);
      let mut guardian_budget_compacted = false;
@@ -380,10 +380,10 @@ index c1554d79c0241e43f59cb02e9ca62f8811f66ddb..d526cc911310c1d3259f64a494dea550
  async fn plan_mode_uses_contributed_turn_item_for_last_agent_message() {
      let (mut session, turn_context) = crate::session::tests::make_session_and_context().await;
 diff --git a/codex-rs/core/src/tasks/mod.rs b/codex-rs/core/src/tasks/mod.rs
-index 5612045b974ba3354540da28139ab0cf909e329a..690a030a71f708a7f7f65a6210dae240683108b4 100644
+index 2d2f7e66e37ce959be99a334311d2a94bad42b59..96b2ec0ef21386947d53ab5917418aec345d87c1 100644
 --- a/codex-rs/core/src/tasks/mod.rs
 +++ b/codex-rs/core/src/tasks/mod.rs
-@@ -604,6 +604,7 @@ impl Session {
+@@ -627,6 +627,7 @@ impl Session {
          let Some(active_turn) = active_turn else {
              return false;
          };
@@ -391,7 +391,7 @@ index 5612045b974ba3354540da28139ab0cf909e329a..690a030a71f708a7f7f65a6210dae240
  
          self.finish_turn_abort(active_turn, reason, error).await;
          true
-@@ -883,6 +884,7 @@ impl Session {
+@@ -911,6 +912,7 @@ impl Session {
              self.send_event(turn_context.as_ref(), event).await;
          }
          if cleared_active_turn {
@@ -399,8 +399,8 @@ index 5612045b974ba3354540da28139ab0cf909e329a..690a030a71f708a7f7f65a6210dae240
              self.emit_thread_idle_lifecycle_if_idle(idle_cause).await;
          }
          // Private reviewers already flushed the terminal event before delivering it.
-@@ -906,7 +908,11 @@ impl Session {
-         {
+@@ -938,7 +940,11 @@ impl Session {
+             // persisted, so capacity eviction cannot close their rollout writer.
              self.mark_interrupted();
          }
 -        active.take()
@@ -413,10 +413,10 @@ index 5612045b974ba3354540da28139ab0cf909e329a..690a030a71f708a7f7f65a6210dae240
  
      pub(crate) async fn close_unified_exec_processes(&self) {
 diff --git a/codex-rs/protocol/src/protocol.rs b/codex-rs/protocol/src/protocol.rs
-index 146209407b78b71c461c854c5d9d1e4d7816b873..6776fa9e40acf4d42fbe474a7ecf9c0f4e6d7f1e 100644
+index 8c419c536c5a55f1354b7929eae67dc79c674350..d55b09e8d320e2c58ddab21ea7b2d84794eac1c9 100644
 --- a/codex-rs/protocol/src/protocol.rs
 +++ b/codex-rs/protocol/src/protocol.rs
-@@ -660,6 +660,9 @@ pub enum Op {
+@@ -705,6 +705,9 @@ pub enum Op {
          reply: oneshot::Sender<bool>,
      },
  
@@ -426,7 +426,7 @@ index 146209407b78b71c461c854c5d9d1e4d7816b873..6776fa9e40acf4d42fbe474a7ecf9c0f
      /// Terminate all running background terminal processes for this thread.
      /// Use this when callers intentionally want to stop long-lived background shells.
      CleanBackgroundTerminals,
-@@ -1038,6 +1041,7 @@ impl Op {
+@@ -1090,6 +1093,7 @@ impl Op {
          match self {
              Self::Interrupt => "interrupt",
              Self::InterruptIfNoPendingInput { .. } => "interrupt_if_no_pending_input",

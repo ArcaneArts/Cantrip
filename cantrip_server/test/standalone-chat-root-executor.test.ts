@@ -46,7 +46,7 @@ function worker(): WorkerSummary {
       adapter: "app-server",
       compatibility: "missing",
       version: null,
-      testedRange: ">=0.163.0 <0.164.0",
+      testedRange: ">=0.166.0 <0.167.0",
       initialize: null,
       methods: {},
       features: [],

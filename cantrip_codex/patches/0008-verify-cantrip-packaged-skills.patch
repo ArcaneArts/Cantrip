@@ -17,10 +17,10 @@ index a72104a0b01d439aff931afcd6481f38a57520c6..679a5365f85162c28a0adb04bebdcc4e
          .skills
          .iter()
 diff --git a/codex-rs/skills/src/lib.rs b/codex-rs/skills/src/lib.rs
-index 7b19d3278864ff7fff0cfc3db087914c0652d4c1..d703ce3c48c7611c351097d92021500206954614 100644
+index 7ac553c8d191c83900ec3c23622c64470cb7a39f..1635b9cca55f6d2b77f99665b8eef0a6f6a8fe11 100644
 --- a/codex-rs/skills/src/lib.rs
 +++ b/codex-rs/skills/src/lib.rs
-@@ -200,6 +200,11 @@ mod tests {
+@@ -203,6 +203,11 @@ mod tests {
          let mut paths: Vec<String> = items.into_iter().map(|(path, _)| path).collect();
          paths.sort_unstable();
  

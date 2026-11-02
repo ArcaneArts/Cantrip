@@ -163,6 +163,7 @@ async fn forward_ops_preserves_submission_trace_context() {
         parent_turn_id: Some("parent-turn".to_string()),
         root_turn_id: Some("root-turn".to_string()),
         residency_guard: None,
+        message_delivery: None,
     };
     tx_ops.send(submission).await.unwrap();
     drop(tx_ops);
@@ -331,24 +332,24 @@ async fn delegate_isolation_does_not_depend_on_attribution() {
         .services
         .extensions = Arc::new(extensions.build());
 
-    let selection = parent_ctx
+    let request = parent_ctx
         .initial_environments
-        .inheritable_selections()
+        .inheritable_requests()
         .into_iter()
         .next()
         .expect("parent environment");
     let root = SelectedCapabilityRoot {
         id: "parent-root".to_string(),
         location: CapabilityRootLocation::Environment {
-            environment_id: selection.environment_id.clone(),
-            path: selection.cwd.clone(),
+            environment_id: request.environment_id.clone(),
+            path: request.cwd.clone(),
         },
     };
     parent_session
         .services
         .turn_environments
         .update_selections(&[TurnEnvironmentSelection::new(
-            selection.into_request(),
+            request,
             std::slice::from_ref(&root),
         )]);
     let parent_environments = parent_session.services.turn_environments.snapshot().await;

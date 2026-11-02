@@ -1,8 +1,8 @@
 diff --git a/codex-rs/app-server-protocol/src/protocol/common.rs b/codex-rs/app-server-protocol/src/protocol/common.rs
-index 53af7f1f8e877224342d8baec0375e00e5c22837..ad4527a310a53b543f6ab365ca71d62893636dec 100644
+index 8b87c1f0afaac24947be63f2164c45dd50560271..b597c445a33eaaa0d23bbdfd421ef475f5d2d01d 100644
 --- a/codex-rs/app-server-protocol/src/protocol/common.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/common.rs
-@@ -730,6 +730,12 @@ client_request_definitions! {
+@@ -746,6 +746,12 @@ client_request_definitions! {
          serialization: thread_id(params.thread_id),
          response: v2::ThreadSettingsReadResponse,
      },
@@ -15,7 +15,7 @@ index 53af7f1f8e877224342d8baec0375e00e5c22837..ad4527a310a53b543f6ab365ca71d628
      #[experimental("thread/settings/update")]
      ThreadSettingsUpdate => "thread/settings/update" {
          params: v2::ThreadSettingsUpdateParams,
-@@ -4558,11 +4564,13 @@ mod tests {
+@@ -4619,11 +4625,13 @@ mod tests {
      fn thread_settings_updated_notification_is_marked_experimental() {
          let notification =
              ServerNotification::ThreadSettingsUpdated(v2::ThreadSettingsUpdatedNotification {
@@ -30,7 +30,7 @@ index 53af7f1f8e877224342d8baec0375e00e5c22837..ad4527a310a53b543f6ab365ca71d628
                      subagent_model: None,
                      subagent_reasoning_effort: None,
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-index 3e9de51355fd372b9b599fe37185f5a95b40f8a6..6b758f0b5f739184bb96f44e03fa888e89861781 100644
+index 8c03201604f43748620cfe522cd083f0b8a88459..d2f0b5ad97c546988c5f1cac0585ae038b51a8da 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
 @@ -253,13 +253,18 @@ pub struct ThreadSettingsReadResponse {
@@ -144,10 +144,10 @@ index 3e9de51355fd372b9b599fe37185f5a95b40f8a6..6b758f0b5f739184bb96f44e03fa888e
      #[ts(optional)]
      pub operation_id: Option<String>,
 diff --git a/codex-rs/app-server/src/bespoke_event_handling.rs b/codex-rs/app-server/src/bespoke_event_handling.rs
-index 90643a9e18ca34de2e06c4c44ef14c5b28236154..cd69f33c06270f1c5edbe863a62c3e6d8d351294 100644
+index 25a8c0c9512633c9eaf9543d118f07b298c60ccb..a2e5832e6e00da08aa48bec6056cc6fef9f4a7ad 100644
 --- a/codex-rs/app-server/src/bespoke_event_handling.rs
 +++ b/codex-rs/app-server/src/bespoke_event_handling.rs
-@@ -1257,6 +1257,7 @@ pub(crate) async fn apply_bespoke_event_handling(
+@@ -1293,6 +1293,7 @@ pub(crate) async fn apply_bespoke_event_handling(
                  .await;
          }
          EventMsg::ThreadRolledBack(_) | EventMsg::ThreadQueueChanged(_) => {}
@@ -155,7 +155,7 @@ index 90643a9e18ca34de2e06c4c44ef14c5b28236154..cd69f33c06270f1c5edbe863a62c3e6d
          EventMsg::ThreadSettingsApplied(applied) => {
              let thread_settings = thread_settings_from_applied_snapshot(&applied.thread_settings);
              let changed = {
-@@ -1267,6 +1268,10 @@ pub(crate) async fn apply_bespoke_event_handling(
+@@ -1303,6 +1304,10 @@ pub(crate) async fn apply_bespoke_event_handling(
                  outgoing
                      .send_server_notification(ServerNotification::ThreadSettingsUpdated(
                          ThreadSettingsUpdatedNotification {
@@ -167,10 +167,10 @@ index 90643a9e18ca34de2e06c4c44ef14c5b28236154..cd69f33c06270f1c5edbe863a62c3e6d
                              submission_id: applied
                                  .operation_id
 diff --git a/codex-rs/app-server/src/message_processor.rs b/codex-rs/app-server/src/message_processor.rs
-index 8856a88c2d924a752cf6460a6b5b1066050ffeb8..c330a7d4804fb212282ba035cbe1ade8cd6e6231 100644
+index 64994f5a038b0a499f0d8f6e1157d9b0590d336e..663b2ddee459d38300d7bf5aedc04142a833c2e8 100644
 --- a/codex-rs/app-server/src/message_processor.rs
 +++ b/codex-rs/app-server/src/message_processor.rs
-@@ -1464,6 +1464,11 @@ impl MessageProcessor {
+@@ -1515,6 +1515,11 @@ impl MessageProcessor {
              ClientRequest::ThreadSettingsRead { params, .. } => {
                  self.turn_processor.thread_settings_read(params).await
              }
@@ -183,11 +183,11 @@ index 8856a88c2d924a752cf6460a6b5b1066050ffeb8..c330a7d4804fb212282ba035cbe1ade8
                  self.turn_processor
                      .thread_settings_update(&request_id, params)
 diff --git a/codex-rs/app-server/src/request_processors.rs b/codex-rs/app-server/src/request_processors.rs
-index ce3ec7fb999b165b9ab897be7794aadbab85a1ac..e8c3ebebb03bfc4e736f0cb506cb781509f666eb 100644
+index 155455d5e2ba4de90e1ec338ee3fd55c14662c65..318500debc9a9beb8f37d505d54ddaad9055160f 100644
 --- a/codex-rs/app-server/src/request_processors.rs
 +++ b/codex-rs/app-server/src/request_processors.rs
-@@ -729,6 +729,7 @@ pub(crate) use self::thread_lifecycle::populate_thread_turns_from_history;
- pub(crate) use self::thread_processor::thread_from_stored_thread;
+@@ -729,6 +729,7 @@ use self::thread_summary::*;
+ pub(crate) use self::thread_lifecycle::populate_thread_turns_from_history;
  #[cfg(test)]
  pub(crate) use self::thread_summary::read_summary_from_rollout;
 +pub(crate) use self::thread_summary::resolved_security_from_snapshot;
@@ -195,23 +195,23 @@ index ce3ec7fb999b165b9ab897be7794aadbab85a1ac..e8c3ebebb03bfc4e736f0cb506cb7815
  pub(crate) use self::thread_summary::summary_to_thread;
  pub(crate) use self::thread_summary::thread_settings_from_applied_snapshot;
 diff --git a/codex-rs/app-server/src/request_processors/persisted_resume_settings_tests.rs b/codex-rs/app-server/src/request_processors/persisted_resume_settings_tests.rs
-index 3bfa96324bed095f491b76f40f5a307e5a05a42e..183372ee89ab580ab12c0ceede72abd9bd58d95c 100644
+index a1aa17066f383a9a9ded0b53719e20362a0af30d..016b152675b03cbb8dbb5d644ee93337d66c096d 100644
 --- a/codex-rs/app-server/src/request_processors/persisted_resume_settings_tests.rs
 +++ b/codex-rs/app-server/src/request_processors/persisted_resume_settings_tests.rs
-@@ -28,10 +28,12 @@ fn settings_item(
+@@ -30,10 +30,12 @@ fn settings_item(
  ) -> RolloutItem {
      RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(
          ThreadSettingsAppliedEvent {
 +            resolved_security: None,
              operation_id: None,
-             thread_id: None,
+             thread_id,
              thread_settings: ThreadSettingsSnapshot {
                  disabled_plugin_ids: Vec::new(),
 +                child_security_provenance: None,
                  child_settings: None,
                  settings_version: None,
                  model: "gpt-5".to_string(),
-@@ -196,6 +198,7 @@ fn full_restore_accepts_only_latest_owned_snapshot_not_foreign_or_ownerless_hist
+@@ -281,6 +283,7 @@ fn full_restore_accepts_only_latest_owned_snapshot_not_foreign_or_ownerless_hist
      let item = |thread_id, snapshot| {
          RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(
              ThreadSettingsAppliedEvent {
@@ -220,7 +220,7 @@ index 3bfa96324bed095f491b76f40f5a307e5a05a42e..183372ee89ab580ab12c0ceede72abd9
                  thread_id,
                  thread_settings: snapshot,
 diff --git a/codex-rs/app-server/src/request_processors/thread_goal_processor.rs b/codex-rs/app-server/src/request_processors/thread_goal_processor.rs
-index 7b72d35cb642dcd190f1d1558939ac09a527cb06..218d043e43cdedc7d0569b98e4ce9f84ec5e5b0b 100644
+index e01e6fd6b4e4c5449a7637fd424005b67f9a1299..a3eb26d82738f094ffd2ebdcf0e2f6f01beb451c 100644
 --- a/codex-rs/app-server/src/request_processors/thread_goal_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_goal_processor.rs
 @@ -535,6 +535,7 @@ fn thread_settings_applied_item(
@@ -232,7 +232,7 @@ index 7b72d35cb642dcd190f1d1558939ac09a527cb06..218d043e43cdedc7d0569b98e4ce9f84
              thread_id: Some(thread_id),
              thread_settings,
 diff --git a/codex-rs/app-server/src/request_processors/thread_queue_processor.rs b/codex-rs/app-server/src/request_processors/thread_queue_processor.rs
-index 46c5ca7ffdd9de8a13ed52d8787bdaca76f96a81..5a26ac7da4d7788c35d32962faf2982c45fd42b4 100644
+index 22529ba81a9bd9491acbd2a07c61c5e6a5479132..2458fd2927d951e4608dd4922c79fe04e72a7339 100644
 --- a/codex-rs/app-server/src/request_processors/thread_queue_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_queue_processor.rs
 @@ -254,7 +254,7 @@ impl ThreadQueueRequestProcessor {
@@ -274,10 +274,10 @@ index c0f3523d6226150e2f982a3568350b7afe0af4a9..45a9bebfa9f5848e2f0f5ee7cceb1510
 +    }
 +}
 diff --git a/codex-rs/app-server/src/request_processors/turn_processor.rs b/codex-rs/app-server/src/request_processors/turn_processor.rs
-index 2f46e4a37f61b2d80070b68e65ea626e1c09b5fc..7e3b6b89c1f05a603bcda271b81075dede225bd6 100644
+index 284bab696b19433f68da313d67764e1cc8d2cf3d..5a39c370d058d711832990ad3ba7fdc7b73bebb4 100644
 --- a/codex-rs/app-server/src/request_processors/turn_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/turn_processor.rs
-@@ -257,6 +257,40 @@ impl TurnRequestProcessor {
+@@ -246,6 +246,40 @@ impl TurnRequestProcessor {
          ))
      }
  
@@ -318,7 +318,7 @@ index 2f46e4a37f61b2d80070b68e65ea626e1c09b5fc..7e3b6b89c1f05a603bcda271b81075de
      pub(crate) async fn thread_settings_update(
          &self,
          request_id: &ConnectionRequestId,
-@@ -760,7 +794,9 @@ impl TurnRequestProcessor {
+@@ -742,7 +776,9 @@ impl TurnRequestProcessor {
                  root_turn_id,
              } => (turn_id, root_turn_id, false),
              TurnInputSubmission::NotSubmitted { reason } => {
@@ -329,7 +329,7 @@ index 2f46e4a37f61b2d80070b68e65ea626e1c09b5fc..7e3b6b89c1f05a603bcda271b81075de
                      crate::error_code::server_draining_error()
                  } else {
                      internal_error(format!("failed to submit turn input: {reason:?}"))
-@@ -1080,6 +1116,21 @@ impl TurnRequestProcessor {
+@@ -1062,6 +1098,21 @@ impl TurnRequestProcessor {
              )
              .await?;
  
@@ -351,7 +351,7 @@ index 2f46e4a37f61b2d80070b68e65ea626e1c09b5fc..7e3b6b89c1f05a603bcda271b81075de
          let correlated = params.operation_id.is_some();
          let submission_id = if correlated
              || thread_settings != codex_protocol::protocol::ThreadSettingsOverrides::default()
-@@ -1104,6 +1155,8 @@ impl TurnRequestProcessor {
+@@ -1086,6 +1137,8 @@ impl TurnRequestProcessor {
          };
  
          Ok(ThreadSettingsUpdateResponse {
@@ -360,7 +360,7 @@ index 2f46e4a37f61b2d80070b68e65ea626e1c09b5fc..7e3b6b89c1f05a603bcda271b81075de
              operation_id: params.operation_id,
              submission_id: if correlated { submission_id } else { None },
          })
-@@ -1281,7 +1334,8 @@ impl TurnRequestProcessor {
+@@ -1267,7 +1320,8 @@ impl TurnRequestProcessor {
                          None,
                          None,
                      ),
@@ -371,10 +371,10 @@ index 2f46e4a37f61b2d80070b68e65ea626e1c09b5fc..7e3b6b89c1f05a603bcda271b81075de
                      | NotSubmittedReason::Superseded => (
                          "no active turn to steer".to_string(),
 diff --git a/codex-rs/app-server/src/thread_state.rs b/codex-rs/app-server/src/thread_state.rs
-index b341ec32f03944514cdc7f45a5435178fa196433..8887fd3e541ffce2f7062def6586195779b3766f 100644
+index 1a05b08ee2b1d371b59cc2ac9d53ab19ff689c25..eccd1bc7563c51708b348b852b44d1f7eb3410e8 100644
 --- a/codex-rs/app-server/src/thread_state.rs
 +++ b/codex-rs/app-server/src/thread_state.rs
-@@ -291,6 +291,7 @@ mod tests {
+@@ -316,6 +316,7 @@ mod tests {
      fn thread_settings(model: &str) -> ThreadSettings {
          ThreadSettings {
              disabled_plugin_ids: Vec::new(),
@@ -383,7 +383,7 @@ index b341ec32f03944514cdc7f45a5435178fa196433..8887fd3e541ffce2f7062def65861957
              subagent_model: None,
              subagent_reasoning_effort: None,
 diff --git a/codex-rs/app-server/tests/common/test_app_server.rs b/codex-rs/app-server/tests/common/test_app_server.rs
-index 1e688ae71887a3c30c7b9d9d9c8bb1146a026eeb..eb6334f1b1d2ae502a8cdd5246ca94e40c8afd2e 100644
+index bec590955bbbd5317d0380b191a47b9e64eb3e6c..e809e672a81e6a4db8627dd862c47188443d9a49 100644
 --- a/codex-rs/app-server/tests/common/test_app_server.rs
 +++ b/codex-rs/app-server/tests/common/test_app_server.rs
 @@ -208,6 +208,11 @@ impl TestAppServer {
@@ -399,10 +399,10 @@ index 1e688ae71887a3c30c7b9d9d9c8bb1146a026eeb..eb6334f1b1d2ae502a8cdd5246ca94e4
      pub async fn shutdown_gracefully(&mut self) -> std::io::Result<ExitStatus> {
          drop(self.stdin.take());
 diff --git a/codex-rs/app-server/tests/suite/v2/thread_settings_update.rs b/codex-rs/app-server/tests/suite/v2/thread_settings_update.rs
-index de2f8b88fbaae6ab3114d0b86162c2b6df271121..078369cfac288553dfd57e94dedcf2f33e528e9e 100644
+index d6c658704971b4727a9cbe48e9f7c86c10dde94c..e129cb01f77b930a37b3eb344c614b1d446d0c3f 100644
 --- a/codex-rs/app-server/tests/suite/v2/thread_settings_update.rs
 +++ b/codex-rs/app-server/tests/suite/v2/thread_settings_update.rs
-@@ -1012,3 +1012,210 @@ async fn exact_unset_service_tier_is_distinct_durable_and_rejects_conflicts() ->
+@@ -1017,3 +1017,210 @@ async fn exact_unset_service_tier_is_distinct_durable_and_rejects_conflicts() ->
      );
      Ok(())
  }
@@ -614,10 +614,10 @@ index de2f8b88fbaae6ab3114d0b86162c2b6df271121..078369cfac288553dfd57e94dedcf2f3
 +    Ok(())
 +}
 diff --git a/codex-rs/core/src/agent/control.rs b/codex-rs/core/src/agent/control.rs
-index 895cd26802d76ba34c3ece33a55592d6befa0b3b..f14af12d6c016c22f23f76f4dbfd68a805673c45 100644
+index 541eedbb353a32882b20fb29247bd0f08db8b4e5..c38cb8cfb317ead8bf771d73b70e8703df538628 100644
 --- a/codex-rs/core/src/agent/control.rs
 +++ b/codex-rs/core/src/agent/control.rs
-@@ -92,6 +92,7 @@ mod watch;
+@@ -95,6 +95,7 @@ mod watch;
  /// Local startup preserves that state when creating or resuming children.
  #[derive(Clone)]
  pub(crate) struct LocalAgentControl {
@@ -625,7 +625,7 @@ index 895cd26802d76ba34c3ece33a55592d6befa0b3b..f14af12d6c016c22f23f76f4dbfd68a8
      /// session_id is equal to the root thread's ID.
      session_id: SessionId,
      pub(crate) runtime: LocalAgentRuntime,
-@@ -115,6 +116,7 @@ impl LocalAgentControl {
+@@ -118,6 +119,7 @@ impl LocalAgentControl {
          rollout_budget: Option<RolloutBudgetConfig>,
      ) -> Self {
          Self {
@@ -633,25 +633,11 @@ index 895cd26802d76ba34c3ece33a55592d6befa0b3b..f14af12d6c016c22f23f76f4dbfd68a8
              session_id: SessionId::default(),
              runtime: LocalAgentRuntime::new(manager, thread_id_generator, rollout_budget),
          }
-diff --git a/codex-rs/core/src/agent/control/spawn.rs b/codex-rs/core/src/agent/control/spawn.rs
-index 56715b42c672cc2d0cfb7f345a3db27c85c978c6..a6ff7859c2fb17dd4c3b37de8829dc2b5207d256 100644
---- a/codex-rs/core/src/agent/control/spawn.rs
-+++ b/codex-rs/core/src/agent/control/spawn.rs
-@@ -1230,7 +1230,8 @@ impl LocalAgentControl {
-                             EventMsg::ItemCompleted(_)
-                                 | EventMsg::TokenCount(_)
-                                 | EventMsg::ThreadGoalUpdated(_)
--                                | EventMsg::ThreadSettingsApplied(_),
-+                                | EventMsg::ThreadSettingsApplied(_)
-+                                | EventMsg::ThreadSettingsOperation(_),
-                         )
-                     )
-             {
 diff --git a/codex-rs/core/src/agent/control_tests.rs b/codex-rs/core/src/agent/control_tests.rs
-index 3bd52dde3286219aa05c4e9fcb270a48fea2d5d4..34337e9a5b208a6af65e01b38ec85c18970758f5 100644
+index cd9efc318fa0e468c40a6b4adabb9f611e6b5481..6e31cd4fee80998631c48533a64feb1246e68c96 100644
 --- a/codex-rs/core/src/agent/control_tests.rs
 +++ b/codex-rs/core/src/agent/control_tests.rs
-@@ -2426,10 +2426,12 @@ async fn spawn_agent_fork_from_paginated_parent_uses_model_context_prefix(
+@@ -2438,10 +2438,12 @@ async fn spawn_agent_fork_from_paginated_parent_uses_model_context_prefix(
              })),
              RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(
                  ThreadSettingsAppliedEvent {
@@ -664,11 +650,25 @@ index 3bd52dde3286219aa05c4e9fcb270a48fea2d5d4..34337e9a5b208a6af65e01b38ec85c18
                          child_settings: None,
                          settings_version: None,
                          model: "parent-only-model".to_string(),
+diff --git a/codex-rs/core/src/agent/history.rs b/codex-rs/core/src/agent/history.rs
+index 8f057178c08fbc9754286bd290712d4ecc7b9087..03acae1d7b08d312a2ccba5ff2c3ba6959e006ce 100644
+--- a/codex-rs/core/src/agent/history.rs
++++ b/codex-rs/core/src/agent/history.rs
+@@ -373,7 +373,8 @@ pub(super) async fn prepare_forked_history(
+                         EventMsg::ItemCompleted(_)
+                             | EventMsg::TokenCount(_)
+                             | EventMsg::ThreadGoalUpdated(_)
+-                            | EventMsg::ThreadSettingsApplied(_),
++                            | EventMsg::ThreadSettingsApplied(_)
++                            | EventMsg::ThreadSettingsOperation(_),
+                     )
+                 )
+         {
 diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
-index 04ea4e622d6caa8a4d7aec6a2bd87a9e20841df6..8a576947c5db812c48f3a30ab74d9a9fc8755383 100644
+index 8f35542f637756ebbc35284184cb9120cbfa7664..a3762b47e1ccbd71638e9acd232f0562c194a947 100644
 --- a/codex-rs/core/src/codex_thread.rs
 +++ b/codex-rs/core/src/codex_thread.rs
-@@ -812,6 +812,42 @@ impl CodexThread {
+@@ -866,6 +866,42 @@ impl CodexThread {
              .await
      }
  
@@ -712,10 +712,10 @@ index 04ea4e622d6caa8a4d7aec6a2bd87a9e20841df6..8a576947c5db812c48f3a30ab74d9a9f
      pub async fn preview_thread_settings_overrides(
          &self,
 diff --git a/codex-rs/core/src/session/handlers.rs b/codex-rs/core/src/session/handlers.rs
-index b7e26c1553205b69071960f9c5a59356210985b0..2ff650e064ea5891126849bb33d1648146746200 100644
+index 64f51f92efc4960450c8192dec211d053f433edc..7c555f8debf4c44b8eaa887066369a97264f4379 100644
 --- a/codex-rs/core/src/session/handlers.rs
 +++ b/codex-rs/core/src/session/handlers.rs
-@@ -105,6 +105,15 @@ pub async fn run_user_shell_command(
+@@ -108,6 +108,15 @@ pub async fn run_user_shell_command(
      if let Some((turn_context, cancellation_token)) =
          sess.active_turn_context_and_cancellation_token().await
      {
@@ -731,7 +731,7 @@ index b7e26c1553205b69071960f9c5a59356210985b0..2ff650e064ea5891126849bb33d16481
          let session = Arc::clone(sess);
          tokio::spawn(async move {
              execute_user_shell_command(
-@@ -116,13 +125,17 @@ pub async fn run_user_shell_command(
+@@ -119,13 +128,17 @@ pub async fn run_user_shell_command(
                  UserShellCommandMode::ActiveTurnAuxiliary,
              )
              .await;
@@ -752,7 +752,7 @@ index b7e26c1553205b69071960f9c5a59356210985b0..2ff650e064ea5891126849bb33d16481
      sess.spawn_task(
          turn_context,
          Vec::new(),
-@@ -245,11 +258,13 @@ pub async fn reload_user_config(sess: &Arc<Session>) {
+@@ -248,11 +261,13 @@ pub async fn reload_user_config(sess: &Arc<Session>) {
  }
  
  pub async fn compact(sess: &Arc<Session>, sub_id: String) {
@@ -770,7 +770,7 @@ index b7e26c1553205b69071960f9c5a59356210985b0..2ff650e064ea5891126849bb33d16481
  
      sess.spawn_task(turn_context, Vec::new(), CompactTask).await;
  }
-@@ -406,9 +421,12 @@ pub async fn review(
+@@ -409,9 +424,12 @@ pub async fn review(
      sub_id: String,
      review_request: ReviewRequest,
  ) {
@@ -787,10 +787,10 @@ index b7e26c1553205b69071960f9c5a59356210985b0..2ff650e064ea5891126849bb33d16481
          .await;
      #[allow(deprecated)]
 diff --git a/codex-rs/core/src/session/mod.rs b/codex-rs/core/src/session/mod.rs
-index 58373a631e5adbfc39a8860312a26ca89235fac0..53d1792c50963fef7e08df167e60a2daa96db75a 100644
+index c6c33725207e7a1e4bbf23e4354d7e53341b24c2..72c922c4c440a774adb08b8eee2ca738341d96e9 100644
 --- a/codex-rs/core/src/session/mod.rs
 +++ b/codex-rs/core/src/session/mod.rs
-@@ -267,6 +267,7 @@ mod review;
+@@ -272,6 +272,7 @@ mod review;
  mod rollout_budget;
  mod rollout_reconstruction;
  #[allow(clippy::module_inception)]
@@ -798,7 +798,7 @@ index 58373a631e5adbfc39a8860312a26ca89235fac0..53d1792c50963fef7e08df167e60a2da
  pub(crate) mod session;
  pub(crate) mod startup_prewarm;
  mod step_activation;
-@@ -888,6 +889,7 @@ impl Session {
+@@ -905,6 +906,7 @@ impl Session {
              model_info_overrides: config.to_models_manager_config().into(),
              developer_instructions: config.developer_instructions.clone(),
              base_instructions,
@@ -806,7 +806,7 @@ index 58373a631e5adbfc39a8860312a26ca89235fac0..53d1792c50963fef7e08df167e60a2da
              permission_profile_state: session_permission_profile_state_from_config(&config)?,
              allow_login_shell: config.permissions.allow_login_shell,
              shell_environment_policy: config.permissions.shell_environment_policy.clone(),
-@@ -2035,6 +2037,18 @@ impl Session {
+@@ -2098,6 +2100,18 @@ impl Session {
          updates: SessionSettingsUpdate,
          should_commit: impl FnOnce(&SessionConfiguration, &SessionConfiguration) -> bool + Send,
      ) -> ConstraintResult<Option<SessionSettingsCommit>> {
@@ -825,7 +825,7 @@ index 58373a631e5adbfc39a8860312a26ca89235fac0..53d1792c50963fef7e08df167e60a2da
          let notify_config_contributors = !self.services.extensions.config_contributors().is_empty();
          let windows_sandbox_changed;
          let (
-@@ -2405,6 +2419,13 @@ impl Session {
+@@ -2499,6 +2513,13 @@ impl Session {
          managed: crate::config::ManagedThreadConfiguration,
      ) -> ConstraintResult<()> {
          let _settings_guard = thread_settings::acquire_persistence_lock(self).await;
@@ -839,13 +839,13 @@ index 58373a631e5adbfc39a8860312a26ca89235fac0..53d1792c50963fef7e08df167e60a2da
          let mut state = self.state.lock().await;
          let before = state
              .session_configuration
-@@ -4537,13 +4558,17 @@ impl Session {
+@@ -4792,13 +4813,17 @@ impl Session {
              self.emit_turn_item_started(turn_context, item).await;
          }
          let world_state_item = WorldStateItem::full(world_state_baseline.into_object());
 -        let rollout_items = [
 +        let mut rollout_items = vec![
-             RolloutItem::Compacted(compacted_item),
+             RolloutItem::Compacted(Box::new(compacted_item)),
              RolloutItem::WorldState(world_state_item),
              RolloutItem::TurnContext(reference_context_item),
              // The frozen turn context must not override current settings in persisted metadata.
@@ -1584,7 +1584,7 @@ index 0000000000000000000000000000000000000000..181351091a654c1e5c1ffda3c7c7357f
 +    }
 +}
 diff --git a/codex-rs/core/src/session/session.rs b/codex-rs/core/src/session/session.rs
-index ca180eea3fcef18516f7b1eff2e9bd94e229f912..b2e415bc48f5d4013d26de851de558010d481dc5 100644
+index d7678f3371cf6e07928e87ee571513e4a48b6062..bb5045780340501aee6b45fa2238d567a1137bd3 100644
 --- a/codex-rs/core/src/session/session.rs
 +++ b/codex-rs/core/src/session/session.rs
 @@ -58,6 +58,8 @@ type McpToolApprovalMetadataMap =
@@ -1596,7 +1596,7 @@ index ca180eea3fcef18516f7b1eff2e9bd94e229f912..b2e415bc48f5d4013d26de851de55801
      pub(crate) thread_id: ThreadId,
      pub(crate) installation_id: String,
      pub(super) tx_event: Sender<Event>,
-@@ -127,6 +129,7 @@ pub(crate) struct SessionConfiguration {
+@@ -130,6 +132,7 @@ pub(crate) struct SessionConfiguration {
      /// active profile id, and profile-defined workspace roots in sync by using
      /// the methods below instead of mutating the fields independently.
      pub(super) permission_profile_state: PermissionProfileState,
@@ -1604,7 +1604,7 @@ index ca180eea3fcef18516f7b1eff2e9bd94e229f912..b2e415bc48f5d4013d26de851de55801
      pub(super) allow_login_shell: bool,
      pub(super) shell_environment_policy: ShellEnvironmentPolicy,
      // TODO(anp): Reconcile these legacy thread defaults with TurnEnvironment::sandbox_context;
-@@ -322,6 +325,7 @@ impl SessionConfiguration {
+@@ -327,6 +330,7 @@ impl SessionConfiguration {
          environment_selections: &[TurnEnvironmentSelection],
      ) -> ThreadSettingsSnapshot {
          ThreadSettingsSnapshot {
@@ -1612,7 +1612,7 @@ index ca180eea3fcef18516f7b1eff2e9bd94e229f912..b2e415bc48f5d4013d26de851de55801
              child_settings: Some(codex_protocol::protocol::ChildSettingsSnapshot {
                  enabled: self.original_config_do_not_use.agents_enabled
                      && self
-@@ -466,6 +470,25 @@ impl SessionConfiguration {
+@@ -474,6 +478,25 @@ impl SessionConfiguration {
          if let Some(disabled_plugin_ids) = &updates.disabled_plugin_ids {
              next_configuration.disabled_plugin_ids = disabled_plugin_ids.clone();
          }
@@ -1638,7 +1638,7 @@ index ca180eea3fcef18516f7b1eff2e9bd94e229f912..b2e415bc48f5d4013d26de851de55801
          if updates.child_settings != codex_protocol::protocol::ChildSettingsPatch::default() {
              let mut config = (*next_configuration.original_config_do_not_use).clone();
              config.apply_child_settings_patch(&updates.child_settings)?;
-@@ -685,6 +708,8 @@ pub(crate) struct SessionSettingsCommit {
+@@ -696,6 +719,8 @@ pub(crate) struct SessionSettingsCommit {
  
  #[derive(Default, Clone)]
  pub(crate) struct SessionSettingsUpdate {
@@ -1647,7 +1647,7 @@ index ca180eea3fcef18516f7b1eff2e9bd94e229f912..b2e415bc48f5d4013d26de851de55801
      pub(crate) unset_service_tier: bool,
      pub(crate) child_settings: codex_protocol::protocol::ChildSettingsPatch,
      pub(crate) collaboration_mode_kind: Option<codex_protocol::config_types::ModeKind>,
-@@ -1929,6 +1954,7 @@ impl Session {
+@@ -1997,6 +2022,7 @@ impl Session {
              let (turn_pause_state, _) = watch::channel(false);
              let (turn_pause_boundary_state, _) = watch::channel(false);
              let sess = Arc::new(Session {
@@ -1655,7 +1655,7 @@ index ca180eea3fcef18516f7b1eff2e9bd94e229f912..b2e415bc48f5d4013d26de851de55801
                  thread_id,
                  installation_id,
                  tx_event: tx_event.clone(),
-@@ -1972,6 +1998,17 @@ impl Session {
+@@ -2041,6 +2067,17 @@ impl Session {
              if let Some(startup) = &startup {
                  startup.set_session(Arc::clone(&sess));
              }
@@ -1673,9 +1673,9 @@ index ca180eea3fcef18516f7b1eff2e9bd94e229f912..b2e415bc48f5d4013d26de851de55801
              if let Some(network_policy_decider_session) = network_policy_decider_session {
                  let mut guard = network_policy_decider_session.write().await;
                  *guard = Arc::downgrade(&sess);
-@@ -2065,6 +2102,8 @@ impl Session {
-                 mcp_runtime_cwd,
-             )
+@@ -2139,6 +2176,8 @@ impl Session {
+                 &resolved_environments,
+             ))
              .await?;
 +            sess.services.agent_control.security_transitions.reconcile_loaded_child(&sess).await?;
 +            sess.services.agent_control.security_transitions.settle().await?;
@@ -1683,10 +1683,10 @@ index ca180eea3fcef18516f7b1eff2e9bd94e229f912..b2e415bc48f5d4013d26de851de55801
              sess.follow_inherited_environment_configurations(
                  &inherited_environments,
 diff --git a/codex-rs/core/src/session/tests.rs b/codex-rs/core/src/session/tests.rs
-index 16b49df71a4c7b6500dc9cd5293de39271674251..e9dbb5866bc4fa666825addd1f38b6c0cb4c2c24 100644
+index 147dfe19dbd4572868bb5f2fccad14e9b7c0e526..d72c42f06a55bb9b9fd0da69eadc9a8294230ee1 100644
 --- a/codex-rs/core/src/session/tests.rs
 +++ b/codex-rs/core/src/session/tests.rs
-@@ -4717,6 +4717,7 @@ async fn set_rate_limits_retains_previous_credits() {
+@@ -4872,6 +4872,7 @@ async fn set_rate_limits_retains_previous_credits() {
              .base_instructions
              .clone()
              .unwrap_or_else(|| render_model_instructions(&model_info)),
@@ -1694,7 +1694,7 @@ index 16b49df71a4c7b6500dc9cd5293de39271674251..e9dbb5866bc4fa666825addd1f38b6c0
          permission_profile_state: config.permissions.permission_profile_state().clone(),
          allow_login_shell: config.permissions.allow_login_shell,
          shell_environment_policy: config.permissions.shell_environment_policy.clone(),
-@@ -4840,6 +4841,7 @@ async fn set_rate_limits_updates_plan_type_when_present() {
+@@ -4995,6 +4996,7 @@ async fn set_rate_limits_updates_plan_type_when_present() {
              .base_instructions
              .clone()
              .unwrap_or_else(|| render_model_instructions(&model_info)),
@@ -1702,7 +1702,7 @@ index 16b49df71a4c7b6500dc9cd5293de39271674251..e9dbb5866bc4fa666825addd1f38b6c0
          permission_profile_state: config.permissions.permission_profile_state().clone(),
          allow_login_shell: config.permissions.allow_login_shell,
          shell_environment_policy: config.permissions.shell_environment_policy.clone(),
-@@ -5464,6 +5466,7 @@ pub(crate) async fn make_session_configuration_for_tests() -> SessionConfigurati
+@@ -5620,6 +5622,7 @@ pub(crate) async fn make_session_configuration_for_tests() -> SessionConfigurati
              .base_instructions
              .clone()
              .unwrap_or_else(|| render_model_instructions(&model_info)),
@@ -1710,7 +1710,7 @@ index 16b49df71a4c7b6500dc9cd5293de39271674251..e9dbb5866bc4fa666825addd1f38b6c0
          permission_profile_state: config.permissions.permission_profile_state().clone(),
          allow_login_shell: config.permissions.allow_login_shell,
          shell_environment_policy: config.permissions.shell_environment_policy.clone(),
-@@ -6889,6 +6892,7 @@ async fn absolute_cwd_update_with_turn_environment_is_allowed() {
+@@ -7059,6 +7062,7 @@ async fn absolute_cwd_update_with_turn_environment_is_allowed() {
      );
  }
  
@@ -1718,7 +1718,7 @@ index 16b49df71a4c7b6500dc9cd5293de39271674251..e9dbb5866bc4fa666825addd1f38b6c0
  async fn build_initial_context(
      session: &Session,
      turn_context: &Arc<TurnContext>,
-@@ -7028,6 +7032,7 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
+@@ -7198,6 +7202,7 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
              .base_instructions
              .clone()
              .unwrap_or_else(|| render_model_instructions(&model_info)),
@@ -1726,7 +1726,7 @@ index 16b49df71a4c7b6500dc9cd5293de39271674251..e9dbb5866bc4fa666825addd1f38b6c0
          permission_profile_state: config.permissions.permission_profile_state().clone(),
          allow_login_shell: config.permissions.allow_login_shell,
          shell_environment_policy: config.permissions.shell_environment_policy.clone(),
-@@ -7209,6 +7214,7 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
+@@ -7380,6 +7385,7 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
          state: Mutex::new(state),
          thread_settings_persistence: Semaphore::new(/*permits*/ 1),
          code_mode_message_tasks: Default::default(),
@@ -1734,7 +1734,7 @@ index 16b49df71a4c7b6500dc9cd5293de39271674251..e9dbb5866bc4fa666825addd1f38b6c0
          managed_network_proxy_refresh_lock: Semaphore::new(/*permits*/ 1),
          features: config.features.clone(),
  
-@@ -7356,6 +7362,7 @@ async fn make_session_with_config_and_rx(
+@@ -7524,6 +7530,7 @@ async fn make_session_with_config_and_rx(
              .base_instructions
              .clone()
              .unwrap_or_else(|| render_model_instructions(&model_info)),
@@ -1742,7 +1742,7 @@ index 16b49df71a4c7b6500dc9cd5293de39271674251..e9dbb5866bc4fa666825addd1f38b6c0
          permission_profile_state: config.permissions.permission_profile_state().clone(),
          allow_login_shell: config.permissions.allow_login_shell,
          shell_environment_policy: config.permissions.shell_environment_policy.clone(),
-@@ -7490,6 +7497,7 @@ async fn make_session_with_history_source_and_agent_control_and_rx(
+@@ -7661,6 +7668,7 @@ async fn make_session_with_history_source_and_agent_control_and_rx(
              .base_instructions
              .clone()
              .unwrap_or_else(|| render_model_instructions(&model_info)),
@@ -1750,7 +1750,7 @@ index 16b49df71a4c7b6500dc9cd5293de39271674251..e9dbb5866bc4fa666825addd1f38b6c0
          permission_profile_state: config.permissions.permission_profile_state().clone(),
          allow_login_shell: config.permissions.allow_login_shell,
          shell_environment_policy: config.permissions.shell_environment_policy.clone(),
-@@ -9302,6 +9310,7 @@ where
+@@ -9498,6 +9506,7 @@ where
              .base_instructions
              .clone()
              .unwrap_or_else(|| render_model_instructions(&model_info)),
@@ -1758,7 +1758,7 @@ index 16b49df71a4c7b6500dc9cd5293de39271674251..e9dbb5866bc4fa666825addd1f38b6c0
          permission_profile_state: config.permissions.permission_profile_state().clone(),
          allow_login_shell: config.permissions.allow_login_shell,
          shell_environment_policy: config.permissions.shell_environment_policy.clone(),
-@@ -9482,6 +9491,7 @@ where
+@@ -9679,6 +9688,7 @@ where
          state: Mutex::new(state),
          thread_settings_persistence: Semaphore::new(/*permits*/ 1),
          code_mode_message_tasks: Default::default(),
@@ -1767,10 +1767,10 @@ index 16b49df71a4c7b6500dc9cd5293de39271674251..e9dbb5866bc4fa666825addd1f38b6c0
          features: config.features.clone(),
  
 diff --git a/codex-rs/core/src/session/thread_settings.rs b/codex-rs/core/src/session/thread_settings.rs
-index f9737c03e3d2130c4d523c9ee6c852fe3a88cb31..49f19f45b7b5b2d1a6b36b090c70d93a860130c3 100644
+index fc0cf8d6ca2ce8cc921afa25638ccef5850884b1..ad3ce0670c00aff3c0684eff80028b07df16b4cc 100644
 --- a/codex-rs/core/src/session/thread_settings.rs
 +++ b/codex-rs/core/src/session/thread_settings.rs
-@@ -149,6 +149,7 @@ pub(super) async fn emit_correlated_applied(
+@@ -199,6 +199,7 @@ pub(super) async fn emit_correlated_applied(
      operation_id: Option<String>,
  ) {
      let msg = EventMsg::ThreadSettingsApplied(ThreadSettingsAppliedEvent {
@@ -1778,7 +1778,7 @@ index f9737c03e3d2130c4d523c9ee6c852fe3a88cb31..49f19f45b7b5b2d1a6b36b090c70d93a
          operation_id,
          thread_id: Some(session.thread_id()),
          thread_settings: snapshot,
-@@ -164,6 +165,7 @@ pub(super) async fn emit_correlated_applied(
+@@ -214,6 +215,7 @@ pub(super) async fn emit_correlated_applied(
  /// Builds a current thread-owned snapshot for storage checkpoints.
  pub(super) async fn applied_event(session: &Session) -> EventMsg {
      EventMsg::ThreadSettingsApplied(ThreadSettingsAppliedEvent {
@@ -1787,10 +1787,10 @@ index f9737c03e3d2130c4d523c9ee6c852fe3a88cb31..49f19f45b7b5b2d1a6b36b090c70d93a
          thread_id: Some(session.thread_id()),
          thread_settings: session.thread_settings_snapshot().await,
 diff --git a/codex-rs/core/src/session/turn.rs b/codex-rs/core/src/session/turn.rs
-index 53ddbb80eb80970b93f7a724d01eeda0bf03344d..fef834ed4ccb86ba33f4b96fad4aadd4cf3f72b7 100644
+index 8062dce30ed6934f47da903406ae97924cc899b8..832ee5db2ada7efa7aa550bf14bacadeb40dbed9 100644
 --- a/codex-rs/core/src/session/turn.rs
 +++ b/codex-rs/core/src/session/turn.rs
-@@ -2248,6 +2248,7 @@ pub(super) fn realtime_text_for_event(msg: &EventMsg) -> Option<RealtimeEventTex
+@@ -2302,6 +2302,7 @@ pub(super) fn realtime_text_for_event(msg: &EventMsg) -> Option<RealtimeEventTex
          | EventMsg::ThreadRolledBack(_)
          | EventMsg::TurnStarted(_)
          | EventMsg::ThreadSettingsApplied(_)
@@ -1799,7 +1799,7 @@ index 53ddbb80eb80970b93f7a724d01eeda0bf03344d..fef834ed4ccb86ba33f4b96fad4aadd4
          | EventMsg::TokenCount(_)
          | EventMsg::UserMessage(_)
 diff --git a/codex-rs/core/src/session/turn_context.rs b/codex-rs/core/src/session/turn_context.rs
-index 83f77c6930a6e4998aa359ad334a3db9a3c3eac1..bf5b0e30ec6a1e53aa7f533485d26e5925580943 100644
+index 2a18cde50c5a0ae2fc59357be8cc6308c5e54bb9..af09dd1886d00499145ad0c54da65083955a5bcf 100644
 --- a/codex-rs/core/src/session/turn_context.rs
 +++ b/codex-rs/core/src/session/turn_context.rs
 @@ -321,6 +321,8 @@ pub(crate) struct NewTurnContextOptions {
@@ -1811,7 +1811,7 @@ index 83f77c6930a6e4998aa359ad334a3db9a3c3eac1..bf5b0e30ec6a1e53aa7f533485d26e59
      pub(crate) sub_id: String,
      pub(crate) trace_id: Option<String>,
      /// Call state at turn creation; model requests use the `StepContext` snapshot.
-@@ -837,6 +839,7 @@ impl TurnContext {
+@@ -848,6 +850,7 @@ impl TurnContext {
          let session_telemetry = step_settings.telemetry(&self.session_telemetry);
  
          Self {
@@ -1819,7 +1819,7 @@ index 83f77c6930a6e4998aa359ad334a3db9a3c3eac1..bf5b0e30ec6a1e53aa7f533485d26e59
              sub_id: self.sub_id.clone(),
              trace_id: self.trace_id.clone(),
              realtime_active: self.realtime_active,
-@@ -1108,6 +1111,7 @@ impl Session {
+@@ -1132,6 +1135,7 @@ impl Session {
          ));
          extension_data.insert(skills_snapshot);
          TurnContext {
@@ -1828,10 +1828,10 @@ index 83f77c6930a6e4998aa359ad334a3db9a3c3eac1..bf5b0e30ec6a1e53aa7f533485d26e59
              trace_id: current_span_trace_id(),
              realtime_active: false,
 diff --git a/codex-rs/core/src/session/turn_input.rs b/codex-rs/core/src/session/turn_input.rs
-index 233e73d7eebb01670bdbd5b46ee9718089de4175..9161114848c799eee4b18d40226d5748e8d31321 100644
+index c080dcd3ae47a655e355a2452af168111438f466..9386ce26728a36e2d25dd021188c1bbad0d08186 100644
 --- a/codex-rs/core/src/session/turn_input.rs
 +++ b/codex-rs/core/src/session/turn_input.rs
-@@ -412,12 +412,28 @@ async fn start_or_steer(
+@@ -429,12 +429,28 @@ async fn start_or_steer(
                  };
                  Some(admission)
              };
@@ -1857,10 +1857,10 @@ index 233e73d7eebb01670bdbd5b46ee9718089de4175..9161114848c799eee4b18d40226d5748
 +                .lock()
 +                .unwrap_or_else(|e| e.into_inner())
 +                .replace(security_execution);
-             if let Some(responsesapi_client_metadata) = responsesapi_client_metadata {
-                 turn_context
-                     .turn_metadata_state
-@@ -563,6 +579,18 @@ async fn start_if_idle(
+             turn_context
+                 .turn_metadata_state
+                 .update_responsesapi_client_metadata(responsesapi_client_metadata);
+@@ -577,6 +593,18 @@ async fn start_if_idle(
              return Err(error);
          }
      };
@@ -1879,7 +1879,7 @@ index 233e73d7eebb01670bdbd5b46ee9718089de4175..9161114848c799eee4b18d40226d5748
      let turn_context = match settings
          .apply_started(session, submission_id.clone(), kind)
          .await
-@@ -579,6 +607,11 @@ async fn start_if_idle(
+@@ -593,6 +621,11 @@ async fn start_if_idle(
              return Err(error);
          }
      };
@@ -1888,10 +1888,10 @@ index 233e73d7eebb01670bdbd5b46ee9718089de4175..9161114848c799eee4b18d40226d5748
 +        .lock()
 +        .unwrap_or_else(|e| e.into_inner())
 +        .replace(security_execution);
-     if let Some(responsesapi_client_metadata) = responsesapi_client_metadata {
-         turn_context
-             .turn_metadata_state
-@@ -786,7 +819,10 @@ impl Session {
+     turn_context
+         .turn_metadata_state
+         .update_responsesapi_client_metadata(responsesapi_client_metadata);
+@@ -844,7 +877,10 @@ impl Session {
          Ok(())
      }
  
@@ -1904,13 +1904,13 @@ index 233e73d7eebb01670bdbd5b46ee9718089de4175..9161114848c799eee4b18d40226d5748
          if let Some(active_turn) = active_turn_guard.as_ref()
              && active_turn.task.is_none()
 diff --git a/codex-rs/core/src/tasks/mod.rs b/codex-rs/core/src/tasks/mod.rs
-index 27d478530af9e50ecde49b2d63503ba6c2aefe3b..8a987eae00660140a464133a636ca6a3e0c13951 100644
+index 72d163a73aa58711cd05654aa8153a535d3877a9..8e89102c5bd9d66fbda94c860eddd4acae0887be 100644
 --- a/codex-rs/core/src/tasks/mod.rs
 +++ b/codex-rs/core/src/tasks/mod.rs
-@@ -480,6 +480,19 @@ impl Session {
-         {
-             return;
-         }
+@@ -501,6 +501,19 @@ impl Session {
+             }
+             None
+         };
 +        let security_execution = match self
 +            .services
 +            .agent_control
@@ -1927,7 +1927,7 @@ index 27d478530af9e50ecde49b2d63503ba6c2aefe3b..8a987eae00660140a464133a636ca6a3
          let (input, mut start_options) =
              self.input_queue.get_pending_input(&self.active_turn).await;
          if !input.iter().any(
-@@ -504,6 +517,11 @@ impl Session {
+@@ -527,6 +540,11 @@ impl Session {
          if let Some(trigger) = start_options.turn_trigger {
              turn_context.turn_metadata_state.set_turn_trigger(trigger);
          }
@@ -1939,7 +1939,7 @@ index 27d478530af9e50ecde49b2d63503ba6c2aefe3b..8a987eae00660140a464133a636ca6a3
          if let Some(id) = start_options.parent_turn_id {
              if let Some(initiating_agent_path) = input
                  .iter()
-@@ -897,6 +915,7 @@ impl Session {
+@@ -925,6 +943,7 @@ impl Session {
          if !saved_guardian_completion && let Err(err) = self.flush_rollout().await {
              warn!("failed to flush rollout after emitting terminal turn event: {err}");
          }
@@ -1947,7 +1947,7 @@ index 27d478530af9e50ecde49b2d63503ba6c2aefe3b..8a987eae00660140a464133a636ca6a3
          if cleared_active_turn {
              self.maybe_start_turn_for_pending_work().await;
          }
-@@ -949,6 +968,9 @@ impl Session {
+@@ -981,6 +1000,9 @@ impl Session {
          if task.cancellation_token.is_cancelled() {
              self.emit_turn_abort_lifecycle(reason, task.turn_context.extension_data.as_ref())
                  .await;
@@ -1957,17 +1957,16 @@ index 27d478530af9e50ecde49b2d63503ba6c2aefe3b..8a987eae00660140a464133a636ca6a3
              return;
          }
  
-@@ -980,6 +1002,9 @@ impl Session {
+@@ -1016,7 +1038,7 @@ impl Session {
          }
  
          task.handle.abort();
-+        // An abort request alone is not a quiescence barrier. Wait until the
-+        // task future is dropped before releasing its security execution lease.
-+        let _ = task.handle.await;
+-        // Aborting schedules destruction; join before freezing the turn's timing.
++        // Join before freezing timings or releasing the security execution lease.
+         let _ = task.handle.await;
  
          session_task
-             .abort(Arc::clone(self), Arc::clone(&task.turn_context))
-@@ -1043,6 +1068,7 @@ impl Session {
+@@ -1086,6 +1108,7 @@ impl Session {
          if let Err(err) = self.flush_rollout().await {
              warn!("failed to flush rollout after emitting terminal turn event: {err}");
          }
@@ -1976,10 +1975,10 @@ index 27d478530af9e50ecde49b2d63503ba6c2aefe3b..8a987eae00660140a464133a636ca6a3
  }
  
 diff --git a/codex-rs/core/src/thread_manager.rs b/codex-rs/core/src/thread_manager.rs
-index 2fb6da8d71570d48f9218ec8015cd3d6d3e12e3a..785649990e09c02bca24a4b0b9e651d5589038cd 100644
+index b56485d7419e07ec28a5fbb20bfc7b22e7ada62a..8d344e5f45ee0fa794db8eba267423ab24f8b5d4 100644
 --- a/codex-rs/core/src/thread_manager.rs
 +++ b/codex-rs/core/src/thread_manager.rs
-@@ -2768,3 +2768,7 @@ fn append_interrupted_boundary(
+@@ -2969,3 +2969,7 @@ fn append_interrupted_boundary(
  #[cfg(test)]
  #[path = "thread_manager_tests.rs"]
  mod tests;
@@ -2211,7 +2210,7 @@ index 0000000000000000000000000000000000000000..84317504b3bad1b663ba28cfde3b76ef
 +    assert!(record.history.unwrap().items.iter().any(|item| matches!(item, codex_history::RolloutItem::EventMsg(EventMsg::ThreadSettingsOperation(op)) if op.operation_id == "root-policy" && op.phase == ThreadSettingsOperationPhase::Applied)));
 +}
 diff --git a/codex-rs/core/tests/suite/fork_thread.rs b/codex-rs/core/tests/suite/fork_thread.rs
-index cd7c6b91e906a55887a798cf6657d9d17f89cd23..5b0c49b3c8e065d18f43b0c71f3e407e29433ed4 100644
+index b6c461ff75db1a4ca223abfe3a436e1bb7358f3e..17feaa0448863c92628ecbe88b99ea470b36b3d9 100644
 --- a/codex-rs/core/tests/suite/fork_thread.rs
 +++ b/codex-rs/core/tests/suite/fork_thread.rs
 @@ -195,6 +195,7 @@ fn thread_settings_applied_item(
@@ -2223,10 +2222,10 @@ index cd7c6b91e906a55887a798cf6657d9d17f89cd23..5b0c49b3c8e065d18f43b0c71f3e407e
              thread_id: Some(thread_id),
              thread_settings: snapshot,
 diff --git a/codex-rs/core/tests/suite/settings_constraints.rs b/codex-rs/core/tests/suite/settings_constraints.rs
-index 64ca5256986685dd12b9a8bb7ef7a1e45e3eac7d..d1412118f83a98b42bb18e69c59f3ec6afdca9a5 100644
+index 8e88302b426b7090fc195c441e7641ca9d623890..b560a4d814a284e389e2cdc6e91d0d0f2c9816a1 100644
 --- a/codex-rs/core/tests/suite/settings_constraints.rs
 +++ b/codex-rs/core/tests/suite/settings_constraints.rs
-@@ -197,6 +197,7 @@ async fn protected_model_settings_use_the_proposed_permissions(
+@@ -201,6 +201,7 @@ async fn protected_model_settings_use_the_proposed_permissions(
          .clone()
          .expect("versioned live settings");
      let mut expected = ThreadSettingsSnapshot {
@@ -2235,10 +2234,10 @@ index 64ca5256986685dd12b9a8bb7ef7a1e45e3eac7d..d1412118f83a98b42bb18e69c59f3ec6
          settings_version: None,
          model: PROTECTED_MODEL.to_string(),
 diff --git a/codex-rs/protocol/src/protocol.rs b/codex-rs/protocol/src/protocol.rs
-index 7692acb5a9aac8f5813f5acf420c92f6c2e06207..506bdb8e4afd205421415f42fecb9756160357b9 100644
+index 679aaaf957e39911ce7e256803d04037b3c935a3..d3ee561149b96c616ca09159ef0616c157be4489 100644
 --- a/codex-rs/protocol/src/protocol.rs
 +++ b/codex-rs/protocol/src/protocol.rs
-@@ -1528,6 +1528,8 @@ pub enum EventMsg {
+@@ -1581,6 +1581,8 @@ pub enum EventMsg {
      /// Persistent thread-settings overrides from the correlated submission have
      /// been applied to the session configuration.
      ThreadSettingsApplied(ThreadSettingsAppliedEvent),
@@ -2247,7 +2246,7 @@ index 7692acb5a9aac8f5813f5acf420c92f6c2e06207..506bdb8e4afd205421415f42fecb9756
  
      /// Agent has completed all actions.
      /// v1 wire format uses `task_complete`; accept `turn_complete` for v2 interop.
-@@ -2361,6 +2363,9 @@ pub struct TurnStartedEvent {
+@@ -2469,6 +2471,9 @@ pub struct TurnStartedEvent {
  
  #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, JsonSchema, TS)]
  pub struct ThreadSettingsAppliedEvent {
@@ -2257,7 +2256,7 @@ index 7692acb5a9aac8f5813f5acf420c92f6c2e06207..506bdb8e4afd205421415f42fecb9756
      /// Managed request identity; absent for ordinary native settings changes.
      #[serde(default, skip_serializing_if = "Option::is_none")]
      #[ts(optional)]
-@@ -2373,6 +2378,40 @@ pub struct ThreadSettingsAppliedEvent {
+@@ -2481,6 +2486,40 @@ pub struct ThreadSettingsAppliedEvent {
      pub thread_settings: ThreadSettingsSnapshot,
  }
  
@@ -2298,7 +2297,7 @@ index 7692acb5a9aac8f5813f5acf420c92f6c2e06207..506bdb8e4afd205421415f42fecb9756
  /// Compare revisions only within the same epoch; never infer a cross-epoch order.
  /// An authoritative live read establishes the baseline after Core replacement.
  #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
-@@ -2399,6 +2438,9 @@ pub struct ChildSettingsSnapshot {
+@@ -2507,6 +2546,9 @@ pub struct ChildSettingsSnapshot {
  
  #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, JsonSchema, TS)]
  pub struct ThreadSettingsSnapshot {
@@ -2309,10 +2308,10 @@ index 7692acb5a9aac8f5813f5acf420c92f6c2e06207..506bdb8e4afd205421415f42fecb9756
      #[serde(default, skip_serializing_if = "Option::is_none")]
      #[ts(optional)]
 diff --git a/codex-rs/protocol/src/turn_input.rs b/codex-rs/protocol/src/turn_input.rs
-index 2a8f06ebf98a38b43e8fd42cdfca2d356f190d45..ca8404f86221754fc8b16f3fa38cd18891affc5f 100644
+index 45a39a76dbe6e0dfcacd8c2e52cc299d3b3fa47a..96b547d710ab9affbe21942b4cd64295c1004316 100644
 --- a/codex-rs/protocol/src/turn_input.rs
 +++ b/codex-rs/protocol/src/turn_input.rs
-@@ -278,6 +278,8 @@ pub enum NotSubmittedReason {
+@@ -296,6 +296,8 @@ pub enum NotSubmittedReason {
      /// The host is draining and no longer permits new regular turns.
      ServerDraining,
  
@@ -2322,10 +2321,10 @@ index 2a8f06ebf98a38b43e8fd42cdfca2d356f190d45..ca8404f86221754fc8b16f3fa38cd188
      NotIdle,
  
 diff --git a/codex-rs/rollout-trace/src/protocol_event.rs b/codex-rs/rollout-trace/src/protocol_event.rs
-index f4d66320352ca0266ca7f8c1cc823d4c054adcd3..2f65cc3ef69652b75a863394f8bd6d16ea00ba0c 100644
+index ed49f8a943c89990c1f7aaec2354264507fdc4ed..095299772fedf94e69c505fa5afa8bb45e1d4ebf 100644
 --- a/codex-rs/rollout-trace/src/protocol_event.rs
 +++ b/codex-rs/rollout-trace/src/protocol_event.rs
-@@ -371,6 +371,7 @@ pub(crate) fn tool_runtime_trace_event(event: &EventMsg) -> Option<ToolRuntimeTr
+@@ -388,6 +388,7 @@ pub(crate) fn tool_runtime_trace_event(event: &EventMsg) -> Option<ToolRuntimeTr
          | EventMsg::ThreadQueueChanged(_)
          | EventMsg::TurnStarted(_)
          | EventMsg::ThreadSettingsApplied(_)
@@ -2333,7 +2332,7 @@ index f4d66320352ca0266ca7f8c1cc823d4c054adcd3..2f65cc3ef69652b75a863394f8bd6d16
          | EventMsg::TurnComplete(_)
          | EventMsg::TokenCount(_)
          | EventMsg::AgentMessage(_)
-@@ -449,6 +450,7 @@ pub(crate) fn wrapped_protocol_event_type(event: &EventMsg) -> Option<&'static s
+@@ -467,6 +468,7 @@ pub(crate) fn wrapped_protocol_event_type(event: &EventMsg) -> Option<&'static s
          | EventMsg::TurnModerationMetadata(_)
          | EventMsg::ContextCompacted(_)
          | EventMsg::ThreadSettingsApplied(_)
@@ -2342,10 +2341,10 @@ index f4d66320352ca0266ca7f8c1cc823d4c054adcd3..2f65cc3ef69652b75a863394f8bd6d16
          | EventMsg::EnvironmentDisconnected(_)
          | EventMsg::TokenCount(_)
 diff --git a/codex-rs/rollout/src/policy.rs b/codex-rs/rollout/src/policy.rs
-index b7685825a2cec1814d734922f470d6d3b501bb21..cfb766559b92ec526f2587de37d8db77f2fae01e 100644
+index fd04607c56cf0b32213a9d010a904a0517622a79..6da33cd2718997efa5d35a98190657e461192d5e 100644
 --- a/codex-rs/rollout/src/policy.rs
 +++ b/codex-rs/rollout/src/policy.rs
-@@ -137,7 +137,8 @@ fn persisted_event_msg(
+@@ -138,7 +138,8 @@ fn persisted_event_msg(
          | EventMsg::TurnAborted(_)
          | EventMsg::TurnStarted(_)
          | EventMsg::TurnComplete(_)
@@ -2356,10 +2355,10 @@ index b7685825a2cec1814d734922f470d6d3b501bb21..cfb766559b92ec526f2587de37d8db77
          // Only persist these legacy events when the thread's history mode is Legacy.
          // New, paginated rollouts persist ItemCompleted events with TurnItems.
 diff --git a/codex-rs/state/src/extract.rs b/codex-rs/state/src/extract.rs
-index ec9519d6cce8391e3406d08f327f01a6e35e92dd..a2cb74ece6a16c8e6651574d1cc9c71b6eae1265 100644
+index a288fe094ec11896ad279f42a8df2ce7a6056f35..78d95bbb9854bb2f31d11789ecb79ebcf01eb5d8 100644
 --- a/codex-rs/state/src/extract.rs
 +++ b/codex-rs/state/src/extract.rs
-@@ -727,10 +727,12 @@ mod tests {
+@@ -735,10 +735,12 @@ mod tests {
              .join("updated/workspace");
          let mut item = RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(
              ThreadSettingsAppliedEvent {
@@ -2373,10 +2372,10 @@ index ec9519d6cce8391e3406d08f327f01a6e35e92dd..a2cb74ece6a16c8e6651574d1cc9c71b
                      settings_version: None,
                      model: "gpt-5.2-codex".to_string(),
 diff --git a/codex-rs/thread-store/src/thread_metadata_sync.rs b/codex-rs/thread-store/src/thread_metadata_sync.rs
-index 71ce837a0f4fef52c1c5ccc70227462a893db8f2..75157341906ea6d650ae23fca520c62768fe75df 100644
+index f36a48c0c3b1bab5fe6050d05c3589b7b4e15ac6..b53fe1b6a0409615e5753e36950a6e8fccf9eb1b 100644
 --- a/codex-rs/thread-store/src/thread_metadata_sync.rs
 +++ b/codex-rs/thread-store/src/thread_metadata_sync.rs
-@@ -830,10 +830,12 @@ mod tests {
+@@ -832,10 +832,12 @@ mod tests {
  
          let mut item = RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(
              ThreadSettingsAppliedEvent {

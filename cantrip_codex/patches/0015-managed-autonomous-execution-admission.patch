@@ -1,8 +1,8 @@
 diff --git a/codex-rs/app-server-protocol/src/protocol/common.rs b/codex-rs/app-server-protocol/src/protocol/common.rs
-index 8b4d439aad3c05109a0bdbcdd849bcf58b6a85a4..27a49503e038c6b4752f13d78c1f6d1758e0c814 100644
+index 661bac811e11ff4d7eaf629c6f3106a8417a7e2f..fae5aec1190a06d52c0f23225949552d8bfd8f36 100644
 --- a/codex-rs/app-server-protocol/src/protocol/common.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/common.rs
-@@ -694,6 +694,21 @@ client_request_definitions! {
+@@ -710,6 +710,21 @@ client_request_definitions! {
          serialization: thread_id(params.thread_id),
          response: v2::ThreadSectionMoveResponse,
      },
@@ -24,7 +24,7 @@ index 8b4d439aad3c05109a0bdbcdd849bcf58b6a85a4..27a49503e038c6b4752f13d78c1f6d17
      ThreadManagedConfigUpdate => "thread/managedConfig/update" {
          params: v2::ThreadManagedConfigUpdateParams,
          serialization: thread_id(params.thread_id),
-@@ -1975,6 +1990,8 @@ server_notification_definitions! {
+@@ -2026,6 +2041,8 @@ server_notification_definitions! {
      ThreadPredictionUpdated => "thread/prediction/updated" (v2::ThreadPredictionUpdatedNotification),
      ThreadGoalCleared => "thread/goal/cleared" (v2::ThreadGoalClearedNotification),
      #[experimental("thread/queue/changed")]
@@ -164,19 +164,19 @@ index 0000000000000000000000000000000000000000..ff38d1fd8cd98d94445b8ae8b003f26b
 +    }
 +}
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/mod.rs b/codex-rs/app-server-protocol/src/protocol/v2/mod.rs
-index 1c1432dfbde1083e8dc11ce53463491ebbab9d6e..c19c574f0067943da2e903c61d5c5ca52c0ef69a 100644
+index 0ecd5499098a0edad08d4b9226437954292ea16f..3ce3fd5b659906b653d1d95dfb7c5f6c03053d7e 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/mod.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/mod.rs
-@@ -18,6 +18,7 @@ mod feedback;
- mod fs;
+@@ -19,6 +19,7 @@ mod fs;
+ mod gcp;
  mod hook;
  mod item;
 +mod managed_execution;
  mod mcp;
  mod memory;
  mod model;
-@@ -58,6 +59,7 @@ pub use feedback::*;
- pub use fs::*;
+@@ -62,6 +63,7 @@ pub use fs::*;
+ pub use gcp::*;
  pub use hook::*;
  pub use item::*;
 +pub use managed_execution::*;
@@ -184,7 +184,7 @@ index 1c1432dfbde1083e8dc11ce53463491ebbab9d6e..c19c574f0067943da2e903c61d5c5ca5
  pub use memory::*;
  pub use model::*;
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-index 264db7af4e8615d10f49e536872e3b8fcae07cbd..2174562abfd862e034bdcd3023127b72d082fb18 100644
+index cb46e1fa1462fdc13023989b1d1e592b4396f5f4..e751556f1b846595865f6119fe7fb6d8dbe17923 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
 @@ -317,6 +317,10 @@ pub struct ThreadManagedConfigUpdateParams {
@@ -199,10 +199,10 @@ index 264db7af4e8615d10f49e536872e3b8fcae07cbd..2174562abfd862e034bdcd3023127b72
      #[ts(type = "{ [key: string]: JsonValue }")]
      pub mcp_servers: HashMap<String, JsonValue>,
 diff --git a/codex-rs/app-server/src/message_processor.rs b/codex-rs/app-server/src/message_processor.rs
-index 262b8aaeec2a13ca4e4a1bcdfb89047aae5bd921..92a1f0b3498a14ee0471228d7a6fd677f59ef3da 100644
+index 85ff086526058119e57c59f4a8e0e2b85ae5c5d7..df7be09ddcffec1abff3576cf3f0f5ee7176465a 100644
 --- a/codex-rs/app-server/src/message_processor.rs
 +++ b/codex-rs/app-server/src/message_processor.rs
-@@ -875,6 +875,8 @@ impl MessageProcessor {
+@@ -911,6 +911,8 @@ impl MessageProcessor {
          self.outgoing
              .disconnect_user_verification_connection(connection_id)
              .await;
@@ -211,7 +211,7 @@ index 262b8aaeec2a13ca4e4a1bcdfb89047aae5bd921..92a1f0b3498a14ee0471228d7a6fd677
          session_state.mcp_event_streams.clear().await;
          if timeout(
              CONNECTION_RPC_DRAIN_TIMEOUT,
-@@ -1429,6 +1431,21 @@ impl MessageProcessor {
+@@ -1480,6 +1482,21 @@ impl MessageProcessor {
              ClientRequest::ThreadSectionDelete { params, .. } => {
                  self.thread_processor.thread_section_delete(params).await
              }
@@ -234,10 +234,10 @@ index 262b8aaeec2a13ca4e4a1bcdfb89047aae5bd921..92a1f0b3498a14ee0471228d7a6fd677
                  self.turn_processor
                      .thread_managed_config_update(&request_id, params)
 diff --git a/codex-rs/app-server/src/notification_media.rs b/codex-rs/app-server/src/notification_media.rs
-index a1572cbaf7b9026f789c96ce9d027e0a7cc4b1be..c25cd0dced978378fcf65e5134a77bb39b1897e5 100644
+index 99e4d1e1cb2dc050aedb7985f75a58bd92f0a0b2..2304668775301ca6f97c3151570e2676386336e9 100644
 --- a/codex-rs/app-server/src/notification_media.rs
 +++ b/codex-rs/app-server/src/notification_media.rs
-@@ -137,7 +137,9 @@ pub(crate) fn without_notification_media(notification: ServerNotification) -> Se
+@@ -138,7 +138,9 @@ pub(crate) fn without_notification_media(notification: ServerNotification) -> Se
          | ServerNotification::WindowsWorldWritableWarning(_)
          | ServerNotification::WindowsSandboxSetupCompleted(_)
          | ServerNotification::AccountLoginCompleted(_)
@@ -249,10 +249,10 @@ index a1572cbaf7b9026f789c96ce9d027e0a7cc4b1be..c25cd0dced978378fcf65e5134a77bb3
  }
  
 diff --git a/codex-rs/app-server/src/outgoing_message.rs b/codex-rs/app-server/src/outgoing_message.rs
-index 9ed210ebd3472daf7c98fa64d4ac59d45c4c0442..311094f405f4757bd5d215ef9269e680a7273a6a 100644
+index 35f5027f7c7fa1d428c793a5d637331e5f4399b4..fe401d15ac95a88d88df48ea8f067b76a6f0c897 100644
 --- a/codex-rs/app-server/src/outgoing_message.rs
 +++ b/codex-rs/app-server/src/outgoing_message.rs
-@@ -129,6 +129,15 @@ pub(crate) enum OutgoingEnvelope {
+@@ -136,6 +136,15 @@ pub(crate) enum OutgoingEnvelope {
  pub(crate) struct OutgoingMessageSender {
      verification_auth: OnceLock<Arc<codex_login::AuthManager>>,
      verification_connections: Mutex<HashSet<ConnectionId>>,
@@ -267,19 +267,20 @@ index 9ed210ebd3472daf7c98fa64d4ac59d45c4c0442..311094f405f4757bd5d215ef9269e680
 +    >,
      next_server_request_id: AtomicI64,
      sender: mpsc::Sender<OutgoingEnvelope>,
-     request_id_to_callback: Mutex<HashMap<RequestId, PendingCallbackEntry>>,
-@@ -251,6 +260,7 @@ impl OutgoingMessageSender {
+     process_reply_sender: mpsc::Sender<OutgoingEnvelope>,
+@@ -259,6 +268,7 @@ impl OutgoingMessageSender {
          Self {
              verification_auth: OnceLock::new(),
              verification_connections: Mutex::new(HashSet::new()),
 +            managed_execution_gates: std::sync::Mutex::new(HashMap::new()),
              next_server_request_id: AtomicI64::new(0),
+             process_reply_sender: sender.clone(),
              sender,
-             request_id_to_callback: Mutex::new(HashMap::new()),
-@@ -278,9 +288,24 @@ impl OutgoingMessageSender {
+@@ -304,9 +314,25 @@ impl OutgoingMessageSender {
          }
      }
  
++
 +    pub(crate) fn invalidate_managed_execution_connection(&self, connection_id: ConnectionId) {
 +        let mut gates = self
 +            .managed_execution_gates
@@ -301,7 +302,7 @@ index 9ed210ebd3472daf7c98fa64d4ac59d45c4c0442..311094f405f4757bd5d215ef9269e680
          let mut request_contexts = self.request_contexts.lock().await;
          request_contexts.retain(|request_id, _| request_id.connection_id != connection_id);
      }
-@@ -764,6 +789,21 @@ impl OutgoingMessageSender {
+@@ -792,6 +818,21 @@ impl OutgoingMessageSender {
          }
      }
  
@@ -620,10 +621,10 @@ index 0000000000000000000000000000000000000000..7d300af4c9b6059b224e87b97d877b01
 +    }
 +}
 diff --git a/codex-rs/app-server/src/request_processors/thread_processor.rs b/codex-rs/app-server/src/request_processors/thread_processor.rs
-index e2e8886c87855030e330dbe82925334121f128f1..accbc60c4b287d9852a9e2984094ae3b3841b103 100644
+index 081bda04ba2115e93b18b40d8cbc9da4cf311378..b500f265c63852053a81c8a6c7f3e046381ef934 100644
 --- a/codex-rs/app-server/src/request_processors/thread_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_processor.rs
-@@ -1181,7 +1181,13 @@ impl ThreadRequestProcessor {
+@@ -1276,7 +1276,13 @@ impl ThreadRequestProcessor {
              environments,
          } = params;
          let managed_config = managed_config
@@ -638,7 +639,7 @@ index e2e8886c87855030e330dbe82925334121f128f1..accbc60c4b287d9852a9e2984094ae3b
              .transpose()?;
          if matches!(
              history_mode,
-@@ -4233,8 +4239,11 @@ impl ThreadRequestProcessor {
+@@ -4363,8 +4369,11 @@ impl ThreadRequestProcessor {
              }
          };
          if let Some(managed_config) = managed_config {
@@ -653,7 +654,7 @@ index e2e8886c87855030e330dbe82925334121f128f1..accbc60c4b287d9852a9e2984094ae3b
                  .apply_managed_thread_configuration(managed)
                  .map_err(|err| invalid_params(format!("managed configuration rejected: {err}")))?;
 diff --git a/codex-rs/app-server/src/request_processors/turn_processor.rs b/codex-rs/app-server/src/request_processors/turn_processor.rs
-index 29e549e96840998c646a1a6e55481d4d1218d0a5..a533fe7d9a8d075d9373e0defa3ee50b7491d93c 100644
+index 0d7366f735bf9957bd7edbad03d46a91675a7cf4..292eeb9cee61c8623ccc3cf8f744f69f4307e1a7 100644
 --- a/codex-rs/app-server/src/request_processors/turn_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/turn_processor.rs
 @@ -1,3 +1,5 @@
@@ -661,8 +662,8 @@ index 29e549e96840998c646a1a6e55481d4d1218d0a5..a533fe7d9a8d075d9373e0defa3ee50b
 +mod managed_execution;
  use super::thread_input::ensure_direct_input_allowed;
  use super::*;
- use codex_agent_extension::AgentInvocation;
-@@ -210,16 +212,22 @@ impl TurnRequestProcessor {
+ use codex_app_server_protocol::ImageReference as V2ImageReference;
+@@ -199,16 +201,22 @@ impl TurnRequestProcessor {
          let (_, thread) = self.load_thread(&params.thread_id).await?;
          self.ensure_direct_input_allowed(request_id, thread.as_ref())
              .await?;
@@ -695,7 +696,7 @@ index 29e549e96840998c646a1a6e55481d4d1218d0a5..a533fe7d9a8d075d9373e0defa3ee50b
              .map_err(|err| invalid_params(format!("managed configuration rejected: {err}")))?;
          Ok(Some(
 diff --git a/codex-rs/app-server/tests/suite/v2/thread_queue.rs b/codex-rs/app-server/tests/suite/v2/thread_queue.rs
-index a27c3b5a1ff2cfd8ba829e989b6ba5b2493e5ffb..4abd4c7576bcec32bc7f55cb768e8dbcf67737a7 100644
+index 58ec3a90dadb8e4d0589cbf7a07da900216a8d59..993971ef38a4c258ca22009a7e6a5b73f707b5b8 100644
 --- a/codex-rs/app-server/tests/suite/v2/thread_queue.rs
 +++ b/codex-rs/app-server/tests/suite/v2/thread_queue.rs
 @@ -1068,3 +1068,207 @@ fn text(value: &str) -> UserInput {
@@ -907,10 +908,10 @@ index a27c3b5a1ff2cfd8ba829e989b6ba5b2493e5ffb..4abd4c7576bcec32bc7f55cb768e8dbc
 +    Ok(())
 +}
 diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
-index 041d6ecc72890ccb262deccc84a344e6892cbd42..4ac577d6be1ca8cbffb839ff11755e75a294d1fc 100644
+index 784ecd977c7661939d9f6da532fa48949c080248..09a79114fb1f99ae7bb26801fea64d45d20fb635 100644
 --- a/codex-rs/core/src/codex_thread.rs
 +++ b/codex-rs/core/src/codex_thread.rs
-@@ -623,6 +623,21 @@ impl CodexThread {
+@@ -677,6 +677,21 @@ impl CodexThread {
          }
      }
  
@@ -932,11 +933,10 @@ index 041d6ecc72890ccb262deccc84a344e6892cbd42..4ac577d6be1ca8cbffb839ff11755e75
      async fn submit_turn_input_with_mode(
          &self,
          request: impl Into<WithTurnExtensionData<TurnInputRequest>>,
-@@ -634,7 +649,51 @@ impl CodexThread {
+@@ -688,8 +703,52 @@ impl CodexThread {
              )
              .await?;
          }
--        self.io.submit_turn_input(request, mode).await
 +        let gate = if matches!(mode, TurnInputMode::StartIfIdle)
 +            && matches!(
 +                request.start.turn_trigger.as_deref(),
@@ -980,12 +980,13 @@ index 041d6ecc72890ccb262deccc84a344e6892cbd42..4ac577d6be1ca8cbffb839ff11755e75
 +            );
 +            result
 +        } else {
-+            self.io.submit_turn_input(request, mode).await
-+        }
+         self.io.submit_turn_input(request, mode).await
      }
++    }
  
      /// Persist whether this thread is eligible for future memory generation.
-@@ -1122,6 +1181,12 @@ impl CodexThread {
+     pub async fn set_thread_memory_mode(&self, mode: ThreadMemoryMode) -> anyhow::Result<()> {
+@@ -1229,6 +1288,12 @@ impl CodexThread {
      }
  
      /// Applies a complete managed profile to this loaded thread without changing root settings.
@@ -999,10 +1000,10 @@ index 041d6ecc72890ccb262deccc84a344e6892cbd42..4ac577d6be1ca8cbffb839ff11755e75
          &self,
          mcp_servers: std::collections::HashMap<String, codex_config::types::McpServerConfig>,
 diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
-index 76424606c567639587ae61de47af2082d85d69cc..2a843eec69f28a113b97b4a97bd73943b37331e1 100644
+index e872c1b1ea7a550b542ba616099538ebff9f5e2b..67a6a0fead85bfc5ddf03c1f85a876f4b1e98608 100644
 --- a/codex-rs/core/src/config/mod.rs
 +++ b/codex-rs/core/src/config/mod.rs
-@@ -621,6 +621,7 @@ pub enum ThreadStoreConfig {
+@@ -626,6 +626,7 @@ pub enum ThreadStoreConfig {
  /// This profile is in-memory only; credentials are never written to config or history.
  #[derive(Debug, Clone, PartialEq)]
  pub struct ManagedThreadConfiguration {
@@ -1010,7 +1011,7 @@ index 76424606c567639587ae61de47af2082d85d69cc..2a843eec69f28a113b97b4a97bd73943
      pub mcp_servers: HashMap<String, McpServerConfig>,
      pub developer_instructions: Option<String>,
      pub multi_agent_enabled: bool,
-@@ -1974,8 +1975,14 @@ impl Config {
+@@ -2037,8 +2038,14 @@ impl Config {
      /// Validate everything against this snapshot's requirements before publishing any field.
      pub fn apply_managed_thread_configuration(
          &mut self,
@@ -1027,7 +1028,7 @@ index 76424606c567639587ae61de47af2082d85d69cc..2a843eec69f28a113b97b4a97bd73943
          mcp_servers.set(managed.mcp_servers.clone())?;
          let mut features = self.features.clone();
 diff --git a/codex-rs/core/src/lib.rs b/codex-rs/core/src/lib.rs
-index 08b52fc2e10782fb444a2ff8b6132f2121d362f5..3faa86b434b68af5b062e36a8d3b22f6a1276f19 100644
+index 61400a1386f8b3fc8879df611ab10c151b4b1357..2162942289bfcc9398eb6beed6ba01c9aa1991a1 100644
 --- a/codex-rs/core/src/lib.rs
 +++ b/codex-rs/core/src/lib.rs
 @@ -39,6 +39,7 @@ mod compact_remote_v2;
@@ -1478,10 +1479,10 @@ index 0000000000000000000000000000000000000000..8bc4e8efb98d9a8f5c1b349dcdeafac1
 +    }
 +}
 diff --git a/codex-rs/core/src/session/mod.rs b/codex-rs/core/src/session/mod.rs
-index 0493783670b5b9becb1bbbcf4118b70a13b4e13f..33fc77ec7ea265964a85987eef6a9a5f1d40b69b 100644
+index 27b4df3df80c03d3ff5a5ed50add83ca595c2cd1..635a2f56cb017014b51329f79db381962b7c38dc 100644
 --- a/codex-rs/core/src/session/mod.rs
 +++ b/codex-rs/core/src/session/mod.rs
-@@ -1066,7 +1066,15 @@ impl SessionIo {
+@@ -1088,7 +1088,15 @@ impl SessionIo {
          request: impl Into<WithTurnExtensionData<TurnInputRequest>>,
          mode: TurnInputMode,
      ) -> CodexResult<TurnInputSubmission> {
@@ -1498,7 +1499,7 @@ index 0493783670b5b9becb1bbbcf4118b70a13b4e13f..33fc77ec7ea265964a85987eef6a9a5f
          let (reply_tx, reply_rx) = oneshot::channel();
          let WithTurnExtensionData {
              mut request,
-@@ -2258,6 +2266,20 @@ impl Session {
+@@ -2352,6 +2360,20 @@ impl Session {
          )
      }
  
@@ -1519,7 +1520,7 @@ index 0493783670b5b9becb1bbbcf4118b70a13b4e13f..33fc77ec7ea265964a85987eef6a9a5f
      pub(crate) async fn get_config(&self) -> std::sync::Arc<Config> {
          let state = self.state.lock().await;
          state
-@@ -2316,6 +2338,34 @@ impl Session {
+@@ -2410,6 +2432,34 @@ impl Session {
          }
      }
  
@@ -1554,7 +1555,7 @@ index 0493783670b5b9becb1bbbcf4118b70a13b4e13f..33fc77ec7ea265964a85987eef6a9a5f
      pub(crate) async fn update_managed_config(
          &self,
          mcp_servers: HashMap<String, McpServerConfig>,
-@@ -2324,17 +2374,40 @@ impl Session {
+@@ -2418,17 +2468,40 @@ impl Session {
          subagent_model: Option<String>,
          subagent_reasoning_effort: Option<ReasoningEffortConfig>,
      ) -> ConstraintResult<()> {
@@ -1603,19 +1604,19 @@ index 0493783670b5b9becb1bbbcf4118b70a13b4e13f..33fc77ec7ea265964a85987eef6a9a5f
          state.session_configuration.original_config_do_not_use = Arc::new(config);
          self.mark_mcp_runtime_dirty();
 diff --git a/codex-rs/core/src/session/session.rs b/codex-rs/core/src/session/session.rs
-index fff4a01c33d361787ea730a08ed88451e06fc920..a490a742e3bc6553efd015481244760d9731a494 100644
+index 0b3bf41712f55e2023fac7ffc4bda177ee40f3bc..74af1800b72038d39a2aa6cfccf49974c15b4f71 100644
 --- a/codex-rs/core/src/session/session.rs
 +++ b/codex-rs/core/src/session/session.rs
-@@ -786,7 +786,7 @@ impl Session {
-         startup: Option<Arc<super::startup::SessionStartup>>,
-         mut session_configuration: SessionConfiguration,
+@@ -832,7 +832,7 @@ impl Session {
+         attached_thread: bool,
+         prompt_cache_key: PromptCacheKey,
          environment_selections: &[TurnEnvironmentSelection],
 -        config: Arc<Config>,
 +        mut config: Arc<Config>,
          mut instructions: SessionInstructions,
          installation_id: String,
          auth_manager: Arc<AuthManager>,
-@@ -938,6 +938,28 @@ impl Session {
+@@ -985,6 +985,28 @@ impl Session {
              | InitialHistory::Resumed(_)
              | InitialHistory::Forked(_) => None,
          };
@@ -1645,13 +1646,15 @@ index fff4a01c33d361787ea730a08ed88451e06fc920..a490a742e3bc6553efd015481244760d
              InitialHistory::Resumed(resumed) => {
                  resumed.history.iter().find_map(|item| match item {
 diff --git a/codex-rs/core/src/session/turn_input.rs b/codex-rs/core/src/session/turn_input.rs
-index 74a7592de8eaeabacad73bcf15cd404beff8ba1f..233e73d7eebb01670bdbd5b46ee9718089de4175 100644
+index 4fa1c9de13dfbe970b21ba66b583392220f7a5f6..c080dcd3ae47a655e355a2452af168111438f466 100644
 --- a/codex-rs/core/src/session/turn_input.rs
 +++ b/codex-rs/core/src/session/turn_input.rs
-@@ -478,6 +478,13 @@ async fn start_if_idle(
+@@ -490,6 +490,15 @@ async fn start_if_idle(
+         responsesapi_client_metadata,
          ..
      } = request;
-     let origin = UserInputOrigin::from_turn_trigger(start.turn_trigger.as_deref());
++
++    let origin = UserInputOrigin::from_turn_trigger(start.turn_trigger.as_deref());
 +    if matches!(start.turn_trigger.as_deref(), Some("goal" | "queue")) {
 +        let gate = session.managed_execution_gate().await;
 +        if let Some(gate) = gate {
@@ -1663,10 +1666,10 @@ index 74a7592de8eaeabacad73bcf15cd404beff8ba1f..233e73d7eebb01670bdbd5b46ee97180
          return Ok(TurnInputSubmission::NotSubmitted {
              reason: NotSubmittedReason::PendingTriggerTurn,
 diff --git a/codex-rs/core/src/tasks/mod.rs b/codex-rs/core/src/tasks/mod.rs
-index 690a030a71f708a7f7f65a6210dae240683108b4..27d478530af9e50ecde49b2d63503ba6c2aefe3b 100644
+index 96b2ec0ef21386947d53ab5917418aec345d87c1..72d163a73aa58711cd05654aa8153a535d3877a9 100644
 --- a/codex-rs/core/src/tasks/mod.rs
 +++ b/codex-rs/core/src/tasks/mod.rs
-@@ -548,6 +548,11 @@ impl Session {
+@@ -571,6 +571,11 @@ impl Session {
      }
  
      pub async fn abort_all_tasks(self: &Arc<Self>, reason: TurnAbortReason) {
@@ -1679,10 +1682,10 @@ index 690a030a71f708a7f7f65a6210dae240683108b4..27d478530af9e50ecde49b2d63503ba6
          let mut active_turn_to_clear = None;
          if let Some(mut active_turn) = self.take_active_turn(&reason).await {
 diff --git a/codex-rs/protocol/src/protocol.rs b/codex-rs/protocol/src/protocol.rs
-index c836ce544fbd9251ec468a379684c391fb4752ee..9d77b77272f54be262b1d72b987a8245f07f0500 100644
+index b52d393897d2d3b806b80327c6c625934f35257b..3d5777b460306d6211cf00d0ad9ea0b6689dfed2 100644
 --- a/codex-rs/protocol/src/protocol.rs
 +++ b/codex-rs/protocol/src/protocol.rs
-@@ -629,14 +629,16 @@ pub struct ThreadSettingsOverrides {
+@@ -635,14 +635,16 @@ pub struct ThreadSettingsOverrides {
  }
  
  /// Source classification for client-supplied context.
@@ -1702,10 +1705,10 @@ index c836ce544fbd9251ec468a379684c391fb4752ee..9d77b77272f54be262b1d72b987a8245
      pub value: String,
      pub kind: AdditionalContextKind,
 diff --git a/codex-rs/protocol/src/turn_input.rs b/codex-rs/protocol/src/turn_input.rs
-index 7e9977959c37db4187317859f9742e7f8be49874..2a8f06ebf98a38b43e8fd42cdfca2d356f190d45 100644
+index 514578d98ba70e211047b97920ccb4ec8c13c491..45a39a76dbe6e0dfcacd8c2e52cc299d3b3fa47a 100644
 --- a/codex-rs/protocol/src/turn_input.rs
 +++ b/codex-rs/protocol/src/turn_input.rs
-@@ -200,7 +200,8 @@ pub enum CyberAccessProgram {
+@@ -218,7 +218,8 @@ pub enum CyberAccessProgram {
  /// `final_output_json_schema` is a compatibility requirement: Core only
  /// accepts the steer if the active turn already uses the same schema. For
  /// child input, Core also compares root lineage to detect ambiguity.
@@ -1733,10 +1736,10 @@ index 13d30c273f472d1c4271216ee3fbeaa5c350894f..39d9b2912f21e8f7aad2b76f6a4b9a35
              Some(notification.thread_id.as_str())
          }
 diff --git a/codex-rs/tui/src/chatwidget/protocol.rs b/codex-rs/tui/src/chatwidget/protocol.rs
-index 0065ef473b7c65562620edde50bea4a21a1b9c3f..d185f0956feb9120720fb68026d5104b67af7085 100644
+index be7da50c038199528746c0b2287fd225198cd1c0..dc8ec925b275e2113ce8c1c295e1fb22a6a99b12 100644
 --- a/codex-rs/tui/src/chatwidget/protocol.rs
 +++ b/codex-rs/tui/src/chatwidget/protocol.rs
-@@ -363,6 +363,8 @@ impl ChatWidget {
+@@ -382,6 +382,8 @@ impl ChatWidget {
              | ServerNotification::ThreadReverted(_)
              | ServerNotification::ThreadQueueChanged(_)
              | ServerNotification::ThreadPredictionUpdated(_)

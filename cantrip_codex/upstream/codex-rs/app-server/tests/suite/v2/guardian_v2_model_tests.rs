@@ -20,6 +20,7 @@ use axum::response::IntoResponse;
 use axum::routing::get;
 use codex_app_server_protocol::ApprovalsReviewer;
 use codex_app_server_protocol::CyberAccessProgram;
+use codex_app_server_protocol::ItemGuardianApprovalReviewCompletedNotification;
 use codex_app_server_protocol::ThreadStartParams;
 use codex_app_server_protocol::ThreadStartResponse;
 use codex_app_server_protocol::TurnCompletedNotification;
@@ -152,13 +153,10 @@ async fn computer_use_scoring_follows_model_review_requirement(
     Ok(())
 }
 
-#[test_case("snapshot", 0.0; "snapshot low risk")]
-#[test_case("snapshot", 1.0; "snapshot high risk")]
-#[test_case("conversation", 0.0; "conversation low risk")]
-#[test_case("conversation", 1.0; "conversation high risk")]
+#[test_case(0.0; "low risk")]
+#[test_case(1.0; "high risk")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn guardian_programs_follow_each_turn_without_changing_parent_selection(
-    classifier_mode: &str,
     luna_score: f64,
 ) -> Result<()> {
     skip_if_no_network!(Ok(()));
@@ -234,7 +232,6 @@ default_tools_approval_mode = "prompt"
 
 [features.guardianv2]
 enabled = true
-async_classifier_mode = "{classifier_mode}"
 
 [features.guardianv2.review_scope]
 computer_use_only = false
@@ -319,10 +316,16 @@ computer_use_only = false
             "prior turn evidence remains available after changing programs"
         );
         classifier_requests.push(classifier_request);
-        // Wait for the reviewer to start before releasing a low classifier score.
+        // Complete the review before a low score can cancel it: this test checks
+        // that program changes alone preserve reviewer session reuse.
         wait_for_guardian_reviews(&state, index + 1).await?;
-        state.allow_luna.notify_one();
         state.allow_guardian_review.notify_one();
+        let _: ItemGuardianApprovalReviewCompletedNotification = timeout(
+            TIMEOUT,
+            app_server.read_notification("item/autoApprovalReview/completed"),
+        )
+        .await??;
+        state.allow_luna.notify_one();
         let completed: TurnCompletedNotification =
             timeout(TIMEOUT, app_server.read_notification("turn/completed")).await??;
         assert_eq!(completed.turn.status, TurnStatus::Completed);

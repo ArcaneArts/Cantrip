@@ -42,6 +42,7 @@ const executableSuffix = process.platform === "win32" ? ".exe" : "";
 const runtimeBinaries = [
   "codex",
   "codex-code-mode-host",
+  "codex-exec-server",
   "codex-responses-api-proxy",
   ...(process.platform === "win32"
     ? ["codex-windows-sandbox-setup", "codex-command-runner"]
@@ -57,7 +58,7 @@ const skillTemplates = await readSkillTemplates();
 const sourceManifestSha256 = await sha256File(filesManifestPath);
 const patchesSha256 = patchSetSha256(patches);
 const skillTemplatesSha256 = fingerprintSkillTemplates(skillTemplates);
-const buildRecipeVersion = 5;
+const buildRecipeVersion = 6;
 
 async function fetchRequired(url) {
   const response = await fetch(url, { redirect: "follow" });

@@ -266,6 +266,17 @@ describe("managed native gateway", () => {
     expect(managedNativeMethods.get("config/mcpServer/reload")).not.toBe(
       "read",
     );
+    for (const method of [
+      "thread/sample",
+      "thread/sample/cancel",
+      "thread/memory/read",
+      "account/gcp/setup",
+      "accountSession/list",
+      "accountSession/switch",
+      "feedback/save",
+    ]) {
+      expect(managedNativeMethods.get(method)).toBe("mutation");
+    }
     expect(managedNativeMethods.get("invented/mutation")).toBeUndefined();
   });
 

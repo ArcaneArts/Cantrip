@@ -6,8 +6,6 @@
 //! Loss telemetry describes accepted inputs, excluding feasibility checks and failed retries.
 
 use std::collections::BTreeMap;
-use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 
 use codex_features::Feature;
@@ -35,13 +33,7 @@ use crate::session::turn_context::TurnContext;
 #[derive(Clone)]
 pub(crate) struct PendingReviewContext(pub ComposedContext);
 
-/// Requests one bounded restart from the captured parent checkpoint when
-/// reviewer compaction invalidates the pending input. The flag belongs to this attempt.
-pub(super) struct CheckpointRecovery {
-    pub(super) requested: Arc<AtomicBool>,
-    pub(super) history_version: u64,
-    pub(super) fresh_parent_checkpoint: bool,
-}
+pub(super) use codex_guardian_reviewer::CheckpointRecovery;
 
 /// Restart a reused reviewer before paying for a summary we would discard.
 /// A fresh checkpoint stays intact while final input selection makes the review fit.
@@ -85,12 +77,16 @@ pub(crate) async fn check_pending(session: &Session, turn: &TurnContext) -> Code
     let maximum = effective_input_token_limit(turn.model_info(), turn.config.model_context_window)
         .saturating_sub(super::request_budget::INPUT_TOKEN_MARGIN);
     let mut context = pending.0.clone();
-    context.retain_new_instructions(
-        &session
-            .clone_history()
-            .await
-            .for_prompt_annotated(&turn.model_info().input_modalities),
-    );
+    let history = session
+        .clone_history()
+        .await
+        .for_prompt_annotated(
+            &turn.model_info().input_modalities,
+            session.services.image_store.as_ref(),
+        )
+        .await;
+    codex_guardian_context::prepare_sync_delivery(&mut context, &history)
+        .map_err(|error| CodexErr::InvalidRequest(error.to_string()))?;
     if context.estimated_tokens().saturating_add(minimum_prefix) > maximum {
         context
             .enforce_budget(
@@ -98,7 +94,10 @@ pub(crate) async fn check_pending(session: &Session, turn: &TurnContext) -> Code
                     max_input_tokens: maximum,
                     existing_context_tokens: minimum_prefix,
                 },
-                GuardianBudgetOmission.render(),
+                GuardianBudgetOmission
+                    .render()
+                    .into_text()
+                    .unwrap_or_default(),
                 HistoryTruncation::Allow,
             )
             .map_err(|_error| {
@@ -146,10 +145,16 @@ pub(crate) async fn finalize(
         ));
     }
     let history_version = history.history_version();
-    let history = history.for_prompt_annotated(&model.input_modalities);
+    let history = history
+        .for_prompt_annotated(
+            &model.input_modalities,
+            session.services.image_store.as_ref(),
+        )
+        .await;
     // Use the history that will actually reach the model. Recompute after every
     // compaction retry; evidence removed by compaction must be delivered again.
-    context.retain_new_instructions(&history);
+    codex_guardian_context::prepare_sync_delivery(&mut context, &history)
+        .map_err(|error| CodexErr::InvalidRequest(error.to_string()))?;
     let prompt = build_prompt(
         history
             .into_iter()
@@ -227,7 +232,14 @@ pub(crate) async fn finalize(
         history_truncation
     };
     let mut context = context
-        .enforce_budget(budget, GuardianBudgetOmission.render(), history_truncation)
+        .enforce_budget(
+            budget,
+            GuardianBudgetOmission
+                .render()
+                .into_text()
+                .unwrap_or_default(),
+            history_truncation,
+        )
         .map_err(|error| {
             session
                 .services
@@ -270,14 +282,14 @@ pub(crate) async fn finalize(
             }
         }
         Err(codex_guardian_context::SectionError::UnsupportedDelivery {
-            section: "conversation_transcript",
+            section: "conversation_transcript" | "planned_action",
         }) => {
             *input = context
                 .into_annotated_messages()
                 .into_iter()
                 .map(|mut envelope| {
                     // Preserve the ordinary user-content annotations on each text segment;
-                    // native messages retain the original author, recipient and ciphertext.
+                    // native evidence retains its original identity and ciphertext.
                     if let ResponseItem::Message { role, content, .. } = &envelope.item
                         && role == "user"
                     {

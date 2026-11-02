@@ -5,6 +5,7 @@
 //! history-facing `/status` surface.
 
 use super::*;
+use crate::status::thread_cost_micros;
 
 impl ChatWidget {
     /// Update the status indicator header and details.
@@ -133,6 +134,8 @@ impl ChatWidget {
         self.config_panel_tui.status_line_use_colors = use_theme_colors;
         self.local_settings.tui.status_line = Some(ids);
         self.local_settings.tui.status_line_use_colors = use_theme_colors;
+        self.status_surface_overrides.status_line = None;
+        self.status_surface_overrides.status_line_use_colors = None;
         self.refresh_status_line();
     }
 
@@ -175,6 +178,7 @@ impl ChatWidget {
         self.terminal_title_setup_original_items = None;
         self.config_panel_tui.terminal_title = Some(ids.clone());
         self.local_settings.tui.terminal_title = Some(ids);
+        self.status_surface_overrides.terminal_title = None;
         self.refresh_terminal_title();
     }
 
@@ -382,7 +386,7 @@ impl ChatWidget {
 
         if self
             .estimated_thread_usage()
-            .is_some_and(|usage| usage.estimated_usage_usd_micros.is_none())
+            .is_some_and(|usage| thread_cost_micros(usage, self.plan_type).is_none())
         {
             preview_data.suppress_placeholder(StatusSurfacePreviewItem::EstimatedThreadCost);
         }
