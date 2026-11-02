@@ -3,11 +3,16 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import type { ProjectPaneRegion } from "@cantrip/protocol";
 import {
   CopyPlus,
+  ExternalLink,
+  FolderSearch,
   MoreHorizontal,
+  PanelBottom,
+  PanelRight,
+  PanelTop,
   Pencil,
+  Pin,
   Trash2,
   X,
-  ExternalLink,
 } from "lucide-react";
 import { useEffect, useRef, type ReactNode } from "react";
 
@@ -36,6 +41,12 @@ export function surfaceMoveTargets(
             surface.definition.supportedPlacements.includes(region),
         )
         .map((region) => ({
+          icon:
+            region === "center"
+              ? PanelTop
+              : region === "right"
+                ? PanelRight
+                : PanelBottom,
           label: `Move to ${region === "center" ? "Center" : region === "right" ? "Right" : "Bottom"}`,
           onSelect: () => onMove(region),
         }))
@@ -73,7 +84,6 @@ export function SurfaceMenuItems({
   onDuplicate,
   onKeepOpen,
   onPopOut,
-  onPopOutPane,
   onRename,
   onRevealInFiles,
   title,
@@ -98,22 +108,23 @@ export function SurfaceMenuItems({
         </Item>
       ) : null}
       {onRevealInFiles ? (
-        <Item onSelect={onRevealInFiles}>Reveal in Files</Item>
+        <Item onSelect={onRevealInFiles}>
+          <FolderSearch className="size-4" /> Reveal in Files
+        </Item>
       ) : null}
-      {onKeepOpen ? <Item onSelect={onKeepOpen}>Keep Open</Item> : null}
+      {onKeepOpen ? (
+        <Item onSelect={onKeepOpen}>
+          <Pin className="size-4" /> Keep Open
+        </Item>
+      ) : null}
       {onPopOut ? (
         <Item onSelect={onPopOut}>
           <ExternalLink className="size-4" /> Pop Out
         </Item>
       ) : null}
-      {onPopOutPane ? (
-        <Item onSelect={onPopOutPane}>
-          <ExternalLink className="size-4" /> Move Pane to New Window
-        </Item>
-      ) : null}
-      {moveTargets.map((target) => (
-        <Item key={target.label} onSelect={target.onSelect}>
-          {target.label}
+      {moveTargets.map(({ icon: Icon, label, onSelect }) => (
+        <Item key={label} onSelect={onSelect}>
+          <Icon className="size-4" /> {label}
         </Item>
       ))}
       {onClose ? (
