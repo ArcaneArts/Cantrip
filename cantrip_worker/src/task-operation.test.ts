@@ -1,3 +1,4 @@
+import { EMPTY_MODEL_CONFIGURATION } from "@cantrip/protocol";
 import {
   createTaskOperationRelayRequest,
   decryptTaskMessageProtectedContent,
@@ -164,6 +165,7 @@ describe("worker encrypted Task operations", () => {
           chatId,
           planGoalEnabled: false,
           priority: 12,
+          modelConfiguration: EMPTY_MODEL_CONFIGURATION,
           requestedTaskWorkerId: null,
           continuityFamily: null,
           lastTaskWorkerId: null,

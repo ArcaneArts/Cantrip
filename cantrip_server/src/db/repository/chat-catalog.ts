@@ -508,8 +508,9 @@ export class ChatCatalogRepository {
                   planGoalEnabled: (input as EncryptedTaskCreate)
                     .planGoalEnabled,
                   priority: (input as EncryptedTaskCreate).priority,
-                  requestedTaskWorkerId: (input as EncryptedTaskCreate)
-                    .requestedTaskWorkerId,
+                  modelConfiguration:
+                    (input as EncryptedTaskCreate).modelConfiguration ??
+                    defaultSettings,
                   ...taskOpaqueColumns((input as EncryptedTaskCreate).task),
                 })
                 .returning(),

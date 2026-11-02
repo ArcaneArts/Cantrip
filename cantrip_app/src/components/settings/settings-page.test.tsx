@@ -254,8 +254,8 @@ describe("account settings", () => {
     expect(markup).not.toContain(">Code<");
     expect(usage).toBeGreaterThan(appearance);
     expect(models).toBeGreaterThan(usage);
-    expect(tasks).toBeGreaterThan(models);
-    expect(workers).toBeGreaterThan(tasks);
+    expect(tasks).toBe(-1);
+    expect(workers).toBeGreaterThan(models);
     expect(logs).toBeGreaterThan(workers);
     expect(markup).toContain('data-slot="settings-sidebar"');
     expect(markup).toContain('data-slot="settings-mobile-categories"');

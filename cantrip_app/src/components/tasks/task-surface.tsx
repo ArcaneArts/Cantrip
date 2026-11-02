@@ -1,3 +1,8 @@
+import { ModelReasoningPicker } from "@/components/chat/model-reasoning-picker";
+import {
+  EMPTY_MODEL_CONFIGURATION,
+  type ModelConfiguration,
+} from "@cantrip/protocol";
 import { TaskDispatchStatus } from "./task-dispatch-status";
 import {
   TASK_PRIORITY_MAX,
@@ -6,7 +11,6 @@ import {
   type ChatSummary,
   type SettingsBundle,
   type TaskDetail,
-  type TaskWorkerSummary,
   type WorkerSummary,
 } from "@cantrip/protocol";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -64,7 +68,6 @@ import {
   getChatPermissionProfiles,
   getTask,
   getTaskAttachments,
-  getTaskWorkers,
   loadChatAttachmentContent,
   startTaskDirectly,
   startTaskPlanning,
@@ -161,14 +164,14 @@ export function taskDraftSignature(
   attachmentIds: readonly string[],
   planGoalEnabled = false,
   priority = 0,
-  requestedTaskWorkerId: string | null = null,
+  modelConfiguration: ModelConfiguration = EMPTY_MODEL_CONFIGURATION,
 ): string {
   return JSON.stringify([
     briefMarkdown,
     attachmentIds,
     planGoalEnabled,
     priority,
-    requestedTaskWorkerId,
+    modelConfiguration,
   ]);
 }
 
@@ -228,9 +231,8 @@ export function TaskSurface({
   const [brief, setBrief] = useState("");
   const [planGoalEnabled, setPlanGoalEnabled] = useState(false);
   const [priority, setPriority] = useState(0);
-  const [requestedTaskWorkerId, setRequestedTaskWorkerId] = useState<
-    string | null
-  >(null);
+  const [modelConfiguration, setModelConfiguration] =
+    useState<ModelConfiguration>(EMPTY_MODEL_CONFIGURATION);
   const [attachmentIds, setAttachmentIds] = useState<string[]>([]);
   const [attachmentRecords, setAttachmentRecords] = useState(
     () => new Map<string, ChatAttachmentSummary>(),
@@ -256,12 +258,12 @@ export function TaskSurface({
   const briefRef = useRef(brief);
   const planGoalEnabledRef = useRef(planGoalEnabled);
   const priorityRef = useRef(priority);
-  const requestedTaskWorkerIdRef = useRef(requestedTaskWorkerId);
+  const modelConfigurationRef = useRef(modelConfiguration);
   const attachmentIdsRef = useRef(attachmentIds);
   briefRef.current = brief;
   planGoalEnabledRef.current = planGoalEnabled;
   priorityRef.current = priority;
-  requestedTaskWorkerIdRef.current = requestedTaskWorkerId;
+  modelConfigurationRef.current = modelConfiguration;
   attachmentIdsRef.current = attachmentIds;
 
   useEffect(() => setTitleDraft(chat.title), [chat.title]);
@@ -280,12 +282,6 @@ export function TaskSurface({
     queryFn: () => getTaskAttachments(chat.id),
     queryKey: ["task-attachments", chat.id],
   });
-  const taskWorkers = useQuery({
-    enabled: visible,
-    queryFn: getTaskWorkers,
-    queryKey: ["task-workers"],
-    staleTime: 30_000,
-  });
   const messages = useChatMessageHistory({
     autoLoadOlder: true,
     chatId: chat.id,
@@ -303,7 +299,7 @@ export function TaskSurface({
     setBrief(task.data.briefMarkdown);
     setPlanGoalEnabled(task.data.planGoalEnabled);
     setPriority(task.data.priority);
-    setRequestedTaskWorkerId(task.data.requestedTaskWorkerId);
+    setModelConfiguration(task.data.modelConfiguration);
     setAttachmentIds(task.data.draftAttachmentIds);
     rowVersionRef.current = task.data.rowVersion;
     savedSignatureRef.current = taskDraftSignature(
@@ -311,7 +307,7 @@ export function TaskSurface({
       task.data.draftAttachmentIds,
       task.data.planGoalEnabled,
       task.data.priority,
-      task.data.requestedTaskWorkerId,
+      task.data.modelConfiguration,
     );
     setInitialized(true);
   }, [initialized, task.data]);
@@ -326,7 +322,7 @@ export function TaskSurface({
   }, [taskAttachments.data]);
 
   const selectedModelId =
-    chat.modelId ?? settings?.preferences.defaultModelId ?? "";
+    modelConfiguration.modelId ?? settings?.preferences.defaultModelId ?? "";
   const permissionProfiles = useQuery({
     enabled: visible && Boolean(selectedModelId),
     queryFn: () => getChatPermissionProfiles(chat.id),
@@ -352,7 +348,7 @@ export function TaskSurface({
     attachmentIds,
     planGoalEnabled,
     priority,
-    requestedTaskWorkerId,
+    modelConfiguration,
   );
   const dirty = initialized && currentSignature !== savedSignatureRef.current;
   const saveDraft = useMutation({
@@ -361,7 +357,7 @@ export function TaskSurface({
       briefMarkdown: string;
       planGoalEnabled: boolean;
       priority: number;
-      requestedTaskWorkerId: string | null;
+      modelConfiguration: ModelConfiguration;
       signature: string;
     }) =>
       draftSaveQueueRef.current.run(async () => {
@@ -370,7 +366,7 @@ export function TaskSurface({
           draftAttachmentIds: snapshot.attachmentIds,
           planGoalEnabled: snapshot.planGoalEnabled,
           priority: snapshot.priority,
-          requestedTaskWorkerId: snapshot.requestedTaskWorkerId,
+          modelConfiguration: snapshot.modelConfiguration,
           rowVersion: rowVersionRef.current,
         });
         // A dialog dismissal may flush while an autosave is in flight. Keep
@@ -389,7 +385,7 @@ export function TaskSurface({
           attachmentIdsRef.current,
           planGoalEnabledRef.current,
           priorityRef.current,
-          requestedTaskWorkerIdRef.current,
+          modelConfigurationRef.current,
         )
       ) {
         savedSignatureRef.current = snapshot.signature;
@@ -423,7 +419,7 @@ export function TaskSurface({
       task.data.draftAttachmentIds,
       task.data.planGoalEnabled,
       task.data.priority,
-      task.data.requestedTaskWorkerId,
+      task.data.modelConfiguration,
     );
     // Launch/failure changes the row version without changing the saved brief.
     // Keep local edits, while using that current version when saving a retry.
@@ -438,7 +434,7 @@ export function TaskSurface({
       attachmentIdsRef.current,
       planGoalEnabledRef.current,
       priorityRef.current,
-      requestedTaskWorkerIdRef.current,
+      modelConfigurationRef.current,
     );
     if (signature === savedSignatureRef.current) {
       if (!task.data) throw new Error("Task is still loading.");
@@ -449,7 +445,7 @@ export function TaskSurface({
       briefMarkdown: briefRef.current,
       planGoalEnabled: planGoalEnabledRef.current,
       priority: priorityRef.current,
-      requestedTaskWorkerId: requestedTaskWorkerIdRef.current,
+      modelConfiguration: modelConfigurationRef.current,
       signature,
     });
     savedSignatureRef.current = signature;
@@ -486,13 +482,13 @@ export function TaskSurface({
         briefMarkdown: briefRef.current,
         planGoalEnabled: planGoalEnabledRef.current,
         priority: priorityRef.current,
-        requestedTaskWorkerId: requestedTaskWorkerIdRef.current,
+        modelConfiguration: modelConfigurationRef.current,
         signature: taskDraftSignature(
           briefRef.current,
           attachmentIdsRef.current,
           planGoalEnabledRef.current,
           priorityRef.current,
-          requestedTaskWorkerIdRef.current,
+          modelConfigurationRef.current,
         ),
       });
     }, TASK_AUTOSAVE_DELAY_MS);
@@ -665,7 +661,7 @@ export function TaskSurface({
     setBrief(result.data.briefMarkdown);
     setPlanGoalEnabled(result.data.planGoalEnabled);
     setPriority(result.data.priority);
-    setRequestedTaskWorkerId(result.data.requestedTaskWorkerId);
+    setModelConfiguration(result.data.modelConfiguration);
     setAttachmentIds(result.data.draftAttachmentIds);
     rowVersionRef.current = result.data.rowVersion;
     savedSignatureRef.current = taskDraftSignature(
@@ -673,7 +669,7 @@ export function TaskSurface({
       result.data.draftAttachmentIds,
       result.data.planGoalEnabled,
       result.data.priority,
-      result.data.requestedTaskWorkerId,
+      result.data.modelConfiguration,
     );
     setConflict(false);
     pendingDeletionIdsRef.current.clear();
@@ -784,24 +780,6 @@ export function TaskSurface({
     const attachment = attachmentRecords.get(id);
     return attachment ? [attachment] : [];
   });
-  const configuredTaskWorkers = (taskWorkers.data ?? []).filter(
-    (candidate) => candidate.enabled,
-  );
-  const selectedTaskWorker: TaskWorkerSummary | undefined =
-    requestedTaskWorkerId === null
-      ? undefined
-      : configuredTaskWorkers.find(
-          (candidate) => candidate.id === requestedTaskWorkerId,
-        );
-  const eligibleTaskWorkers = configuredTaskWorkers.filter(
-    (candidate) => !planGoalEnabled || candidate.allowsPlanGoal,
-  );
-  const hasEligibleTaskWorker = requestedTaskWorkerId
-    ? Boolean(
-        selectedTaskWorker &&
-        (!planGoalEnabled || selectedTaskWorker.allowsPlanGoal),
-      )
-    : eligibleTaskWorkers.length > 0;
   const dispatchQueued = task.data.dispatch?.state === "queued";
   const draftEditable = taskDraftEditable(task.data);
   const canStart =
@@ -949,7 +927,8 @@ export function TaskSurface({
         <div className="flex shrink-0 items-center gap-3 border-b border-violet-500/25 bg-violet-500/5 px-5 py-3 text-sm">
           <ListTodo className="size-4 text-violet-500" />
           <span>
-            Queued for a Task Worker. You can keep editing until it is claimed.
+            Queued to run with the selected model. You can keep editing until it
+            is claimed.
             {task.data?.dispatch?.eligibilityCode ? (
               <span className="mt-1 block">
                 <TaskDispatchStatus
@@ -1117,33 +1096,12 @@ export function TaskSurface({
             )}
             id="mobile-task-options"
           >
-            <label className="flex min-w-0 flex-col items-stretch gap-1.5 text-xs text-muted-foreground sm:flex-row sm:items-center">
-              Worker
-              <select
-                aria-label="Task Worker"
-                className="h-9 min-w-0 rounded-md border bg-background px-2 text-xs text-foreground outline-none focus:ring-2 focus:ring-ring sm:h-8 sm:max-w-48"
-                disabled={!draftEditable || taskWorkers.isLoading}
-                value={requestedTaskWorkerId ?? ""}
-                onChange={(event) =>
-                  setRequestedTaskWorkerId(event.target.value || null)
-                }
-              >
-                <option value="">Auto</option>
-                {requestedTaskWorkerId && !selectedTaskWorker ? (
-                  <option value={requestedTaskWorkerId}>
-                    Unavailable Task Worker
-                  </option>
-                ) : null}
-                {configuredTaskWorkers.map((candidate) => (
-                  <option key={candidate.id} value={candidate.id}>
-                    {candidate.name}
-                    {planGoalEnabled && !candidate.allowsPlanGoal
-                      ? " (Direct only)"
-                      : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <ModelReasoningPicker
+              configuration={modelConfiguration}
+              models={settings?.models ?? []}
+              disabled={!draftEditable}
+              onSave={(configuration) => setModelConfiguration(configuration)}
+            />
             <label className="flex min-w-0 flex-col items-stretch gap-1.5 text-xs text-muted-foreground sm:flex-row sm:items-center">
               Priority
               <input
@@ -1239,29 +1197,12 @@ export function TaskSurface({
         >
           {planGoalEnabled
             ? "The Task queues for one read-only planning cycle. Implementation access is reserved for its Goal."
-            : "The saved prompt queues as a normal agent turn and starts when an eligible Task Worker has capacity."}
+            : "The saved prompt queues as a normal agent turn and starts as soon as its model and execution worker are available."}
         </p>
-        {!taskWorkers.isLoading && configuredTaskWorkers.length === 0 ? (
-          <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
-            This Task can be queued now and will wait for an enabled Task
-            Worker.
-          </p>
-        ) : null}
-        {requestedTaskWorkerId && !hasEligibleTaskWorker ? (
-          <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
-            The selected Task Worker is unavailable or cannot run Plan + Goal
-            Tasks.
-          </p>
-        ) : null}
-        {attachmentNotice ||
-        starting.isError ||
-        taskWorkers.isError ||
-        selectPermission.isError ? (
+        {attachmentNotice || starting.isError || selectPermission.isError ? (
           <p className="mt-2 text-xs text-destructive">
             {attachmentNotice ??
-              errorMessage(
-                starting.error ?? taskWorkers.error ?? selectPermission.error,
-              )}
+              errorMessage(starting.error ?? selectPermission.error)}
           </p>
         ) : null}
       </div>

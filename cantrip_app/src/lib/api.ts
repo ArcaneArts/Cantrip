@@ -99,11 +99,6 @@ export {
   updateAppDestination,
 } from "./api/settings";
 export {
-  getTaskWorkers,
-  createTaskWorker,
-  updateTaskWorker,
-  deleteTaskWorker,
-  reorderTaskWorkers,
   getProjectTaskPauseState,
   getProjectTaskWorkload,
   setProjectTaskPauseState,

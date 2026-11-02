@@ -76,7 +76,7 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
     case "account-resource-usage":
       return [["account-resource-usage"], ["account-resource-usage-history"]];
     case "settings":
-      return [["settings"], ["task-workers"], ["code-settings-worker-status"]];
+      return [["settings"], ["code-settings-worker-status"]];
     case "provider-auth":
       return [["codex-auth"]];
     case "policy":
@@ -431,7 +431,6 @@ export function appLiveScopeQueryKeys(scope: AppLiveScope): QueryKey[] {
         ["account-resource-usage"],
         ["account-resource-usage-history"],
         ["settings"],
-        ["task-workers"],
         ["code-settings-worker-status"],
         ["codex-auth"],
         ["policies"],

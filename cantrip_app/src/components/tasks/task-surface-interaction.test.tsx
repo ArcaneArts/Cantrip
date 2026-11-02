@@ -1,3 +1,4 @@
+import { EMPTY_MODEL_CONFIGURATION } from "@cantrip/protocol";
 import type { ChatSummary, TaskDetail } from "@cantrip/protocol";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createElement, createRef, type ComponentProps } from "react";
@@ -48,6 +49,7 @@ vi.mock("./task-markdown-editor", () => ({
     createElement("textarea", { ...props, "aria-label": props.ariaLabel }),
 }));
 
+import { ModelReasoningPicker } from "@/components/chat/model-reasoning-picker";
 import { TaskSurface, type TaskSurfaceHandle } from "./task-surface";
 
 (
@@ -70,6 +72,7 @@ const failedTask = (): TaskDetail => ({
   briefMarkdown: "Support Forge",
   planGoalEnabled: false,
   priority: -1,
+  modelConfiguration: EMPTY_MODEL_CONFIGURATION,
   requestedTaskWorkerId: null,
   continuityFamily: null,
   lastTaskWorkerId: null,
@@ -150,6 +153,38 @@ beforeEach(() => {
   }));
   api.startTaskDirectly.mockImplementation(async () => current);
 });
+it("saves a model and Plan + Goal directly without fetching presets", async () => {
+  await mount();
+  await act(async () =>
+    renderer!.root.findByType(ModelReasoningPicker).props.onSave({
+      ...EMPTY_MODEL_CONFIGURATION,
+      modelId: "any-model",
+      reasoningEffort: "high",
+    }),
+  );
+  const toggle = renderer!.root
+    .findAllByType("button")
+    .find(
+      (button) =>
+        button.props["aria-label"] === "Plan + Goal" ||
+        button.children.some((child) => child === "Plan + Goal"),
+    )!;
+  await act(async () => toggle.props.onClick());
+  await act(async () => surfaceRef.current!.prepareClose());
+  expect(api.updateTaskDraft).toHaveBeenLastCalledWith(
+    "task",
+    expect.objectContaining({
+      modelConfiguration: {
+        ...EMPTY_MODEL_CONFIGURATION,
+        modelId: "any-model",
+        reasoningEffort: "high",
+      },
+      planGoalEnabled: true,
+    }),
+  );
+  expect(api.getTaskWorkers).not.toHaveBeenCalled();
+});
+
 afterEach(async () => {
   if (renderer) await act(async () => renderer!.unmount());
   renderer = undefined;
@@ -185,7 +220,7 @@ describe("failed Task recovery", () => {
     await settle();
     expect(api.getTask).toHaveBeenCalledTimes(1);
     expect(api.getTaskAttachments).toHaveBeenCalledTimes(1);
-    expect(api.getTaskWorkers).toHaveBeenCalledTimes(1);
+    expect(api.getTaskWorkers).not.toHaveBeenCalled();
     expect(editor().props.value).toBe("Support Forge");
   });
 

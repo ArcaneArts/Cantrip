@@ -1,3 +1,5 @@
+import type { ModelConfiguration } from "@cantrip/protocol";
+import { isDeepStrictEqual } from "node:util";
 import type { FastifyInstance } from "fastify";
 import type { ModelRuntime } from "../../db/repository.js";
 import type {
@@ -40,10 +42,7 @@ export function createTaskDispatchEligibilityRuntime(
   const prepareTaskDispatchEligibility = async (
     ownerId: string,
   ): Promise<PreparedTaskDispatchEligibility> => {
-    const [cycles, taskWorkers] = await Promise.all([
-      repository.taskDispatch.list(ownerId),
-      repository.taskScheduling.listTaskWorkers(ownerId),
-    ]);
+    const cycles = await repository.taskDispatch.list(ownerId);
     const resolutions = new Map<
       string,
       {
@@ -51,16 +50,19 @@ export function createTaskDispatchEligibilityRuntime(
         projectId: string;
         resolution: Awaited<ReturnType<TaskDispatchEligibilityResolver>>;
         runtime: ModelRuntime | null;
-        taskWorkerRevision: number;
+        modelConfiguration: ModelConfiguration | null;
+        fencingToken: number;
         worktreeId: string;
       }
     >();
     for (const cycle of cycles) {
       if (cycle.state !== "queued") continue;
-      const context = await repository.getChatExecutionContext(
-        ownerId,
-        cycle.chatId,
-      );
+      const [context, task] = await Promise.all([
+        repository.getChatExecutionContext(ownerId, cycle.chatId),
+        repository.tasks.get(ownerId, cycle.chatId),
+      ]);
+      const configuration =
+        task?.modelConfiguration ?? cycle.modelConfiguration;
       if (
         !context ||
         context.contextKind !== "project" ||
@@ -72,9 +74,8 @@ export function createTaskDispatchEligibilityRuntime(
         ownerId,
         context.workerId,
       );
-      for (const taskWorker of taskWorkers) {
-        if (!taskWorker.enabled) continue;
-        const key = `${cycle.id}:${taskWorker.id}`;
+      {
+        const key = cycle.id;
         let resolution: Awaited<ReturnType<TaskDispatchEligibilityResolver>>;
         let runtime: ModelRuntime | null = null;
         if (!bridge.isConnected(context.workerId)) {
@@ -88,6 +89,8 @@ export function createTaskDispatchEligibilityRuntime(
             eligible: false,
             code: "encryption-grant-unavailable",
           };
+        } else if (!configuration?.modelId) {
+          resolution = { eligible: false, code: "model-unavailable" };
         } else {
           try {
             const pairs = await withTaskLaunchStageTimeout(
@@ -96,7 +99,7 @@ export function createTaskDispatchEligibilityRuntime(
               () =>
                 routePairsForConfiguration(
                   { ...context, providerAccountId: null },
-                  taskWorker.modelConfiguration,
+                  configuration,
                 ),
             );
             const selected = pairs[0]?.root.runtime;
@@ -124,7 +127,6 @@ export function createTaskDispatchEligibilityRuntime(
                   reasonCode: "runtime-resolution-timeout",
                   chatId: cycle.chatId,
                   cycleId: cycle.id,
-                  taskWorkerId: taskWorker.id,
                   workerId: context.workerId,
                   durationMs: error.timeoutMs,
                   err: error,
@@ -149,31 +151,33 @@ export function createTaskDispatchEligibilityRuntime(
           projectId: context.projectId,
           resolution,
           runtime,
-          taskWorkerRevision: taskWorker.rowVersion,
+          modelConfiguration: configuration,
+          fencingToken: cycle.fencingToken,
           worktreeId: context.worktreeId,
         });
       }
     }
-    const preparedFor = (cycleId: string, taskWorkerId: string) =>
-      resolutions.get(`${cycleId}:${taskWorkerId}`);
+    const preparedFor = (cycleId: string) => resolutions.get(cycleId);
     return {
       resolve: async (input) => {
-        const prepared = preparedFor(input.cycle.id, input.taskWorker.id);
+        const prepared = preparedFor(input.cycle.id);
         if (
           !prepared ||
           prepared.projectId !== input.projectId ||
           prepared.physicalWorkerId !== input.physicalWorkerId ||
           prepared.worktreeId !== input.worktreeId ||
-          prepared.taskWorkerRevision !== input.taskWorker.rowVersion
+          prepared.fencingToken !== input.cycle.fencingToken ||
+          !isDeepStrictEqual(
+            prepared.modelConfiguration,
+            input.modelConfiguration,
+          )
         ) {
           return { eligible: false, code: "placement-unavailable" };
         }
         return prepared.resolution;
       },
       runtimeForClaim: (claim) => {
-        const taskWorkerId = claim.cycle.selectedTaskWorkerId;
-        if (!taskWorkerId) return null;
-        const prepared = preparedFor(claim.cycle.id, taskWorkerId);
+        const prepared = preparedFor(claim.cycle.id);
         const runtime = prepared?.runtime ?? null;
         return runtime &&
           runtime.routeId === claim.cycle.modelRouteId &&
@@ -201,7 +205,6 @@ export function createTaskDispatchEligibilityRuntime(
       if (
         !context ||
         context.experience !== "task" ||
-        !cycle.selectedTaskWorkerId ||
         !cycle.modelConfiguration?.modelId ||
         !cycle.modelRouteId ||
         !cycle.physicalWorkerId ||

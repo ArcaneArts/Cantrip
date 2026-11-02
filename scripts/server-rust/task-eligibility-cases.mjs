@@ -59,7 +59,7 @@ export async function runTaskEligibilityCases(h) {
       `UPDATE workers SET unlinked_at=NULL,encryption_status=${json(encryption)} WHERE id IN ('alpha','beta')`,
       `UPDATE projects SET task_scheduling_paused=false,task_scheduling_paused_at=NULL WHERE id='github'`,
       "UPDATE chats SET experience='task',model_id='elig-root',active_worker_id='alpha',active_worktree_id='github-alpha-main',status='idle',archived_at=NULL WHERE id='task'",
-      `INSERT INTO tasks(chat_id,protected_content,created_at,updated_at) VALUES('task',${json(taskEnvelope)},${literal(stamp)},${literal(stamp)})`,
+      `INSERT INTO tasks(chat_id,protected_content,model_configuration,created_at,updated_at) VALUES('task',${json(taskEnvelope)},${json({ modelId: "elig-root", reasoningEffort: null, customSubagentModel: false, subagentModelId: null, subagentReasoningEffort: null })},${literal(stamp)},${literal(stamp)})`,
       `INSERT INTO task_workers(id,owner_id,name,model_id,continuity_family,position,created_at,updated_at) VALUES('${worker}',${literal(owner)},'Eligibility','elig-root','family',0,${literal(stamp)},${literal(stamp)})`,
       `INSERT INTO task_dispatch_cycles(id,owner_id,chat_id,operation_id,operation_kind,state,fifo_created_at,created_at,updated_at) VALUES('${cycle}',${literal(owner)},'task','eligibility-operation','direct','queued',${literal(stamp)},${literal(stamp)},${literal(stamp)})`,
       "INSERT INTO chat_runtime_sessions(id,chat_id,worker_id,worktree_id,codex_thread_id,model_route_id,provider_account_id,status) VALUES('76767676-7676-4767-8767-000000000004','task','alpha','github-alpha-main','eligibility-thread','elig-route',NULL,'ready')",
@@ -129,10 +129,14 @@ export async function runTaskEligibilityCases(h) {
     ineligible("placement-unavailable"),
   );
   await clean(["UPDATE task_workers SET enabled=false"]);
-  await ok("disabled Task Worker never hydrates", {}, (v) => {
-    ineligible("placement-unavailable")(v);
-    assert.equal(v.hydration.started, 0);
-  });
+  await ok(
+    "disabled legacy preset cannot block the selected model",
+    {},
+    (v) => {
+      assert.equal(one(v).resolution.eligible, true);
+      assert.equal(v.hydration.started, 1);
+    },
+  );
   for (const state of [
     "claimed",
     "running",
@@ -181,7 +185,7 @@ export async function runTaskEligibilityCases(h) {
     ["projectId", "other"],
     ["physicalWorkerId", "beta"],
     ["worktreeId", "github-beta-main"],
-    ["taskWorker", { id: worker, rowVersion: 2 }],
+    ["modelConfiguration", { modelId: "changed" }],
   ])
     await ok(
       "prepared fence rejects changed " + field,
@@ -191,7 +195,6 @@ export async function runTaskEligibilityCases(h) {
   for (const changes of [
     { modelRouteId: "elig-sub-route" },
     { providerAccountId: "other-account" },
-    { selectedTaskWorkerId: null },
   ])
     await ok(
       "runtime projection rejects changed claim " + JSON.stringify(changes),
@@ -210,7 +213,7 @@ export async function runTaskEligibilityCases(h) {
     },
     (v) => {
       assert.equal(v.value.cycle.state, "claimed");
-      assert.equal(v.value.taskWorker.name, "Hydrated before claim");
+      assert.equal(v.value.modelConfiguration.modelId, "elig-root");
       assert.equal(v.runtime.routeId, "elig-route");
     },
   );
@@ -222,10 +225,10 @@ export async function runTaskEligibilityCases(h) {
   );
   await clean();
   await ok(
-    "concurrent Worker revision invalidates prepared claim",
+    "concurrent model edit invalidates prepared claim",
     {
       action: "claim",
-      afterPrepareSql: "UPDATE task_workers SET row_version=row_version+1",
+      afterPrepareSql: `UPDATE tasks SET model_configuration=jsonb_set(model_configuration,'{reasoningEffort}','"high"')`,
     },
     (v) => {
       ineligible("placement-unavailable")(v);
@@ -271,7 +274,7 @@ export async function runTaskEligibilityCases(h) {
   );
   await snapshot("timed out route work drained and committed its SQL");
   await clean([
-    "UPDATE task_workers SET custom_subagent_model=true,subagent_model_id='elig-sub'",
+    `UPDATE tasks SET model_configuration=model_configuration || '{"customSubagentModel":true,"subagentModelId":"elig-sub"}'::jsonb`,
   ]);
   await ok(
     "actual missing native subagent capability",
@@ -305,7 +308,7 @@ export async function runTaskEligibilityCases(h) {
     "UPDATE model_routes SET provider_id='elig-provider' WHERE id='elig-sub-route'",
   );
   await seed(
-    "UPDATE task_workers SET custom_subagent_model=false,subagent_model_id=NULL",
+    `UPDATE tasks SET model_configuration=model_configuration || '{"customSubagentModel":false,"subagentModelId":null}'::jsonb`,
   );
   await seed([
     "UPDATE model_providers SET kind='chatgpt',weekly_usage_reserve_percent=3 WHERE id='elig-provider'",
@@ -342,7 +345,7 @@ export async function runTaskEligibilityCases(h) {
   );
   async function paused(extra = []) {
     await clean([
-      `UPDATE task_dispatch_cycles SET state='paused',selected_task_worker_id='${worker}',task_worker_revision=1,model_configuration=${json({ modelId: "elig-root", reasoningEffort: null, customSubagentModel: false, subagentModelId: null, subagentReasoningEffort: null })},model_route_id='elig-route',physical_worker_id='alpha',worktree_id='github-alpha-main',codex_thread_id='eligibility-thread',lease_owner='retained-owner',fencing_token=4,attempt_count=1,paused_at=${literal(stamp)}`,
+      `UPDATE task_dispatch_cycles SET state='paused',selected_task_worker_id=NULL,task_worker_revision=NULL,model_configuration=${json({ modelId: "elig-root", reasoningEffort: null, customSubagentModel: false, subagentModelId: null, subagentReasoningEffort: null })},model_route_id='elig-route',physical_worker_id='alpha',worktree_id='github-alpha-main',codex_thread_id='eligibility-thread',lease_owner='retained-owner',fencing_token=4,attempt_count=1,paused_at=${literal(stamp)}`,
       ...extra,
     ]);
   }
@@ -375,7 +378,6 @@ export async function runTaskEligibilityCases(h) {
     "worktree_id='github-beta-main'",
     "model_configuration=NULL",
     "model_route_id=NULL",
-    "selected_task_worker_id=NULL",
   ]) {
     await paused(["UPDATE task_dispatch_cycles SET " + update]);
     await ok(

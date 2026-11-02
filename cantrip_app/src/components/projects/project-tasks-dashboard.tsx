@@ -3,7 +3,6 @@ import type {
   ChatSummary,
   SettingsBundle,
   TaskDetail,
-  TaskWorkerSummary,
   WorkerSummary,
 } from "@cantrip/protocol";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -19,7 +18,6 @@ import {
   Play,
   Plus,
   RefreshCw,
-  Settings2,
   Trash2,
 } from "lucide-react";
 import { memo, useMemo, useRef, useState, type ReactNode } from "react";
@@ -57,7 +55,6 @@ import {
   deleteTask,
   getProjectTaskPauseState,
   getProjectTaskWorkload,
-  getTaskWorkers,
   setProjectTaskPauseState,
   recoverTaskImplementation,
 } from "@/lib/api";
@@ -365,26 +362,18 @@ function TaskWorkloadRow({
   onDeleteTask,
   onOpen,
   paused,
-  taskWorkers,
+  settingsModels,
 }: {
   chat: ChatSummary | undefined;
   item: ProjectTaskWorkloadItem;
   onDeleteTask?(): void;
   onOpen(): void;
   paused: boolean;
-  taskWorkers: ReadonlyMap<string, TaskWorkerSummary>;
+  settingsModels: ReadonlyMap<string, string>;
 }) {
   const { task } = item;
   const presentation = projectTaskWorkloadPresentation(task, chat, paused);
   const progress = summarizePlanProgress(item.plan.steps);
-  const requestedWorker = task.requestedTaskWorkerId
-    ? (taskWorkers.get(task.requestedTaskWorkerId)?.name ??
-      "Unavailable worker")
-    : "Auto";
-  const claimedWorker = task.dispatch?.selectedTaskWorkerId
-    ? (taskWorkers.get(task.dispatch.selectedTaskWorkerId)?.name ??
-      "Unavailable worker")
-    : null;
   const actionLabel =
     presentation.band === "attention"
       ? task.state === "draft"
@@ -458,8 +447,13 @@ function TaskWorkloadRow({
           </p>
         ) : null}
         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
-          <span>Assignment: {requestedWorker}</span>
-          {claimedWorker ? <span>Worker: {claimedWorker}</span> : null}
+          <span>
+            Model:{" "}
+            {task.modelConfiguration.modelId
+              ? (settingsModels.get(task.modelConfiguration.modelId) ??
+                task.modelConfiguration.modelId)
+              : "Not selected"}
+          </span>
           <span title={task.createdAt}>
             Created {dateTime.format(new Date(task.createdAt))}
           </span>
@@ -515,7 +509,7 @@ function WorkloadList({
   onDeleteTask,
   onOpenTask,
   paused,
-  taskWorkers,
+  settingsModels,
 }: {
   chats: ReadonlyMap<string, ChatSummary>;
   items: ProjectTaskWorkloadItem[];
@@ -523,7 +517,7 @@ function WorkloadList({
   onDeleteTask(chatId: string, title: string): void;
   onOpenTask(chatId: string): void;
   paused: boolean;
-  taskWorkers: ReadonlyMap<string, TaskWorkerSummary>;
+  settingsModels: ReadonlyMap<string, string>;
 }) {
   if (items.length === 0) return null;
   return (
@@ -543,7 +537,7 @@ function WorkloadList({
             chat={chats.get(item.task.chatId)}
             item={item}
             paused={paused}
-            taskWorkers={taskWorkers}
+            settingsModels={settingsModels}
             onDeleteTask={() =>
               onDeleteTask(
                 item.task.chatId,
@@ -572,7 +566,6 @@ export function ProjectTasksDashboard({
   activeTaskChatId,
   chats,
   creatingTask,
-  onConfigureWorkers,
   onCreateTask,
   onCloseTask,
   onOpenTask,
@@ -587,7 +580,6 @@ export function ProjectTasksDashboard({
   activeTaskChatId: string | null;
   chats: ChatSummary[];
   creatingTask: boolean;
-  onConfigureWorkers(): void;
   onCreateTask(): void;
   onCloseTask(): void;
   onOpenTask(chatId: string): void;
@@ -614,12 +606,6 @@ export function ProjectTasksDashboard({
     queryKey: ["project-task-workload", projectId],
     queryFn: () => getProjectTaskWorkload(projectId),
     refetchInterval: dashboardQueriesEnabled && !live ? 3_000 : false,
-  });
-  const taskWorkers = useQuery({
-    enabled: dashboardQueriesEnabled,
-    queryKey: ["task-workers"],
-    queryFn: getTaskWorkers,
-    refetchInterval: dashboardQueriesEnabled && !live ? 5_000 : false,
   });
   const pauseState = useQuery({
     enabled: dashboardQueriesEnabled,
@@ -723,10 +709,8 @@ export function ProjectTasksDashboard({
   const activeTaskWorker = activeTask
     ? workers.find(({ workerId }) => workerId === activeTask.activeWorkerId)
     : undefined;
-  const workerMap = useMemo(
-    () =>
-      new Map((taskWorkers.data ?? []).map((worker) => [worker.id, worker])),
-    [taskWorkers.data],
+  const modelNames = new Map(
+    (settings?.models ?? []).map((model) => [model.id, model.name]),
   );
   const sorted = useMemo(
     () =>
@@ -806,57 +790,6 @@ export function ProjectTasksDashboard({
     </>
   );
 
-  if (taskWorkers.isLoading) {
-    return renderDashboard(
-      <div className="grid min-h-0 flex-1 place-items-center text-muted-foreground">
-        <Loader2 className="size-5 animate-spin" />
-      </div>,
-    );
-  }
-  if (taskWorkers.isError) {
-    return renderDashboard(
-      <EmptyState>
-        <EmptyStateContent>
-          <EmptyStateIcon>
-            <AlertTriangle className="size-5 text-destructive" />
-          </EmptyStateIcon>
-          <EmptyStateTitle>Task Workers unavailable</EmptyStateTitle>
-          <EmptyStateDescription>
-            {taskWorkers.error instanceof Error
-              ? taskWorkers.error.message
-              : "Cantrip could not load Task Worker settings."}
-          </EmptyStateDescription>
-          <EmptyStateActions>
-            <Button
-              variant="outline"
-              onClick={() => void taskWorkers.refetch()}
-            >
-              Try again
-            </Button>
-          </EmptyStateActions>
-        </EmptyStateContent>
-      </EmptyState>,
-    );
-  }
-  if ((taskWorkers.data?.length ?? 0) === 0) {
-    return renderDashboard(
-      <EmptyState>
-        <EmptyStateContent>
-          <EmptyStateIcon>
-            <Settings2 className="size-5" />
-          </EmptyStateIcon>
-          <EmptyStateTitle>No Task Workers configured</EmptyStateTitle>
-          <EmptyStateDescription>
-            Add a Task Worker before Tasks can leave the queue. Its model,
-            reasoning, capabilities, and concurrency apply across projects.
-          </EmptyStateDescription>
-          <EmptyStateActions>
-            <Button onClick={onConfigureWorkers}>Configure Task Workers</Button>
-          </EmptyStateActions>
-        </EmptyStateContent>
-      </EmptyState>,
-    );
-  }
   if (workload.isLoading || pauseState.isLoading) {
     return renderDashboard(
       <div className="grid min-h-0 flex-1 place-items-center text-muted-foreground">
@@ -864,7 +797,7 @@ export function ProjectTasksDashboard({
       </div>,
     );
   }
-  const error = workload.error ?? pauseState.error ?? taskWorkers.error;
+  const error = workload.error ?? pauseState.error;
   return renderDashboard(
     <div className="flex min-h-0 flex-1 flex-col">
       <PanelToolbar
@@ -960,28 +893,28 @@ export function ProjectTasksDashboard({
               <WorkloadList
                 chats={chatMap}
                 items={sorted.active}
+                settingsModels={modelNames}
                 label="Active"
                 onDeleteTask={requestDeleteTask}
                 paused={pauseState.data?.paused ?? false}
-                taskWorkers={workerMap}
                 onOpenTask={onOpenTask}
               />
               <WorkloadList
                 chats={chatMap}
                 items={sorted.failed}
+                settingsModels={modelNames}
                 label="Failed"
                 onDeleteTask={requestDeleteTask}
                 paused={false}
-                taskWorkers={workerMap}
                 onOpenTask={onOpenTask}
               />
               <WorkloadList
                 chats={chatMap}
                 items={sorted.completed}
+                settingsModels={modelNames}
                 label="Completed"
                 onDeleteTask={requestDeleteTask}
                 paused={false}
-                taskWorkers={workerMap}
                 onOpenTask={onOpenTask}
               />
             </div>

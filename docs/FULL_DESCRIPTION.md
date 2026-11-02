@@ -405,17 +405,18 @@ Direct is the default mode and queues one ordinary Agent turn. Plan + Goal is
 opt-in: it queues read-only planning cycles, review and question rounds, and a
 final same-thread Goal implementation. Creating or advancing either mode only
 enqueues a durable cycle; an account-global scheduler claims oldest-eligible
-work when a configured Task Worker has capacity. No Task Worker is created
-automatically.
+work using each Task's selected model and reasoning configuration. All models
+allow Plan + Goal, and every runnable Task can start without a task concurrency
+limit.
 
 The Task side supports durable draft, queued/running, planning/review,
 finalizing/implementing, paused, blocked, complete, and recoverable failure
 states:
 
 - The draft is a full-content Markdown editor with rename, attachment
-  drag/drop/paste, Task Worker and priority controls, Implementation access
-  selection, autosave, and optimistic conflict handling. Planning and Goal
-  models are configured centrally in Task settings.
+  drag/drop/paste, model/reasoning and priority controls, Implementation access
+  selection, autosave, and optimistic conflict handling. Plan + Goal is selected
+  per Task, independently of the chosen model.
 - In Plan + Goal mode, planning and finalization always use a server-selected
   read-only execution profile, regardless of Implementation access. Codex can
   inspect project files, available Git state, attachments, and effective
@@ -988,7 +989,6 @@ dashboards. Major sections are:
   default model;
 - **Workers:** local/remote worker status, enrollment, default worker,
   provisioning/sync policy;
-- **Tasks:** Task Worker capacity and planning/Goal model selection;
 - **Logs:** client, embedded-server, and worker logs;
 - **Tunnels:** global tunnel status/control;
 - **Workspaces:** storage profiles, names, default workspace, repository

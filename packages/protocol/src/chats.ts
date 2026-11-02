@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { modelConfigurationSchema } from "./model-configuration.js";
 import { taskOpaqueContentSchema, taskOpaqueSummarySchema } from "./tasks.js";
 import { taskPrioritySchema } from "./task-scheduling.js";
 import { privateDisplayLabelOpaqueSchema } from "./private-labels.js";
@@ -68,7 +69,7 @@ const taskCreateBaseSchema = chatPlacementCreateSchema.safeExtend({
   chatId: z.string().uuid(),
   planGoalEnabled: z.boolean().default(false),
   priority: taskPrioritySchema.default(0),
-  requestedTaskWorkerId: z.string().uuid().nullable().default(null),
+  modelConfiguration: modelConfigurationSchema.optional(),
   task: taskOpaqueContentSchema,
 });
 

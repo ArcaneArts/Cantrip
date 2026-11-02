@@ -108,9 +108,9 @@ const CONTENT_CLASSIFICATIONS = new Set([
 // digest; regenerating the inventory alone cannot silently accept it.
 const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
-    "601cfa1ef62b1fe37e7779ace69d80961404ad97ddc2089da85eef315183f9d9",
+    "92b9f36d0de345e6ca867563b30cc5934641604670823883b7d7642cd58a0127",
   applicationRoutes:
-    "3a367cada85d59a586d6add9af4da717a4031478fd99d5b95b669dae77188356",
+    "d424a614f7e2e8a2e1221d8667aaef84091d34511f43ecac821caf0b761fa5f7",
   clientControlCommands:
     "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
   cliCommands:
@@ -3806,6 +3806,12 @@ function cliCommandContentClassification(command) {
 }
 
 function agentOperationContentClassification(operation) {
+  if (operation.startsWith("chat."))
+    return {
+      classification: "endpoint-protected",
+      rationale:
+        "worker-opened chat content and worker-sealed agent messages; server retains routing metadata and encrypted payloads",
+    };
   if (operation === "context.compact")
     return {
       classification: "worker-local",

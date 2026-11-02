@@ -93,8 +93,7 @@ export async function taskEligibilityFixture(repository, input) {
       ? await service.prepareTaskResumeEligibility(input.owner)
       : await service.prepareTaskDispatchEligibility(input.owner);
     if (input.afterPrepareSql) await execute(input.afterPrepareSql);
-    const cycles = await repository.taskDispatch.list(input.owner),
-      workers = await repository.taskScheduling.listTaskWorkers(input.owner);
+    const cycles = await repository.taskDispatch.list(input.owner);
     const resolutions = [];
     if (resume) {
       for (const cycle of cycles)
@@ -108,10 +107,12 @@ export async function taskEligibilityFixture(repository, input) {
           input.owner,
           cycle.chatId,
         );
-        for (const taskWorker of workers) {
+        {
+          const task = await repository.tasks.get(input.owner, cycle.chatId);
           const probe = {
             cycle,
-            taskWorker,
+            modelConfiguration:
+              task?.modelConfiguration ?? cycle.modelConfiguration,
             projectId: context?.projectId ?? null,
             physicalWorkerId: context?.workerId ?? null,
             worktreeId: context?.worktreeId ?? null,
@@ -121,7 +122,6 @@ export async function taskEligibilityFixture(repository, input) {
           const claim = {
             cycle: {
               ...cycle,
-              selectedTaskWorkerId: taskWorker.id,
               modelRouteId: resolution.modelRouteId ?? null,
               providerAccountId: resolution.providerAccountId ?? null,
               ...input.runtimeProbeChanges,
@@ -129,7 +129,6 @@ export async function taskEligibilityFixture(repository, input) {
           };
           resolutions.push({
             cycleId: cycle.id,
-            taskWorkerId: taskWorker.id,
             resolution,
             runtime: prepared.runtimeForClaim(claim),
           });

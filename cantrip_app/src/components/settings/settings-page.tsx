@@ -133,7 +133,6 @@ import { EliteSettings } from "./elite-settings";
 import { PolicySettings } from "./policy-settings";
 import { AccountUsageSettings } from "./account-usage-settings";
 import { EncryptionRecoverySettings } from "./encryption-recovery-settings";
-import { TaskSettings } from "./task-settings";
 import { ComputerUseSettings } from "./computer-use-settings";
 import {
   availableCatalogModelIds,
@@ -192,7 +191,6 @@ export type SettingsSection =
   | "usage"
   | "elite"
   | "models"
-  | "tasks"
   | "workers"
   | "logs"
   | "tunnels"
@@ -387,24 +385,6 @@ export const settingsNavigationSections: readonly SettingsNavigationSection<Sett
           id: "model-defaults",
           label: "Default model configuration",
           description: "Root, subagent, and standalone Chat defaults.",
-        },
-      ],
-    },
-    {
-      id: "tasks",
-      label: "Tasks",
-      description: "Task worker defaults",
-      icon: ListTodo,
-      searchItems: [
-        {
-          id: "task-workers",
-          label: "Task Workers",
-          description: "Configure workers that execute background tasks.",
-        },
-        {
-          id: "task-models",
-          label: "Task agent models",
-          description: "Choose models and reasoning for task agents.",
         },
       ],
     },
@@ -2243,7 +2223,6 @@ export function SettingsPage({
                 </div>
               ) : null}
               {section === "workers" ? <WorkerSettings /> : null}
-              {section === "tasks" ? <TaskSettings /> : null}
               {section === "code-editor" &&
               matchesSetting("code-editor-line-numbers") ? (
                 <CodeEditorSettings />

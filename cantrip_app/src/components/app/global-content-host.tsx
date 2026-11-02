@@ -838,9 +838,6 @@ export function GlobalContentHost({
                       settings={settings.data}
                       taskCreationError={newTask.error}
                       workers={workers.data ?? []}
-                      onConfigureWorkers={() =>
-                        openCompactRootSettings("tasks")
-                      }
                       onCreateTask={() =>
                         newTask.mutate({ projectId: selectedProject.id })
                       }
