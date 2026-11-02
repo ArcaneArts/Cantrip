@@ -36,10 +36,26 @@ export class NbtCursor {
     return this.buffer[this.position++ - this.start]!;
   }
   async fixed(bytes: number, unsigned = false): Promise<number | bigint> {
-    const data = new Uint8Array(bytes);
-    for (let i = 0; i < bytes; i++) data[i] = await this.byte();
-    const view = new DataView(data.buffer),
-      little = this.encoding.endian !== "big";
+    let view: DataView;
+    if (
+      this.position >= this.start &&
+      this.position + bytes <= this.start + this.buffer.length
+    ) {
+      this.signal?.throwIfAborted();
+      // Lengths and scalar headers normally fit in the current read window.
+      // Decode them directly instead of allocating and awaiting every byte.
+      view = new DataView(
+        this.buffer.buffer,
+        this.buffer.byteOffset + this.position - this.start,
+        bytes,
+      );
+      this.position += bytes;
+    } else {
+      const data = new Uint8Array(bytes);
+      for (let i = 0; i < bytes; i++) data[i] = await this.byte();
+      view = new DataView(data.buffer);
+    }
+    const little = this.encoding.endian !== "big";
     if (bytes === 1) return unsigned ? view.getUint8(0) : view.getInt8(0);
     if (bytes === 2)
       return unsigned ? view.getUint16(0, little) : view.getInt16(0, little);
@@ -76,6 +92,11 @@ export class NbtCursor {
         throw new NbtError(this.position, "Payload exceeds source length");
     } else if (
       length &&
+      // A successful buffered read already validated this range, including
+      // while the decompression spool still has an unknown final size.
+      !(
+        this.position >= this.start && end <= this.start + this.buffer.length
+      ) &&
       (await this.source.read(end - 1, 1, this.signal)).length !== 1
     )
       throw new NbtError(this.position, "Truncated payload");

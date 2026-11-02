@@ -1152,24 +1152,32 @@ fn create_log_dump_directory(downloads: &Path) -> Result<PathBuf, String> {
 }
 
 #[tauri::command]
-pub fn read_local_service_logs(
+pub async fn read_local_service_logs(
+    app: AppHandle,
     request: LocalServiceLogReadRequest,
-    logs: State<'_, LocalServiceLogs>,
-    workers: State<'_, DesktopWorkers>,
 ) -> Result<LocalServiceLogReadResult, String> {
-    let (directory, source) = match request.source {
-        LocalLogSource::Client => (logs.client_directory.clone(), "client"),
-        LocalLogSource::Server => (logs.server_directory.clone(), "server"),
-        LocalLogSource::Worker => (logs.worker_directory.clone(), "worker"),
-        LocalLogSource::LinkedWorker => {
-            let worker_id = request
-                .worker_id
-                .as_deref()
-                .ok_or_else(|| "Choose a linked worker.".to_string())?;
-            (workers.service_log_path(worker_id)?, "worker")
-        }
-    };
-    logs.read_archive(directory, source, &request)
+    // The first read hydrates the tail from disk, including decompression and
+    // sanitization. A synchronous command runs that work on the UI thread;
+    // keep both archive initialization and later refreshes on the blocking pool.
+    tauri::async_runtime::spawn_blocking(move || {
+        let logs = app.state::<LocalServiceLogs>();
+        let workers = app.state::<DesktopWorkers>();
+        let (directory, source) = match request.source {
+            LocalLogSource::Client => (logs.client_directory.clone(), "client"),
+            LocalLogSource::Server => (logs.server_directory.clone(), "server"),
+            LocalLogSource::Worker => (logs.worker_directory.clone(), "worker"),
+            LocalLogSource::LinkedWorker => {
+                let worker_id = request
+                    .worker_id
+                    .as_deref()
+                    .ok_or_else(|| "Choose a linked worker.".to_string())?;
+                (workers.service_log_path(worker_id)?, "worker")
+            }
+        };
+        logs.read_archive(directory, source, &request)
+    })
+    .await
+    .map_err(|error| format!("Could not read local service logs: {error}"))?
 }
 
 fn sanitize_text(value: &str) -> String {
