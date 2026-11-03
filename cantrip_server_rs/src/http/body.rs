@@ -74,7 +74,19 @@ fn poisoned(value: &JsValue) -> bool {
 }
 
 pub(super) async fn parse_js(request: Request, limit: u64) -> Result<Option<JsValue>, Response> {
-    parse_body(request, limit, None).await
+    parse_body(request, limit, None, false).await
+}
+
+/// Automation contracts read named data properties and enumerate unknown keys.
+/// Include Buffer's inherited enumerable keys in Source order so strict-object
+/// diagnostics and refinement aborts match, including an empty Buffer. Values
+/// for those unused prototype keys are immaterial to these contracts.
+pub(super) async fn parse_js_buffer(
+    request: Request,
+    json_limit: u64,
+    binary_limit: u64,
+) -> Result<Option<JsValue>, Response> {
+    parse_body(request, json_limit, Some(binary_limit), true).await
 }
 
 /// Routes which ignore their parsed input still use Fastify's registered
@@ -84,7 +96,7 @@ pub(super) async fn parse_ignored(
     json_limit: u64,
     binary_limit: u64,
 ) -> Result<(), Response> {
-    parse_body(request, json_limit, Some(binary_limit))
+    parse_body(request, json_limit, Some(binary_limit), false)
         .await
         .map(|_| ())
 }
@@ -93,6 +105,7 @@ async fn parse_body(
     request: Request,
     limit: u64,
     ignored_binary_limit: Option<u64>,
+    project_binary: bool,
 ) -> Result<Option<JsValue>, Response> {
     let content_type = value(request.headers(), "content-type");
     let kind = content_type
@@ -164,6 +177,20 @@ async fn parse_body(
         Ok(Some(JsValue::String(JsString::from(
             String::from_utf8_lossy(&bytes).into_owned(),
         ))))
+    } else if kind == "application/octet-stream" && project_binary {
+        let mut value = JsValue::object(
+            bytes
+                .into_iter()
+                .enumerate()
+                .map(|(index, byte)| (index.to_string(), JsValue::Number(f64::from(byte)))),
+        );
+        let inherited: Vec<String> =
+            serde_json::from_str(include_str!("../../contracts/js-buffer-keys.json"))
+                .expect("Source Buffer enumerable keys");
+        for key in inherited {
+            value[key.as_str()] = JsValue::Null;
+        }
+        Ok(Some(value))
     } else if (kind.is_empty() && bytes.is_empty())
         || (kind == "application/octet-stream" && ignored_binary_limit.is_some())
     {

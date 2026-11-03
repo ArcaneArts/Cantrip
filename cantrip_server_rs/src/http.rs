@@ -46,6 +46,7 @@ mod on_response;
 mod pane_layouts;
 mod policies;
 mod project_alerts;
+mod project_automations;
 mod project_goal_observations;
 mod project_shares;
 mod project_surfaces;
@@ -160,6 +161,7 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .route("/readyz", get(ready))
         .merge(sessions::routes())
         .merge(project_alerts::routes())
+        .merge(project_automations::routes())
         .merge(project_goal_observations::routes())
         .merge(agent_alerts::routes())
         .merge(worker_links::routes())

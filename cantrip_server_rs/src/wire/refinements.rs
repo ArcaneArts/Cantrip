@@ -7,6 +7,9 @@ pub(super) fn apply(
     path: &[Value],
     message: Option<&str>,
 ) -> Result<(), ValidationError> {
+    if super::project_automations::refine(tag, result, path, message)? {
+        return Ok(());
+    }
     if super::mcp::refine(tag, result, path)? {
         return Ok(());
     }

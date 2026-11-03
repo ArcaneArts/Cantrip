@@ -10,6 +10,7 @@ mod json_text;
 pub use json_text::parse_json_text;
 pub(crate) mod live;
 mod mcp;
+mod project_automations;
 mod project_shares;
 mod project_surfaces;
 mod project_tabs;

@@ -42,6 +42,7 @@ import { nativeHandoffWireFixtures } from "./native-handoff-wire-fixtures.mjs";
 import { taskSchedulingWireFixtures } from "./task-wire-fixtures.mjs";
 import { taskWireFixtures } from "./task-wire-fixtures.mjs";
 import { taskDashboardWireFixtures } from "./task-dashboard-fixtures.mjs";
+import { projectAutomationWireFixtures } from "./project-automation-wire-fixtures.mjs";
 
 export const owner = "11111111-1111-4111-8111-111111111111";
 export const clientId = "22222222-2222-4222-8222-222222222222";
@@ -778,6 +779,7 @@ export const securityFixtures = {
   ...runWireFixtures(projectLabel.protectedLabel),
   ...worktreeWireFixtures(),
   ...provisioningWireFixtures(projectLabel),
+  ...projectAutomationWireFixtures(timestamp),
   workerRequestEnvelopeSchema: [
     ...workerCommands.commands.map((item) => item.input),
     ...commandRefinements.cases.map((item) => item.input),

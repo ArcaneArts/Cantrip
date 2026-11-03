@@ -12,6 +12,7 @@ import { terminalWireCases } from "./terminal-wire-fixtures.mjs";
 import { turnOrchestrationWireCases } from "./turn-orchestration-wire-fixtures.mjs";
 import { taskWireCases } from "./task-wire-fixtures.mjs";
 import { publicChatWireCases } from "./public-chat-wire-fixtures.mjs";
+import { projectAutomationWireCases } from "./project-automation-wire-fixtures.mjs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -70,6 +71,8 @@ export function* vectorCases(name, samples = securityFixtures[name]) {
     yield prepare(input);
   for (const input of taskWireCases(name, samples)) yield prepare(input);
   for (const input of publicChatWireCases(name, samples)) yield prepare(input);
+  for (const input of projectAutomationWireCases(name, samples))
+    yield prepare(input);
   for (const input of [null, [], {}, false, 42, ""]) yield prepare(input);
   for (const sample of samples) {
     const baseline = schema.parse(sample);

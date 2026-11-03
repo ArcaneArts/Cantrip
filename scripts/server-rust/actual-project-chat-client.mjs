@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { eventually } from "./full-worker.mjs";
 import { taskModelProvider } from "./task-model-provider.mjs";
+import { actualProjectAutomationsClient } from "./actual-project-automations-client.mjs";
 
 export async function actualProjectChatClient({
   page,
@@ -396,6 +397,19 @@ export async function actualProjectChatClient({
     result.steps.push(
       "Agent creation and usage receipts, encrypted history and native Goal survive server/worker restart; public Goal clear succeeds without duplicate inference",
     );
+    if (process.argv.includes("--project-automations"))
+      await actualProjectAutomationsClient({
+        page,
+        fixture,
+        projectId,
+        chatId: chat.id,
+        workerId,
+        startWorker,
+        stopWorker,
+        model,
+        result,
+        requests,
+      });
   } catch (error) {
     result.projectChatFailure = { message: error.message, stack: error.stack };
     result.projectChatFailure.canonicalMessageSnapshot = await page
