@@ -36,6 +36,7 @@ mod folders;
 mod github_conversion;
 mod github_import;
 mod live_socket;
+mod mcp_settings;
 mod middleware;
 mod native_admission;
 mod native_coordination;
@@ -214,6 +215,7 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(run_secrets::routes())
         .merge(settings::routes())
         .merge(skill_settings::routes())
+        .merge(mcp_settings::routes())
         .merge(terminals::routes())
         .merge(browsers::routes())
         .merge(browser_discovery::routes())

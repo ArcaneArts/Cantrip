@@ -4,10 +4,13 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { once } from "node:events";
 
-export async function taskModelProvider() {
+export async function taskModelProvider({
+  allowMcpDiscoveryProbe = false,
+} = {}) {
   const replies = [],
     requests = [],
     failures = [],
+    discoveryProbes = [],
     sockets = new Set();
   // Use the bundled runtime's normal model metadata against this local provider.
   const model = "gpt-5.5";
@@ -26,8 +29,33 @@ export async function taskModelProvider() {
         input,
         completed: false,
       };
-      requests.push(record);
       const pathname = new URL(request.url, "http://fixture.invalid").pathname;
+      if (
+        allowMcpDiscoveryProbe &&
+        request.method === "POST" &&
+        ["/mcp", "/"].includes(pathname) &&
+        request.headers["user-agent"] === "Cantrip-MCP-Discovery/1.0"
+      ) {
+        assert.deepEqual(input, {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "initialize",
+          params: {
+            protocolVersion: input.params.protocolVersion,
+            capabilities: {},
+            clientInfo: { name: "cantrip-mcp-discovery", version: "1.0.0" },
+          },
+        });
+        assert.equal(typeof input.params.protocolVersion, "string");
+        discoveryProbes.push(record);
+        response.writeHead(404, { "content-type": "application/json" });
+        response.end(
+          JSON.stringify({ error: "This fixture serves model responses." }),
+        );
+        record.completed = true;
+        return;
+      }
+      requests.push(record);
       if (
         request.method === "GET" &&
         ["/v1/models", "/models"].includes(pathname)
@@ -171,6 +199,7 @@ export async function taskModelProvider() {
     model,
     requests,
     failures,
+    discoveryProbes,
     baseUrl: `http://127.0.0.1:${server.address().port}/v1`,
     reply(value) {
       const plan = { ...value, entered: false, request: null };

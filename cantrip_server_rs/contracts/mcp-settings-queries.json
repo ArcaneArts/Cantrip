@@ -1,0 +1,106 @@
+{
+  "queries": {
+    "global-list": {
+      "sql": "select \"id\", \"owner_id\", \"project_id\", \"worker_id\", \"name_blind_index\", \"protected_configuration\", \"enabled\", \"audience\", \"created_at\", \"updated_at\" from \"mcp_servers\" where (\"mcp_servers\".\"owner_id\" = $1 and \"mcp_servers\".\"project_id\" is null) order by \"mcp_servers\".\"name_blind_index\" asc, \"mcp_servers\".\"created_at\" asc",
+      "params": ["owner"]
+    },
+    "global-create": {
+      "sql": "insert into \"mcp_servers\" (\"id\", \"owner_id\", \"project_id\", \"worker_id\", \"name_blind_index\", \"protected_configuration\", \"enabled\", \"audience\", \"created_at\", \"updated_at\") values ($1, $2, $3, $4, $5, $6, $7, $8, default, default) returning \"id\", \"owner_id\", \"project_id\", \"worker_id\", \"name_blind_index\", \"protected_configuration\", \"enabled\", \"audience\", \"created_at\", \"updated_at\"",
+      "params": [
+        "88888888-8888-4888-8888-000000000001",
+        "owner",
+        null,
+        null,
+        "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
+        "{\"formatVersion\":1,\"keyRevision\":1,\"envelope\":{\"version\":1,\"algorithm\":\"AES-256-GCM\",\"keyRevision\":1,\"nonce\":\"AQEBAQEBAQEBAQEB\",\"ciphertext\":\"AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE\"}}",
+        true,
+        "ide"
+      ]
+    },
+    "global-update-false": {
+      "sql": "update \"mcp_servers\" set \"worker_id\" = $1, \"name_blind_index\" = $2, \"protected_configuration\" = $3, \"enabled\" = $4, \"updated_at\" = $5 where (\"mcp_servers\".\"id\" = $6 and \"mcp_servers\".\"owner_id\" = $7 and \"mcp_servers\".\"project_id\" is null) returning \"id\", \"owner_id\", \"project_id\", \"worker_id\", \"name_blind_index\", \"protected_configuration\", \"enabled\", \"audience\", \"created_at\", \"updated_at\"",
+      "params": [
+        null,
+        "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
+        "{\"formatVersion\":1,\"keyRevision\":1,\"envelope\":{\"version\":1,\"algorithm\":\"AES-256-GCM\",\"keyRevision\":1,\"nonce\":\"AQEBAQEBAQEBAQEB\",\"ciphertext\":\"AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE\"}}",
+        true,
+        "2026-11-03T12:00:00.123Z",
+        "88888888-8888-4888-8888-000000000001",
+        "owner"
+      ]
+    },
+    "global-update-true": {
+      "sql": "update \"mcp_servers\" set \"worker_id\" = $1, \"name_blind_index\" = $2, \"protected_configuration\" = $3, \"enabled\" = $4, \"audience\" = $5, \"updated_at\" = $6 where (\"mcp_servers\".\"id\" = $7 and \"mcp_servers\".\"owner_id\" = $8 and \"mcp_servers\".\"project_id\" is null) returning \"id\", \"owner_id\", \"project_id\", \"worker_id\", \"name_blind_index\", \"protected_configuration\", \"enabled\", \"audience\", \"created_at\", \"updated_at\"",
+      "params": [
+        null,
+        "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
+        "{\"formatVersion\":1,\"keyRevision\":1,\"envelope\":{\"version\":1,\"algorithm\":\"AES-256-GCM\",\"keyRevision\":1,\"nonce\":\"AQEBAQEBAQEBAQEB\",\"ciphertext\":\"AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE\"}}",
+        true,
+        "ide",
+        "2026-11-03T12:00:00.123Z",
+        "88888888-8888-4888-8888-000000000001",
+        "owner"
+      ]
+    },
+    "global-delete": {
+      "sql": "delete from \"mcp_servers\" where (\"mcp_servers\".\"id\" = $1 and \"mcp_servers\".\"owner_id\" = $2 and \"mcp_servers\".\"project_id\" is null) returning \"id\"",
+      "params": ["88888888-8888-4888-8888-000000000001", "owner"]
+    },
+    "project-project-check": {
+      "sql": "select \"id\" from \"projects\" where (\"projects\".\"id\" = $1 and \"projects\".\"owner_id\" = $2) limit $3",
+      "params": ["project", "owner", 1]
+    },
+    "project-list": {
+      "sql": "select \"id\", \"owner_id\", \"project_id\", \"worker_id\", \"name_blind_index\", \"protected_configuration\", \"enabled\", \"audience\", \"created_at\", \"updated_at\" from \"mcp_servers\" where (\"mcp_servers\".\"owner_id\" = $1 and \"mcp_servers\".\"project_id\" = $2) order by \"mcp_servers\".\"name_blind_index\" asc, \"mcp_servers\".\"created_at\" asc",
+      "params": ["owner", "project"]
+    },
+    "project-create": {
+      "sql": "insert into \"mcp_servers\" (\"id\", \"owner_id\", \"project_id\", \"worker_id\", \"name_blind_index\", \"protected_configuration\", \"enabled\", \"audience\", \"created_at\", \"updated_at\") values ($1, $2, $3, $4, $5, $6, $7, $8, default, default) returning \"id\", \"owner_id\", \"project_id\", \"worker_id\", \"name_blind_index\", \"protected_configuration\", \"enabled\", \"audience\", \"created_at\", \"updated_at\"",
+      "params": [
+        "88888888-8888-4888-8888-000000000001",
+        "owner",
+        "project",
+        null,
+        "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
+        "{\"formatVersion\":1,\"keyRevision\":1,\"envelope\":{\"version\":1,\"algorithm\":\"AES-256-GCM\",\"keyRevision\":1,\"nonce\":\"AQEBAQEBAQEBAQEB\",\"ciphertext\":\"AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE\"}}",
+        true,
+        "ide"
+      ]
+    },
+    "project-update-false": {
+      "sql": "update \"mcp_servers\" set \"worker_id\" = $1, \"name_blind_index\" = $2, \"protected_configuration\" = $3, \"enabled\" = $4, \"updated_at\" = $5 where (\"mcp_servers\".\"id\" = $6 and \"mcp_servers\".\"owner_id\" = $7 and \"mcp_servers\".\"project_id\" = $8) returning \"id\", \"owner_id\", \"project_id\", \"worker_id\", \"name_blind_index\", \"protected_configuration\", \"enabled\", \"audience\", \"created_at\", \"updated_at\"",
+      "params": [
+        null,
+        "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
+        "{\"formatVersion\":1,\"keyRevision\":1,\"envelope\":{\"version\":1,\"algorithm\":\"AES-256-GCM\",\"keyRevision\":1,\"nonce\":\"AQEBAQEBAQEBAQEB\",\"ciphertext\":\"AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE\"}}",
+        true,
+        "2026-11-03T12:00:00.123Z",
+        "88888888-8888-4888-8888-000000000001",
+        "owner",
+        "project"
+      ]
+    },
+    "project-update-true": {
+      "sql": "update \"mcp_servers\" set \"worker_id\" = $1, \"name_blind_index\" = $2, \"protected_configuration\" = $3, \"enabled\" = $4, \"audience\" = $5, \"updated_at\" = $6 where (\"mcp_servers\".\"id\" = $7 and \"mcp_servers\".\"owner_id\" = $8 and \"mcp_servers\".\"project_id\" = $9) returning \"id\", \"owner_id\", \"project_id\", \"worker_id\", \"name_blind_index\", \"protected_configuration\", \"enabled\", \"audience\", \"created_at\", \"updated_at\"",
+      "params": [
+        null,
+        "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
+        "{\"formatVersion\":1,\"keyRevision\":1,\"envelope\":{\"version\":1,\"algorithm\":\"AES-256-GCM\",\"keyRevision\":1,\"nonce\":\"AQEBAQEBAQEBAQEB\",\"ciphertext\":\"AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE\"}}",
+        true,
+        "ide",
+        "2026-11-03T12:00:00.123Z",
+        "88888888-8888-4888-8888-000000000001",
+        "owner",
+        "project"
+      ]
+    },
+    "project-delete": {
+      "sql": "delete from \"mcp_servers\" where (\"mcp_servers\".\"id\" = $1 and \"mcp_servers\".\"owner_id\" = $2 and \"mcp_servers\".\"project_id\" = $3) returning \"id\"",
+      "params": ["88888888-8888-4888-8888-000000000001", "owner", "project"]
+    },
+    "worker-lookup": {
+      "sql": "select \"project_goal_generation\", \"id\", \"owner_id\", \"name\", \"display_name\", \"platform\", \"architecture\", \"codex_version\", \"codex_runtime\", \"remote_surface_capabilities\", \"direct_broker_advertisement\", \"codegraph_status\", \"web_runtime_capabilities\", \"encryption_status\", \"project_replica_capabilities\", \"managed_folder_capabilities\", \"standalone_chat_capabilities\", \"chat_relocation_capability\", \"external_codex_history_capability\", \"started_at\", \"last_seen_at\", \"unlinked_at\", \"created_at\", \"updated_at\" from \"workers\" where (\"workers\".\"id\" = $1 and \"workers\".\"owner_id\" = $2 and \"workers\".\"unlinked_at\" is null) limit $3",
+      "params": ["worker", "owner", 1]
+    }
+  }
+}

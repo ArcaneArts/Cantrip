@@ -1705,15 +1705,15 @@ jobs:
         run: node --import tsx scripts/server-rust/actual-folder-client.mjs --tasks --database bundled-postgres --report .qa/rust-server/actual-task-worker-bundled-postgres.json
       - name: Actual browser, full worker and native Task Goals with postgres
         run: node --import tsx scripts/server-rust/actual-folder-client.mjs --tasks --database postgres --report .qa/rust-server/actual-task-worker-postgres.json
-      - name: Actual Agent, Goal, automations, approvals, customizations, permissions and global skills with pglite
+      - name: Actual Agent, Goal, automations, approvals, customizations, permissions, global skills and MCP settings with pglite
         if: ${{ !cancelled() }}
-        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --project-chats --project-automations --agent-interactions --chat-customizations --skill-settings --database pglite --report .qa/rust-server/actual-project-chat-worker-pglite.json
-      - name: Actual Agent, Goal, automations, approvals, customizations, permissions and global skills with bundled-postgres
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --project-chats --project-automations --agent-interactions --chat-customizations --skill-settings --mcp-settings --database pglite --report .qa/rust-server/actual-project-chat-worker-pglite.json
+      - name: Actual Agent, Goal, automations, approvals, customizations, permissions, global skills and MCP settings with bundled-postgres
         if: ${{ !cancelled() }}
-        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --project-chats --project-automations --agent-interactions --chat-customizations --skill-settings --database bundled-postgres --report .qa/rust-server/actual-project-chat-worker-bundled-postgres.json
-      - name: Actual Agent, Goal, automations, approvals, customizations, permissions and global skills with postgres
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --project-chats --project-automations --agent-interactions --chat-customizations --skill-settings --mcp-settings --database bundled-postgres --report .qa/rust-server/actual-project-chat-worker-bundled-postgres.json
+      - name: Actual Agent, Goal, automations, approvals, customizations, permissions, global skills and MCP settings with postgres
         if: ${{ !cancelled() }}
-        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --project-chats --project-automations --agent-interactions --chat-customizations --skill-settings --database postgres --report .qa/rust-server/actual-project-chat-worker-postgres.json
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --project-chats --project-automations --agent-interactions --chat-customizations --skill-settings --mcp-settings --database postgres --report .qa/rust-server/actual-project-chat-worker-postgres.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -1812,6 +1812,21 @@ jobs:
       - name: Global skills HTTP, encryption, persistence, limits and recovery with postgres
         if: ${{ !cancelled() }}
         run: node --import tsx scripts/server-rust/skill-settings-http-compatibility.mjs --database postgres --report .qa/rust-server/skill-settings-http-postgres.json
+      - name: MCP settings SQL matches actual Source query builders
+        if: ${{ !cancelled() }}
+        run: node --import tsx scripts/server-rust/mcp-settings-query-manifest.mjs
+      - name: MCP settings contracts, discovery refinements and exact boundary errors
+        if: ${{ !cancelled() }}
+        run: node scripts/server-rust/cargo.mjs test --test mcp_settings_contracts -- --nocapture
+      - name: Global/project MCP HTTP, discovery, encryption, persistence and recovery with pglite
+        if: ${{ !cancelled() }}
+        run: node --import tsx scripts/server-rust/mcp-settings-http-compatibility.mjs --database pglite --report .qa/rust-server/mcp-settings-http-pglite.json
+      - name: Global/project MCP HTTP, discovery, encryption, persistence and recovery with bundled-postgres
+        if: ${{ !cancelled() }}
+        run: node --import tsx scripts/server-rust/mcp-settings-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/mcp-settings-http-bundled-postgres.json
+      - name: Global/project MCP HTTP, discovery, encryption, persistence and recovery with postgres
+        if: ${{ !cancelled() }}
+        run: node --import tsx scripts/server-rust/mcp-settings-http-compatibility.mjs --database postgres --report .qa/rust-server/mcp-settings-http-postgres.json
       - name: Automation SQL and legacy timezone assets match actual Source
         run: |
           node --import tsx scripts/server-rust/project-automation-query-manifest.mjs

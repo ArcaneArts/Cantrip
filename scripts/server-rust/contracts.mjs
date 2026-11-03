@@ -575,6 +575,11 @@ export const contractRoots = [
   "skillSettingsFileUpdateSchema",
   "skillSettingsDeleteRequestSchema",
   "skillSettingsConfigUpdateSchema",
+  "encryptedMcpServerCreateSchema",
+  "encryptedMcpServerUpdateSchema",
+  "mcpServerWireSummarySchema",
+  "mcpServerWireListSchema",
+  "mcpServerDiscoveryResultSchema",
 ];
 
 // Resolve the actual source schemas, including their separate protocol modules.
@@ -613,6 +618,7 @@ const refinements = new Map([
     "worker-command-unique",
   ],
   [protocol.cantripAgentOperationArgumentsSchema, "mcp-arguments-size"],
+  [protocol.mcpServerDiscoveryCandidateSchema, "mcp-discovery-worker"],
   [protocol.projectAlertProjectionSchema, "project-alert-projection"],
   [protocol.projectAlertProtectedDetailSchema, "project-alert-detail"],
   [taskScheduling.taskWorkerUpdateSchema, "task-worker-update"],
