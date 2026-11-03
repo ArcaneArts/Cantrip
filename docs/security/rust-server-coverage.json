@@ -4166,6 +4166,20 @@
         "remaining": [
           "Supported-platform and packaged acceptance, archive cleanup and other unfinished domains, Redis/multi-instance operation, complete upgrade/post-write rollback acceptance, final artifacts, desktop packaging, performance, Winterhold rehearsal and default cutover remain required. Node remains the default server."
         ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/chats/archives/cleanup",
+        "implementation": "cantrip_server_rs/src/http/chat_catalogs.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/chat-archive-cleanup-http.mjs",
+          "scripts/server-rust/chat-archive-cleanup-controls.mjs",
+          "cantrip_server_rs/tests/chat_contracts.rs"
+        ],
+        "remaining": [
+          "Actual supported-platform, full-worker filesystem and packaged acceptance remain required; Node remains the default server."
+        ]
       }
     ]
   },
@@ -9767,6 +9781,80 @@
         "Resolve the actual supported-platform foundation timing failure with existing assertions and deadlines.",
         "Resolve remaining broad worker timing failures and eleven independently reproduced formatting failures.",
         "Complete the full original replacement goal, platform/package acceptance and default cutover."
+      ],
+      "additionalPlatformFailures": {
+        "run": "https://github.com/ArcaneArts/Cantrip/actions/runs/41537667541",
+        "failures": [
+          {
+            "jobId": 125593553263,
+            "platform": "ubuntu-24.04",
+            "failure": "Encrypted computer-use approval project-alert and agent-interaction invalidation order differs in native-event HTTP accounts comparison.",
+            "archiveSha256": "849ad4fd0f1c444ca10847f69b19facc43acfd71b280e32dd23616dcfebadb25"
+          },
+          {
+            "jobId": 125593552927,
+            "platform": "windows-2025",
+            "failure": "Source managed-preparation bundled-PostgreSQL accounts fixture observes12chat-preparation Live invalidations where10expected (not worker command count).",
+            "archiveSha256": "12191a68705f62b70a1db52ac581e73bd3a0bb9270bee3f906dfb9eeca968552"
+          }
+        ],
+        "state": "Unresolved, actual completed-job logs and artifact digests retained; no platform readiness claim."
+      }
+    },
+    "archiveCleanup": {
+      "status": "implemented-pending-platform-acceptance",
+      "scope": "Owner-scoped public cleanup with exact Source project/scratch commit boundaries, fresh clocks, durable deletion jobs, publications, conditional dispatch and owned-operation lifetime. No production SQL endpoint and no production Node delegation.",
+      "evidence": [
+        "cantrip_server_rs/src/http/chat_catalogs.rs",
+        "cantrip_server_rs/src/chats/roots/service.rs",
+        "cantrip_server_rs/src/http/body.rs",
+        "cantrip_server_rs/examples/http-sql-fixture.rs",
+        "scripts/server-rust/live-sql-node-fixture.mjs",
+        "scripts/server-rust/chat-archive-cleanup-http.mjs",
+        "scripts/server-rust/chat-archive-cleanup-controls.mjs"
+      ],
+      "localAcceptance": {
+        "platform": "macOS arm64",
+        "profiles": 9,
+        "pairedHttpObservations": 219,
+        "additionalConcurrentRequests": 36,
+        "retainedChatsPerPeer": 5,
+        "retainedRootsPerPeer": 3,
+        "completedDeletionJobsPerPeer": 3,
+        "foreignOwnerMode": "accounts: two qualifying foreign archives survive main cleanup, other owner deletes exactly its own two; two foreign Live frames and zero leaked main frames.",
+        "fault": "Actual BEFORE INSERT SQL exception after project commit rolls back scratch changes; retry preserves earlier deletion and creates one completed job.",
+        "restart": "Actual server restart preserves complete successful job rows, retained encrypted content and archive deadlines; no duplicate commands.",
+        "workerBoundary": "Actual unchanged transport; controlled scratch deletion result. Not full filesystem acceptance.",
+        "productionExecutable": "Body/method/auth/CSRF comparisons plus actual 404 for development SQL endpoint.",
+        "sharedFixtureRegression": "Original setup path passes 96 paired PGlite observations across all three authentication modes.",
+        "rustLibraryTests": 47,
+        "chatProtocolComparisons": 27257,
+        "strictAllTargetClippy": "passed",
+        "broadRepositoryCheck": {
+          "exitCode": 1,
+          "elapsedSeconds": 810.8,
+          "sourcePassed": 1702,
+          "sourceSkipped": 57,
+          "appPassed": 4391,
+          "appSkipped": 3,
+          "workerPassed": 2619,
+          "workerSkipped": 133,
+          "workerFailed": 5,
+          "failures": "Three Chromium remote-debug startup timeouts and the native-history/image-boundary 15000ms deadlines in unchanged files.",
+          "focusedReproduction": "Complete browser file: four pass. Both bulk files: 56 pass. Original deadlines retained; file hashes match clean Primary.",
+          "formatting": "Recursive bail prevents whole-repository formatting. Changed-file Prettier and Rust formatting pass."
+        }
+      },
+      "contracts": {
+        "roots": 514,
+        "nodes": 9538,
+        "preservedPriorRoots": 513,
+        "preservedEntireNodePrefix": 9536
+      },
+      "remaining": [
+        "Supported-platform and packaged/full-product acceptance.",
+        "Shared generic Buffer/prototype validation semantics on other routes remain to audit and implement.",
+        "All original full-replacement requirements, remaining known CI/timing/formatting failures, Redis/multi-instance, existing-data upgrades/post-write rollback, final artifacts/app/Winterhold/performance and default cutover."
       ]
     }
   },

@@ -74,6 +74,26 @@ fn poisoned(value: &JsValue) -> bool {
 }
 
 pub(super) async fn parse_js(request: Request, limit: u64) -> Result<Option<JsValue>, Response> {
+    parse_body(request, limit, None).await
+}
+
+/// Routes which ignore their parsed input still use Fastify's registered
+/// binary parser and its distinct upload limit, without projecting a Buffer.
+pub(super) async fn parse_ignored(
+    request: Request,
+    json_limit: u64,
+    binary_limit: u64,
+) -> Result<(), Response> {
+    parse_body(request, json_limit, Some(binary_limit))
+        .await
+        .map(|_| ())
+}
+
+async fn parse_body(
+    request: Request,
+    limit: u64,
+    ignored_binary_limit: Option<u64>,
+) -> Result<Option<JsValue>, Response> {
     let content_type = value(request.headers(), "content-type");
     let kind = content_type
         .as_deref()
@@ -83,6 +103,11 @@ pub(super) async fn parse_js(request: Request, limit: u64) -> Result<Option<JsVa
         .unwrap_or("")
         .trim()
         .to_lowercase();
+    let limit = if kind == "application/octet-stream" {
+        ignored_binary_limit.unwrap_or(limit)
+    } else {
+        limit
+    };
     if value(request.headers(), "content-length")
         .and_then(|length| length.trim().parse::<u64>().ok())
         .is_some_and(|length| length > limit)
@@ -139,7 +164,9 @@ pub(super) async fn parse_js(request: Request, limit: u64) -> Result<Option<JsVa
         Ok(Some(JsValue::String(JsString::from(
             String::from_utf8_lossy(&bytes).into_owned(),
         ))))
-    } else if kind.is_empty() && bytes.is_empty() {
+    } else if (kind.is_empty() && bytes.is_empty())
+        || (kind == "application/octet-stream" && ignored_binary_limit.is_some())
+    {
         Ok(None)
     } else {
         Err(parser_error(
@@ -171,6 +198,36 @@ mod tests {
                 .map(|chunk| (Ok::<_, Infallible>(chunk), receiver))
         }));
         (sender, body)
+    }
+
+    #[tokio::test]
+    async fn ignored_binary_bodies_keep_the_registered_parser_limit() {
+        let request = |kind: &str, bytes: Vec<u8>| {
+            Request::builder()
+                .header(header::CONTENT_TYPE, kind)
+                .body(Body::from(bytes))
+                .unwrap()
+        };
+        // Binary input is opaque and can exceed the ordinary JSON limit.
+        assert!(
+            parse_ignored(request("application/octet-stream", vec![0xff; 8]), 4, 8)
+                .await
+                .is_ok()
+        );
+        assert_eq!(
+            parse_ignored(request("application/octet-stream", vec![0xff; 9]), 4, 8)
+                .await
+                .unwrap_err()
+                .status(),
+            413
+        );
+        assert_eq!(
+            parse_ignored(request("application/json", b"false".to_vec()), 4, 8)
+                .await
+                .unwrap_err()
+                .status(),
+            413
+        );
     }
 
     #[tokio::test]

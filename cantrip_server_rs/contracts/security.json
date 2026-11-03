@@ -513,7 +513,8 @@
     "conversationUsageSchema": 9499,
     "conversationUsageResultSchema": 9504,
     "agentThreadSyncSchema": 9508,
-    "agentThreadSyncItemSchema": 9524
+    "agentThreadSyncItemSchema": 9524,
+    "archivedChatCleanupResultSchema": 9536
   },
   "nodes": [
     {
@@ -55855,6 +55856,19 @@
       "shape": { "type": 9535, "activity": 1120 },
       "checks": []
     },
-    { "type": "literal", "values": ["activity"], "checks": [] }
+    { "type": "literal", "values": ["activity"], "checks": [] },
+    {
+      "type": "object",
+      "name": "archivedChatCleanupResultSchema",
+      "shape": { "deleted": 9537 },
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    }
   ]
 }

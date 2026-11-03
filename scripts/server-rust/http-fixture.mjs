@@ -39,6 +39,7 @@ export class HttpFixture {
     responseObservations = false,
     observeHttpClocks = false,
     observeTunnelExpiry = false,
+    liveSqlFixture = false,
   }) {
     Object.assign(this, {
       kind,
@@ -51,6 +52,7 @@ export class HttpFixture {
       responseObservations,
       observeHttpClocks,
       observeTunnelExpiry,
+      liveSqlFixture,
     });
     this.environment = {
       ...fixtureEnvironment(path.join(root, name, kind)),
@@ -97,6 +99,7 @@ export class HttpFixture {
               ...(this.responseObservations ? ["--observe-responses"] : []),
               ...(this.observeHttpClocks ? ["--observe-http-clocks"] : []),
               ...(this.observeTunnelExpiry ? ["--observe-tunnel-expiry"] : []),
+              ...(this.liveSqlFixture ? ["--live-sql-fixture"] : []),
             ],
             { cwd: repositoryRoot, env: this.environment },
           )
@@ -121,6 +124,37 @@ export class HttpFixture {
       error.message = `${this.name}/${this.kind}: ${error.message}`;
       throw error;
     }
+  }
+  async sql(statements, queries = []) {
+    const client = this.client();
+    const response = await fetch(this.server.origin + "/__fixture/sql", {
+      method: "POST",
+      headers: {
+        origin,
+        "content-type": "application/json",
+        cookie: [...client.cookies].map(([k, v]) => `${k}=${v}`).join("; "),
+        ...(client.csrf ? { "x-cantrip-csrf": client.csrf } : {}),
+      },
+      body: JSON.stringify({ statements, queries }),
+      signal: AbortSignal.timeout(15000),
+    });
+    const body = await response.text();
+    assert.equal(
+      response.status,
+      200,
+      `${this.name}/${this.kind}/SQL setup: ${body}`,
+    );
+    const result = JSON.parse(body);
+    assert.deepEqual(
+      Object.keys(result).sort(),
+      queries.length ? ["ok", "values"] : ["ok"],
+    );
+    assert.equal(result.ok, true);
+    if (queries.length) {
+      assert.equal(result.values.length, queries.length);
+      return result.values;
+    }
+    return [];
   }
   normalize(value, key = "") {
     if (Array.isArray(value)) return value.map((v) => this.normalize(v));

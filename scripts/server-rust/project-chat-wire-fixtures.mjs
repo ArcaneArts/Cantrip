@@ -14,6 +14,11 @@ export function projectChatWireFixtures(timestamp) {
     id,
   };
   return {
+    archivedChatCleanupResultSchema: [
+      { deleted: 0 },
+      { deleted: 3 },
+      { deleted: Number.MAX_SAFE_INTEGER },
+    ],
     encryptedChatCreateSchema: [
       create,
       { ...create, attachToTabLayout: false },
