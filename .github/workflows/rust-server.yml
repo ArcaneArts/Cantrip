@@ -1710,10 +1710,14 @@ jobs:
       - run: pnpm --filter '@cantrip/app^...' -r build
       - name: Protected message validation contracts
         run: node scripts/server-rust/cargo.mjs test --test chat_contracts -- --nocapture
-      - name: Reference prepared account selection and durable handoff
-        run: pnpm --filter @cantrip/server exec vitest run --maxWorkers=2 test/local-foundation.test.ts test/managed-chat-account-failover.test.ts
       - name: Reference thread synchronization and observation contracts
         run: pnpm --filter @cantrip/server exec vitest run --maxWorkers=2 test/chat-thread-sync-admission.test.ts test/chat-thread-sync-observation.test.ts test/chat-thread-change-reconciliation.test.ts
+      - name: Archive cleanup retention, ownership, faults, races and restart with pglite
+        run: node --import tsx scripts/server-rust/chat-archive-cleanup-http.mjs --database pglite --report .qa/rust-server/chat-archive-cleanup-pglite.json
+      - name: Archive cleanup retention, ownership, faults, races and restart with bundled-postgres
+        run: node --import tsx scripts/server-rust/chat-archive-cleanup-http.mjs --database bundled-postgres --report .qa/rust-server/chat-archive-cleanup-bundled-postgres.json
+      - name: Archive cleanup retention, ownership, faults, races and restart with postgres
+        run: node --import tsx scripts/server-rust/chat-archive-cleanup-http.mjs --database postgres --report .qa/rust-server/chat-archive-cleanup-postgres.json
       - name: Project Chat catalogs and archives with pglite
         run: node --import tsx scripts/server-rust/project-chat-catalog-http.mjs --database pglite --report .qa/rust-server/project-chat-catalog-pglite.json
       - name: Project Chat creation, conversation keysets and usage with pglite
@@ -1768,6 +1772,11 @@ jobs:
         run: node --import tsx scripts/server-rust/chat-message-write-repository-compatibility.mjs --database postgres --report .qa/rust-server/chat-message-write-repository-compatibility-postgres.json
       - name: Message HTTP, endpoint encryption and ordered Live with postgres
         run: node --import tsx scripts/server-rust/chat-message-http-compatibility.mjs --database postgres --report .qa/rust-server/chat-message-http-compatibility-postgres.json
+      # Keep the independent full reference scenario visible without preventing
+      # the actual paired feature suites from executing when it fails.
+      - name: Reference prepared account selection and durable handoff
+        if: ${{ !cancelled() }}
+        run: pnpm --filter @cantrip/server exec vitest run --maxWorkers=2 test/local-foundation.test.ts test/managed-chat-account-failover.test.ts
       - uses: actions/upload-artifact@v4
         if: always()
         with:

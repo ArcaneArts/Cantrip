@@ -5399,3 +5399,71 @@ the synchronization suite. Those terminal job logs are retained with SHA-256
 digests. This does not establish platform acceptance or resolve the timing and
 formatting failures. Node remains the default server and the complete Rust
 replacement goal remains unfinished.
+
+## Owner-scoped archive cleanup
+
+The Rust server implements `POST /api/chats/archives/cleanup` using the existing
+project retention and standalone scratch-job repositories. Project deletion
+commits before standalone cleanup, matching the reference failure boundary.
+Scratch cleanup reads a fresh clock, creates durable deletion jobs, publishes
+their actual changes and queues the existing worker executor only when jobs exist.
+The request uses the scratch service's owned lifetime so losing the HTTP waiter
+does not cancel accepted persistence work. Startup and periodic cleanup remain enabled.
+
+A valid body is ignored, including null, scalars, arrays, text and binary input.
+The registered binary parser retains its distinct
+`ceil(uploadLimitBytes * 1.5) + 1 MiB` limit. Malformed/empty JSON, unsupported
+methods, authentication and CSRF keep the reference responses. This ignored-input
+path does not establish general JavaScript Buffer validation semantics for other
+routes; the shared parser's remaining binary-body behavior still needs an audit.
+
+The local macOS arm64 matrix passes all nine storage/authentication profiles:
+219 paired HTTP observations and 36 additional concurrent requests. It checks
+expired project/standalone records, five byte-identical retained chats and three
+retained roots per peer, active/unarchived and missing-expiry controls, qualifying
+foreign-owner archives, body-owner spoofing and owner-isolated Live delivery.
+Racing requests preserve one job, receipt and worker command. A real SQL trigger
+failure after project deletion leaves that earlier commit intact and rolls back
+the scratch transaction; retry deletes only the remaining scratch Chat. Each peer
+preserves three completed deletion jobs, all retained encrypted content and archive
+deadlines through an actual server restart, with no duplicate commands.
+
+The normal production binary then serves the same profile to exercise body,
+method and authentication failures and return 404 for the development SQL control.
+Only the development example/oracle opt-in exposes that control, using its existing
+database connection to age and inspect rows after real startup maintenance. The
+unchanged worker transport carries controlled deletion results in this suite;
+full worker filesystem, supported-platform and packaged acceptance remain separate.
+The original shared-fixture setup path also passes all three PGlite auth profiles
+with 96 paired synchronization regression observations.
+
+All 47 library tests, 27,257 contextual Chat protocol/error comparisons and strict
+all-target Clippy pass. The new cleanup result root brings the manifest to 514
+roots and 9,538 nodes; all prior 513 roots and the entire 9,536-node prefix remain
+unchanged. The broad `pnpm check` exits 1 after 810.8 seconds: all 1,702 Source
+and 4,391 app tests pass (57 and three existing skips). Worker results are 2,619
+passing, 133 existing skips and five timeouts in unchanged files: three Chromium
+startup failures and the prior native-history batch/image-boundary deadlines.
+The complete browser file passes all four tests on its focused rerun; both bulk
+files pass all 56 tests with their original deadlines. File hashes match clean
+Primary. Recursive bail prevents whole-repository formatting from running;
+changed-file Prettier and Rust formatting pass. The broad check remains failing.
+The platform workflow runs the new cleanup matrix before the independent full
+foundation scenario; that reference test retains its original deadline and still
+fails the job when unsuccessful, including after a feature test fails.
+
+The retained #2450 platform evidence additionally records Linux encrypted approval
+notification order and Windows managed-preparation Live invalidation-count failures. Their
+job logs and original artifacts have verified SHA-256 digests. These failures,
+the foundation timing failure, broad worker timing and existing formatting issues
+remain unresolved. Configured CI and local acceptance do not establish Linux or
+Windows readiness. All remaining replacement, Redis/multi-instance, upgrade and
+post-write rollback, artifact, app packaging, Winterhold rehearsal, performance
+and default-cutover requirements remain active. Node remains the default server
+and the worker remains Node.
+
+```sh
+node --import tsx scripts/server-rust/chat-archive-cleanup-http.mjs --database pglite --report .qa/rust-server/chat-archive-cleanup-pglite.json
+node --import tsx scripts/server-rust/chat-archive-cleanup-http.mjs --database bundled-postgres --report .qa/rust-server/chat-archive-cleanup-bundled-postgres.json
+node --import tsx scripts/server-rust/chat-archive-cleanup-http.mjs --database postgres --report .qa/rust-server/chat-archive-cleanup-postgres.json
+```

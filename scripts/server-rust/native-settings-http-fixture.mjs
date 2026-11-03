@@ -65,6 +65,7 @@ export async function settingsHttpFixture({
   onLogicalCompletion,
   onCommand,
   observeCompletions = false,
+  liveSqlFixture = false,
   environment = {},
 }) {
   const fixture = new HttpFixture({
@@ -73,6 +74,7 @@ export async function settingsHttpFixture({
     root,
     name: profile,
     databaseMode,
+    liveSqlFixture,
     environment: {
       CANTRIP_AUTH_MODE: profile,
       CANTRIP_REGISTRATION_ENABLED: "true",
@@ -262,20 +264,30 @@ export async function settingsHttpFixture({
         },
       },
     );
-    await fixture.close();
-    repository = await repositoryFixture({
-      kind,
-      executable: repositoryExecutable,
-      root: path.join(root, profile),
-      databaseMode,
-      databaseUrl: url,
-    });
-    const owned = await repository.request({
-      op: "query-json",
-      sql: `SELECT jsonb_build_object('owner',owner_id) result FROM workers WHERE id=${literal(settingsWorker)}`,
-    });
-    assert.equal(owned.rejected, false, owned.diagnostic);
-    owner = owned.value.owner;
+    if (liveSqlFixture) {
+      const [owned] = await fixture.sql(
+        [],
+        [
+          `SELECT jsonb_build_object('owner',owner_id)::text result FROM workers WHERE id=${literal(settingsWorker)}`,
+        ],
+      );
+      owner = owned.owner;
+    } else {
+      await fixture.close();
+      repository = await repositoryFixture({
+        kind,
+        executable: repositoryExecutable,
+        root: path.join(root, profile),
+        databaseMode,
+        databaseUrl: url,
+      });
+      const owned = await repository.request({
+        op: "query-json",
+        sql: `SELECT jsonb_build_object('owner',owner_id) result FROM workers WHERE id=${literal(settingsWorker)}`,
+      });
+      assert.equal(owned.rejected, false, owned.diagnostic);
+      owner = owned.value.owner;
+    }
     const statements = [
       `INSERT INTO projects(id,owner_id,protected_label,origin_kind,git_capability,github_capability,worktree_policy,preferred_worker_id,github_repository_blind_index) VALUES(${literal(settingsProject)},${literal(owner)},${json(label("project"))},'github',true,true,'agent-managed',${literal(settingsWorker)},'settings-project')`,
       `INSERT INTO project_sources(id,project_id,worker_id,source_kind,absolute_path,display_path) VALUES('settings-source',${literal(settingsProject)},${literal(settingsWorker)},'git','/worker-owned/settings','/worker-owned/settings')`,
@@ -284,12 +296,20 @@ export async function settingsHttpFixture({
       `INSERT INTO chat_runtime_sessions(id,chat_id,worker_id,worktree_id,codex_thread_id) VALUES('settings-runtime',${literal(settingsChat)},${literal(settingsWorker)},${literal(settingsTree)},'thread')`,
       ...(configure?.(owner, scope) ?? []),
     ];
-    const seeded = await repository.request({ op: "transaction", statements });
-    assert.equal(seeded.rejected, false, seeded.diagnostic);
-    await prepare?.({ owner, scope, repository });
-    await repository.close();
-    repository = null;
-    await fixture.start();
+    if (liveSqlFixture) {
+      await fixture.sql(statements);
+      await prepare?.({ owner, scope, fixture });
+    } else {
+      const seeded = await repository.request({
+        op: "transaction",
+        statements,
+      });
+      assert.equal(seeded.rejected, false, seeded.diagnostic);
+      await prepare?.({ owner, scope, repository });
+      await repository.close();
+      repository = null;
+      await fixture.start();
+    }
     live = await new LiveProbe(fixture).open();
     await live.initialized();
     await live.subscribed("native-settings", [

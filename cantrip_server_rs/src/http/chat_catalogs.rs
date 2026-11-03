@@ -15,7 +15,7 @@ use axum::{
     extract::{MatchedPath, Path, Request, State},
     http::{Method, StatusCode},
     response::Response,
-    routing::get,
+    routing::{get, post},
 };
 use std::sync::Arc;
 
@@ -43,6 +43,22 @@ async fn create(service: Arc<AuthService>, owner: String, input: Value) -> Resul
         Err(e) if duplicate(&e) => Ok(error(409, "Chat already exists.")),
         Err(e) => Err(e),
     }
+}
+async fn cleanup_archives(service: Arc<AuthService>, owner: String) -> Result<Response> {
+    // These are independent commits in the reference. A later scratch failure
+    // must not roll back project cleanup or discard its already accepted writes.
+    let deleted = Repository::new(service.repository.database.clone())
+        .purge_expired_project_chats(&owner, crate::auth::now() - chrono::Duration::days(90))
+        .await?;
+    let standalone = service
+        .scratch_roots
+        .purge_archived_for_owner(&owner)
+        .await?;
+    output(
+        200,
+        "archivedChatCleanupResultSchema",
+        &json!({"deleted": deleted + standalone}),
+    )
 }
 async fn execute(
     service: Arc<AuthService>,
@@ -76,6 +92,20 @@ async fn execute(
             repository.list_standalone(&owner).await?
         };
         return Ok(json_response(StatusCode::OK, Value::Array(chats)));
+    }
+    if route == "/api/chats/archives/cleanup" {
+        // The Source route ignores a successfully parsed body, including null
+        // and unknown fields. Ordinary parsing/authentication still apply.
+        let binary_limit = (service.config.upload_limit_bytes * 3).div_ceil(2) + 1024 * 1024;
+        if let Err(response) =
+            body::parse_ignored(request, service.config.api_body_limit_bytes, binary_limit).await
+        {
+            return Ok(response);
+        }
+        return service
+            .scratch_roots
+            .owned(cleanup_archives(service.clone(), owner))
+            .await;
     }
     let body = match body::parse_js(request, service.config.api_body_limit_bytes).await {
         Ok(body) => body,
@@ -166,6 +196,7 @@ pub(super) fn routes() -> Router<Arc<AuthService>> {
     Router::new()
         .route("/api/chats", get(handle).post(handle))
         .route("/api/chats/archived", get(handle))
+        .route("/api/chats/archives/cleanup", post(handle))
         .route(
             "/api/projects/{projectId}/chats",
             get(project_list).post(project_create),

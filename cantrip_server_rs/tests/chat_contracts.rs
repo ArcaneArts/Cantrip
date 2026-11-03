@@ -43,6 +43,7 @@ fn contextual_chat_contracts_match_actual_protocol() -> Result<()> {
         "conversationUsageResultSchema",
         "agentThreadSyncSchema",
         "agentThreadSyncItemSchema",
+        "archivedChatCleanupResultSchema",
     ] {
         let output = Command::new("node")
             .args([

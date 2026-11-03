@@ -137,6 +137,10 @@ const app = await buildApp({
   logger: process.env.CANTRIP_FIXTURE_LOGGING === "true",
   ...(ingressBridge ? { workerBridge: ingressBridge } : {}),
 });
+if (process.argv.includes("--live-sql-fixture")) {
+  const { installLiveSqlFixture } = await import("./live-sql-node-fixture.mjs");
+  installLiveSqlFixture(app, database);
+}
 if (process.argv.includes("--observe-http-clocks")) {
   const clocks = new WeakMap();
   app.addHook("onRequest", (request, _reply, done) => {

@@ -532,6 +532,7 @@ export const contractRoots = [
   "conversationUsageResultSchema",
   "agentThreadSyncSchema",
   "agentThreadSyncItemSchema",
+  "archivedChatCleanupResultSchema",
 ];
 
 // Resolve the actual source schemas, including their separate protocol modules.
