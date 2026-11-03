@@ -8,6 +8,7 @@ export const root = fileURLToPath(new URL("../", import.meta.url));
 export const container = process.env.CANTRIP_OS_NAME ?? "cantrip-os";
 export const image = `${container}:dev`;
 export const volume = `${container}-home`;
+export const workspaceVolume = `${container}-workspaces`;
 export const port = process.env.CANTRIP_OS_PORT ?? "6080";
 export const vncPort = process.env.CANTRIP_OS_VNC_PORT ?? "5900";
 
@@ -69,6 +70,8 @@ export async function build(options = {}) {
     [
       "build",
       "--progress=plain",
+      "--build-arg",
+      `CANTRIP_OS_WORKSPACES=${process.env.CANTRIP_OS_WORKSPACES ?? "1"}`,
       "-t",
       image,
       "-f",
@@ -99,6 +102,8 @@ export async function up(options = {}) {
         `127.0.0.1:${vncPort}:5900`,
         "-v",
         `${volume}:/home/cantrip`,
+        "-v",
+        `${workspaceVolume}:/var/lib/cantrip-os-workspaces`,
         image,
       ],
       options,
@@ -158,6 +163,7 @@ async function main() {
       await withInstanceLock(container, async () => {
         if (await inspect()) await run("docker", ["rm", "-f", container]);
         await run("docker", ["volume", "rm", volume]);
+        await run("docker", ["volume", "rm", workspaceVolume]);
       });
       break;
     default:

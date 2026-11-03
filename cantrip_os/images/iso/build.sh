@@ -18,6 +18,12 @@ cat /source/manifests/desktop.packages /source/manifests/iso.packages \
 mkdir -p config/includes.chroot config/hooks/live
 cp -a /source/overlays/. config/includes.chroot/
 cp -a /source/images/iso/overlays/. config/includes.chroot/
+case "${CANTRIP_OS_WORKSPACES:-1}" in
+    1) mkdir -p config/packages.chroot
+       cp /source/debs/*.deb config/packages.chroot/ ;;
+    0) ;;
+    *) echo 'CANTRIP_OS_WORKSPACES must be 0 or 1' >&2; exit 1 ;;
+esac
 cp /source/scripts/configure-system.sh config/hooks/live/0100-cantrip.hook.chroot
 chmod 0755 config/hooks/live/0100-cantrip.hook.chroot
 lb build

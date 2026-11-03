@@ -1,0 +1,14 @@
+[Unit]
+Description=CantripOS optional workspace manager
+After=local-fs.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/cantrip-workspaces daemon
+KillMode=control-group
+TimeoutStopSec=20
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

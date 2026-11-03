@@ -103,3 +103,32 @@ mismatch; the same failure was reproduced on unchanged Primary `main`.
 
 The shared overlays also feed future ISO builds. The ISO identified above was
 **not rebuilt** for this follow-up and still contains the original appearance.
+
+## Phase 2, cycle 1: optional package foundation
+
+Verified on 2026-11-03 using disposable native ARM64 Docker instances; the
+owner's existing desktop was kept running separately.
+
+- Built `cantrip-os-workspaces_0.1.0_all.deb` and installed it through apt in
+  the Docker edition. Two independent package builds produced byte-identical
+  artifacts (SHA-256 `2be6cb707d1647693eaa43ea6ba0f5f130353b258a40bbe82a0b5ddbd2db1fe1`).
+- The real service started, answered its root-only Unix socket, stopped,
+  restarted, disabled, and enabled through the packaged CLI.
+- `tests/package-lifecycle.sh` passed: running and disabled reinstall/upgrade
+  paths, remove, purge, reinstall, retained data/preference, and unsupported
+  state versions. A corrupt/unknown state document was preserved, and the
+  running service could still be stopped.
+- X11 display `:0` and the personal desktop's HTTP viewer remained available
+  throughout removal and disable. A separately built package-omitted image
+  also started the personal display/viewer successfully.
+- Replaced the package-enabled container with a fresh image: its disabled
+  preference and persistent data marker remained in the named workspace volume,
+  and the independent personal desktop started.
+- Node lifecycle tests (three), Python/Node/shell syntax, scoped formatting,
+  and diff whitespace checks passed. `pnpm check` encountered the previously
+  recorded server-boundary digest failure; no server source changed.
+
+ISO inclusion/omission is wired into the build recipes, but a new ISO and
+installed-system service behavior await the final phase-2 acceptance cycle.
+This first package version provides lifecycle/state only; independent workspace
+accounts/desktops and the workspace viewer are the following cycles.

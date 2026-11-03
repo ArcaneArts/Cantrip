@@ -12,6 +12,7 @@ const inputs = [
   "images",
   "scripts",
   "viewer",
+  "packages",
   ".dockerignore",
 ];
 const excluded = new Set([

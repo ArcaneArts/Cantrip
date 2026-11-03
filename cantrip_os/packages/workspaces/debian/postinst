@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+if [ "$1" = configure ]; then
+    deb-systemd-helper enable cantrip-os-workspaces.service >/dev/null
+    if [ -d /run/systemd/system ]; then
+        systemctl daemon-reload
+        deb-systemd-invoke start cantrip-os-workspaces.service
+    elif [ -f /run/cantrip-os-workspaces/upgrade-restart ]; then
+        rm /run/cantrip-os-workspaces/upgrade-restart
+        cantrip-workspaces service start
+    fi
+fi
