@@ -1,0 +1,58 @@
+#!/bin/bash
+set -euo pipefail
+if [[ $# != 2 || $1 != --erase ]]; then
+    echo 'Usage: sudo cantrip-install --erase /dev/TARGET_DISK' >&2
+    echo 'ERASES THE ENTIRE TARGET DISK. Run lsblk to choose a disposable disk.' >&2
+    exit 2
+fi
+if [[ ${CANTRIP_OS_INSTALL_NAMESPACE:-0} != 1 ]]; then
+    # Keep temporary target mounts out of system services' private namespaces.
+    # Otherwise a service can retain a copy after our cleanup and hold the disk.
+    exec unshare --mount --propagation private env CANTRIP_OS_INSTALL_NAMESPACE=1 "$0" "$@"
+fi
+disk=$(readlink -f -- "$2")
+[[ $EUID == 0 && -b $disk && $(lsblk -dn -o TYPE "$disk") == disk ]] || {
+    echo 'Run as root and select an actual whole block disk.' >&2; exit 2;
+}
+# Safety checks use the actual target's mounts and actual live-media mount.
+findmnt /run/live/medium >/dev/null
+if lsblk -nrpo MOUNTPOINT "$disk" | grep -q '[^[:space:]]'; then
+    echo 'Refusing to erase a disk containing mounted filesystems.' >&2; exit 2
+fi
+target=/mnt/cantrip-install
+mkdir -p "$target"
+cleanup() { umount -R "$target" 2>/dev/null || true; }
+trap cleanup EXIT
+wipefs --all "$disk"
+parted --script "$disk" mklabel gpt \
+    mkpart BIOS 1MiB 3MiB set 1 bios_grub on \
+    mkpart EFI fat32 3MiB 515MiB set 2 esp on \
+    mkpart Linux ext4 515MiB 100%
+partprobe "$disk"
+suffix=''; [[ $disk =~ [0-9]$ ]] && suffix=p
+efi="${disk}${suffix}2"; root="${disk}${suffix}3"
+udevadm settle
+mkfs.vfat -F 32 "$efi"
+mkfs.ext4 -F "$root"
+mount "$root" "$target"
+mkdir -p "$target/boot/efi"
+mount "$efi" "$target/boot/efi"
+echo "Copying the current live system to $disk..."
+rsync -aHAX --numeric-ids --exclude='/dev/*' --exclude='/proc/*' \
+    --exclude='/sys/*' --exclude='/run/*' --exclude='/tmp/*' \
+    --exclude='/mnt/*' --exclude='/media/*' --exclude='/lost+found' / "$target/"
+printf 'UUID=%s / ext4 defaults 0 1\nUUID=%s /boot/efi vfat umask=0077 0 2\n' \
+    "$(blkid -s UUID -o value "$root")" "$(blkid -s UUID -o value "$efi")" \
+    > "$target/etc/fstab"
+for path in dev proc sys run; do
+    mount --rbind "/$path" "$target/$path"
+    mount --make-rslave "$target/$path"
+done
+printf 'GRUB_CMDLINE_LINUX_DEFAULT="quiet"\nGRUB_DISABLE_OS_PROBER=true\nGRUB_TERMINAL="console serial"\nGRUB_SERIAL_COMMAND="serial --speed=115200"\nGRUB_TIMEOUT=2\nGRUB_CMDLINE_LINUX="console=tty0 console=ttyS0,115200n8"\n' \
+    > "$target/etc/default/grub"
+chroot "$target" update-initramfs -u -k all
+chroot "$target" grub-install --target=i386-pc "$disk"
+chroot "$target" grub-install --target=x86_64-efi --efi-directory=/boot/efi --removable --no-nvram
+chroot "$target" update-grub
+sync
+echo 'CantripOS installed. Shut down, remove the ISO, and boot the target disk.'

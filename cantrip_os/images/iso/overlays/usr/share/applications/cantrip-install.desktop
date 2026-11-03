@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Install CantripOS
+Comment=Open installation instructions for a disposable target disk
+Exec=xterm -hold -e sh -c "echo 'Install CantripOS to an explicitly selected disk:'; echo; echo 'sudo cantrip-install --erase /dev/vda'; echo; echo 'WARNING: This erases every partition and file on that disk.'; echo 'List disks first with: lsblk'; echo; lsblk"
+Icon=drive-harddisk
+Categories=System;
