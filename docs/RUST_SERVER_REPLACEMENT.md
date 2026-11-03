@@ -12,6 +12,47 @@ feature set.
 
 Status: **implementation in progress; not a deployable replacement**.
 
+The global Skill settings milestone adds all seven inventory, encrypted file
+read/write/delete/configuration and audience endpoints. Worker-owned contents
+remain opaque to the server. Audience metadata validates an independently
+owned active worker/provider pair and retains Source's sorting, defaults,
+upsert identity and invalidation scopes. Disabled configured model routes are
+retained for settings; file operations also work without a model route. Relay
+limits preserve the existing 502 list / 409 mutation behavior.
+
+All nine storage/authentication profiles pass 1,014 paired HTTP observations:
+107 anonymous, 112 password and 119 account observations per store. Each
+peer/profile verifies 42 actual WorkerConnection commands, 49 downstream calls,
+65 crypto proofs, nineteen ordered customization events (fifteen current-user
+and four project), five durable snapshots and six recovery cases. Coverage
+includes exact 5,000/5,001 audience boundaries, owner/CSRF checks, unavailable
+and unlinked workers, protected request authentication, mutation replay,
+retained context during worker IO, SQL rollback/retry, relay limits,
+client-disconnect completion and offline restart retention. All 2,179 named
+Source values/issues/exact errors and strict all-target Clippy pass. The
+553-root/9,696-node manifest preserves the previous 540 mappings and complete
+9,641-node prefix.
+
+The existing browser SDK, unchanged full worker/SkillManager and real Codex
+pass on all three stores: real project/account discovery, encrypted reads and
+atomic edits, project native disable/enable, audience selection, scope
+isolation, invalid-write byte retention, server/worker restart and deletion to
+verified recovery folders. Settings operations start no inference. Account
+configuration preserves Source's authenticated native-inventory rejection;
+file editing and audience selection remain available there. These are local
+macOS results. Supported-platform, packaged and complete replacement
+acceptance remain unfinished; Node remains the default server and worker.
+
+The repository-wide check completed in 592.672 seconds with all 1,702 server
+and 4,391 app tests passing. It remains red on an unchanged worker history
+batch timeout and Codex RPC `EPIPE`; both complete files subsequently pass all
+31 tests with their original deadlines. All 3,436 existing app, worker,
+Node-server and protocol source/test files are byte-identical to the baseline.
+Changed-file formatting and Rust formatting pass; global formatting reports
+eleven independently verified, unchanged baseline files. These results do not
+establish complete replacement readiness. The separately observed Linux Rust
+Task quota-recovery failure still requires a fix.
+
 The Chat customization milestone adds all twelve protected skills, inventory,
 MCP and external-import routes, plus the five remaining model, reasoning and
 permission routes. Content remains encrypted between the browser and worker.

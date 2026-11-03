@@ -15,6 +15,11 @@ on:
       - cantrip_server/src/app/routes/agent-interactions.ts
       - cantrip_server/src/app/routes/chat-customizations.ts
       - cantrip_server/src/app/routes/chat-runtime-configuration.ts
+      - cantrip_server/src/app/runtime/settings-routes.ts
+      - cantrip_server/src/app/runtime/model-routing-runtime.ts
+      - cantrip_server/src/db/repository/mcp.ts
+      - cantrip_worker/src/skill-manager.ts
+      - cantrip_worker/src/skill-manager.test.ts
       - cantrip_app/src/lib/api/customization.ts
       - cantrip_app/src/lib/customization-content-encryption.ts
       - cantrip_worker/src/commands/customization.ts
@@ -1696,15 +1701,15 @@ jobs:
         run: node --import tsx scripts/server-rust/actual-folder-client.mjs --tasks --database bundled-postgres --report .qa/rust-server/actual-task-worker-bundled-postgres.json
       - name: Actual browser, full worker and native Task Goals with postgres
         run: node --import tsx scripts/server-rust/actual-folder-client.mjs --tasks --database postgres --report .qa/rust-server/actual-task-worker-postgres.json
-      - name: Actual Agent, Goal, automations, approvals, customizations and permissions with pglite
+      - name: Actual Agent, Goal, automations, approvals, customizations, permissions and global skills with pglite
         if: ${{ !cancelled() }}
-        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --project-chats --project-automations --agent-interactions --chat-customizations --database pglite --report .qa/rust-server/actual-project-chat-worker-pglite.json
-      - name: Actual Agent, Goal, automations, approvals, customizations and permissions with bundled-postgres
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --project-chats --project-automations --agent-interactions --chat-customizations --skill-settings --database pglite --report .qa/rust-server/actual-project-chat-worker-pglite.json
+      - name: Actual Agent, Goal, automations, approvals, customizations, permissions and global skills with bundled-postgres
         if: ${{ !cancelled() }}
-        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --project-chats --project-automations --agent-interactions --chat-customizations --database bundled-postgres --report .qa/rust-server/actual-project-chat-worker-bundled-postgres.json
-      - name: Actual Agent, Goal, automations, approvals, customizations and permissions with postgres
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --project-chats --project-automations --agent-interactions --chat-customizations --skill-settings --database bundled-postgres --report .qa/rust-server/actual-project-chat-worker-bundled-postgres.json
+      - name: Actual Agent, Goal, automations, approvals, customizations, permissions and global skills with postgres
         if: ${{ !cancelled() }}
-        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --project-chats --project-automations --agent-interactions --chat-customizations --database postgres --report .qa/rust-server/actual-project-chat-worker-postgres.json
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --project-chats --project-automations --agent-interactions --chat-customizations --skill-settings --database postgres --report .qa/rust-server/actual-project-chat-worker-postgres.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -1791,6 +1796,18 @@ jobs:
       - name: Customization encryption, configuration and permission HTTP with postgres
         if: ${{ !cancelled() }}
         run: node --import tsx scripts/server-rust/chat-customization-http-compatibility.mjs --database postgres --report .qa/rust-server/chat-customizations-http-postgres.json
+      - name: Global skill settings and audience contracts and exact errors
+        if: ${{ !cancelled() }}
+        run: node scripts/server-rust/cargo.mjs test --test skill_settings_contracts -- --nocapture
+      - name: Global skills HTTP, encryption, persistence, limits and recovery with pglite
+        if: ${{ !cancelled() }}
+        run: node --import tsx scripts/server-rust/skill-settings-http-compatibility.mjs --database pglite --report .qa/rust-server/skill-settings-http-pglite.json
+      - name: Global skills HTTP, encryption, persistence, limits and recovery with bundled-postgres
+        if: ${{ !cancelled() }}
+        run: node --import tsx scripts/server-rust/skill-settings-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/skill-settings-http-bundled-postgres.json
+      - name: Global skills HTTP, encryption, persistence, limits and recovery with postgres
+        if: ${{ !cancelled() }}
+        run: node --import tsx scripts/server-rust/skill-settings-http-compatibility.mjs --database postgres --report .qa/rust-server/skill-settings-http-postgres.json
       - name: Automation SQL and legacy timezone assets match actual Source
         run: |
           node --import tsx scripts/server-rust/project-automation-query-manifest.mjs

@@ -24,6 +24,7 @@ mod quota_query_error;
 mod raw_identifiers;
 pub mod reasoning;
 pub mod repository;
+mod skill_audiences;
 pub mod telemetry;
 pub mod zai;
 
