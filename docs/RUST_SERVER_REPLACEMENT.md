@@ -12,6 +12,48 @@ feature set.
 
 Status: **implementation in progress; not a deployable replacement**.
 
+Fenced Task failure recovery now commits dispatch settlement and precise retry
+accounting in one owner-serialized transaction. The Linux failure trace showed
+saved-outcome recovery settling a failed dispatch before its live RPC callback;
+the later callback rejected the stale fence and never recorded the worker's
+public `usage-limit` category. Legacy recovery then adopted the generic stored
+failure as a retryable runtime error. The unchanged worker already supplies the
+bounded public category without exposing encrypted content.
+
+Both saved-outcome recovery and live failure cleanup now use the same atomic
+operation in Source and Rust. It checks the owned Task and dispatch, retains
+existing lease fencing, and uses the original dispatch failure key and retry
+policy. Successful completion keeps its existing path. Encrypted content,
+Task revisions, and the external protocol are unchanged. Mixed deployments
+require this fix on Node peers as well as the preceding stale-adoption fix.
+
+The original deterministic outcome-service regression fails before the fix and
+passes afterward. Local checks pass 160 outcome observations and 272 retry
+repository observations per store, including all nine public categories and
+both callback orderings. A real SQL trigger first verifies that the
+dispatch has become terminal, then raises `P7101` during the ledger update;
+both writes roll back on all three stores. Sixteen additional PostgreSQL races
+observe competing owner-lock waiters across same and mixed Node/Rust replicas
+in both acquisition orders. The prior 32 retry/adoption races also pass, as do
+55 focused Source tests, 47 Rust library tests and 13 Task/category/lifetime
+tests. Strict all-target Clippy passes. Both real callbacks also recover after
+an actual retry-write failure; a nontransactional SQL sequence witnesses that
+the trigger saw the terminal dispatch before rollback, then saved-outcome replay
+commits the precise manual failure after the fault is removed. Existing dispatch,
+claimed execution, automatic actor and background comparisons pass on all three
+stores. All 235 original assertions and polling calls in the four touched or
+reused execution harnesses retain their arguments and deadlines.
+
+The existing browser SDK, full unchanged worker and actual bundled Codex pass
+all fourteen Task-flow steps on every store for both servers, with exactly nine
+public model POSTs per peer: direct and Plan + Goal completion, opaque quota
+failure, explicit retry, queued admission through server/worker restart and
+retained encrypted results. Only public model HTTP responses are controlled.
+The app, worker, protocol and crypto sources/tests remain unchanged; the three
+Source implementation fixes are the only changed files among 3,015 checked
+existing source/test files. Fresh Linux, broader repository, packaging and full
+replacement acceptance remain required; Node remains the default server.
+
 The global/project MCP settings milestone implements all ten CRUD, list and
 worker-discovery endpoints. Configuration stays encrypted. Owned workers may be
 bound while offline; updates preserve an omitted audience and reset an omitted

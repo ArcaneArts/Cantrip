@@ -20,6 +20,17 @@ pub async fn run(database: Arc<Database>, input: &Value) -> Result<Value> {
                 .await?
         }
         "reset" => repository.reset(owner, chat).await?,
+        "settle" => {
+            repository
+                .settle_dispatch_failure(
+                    owner,
+                    chat,
+                    &input["fence"],
+                    input["kind"].as_str().context("Failure kind")?,
+                    now,
+                )
+                .await?
+        }
         "adopt" => {
             repository
                 .adopt_failure(

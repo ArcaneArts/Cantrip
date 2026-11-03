@@ -14,6 +14,15 @@ export async function taskRetryFixture(repository, input) {
         input.now,
       );
       break;
+    case "settle":
+      value = await task.settleDispatchFailure(
+        input.owner,
+        input.chat,
+        input.fence,
+        input.kind,
+        input.now,
+      );
+      break;
     case "reset":
       value = await task.reset(input.owner, input.chat);
       break;

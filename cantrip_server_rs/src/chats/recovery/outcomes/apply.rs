@@ -80,10 +80,25 @@ impl Service {
             }
         }
         if let Some(fence) = fence {
-            if let Err(error) = self
-                .dispatch
-                .settle(fence, if ok { "succeeded" } else { "failed" }, &Value::Null)
-                .await
+            let settled = if ok {
+                self.dispatch.settle(fence, "succeeded", &Value::Null).await
+            } else {
+                let cause = if reported_ok {
+                    json!("Recovered Task result was invalid.")
+                } else {
+                    n["outcome"]["error"].clone()
+                };
+                tasks::retries::Repository::new(self.dependencies.database.clone())
+                    .settle_dispatch_failure(
+                        owner,
+                        chat,
+                        fence,
+                        tasks::failure_kind::classify(&cause),
+                        None,
+                    )
+                    .await
+            };
+            if let Err(error) = settled
                 && downcast_ref::<task_dispatch::Conflict>(&error).is_none()
             {
                 return Err(error);

@@ -11816,6 +11816,33 @@
         "Current-head supported-platform and packaged acceptance remain required. Remaining public domains, complete transports/coordination, upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
       ],
       "scope": "Opaque global/project CRUD, independent owned/offline worker binding, exact SQL errors and post-write output validation, persistence and backend semantics, full discovery with production20second deadline, command limits/disconnect ownership, enabled/audience/project/worker runtime precedence and actual endpoint crypto."
+    },
+    "taskFailureSettlement": {
+      "status": "implemented-pending-platform-acceptance",
+      "implementation": [
+        "cantrip_server_rs/src/tasks/retries.rs",
+        "cantrip_server_rs/src/task_dispatch.rs",
+        "cantrip_server_rs/src/chats/recovery/outcomes/apply.rs",
+        "cantrip_server_rs/src/task_scheduling/claimed_execution/mod.rs"
+      ],
+      "referenceChanges": [
+        "cantrip_server/src/db/task-retries.ts",
+        "cantrip_server/src/app/runtime/chat-turn-outcome-runtime.ts",
+        "cantrip_server/src/app/runtime/task-claimed-execution-runtime.ts"
+      ],
+      "evidence": [
+        "scripts/server-rust/task-failure-settlement-cases.mjs",
+        "scripts/server-rust/task-failure-settlement-races.mjs",
+        "scripts/server-rust/turn-outcome-cases.mjs",
+        "scripts/server-rust/actual-task-client.mjs",
+        "scripts/server-rust/actual-task-recovery.mjs"
+      ],
+      "validatedSubset": "Local macOS: deterministic Source/Rust outcome-service regression fails before the fix and passes afterward.160 outcome comparisons on each store cover all9 public worker failure categories and both callback orderings.272 paired retry observations and10 SQL snapshots per store preserve ownership, stale/expired/replaced fences, precise retry categories, idempotency, completed Tasks, latching, fractional deadlines, encrypted bytes and revisions. A real SQL trigger proves settlement was visible before raising P7101 during the retry write; both writes roll back on all3stores.16 additional real owner-lock races cover settlement/settlement and settlement/automatic-adoption with same/mixed Node/Rust actors in both lock orders; prior32 retry/adoption races also pass.55 Source focused tests pass. Both actual live/saved callback paths recover from an actual retry SQL fault, with a nontransactional sequence witnessing terminal dispatch visibility before rollback and subsequent saved-outcome replay committing the precise manual category. Existing dispatch,claimed,automatic and background suites pass on all3stores.47 Rust library/13 focused tests and strict all-target Clippy pass. All3stores pass the original browser SDK/full unchanged worker/bundled Codex Task flow:14steps,9completed modelPOSTs and5worker stops per peer.235 original assertion/poll calls retain all arguments/deadlines; only3 intentional Source implementation files change among3015 checked existing Source/app/worker/protocol/crypto sources/tests.",
+      "remaining": [
+        "Fresh current-head repeated Linux recovery diagnostic and supported-platform acceptance.",
+        "Current-head supported-platform, packaged, Redis/multi-instance, upgrade/post-write rollback, artifact, Winterhold rehearsal, performance and default-cutover acceptance remain unfinished.",
+        "Mixed rollouts require both Source retry fixes. No schema/wire change; worker remains unchanged."
+      ]
     }
   },
   "remainingAcceptance": [
@@ -11825,6 +11852,36 @@
     "Produce and exercise native/container/desktop artifacts and existing-data conversion with post-write rollback."
   ],
   "milestonePlatformAcceptance": [
+    {
+      "pullRequest": "https://github.com/ArcaneArts/Cantrip/pull/2461",
+      "observedHead": "f80b798b3b60edd631cb4a8f6dd8274e636cef7b",
+      "observedRun": "https://github.com/ArcaneArts/Cantrip/actions/runs/41651304465",
+      "platforms": ["ubuntu-24.04", "windows-2025"],
+      "conclusion": "Not platform acceptance. Linux native-commands,actual-task-worker and chat-messages jobs and Windows contracts job failed. Other jobs were still running or queued at observation.",
+      "scope": "Verified both downloaded artifacts against API head, byte length and SHA256, and every ZIP member CRC. Native publication-schedule fixture times out during startup. The bundled-PostgreSQL Rust Task quota flow ends implementing instead of failed while Node completes14steps. All3 composed settings flows fail on Source before Rust because a Linux skill file read succeeds where the macOS fixture expected inventory rejection. Existing assertions/deadlines are unchanged; these failures require follow-up. Additional completed-job logs retain Windows file-document/PGlite ECONNRESET and Linux reference prepared-account handoff test15second timeout. Neither is treated as a passing platform result or resolved by this Task settlement fix.",
+      "artifacts": [
+        {
+          "id": 13239751805,
+          "zipSha256": "970de8cecf8ae6006d06b7aecc130933fe5fa9a5ebac0dde7175d71da1d34138"
+        },
+        {
+          "id": 13238991020,
+          "zipSha256": "15b8bb568fc97090438a85ea0ac25f3c84bb3527b0527fa87c104550595bd458"
+        }
+      ],
+      "additionalFailedJobs": [
+        {
+          "job": 125969883773,
+          "name": "contracts(windows-2025)",
+          "failure": "File-document HTTP,opaque operations and Live with native PGlite:ECONNRESET"
+        },
+        {
+          "job": 125969884551,
+          "name": "chat-messages(ubuntu-24.04)",
+          "failure": "Reference prepared account selection and durable handoff:Source local-foundation15second timeout"
+        }
+      ]
+    },
     {
       "pullRequest": "https://github.com/ArcaneArts/Cantrip/pull/2460",
       "observedRun": "https://github.com/ArcaneArts/Cantrip/actions/runs/41631825880",

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { TaskDispatchFence } from "@cantrip/protocol";
 import type { TaskFailureKind } from "@cantrip/protocol/tasks";
 import {
   and,
@@ -14,6 +15,10 @@ import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 import * as schema from "./schema.js";
 import {
+  TaskDispatchConflictError,
+  TaskDispatchRepository,
+} from "./task-dispatch.js";
+import {
   classifyTaskFailure,
   scheduleTaskRetry,
   TASK_RETRY_CLAIM_MS,
@@ -23,6 +28,7 @@ import {
 } from "../tasks/automatic-retry.js";
 
 type Database = PgDatabase<PgQueryResultHKT, typeof schema>;
+type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
 /** A separate operational ledger: retry accounting never changes encrypted Task revisions. */
 export class TaskRetryRepository {
@@ -72,7 +78,10 @@ export class TaskRetryRepository {
         project: typeof schema.projects.$inferSelect;
       },
       pendingInput: boolean,
-    ) => { record: TaskRetryRecord | null; result: T },
+      transaction: Transaction,
+    ) =>
+      | { record: TaskRetryRecord | null; result: T }
+      | Promise<{ record: TaskRetryRecord | null; result: T }>,
   ) {
     return this.database.transaction(async (transaction) => {
       // Same lock order as enqueue/recovery. Claims across server replicas serialize.
@@ -114,7 +123,7 @@ export class TaskRetryRepository {
           ),
         )
         .limit(1);
-      const next = action(row, input.length > 0);
+      const next = await action(row, input.length > 0, transaction);
       if (
         JSON.stringify(next.record) !== JSON.stringify(row.task.automaticRetry)
       )
@@ -138,6 +147,52 @@ export class TaskRetryRepository {
       const record = scheduleTaskRetry(task.automaticRetry, key, kind, now);
       return { record, result: record !== task.automaticRetry };
     });
+  }
+
+  /** A recovered outcome may settle before the live failure callback. */
+  async settleDispatchFailure(
+    ownerId: string,
+    chatId: string,
+    fence: TaskDispatchFence,
+    kind: TaskFailureKind,
+    now = Date.now(),
+  ) {
+    const result = await this.mutate(
+      ownerId,
+      chatId,
+      async ({ task }, _pending, transaction) => {
+        const [cycle] = await transaction
+          .select({ id: schema.taskDispatchCycles.id })
+          .from(schema.taskDispatchCycles)
+          .where(
+            and(
+              eq(schema.taskDispatchCycles.id, fence.cycleId),
+              eq(schema.taskDispatchCycles.ownerId, ownerId),
+              eq(schema.taskDispatchCycles.chatId, chatId),
+            ),
+          )
+          .for("update")
+          .limit(1);
+        if (!cycle)
+          throw new TaskDispatchConflictError(
+            "The Task dispatch lease is stale or no longer active.",
+            "stale-lease",
+          );
+        await new TaskDispatchRepository(transaction).settle(fence, "failed", {
+          now: new Date(now),
+        });
+        if (task.state === "complete") return { record: null, result: false };
+        const key = `dispatch:${fence.cycleId}:${fence.fencingToken}`;
+        const record = scheduleTaskRetry(task.automaticRetry, key, kind, now);
+        return { record, result: record !== task.automaticRetry };
+      },
+    );
+    if (result === null)
+      throw new TaskDispatchConflictError(
+        "The Task dispatch lease is stale or no longer active.",
+        "stale-lease",
+      );
+    return result;
   }
 
   async adoptFailure(

@@ -100,17 +100,16 @@ export function createTaskClaimedExecutionRuntime(
           "Could not persist the failed Task operation",
         );
       }
-      await repository.taskDispatch.settle(
-        claim.lease,
-        completed ? "succeeded" : "failed",
-      );
-      if (!completed)
-        await repository.taskRetries.noteFailure(
+      if (completed) {
+        await repository.taskDispatch.settle(claim.lease, "succeeded");
+      } else {
+        await repository.taskRetries.settleDispatchFailure(
           ownerId,
           claim.cycle.chatId,
-          `dispatch:${claim.cycle.id}:${claim.lease.fencingToken}`,
+          claim.lease,
           classifyTaskFailure(failure),
         );
+      }
       publishChatInvalidation(claim.cycle.chatId, "task", null, {
         experience: "task",
         projectId: claim.projectId,
