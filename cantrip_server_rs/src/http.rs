@@ -13,6 +13,7 @@ use serde_json::json;
 use crate::auth::service::AuthService;
 mod account;
 mod agent_alerts;
+mod agent_interactions;
 mod audit;
 mod body;
 mod browser_discovery;
@@ -164,6 +165,7 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(project_automations::routes())
         .merge(project_goal_observations::routes())
         .merge(agent_alerts::routes())
+        .merge(agent_interactions::routes())
         .merge(worker_links::routes())
         .merge(worker_link_sessions::routes())
         .merge(direct_attachments::routes())

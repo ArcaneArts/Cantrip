@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { eventually } from "./full-worker.mjs";
 import { taskModelProvider } from "./task-model-provider.mjs";
 import { actualProjectAutomationsClient } from "./actual-project-automations-client.mjs";
+import { actualAgentInteractionsClient } from "./actual-agent-interactions-client.mjs";
 
 export async function actualProjectChatClient({
   page,
@@ -406,6 +407,17 @@ export async function actualProjectChatClient({
         workerId,
         startWorker,
         stopWorker,
+        model,
+        result,
+        requests,
+      });
+    if (process.argv.includes("--agent-interactions"))
+      await actualAgentInteractionsClient({
+        page,
+        fixture,
+        projectId,
+        chatId: chat.id,
+        configuration,
         model,
         result,
         requests,

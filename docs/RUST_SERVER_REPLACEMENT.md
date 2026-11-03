@@ -5762,3 +5762,73 @@ batching, Flutter device inspection and the exact PNG-size boundary. Their three
 complete unchanged files pass all 65 tests separately with original deadlines.
 The cause remains unresolved and the broad check is not green. A separate global
 formatting run reports eleven files, all byte-identical to the milestone base.
+
+## Public agent interactions and approvals
+
+Rust now serves all three public interaction routes: list requests, inspect a
+request and submit its response. They use the existing native interaction
+repository and post-resolution Live mutations. Visible and protected responses
+retain their separate validation rules; pending replies use either the legacy
+runtime command or the active native control command. Computer-use preview and
+agent approvals project current placement, permission policy and authority from
+durable state. Native turn preparation shares that authority projection.
+
+The implementation preserves Source replay and failure behavior. A resolved
+ordinary request replays before model selection or worker availability checks.
+An encrypted replay checks its idempotency key without comparing ciphertext.
+Computer-use replay still validates current authority but sends no further
+authorization command. Normal worker quota errors retain status 429, while the
+computer-use route returns its existing redacted 409. A failed persistence write
+after acknowledgment leaves the request pending and retryable. Accepted native
+replies retain a resolution that won concurrently.
+
+All 7,695 actual Source contract value, issue and exact-error comparisons pass.
+The real-socket matrix passes 891 paired HTTP observations across all three
+stores and anonymous, password and account authentication. Each peer/profile
+also verifies 23 WorkerConnection commands, 24 scoped interaction Live
+invalidations, eighteen durable snapshots and four concurrency/recovery cases.
+Cases include project and standalone visible/protected replies, legacy and native
+control, computer-use preview/agent authority, expiry, ownership, CSRF, malformed
+JSON and Buffer bodies, UTF16 errors, worker quota and offline errors, native
+concurrent resolution, real SQL failure after acknowledgment, disconnected-client
+completion, startup interruption and retained offline replay. SQL snapshots retain
+their raw values; comparisons validate timestamp instants and recognize only
+independently decrypted envelopes, including PostgreSQL JSONB property ordering.
+
+The existing browser SDK, normal executable, full unchanged worker and actual
+bundled Codex also pass on all three stores. A model response requests harmless
+command execution with native approval. The browser decrypts the actual request,
+encrypts its reply and observes the real command output in the next native model
+request. The unchanged worker can publish its protected resolution before the HTTP
+handler resolves the same request: the winning write owns the replay key. The
+fixture proves that its key replays without another execution and the competing
+key receives the existing 409. These runs retain the earlier Chat, Goal, history,
+usage, real automation conditions and restart assertions. Only public model HTTP
+output is controlled.
+
+The local all-target check, strict Clippy, all Rust library tests and both native
+command and interaction contract suites pass. Focused unchanged Source protocol,
+server, worker and app interaction tests also pass. Current-head supported-platform
+CI adds the interaction contract/matrix checks and actual native approval flow;
+configured checks do not establish passing platform evidence.
+
+The previous #2456 platform run now passes the actual Windows and Linux migration
+jobs. Its retained, independently checksum-verified artifacts still show a Linux
+publication-fixture startup timeout, a Windows Source file-document HTTP
+`ECONNABORTED`, and a Windows archive-cleanup assertion plus the unchanged
+15-second Source foundation timeout. Those failures remain open. The actual
+`GET /api/chats/:chatId/permission-profiles` request also returns native 404;
+the complete customization domain remains a separate unfinished port. The actual
+approval operation succeeds without using that endpoint as a preflight gate.
+These results do not establish whole-server, shared coordination, packaging,
+Winterhold or performance acceptance. Node remains the default server and the
+worker remains Node.
+
+The milestone broad `pnpm check` exits 1 after 586 seconds: all 1,702 Source
+server and 4,391 app tests pass; the worker passes 2,623 tests and exceeds the
+original 15-second deadline in one encrypted-history batch test. Its complete
+28-test file passes separately in 59 seconds with the original deadlines.
+Forty-three reviewed history source/test files are byte-identical to the base.
+This does not establish the cause or a green broad check. Global formatting
+also exits 1 on eleven files, all byte-identical to the base; changed-file
+formatting, Rustfmt and the diff check pass. Neither failure is suppressed.

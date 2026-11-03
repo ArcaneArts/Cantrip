@@ -272,6 +272,8 @@ export const projectWire = {
   createdAt: timestamp,
   updatedAt: timestamp,
 };
+const nativeEventSamples = nativeEventWireFixtures();
+
 export const securityFixtures = {
   nativeBehaviorAttributionSchema: [
     { version: 1, turnIds: [], captures: [], conflictingTurnKeys: [] },
@@ -318,7 +320,13 @@ export const securityFixtures = {
       conflictingTurnKeys: [],
     },
   ],
-  ...nativeEventWireFixtures(),
+  ...nativeEventSamples,
+  cuaAgentAuthoritySchema: nativeEventSamples.cuaPreviewAuthoritySchema.map(
+    (preview) => ({
+      ...preview,
+      executionLaneId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    }),
+  ),
   ...nativeModelInventoryWireFixtures(),
   ...agentInteractionWireFixtures(),
   ...nativeSettingsHttpWireFixtures(),

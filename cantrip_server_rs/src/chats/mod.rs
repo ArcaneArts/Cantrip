@@ -4,6 +4,7 @@ mod archive;
 pub mod automatic_title;
 pub mod automation_pause;
 pub mod catalog;
+pub(crate) mod computer_use_authority;
 mod context;
 pub mod conversations;
 pub mod eligibility;

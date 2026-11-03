@@ -26,6 +26,23 @@ impl Service {
         self.publish_interaction(owner, &result);
         Ok(result)
     }
+    pub async fn resolve_interaction(
+        self: &Arc<Self>,
+        owner: &str,
+        id: &str,
+        input: &Value,
+        protected: bool,
+        accepted_native_reply: bool,
+    ) -> Result<Option<Value>> {
+        let result = self
+            .interactions()
+            .resolve(owner, id, input, protected, accepted_native_reply)
+            .await?;
+        if let Some(interaction) = &result {
+            self.publish_interaction(owner, interaction);
+        }
+        Ok(result)
+    }
     pub async fn terminalize_interaction(
         self: &Arc<Self>,
         owner: &str,
