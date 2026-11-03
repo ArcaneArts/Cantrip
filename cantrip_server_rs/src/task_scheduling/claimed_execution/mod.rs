@@ -144,9 +144,10 @@ impl Service {
                 self.log("error","Could not persist the failed Task operation",json!({"event":"task.operation.failure-persistence-failed","subsystem":"task-scheduler","operation":"settle-failed-operation","status":"failed","chatId":chat,"cycleId":claim["cycle"]["id"],"err":stage::error_details(&error)}));
                 cleanup_error=Some(error);
             }
-            self.dispatch.settle(&claim["lease"],if completed {"succeeded"}else{"failed"},&Value::Null).await?;
-            if !completed {
-                self.retries.note_failure(owner,&chat,&format!("dispatch:{}:{}",text(&claim["cycle"]["id"])?,claim["lease"]["fencingToken"].stringify()),failure.map_or("runtime",tasks::failure_kind::for_error),None).await?;
+            if completed {
+                self.dispatch.settle(&claim["lease"],"succeeded",&Value::Null).await?;
+            } else {
+                self.retries.settle_dispatch_failure(owner,&chat,&claim["lease"],failure.map_or("runtime",tasks::failure_kind::for_error),None).await?;
             }
             self.publish(owner,&chat,Some(&json!({"experience":"task","projectId":claim["projectId"]})));
             Ok(())

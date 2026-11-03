@@ -146,6 +146,22 @@ impl Repository {
         now: &str,
         update: Update<'_>,
     ) -> Result<Value> {
+        Self::update_in(
+            Executor::Database(&self.database),
+            fence,
+            fields,
+            now,
+            update,
+        )
+        .await
+    }
+    async fn update_in(
+        executor: Executor<'_, '_>,
+        fence: &Value,
+        fields: Value,
+        now: &str,
+        update: Update<'_>,
+    ) -> Result<Value> {
         let Update {
             predicate,
             extra,
@@ -163,7 +179,7 @@ impl Repository {
         let owner = text(&fence["leaseOwner"])?;
         let token = fence["fencingToken"].stringify();
         let fields = fields.stringify();
-        let rows=self.database.query(&format!("UPDATE task_dispatch_cycles c SET {assignments}{extra} FROM jsonb_populate_record(NULL::task_dispatch_cycles,$6::text::jsonb) d WHERE c.id=$1 AND c.operation_id=$2 AND c.lease_owner=$3 AND c.fencing_token=$4::text::bigint AND c.lease_expires_at>$5::text::timestamptz AND ({predicate}) RETURNING to_jsonb(c)::text"),&[&cycle,&operation,&owner,&token,&now,&fields]).await;
+        let rows=executor.query(&format!("UPDATE task_dispatch_cycles c SET {assignments}{extra} FROM jsonb_populate_record(NULL::task_dispatch_cycles,$6::text::jsonb) d WHERE c.id=$1 AND c.operation_id=$2 AND c.lease_owner=$3 AND c.fencing_token=$4::text::bigint AND c.lease_expires_at>$5::text::timestamptz AND ({predicate}) RETURNING to_jsonb(c)::text"),&[&cycle,&operation,&owner,&token,&now,&fields]).await;
         let rows = if let Some((key, params)) = query_context {
             crate::database::task_pause_queries::context(rows, key, params)?
         } else {
@@ -304,6 +320,14 @@ impl Repository {
         )
     }
     pub async fn settle(&self, fence: &Value, state: &str, options: &Value) -> Result<Value> {
+        Self::settle_in(Executor::Database(&self.database), fence, state, options).await
+    }
+    pub(crate) async fn settle_in(
+        executor: Executor<'_, '_>,
+        fence: &Value,
+        state: &str,
+        options: &Value,
+    ) -> Result<Value> {
         let now = clock(options)?;
         let parameters = vec![
             json!(state),
@@ -319,18 +343,18 @@ impl Repository {
             json!("paused"),
         ];
         summary(
-            &self
-                .update(
-                    fence,
-                    json!({"state":state,"completed_at":now,"updated_at":now}),
-                    &now,
-                    Update {
-                        predicate: "c.state IN ('claimed','running','paused')",
-                        extra: "",
-                        query_context: Some(("settle", &parameters)),
-                    },
-                )
-                .await?,
+            &Self::update_in(
+                executor,
+                fence,
+                json!({"state":state,"completed_at":now,"updated_at":now}),
+                &now,
+                Update {
+                    predicate: "c.state IN ('claimed','running','paused')",
+                    extra: "",
+                    query_context: Some(("settle", &parameters)),
+                },
+            )
+            .await?,
         )
     }
 }

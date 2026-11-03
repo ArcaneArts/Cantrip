@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { runTaskRetryRaces } from "./task-retry-races.mjs";
 import { runTaskRetryAdoptionRaces } from "./task-retry-adoption-races.mjs";
+import { runTaskFailureSettlementCases } from "./task-failure-settlement-cases.mjs";
 import { literal, json, stamp, otherOwner } from "./project-target-state.mjs";
 import { taskEnvelope } from "./task-wire-fixtures.mjs";
 export async function runTaskRetryCases(h) {
@@ -424,4 +425,5 @@ export async function runTaskRetryCases(h) {
     await runTaskRetryRaces(h, clean);
     await runTaskRetryAdoptionRaces(h, clean);
   }
+  await runTaskFailureSettlementCases(h, clean);
 }

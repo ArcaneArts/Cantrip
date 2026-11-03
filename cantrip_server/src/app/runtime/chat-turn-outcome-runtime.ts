@@ -11,6 +11,7 @@ import {
 import { TaskDispatchConflictError } from "../../db/task-dispatch.js";
 import type { ChatExecutionAttribution } from "../../db/repository.js";
 import { parseTaskOperationRelayResult } from "../../tasks/encrypted-relay.js";
+import { classifyTaskFailure } from "../../tasks/automatic-retry.js";
 import type { ChatRecoveryRuntimeDependencies } from "./chat-recovery-runtime.js";
 
 type Dependencies = Pick<
@@ -258,10 +259,20 @@ export function createChatTurnOutcomeRuntime({
     }
     if (taskDispatchFence) {
       try {
-        await repository.taskDispatch.settle(
-          taskDispatchFence,
-          recoveredOutcomeOk ? "succeeded" : "failed",
-        );
+        if (recoveredOutcomeOk) {
+          await repository.taskDispatch.settle(taskDispatchFence, "succeeded");
+        } else {
+          await repository.taskRetries.settleDispatchFailure(
+            ownerId,
+            notification.chatId,
+            taskDispatchFence,
+            classifyTaskFailure(
+              notification.outcome.ok
+                ? "Recovered Task result was invalid."
+                : notification.outcome.error,
+            ),
+          );
+        }
       } catch (error) {
         if (!(error instanceof TaskDispatchConflictError)) throw error;
       }

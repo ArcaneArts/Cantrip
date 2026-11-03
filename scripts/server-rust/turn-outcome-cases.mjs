@@ -582,6 +582,196 @@ export async function runTurnOutcomeCases(h) {
     assert.equal(r.tasks[0].state, "complete");
     assert.equal(r.rounds[0].status, "completed");
   }
+  // The recovery timer can win before the live command's failed callback.
+  // Execute that actual fenced recovery first, including the public category
+  // carried by the unchanged worker, and require precise retry accounting.
+  const finishFailure = (name, failure) =>
+    observe(
+      name,
+      {
+        chat: "task",
+        action: "finish",
+        failure,
+        protectedMessage,
+        claim: {
+          cycle: { id: cycle, chatId: "task", operationId: operation },
+          lease: fence,
+          projectId: "github",
+        },
+      },
+      { op: "native-command-task-claimed", shape: "raw" },
+    );
+  const manualKinds = [
+    "usage-limit",
+    "budget-limit",
+    "configuration",
+    "needs-input",
+  ];
+  for (const kind of [
+    ...manualKinds,
+    "timeout",
+    "capacity",
+    "rate-limit",
+    "connection",
+    "runtime",
+  ]) {
+    const failedBeforeLive = await fenced();
+    const error =
+      kind === "runtime"
+        ? "Encrypted Task operation failed."
+        : `Encrypted Task operation failed: task-${kind}.`;
+    failedBeforeLive.outcome = { ok: false, error };
+    for (const v of await run(
+      "durable Task failure settles before live callback: " + kind,
+      failedBeforeLive,
+    )) {
+      successes(v);
+      assert.deepEqual(v.commands, []);
+    }
+    const persisted = await rows(
+      "recovered failure retains worker category: " + kind,
+    );
+    for (const r of persisted) {
+      assert.equal(r.tasks[0].state, "failed");
+      assert.equal(r.cycles[0].state, "failed");
+      assert.equal(
+        r.tasks[0].automatic_retry?.status,
+        manualKinds.includes(kind) ? "manual" : "scheduled",
+      );
+      assert.equal(r.tasks[0].automatic_retry?.failureKind, kind);
+      assert.equal(
+        r.tasks[0].automatic_retry?.failureKey,
+        `dispatch:${cycle}:7`,
+      );
+      assert.deepEqual(r.tasks[0].automatic_retry?.attempts, []);
+      assert.equal(r.tasks[0].automatic_retry?.claim, null);
+      assert.deepEqual(r.tasks[0].protected_content, taskEnvelope);
+    }
+    if (manualKinds.includes(kind)) {
+      for (const v of await finishFailure(
+        "late live failure loses to recovered " + kind,
+        error,
+      )) {
+        assert.equal(v.beginError, null);
+        assert.deepEqual(v.commands, []);
+      }
+      assert.deepEqual(
+        await rows("late live failure preserves recovered rows: " + kind),
+        persisted,
+      );
+    }
+  }
+  {
+    const lateSaved = await fenced();
+    const failure = "Encrypted Task operation failed: task-usage-limit.";
+    lateSaved.outcome = { ok: false, error: failure };
+    for (const v of await finishFailure(
+      "live failure settles before saved outcome",
+      failure,
+    )) {
+      assert.equal(v.beginError, null);
+      assert.deepEqual(v.commands, []);
+    }
+    const before = await rows("live-first quota failure ledger");
+    for (const r of before) {
+      assert.equal(r.cycles[0].state, "failed");
+      assert.equal(r.tasks[0].automatic_retry.failureKind, "usage-limit");
+      assert.equal(r.tasks[0].automatic_retry.status, "manual");
+    }
+    for (const v of await run(
+      "late saved failure cannot replace live failure",
+      lateSaved,
+    )) {
+      successes(v);
+      assert.deepEqual(v.commands, []);
+    }
+    assert.deepEqual(
+      await rows("late saved failure leaves live-first rows untouched"),
+      before,
+    );
+  }
+  for (const path of ["saved", "live"]) {
+    const failed = await fenced();
+    const failure = "Encrypted Task operation failed: task-usage-limit.";
+    failed.outcome = { ok: false, error: failure };
+    await seed([
+      "CREATE SEQUENCE outcome_retry_fault_calls",
+      "CREATE FUNCTION outcome_retry_fault() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NOT EXISTS(SELECT 1 FROM task_dispatch_cycles WHERE chat_id=NEW.chat_id AND state='failed') THEN RAISE EXCEPTION 'dispatch not settled before retry ledger'; END IF; PERFORM nextval('outcome_retry_fault_calls'); RAISE EXCEPTION 'saved outcome retry ledger fault' USING ERRCODE='P7201'; END $$",
+      "CREATE TRIGGER outcome_retry_fault BEFORE UPDATE OF automatic_retry ON tasks FOR EACH ROW EXECUTE FUNCTION outcome_retry_fault()",
+    ]);
+    // These private service errors retain their real driver's diagnostics.
+    // Independently verify the SQL boundary and state instead of normalizing
+    // a PostgreSQL driver message into another implementation's error text.
+    for (const [i, peer] of h.pair.entries()) {
+      const input =
+        path === "saved"
+          ? {
+              op: "native-command-turn-outcome",
+              owner,
+              chat: "task",
+              protectedMessage,
+              steps: [recover(failed), { kind: "drain" }],
+            }
+          : {
+              op: "native-command-task-claimed",
+              owner,
+              chat: "task",
+              action: "finish",
+              failure,
+              protectedMessage,
+              claim: {
+                cycle: { id: cycle, chatId: "task", operationId: operation },
+                lease: fence,
+                projectId: "github",
+              },
+            };
+      const observed = await peer.request(input);
+      (h.report.taskOutcomeRetryFaults ??= []).push({
+        path,
+        peer: i === 0 ? "node" : "rust",
+        observed,
+      });
+      assert.equal(observed.rejected, false);
+      assert.deepEqual(observed.value.commands, []);
+      if (path === "saved") {
+        assert.equal(observed.value.beginError, null);
+        assert.ok(observed.value.result.snapshots[0].recoveryErrors[0]);
+      } else assert.ok(observed.value.beginError);
+    }
+    for (const r of await observe(
+      "SQL trigger saw terminal dispatch before " + path + " retry failure",
+      {
+        sql: "SELECT jsonb_build_object('called',is_called,'calls',last_value) result FROM outcome_retry_fault_calls",
+      },
+      { op: "query-json", shape: "raw" },
+    ))
+      assert.deepEqual(r, { called: true, calls: 1 });
+    for (const r of await rows(
+      path + " retry SQL fault retains recoverable dispatch",
+    )) {
+      assert.equal(r.cycles[0].state, "running");
+      assert.equal(r.tasks[0].automatic_retry, null);
+      assert.equal(r.tasks[0].state, "failed");
+      assert.equal(r.rounds[0].status, "failed");
+    }
+    await seed([
+      "DROP TRIGGER outcome_retry_fault ON tasks",
+      "DROP FUNCTION outcome_retry_fault()",
+      "DROP SEQUENCE outcome_retry_fault_calls",
+    ]);
+    for (const v of await run(
+      "saved failure repairs after " + path + " SQL fault",
+      failed,
+    ))
+      successes(v);
+    for (const r of await rows(
+      "precise failure committed after " + path + " fault repair",
+    )) {
+      assert.equal(r.cycles[0].state, "failed");
+      assert.equal(r.tasks[0].automatic_retry.status, "manual");
+      assert.equal(r.tasks[0].automatic_retry.failureKind, "usage-limit");
+    }
+  }
   notification = await fenced();
   await seed([
     "CREATE OR REPLACE FUNCTION outcome_settle_fence() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.fencing_token=7 AND NEW.last_heartbeat_at IS DISTINCT FROM OLD.last_heartbeat_at THEN UPDATE task_dispatch_cycles SET fencing_token=8 WHERE id=NEW.id; END IF; RETURN NEW; END $$",

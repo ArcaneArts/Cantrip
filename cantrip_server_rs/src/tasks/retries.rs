@@ -38,11 +38,29 @@ impl Repository {
         self.database.query("SELECT json_build_object('ownerId',c.owner_id,'chatId',t.chat_id,'projectId',c.project_id)::text FROM tasks t JOIN chats c ON c.id=t.chat_id JOIN projects p ON p.id=c.project_id WHERE c.archived_at IS NULL AND c.automation_paused=false AND p.task_scheduling_paused=false AND c.status NOT IN ('running','waiting-for-approval') AND NOT EXISTS (SELECT 1 FROM agent_interaction_requests i WHERE i.chat_id=c.id AND i.status='pending') AND ((t.state='failed' AND t.automatic_retry IS NULL AND t.last_error IS NOT NULL) OR (t.automatic_retry->>'status'='scheduled' AND (t.automatic_retry->>'dueAt')::double precision<=$1::text::double precision) OR (t.automatic_retry->>'status'='retrying' AND (t.automatic_retry->'claim'->>'expiresAt')::double precision<=$1::text::double precision)) ORDER BY t.updated_at ASC",&[&now]).await?.iter().map(|r|Ok(serde_json::from_str(&r.get::<String>(0)?)?)).collect()
     }
     async fn mutate(&self, owner: &str, chat: &str, action: Action) -> Result<Value> {
+        self.mutate_with_fence(owner, chat, action, None).await
+    }
+    async fn mutate_with_fence(
+        &self,
+        owner: &str,
+        chat: &str,
+        action: Action,
+        fence: Option<(Value, f64)>,
+    ) -> Result<Value> {
         let (owner, chat) = (owner.to_owned(), chat.to_owned());
         self.database.transaction(|tx|Box::pin(async move {
             tx.query("SELECT id FROM users WHERE id=$1 LIMIT 1 FOR UPDATE",&[&owner]).await?;
             let row=one(Executor::Transaction(tx),"SELECT json_build_object('task',to_jsonb(t),'chat',to_jsonb(c),'project',to_jsonb(p))::text FROM tasks t JOIN chats c ON c.id=t.chat_id JOIN projects p ON p.id=c.project_id WHERE t.chat_id=$1 AND c.owner_id=$2 AND c.archived_at IS NULL LIMIT 1 FOR UPDATE",&[&chat,&owner]).await?;
-            let Some(row)=row else { return Ok(Value::Null); };
+            let Some(row)=row else { return if fence.is_some() { Err(crate::task_dispatch::Conflict::stale().into()) } else { Ok(Value::Null) }; };
+            if let Some((fence, at)) = fence {
+                let cycle = text(&fence["cycleId"])?;
+                if tx.query("SELECT id FROM task_dispatch_cycles WHERE id=$1 AND owner_id=$2 AND chat_id=$3 LIMIT 1 FOR UPDATE", &[&cycle, &owner, &chat]).await?.is_empty() {
+                    return Err(crate::task_dispatch::Conflict::stale().into());
+                }
+                anyhow::ensure!(at.is_finite() && at.abs() <= 8_640_000_000_000_000.0, "Invalid time value");
+                let iso = crate::wire::date_iso_milliseconds(at as i64).context("Invalid time value")?;
+                crate::task_dispatch::Repository::settle_in(Executor::Transaction(tx), &fence, "failed", &json!({"now":iso})).await?;
+            }
             let pending=!tx.query("SELECT id FROM agent_interaction_requests WHERE chat_id=$1 AND status='pending' LIMIT 1",&[&chat]).await?.is_empty();
             let (record,result)=apply(&row,pending,action)?;
             if record.stringify()!=row["task"]["automatic_retry"].stringify() {
@@ -73,6 +91,33 @@ impl Repository {
     }
     pub async fn reset(&self, owner: &str, chat: &str) -> Result<Value> {
         self.mutate(owner, chat, Action::Reset).await
+    }
+    /// Commit the terminal fence and its precise category together, before a
+    /// losing live callback can observe the lease as already settled.
+    pub async fn settle_dispatch_failure(
+        &self,
+        owner: &str,
+        chat: &str,
+        fence: &Value,
+        kind: &str,
+        now: Option<f64>,
+    ) -> Result<Value> {
+        let at = time(now);
+        self.mutate_with_fence(
+            owner,
+            chat,
+            Action::Note {
+                key: format!(
+                    "dispatch:{}:{}",
+                    text(&fence["cycleId"])?,
+                    fence["fencingToken"].stringify()
+                ),
+                kind: kind.into(),
+                now: at,
+            },
+            Some((fence.clone(), at)),
+        )
+        .await
     }
     pub async fn adopt_failure(
         &self,
