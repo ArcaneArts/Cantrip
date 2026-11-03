@@ -3,6 +3,10 @@
 Debian 13 (trixie), IceWM, Chromium, PCManFM, Mousepad, and xterm. This is a
 standalone OS testing environment; Cantrip integration comes later.
 
+The first personal-testing checkpoint is ready. See [acceptance results](ACCEPTANCE.md)
+for the actual tested builds and platform limits. Iterate in Docker first; build
+the ISO when you want the same source configuration as bootable media.
+
 From the repository root, with Node 22+ and a running Docker engine:
 
 ```sh
@@ -49,6 +53,39 @@ color, and desktop defaults under `overlays/etc/X11/icewm/`. Executables belong 
 are refreshed with the image. Personal `~/.icewm` overrides take precedence;
 remove the relevant personal override to see a changed system default. We do
 not copy defaults into persistent home files on every startup.
+
+## Customizing the desktop
+
+Paths below are relative to `cantrip_os/`. Keep `scripts/dev.mjs` running while
+editing; after replacement, the existing viewer reconnects at the same URL.
+
+| Change                                      | Source                                                                                                                               |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Shared applications/packages                | `manifests/desktop.packages`                                                                                                         |
+| ISO-only packages, kernel, hardware support | `manifests/iso.packages` and `images/iso/build.sh`                                                                                   |
+| Background color or wallpaper               | `overlays/etc/X11/icewm/prefoverride`; use `DesktopBackgroundColor` or `DesktopBackgroundImage`                                      |
+| IceWM behavior/workspaces/clock             | `overlays/etc/X11/icewm/preferences`                                                                                                 |
+| Application menu                            | `overlays/etc/X11/icewm/menu`                                                                                                        |
+| Taskbar application launchers               | `overlays/etc/X11/icewm/toolbar`                                                                                                     |
+| Theme selection                             | Create `overlays/etc/X11/icewm/theme`, e.g. `Theme="icedesert/default.theme"`; installed themes are under `/usr/share/icewm/themes/` |
+| Startup applications                        | Create executable `overlays/etc/X11/icewm/startup`, starting with `#!/bin/sh`; launch long-lived applications with `&`               |
+| New files/scripts/wallpaper assets          | Put them at their intended system paths beneath `overlays/`                                                                          |
+| Default user, sudo, locale                  | `scripts/configure-system.sh`                                                                                                        |
+| Docker session services                     | `images/oci/start.sh`                                                                                                                |
+| ISO automatic login                         | `images/iso/overlays/etc/lightdm/lightdm.conf.d/50-cantrip.conf`                                                                     |
+| Browser viewer                              | `viewer/index.html`                                                                                                                  |
+
+The `prefoverride` file applies background settings after the bundled theme.
+Personal files under `~/.icewm` deliberately override system defaults. Inspect
+them when a source change does not appear; preserve or remove the specific
+personal override as intended. Do not delete the entire home to update defaults.
+
+For a wallpaper, put the image under a system path in `overlays/`, then reference
+its guest path from `DesktopBackgroundImage`. For a startup script, preserve its
+executable bit in Git (`chmod +x` before committing). An interactive experiment
+such as `sudo apt install htop` becomes reproducible by adding `htop` to the
+shared package manifest. System-file experiments belong in overlays or the
+system configuration script.
 
 Interactive `apt install` and system changes survive restart, but disappear
 when the container is replaced. Promote experiments into manifests/overlays
@@ -102,3 +139,13 @@ with serial and monitor sockets in `cantrip_os/.state/`. Only one test VM may
 use this disk/port at a time.
 This is a simple whole-disk installer; dual boot and custom partitioning are
 outside this foundation. The Applications menu includes installation guidance.
+
+The Docker watcher does not automatically build an ISO or upgrade an installed
+VM. Run `iso.mjs` explicitly, then boot the new ISO to inspect it. Reinstalling
+with `--erase` replaces the selected disk; keep personal data elsewhere first.
+
+The build volume is a disposable ISO build/cache, separate from desktop home
+data. When no ISO build is running, `docker volume rm cantrip-os-iso-build`
+removes that cache. Rebuilding then downloads/recreates it. Generated artifacts
+and the retained QEMU disk are ignored by Git; preserve any desired copies
+before removing them manually.

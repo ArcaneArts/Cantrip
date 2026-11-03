@@ -1,10 +1,24 @@
 # CantripOS
 
-- Status: accepted product direction and proposed implementation plan; not an
-  implemented feature or a record of passing runtime acceptance.
+- Status: OS foundation implemented for personal testing. Remaining Cantrip
+  integrations are planned; runtime evidence is scoped in the checkpoint below.
 - Updated: 2026-11-03.
 - Scope: a customized, bootable Linux distribution for one Cantrip owner's
   agents, also distributed as a directly runnable Docker image.
+
+## Foundation checkpoint
+
+The first personal-testing foundation is implemented under
+[`cantrip_os/`](../cantrip_os/README.md), using Debian 13 and IceWM. Docker has
+automatic desktop entry, a localhost browser viewer, persistent home data, and
+a watched rebuild/reconnect loop. The shared configuration also builds a
+live/install AMD64 ISO, tested through installation and BIOS/UEFI disk boot.
+See [the acceptance record](../cantrip_os/ACCEPTANCE.md) for exact evidence and
+unverified targets.
+
+This is the owner's OS customization/testing checkpoint. Multiple workspace
+sessions, Cantrip runtime connections, and the later integration milestones
+below remain planned; begin them after feedback from this foundation.
 
 ## Product intent
 
