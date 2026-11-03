@@ -28,6 +28,21 @@ node cantrip_os/scripts/os.mjs reset    # Explicitly DELETE this desktop's home
 The default named volume is `cantrip-os-home`. Rebuild retains this home,
 including Documents, Downloads, and Chromium profiles. Reset deletes it.
 
+For automatic source changes → image build → desktop replacement → browser
+reconnect, run:
+
+```sh
+node cantrip_os/scripts/dev.mjs
+```
+
+It builds once, then polls the content of manifests, overlays, image recipes,
+scripts, viewer assets, and `.dockerignore`. Changes are debounced and builds
+are serialized; edits arriving during a build queue another build. Manual
+lifecycle commands share the instance lock even across Git worktrees. Actual
+build failures leave the running container untouched; fix the source and the
+next edit retries. Generated artifacts, logs, caches, Git internals, and user
+data are excluded. Ctrl+C stops watching and leaves the desktop running.
+
 Change packages in `manifests/desktop.packages`; change menu, toolbar, background
 color, and desktop defaults under `overlays/etc/X11/icewm/`. Executables belong under
 `overlays/usr/local/bin/`. Source-managed defaults remain in `/etc/X11/icewm` and
@@ -43,5 +58,5 @@ because this edition uses Docker as its outer boundary.
 
 The Docker image pins its Debian base digest; apt installs current packages
 for the pinned trixie release. It runs the OS userspace on Docker's kernel.
-Bootable-media recipes and the automatic development watcher follow in the
-next foundation cycles. See [the product plan](../docs/CANTRIP_OS.md).
+Bootable-media recipes follow in the next foundation cycle.
+See [the product plan](../docs/CANTRIP_OS.md).
