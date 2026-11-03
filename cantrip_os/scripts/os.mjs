@@ -2,6 +2,7 @@
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
+import { withInstanceLock } from "./lock.mjs";
 
 export const root = fileURLToPath(new URL("../", import.meta.url));
 export const container = process.env.CANTRIP_OS_NAME ?? "cantrip-os";
@@ -86,33 +87,43 @@ export async function up() {
   console.log(`CantripOS: http://127.0.0.1:${port}`);
 }
 export async function rebuild() {
-  await build();
-  if (await inspect()) await run("docker", ["rm", "-f", container]);
-  await up();
+  await withInstanceLock(container, async () => {
+    await build();
+    if (await inspect()) await run("docker", ["rm", "-f", container]);
+    await up();
+  });
 }
 async function main() {
   switch (process.argv[2]) {
     case "build":
-      await build();
+      await withInstanceLock(container, build);
       break;
     case "up":
-      await up();
+      await withInstanceLock(container, up);
       break;
     case "rebuild":
       await rebuild();
       break;
     case "restart":
-      await run("docker", ["restart", container]);
+      await withInstanceLock(container, async () => {
+        await inspect();
+        await run("docker", ["restart", container]);
+      });
       break;
     case "stop":
-      await run("docker", ["stop", container]);
+      await withInstanceLock(container, async () => {
+        await inspect();
+        await run("docker", ["stop", container]);
+      });
       break;
     case "logs":
       await run("docker", ["logs", "-f", container]);
       break;
     case "reset":
-      if (await inspect()) await run("docker", ["rm", "-f", container]);
-      await run("docker", ["volume", "rm", volume]);
+      await withInstanceLock(container, async () => {
+        if (await inspect()) await run("docker", ["rm", "-f", container]);
+        await run("docker", ["volume", "rm", volume]);
+      });
       break;
     default:
       throw new Error(
