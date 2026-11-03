@@ -26,7 +26,7 @@ use axum::{
 };
 use std::sync::Arc;
 
-fn mutation_error(cause: anyhow::Error) -> Result<Response> {
+pub(super) fn mutation_error(cause: anyhow::Error) -> Result<Response> {
     if let Some(conflict) = downcast_ref::<task_dispatch::Conflict>(&cause) {
         return Ok(json_response(
             StatusCode::CONFLICT,

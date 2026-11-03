@@ -70,6 +70,7 @@ export type CantripMcpRawOperationExecutor = (
 ) => Promise<CantripAgentOperationResult>;
 
 export interface CantripMcpOperationOptions {
+  signal?: AbortSignal;
   binding: CantripMcpBinding;
   execute: CantripMcpRawOperationExecutor;
   request: CantripAgentOperationRequest;

@@ -103,6 +103,7 @@ const sessionClaimsSchema = z.discriminatedUnion("contextKind", [
 ]);
 
 interface StoredBinding {
+  taskWaitRequests: Set<AbortController>;
   activeRequests: number;
   computerUse: boolean;
   computerUseRequests: Set<AbortController>;
@@ -394,6 +395,7 @@ export class CantripMcpBroker {
       activeRequests: 0,
       computerUse,
       computerUseRequests: new Set(),
+      taskWaitRequests: new Set(),
       binding: null,
       claims,
       issuedAt,
@@ -440,6 +442,9 @@ export class CantripMcpBroker {
       issuedAt: stored.issuedAt,
       expiresAt: stored.connection.expiresAt,
     });
+    if (stored.binding?.executionLaneId !== binding.executionLaneId) {
+      for (const controller of stored.taskWaitRequests) controller.abort();
+    }
     if (
       !computerUse ||
       stored.binding?.executionLaneId !== binding.executionLaneId
@@ -520,6 +525,7 @@ export class CantripMcpBroker {
     stored.staleContextRejected = false;
     stored.staleRejection = null;
     for (const controller of stored.computerUseRequests) controller.abort();
+    for (const controller of stored.taskWaitRequests) controller.abort();
     return true;
   }
 
@@ -529,6 +535,7 @@ export class CantripMcpBroker {
     this.#bindings.delete(bindingId);
     if (stored.binding) this.#webService?.cancelBinding(stored.binding);
     for (const controller of stored.computerUseRequests) controller.abort();
+    for (const controller of stored.taskWaitRequests) controller.abort();
     removeConnectionDocument(stored);
     return true;
   }
@@ -712,6 +719,17 @@ export class CantripMcpBroker {
             return;
           }
           stored.activeRequests += 1;
+          const waitController =
+            parsed.request.operation === "task.wait"
+              ? new AbortController()
+              : null;
+          const cancelWait = () => waitController?.abort();
+          if (waitController) {
+            stored.taskWaitRequests.add(waitController);
+            request.once("aborted", cancelWait);
+            response.once("close", cancelWait);
+            if (request.aborted || response.destroyed) cancelWait();
+          }
           try {
             let result = cantripAgentOperationResultSchema.parse(
               this.#encryptionService
@@ -721,6 +739,7 @@ export class CantripMcpBroker {
                     request: parsed.request,
                     requestId,
                     service: this.#encryptionService,
+                    signal: waitController?.signal,
                     webService: this.#webService,
                   })
                 : parsed.request.operation === "context.get"
@@ -772,9 +791,15 @@ export class CantripMcpBroker {
             }
             sendJson(response, 200, result);
           } finally {
+            if (waitController) {
+              request.off("aborted", cancelWait);
+              response.off("close", cancelWait);
+              stored.taskWaitRequests.delete(waitController);
+            }
             stored.activeRequests -= 1;
           }
         } catch (error) {
+          if (operation === "task.wait" && response.destroyed) return;
           if (error instanceof CantripServerRequestError) {
             const stored = bindingId ? this.#bindings.get(bindingId) : null;
             workerLogger.event("warn", "Cantrip MCP operation was rejected", {

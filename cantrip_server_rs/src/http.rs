@@ -14,6 +14,7 @@ use crate::auth::service::AuthService;
 mod account;
 mod agent_alerts;
 mod agent_interactions;
+mod agent_tasks;
 mod audit;
 mod body;
 mod browser_discovery;
