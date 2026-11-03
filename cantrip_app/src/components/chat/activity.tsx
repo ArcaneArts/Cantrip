@@ -815,7 +815,7 @@ export function ActivityGroup({
 
   const latest = activities.at(-1);
   if (!latest) return null;
-  const failed = activities.some((activity) => activity.status === "failed");
+  const failed = latest.status === "failed";
   const label = active
     ? latestActivityLabel(latest)
     : activityGroupSummary(activities);
