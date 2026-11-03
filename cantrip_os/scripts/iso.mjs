@@ -7,10 +7,18 @@ import { withInstanceLock } from "./lock.mjs";
 await withInstanceLock("cantrip-os-iso-build", async () => {
   const output = resolve(root, "artifacts");
   await mkdir(output, { recursive: true });
+  let executorContext = resolve(root, ".build/empty-executor");
+  await mkdir(executorContext, { recursive: true });
+  if (process.env.CANTRIP_OS_EXECUTOR === "1") {
+    const { prepareExecutor } = await import("./executor-package.mjs");
+    executorContext = await prepareExecutor("amd64");
+  }
   await run("docker", [
     "build",
     "--platform",
     "linux/amd64",
+    "--build-context",
+    `executor=${executorContext}`,
     "-t",
     "cantrip-os-iso-builder:dev",
     "-f",
@@ -23,6 +31,8 @@ await withInstanceLock("cantrip-os-iso-build", async () => {
     "--privileged",
     "-e",
     `CANTRIP_OS_WORKSPACES=${process.env.CANTRIP_OS_WORKSPACES ?? "1"}`,
+    "-e",
+    `CANTRIP_OS_EXECUTOR=${process.env.CANTRIP_OS_EXECUTOR ?? "0"}`,
     "--platform",
     "linux/amd64",
     "--mount",

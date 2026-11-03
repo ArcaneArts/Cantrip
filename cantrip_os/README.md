@@ -1,6 +1,8 @@
 # CantripOS foundation
 
-Debian 13 (trixie), IceWM, Chromium, PCManFM, Mousepad, and xterm. This is a
+Debian 13 (trixie), IceWM, Chromium, PCManFM, Mousepad, xterm, htop, nano,
+and Python 3 (`python3` and `python`). These applications are included in both
+Docker and bootable/installed editions through the shared desktop manifest. This is a
 standalone OS testing environment; Cantrip integration comes later.
 
 Workspace management is an optional Debian package. Its source, build commands,
@@ -8,6 +10,10 @@ and service lifecycle are described in [the package guide](packages/workspaces/R
 Build either edition with `CANTRIP_OS_WORKSPACES=0` for the ordinary OS alone;
 the default is `1`. Persistent workspace accounts/desktops are available through
 the package CLI and the local browser workspace selector.
+
+Phase 3 adds an optional [native execution package](packages/executor/README.md).
+Its current package/transport cycle is opt-in with `CANTRIP_OS_EXECUTOR=1`;
+Cantrip project selection and full agent placement are subsequent cycles.
 
 The first personal-testing checkpoint is ready. See [acceptance results](ACCEPTANCE.md)
 for the actual tested builds and platform limits. Iterate in Docker first; build
@@ -139,7 +145,7 @@ personal override as intended. Do not delete the entire home to update defaults.
 For a wallpaper, put the image under a system path in `overlays/`, then reference
 its guest path from `DesktopBackgroundImage`. For a startup script, preserve its
 executable bit in Git (`chmod +x` before committing). An interactive experiment
-such as `sudo apt install htop` becomes reproducible by adding `htop` to the
+such as `sudo apt install tree` becomes reproducible by adding `tree` to the
 shared package manifest. System-file experiments belong in overlays or the
 system configuration script.
 

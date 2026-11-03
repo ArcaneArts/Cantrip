@@ -13,6 +13,9 @@ rm -f /home/cantrip/.config/chromium/SingletonLock \
 pids=()
 cleanup() {
     trap - TERM INT EXIT
+    if command -v cantrip-executor >/dev/null; then
+        cantrip-executor service stop || true
+    fi
     if command -v cantrip-workspaces >/dev/null; then
         cantrip-workspaces service stop || true
     fi
@@ -24,6 +27,9 @@ trap cleanup TERM INT EXIT
 # ordinary desktop. Missing package is a supported build choice.
 if command -v cantrip-workspaces >/dev/null; then
     cantrip-workspaces service start || echo '[CantripOS] Workspace service failed; see logs.' >&2
+fi
+if command -v cantrip-executor >/dev/null; then
+    cantrip-executor service start || echo '[CantripOS] Executor service failed; see logs.' >&2
 fi
 runuser -u cantrip -- Xtigervnc :0 -geometry 1440x900 -depth 24 \
     -SecurityTypes None -localhost no -AlwaysShared -ac -rfbport 5900 &

@@ -320,3 +320,79 @@ authenticated remote access, checkout mounts, worker execution placement, and
 agent CUA integration are unverified/deferred. The browser interactions above
 test the real remote desktops; they do not establish Cantrip's future Linux
 computer-use backend.
+
+## Phase 3, cycle 1: executor package and attachment
+
+Verified on 2026-11-03 in native ARM64 Docker and the disposable installed
+AMD64 VM. This checkpoint supplies the optional package and protected worker
+carrier; full project placement and agent/client integration remain in progress.
+
+- Added htop, nano, and Python 3 to the shared base manifest, including the
+  `python` alias. Both package-included and package-omitted Docker builds ran
+  `htop 3.4.1`, `nano 8.4`, and Python `3.13.5` through both command names.
+  Installed the same tools in the test VM and opened htop through Codex's
+  in-app browser. Screenshot: `artifacts/phase3/installed-vm-htop.jpg`.
+- Built the pinned, reviewed Codex 0.166.0 standalone executor for Linux ARM64
+  and AMD64 from commit `6ff1e1ca3b30fc8b914720681fcf5fe62e95f856`, all 44
+  reviewed patches, and canonical source preparation. Runtime exports contain
+  the executor, bwrap, manifest, and licenses (about 69/78 MB); Debian packages
+  are about 16/18 MB. Both normal architecture builders subsequently reused
+  the verified native bundles. No full worker or model credentials are installed
+  in the guest.
+- Independently rebuilt the current ARM64 package from the runtime export:
+  its bytes matched the normal builder's output, SHA-256
+  `fb60c80c5e5b331cd4ae2c9bb940780a68383474ffe3b2ac67a7dd6ef43ab262`.
+  Comparison: `artifacts/phase3/package-reproducibility.json`.
+- The worker transport's real integration test passed against both editions:
+  independent native file writes/reads, actual UID/home/sudo and absent DISPLAY,
+  authenticated connections, rejected unauthenticated WebSocket, explicit
+  native-session resume after carrier disconnect, once-only mutation marker,
+  terminated child PID gone, stale/wrong-owner rejection, and another workspace
+  remaining operational. The final Docker and VM runs took about 9/21 seconds.
+- Installed Debian's `hello` with sudo through one workspace's native executor;
+  the other workspace ran the shared executable. Stopped a real desktop while
+  its independently managed native shell job continued and returned output.
+  Closing an executor also removed a child launched with `setsid`, while the
+  other executor remained usable.
+- `tests/executor-lifecycle.sh` passed in Docker and the installed VM: disable,
+  remove, purge, reinstall, running upgrade, retained identity/attachment/data
+  and disabled preference, and unsupported identity version preservation.
+  Personal desktop and another workspace's same window-manager process stayed
+  usable. Installed-system enable/disable now updates systemd boot enablement;
+  startup waits for the actual control endpoint and reports failed startup.
+- Built the current Docker recipe with the executor included and replaced the
+  disposable container. It booted the current image, retained its instance and
+  attachment, restored exact UID values and files, and started the personal
+  desktop. Explicit reset passed for two-volume, three-volume, and
+  already-absent-volume disposable fixtures.
+- Rebooted the installed VM once. The executor auto-started with the same
+  instance, attachment, UID and home, a new manager generation, retained files,
+  once-only marker, and native home state. A stale pre-reboot descriptor was
+  specifically rejected for generation mismatch. Native reads then recovered
+  both workspaces' distinct bytes. The personal document and ordinary IceWM
+  console returned on `/dev/vda3`. Boot IDs, descriptors and file checks are in
+  `artifacts/phase3/installed-vm-reboot.json`. Opened a terminal and checked the
+  running executor through the rebooted desktop in Codex's browser; screenshot:
+  `artifacts/phase3/installed-vm-executor.jpg`.
+- Built the recipe omitting both optional packages. The personal viewer and
+  display started; in Codex's in-app browser, opened a terminal through the menu
+  and ran `id`. Both packages were absent. Screenshot:
+  `artifacts/phase3/optional-packages-omitted.jpg`. The owner's original desktop
+  was kept separate from all disposable instances.
+- Focused TypeScript compilation, three OS lifecycle tests, seven native
+  manifest tests, source-verification tests, Python/Node/shell syntax, scoped
+  formatting and whitespace checks passed. Whole-worker typecheck failures in
+  unchanged CUA/MCP fixtures were reproduced on clean Primary. Full repository
+  checks still encounter the previously recorded unrelated `agentOperations`
+  boundary digest audit.
+
+The test VM's forwarded SSH endpoint dropped near-simultaneous new handshakes,
+reproduced with plain `ssh ... cat` outside the executor. The test establishes
+carriers in sequence before exercising both active sessions; the worker does
+not retry failed connections or replay mutations. This is a development SSH
+carrier, not general Cantrip SSH/cloud provisioning support.
+
+Server-authorized project bindings, both source modes, real agent placement,
+editor/terminal/Run routing, and refreshed execution-enabled ISO media remain
+required by the full phase-3 goal. The VM above used the existing installed
+edition plus the current package; a new ISO is part of the distribution cycle.
