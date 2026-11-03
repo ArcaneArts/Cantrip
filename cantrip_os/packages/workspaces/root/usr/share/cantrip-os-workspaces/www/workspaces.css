@@ -1,0 +1,112 @@
+:root {
+  color-scheme: dark;
+  font: 14px system-ui;
+  background: #000;
+  color: #eee;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 10px 20px;
+}
+header img {
+  width: 24px;
+  height: 24px;
+}
+header span,
+p {
+  color: #999;
+}
+main {
+  max-width: 900px;
+  margin: 40px auto;
+  padding: 0 24px;
+}
+h1 {
+  font-size: 24px;
+  font-weight: 500;
+}
+form {
+  margin: 32px 0 16px;
+}
+label {
+  display: block;
+  margin-bottom: 8px;
+}
+.create-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+input {
+  background: #000;
+  color: #eee;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 10px;
+  font: inherit;
+  min-width: 240px;
+}
+button,
+a {
+  color: #ddd;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  padding: 9px 12px;
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+button:hover:enabled,
+a:hover,
+button:focus-visible,
+a:focus-visible {
+  background: #171717;
+  color: #fff;
+}
+button:active:enabled {
+  background: #262626;
+}
+button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+:focus-visible {
+  outline: 1px solid #888;
+  outline-offset: 2px;
+}
+.workspace {
+  border-top: 1px solid #262626;
+  padding: 18px 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.details {
+  flex: 1;
+  min-width: 180px;
+}
+.details strong {
+  font-weight: 500;
+}
+.details p {
+  font-size: 12px;
+  margin: 6px 0 0;
+}
+.error {
+  color: #ccc;
+  white-space: pre-wrap;
+}
+#message {
+  min-height: 20px;
+}

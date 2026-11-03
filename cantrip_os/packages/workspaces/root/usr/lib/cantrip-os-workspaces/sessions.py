@@ -129,6 +129,10 @@ class Sessions:
         if record["status"] == "running":
             return record
         self.account(record)
+        token = uuid.uuid4().hex
+        self.records[name]["view_token"] = token
+        self.records[name]["vnc_socket"] = f"/run/user/{record['uid']}/vnc-{token}.sock"
+        record = dict(self.records[name])
         ready = self.store.runtime / ("ready-" + uuid.uuid4().hex + ".json")
         with (self.store.state / "logs" / (name + ".log")).open("a") as log:
             child = subprocess.Popen([sys.executable, str(HERE / "desktop.py"),

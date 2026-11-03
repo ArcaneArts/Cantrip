@@ -1,4 +1,6 @@
 {
   "state_dir": "/var/lib/cantrip-os-workspaces",
-  "runtime_dir": "/run/cantrip-os-workspaces"
+  "runtime_dir": "/run/cantrip-os-workspaces",
+  "viewer_bind": "127.0.0.1",
+  "viewer_port": 6081
 }

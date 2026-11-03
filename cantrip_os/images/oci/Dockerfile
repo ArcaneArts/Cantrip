@@ -21,6 +21,6 @@ COPY viewer/ /usr/share/novnc/
 COPY images/oci/start.sh /usr/local/sbin/cantrip-os-start
 RUN chmod 0755 /usr/local/sbin/cantrip-os-start
 ENV CANTRIP_OS_CONTAINER=1 DISPLAY=:0
-EXPOSE 6080 5900
+EXPOSE 6080 5900 6081
 VOLUME ["/home/cantrip", "/var/lib/cantrip-os-workspaces"]
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/sbin/cantrip-os-start"]
