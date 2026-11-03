@@ -31,6 +31,9 @@ node cantrip_os/scripts/os.mjs reset    # Explicitly DELETE this desktop's home
 `CANTRIP_OS_PORT` (default `6080`) selects the localhost port when creating it.
 The default named volume is `cantrip-os-home`. Rebuild retains this home,
 including Documents, Downloads, and Chromium profiles. Reset deletes it.
+Each container keeps a stable instance hostname. Startup clears only Chromium's
+old process-lock files before any browser runs, so a retained profile can open
+after container replacement; browser data is preserved.
 
 For automatic source changes → image build → desktop replacement → browser
 reconnect, run:
