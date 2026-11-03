@@ -118,6 +118,7 @@ with (Path(runtime) / (record["id"] + ".lock")).open("a") as lock:
                                     env["DISPLAY"], "-geometry", "1440x900", "-depth", "24",
                                     "-SecurityTypes", "None", "-localhost", "yes", "-AlwaysShared",
                                     "-ac", "-noreset", "-nolisten", "tcp", "-rfbport", str(record["vnc_port"]),
+                                    "-rfbunixpath", record["vnc_socket"], "-rfbunixmode", "0600",
                                     "-displayfd", str(write_fd)], env=env, pass_fds=(write_fd,))
         finally:
             os.close(write_fd)
@@ -166,3 +167,4 @@ with (Path(runtime) / (record["id"] + ".lock")).open("a") as lock:
         finally:
             if read_fd is not None:
                 os.close(read_fd)
+            Path(record["vnc_socket"]).unlink(missing_ok=True)

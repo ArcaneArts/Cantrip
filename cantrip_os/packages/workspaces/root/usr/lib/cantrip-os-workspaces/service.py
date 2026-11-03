@@ -15,7 +15,7 @@ import tempfile
 import time
 from sessions import Sessions
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 DEFAULT_CONFIG = "/etc/cantrip-os/workspaces.json"
 
 
@@ -121,7 +121,10 @@ def daemon(store):
                     if command == "status":
                         response = {"service": "running", "version": VERSION,
                                     "enabled": store.preferences()["enabled"],
-                                    "state_dir": str(store.state)}
+                                    "state_dir": str(store.state),
+                                    "viewer": {"port": store.config.get("viewer_port", 6081),
+                                               "status": "failed" if viewer and viewer.poll() is not None else
+                                               "running" if viewer_ready.exists() else "starting"}}
                     elif command == "shutdown":
                         stop(None, None)
                         response = {"service": "stopping"}
@@ -133,13 +136,26 @@ def daemon(store):
 
         with Server(str(store.socket), Handler) as server:
             store.socket.chmod(0o600)
+            viewer = None
+            viewer_ready = store.runtime / "viewer.ready"
+            viewer_ready.unlink(missing_ok=True)
             try:
                 sessions.resume()
+                viewer = subprocess.Popen([sys.executable, str(Path(__file__).with_name("viewer.py")),
+                                           str(os.getpid()), store.config_path])
                 print("[CantripOS] Workspace service ready", flush=True)
                 while not stop_requested:
                     server.handle_request()
                     sessions.tick()
             finally:
+                if viewer and viewer.poll() is None:
+                    viewer.terminate()
+                    try:
+                        viewer.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        viewer.kill()
+                        viewer.wait()
+                viewer_ready.unlink(missing_ok=True)
                 sessions.close()
                 store.socket.unlink(missing_ok=True)
                 print("[CantripOS] Workspace service stopped", flush=True)

@@ -1,6 +1,6 @@
 # CantripOS
 
-- Status: OS foundation implemented for personal testing. Remaining Cantrip
+- Status: OS foundation and optional workspace desktops implemented for personal testing. Remaining Cantrip
   integrations are planned; runtime evidence is scoped in the checkpoint below.
 - Updated: 2026-11-03.
 - Scope: a customized, bootable Linux distribution for one Cantrip owner's
@@ -16,17 +16,18 @@ live/install AMD64 ISO, tested through installation and BIOS/UEFI disk boot.
 See [the acceptance record](../cantrip_os/ACCEPTANCE.md) for exact evidence and
 unverified targets.
 
-The next milestone delivers multiple workspace sessions as the optional
-`cantrip-os-workspaces` Debian package. The ordinary desktop remains usable
-without that package. Cantrip runtime connections and later integrations remain
-planned.
+Multiple workspace sessions ship as the optional `cantrip-os-workspaces` Debian
+package. Version 0.3.0 supplies persistent Linux accounts, lazy IceWM desktops,
+CLI lifecycle commands, a local workspace selector, and direct browser desktop
+links. The ordinary personal desktop remains usable without that package.
+Cantrip runtime connections and later integrations remain planned.
 
 ## Optional package architecture
 
 The OS foundation owns Debian, IceWM, theme defaults, applications, automatic
 personal login, and the personal desktop's Docker viewer. Workspace management
 is an additive `.deb` built from `cantrip_os/packages/workspaces/`, with its own
-CLI, service, configuration, versioned state, and later workspace viewer.
+CLI, service, configuration, versioned state, and workspace viewer.
 Both Docker and ISO builds can include or omit it with
 `CANTRIP_OS_WORKSPACES=1` or `0`. The worker remains the orchestrator.
 
@@ -36,10 +37,13 @@ startup hook starts/stops the optional service independently of its personal
 desktop. Package failure or removal must not stop that desktop.
 
 Configuration is a Debian conffile at `/etc/cantrip-os/workspaces.json`.
-Persistent state and future workspace homes live beneath
+Persistent state and workspace homes live beneath
 `/var/lib/cantrip-os-workspaces`, mounted as a separate named Docker volume.
 Runtime sockets and locks live under `/run/cantrip-os-workspaces`. Administrative
-control initially uses a root-only Unix socket. No worker enrollment or public
+control uses a root-only Unix socket. A package-owned noVNC/websockify gateway
+provides the local single-owner browser UI on port 6081; installed systems bind
+loopback, and Docker publishes it only on host loopback. Each viewer explicitly
+selects a workspace and current session generation. No worker enrollment or public
 remote endpoint is added by installing this package.
 
 Disable and removal retain state, homes, browser profiles, and the saved
@@ -51,6 +55,13 @@ Phase 2 ships in sequential PR/worktree/auto-merge cycles: package and service
 lifecycle first; persistent accounts and independent desktop sessions second;
 workspace viewing, Docker/installed-VM acceptance, current ISO, and 4 GiB resource
 measurements third. Each dependent cycle begins only after the previous merge.
+
+The phase-2 acceptance record covers Docker and installed-VM lifecycle, browser
+input/clipboard separation, retained profiles, shared sudo/package installation,
+and measured 4 GiB resource use. The next implementation milestone is execution
+and source ownership, still delivered through optional packages. Checkout mounts,
+worker placement, agent tools, and Linux CUA integration are not implemented by
+the workspace package.
 
 ## Product intent
 

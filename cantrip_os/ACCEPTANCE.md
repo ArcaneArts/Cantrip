@@ -166,3 +166,157 @@ Verified on 2026-11-03 with package version 0.2.0 in native ARM64 Docker:
 Browser workspace selection, input/clipboard verification through two browser
 tabs, installed-VM verification, refreshed ISO, and comparative resource results
 remain for cycle 3. This cycle does not claim those acceptance items.
+
+## Phase 2, cycle 3: browser workspaces and acceptance
+
+Verified on 2026-11-03 with `cantrip-os-workspaces` 0.3.0. Package source and
+assets live under `cantrip_os/packages/workspaces/`; they are independently
+installable/removable. Two final package builds produced identical bytes:
+SHA-256 `f6201b8e1a4bb47ea66c3c6db56eb65e6bc176b28e6eeff4ce49b7fdeca5f23e`.
+
+### Docker and browser behavior
+
+- Used a disposable native ARM64 Docker instance, with the owner's existing
+  personal instance kept separate. The personal desktop, native VNC, and optional
+  workspace selector were published only on host loopback.
+- Created `browser-a` and `browser-b` in the real selector and opened both
+  desktop links. Typed different terminal commands, saved distinct same-path
+  documents (`BROWSER_A` / `BROWSER_B`), launched Chromium, and navigated to
+  distinct example.com/example.org URLs. Actual Chromium History databases
+  retained their separate URLs after session/container replacement.
+- Clipboard round trips returned `CLIPBOARD_A` in A and `CLIPBOARD_B` in B;
+  returning to A still returned A's clipboard. Clicking/typing targeted the
+  selected desktop. In Codex's in-app browser, dragged and resized a terminal
+  and scrolled real terminal output. Remaining GUI testing used that browser
+  after the owner's request; no further native host-browser interaction.
+- Real service restart and watched image replacement reconnected each direct
+  viewer to its selected workspace. Documents, account identities and profile
+  files persisted; windows are fresh processes after restart. Created/stopped
+  workspaces stayed stopped.
+- `tests/viewer-gateway.mjs` passed against actual Docker and installed-VM
+  gateways: RFB handshakes, wrong-workspace token rejection, fresh generation
+  sockets/tokens, rejected retired/stopped/unknown targets, and rejected
+  cross-site Origin/Host/fetch-site mutations. No fallback desktop was selected.
+- Occupied a real assigned display with a separate X server. The selector
+  reported the failed Start, kept retry controls usable, and started the
+  intended desktop once that test server released the display.
+- Final package/session lifecycle tests passed, including independent stop,
+  service restart, manager SIGKILL cleanup/recovery, remove/purge/reinstall,
+  retained files/preferences, and continued personal desktop availability.
+- Ran root `pnpm os` with private instance/port environment settings: initial
+  build, source-watch rebuilds, actual connection URLs, build/container logs,
+  and Ctrl+C graceful shutdown all worked. Container stopped with exit 143
+  (SIGTERM), not OOM; named personal/workspace volumes remained.
+
+### Installed VM
+
+- Installed the same architecture-independent .deb through apt on an existing
+  AMD64 CantripOS disk, using a private qcow2 overlay over the earlier foundation
+  installation. QEMU used 2 emulated CPUs and 4096 MiB; the original disk was
+  not modified. systemd supervised the packaged service.
+- Opened two real workspace desktops through the browser gateway. Launched
+  Chromium on the VM kernel without Docker's sandbox override. Stopping one
+  desktop left the other running.
+- From vm-a, passwordless sudo installed Debian's `hello`; vm-b ran the shared
+  executable successfully. Root changes are intentionally shared.
+- Disabled/removed the package: LightDM and the ordinary personal desktop
+  remained usable, including launching a terminal through the real desktop.
+  Reinstallation retained the disabled preference and saved `VM_A` document;
+  enabling/opening recovered both desktops.
+- Rebooted the installed VM: both previously active workspace desktops resumed
+  with new generations, the saved document survived, and LightDM was active.
+- The installed default bind was verified as loopback. For this private NAT VM
+  test only, `viewer_bind` was changed to `0.0.0.0`, reached through QEMU's
+  host-loopback forwarding. This is not the shipped default or remote access
+  configuration.
+- Older foundation images can lack the OLED Xresources file. The optional
+  package now reports an xrdb error and continues launching the desktop; it
+  does not require or overwrite a newer OS theme.
+
+### Measured resource use
+
+A fresh native ARM64 Docker container had a 4 GiB memory limit and no extra
+swap allowance. It included the ordinary idle personal IceWM desktop and the
+enabled package. No viewers were attached. The shell-only stage ran two actual
+idle bash loops; those exited before graphical stages. Chromium displayed
+`about:blank`. Each stage settled 10 seconds, then recorded five Docker stats
+samples plus raw cgroup memory readings.
+
+| Stage                             | Docker working set, median MiB | Raw cgroup memory, median MiB | CPU median | CPU maximum |
+| --------------------------------- | -----------------------------: | ----------------------------: | ---------: | ----------: |
+| Idle OS                           |                          71.33 |                         72.02 |      0.48% |       0.64% |
+| Two shell-only workspaces         |                          72.46 |                         73.20 |      0.45% |       0.59% |
+| One workspace desktop + Chromium  |                          285.8 |                        290.60 |      1.61% |       4.28% |
+| Two workspace desktops + Chromium |                          494.4 |                        503.27 |      2.17% |      12.24% |
+
+Two-desktop working set ranged 494.4–496.3 MiB. Container `OOMKilled` was false;
+all stages completed. This is a short idle-browser measurement, not a capacity
+promise or a heavy website/build benchmark. Docker accounting excludes the
+outer host/VM kernel and browser viewer. Raw memory includes cache that Docker
+subtracts from its working-set presentation. The raw samples and actual image
+ID are in `cantrip_os/artifacts/phase2/resources.json`. Reproduce with:
+
+```sh
+CANTRIP_OS_TEST_IMAGE=cantrip-os:dev node cantrip_os/tests/resource-profile.mjs
+```
+
+### Refreshed bootable media
+
+Built the current AMD64 live/install ISO, including the OLED IceWM/GTK/X11
+appearance and workspace package 0.3.0. The build's package inventory records
+that version. SHA-256:
+`ddbf6798c62ca99ade06d5aa1d7c38063fdb8193c83fe61191cb4f6dfd7fe693`.
+
+- Booted the final ISO in QEMU TCG, 2 CPUs/4096 MiB, BIOS, with a fresh disposable
+  16 GiB qcow2 disk. Automatic login reached the black IceWM desktop. Opened a
+  terminal through its menu and ran `cantrip-workspaces-viewer`; Chromium
+  rendered the actual packaged selector on loopback. Screenshot:
+  `cantrip_os/artifacts/phase2/refreshed-iso-selector.jpg`.
+- Created a stopped `iso-check` workspace and saved a document; added a root
+  system customization marker. The live gateway actually listened on
+  `127.0.0.1:6081`.
+- Ran `sudo cantrip-install --erase /dev/vda` against that disposable disk.
+  It exited 0, installed BIOS and EFI boot files, and reported completion.
+- Shut down, removed the ISO, and booted the disk. Root was `/dev/vda3` (ext4),
+  LightDM and the package service were active, automatic personal login worked,
+  and both customization/document markers remained. The stopped workspace
+  stayed stopped until an explicit Open, which started its assigned desktop.
+- Debian kernel `6.12.115+deb13.1-amd64` emitted a `virtio_gpu` warning during
+  emulated live/installed-system shutdowns. Poweroff completed and installed disk boot
+  succeeded. This warning is recorded rather than treated as a clean kernel
+  shutdown result. The refreshed image's UEFI boot and physical hardware were
+  not retested; earlier foundation BIOS/UEFI results above refer to that older
+  image.
+
+Outputs remain under `cantrip_os/artifacts/`: the ISO, `.iso.sha256`, package
+inventory, `packages/cantrip-os-workspaces_0.3.0_all.deb`, and `phase2/` runtime
+screenshots/resource samples/logs. Build/test entry points remain:
+
+```sh
+node cantrip_os/scripts/package.mjs
+pnpm os
+node cantrip_os/scripts/iso.mjs
+node cantrip_os/scripts/vm.mjs --headless
+# In the live VM, only against its disposable disk:
+sudo cantrip-install --erase /dev/vda
+# After shutting down the live VM:
+node cantrip_os/scripts/vm.mjs --installed --headless
+```
+
+The repository VM helper uses `.state/cantrip-os-test.qcow2`; acceptance instead
+used a new `/tmp/cantrip-phase2-refreshed.qcow2` to preserve the earlier test disk.
+The VM helper's headless VNC endpoint is host loopback port 5901. Desktop
+screenshots and interactions were performed through Codex's in-app browser.
+
+### Validation scope
+
+Three Node lifecycle tests, final Python/Node/shell syntax checks, scoped
+formatting, and whitespace checks passed. `pnpm check` encounters the existing
+server-boundary `agentOperations` digest audit mismatch, previously reproduced
+on unchanged Primary main; no server source changed in this phase.
+
+Cloud provisioning, physical hardware, arbitrary session capacity, production
+authenticated remote access, checkout mounts, worker execution placement, and
+agent CUA integration are unverified/deferred. The browser interactions above
+test the real remote desktops; they do not establish Cantrip's future Linux
+computer-use backend.

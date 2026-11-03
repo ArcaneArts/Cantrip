@@ -7,7 +7,7 @@ Workspace management is an optional Debian package. Its source, build commands,
 and service lifecycle are described in [the package guide](packages/workspaces/README.md).
 Build either edition with `CANTRIP_OS_WORKSPACES=0` for the ordinary OS alone;
 the default is `1`. Persistent workspace accounts/desktops are available through
-the package CLI; browser workspace selection follows in the next cycle.
+the package CLI and the local browser workspace selector.
 
 The first personal-testing checkpoint is ready. See [acceptance results](ACCEPTANCE.md)
 for the actual tested builds and platform limits. Iterate in Docker first; build
@@ -40,10 +40,11 @@ Connections printed by the launcher:
 
 - Browser: `http://127.0.0.1:6080/`
 - Native VNC: host `127.0.0.1`, port `5900`, no password (TigerVNC syntax: `127.0.0.1::5900`).
+- Workspace selector: `http://127.0.0.1:6081/` (optional package)
 - Root shell: `docker exec -it cantrip-os bash`
 - SSH: no server is enabled in this foundation image.
 
-Both published ports bind **only to host loopback**. VNC listens on the container
+All published ports bind **only to host loopback**. VNC listens on the container
 network so Docker can forward it; this is the same trusted local desktop as the
 browser viewer. SSH/Cantrip remote connection management remains future work.
 
@@ -64,9 +65,11 @@ node cantrip_os/scripts/os.mjs reset    # Explicitly DELETE personal home AND wo
 
 `CANTRIP_OS_NAME` (default `cantrip-os`) selects container/image/volume names;
 `CANTRIP_OS_PORT` (default `6080`) selects the browser port;
-`CANTRIP_OS_VNC_PORT` (default `5900`) selects native VNC. Ports are assigned when
+`CANTRIP_OS_VNC_PORT` (default `5900`) selects native VNC;
+`CANTRIP_OS_WORKSPACE_PORT` (default `6081`) selects the workspace selector.
+`CANTRIP_OS_MEMORY=4g` sets a 4 GiB container limit without extra swap. Ports are assigned when
 creating the container; `pnpm os` rebuilds/recreates it with the chosen values.
-The default named volume is `cantrip-os-home`. Rebuild retains this home,
+The default named volumes are `cantrip-os-home` and `cantrip-os-workspaces`. Rebuild retains personal home and package workspace data,
 including Documents, Downloads, and Chromium profiles. Reset deletes it.
 Each container keeps a stable instance hostname. Startup clears only Chromium's
 old process-lock files before any browser runs, so a retained profile can open
@@ -80,7 +83,7 @@ node cantrip_os/scripts/dev.mjs
 ```
 
 It builds once, then polls the content of manifests, overlays, image recipes,
-scripts, viewer assets, and `.dockerignore`. Changes are debounced and builds
+scripts, viewer assets, optional packages, and `.dockerignore`. Changes are debounced and builds
 are serialized; edits arriving during a build queue another build. Manual
 lifecycle commands share the instance lock even across Git worktrees. Actual
 build failures leave the running container untouched; fix the source and the

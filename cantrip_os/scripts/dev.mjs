@@ -161,7 +161,7 @@ async function main() {
         await withInstanceLock(container, async () => {
           const current = await inspect();
           if (current?.State.Running)
-            await run("docker", ["stop", "--time", "10", current.Id]);
+            await run("docker", ["stop", "--time", "30", current.Id]);
         });
         console.log("[CantripOS] Desktop stopped. Home volume retained.");
       }

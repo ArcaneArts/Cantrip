@@ -11,6 +11,7 @@ export const volume = `${container}-home`;
 export const workspaceVolume = `${container}-workspaces`;
 export const port = process.env.CANTRIP_OS_PORT ?? "6080";
 export const vncPort = process.env.CANTRIP_OS_VNC_PORT ?? "5900";
+export const workspacePort = process.env.CANTRIP_OS_WORKSPACE_PORT ?? "6081";
 
 export function run(command, args, { capture = false, ...options } = {}) {
   return new Promise((accept, reject) => {
@@ -96,10 +97,21 @@ export async function up(options = {}) {
         "--label",
         "io.cantrip.os=foundation",
         "--shm-size=1g",
+        ...(process.env.CANTRIP_OS_MEMORY
+          ? [
+              "--memory",
+              process.env.CANTRIP_OS_MEMORY,
+              "--memory-swap",
+              process.env.CANTRIP_OS_MEMORY,
+            ]
+          : []),
         "-p",
         `127.0.0.1:${port}:6080`,
         "-p",
         `127.0.0.1:${vncPort}:5900`,
+        ...(process.env.CANTRIP_OS_WORKSPACES === "0"
+          ? []
+          : ["-p", `127.0.0.1:${workspacePort}:6081`]),
         "-v",
         `${volume}:/home/cantrip`,
         "-v",
@@ -112,8 +124,10 @@ export async function up(options = {}) {
   const ports = (await inspect())?.NetworkSettings.Ports ?? {};
   const browserPort = ports["6080/tcp"]?.[0]?.HostPort;
   const nativePort = ports["5900/tcp"]?.[0]?.HostPort;
+  const desktopsPort = ports["6081/tcp"]?.[0]?.HostPort;
   console.log(`
 CantripOS browser: ${browserPort ? `http://127.0.0.1:${browserPort}/` : "not published"}
+Workspaces: ${desktopsPort ? `http://127.0.0.1:${desktopsPort}/ (optional package; enable it if disabled)` : "not published"}
 VNC: ${nativePort ? `127.0.0.1:${nativePort} (no password; host loopback only)` : "not published; rebuild to enable it"}
 Shell: docker exec -it ${container} bash
 SSH: not enabled in the foundation image.
