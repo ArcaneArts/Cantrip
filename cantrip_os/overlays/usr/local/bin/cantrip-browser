@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+if [ "${CANTRIP_OS_CONTAINER:-0}" = 1 ]; then
+    # Docker is the outer boundary; Debian's Chromium sandbox needs kernel
+    # facilities that aren't available in every unprivileged Docker setup.
+    set -- --no-sandbox "$@"
+fi
+exec chromium --no-first-run --no-default-browser-check --disable-dev-shm-usage "$@"

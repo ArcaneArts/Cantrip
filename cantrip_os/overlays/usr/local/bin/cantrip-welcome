@@ -1,0 +1,13 @@
+#!/bin/sh
+exec xmessage -center -buttons 'Explore:0' 'CantripOS · Debian + IceWM
+
+Open Chromium, Files, or Terminal from the bottom-left menu.
+The default user is cantrip. sudo needs no password.
+
+This is the OS foundation for personal testing.
+Desktop configuration: /etc/X11/icewm
+Personal overrides: ~/.icewm
+Documents and browser data live in your home directory.
+
+System changes made in a container survive restart, but must be
+added to the build source to survive image replacement.'
