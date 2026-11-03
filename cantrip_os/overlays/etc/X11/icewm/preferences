@@ -1,0 +1,11 @@
+DesktopBackgroundColor="#172d38"
+DesktopBackgroundImage=""
+TaskBarShowCPUStatus=0
+TaskBarShowMEMStatus=0
+TaskBarShowNetStatus=0
+TaskBarShowClock=1
+TimeFormat="%H:%M"
+WorkspaceNames="Desktop", "Work", "Explore", "Spare"
+TerminalCommand="xterm"
+ShutdownCommand="sudo poweroff"
+RebootCommand="sudo reboot"

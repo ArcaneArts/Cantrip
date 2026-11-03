@@ -1,0 +1,5 @@
+.git
+.build
+.state
+artifacts
+tests

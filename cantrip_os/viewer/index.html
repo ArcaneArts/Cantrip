@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CantripOS</title>
+  <style>
+    html,
+    body {
+      margin: 0;
+      height: 100%;
+      background: #172d38;
+      color: #eee;
+      font: 14px system-ui;
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 12px;
+      background: #10212a;
+    }
+    #status {
+      flex: 1;
+    }
+    button {
+      cursor: pointer;
+    }
+    #screen {
+      flex: 1;
+      min-height: 0;
+    }
+    dialog {
+      background: #10212a;
+      color: #eee;
+      border: 1px solid #789;
+    }
+    textarea {
+      display: block;
+      width: 360px;
+      height: 160px;
+      margin: 10px 0;
+    }
+  </style>
+  <header>
+    <strong>CantripOS</strong><span id="status">Connecting…</span
+    ><button id="clipboard">Clipboard</button
+    ><button id="fullscreen">Fullscreen</button>
+  </header>
+  <main id="screen"></main>
+  <dialog id="clip-dialog">
+    <label for="clip"
+      >Copy text from Linux, or paste text below to send it.</label
+    ><textarea id="clip"></textarea><button id="send">Send to Linux</button
+    ><button id="close">Close</button>
+  </dialog>
+  <script type="module">
+    import RFB from "./core/rfb.js";
+    const screen = document.querySelector("#screen");
+    const status = document.querySelector("#status");
+    const clip = document.querySelector("#clip");
+    const dialog = document.querySelector("#clip-dialog");
+    let rfb, timer;
+    function connect() {
+      clearTimeout(timer);
+      status.textContent = "Connecting…";
+      rfb = new RFB(
+        screen,
+        `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/websockify`,
+      );
+      rfb.scaleViewport = true;
+      rfb.resizeSession = true;
+      rfb.addEventListener("connect", () => {
+        status.textContent = "Connected · Debian + IceWM";
+      });
+      rfb.addEventListener("disconnect", () => {
+        status.textContent =
+          "Desktop disconnected or restarting. Reconnecting…";
+        timer = setTimeout(connect, 1500);
+      });
+      rfb.addEventListener("clipboard", (event) => {
+        clip.value = event.detail.text;
+      });
+    }
+    document.querySelector("#clipboard").onclick = () => dialog.showModal();
+    document.querySelector("#send").onclick = () => {
+      rfb.clipboardPasteFrom(clip.value);
+      dialog.close();
+      rfb.focus();
+    };
+    document.querySelector("#close").onclick = () => {
+      dialog.close();
+      rfb.focus();
+    };
+    document.querySelector("#fullscreen").onclick = () =>
+      document.documentElement.requestFullscreen();
+    connect();
+  </script>
+</html>

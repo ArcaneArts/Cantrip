@@ -1,0 +1,8 @@
+prog "Chromium" web-browser cantrip-browser
+prog "Files" system-file-manager pcmanfm
+prog "Terminal" utilities-terminal xterm
+prog "Text editor" accessories-text-editor mousepad
+separator
+prog "About CantripOS" dialog-information cantrip-welcome
+separator
+menufile "Applications" folder /etc/X11/icewm/programs

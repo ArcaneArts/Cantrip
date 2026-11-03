@@ -64,7 +64,7 @@ package manifests, configuration overlays, and versioned Cantrip packages.
 Maintain a conventional Linux installation with a package manager and normal
 administration tools. Do not build a new kernel or package ecosystem.
 
-The initial desktop choice is Xfce with Chromium, a terminal, a file manager,
+The initial desktop choice is IceWM with Chromium, a terminal, a file manager,
 common fonts, clipboard support, and accessibility infrastructure. Ship basic
 Git, SSH, shell, and development utilities. Additional language toolchains are
 installable profiles rather than a requirement to put every SDK in the base
@@ -448,9 +448,10 @@ do not kill active work merely because a tab closed.
 
 Create the build subproject and shared Debian configuration. Produce both a
 bootable live ISO and a directly runnable Docker image early. Verify an actual
-login, Chromium launch, terminal use, package installation as root, and a basic
-worker-invoked helper operation. Establish VM disk-image construction from the
-same package inputs. ISO delivery is not deferred indefinitely behind Cantrip UI
+login, Chromium launch, terminal use, and package installation as root. The
+first personal-testing checkpoint includes browser access and a source-watch
+rebuild/reconnect loop; Cantrip runtime integration starts only after that
+checkpoint. Establish VM disk-image construction from the same package inputs. ISO delivery is not deferred indefinitely behind Cantrip UI
 work.
 
 ### 2. Several desktops in one instance
