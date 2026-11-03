@@ -7,6 +7,7 @@ import { actualAgentInteractionsClient } from "./actual-agent-interactions-clien
 import { actualChatCustomizationsClient } from "./actual-chat-customizations-client.mjs";
 import { actualSkillSettingsClient } from "./actual-skill-settings-client.mjs";
 import { actualMcpSettingsClient } from "./actual-mcp-settings-client.mjs";
+import { actualProviderTestClient } from "./actual-provider-test-client.mjs";
 
 export async function actualProjectChatClient({
   page,
@@ -19,6 +20,7 @@ export async function actualProjectChatClient({
   stopWorker,
   result,
   requests,
+  providerBoundary,
 }) {
   const model = await taskModelProvider({
     allowMcpDiscoveryProbe: process.argv.includes("--mcp-settings"),
@@ -469,6 +471,17 @@ export async function actualProjectChatClient({
         model,
         result,
         requests,
+      });
+    if (providerBoundary)
+      await actualProviderTestClient({
+        page,
+        fixture,
+        workerId,
+        startWorker,
+        stopWorker,
+        result,
+        requests,
+        boundary: providerBoundary,
       });
   } catch (error) {
     result.projectChatFailure = { message: error.message, stack: error.stack };

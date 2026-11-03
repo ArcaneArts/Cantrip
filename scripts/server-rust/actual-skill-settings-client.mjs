@@ -1,7 +1,7 @@
 // Existing browser SDK -> server -> full unchanged SkillManager/native worker.
 // Only disposable skill files and the existing model HTTP server are fixtures.
 import assert from "node:assert/strict";
-import { mkdir, writeFile, readFile, stat } from "node:fs/promises";
+import { mkdir, writeFile, readFile, stat, realpath } from "node:fs/promises";
 import path from "node:path";
 
 export async function actualSkillSettingsClient({
@@ -106,6 +106,41 @@ export async function actualSkillSettingsClient({
       (await call("readSettingsSkill", { ...input, file: "notes.md" })).content,
       contents + " notes update",
     );
+    if (!entry.projectId) {
+      const canonicalPath = await realpath(entry.skill.path);
+      assert.notEqual(
+        entry.skill.path,
+        canonicalPath,
+        "owned worker alias provides the actual out-of-inventory account path",
+      );
+      const native = (operation, input) =>
+        page.evaluate(
+          async ({ chatId, operation, input }) =>
+            (await import("/src/lib/api/customization.ts"))[operation](
+              chatId,
+              input,
+            ),
+          { chatId, operation, input },
+        );
+      const inventory = await native("getChatCustomizations", true);
+      assert.equal(
+        inventory.skills.items.find((s) => s.name === entry.name)?.path,
+        canonicalPath,
+      );
+      for (const enabled of [false, true]) {
+        assert.deepEqual(
+          await native("configureChatSkill", { path: canonicalPath, enabled }),
+          { path: canonicalPath, effectiveEnabled: enabled },
+        );
+        assert.equal((await find(entry)).enabled, enabled);
+        assert.equal(
+          (await native("getChatCustomizations", true)).skills.items.find(
+            (s) => s.name === entry.name,
+          )?.enabled,
+          enabled,
+        );
+      }
+    }
     for (const enabled of [false, true]) {
       if (entry.projectId) {
         assert.deepEqual(
@@ -115,7 +150,8 @@ export async function actualSkillSettingsClient({
         assert.equal((await find(entry)).enabled, enabled);
       } else {
         // SkillManager can edit account files independently of the active
-        // managed native inventory. Source's native guard rejects this path;
+        // managed native inventory. The owned alias makes the requested path
+        // genuinely absent from that inventory on every OS. The guard rejects it;
         // preserve its authenticated failure rather than mutating another home.
         const failure = await page.evaluate(
           async (input) => {
@@ -244,6 +280,7 @@ export async function actualSkillSettingsClient({
     encryptedReadWrite: true,
     nativeProjectConfigurationRoundTrip: true,
     accountConfigurationFailurePreserved: true,
+    nativeAccountConfigurationRoundTrip: true,
     audienceRoundTrip: true,
     invalidWriteRetainsBytes: true,
     scopeIsolation: true,

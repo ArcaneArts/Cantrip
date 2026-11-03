@@ -26,6 +26,7 @@ import { agentInteractionWireFixtures } from "./agent-interaction-fixtures.mjs";
 import { chatCustomizationWireFixtures } from "./chat-customization-wire-fixtures.mjs";
 import { skillSettingsWireFixtures } from "./skill-settings-wire-fixtures.mjs";
 import { mcpSettingsWireFixtures } from "./mcp-settings-wire-fixtures.mjs";
+import { settingsOperationsWireFixtures } from "./settings-operations-wire-fixtures.mjs";
 import { terminalWireFixtures } from "./terminal-wire-fixtures.mjs";
 import { browserWireFixtures } from "./browser-wire-fixtures.mjs";
 import { projectShareWireFixtures } from "./project-share-wire-fixtures.mjs";
@@ -337,6 +338,7 @@ export const securityFixtures = {
   ...chatCustomizationWireFixtures(),
   ...skillSettingsWireFixtures(),
   ...mcpSettingsWireFixtures(),
+  ...settingsOperationsWireFixtures(),
   ...nativeSettingsHttpWireFixtures(),
   chatPlanOpaqueStateSchema: [eventPlan],
   ...turnOrchestrationWireFixtures(timestamp),
