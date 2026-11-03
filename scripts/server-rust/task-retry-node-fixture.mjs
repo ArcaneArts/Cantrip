@@ -17,6 +17,15 @@ export async function taskRetryFixture(repository, input) {
     case "reset":
       value = await task.reset(input.owner, input.chat);
       break;
+    case "adopt":
+      value = await task.adoptFailure(
+        input.owner,
+        input.chat,
+        input.code,
+        input.occurredAt,
+        input.now,
+      );
+      break;
     case "clear":
       value = await task.clearPending(input.owner, input.chat);
       break;

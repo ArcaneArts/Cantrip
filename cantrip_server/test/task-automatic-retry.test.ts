@@ -37,7 +37,7 @@ function fixture(goal = false) {
       listCandidates: vi.fn(async () => [
         { ownerId: "owner", projectId: "project", chatId: "chat" },
       ]),
-      noteFailure: vi.fn(async () => false),
+      adoptFailure: vi.fn(async () => false),
       claimDue: vi.fn(async () => ({ id: "claim", rowVersion: 1 })),
       finish: vi.fn(async () => true),
     },

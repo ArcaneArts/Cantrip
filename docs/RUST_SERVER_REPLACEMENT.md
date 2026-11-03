@@ -12,6 +12,47 @@ feature set.
 
 Status: **implementation in progress; not a deployable replacement**.
 
+The Task retry adoption fix addresses a race reproduced in both reference and
+Rust actors with real PostgreSQL owner-lock waiters, including a Node writer
+and Rust actor. A stale read of a legacy failure could replace a newly recorded
+manual `usage-limit` failure with a scheduled `runtime` retry. Both repositories
+now adopt only while the locked Task still has no retry record, is failed and
+retains the observed error code and timestamp. Precise worker failure accounting
+and the existing retry timing remain unchanged. This requires no schema or wire
+change and does not rewrite encrypted Task state or revisions.
+Mixed rollout tests use the patched reference server. Apply the same adoption
+fix to Node peers before relying on this guarantee while both server types run.
+
+All three stores pass 167 paired retry repository observations each, with eight
+SQL snapshots each, plus 27 paired automatic actor observations each. Eight
+additional PostgreSQL races cover both lock orders and every same/mixed
+Node/Rust writer/actor combination. They retain the precise manual failure,
+encrypted content, error identity, revisions and timestamp, without worker IO.
+Independent before/after reproductions also exercise the actual actors and a
+precise Source writer. Source typechecking, 28 focused tests, all-target Rust
+compilation and strict Clippy pass.
+
+The existing browser SDK, full unchanged worker and Codex pass all fourteen
+Task flow steps on each store for both servers: direct execution, planning and
+native Goal completion, quota failure with explicit retry, paused admission
+across server/worker restart and retained encrypted results. Each peer performs
+exactly nine scripted model requests. The acceptance harness retains public
+Task state transitions when an assertion fails; its original 32 assertion and
+poll calls and all deadlines remain unchanged. These are local macOS results.
+The dedicated Linux diagnostic repeats the original flow with these public
+observations; supported-platform confirmation remains pending. The earlier
+Linux failure must not be treated as resolved without that evidence.
+
+The repository-wide check completed in 610.710 seconds with 1,702 server and
+4,391 app tests passing. Three unchanged worker tests failed under the broad
+run: history and image-boundary timeouts and a Goal-delivery assertion. All
+three complete files subsequently pass 60 tests with their original deadlines.
+All worker/app/protocol source and tests remain byte-identical to the baseline;
+the two reference-server implementation files and one updated test double are
+the only changes among those existing source/test trees. Changed-file and Rust
+formatting pass; global formatting reports eleven independently verified,
+unchanged baseline files. The broad check is recorded as failed.
+
 The global Skill settings milestone adds all seven inventory, encrypted file
 read/write/delete/configuration and audience endpoints. Worker-owned contents
 remain opaque to the server. Audience metadata validates an independently

@@ -224,6 +224,10 @@ on:
         description: Capture the original Windows native PGlite admission stack overflow with GDB
         type: boolean
         default: false
+      task_recovery_diagnostic:
+        description: Repeat only the actual Linux Task quota failure, manual retry and restart flows
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -234,7 +238,7 @@ concurrency:
 
 jobs:
   contracts:
-    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.conversion_lifetime_diagnostic && !inputs.discovery_lifetime_diagnostic && !inputs.native_stack_diagnostic) }}
+    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.conversion_lifetime_diagnostic && !inputs.discovery_lifetime_diagnostic && !inputs.native_stack_diagnostic && !inputs.task_recovery_diagnostic) }}
     strategy:
       fail-fast: false
       matrix:
@@ -837,7 +841,7 @@ jobs:
           path: .qa/rust-server/
 
   replicas:
-    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.conversion_lifetime_diagnostic && !inputs.discovery_lifetime_diagnostic && !inputs.native_stack_diagnostic) }}
+    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.conversion_lifetime_diagnostic && !inputs.discovery_lifetime_diagnostic && !inputs.native_stack_diagnostic && !inputs.task_recovery_diagnostic) }}
     # Production lease timers take about 30 minutes for the three stores.
     # Keep the complete replica matrix independent of the existing domain matrix.
     strategy:
@@ -970,7 +974,7 @@ jobs:
           path: .qa/rust-server/
 
   conversions:
-    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.conversion_lifetime_diagnostic && !inputs.discovery_lifetime_diagnostic && !inputs.native_stack_diagnostic) }}
+    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.conversion_lifetime_diagnostic && !inputs.discovery_lifetime_diagnostic && !inputs.native_stack_diagnostic && !inputs.task_recovery_diagnostic) }}
     # Exercise production lease timers separately from the domain matrices.
     strategy:
       fail-fast: false
@@ -1128,7 +1132,7 @@ jobs:
           path: .qa/rust-server/
 
   native-commands:
-    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.conversion_lifetime_diagnostic && !inputs.discovery_lifetime_diagnostic && !inputs.native_stack_diagnostic) }}
+    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.conversion_lifetime_diagnostic && !inputs.discovery_lifetime_diagnostic && !inputs.native_stack_diagnostic && !inputs.task_recovery_diagnostic) }}
     # Native command policy, durable execution, queues and protected HTTP/Live.
     strategy:
       fail-fast: false
@@ -1587,7 +1591,7 @@ jobs:
           name: rust-server-native-commands-${{ matrix.os }}
           path: .qa/rust-server/
   actual-task-worker:
-    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.conversion_lifetime_diagnostic && !inputs.discovery_lifetime_diagnostic && !inputs.native_stack_diagnostic) }}
+    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.conversion_lifetime_diagnostic && !inputs.discovery_lifetime_diagnostic && !inputs.native_stack_diagnostic && !inputs.task_recovery_diagnostic) }}
     # Use the production worker and bundled Codex; only model HTTP is controlled.
     strategy:
       fail-fast: false
@@ -1717,7 +1721,7 @@ jobs:
           path: .qa/rust-server/
 
   chat-messages:
-    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.conversion_lifetime_diagnostic && !inputs.discovery_lifetime_diagnostic && !inputs.native_stack_diagnostic) }}
+    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.conversion_lifetime_diagnostic && !inputs.discovery_lifetime_diagnostic && !inputs.native_stack_diagnostic && !inputs.task_recovery_diagnostic) }}
     # Compare protected message writes and archive reads through real sockets.
     strategy:
       fail-fast: false
@@ -1897,7 +1901,7 @@ jobs:
           name: rust-server-chat-messages-${{ matrix.os }}
           path: .qa/rust-server/
   discovery:
-    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.conversion_lifetime_diagnostic && !inputs.discovery_lifetime_diagnostic && !inputs.native_stack_diagnostic) }}
+    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.conversion_lifetime_diagnostic && !inputs.discovery_lifetime_diagnostic && !inputs.native_stack_diagnostic && !inputs.task_recovery_diagnostic) }}
     # Exercise attached roots, imports, lease renewal and real user-owned Git.
     strategy:
       fail-fast: false
@@ -2005,7 +2009,7 @@ jobs:
           path: .qa/rust-server/
 
   migrations:
-    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.conversion_lifetime_diagnostic && !inputs.discovery_lifetime_diagnostic && !inputs.native_stack_diagnostic) }}
+    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.conversion_lifetime_diagnostic && !inputs.discovery_lifetime_diagnostic && !inputs.native_stack_diagnostic && !inputs.task_recovery_diagnostic) }}
     # Exercise real legacy SQL transfer, pending upgrades and interrupted restores.
     strategy:
       fail-fast: false
@@ -2151,4 +2155,73 @@ jobs:
         if: always()
         with:
           name: rust-server-discovery-lifetime-diagnostic
+          path: .qa/rust-server/
+  task-recovery-diagnostic:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.task_recovery_diagnostic }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    env:
+      CANTRIP_CODEX_BIN: ${{ github.workspace }}/cantrip_codex/.build/linux-x64/bundle/codex
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+      - name: Linux build tools and PostgreSQL
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql build-essential pkg-config libssl-dev libclang-dev cmake libcap-dev
+          echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(pg_config --bindir)" >> "$GITHUB_ENV"
+      - uses: actions/cache/restore@v4
+        id: codex-runtime-cache
+        with:
+          path: cantrip_codex/.build/linux-x64/bundle
+          key: cantrip-codex-bundle-linux-x64-${{ hashFiles('cantrip_codex/upstream.json', 'cantrip_codex/upstream.files.json', 'cantrip_codex/patches/**', 'scripts/cantrip-codex/**') }}
+      - uses: actions/cache/restore@v4
+        id: codex-v8-cache
+        with:
+          path: cantrip_codex/.build/linux-x64/rusty-v8
+          key: cantrip-codex-rusty-v8-linux-x64-${{ hashFiles('cantrip_codex/upstream/codex-rs/Cargo.lock') }}
+          restore-keys: |
+            cantrip-codex-rusty-v8-linux-x64-
+      - run: pnpm install --frozen-lockfile
+      - name: Build the production bundled Codex runtime
+        env:
+          CARGO_BUILD_JOBS: "2"
+        run: pnpm codex:build
+      - uses: actions/cache/save@v4
+        if: steps.codex-runtime-cache.outputs.cache-hit != 'true'
+        with:
+          path: cantrip_codex/.build/linux-x64/bundle
+          key: cantrip-codex-bundle-linux-x64-${{ hashFiles('cantrip_codex/upstream.json', 'cantrip_codex/upstream.files.json', 'cantrip_codex/patches/**', 'scripts/cantrip-codex/**') }}
+      - uses: actions/cache/save@v4
+        if: steps.codex-runtime-cache.outputs.cache-hit != 'true' && steps.codex-v8-cache.outputs.cache-hit != 'true'
+        with:
+          path: cantrip_codex/.build/linux-x64/rusty-v8
+          key: cantrip-codex-rusty-v8-linux-x64-${{ hashFiles('cantrip_codex/upstream/codex-rs/Cargo.lock') }}
+      - run: pnpm --filter '@cantrip/app^...' --filter @cantrip/worker -r build
+      - run: node node_modules/playwright-core/cli.js install --with-deps chromium
+      - run: node scripts/server-rust/linux-chromium-sandbox.mjs
+      - name: Repeat the existing paired Task assertions without changing their deadlines
+        run: |
+          status=0
+          for attempt in 1 2 3; do
+            if node --import tsx scripts/server-rust/actual-folder-client.mjs --tasks --database pglite --report ".qa/rust-server/task-recovery-${attempt}.json"; then
+              echo "Task recovery attempt ${attempt} passed"
+            else
+              status=1
+              echo "Task recovery attempt ${attempt} failed"
+            fi
+          done
+          exit "$status"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rust-server-task-recovery-diagnostic-linux
           path: .qa/rust-server/

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { runTaskRetryRaces } from "./task-retry-races.mjs";
+import { runTaskRetryAdoptionRaces } from "./task-retry-adoption-races.mjs";
 import { literal, json, stamp, otherOwner } from "./project-target-state.mjs";
 import { taskEnvelope } from "./task-wire-fixtures.mjs";
 export async function runTaskRetryCases(h) {
@@ -53,6 +54,104 @@ export async function runTaskRetryCases(h) {
   const put = (value) =>
     seed(
       `UPDATE tasks SET automatic_retry=${value === null ? "NULL" : json(value)} WHERE chat_id='task'`,
+    );
+  await clean();
+  const observed = { code: "task-runtime", occurredAt: stamp };
+  const retryRows = async (name) =>
+    (await rows(name)).map((value) => {
+      const row = Array.isArray(value) ? value[0] : value;
+      return row.result ?? row;
+    });
+  await ok(
+    "adopt a legacy failure under the owner lock",
+    "adopt",
+    observed,
+    (v) => assert.equal(v, true),
+  );
+  for (const row of await retryRows("adopted legacy retry record")) {
+    assert.deepEqual(
+      row.retry,
+      record("scheduled", {
+        failureKey: `observed:${observed.code}:${stamp}`,
+      }),
+    );
+    assert.equal(row.rowVersion, 1);
+    assert.equal(row.schedulerRevision, 1);
+    assert.deepEqual(row.protectedContent, taskEnvelope);
+    assert.equal(Date.parse(row.updatedAt), Date.parse(stamp));
+  }
+  await ok(
+    "duplicate adoption retains original countdown",
+    "adopt",
+    {
+      ...observed,
+      now: 99999,
+    },
+    (v) => assert.equal(v, false),
+  );
+  for (const status of ["manual", "scheduled", "retrying", "latched", "idle"]) {
+    await clean();
+    const existing = record(status, {
+      failureKind: "usage-limit",
+      dueAt: null,
+    });
+    await put(existing);
+    await ok(
+      `adoption preserves an existing ${status} record`,
+      "adopt",
+      observed,
+      (v) => assert.equal(v, false),
+    );
+    for (const row of await retryRows(`retained ${status} record`))
+      assert.deepEqual(row.retry, existing);
+  }
+  for (const fields of [
+    { code: "task-timeout" },
+    { occurredAt: "2026-10-25T00:00:01.123Z" },
+  ]) {
+    await clean();
+    await ok(
+      "stale failure identity cannot be adopted",
+      "adopt",
+      {
+        ...observed,
+        ...fields,
+      },
+      (v) => assert.equal(v, false),
+    );
+    for (const row of await retryRows("stale adoption leaves ledger absent"))
+      assert.equal(row.retry, null);
+  }
+  for (const state of [
+    "draft",
+    "planning",
+    "implementing",
+    "review",
+    "complete",
+    "blocked",
+  ]) {
+    await clean([
+      `UPDATE tasks SET state=${literal(state)} WHERE chat_id='task'`,
+    ]);
+    await ok(`adoption cannot change a ${state} Task`, "adopt", observed, (v) =>
+      assert.equal(v, false),
+    );
+  }
+  await clean(["UPDATE tasks SET last_error=NULL WHERE chat_id='task'"]);
+  await ok("cleared failure cannot be adopted", "adopt", observed, (v) =>
+    assert.equal(v, false),
+  );
+  await clean();
+  for (const chat of ["task", "missing"])
+    await ok(
+      "adoption requires an owned Task",
+      "adopt",
+      {
+        ...observed,
+        chat,
+        owner: otherOwner,
+      },
+      (v) => assert.equal(v, null),
     );
   await clean();
   await ok("failed Task without ledger is a candidate", "list", {}, (v) =>
@@ -321,5 +420,8 @@ export async function runTaskRetryCases(h) {
     assert.deepEqual(v.protectedContent, taskEnvelope);
     assert.equal(Date.parse(v.updatedAt), Date.parse(stamp));
   }
-  if (h.databaseMode === "postgres") await runTaskRetryRaces(h, clean);
+  if (h.databaseMode === "postgres") {
+    await runTaskRetryRaces(h, clean);
+    await runTaskRetryAdoptionRaces(h, clean);
+  }
 }

@@ -10710,12 +10710,18 @@
       "evidence": [
         "scripts/server-rust/task-automatic-cases.mjs",
         "scripts/server-rust/task-automatic-node-fixture.mjs",
-        "cantrip_server_rs/examples/support/task_automatic.rs"
+        "cantrip_server_rs/examples/support/task_automatic.rs",
+        "cantrip_server/src/db/task-retries.ts",
+        "cantrip_server/src/app/runtime/task-automatic-retry.ts",
+        "cantrip_server_rs/src/tasks/retries.rs",
+        "scripts/server-rust/task-retry-cases.mjs",
+        "scripts/server-rust/task-retry-adoption-races.mjs",
+        "scripts/server-rust/actual-task-recovery.mjs"
       ],
-      "validatedSubset": "Local macOS:27actual Source/native observations per backend,28TaskSQLsnapshots,8shared snapshots and4process reopens. Concrete Goal/recovery, Task/retry, queue/naming and Live services preserve old-failure adoption, claimed-attempt identity, read-only observation, active-operation defer/refund, failure accounting, revision fences, tenant scope, four-chat admission, overlapping-tick deduplication, nonstalling candidates and stop/drain. Actual PostgreSQL triggers force a post-claim projection failure and a revision change. Complete Task/cycle rows are explicitly equal across restart. Source67focused tests, Goal86, recovery91, GUI696 and strictalltargetClippy/format/diff pass. Worker replies, catalog transport, turn boundary and scheduler wakeup are explicit controlled peers; this is not full scheduler/product/platform or artifact acceptance.",
+      "validatedSubset": "Local macOS:27paired actual Source/native actor observations per backend, plus167paired retry repository observations and8SQLsnapshots per backend. Concrete Goal/recovery, Task/retry, queue/naming and Live retain claim identity, observation, retry/defer/refund, tenant scope, concurrency and stop/drain. Legacy-failure adoption now rechecks absent ledger, failed state and exact error code/occurredAt under the existing owner/Task locks. Independent actual actor reproductions prove the previous overwrite of a precise manual usage-limit failure in Source and Rust; eight additional real PostgreSQL lock races cover both orders and every same/mixed writer/actor combination, preserving manual accounting, encrypted bytes, revisions, error identity and timestamp without worker IO. Existing browser SDK/full unchanged worker/Codex complete14Task steps per peer on all3stores with exactly9scripted model requests each, including quota/manualretry, planning/nativeGoal, projectpause and server/workerrestart. Source typecheck/28focused tests and strictalltargetRust checks pass. Original32acceptance assertion/poll call arguments and deadlines are preserved. Public transition snapshots and a dedicated repeated Linux workflow support the remaining platform investigation.",
       "remaining": [
-        "Pause/resume, resumed execution and the scheduler graph are component-verified separately; complete production mounting and public project/Task controls remain.",
-        "Full GUI/public turn/receipt graph and actual client/worker/platform acceptance; all original coordination, migration/post-write rollback, performance, packaging, Winterhold rehearsal, merged delivery/default cutover and Node-server removal requirements."
+        "Confirm the fenced legacy adoption with actual full-worker/native Task recovery on supported Linux, Windows and macOS artifacts. The earlier Linux quota-recovery failure remains unproven as resolved until the current platform evidence demonstrates it.",
+        "Complete the original coordination, upgrade/post-write rollback, performance, packaging, Winterhold rehearsal, final acceptance/default cutover and production Node-server removal requirements."
       ]
     },
     "taskClaimedExecution": {

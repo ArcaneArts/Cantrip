@@ -159,19 +159,14 @@ impl Service {
             && truthy(task.get("lastError"))
         {
             let error = &task["lastError"];
-            let key = format!(
-                "observed:{}:{}",
-                text(&error["code"])?,
-                text(&error["occurredAt"])?
-            );
             if truthy(Some(
                 &self
                     .retries
-                    .note_failure(
+                    .adopt_failure(
                         &owner,
                         &chat,
-                        &key,
-                        tasks::failure_kind::classify(&error["code"]),
+                        &text(&error["code"])?,
+                        &text(&error["occurredAt"])?,
                         Some((self.dependencies.clock)()),
                     )
                     .await?,

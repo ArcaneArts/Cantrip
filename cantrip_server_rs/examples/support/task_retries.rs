@@ -20,6 +20,19 @@ pub async fn run(database: Arc<Database>, input: &Value) -> Result<Value> {
                 .await?
         }
         "reset" => repository.reset(owner, chat).await?,
+        "adopt" => {
+            repository
+                .adopt_failure(
+                    owner,
+                    chat,
+                    input["code"].as_str().context("Observed failure code")?,
+                    input["occurredAt"]
+                        .as_str()
+                        .context("Observed failure time")?,
+                    now,
+                )
+                .await?
+        }
         "clear" => repository.clear_pending(owner, chat).await?,
         "claim" => repository.claim_due(owner, chat, now).await?,
         "finish" => {
