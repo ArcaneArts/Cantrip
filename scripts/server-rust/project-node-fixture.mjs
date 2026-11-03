@@ -25,6 +25,7 @@ import { managedPreparationFixture } from "./managed-preparation-node-fixture.mj
 import { NativeCommandError } from "../../cantrip_server/src/db/repository/native-command-errors.ts";
 import { ExecutionLaneConflictError } from "../../cantrip_server/src/db/repository/chat-execution-lanes.ts";
 import { AgentInteractionConflictError } from "../../cantrip_server/src/db/repository/agent-interactions.ts";
+import { projectAutomationFixture } from "./project-automation-node-fixture.mjs";
 console.error(JSON.stringify({ event: "repository-fixture.database.opening" }));
 const database = await connectDatabase(readServerConfig());
 console.error(JSON.stringify({ event: "repository-fixture.database.ready" }));
@@ -45,7 +46,9 @@ try {
       // Seeding owns only this disposable fixture. Runtime TS private storage is
       // used solely to exercise the actual connector on both PostgreSQL and PGlite.
       let value;
-      if (request.op.startsWith("preparation-")) {
+      if (request.op.startsWith("automation-")) {
+        value = await projectAutomationFixture(database.repository, request);
+      } else if (request.op.startsWith("preparation-")) {
         value = await managedPreparationFixture(database.repository, request);
       } else if (request.op.startsWith("console-")) {
         value = await managedConsoleFixture(
@@ -963,6 +966,9 @@ try {
               }
             : {}),
           diagnostic:
+            // Automation routes expose the ORM error, so the comparison must
+            // retain it rather than this driver's generic cause-only view.
+            request.op.startsWith("automation-") ||
             request.op.startsWith("project-surface-") ||
             request.op.startsWith("terminal-") ||
             request.op.startsWith("browser-") ||

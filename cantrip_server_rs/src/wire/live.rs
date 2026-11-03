@@ -80,6 +80,25 @@ pub(super) fn transform(
     result: &mut Parsed,
     path: &[Value],
 ) -> Result<(), ValidationError> {
+    if tag == "automation-weekdays" {
+        let values = result
+            .value
+            .as_ref()
+            .and_then(Value::as_array)
+            .ok_or(ValidationError::Operation)?;
+        let mut days = values
+            .iter()
+            .map(|v| {
+                v.as_f64()
+                    .ok_or(ValidationError::Operation)
+                    .map(|v| v as i64)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        days.sort_unstable();
+        days.dedup();
+        result.value = Some(Value::Array(days.into_iter().map(|v| json!(v)).collect()));
+        return Ok(());
+    }
     if tag == "native-event-identity" {
         return Ok(());
     }

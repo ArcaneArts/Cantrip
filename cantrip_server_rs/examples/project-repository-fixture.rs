@@ -51,6 +51,8 @@ mod native_logical;
 mod native_settings;
 #[path = "support/pane_layouts.rs"]
 mod pane_layouts;
+#[path = "support/project_automations.rs"]
+mod project_automations;
 #[path = "support/project_surfaces.rs"]
 mod project_surfaces;
 #[path = "support/queue_delivery.rs"]

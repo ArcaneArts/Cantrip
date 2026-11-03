@@ -9,6 +9,7 @@ import * as runConfigurationOperations from "../../packages/protocol/dist/run-co
 import * as runConfigurationRuntime from "../../packages/protocol/dist/run-configuration-runtime.js";
 import * as taskScheduling from "../../packages/protocol/dist/task-scheduling.js";
 import * as taskOperations from "../../packages/protocol/dist/tasks.js";
+import * as automations from "../../packages/protocol/dist/automations.js";
 import { repositoryRoutingHandleSchema } from "../../packages/protocol/dist/repository-operation.js";
 import { cuaCursorPreferenceRecordSchema } from "../../packages/protocol/dist/computer-use-preferences.js";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -533,6 +534,18 @@ export const contractRoots = [
   "agentThreadSyncSchema",
   "agentThreadSyncItemSchema",
   "archivedChatCleanupResultSchema",
+  "projectAutomationIntervalScheduleSchema",
+  "projectAutomationWeeklyScheduleSchema",
+  "projectAutomationCronScheduleSchema",
+  "projectAutomationScheduleSchema",
+  "projectAutomationOpaqueContentSchema",
+  "encryptedProjectAutomationCreateSchema",
+  "encryptedProjectAutomationUpdateSchema",
+  "projectAutomationWireSchema",
+  "projectAutomationWireListSchema",
+  "projectAutomationDispatchRequestSchema",
+  "projectAutomationDispatchResultSchema",
+  "projectAutomationProtectedDispatchResultSchema",
 ];
 
 // Resolve the actual source schemas, including their separate protocol modules.
@@ -547,6 +560,7 @@ export function sourceContractSchema(name) {
     runDefinitions[name] ??
     taskScheduling[name] ??
     taskOperations[name] ??
+    automations[name] ??
     (name === "nativeCommandTerminalEvidenceSchema"
       ? protocol.nativeCommandSettlementSchema.shape.reconciliation.unwrap()
       : undefined) ??
@@ -955,10 +969,28 @@ registerChecks(protocol.legacyProjectTabLayoutWireSummarySchema, [
   "legacy-project-layout",
 ]);
 const commandContracts = registerWorkerCommandContracts(registerCustom);
+registerChecks(
+  automations.projectAutomationWeeklyScheduleSchema.shape.timeZone,
+  ["automation-timezone"],
+);
+registerChecks(automations.projectAutomationCronScheduleSchema, [
+  "automation-cron",
+]);
+registerChecks(automations.encryptedProjectAutomationUpdateSchema, [
+  "automation-update",
+]);
+registerChecks(protocol.projectAutomationProtectedDispatchResultSchema, [
+  "automation-protected-dispatch",
+]);
 registerChecks(protocol.nativeCommandEventSchema.shape.event._zod.def.in, [
   "native-command-event",
 ]);
 const transforms = new Map([
+  [
+    automations.projectAutomationWeeklyScheduleSchema.shape.weekdays._zod.def
+      .out,
+    "automation-weekdays",
+  ],
   [
     protocol.nativeCommandEventSchema.shape.event._zod.def.out,
     "native-event-identity",
@@ -1200,6 +1232,22 @@ if (
     await format(JSON.stringify(manifest), {
       ...(await resolveConfig(filename)),
       filepath: filename,
+    }),
+  );
+  // Zod's strict object checks enumerate inherited Buffer properties as well
+  // as byte indices. Retain Source's enumeration for binary-body contracts;
+  // the Rust server does not need a JavaScript object/prototype runtime.
+  const bufferKeys = [];
+  for (const key in Buffer.alloc(0)) bufferKeys.push(key);
+  const bufferDestination = new URL(
+    "../../cantrip_server_rs/contracts/js-buffer-keys.json",
+    import.meta.url,
+  );
+  await writeFile(
+    bufferDestination,
+    await format(JSON.stringify(bufferKeys), {
+      ...(await resolveConfig(fileURLToPath(bufferDestination))),
+      filepath: fileURLToPath(bufferDestination),
     }),
   );
   console.log(

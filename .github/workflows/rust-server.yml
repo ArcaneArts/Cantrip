@@ -11,6 +11,12 @@ on:
       - cantrip_server/src/app/routes/auth-sessions.ts
       - cantrip_server/src/app/routes/system-status.ts
       - cantrip_server/src/app/routes/chat-catalogs.ts
+      - cantrip_server/src/app/routes/project-automations.ts
+      - cantrip_server/src/db/project-automations.ts
+      - cantrip_server/test/project-automation-api.test.ts
+      - cantrip_app/src/lib/project-automation-*.ts
+      - cantrip_worker/src/automation*.ts
+      - cantrip_worker/test/automation*.test.ts
       - cantrip_server/src/app/routes/account-security.ts
       - cantrip_server/src/app/routes/account-live-traffic.ts
       - cantrip_server/src/account-usage/**
@@ -258,6 +264,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y postgresql libssl-dev
           echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(pg_config --bindir)" >> "$GITHUB_ENV"
+          # Full Cargo tests include the real native PGlite 17 dump. Retain
+          # PostgreSQL 16 server coverage and use the migration job's dump client.
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-18
+          echo "CANTRIP_TEST_PG_DUMP_PATH=/usr/lib/postgresql/18/bin/pg_dump" >> "$GITHUB_ENV"
       - name: macOS PostgreSQL
         if: runner.os == 'macOS'
         run: |
@@ -1674,12 +1686,15 @@ jobs:
         run: node --import tsx scripts/server-rust/actual-folder-client.mjs --tasks --database bundled-postgres --report .qa/rust-server/actual-task-worker-bundled-postgres.json
       - name: Actual browser, full worker and native Task Goals with postgres
         run: node --import tsx scripts/server-rust/actual-folder-client.mjs --tasks --database postgres --report .qa/rust-server/actual-task-worker-postgres.json
-      - name: Actual Agent conversation, canonical history and native Goal with pglite
-        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --project-chats --database pglite --report .qa/rust-server/actual-project-chat-worker-pglite.json
-      - name: Actual Agent conversation, canonical history and native Goal with bundled-postgres
-        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --project-chats --database bundled-postgres --report .qa/rust-server/actual-project-chat-worker-bundled-postgres.json
-      - name: Actual Agent conversation, canonical history and native Goal with postgres
-        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --project-chats --database postgres --report .qa/rust-server/actual-project-chat-worker-postgres.json
+      - name: Actual Agent conversation, native Goal and scheduled automations with pglite
+        if: ${{ !cancelled() }}
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --project-chats --project-automations --database pglite --report .qa/rust-server/actual-project-chat-worker-pglite.json
+      - name: Actual Agent conversation, native Goal and scheduled automations with bundled-postgres
+        if: ${{ !cancelled() }}
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --project-chats --project-automations --database bundled-postgres --report .qa/rust-server/actual-project-chat-worker-bundled-postgres.json
+      - name: Actual Agent conversation, native Goal and scheduled automations with postgres
+        if: ${{ !cancelled() }}
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --project-chats --project-automations --database postgres --report .qa/rust-server/actual-project-chat-worker-postgres.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -1740,6 +1755,24 @@ jobs:
       - run: pnpm --filter '@cantrip/app^...' -r build
       - name: Protected message validation contracts
         run: node scripts/server-rust/cargo.mjs test --test chat_contracts -- --nocapture
+      - name: Automation contracts, exact errors and native recurrence
+        run: node scripts/server-rust/cargo.mjs test --test project_automation_contracts --test project_automation_schedule -- --nocapture
+      - name: Automation SQL and legacy timezone assets match actual Source
+        run: |
+          node --import tsx scripts/server-rust/project-automation-query-manifest.mjs
+          node scripts/server-rust/project-automation-legacy-zones.mjs
+      - name: Automation repository, HTTP, worker encryption and Live with pglite
+        run: |
+          node --import tsx scripts/server-rust/project-automation-repository-compatibility.mjs --database pglite --report .qa/rust-server/project-automations-repository-pglite.json
+          node --import tsx scripts/server-rust/project-automation-http-compatibility.mjs --database pglite --report .qa/rust-server/project-automations-http-pglite.json
+      - name: Automation repository, HTTP, worker encryption and Live with bundled-postgres
+        run: |
+          node --import tsx scripts/server-rust/project-automation-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/project-automations-repository-bundled-postgres.json
+          node --import tsx scripts/server-rust/project-automation-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/project-automations-http-bundled-postgres.json
+      - name: Automation repository, HTTP, worker encryption and Live with postgres
+        run: |
+          node --import tsx scripts/server-rust/project-automation-repository-compatibility.mjs --database postgres --report .qa/rust-server/project-automations-repository-postgres.json
+          node --import tsx scripts/server-rust/project-automation-http-compatibility.mjs --database postgres --report .qa/rust-server/project-automations-http-postgres.json
       - name: Reference thread synchronization and observation contracts
         run: pnpm --filter @cantrip/server exec vitest run --maxWorkers=2 test/chat-thread-sync-admission.test.ts test/chat-thread-sync-observation.test.ts test/chat-thread-change-reconciliation.test.ts
       - name: Archive cleanup retention, ownership, faults, races and restart with pglite

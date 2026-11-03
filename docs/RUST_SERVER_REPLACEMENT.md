@@ -5641,3 +5641,83 @@ node --import tsx scripts/server-rust/native-queue-receipt-http.mjs --database p
 node --import tsx scripts/server-rust/native-queue-receipt-http.mjs --database bundled-postgres --report .qa/rust-server/native-queue-receipt-bundled-postgres.json
 node --import tsx scripts/server-rust/native-queue-receipt-http.mjs --database postgres --report .qa/rust-server/native-queue-receipt-postgres.json
 ```
+
+## Project automations
+
+The Rust server implements all four public encrypted automation CRUD routes and
+both worker polling/dispatch routes. Worker requests require `worker:automations`
+and retain the credential owner. Missing projects still list as an empty array;
+Agent-target ownership, optimistic revisions, disabled schedules and no-future
+conflicts follow Source. The server retains opaque name, prompt and condition
+content. The unchanged worker evaluates conditions and seals the actual turn.
+
+Scheduling runs entirely in Rust. Its parser preserves Croner 10.0.1's five-part
+syntax, one-shot date forms, diagnostic order, question-mark wildcard behavior,
+weekday transforms, civil traversal and year-3000 search boundary. Calendar
+intervals retain JavaScript Date.UTC normalization. Timezone roundtrips preserve
+Source's fold/gap behavior. Named zones use the bundled timezone database rather
+than host zoneinfo; an actual America/Inuvik comparison exposed a one-hour host
+data difference. Source and bundled data currently use 2026e. Legacy SystemV
+aliases use compiled TZif assets extracted from actual Source Intl behavior,
+including historical exceptions and a future rule checked over a complete
+400-year Gregorian cycle. MIT attribution for the Croner adaptation is retained.
+No JavaScript database or scheduling helper runs in the production server.
+
+The repository executes Source-derived SQL and parameter order, with native
+bindings and JSON row projection. It preserves separate CRUD operations, revision
+conflicts, millisecond timestamp comparisons, occurrence uniqueness, expired-run
+recovery, lease tokens/fencing and captured reasoning settings. Claims and
+completion updates keep their original transaction boundaries. Finishing a run
+can succeed after an automation edit without overwriting the newer revision.
+Error text is sliced by UTF-16 units before the text driver encodes it.
+
+Dispatch claims remain outside the protected-dispatch error boundary. The worker
+protection request retains its 45-second budget. Recovery reads, queued prompts,
+turn starts and dispatch use the existing native services, including their owned
+lifetimes after the HTTP caller disconnects. Project invalidations retain their
+owner and scope. Strict binary-body errors include Source Buffer's inherited
+enumerable keys; other domains' general Buffer compatibility remains separate.
+
+Local macOS arm64 comparisons match 9,337 actual Source contract outcomes and
+exact errors, plus 17,252 occurrences covering every Intl-supported timezone,
+legacy aliases/history, interval/calendar boundaries, folds/gaps, the year cutoff
+and UTF-16 date comments. Actual repositories match 66 scenarios on each of the
+three stores. The controlled HTTP/worker/Live suite passes all nine storage/auth
+profiles: 516 paired HTTP observations, 24 endpoint decryption proofs, eight
+protection commands, 35 project invalidations, two unchanged scheduler HTTP
+operations and six concurrency, lifetime and legacy-recovery scenarios per
+peer/profile. It covers concurrent dispatch, edits during protection, lease expiry
+after queue admission, durable completion after a client disconnect, legacy
+visible-message/prompt recovery and the existing opaque-mapper rejection. Account
+cases deny foreign-owner CRUD and retain the worker credential owner alongside a
+foreign session cookie.
+
+Existing browser automation APIs, normal server executables, the full production
+worker and the actual bundled Codex also pass on all three stores. Real `exit 0`
+and `exit 7` conditions produce one native turn and one skipped automation. Their
+protected schedules and completed canonical history survive two additional
+server/worker restarts before deletion. The original Chat/Goal/history/usage
+assertions remain. Only public model HTTP responses are controlled.
+
+All 47 Rust library tests, 44,824 native-command contract comparisons and strict
+all-target Clippy pass after the timezone fixes. Focused unchanged Source tests
+pass: six protocol, two server, six worker and one app test.
+
+The broad `pnpm check` exits 1 after 627 seconds: all 1,702 Source server and
+4,391 app tests pass, while the worker passes 2,623 tests and exceeds the original
+15-second deadline in one encrypted-history batch test. Its complete unchanged
+28-test file passes separately in 62 seconds with the original deadlines. This
+does not establish the cause or a green broad check. A separate full formatting
+check reports eleven files, all byte-identical to the milestone base; changed-file
+formatting passes. Neither failure is suppressed or treated as whole-goal acceptance.
+
+These local results do not establish supported-platform, packaging, multi-instance
+or whole-server replacement acceptance. The prior PR #2454 platform run includes
+Linux/Windows Source foundation timeouts, a Linux Source startup timeout, Windows
+scheduler/transaction-clock comparisons and a Linux native logical-export failure.
+The failing Linux contract job selected PostgreSQL 16 tools for the PGlite 17
+dump; it now uses the existing migration job's PostgreSQL 18 dump client while
+retaining PostgreSQL 16 server coverage. A fresh Linux result remains required.
+Its actual Linux full-worker Task job passes; the other observations remain open,
+and logs plus three independently checksum-verified failure artifacts are retained.
+Node remains the default server, and the worker remains Node.
