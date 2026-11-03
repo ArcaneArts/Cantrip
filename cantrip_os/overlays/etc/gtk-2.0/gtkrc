@@ -1,0 +1,3 @@
+gtk-theme-name="CantripOLED"
+gtk-font-name="DejaVu Sans 10"
+include "/usr/share/themes/CantripOLED/gtk-2.0/gtkrc"

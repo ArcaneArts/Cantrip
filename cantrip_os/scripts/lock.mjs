@@ -6,7 +6,11 @@ import { setTimeout as delay } from "node:timers/promises";
 
 // A populated owner file is linked atomically, so a crashed writer cannot
 // leave an empty lock that no subsequent invocation can recover.
-export async function withInstanceLock(name, action) {
+export async function withInstanceLock(
+  name,
+  action,
+  { signal, wait = true } = {},
+) {
   const key = createHash("sha256").update(name).digest("hex").slice(0, 20);
   const path = join(tmpdir(), `cantrip-os-${key}.lock`);
   const candidate = `${path}.${randomUUID()}`;
@@ -14,6 +18,7 @@ export async function withInstanceLock(name, action) {
   await writeFile(candidate, owner, { mode: 0o600 });
   try {
     while (true) {
+      signal?.throwIfAborted();
       try {
         await link(candidate, path);
         break;
@@ -32,9 +37,14 @@ export async function withInstanceLock(name, action) {
             continue;
           }
         } catch (error) {
-          if (error.code !== "ENOENT") throw error;
+          if (error.code === "ENOENT") continue;
+          throw error;
         }
-        await delay(250);
+        if (!wait)
+          throw new Error(
+            `A CantripOS session for ${name} is already running. Stop it first or use CANTRIP_OS_NAME and different ports.`,
+          );
+        await delay(250, undefined, { signal });
       }
     }
     try {

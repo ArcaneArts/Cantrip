@@ -7,17 +7,46 @@ The first personal-testing checkpoint is ready. See [acceptance results](ACCEPTA
 for the actual tested builds and platform limits. Iterate in Docker first; build
 the ISO when you want the same source configuration as bootable media.
 
-From the repository root, with Node 22+ and a running Docker engine:
+From the repository root, with Node 22.13+ (or Node 24) and a running Docker engine:
+
+```sh
+pnpm os
+```
+
+This builds the current source, starts the Docker desktop, prints connection
+information, streams container logs, and watches source changes. Open
+<http://127.0.0.1:6080/>. IceWM logs in as `cantrip` automatically with the
+Cantrip OLED theme; `sudo` requires no password. Ctrl+C cancels any active build
+and stops the desktop, keeping its persistent home. Run `pnpm os` again to return.
+Only one foreground launcher may own an instance at a time. Separate instances
+need different names **and** different browser/VNC ports.
+
+The viewer reconnects after container replacement. Its black toolbar shows the
+Cantrip bolt and a Clipboard button, with status text only while connecting.
+Browser fullscreen hides the toolbar using the browser's fullscreen display mode
+(and Firefox's native fullscreen flag). Use your browser's fullscreen command,
+such as F11 or macOS's fullscreen menu. F11 is reserved for the host browser.
+Browser/embedded-webview support varies; an embedded panel may have no native
+fullscreen mode. Refresh the page after changes to the viewer HTML/JavaScript;
+desktop theme changes appear on automatic reconnect.
+
+Connections printed by the launcher:
+
+- Browser: `http://127.0.0.1:6080/`
+- Native VNC: host `127.0.0.1`, port `5900`, no password (TigerVNC syntax: `127.0.0.1::5900`).
+- Root shell: `docker exec -it cantrip-os bash`
+- SSH: no server is enabled in this foundation image.
+
+Both published ports bind **only to host loopback**. VNC listens on the container
+network so Docker can forward it; this is the same trusted local desktop as the
+browser viewer. SSH/Cantrip remote connection management remains future work.
+
+For detached use without a watcher or Ctrl+C ownership:
 
 ```sh
 node cantrip_os/scripts/os.mjs build
 node cantrip_os/scripts/os.mjs up
 ```
-
-Open <http://127.0.0.1:6080>. IceWM logs in as `cantrip` automatically. Use the
-bottom-left menu to open applications. `sudo` requires no password. The noVNC
-viewer retries after disconnect and supports resize, fullscreen, and a text
-clipboard dialog. Only the browser service is published, on host loopback.
 
 ```sh
 node cantrip_os/scripts/os.mjs restart  # Same container; retains system changes
@@ -28,15 +57,17 @@ node cantrip_os/scripts/os.mjs reset    # Explicitly DELETE this desktop's home
 ```
 
 `CANTRIP_OS_NAME` (default `cantrip-os`) selects container/image/volume names;
-`CANTRIP_OS_PORT` (default `6080`) selects the localhost port when creating it.
+`CANTRIP_OS_PORT` (default `6080`) selects the browser port;
+`CANTRIP_OS_VNC_PORT` (default `5900`) selects native VNC. Ports are assigned when
+creating the container; `pnpm os` rebuilds/recreates it with the chosen values.
 The default named volume is `cantrip-os-home`. Rebuild retains this home,
 including Documents, Downloads, and Chromium profiles. Reset deletes it.
 Each container keeps a stable instance hostname. Startup clears only Chromium's
 old process-lock files before any browser runs, so a retained profile can open
 after container replacement; browser data is preserved.
 
-For automatic source changes → image build → desktop replacement → browser
-reconnect, run:
+For the original watcher that deliberately leaves the desktop running on Ctrl+C
+(instead of the foreground `pnpm os` lifecycle), run:
 
 ```sh
 node cantrip_os/scripts/dev.mjs
@@ -59,26 +90,39 @@ not copy defaults into persistent home files on every startup.
 
 ## Customizing the desktop
 
-Paths below are relative to `cantrip_os/`. Keep `scripts/dev.mjs` running while
+Paths below are relative to `cantrip_os/`. Keep `pnpm os` running while
 editing; after replacement, the existing viewer reconnects at the same URL.
 
-| Change                                      | Source                                                                                                                               |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| Shared applications/packages                | `manifests/desktop.packages`                                                                                                         |
-| ISO-only packages, kernel, hardware support | `manifests/iso.packages` and `images/iso/build.sh`                                                                                   |
-| Background color or wallpaper               | `overlays/etc/X11/icewm/prefoverride`; use `DesktopBackgroundColor` or `DesktopBackgroundImage`                                      |
-| IceWM behavior/workspaces/clock             | `overlays/etc/X11/icewm/preferences`                                                                                                 |
-| Application menu                            | `overlays/etc/X11/icewm/menu`                                                                                                        |
-| Taskbar application launchers               | `overlays/etc/X11/icewm/toolbar`                                                                                                     |
-| Theme selection                             | Create `overlays/etc/X11/icewm/theme`, e.g. `Theme="icedesert/default.theme"`; installed themes are under `/usr/share/icewm/themes/` |
-| Startup applications                        | Create executable `overlays/etc/X11/icewm/startup`, starting with `#!/bin/sh`; launch long-lived applications with `&`               |
-| New files/scripts/wallpaper assets          | Put them at their intended system paths beneath `overlays/`                                                                          |
-| Default user, sudo, locale                  | `scripts/configure-system.sh`                                                                                                        |
-| Docker session services                     | `images/oci/start.sh`                                                                                                                |
-| ISO automatic login                         | `images/iso/overlays/etc/lightdm/lightdm.conf.d/50-cantrip.conf`                                                                     |
-| Browser viewer                              | `viewer/index.html`                                                                                                                  |
+| Change                                      | Source                                                                                                                                                    |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Shared applications/packages                | `manifests/desktop.packages`                                                                                                                              |
+| ISO-only packages, kernel, hardware support | `manifests/iso.packages` and `images/iso/build.sh`                                                                                                        |
+| Background color or wallpaper               | `overlays/etc/X11/icewm/prefoverride`; use `DesktopBackgroundColor` or `DesktopBackgroundImage`                                                           |
+| IceWM behavior/workspaces/clock             | `overlays/etc/X11/icewm/preferences`                                                                                                                      |
+| Application menu                            | `overlays/etc/X11/icewm/menu`                                                                                                                             |
+| Taskbar application launchers               | `overlays/etc/X11/icewm/toolbar`                                                                                                                          |
+| Theme selection                             | `overlays/etc/X11/icewm/theme`; defaults to `cantrip-oled/default.theme`                                                                                  |
+| Theme colors, fonts, window controls        | `overlays/usr/share/icewm/themes/cantrip-oled/` (`default.theme` and text XPM palettes)                                                                   |
+| GTK application widgets                     | `overlays/usr/share/themes/CantripOLED/` and `overlays/etc/gtk-3.0/settings.ini`                                                                          |
+| Mousepad editor palette                     | `overlays/usr/share/gtksourceview-4/styles/cantrip-oled.xml`; default selection in `overlays/usr/share/glib-2.0/schemas/90-cantrip-oled.gschema.override` |
+| Terminal/X11 colors                         | `overlays/etc/X11/Xresources/50-cantrip-oled`; personal `~/.Xresources` wins                                                                              |
+| Startup applications                        | Create executable `overlays/etc/X11/icewm/startup`, starting with `#!/bin/sh`; launch long-lived applications with `&`                                    |
+| New files/scripts/wallpaper assets          | Put them at their intended system paths beneath `overlays/`                                                                                               |
+| Default user, sudo, locale                  | `scripts/configure-system.sh`                                                                                                                             |
+| Docker session services                     | `images/oci/start.sh`                                                                                                                                     |
+| ISO automatic login                         | `images/iso/overlays/etc/lightdm/lightdm.conf.d/50-cantrip.conf`                                                                                          |
+| Browser viewer                              | `viewer/index.html`, `viewer/viewer.mjs`, `viewer/bolt.svg`                                                                                               |
 
-The `prefoverride` file applies background settings after the bundled theme.
+The OLED theme is adapted from the supplied Icewm_Nord_style_small theme, with
+its author and GPL license retained alongside the editable sources. DejaVu Sans
+replaces the optional NovaMono text font; icons do not depend on that font.
+The original wallpaper, oversized optional application icons, alternate assets,
+and Debian's other bundled IceWM themes are omitted. The matching GTK theme also covers application interiors, including PCManFM and
+Mousepad. Mousepad gets a monochrome source-editor scheme; xterm gets black X11
+resources. Chromium launches with dark browser UI (websites still control their
+own content). Application icons and terminal ANSI colors retain semantic colors. Both Docker and newly built ISOs get the same theme and default selection.
+
+The `prefoverride` file sets the background to `#000000` after the bundled theme.
 Personal files under `~/.icewm` deliberately override system defaults. Inspect
 them when a source change does not appear; preserve or remove the specific
 personal override as intended. Do not delete the entire home to update defaults.
@@ -100,6 +144,30 @@ The Docker image pins its Debian base digest; apt installs current packages
 for the pinned trixie release. It runs the OS userspace on Docker's kernel.
 Bootable-media build and testing instructions follow below.
 See [the product plan](../docs/CANTRIP_OS.md).
+
+## Window movement, resizing, and snapping
+
+IceWM handles this directly; no compositor or extra service runs.
+
+- Drag any edge/corner to resize, including maximized windows. The visible
+  outline is one pixel, with a four-pixel grab area and larger corner targets.
+- **Alt + right-drag** anywhere in a window resizes it; **Alt + left-drag** moves
+  it. Alt is Option on a Mac.
+- **Ctrl + Alt + Left/Right/Up/Down** fills that half of the desktop.
+- **Ctrl + Alt + Home** restores a maximized window. **Alt + F8**, then arrow
+  keys and Enter, resizes without a mouse; Escape cancels.
+- Moving windows magnetically snap to nearby screen/window edges. This is
+  alignment snapping; use the shortcuts for half-screen tiling.
+- Right-click a title bar and choose **Tile** for half- or quarter-screen layouts,
+  or **Size**, **Move**, and **Maximize** for individual adjustments. These menus
+  also work when the host intercepts keyboard shortcuts.
+- Workspace switching uses **Ctrl + Alt + Page Up/Page Down** so it does not
+  conflict with the half-screen shortcuts.
+
+Click the remote desktop before using shortcuts. If the host/browser intercepts
+one, use the title-bar menu. The desktop menu's **Window controls** entry displays
+these instructions inside the OS. Configure behavior in `preferences` and frame
+appearance in `themes/cantrip-oled/`.
 
 ## Bootable ISO
 
@@ -152,3 +220,20 @@ data. When no ISO build is running, `docker volume rm cantrip-os-iso-build`
 removes that cache. Rebuilding then downloads/recreates it. Generated artifacts
 and the retained QEMU disk are ignored by Git; preserve any desired copies
 before removing them manually.
+
+## Quick OLED iteration check
+
+1. Run `pnpm os` and open the printed browser URL. Refresh an already-open viewer
+   once to load its new toolbar. Confirm the black desktop, monochrome window
+   controls, Cantrip bolt, and working Clipboard dialog.
+2. Edit `overlays/usr/share/icewm/themes/cantrip-oled/default.theme` (for example,
+   a title font size) or an XPM palette. Watch build/startup logs in the terminal;
+   the desktop is replaced and the browser reconnects. Revert the experiment
+   when finished. Home files survive; unbaked system changes do not.
+3. Enter/exit your browser's fullscreen mode. The toolbar disappears/reappears
+   and the remote desktop resizes. An ordinary maximized window keeps the bar.
+4. Press Ctrl+C in the `pnpm os` terminal. The desktop disconnects, the container
+   stops, and the command exits. Running it again restores the retained home.
+
+If pnpm reports that Node is too old, select an installed supported Node version
+(e.g. `nvm use 24`) and rerun. No application/server/worker build is needed.

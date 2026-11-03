@@ -1,4 +1,4 @@
-DesktopBackgroundColor="#172d38"
+DesktopBackgroundColor="#000000"
 DesktopBackgroundImage=""
 TaskBarShowCPUStatus=0
 TaskBarShowMEMStatus=0
@@ -9,3 +9,24 @@ WorkspaceNames="Desktop", "Work", "Explore", "Spare"
 TerminalCommand="xterm"
 ShutdownCommand="sudo poweroff"
 RebootCommand="sudo reboot"
+
+# Built-in window management; no compositor or tiling daemon needed.
+ClientWindowMouseActions=1
+MouseWinMove="Alt+Pointer_Button1"
+MouseWinSize="Alt+Pointer_Button3"
+SizeMaximized=1
+HideBordersMaximized=0
+ConsiderHBorder=1
+ConsiderVBorder=1
+SnapMove=1
+SnapDistance=16
+OpaqueMove=1
+OpaqueResize=1
+KeyWinTileLeft="Ctrl+Alt+Left"
+KeyWinTileRight="Ctrl+Alt+Right"
+KeyWinTileTop="Ctrl+Alt+Up"
+KeyWinTileBottom="Ctrl+Alt+Down"
+KeyWinRestore="Ctrl+Alt+Home"
+KeySysWorkspacePrev="Ctrl+Alt+Prior"
+KeySysWorkspaceNext="Ctrl+Alt+Next"
+KeySysWorkspaceLast=""

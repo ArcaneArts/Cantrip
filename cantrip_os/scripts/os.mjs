@@ -9,6 +9,7 @@ export const container = process.env.CANTRIP_OS_NAME ?? "cantrip-os";
 export const image = `${container}:dev`;
 export const volume = `${container}-home`;
 export const port = process.env.CANTRIP_OS_PORT ?? "6080";
+export const vncPort = process.env.CANTRIP_OS_VNC_PORT ?? "5900";
 
 export function run(command, args, { capture = false, ...options } = {}) {
   return new Promise((accept, reject) => {
@@ -25,18 +26,23 @@ export function run(command, args, { capture = false, ...options } = {}) {
     child.stderr?.on("data", (chunk) => {
       error += chunk;
     });
-    child.on("error", reject);
+    let failure;
+    child.on("error", (error) => {
+      failure = error;
+    });
     child.on("close", (code) =>
-      code === 0
-        ? accept(output.trim())
-        : reject(
-            Object.assign(
-              new Error(
-                `${command} exited ${code}${error ? `: ${error.trim()}` : ""}`,
+      failure
+        ? reject(failure)
+        : code === 0
+          ? accept(output.trim())
+          : reject(
+              Object.assign(
+                new Error(
+                  `${command} exited ${code}${error ? `: ${error.trim()}` : ""}`,
+                ),
+                { code },
               ),
-              { code },
             ),
-          ),
     );
   });
 }
@@ -57,43 +63,70 @@ export async function inspect() {
     throw error;
   }
 }
-export async function build() {
-  await run("docker", [
-    "build",
-    "-t",
-    image,
-    "-f",
-    resolve(root, "images/oci/Dockerfile"),
-    root,
-  ]);
-}
-export async function up() {
-  if (await inspect()) await run("docker", ["start", container]);
-  else
-    await run("docker", [
-      "run",
-      "-d",
-      "--name",
-      container,
-      "--hostname",
-      container,
-      "--label",
-      "io.cantrip.os=foundation",
-      "--shm-size=1g",
-      "-p",
-      `127.0.0.1:${port}:6080`,
-      "-v",
-      `${volume}:/home/cantrip`,
+export async function build(options = {}) {
+  await run(
+    "docker",
+    [
+      "build",
+      "--progress=plain",
+      "-t",
       image,
-    ]);
-  console.log(`CantripOS: http://127.0.0.1:${port}`);
+      "-f",
+      resolve(root, "images/oci/Dockerfile"),
+      root,
+    ],
+    options,
+  );
 }
-export async function rebuild() {
-  await withInstanceLock(container, async () => {
-    await build();
-    if (await inspect()) await run("docker", ["rm", "-f", container]);
-    await up();
-  });
+export async function up(options = {}) {
+  if (await inspect()) await run("docker", ["start", container], options);
+  else
+    await run(
+      "docker",
+      [
+        "run",
+        "-d",
+        "--name",
+        container,
+        "--hostname",
+        container,
+        "--label",
+        "io.cantrip.os=foundation",
+        "--shm-size=1g",
+        "-p",
+        `127.0.0.1:${port}:6080`,
+        "-p",
+        `127.0.0.1:${vncPort}:5900`,
+        "-v",
+        `${volume}:/home/cantrip`,
+        image,
+      ],
+      options,
+    );
+  // Existing detached containers keep their original published ports.
+  const ports = (await inspect())?.NetworkSettings.Ports ?? {};
+  const browserPort = ports["6080/tcp"]?.[0]?.HostPort;
+  const nativePort = ports["5900/tcp"]?.[0]?.HostPort;
+  console.log(`
+CantripOS browser: ${browserPort ? `http://127.0.0.1:${browserPort}/` : "not published"}
+VNC: ${nativePort ? `127.0.0.1:${nativePort} (no password; host loopback only)` : "not published; rebuild to enable it"}
+Shell: docker exec -it ${container} bash
+SSH: not enabled in the foundation image.
+`);
+}
+export async function rebuild({ signal } = {}) {
+  await withInstanceLock(
+    container,
+    async () => {
+      await build({ signal });
+      signal?.throwIfAborted();
+      if (await inspect())
+        await run("docker", ["rm", "-f", container], { signal });
+      signal?.throwIfAborted();
+      await up({ signal });
+    },
+    { signal },
+  );
 }
 async function main() {
   switch (process.argv[2]) {
