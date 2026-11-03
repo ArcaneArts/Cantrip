@@ -5898,8 +5898,8 @@ describe("local server foundation", () => {
       Buffer.concat([
         Buffer.from(firstChunk.data, "base64"),
         Buffer.from(lastChunk.data, "base64"),
-      ]),
-    ).toEqual(explorerMediaBytes);
+      ]).equals(explorerMediaBytes),
+    ).toBe(true);
     const rangedMedia = await readMedia(2, 6);
     expect(rangedMedia).toMatchObject({ offset: 2, eof: false });
     expect(Buffer.from(rangedMedia.data, "base64")).toEqual(

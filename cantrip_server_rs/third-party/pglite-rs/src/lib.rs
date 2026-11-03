@@ -39,6 +39,8 @@ compile_error!("the `multiple-process` feature is unix-only (child postmaster ov
 mod db;
 mod engine;
 mod error;
+#[cfg(unix)]
+mod host_signals;
 mod live;
 #[cfg(feature = "multiple-process")]
 mod multiple_process;
@@ -49,9 +51,9 @@ mod row;
 mod socket;
 mod transaction;
 
-pub use db::{LocaleProvider, PGlite, PGliteOptions};
 #[cfg(not(feature = "multiple-process"))]
 pub use db::WireSession;
+pub use db::{LocaleProvider, PGlite, PGliteOptions};
 pub use error::Error;
 pub use live::LiveQuery;
 #[cfg(feature = "multiple-process")]

@@ -353,6 +353,13 @@ pub async fn run(database: Arc<Database>, input: &Value) -> Result<Value> {
         },
         {
             let e = events.clone();
+            Arc::new(move |group| {
+                e.lock().unwrap().extend(group);
+                Ok(())
+            })
+        },
+        {
+            let e = events.clone();
             Arc::new(move |v| e.lock().unwrap().push(v))
         },
         Arc::new(|| true),

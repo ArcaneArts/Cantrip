@@ -88,7 +88,7 @@ impl Engine {
                     boot_argv: Vec::new(),
                     saved_cwd: std::env::current_dir().ok(),
                 };
-                match engine.boot() {
+                match engine.boot_preserving_host_interrupts() {
                     Ok(()) => {
                         let _ = boot_tx.send(Ok(()));
                     }
@@ -113,6 +113,25 @@ impl Engine {
                     Self::runtime_fingerprint()
                 ))
             })
+    }
+
+    fn boot_preserving_host_interrupts(&mut self) -> Result<(), Error> {
+        #[cfg(unix)]
+        let mut interrupts = crate::host_signals::InterruptHandlers::capture()?;
+        let result = self.boot();
+        // PostgreSQL installs its backend handlers during boot. A host such
+        // as Tokio chains the previous handler, so leaving those installed
+        // makes host shutdown terminate/cancel the still-draining database.
+        // Restore on successful and failed boot before publishing readiness.
+        #[cfg(unix)]
+        {
+            let restored = interrupts.restore().map_err(Error::from);
+            result.and(restored)
+        }
+        #[cfg(not(unix))]
+        {
+            result
+        }
     }
 
     #[cfg(any(feature = "multiple-process", feature = "socket"))]

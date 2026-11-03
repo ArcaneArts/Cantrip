@@ -1,3 +1,4 @@
+import { agentOperationWireFixtures } from "./agent-operation-wire-fixtures.mjs";
 import { threadSyncWireFixtures } from "./chat-thread-sync-fixtures.mjs";
 import { cantripOsWireFixtures } from "./cantrip-os-wire-fixtures.mjs";
 import { projectSurfaceWireFixtures } from "./project-surface-wire-fixtures.mjs";
@@ -278,6 +279,18 @@ export const projectWire = {
   updatedAt: timestamp,
 };
 const nativeEventSamples = nativeEventWireFixtures();
+
+const projectChatFixtures = projectChatWireFixtures(timestamp);
+const ambiguousOsChatTargets =
+  projectChatFixtures.encryptedChatCreateSchema.filter(
+    (input) => input.cantripOsBindingId && (input.worktreeId || input.target),
+  );
+projectChatFixtures.encryptedChatCreateSchema =
+  projectChatFixtures.encryptedChatCreateSchema.filter(
+    (input) => !ambiguousOsChatTargets.includes(input),
+  );
+export const projectChatWireCases = (name) =>
+  name === "encryptedChatCreateSchema" ? ambiguousOsChatTargets : [];
 
 export const securityFixtures = {
   ...cantripOsWireFixtures(),
@@ -775,7 +788,7 @@ export const securityFixtures = {
   ...placementWireFixtures(projectLabel),
   ...folderWireFixtures(projectLabel),
   ...standaloneChatWireFixtures(timestamp),
-  ...projectChatWireFixtures(timestamp),
+  ...projectChatFixtures,
   ...threadSyncWireFixtures(),
   ...nativeCommandWireFixtures(timestamp),
   ...nativeHistoryWireFixtures(timestamp),
@@ -803,3 +816,8 @@ export const securityFixtures = {
     ...commandRefinements.cases.map((item) => item.input),
   ],
 };
+
+const agentOperations = agentOperationWireFixtures(securityFixtures);
+Object.assign(securityFixtures, agentOperations.baselines);
+export const agentOperationWireCases = (name) =>
+  agentOperations.boundaries[name] ?? [];

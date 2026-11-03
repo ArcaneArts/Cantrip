@@ -23,6 +23,7 @@ const authority = {
   contextKind: "project",
   placementId: "worktree",
   generation: 1,
+  cantripAppAllowed: false,
   profile: {
     selectedId: "yolo",
     effectiveId: "read-only",
@@ -33,6 +34,22 @@ const authority = {
 const leaseId = "4822bfb8-0f60-4de4-a8e4-335c4099d61f";
 
 describe("CUA preview authority contracts", () => {
+  it("defaults older authorities to protected Cantrip access and requires an explicit boolean opt-in", () => {
+    const olderAuthority: Record<string, unknown> = { ...authority };
+    delete olderAuthority.cantripAppAllowed;
+    expect(
+      cuaPreviewAuthoritySchema.parse(olderAuthority).cantripAppAllowed,
+    ).toBe(false);
+    expect(
+      cuaPreviewAuthoritySchema.parse({ ...authority, cantripAppAllowed: true })
+        .cantripAppAllowed,
+    ).toBe(true);
+    for (const cantripAppAllowed of [null, "true", 1])
+      expect(
+        cuaPreviewAuthoritySchema.safeParse({ ...authority, cantripAppAllowed })
+          .success,
+      ).toBe(false);
+  });
   it("requires an explicit history domain on the worker-owned lease", () => {
     const lease = {
       leaseId,

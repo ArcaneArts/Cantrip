@@ -28,5 +28,18 @@ const results = input.map(({ schedule, afterMs, first = false }) => {
   }
 });
 process.stdout.write(
-  JSON.stringify(corpus ? { cases: input, results } : results),
+  JSON.stringify(
+    corpus
+      ? {
+          cases: input,
+          results,
+          runtime: {
+            node: process.version,
+            platform: process.platform,
+            icu: process.versions.icu,
+            tz: process.versions.tz,
+          },
+        }
+      : results,
+  ),
 );

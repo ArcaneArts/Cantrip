@@ -29,6 +29,7 @@ function fixture() {
     placementId: "worktree",
     executionLaneId: "lane",
     generation: 1,
+    cantripAppAllowed: false,
     profile: {
       selectedId: ":yolo",
       effectiveId: ":read-only",

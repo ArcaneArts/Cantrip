@@ -200,7 +200,9 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
         allowCantripApp: false,
       });
       await service.inventory(scope, undefined, second.targets[0]!.id);
-      const target = second.targets[0]!;
+      // Inventory access is permission metadata; the native session retains the target facts.
+      const { access, ...target } = second.targets[0]!;
+      expect(access).toEqual({ allowed: true, reason: null });
       expect(
         (
           await service.open(scope, {
@@ -351,7 +353,13 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
         // A closed/replaced window needs explicit selection of a current
         // target. Do not suggest that retrying its old generation revives it.
         if (code !== "permission-denied")
-          await service.attach(scope, binding.sessionId, retryTarget);
+          await service.attach(
+            scope,
+            binding.sessionId,
+            retryTarget,
+            undefined,
+            true,
+          );
         const retried = await service.snapshot(
           scope,
           binding.sessionId,

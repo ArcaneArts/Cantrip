@@ -23,6 +23,7 @@ const authority: CuaPreviewAuthority = {
   contextKind: "project",
   placementId: "placement",
   generation: 1,
+  cantripAppAllowed: false,
   profile: {
     selectedId: ":yolo",
     effectiveId: ":yolo",

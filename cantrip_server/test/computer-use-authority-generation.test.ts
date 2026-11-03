@@ -64,7 +64,9 @@ async function seed(database: PGlite) {
     INSERT INTO project_sources (id, project_id, worker_id, absolute_path, display_path)
       VALUES ('source-a', 'project-a', 'worker-a', '/fixture-a', '/fixture-a'),
              ('source-b', 'project-b', 'worker-a', '/fixture-b', '/fixture-b'),
-             ('source-c', 'project-c', 'worker-c', '/fixture-c', '/fixture-c');
+             ('source-c', 'project-c', 'worker-c', '/fixture-c', '/fixture-c'),
+             ('source-a-worker-b', 'project-a', 'worker-b', '/fixture-a-worker-b', '/fixture-a-worker-b'),
+             ('source-b-worker-b', 'project-b', 'worker-b', '/fixture-b-worker-b', '/fixture-b-worker-b');
     INSERT INTO project_worktrees (id, project_source_id, worker_id, name, absolute_path, display_path, is_primary, is_default, origin, lifecycle_state)
       VALUES ('worktree-a', 'source-a', 'worker-a', 'main', '/fixture-a', '/fixture-a', true, true, 'cantrip', 'ready'),
              ('worktree-a2', 'source-a', 'worker-a', 'feature', '/fixture-a2', '/fixture-a2', false, false, 'cantrip', 'ready'),
@@ -443,7 +445,7 @@ describe("transactional computer-use authority generations", () => {
 
   it("fences an active underlying worktree worker or primary-policy change without touching other worktrees", async () => {
     await database.exec(
-      "UPDATE project_worktrees SET worker_id='worker-b' WHERE id='worktree-a'",
+      "UPDATE project_worktrees SET project_source_id='source-a-worker-b',worker_id='worker-b' WHERE id='worktree-a'",
     );
     expect(await generations(database)).toEqual({
       ...initial,
@@ -459,7 +461,7 @@ describe("transactional computer-use authority generations", () => {
       [explicitProjectChat]: 3,
     });
     await database.exec(
-      "UPDATE project_worktrees SET worker_id='worker-b' WHERE id='worktree-a2'",
+      "UPDATE project_worktrees SET project_source_id='source-a-worker-b',worker_id='worker-b' WHERE id='worktree-a2'",
     );
     expect(await generations(database)).toEqual({
       ...initial,
@@ -500,7 +502,7 @@ describe("transactional computer-use authority generations", () => {
       "UPDATE projects SET worktree_policy='required-for-writes' WHERE id='project-a'",
     );
     await database.exec(
-      "UPDATE project_worktrees SET worker_id='worker-b' WHERE id='worktree-b'",
+      "UPDATE project_worktrees SET project_source_id='source-b-worker-b',worker_id='worker-b' WHERE id='worktree-b'",
     );
     expect(await generations(database)).not.toEqual(initial);
     await database.exec("ROLLBACK TO SAVEPOINT authority_change");

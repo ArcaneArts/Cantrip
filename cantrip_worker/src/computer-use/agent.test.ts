@@ -29,6 +29,7 @@ const authority: CuaAgentAuthority = {
   executionLaneId: "lane",
   placementId: "worktree",
   generation: 1,
+  cantripAppAllowed: false,
   profile: {
     selectedId: ":yolo",
     effectiveId: ":yolo",

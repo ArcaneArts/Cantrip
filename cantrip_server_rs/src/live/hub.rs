@@ -575,7 +575,7 @@ impl Hub {
         }
         Ok(())
     }
-    fn publication(&self, publication: &Value) -> Result<Value> {
+    fn publication(&self, state: &mut State, publication: &Value) -> Result<Value> {
         let owner = publication["ownerId"]
             .as_str()
             .context("live publication owner")?;
@@ -584,11 +584,10 @@ impl Hub {
             bail!("Invalid live publication")
         };
         object.shift_remove("ownerId");
-        let mut state = self.state.lock().unwrap();
         if state.closed {
             bail!("Cannot publish after the live hub has closed.")
         }
-        let cursor = Self::cursor(&state, owner) + 1;
+        let cursor = Self::cursor(state, owner) + 1;
         event["type"] = obj(serde_json::json!("event"));
         event["cursor"] = obj(serde_json::json!(cursor));
         if event.get("occurredAt").is_none_or(Value::is_null) {
@@ -633,14 +632,14 @@ impl Hub {
                 let local = connection.local.lock().unwrap();
                 local.initialized && local.resume.is_none()
             };
-            if eligible && self.send_encoded(&mut state, &connection, &encoded) {
+            if eligible && self.send_encoded(state, &connection, &encoded) {
                 state.stats.delivered_event_count += 1;
             }
         }
         Ok(event)
     }
     pub fn publish(&self, publication: Value) -> Result<Value> {
-        let event = self.publication(&publication)?;
+        let event = self.publication(&mut self.state.lock().unwrap(), &publication)?;
         if let Some(publish) = &self.options.publish_external {
             let result = publish(publication);
             tokio::spawn(async move {
@@ -649,8 +648,27 @@ impl Hub {
         }
         Ok(event)
     }
+    /// Preserve a Source synchronous publication group against concurrent producers.
+    pub fn publish_group(&self, publications: Vec<Value>) -> Result<Vec<Value>> {
+        let events = {
+            let mut state = self.state.lock().unwrap();
+            publications
+                .iter()
+                .map(|publication| self.publication(&mut state, publication))
+                .collect::<Result<Vec<_>>>()?
+        };
+        if let Some(publish) = &self.options.publish_external {
+            for publication in publications {
+                let result = publish(publication);
+                tokio::spawn(async move {
+                    let _ = result.await;
+                });
+            }
+        }
+        Ok(events)
+    }
     pub async fn publish_confirmed(&self, publication: Value) -> Result<Value> {
-        let event = self.publication(&publication)?;
+        let event = self.publication(&mut self.state.lock().unwrap(), &publication)?;
         if let Some(publish) = &self.options.publish_external {
             publish(publication).await?;
         }
@@ -660,7 +678,8 @@ impl Hub {
         if !publication["ownerId"].is_string() {
             return None;
         }
-        self.publication(publication).ok()
+        self.publication(&mut self.state.lock().unwrap(), publication)
+            .ok()
     }
     pub fn revoke_owner(&self, owner: &str) -> usize {
         self.revoke(

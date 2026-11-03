@@ -6,6 +6,7 @@ import path from "node:path";
 import { buildRustExample } from "./build.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
 import { repositoryFixture } from "./repository-fixture.mjs";
+import { verifyGuestStorage } from "./usage-guest-storage.mjs";
 const option = (name) => {
   const i = process.argv.indexOf(name);
   return i < 0 ? undefined : process.argv[i + 1];
@@ -225,6 +226,7 @@ try {
     conversationRow(goalUsage, other),
     conversationRow(goalBaseline, other),
   );
+  await verifyGuestStorage({ owners: [owner, other], seed, compare, literal });
   for (const principal of [owner, other]) {
     await seed(
       `DELETE FROM chats WHERE id=${literal("usage-goal-" + principal)};`,

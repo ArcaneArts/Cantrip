@@ -47,6 +47,7 @@ const authority: CuaPreviewAuthority = {
   contextKind: "standalone",
   placementId: "placement-a",
   generation: 1,
+  cantripAppAllowed: false,
   profile: {
     selectedId: ":default",
     effectiveId: ":default",
@@ -1219,7 +1220,7 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
         threadId: "thread",
         turnId: "turn",
       };
-      const agent = await f.service.open(agentScope, target);
+      const agent = await f.service.open(agentScope, target, undefined, true);
       expect(f.service.status().sessions).toBe(2);
       f.coordinator.disconnect();
       expect(f.service.status().sessions).toBe(1);

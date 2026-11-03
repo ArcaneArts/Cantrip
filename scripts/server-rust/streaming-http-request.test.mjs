@@ -276,3 +276,42 @@ test("aborting the actual caller closes its only connection without leaving a re
     await new Promise((resolve) => server.close(resolve));
   }
 });
+
+test("retains bounded transport counters when a real peer resets without a response", async () => {
+  const privateBody = "private-upload-fixture-body".repeat(8192);
+  let connections = 0;
+  const server = net.createServer((socket) => {
+    connections++;
+    socket.once("data", () => socket.resetAndDestroy());
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  try {
+    const failure = await streamingHttpRequest(
+      `http://127.0.0.1:${server.address().port}/?private-upload-query`,
+      {
+        method: "POST",
+        headers: { authorization: "Bearer private-upload-credential" },
+        body: privateBody,
+        signal: AbortSignal.timeout(5000),
+      },
+    ).then(
+      () => assert.fail("a reset without an HTTP response must still fail"),
+      (error) => error,
+    );
+    const diagnostics = failure.httpUploadDiagnostics;
+    assert.equal(diagnostics.sendBody, true);
+    assert.equal(diagnostics.bodyBytes, Buffer.byteLength(privateBody));
+    assert.equal(diagnostics.responseStarted, false);
+    assert.equal(diagnostics.responseComplete, false);
+    assert.equal(diagnostics.responseStatus, null);
+    assert.equal(diagnostics.socketBytesRead, 0);
+    assert.ok(diagnostics.attemptedBytes > 0);
+    assert.ok(diagnostics.attemptedBytes <= diagnostics.bodyBytes);
+    assert.ok(diagnostics.completedWriteBytes <= diagnostics.attemptedBytes);
+    assert.equal(connections, 1);
+    assert.equal(JSON.stringify(diagnostics).includes("private-upload"), false);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});

@@ -34,6 +34,27 @@ const control = (rationale) =>
   classified("intentionally-public-control-plane", rationale);
 
 export function nativeRouteContentClassification({ path }) {
+  if (
+    path === "/api/projects/:projectId/cantrip-os/bindings/:bindingId/provision"
+  )
+    return protectedContract(
+      "owner-scoped source provisioning with operation and binding generations; repository URLs and private placement intent remain in the protectedRequest envelope",
+    );
+  if (
+    [
+      "/api/cantrip-os",
+      "/api/cantrip-os/inspect",
+      "/api/cantrip-os/attach",
+      "/api/cantrip-os/:instanceId/refresh",
+      "/api/cantrip-os/:instanceId/workspaces",
+      "/api/projects/:projectId/cantrip-os/bindings",
+      "/api/projects/:projectId/cantrip-os/bindings/:bindingId/recover",
+      "/api/projects/:projectId/cantrip-os/bindings/:bindingId/verify",
+    ].includes(path)
+  )
+    return control(
+      "owner-scoped OS attachment, workspace and source-binding routing, generations and worker-observed receipts; provisioning intent remains endpoint protected",
+    );
   if (path === "/api/chats/:chatId/preparation")
     return control(
       "owner-scoped chat preparation IDs, phase and generation; no CLI output or synthetic prompt",
@@ -112,6 +133,23 @@ export function nativeRouteContentClassification({ path }) {
 }
 
 export function nativeWorkerCommandContentClassification(command) {
+  if (command === "cantrip-os.source.provision")
+    return protectedContract(
+      "server-derived owned source scope and durable admission accompany an opaque repository provision request; private intent is opened only by the authorized worker",
+    );
+  if (
+    [
+      "cantrip-os.inspect",
+      "cantrip-os.attach",
+      "cantrip-os.workspaces.list",
+      "cantrip-os.workspaces.create",
+      "cantrip-os.source.inspect",
+      "cantrip-os.operation.inspect",
+    ].includes(command)
+  )
+    return control(
+      "authorized OS transport and workspace routing, canonical source scopes, lifecycle generations and receipts; source provision content uses a separate protected request",
+    );
   if (
     [
       "chat.account-defaults",

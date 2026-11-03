@@ -3,7 +3,11 @@
 import * as protocol from "../../packages/protocol/dist/index.js";
 import { cantripOsWireCases } from "./cantrip-os-wire-fixtures.mjs";
 import { buildContractManifest, sourceContractSchema } from "./contracts.mjs";
-import { securityFixtures } from "./security-fixtures.mjs";
+import {
+  agentOperationWireCases,
+  projectChatWireCases,
+  securityFixtures,
+} from "./security-fixtures.mjs";
 import { usageQueryCases } from "./usage-wire-fixtures.mjs";
 import { settingsWireCases } from "./settings-wire-fixtures.mjs";
 import { nativeSettingsWireCases } from "./native-settings-fixtures.mjs";
@@ -62,6 +66,8 @@ export function* vectorCases(name, samples = securityFixtures[name]) {
     };
   }
   yield prepare(undefined, false);
+  for (const input of agentOperationWireCases(name)) yield prepare(input);
+  for (const input of projectChatWireCases(name)) yield prepare(input);
   for (const input of cantripOsWireCases(name)) yield prepare(input);
   for (const input of usageQueryCases(name)) yield prepare(input);
   for (const input of settingsWireCases(name)) yield prepare(input);

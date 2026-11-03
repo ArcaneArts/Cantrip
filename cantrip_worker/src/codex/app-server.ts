@@ -7817,8 +7817,9 @@ export class CodexAppServer implements CodexRuntime {
         active.timeout = null;
       }
       this.#interactions.clearInteractionsForTurn(active, error.message);
+      let changes: ActiveTurn["diffChanges"] | undefined;
       try {
-        active.diffChanges = await workspaceChanges(active, (cwd) =>
+        changes = await workspaceChanges(active, (cwd) =>
           this.snapshotWorkspace(cwd),
         );
       } catch (observationError) {
@@ -7838,6 +7839,7 @@ export class CodexAppServer implements CodexRuntime {
         );
       }
       if (!isCurrent()) return;
+      if (changes) active.diffChanges = changes;
       emitFileActivity(
         active,
         turnId,
