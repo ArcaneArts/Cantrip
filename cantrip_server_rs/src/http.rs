@@ -40,6 +40,7 @@ mod native_events;
 mod native_handoffs;
 mod native_history;
 mod native_model_inventory;
+mod native_queue;
 mod native_settings;
 mod on_response;
 mod pane_layouts;
@@ -188,6 +189,7 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(native_history::routes())
         .merge(native_model_inventory::routes())
         .merge(native_coordination::routes())
+        .merge(native_queue::routes())
         .merge(github_import::routes())
         .merge(github_conversion::routes())
         .merge(project_workspaces::routes())

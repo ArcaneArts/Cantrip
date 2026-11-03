@@ -197,6 +197,7 @@ export async function actualProjectChatClient({
       async ({ chatId, answers }) => {
         const api = await import("/src/lib/api/chats.ts");
         const messages = await api.getMessages(chatId);
+        window.actualProjectChatCanonicalSnapshot = messages;
         return answers.map((answer) => {
           const item = messages
             .flatMap((m) => m.content)
@@ -397,6 +398,9 @@ export async function actualProjectChatClient({
     );
   } catch (error) {
     result.projectChatFailure = { message: error.message, stack: error.stack };
+    result.projectChatFailure.canonicalMessageSnapshot = await page
+      .evaluate(() => window.actualProjectChatCanonicalSnapshot)
+      .catch((cause) => ({ diagnosticError: cause.message }));
     throw error;
   } finally {
     result.projectChatModel = {
