@@ -1,0 +1,15 @@
+#!/bin/sh
+set -eu
+if [ "$1" = configure ]; then
+    # Reproducible package timestamps must not retain stale same-size bytecode
+    # from a preceding package version. This cleans code cache, never user data.
+    py3clean /usr/lib/cantrip-os-executor
+    deb-systemd-helper enable cantrip-os-executor.service >/dev/null
+    if [ -d /run/systemd/system ]; then
+        systemctl daemon-reload
+        deb-systemd-invoke start cantrip-os-executor.service
+    elif [ -f /run/cantrip-os-executor/upgrade-restart ]; then
+        rm /run/cantrip-os-executor/upgrade-restart
+        cantrip-executor service start
+    fi
+fi

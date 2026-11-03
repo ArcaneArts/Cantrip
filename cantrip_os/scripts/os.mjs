@@ -2,6 +2,7 @@
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
+import { mkdir } from "node:fs/promises";
 import { withInstanceLock } from "./lock.mjs";
 
 export const root = fileURLToPath(new URL("../", import.meta.url));
@@ -9,6 +10,7 @@ export const container = process.env.CANTRIP_OS_NAME ?? "cantrip-os";
 export const image = `${container}:dev`;
 export const volume = `${container}-home`;
 export const workspaceVolume = `${container}-workspaces`;
+export const executorVolume = `${container}-executor`;
 export const port = process.env.CANTRIP_OS_PORT ?? "6080";
 export const vncPort = process.env.CANTRIP_OS_VNC_PORT ?? "5900";
 export const workspacePort = process.env.CANTRIP_OS_WORKSPACE_PORT ?? "6081";
@@ -66,6 +68,16 @@ export async function inspect() {
   }
 }
 export async function build(options = {}) {
+  const executor = process.env.CANTRIP_OS_EXECUTOR ?? "0";
+  let executorContext = resolve(root, ".build/empty-executor");
+  await mkdir(executorContext, { recursive: true });
+  if (executor === "1") {
+    const { prepareExecutor } = await import("./executor-package.mjs");
+    executorContext = await prepareExecutor(
+      process.arch === "arm64" ? "arm64" : "amd64",
+      options,
+    );
+  }
   await run(
     "docker",
     [
@@ -73,6 +85,10 @@ export async function build(options = {}) {
       "--progress=plain",
       "--build-arg",
       `CANTRIP_OS_WORKSPACES=${process.env.CANTRIP_OS_WORKSPACES ?? "1"}`,
+      "--build-arg",
+      `CANTRIP_OS_EXECUTOR=${executor}`,
+      "--build-context",
+      `executor=${executorContext}`,
       "-t",
       image,
       "-f",
@@ -116,6 +132,8 @@ export async function up(options = {}) {
         `${volume}:/home/cantrip`,
         "-v",
         `${workspaceVolume}:/var/lib/cantrip-os-workspaces`,
+        "-v",
+        `${executorVolume}:/var/lib/cantrip-os-executor`,
         image,
       ],
       options,
@@ -176,8 +194,15 @@ async function main() {
     case "reset":
       await withInstanceLock(container, async () => {
         if (await inspect()) await run("docker", ["rm", "-f", container]);
-        await run("docker", ["volume", "rm", volume]);
-        await run("docker", ["volume", "rm", workspaceVolume]);
+        for (const name of [volume, workspaceVolume, executorVolume]) {
+          try {
+            await run("docker", ["volume", "rm", name], { capture: true });
+          } catch (error) {
+            // Older instances may not have an executor volume. Attempt the
+            // deletion and accept Docker's actual missing-volume response.
+            if (!error.message.includes("no such volume")) throw error;
+          }
+        }
       });
       break;
     default:

@@ -11,9 +11,7 @@ import {
 import path from "node:path";
 
 import {
-  buildDirectory,
-  buildManifestPath,
-  bundleDirectory,
+  buildDirectory as fullBuildDirectory,
   executableName,
   filesManifestPath,
   patchSetSha256,
@@ -39,15 +37,29 @@ const verify = spawnSync(
 if (verify.status !== 0) process.exit(verify.status ?? 1);
 
 const executableSuffix = process.platform === "win32" ? ".exe" : "";
-const runtimeBinaries = [
-  "codex",
-  "codex-code-mode-host",
-  "codex-exec-server",
-  "codex-responses-api-proxy",
-  ...(process.platform === "win32"
-    ? ["codex-windows-sandbox-setup", "codex-command-runner"]
-    : []),
-];
+const executorOnly = process.argv.includes("--executor-only");
+const buildDirectory = () =>
+  executorOnly
+    ? path.join(fullBuildDirectory(), "executor")
+    : fullBuildDirectory();
+const bundleDirectory = () => path.join(buildDirectory(), "bundle");
+const buildManifestPath = () =>
+  path.join(bundleDirectory(), "codex-runtime.json");
+const component = executorOnly ? "codex-executor" : "codex-cli";
+const entrypoint = executorOnly
+  ? `codex-exec-server${executableSuffix}`
+  : executableName();
+const runtimeBinaries = executorOnly
+  ? ["codex-exec-server"]
+  : [
+      "codex",
+      "codex-code-mode-host",
+      "codex-exec-server",
+      "codex-responses-api-proxy",
+      ...(process.platform === "win32"
+        ? ["codex-windows-sandbox-setup", "codex-command-runner"]
+        : []),
+    ];
 const expectedCompiledArtifacts = [
   ...runtimeBinaries.map((name) => `${name}${executableSuffix}`),
   ...(process.platform === "linux" ? ["codex-resources/bwrap"] : []),
@@ -189,12 +201,12 @@ async function reusableBundle() {
     .sort();
   if (
     manifest.schemaVersion !== 1 ||
-    manifest.component !== "codex-cli" ||
+    manifest.component !== component ||
     manifest.version !== metadata.version ||
     manifest.upstream?.repository !== metadata.repository ||
     manifest.upstream?.ref !== metadata.ref ||
     manifest.upstream?.commit !== metadata.commit ||
-    manifest.entrypoint !== executableName() ||
+    manifest.entrypoint !== entrypoint ||
     manifest.target !== platformKey() ||
     manifest.profile !== "release" ||
     JSON.stringify(compiledArtifactPaths) !==
@@ -244,7 +256,7 @@ async function withDistributionNotices(compiledArtifacts) {
 function runtimeManifest(artifacts) {
   return {
     schemaVersion: 1,
-    component: "codex-cli",
+    component,
     version: metadata.version,
     upstream: {
       repository: metadata.repository,
@@ -255,7 +267,7 @@ function runtimeManifest(artifacts) {
     patchesSha256,
     skillTemplatesSha256,
     buildRecipeVersion,
-    entrypoint: executableName(),
+    entrypoint,
     artifacts,
     target: platformKey(),
     profile: "release",
@@ -397,7 +409,11 @@ if (normalizedPackages > 0) {
   console.log("Prepared Cargo.lock already matches the workspace manifests.");
 }
 
-await configureRustyV8(buildEnvironment, lockPackages, cargoDirectory);
+// V8 belongs to the separate code-mode host, which an executor-only guest does
+// not install. Keep source preparation, reviewed patches and sandbox resources
+// identical to the worker runtime build.
+if (!executorOnly)
+  await configureRustyV8(buildEnvironment, lockPackages, cargoDirectory);
 
 if (process.platform === "linux") {
   const bwrapBuild = spawnSync(

@@ -1,0 +1,14 @@
+#!/bin/sh
+set -eu
+case "$1" in
+    remove|upgrade|deconfigure)
+        if [ -d /run/systemd/system ]; then
+            deb-systemd-invoke stop cantrip-os-executor.service
+        else
+            if [ "$1" = upgrade ] && cantrip-executor status | python3 -c 'import json,sys; sys.exit(json.load(sys.stdin)["service"] != "running")'; then
+                touch /run/cantrip-os-executor/upgrade-restart
+            fi
+            cantrip-executor service stop
+        fi
+        ;;
+esac
