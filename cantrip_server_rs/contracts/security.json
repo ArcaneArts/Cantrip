@@ -540,7 +540,20 @@
     "chatPermissionProfileUpdateSchema": 9629,
     "configurablePermissionProfileIdSchema": 5712,
     "chatModelUpdateSchema": 9637,
-    "chatReasoningUpdateSchema": 9639
+    "chatReasoningUpdateSchema": 9639,
+    "skillSettingsContextSchema": 9641,
+    "skillAudienceContextSchema": 9647,
+    "skillAudienceUpdateSchema": 9649,
+    "skillAudienceSummarySchema": 9652,
+    "skillAudienceListSchema": 9655,
+    "skillSettingsInventorySchema": 9656,
+    "skillSettingsDocumentSchema": 9677,
+    "skillSettingsMutationResultSchema": 9683,
+    "skillSettingsConfigResultSchema": 9687,
+    "skillSettingsFileRequestSchema": 9689,
+    "skillSettingsFileUpdateSchema": 9691,
+    "skillSettingsDeleteRequestSchema": 9693,
+    "skillSettingsConfigUpdateSchema": 9694
   },
   "nodes": [
     {
@@ -56525,6 +56538,321 @@
       "shape": { "reasoningEffort": 9640 },
       "checks": []
     },
-    { "type": "nullable", "innerType": 789, "checks": [] }
+    { "type": "nullable", "innerType": 789, "checks": [] },
+    {
+      "type": "object",
+      "name": "skillSettingsContextSchema",
+      "shape": { "workerId": 9642, "providerId": 9643, "projectId": 9644 },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 9645,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 9646, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "skillAudienceContextSchema",
+      "shape": { "workerId": 9642, "providerId": 9643 },
+      "catchall": 9648,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "skillAudienceUpdateSchema",
+      "shape": {
+        "workerId": 9642,
+        "providerId": 9643,
+        "audienceKey": 48,
+        "audience": 9650
+      },
+      "catchall": 9651,
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5530,
+      "defaultValue": "ide",
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "skillAudienceSummarySchema",
+      "shape": { "audienceKey": 48, "audience": 9653 },
+      "catchall": 9654,
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5530,
+      "defaultValue": "ide",
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "array",
+      "name": "skillAudienceListSchema",
+      "element": 9652,
+      "checks": [{ "check": "max_length", "maximum": 5000, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "skillSettingsInventorySchema",
+      "shape": { "project": 9657, "global": 9672, "errors": 9673 },
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 9658,
+      "checks": [{ "check": "max_length", "maximum": 1000, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "skillSettingsItemSchema",
+      "shape": {
+        "name": 9659,
+        "description": 9660,
+        "displayName": 9661,
+        "id": 9663,
+        "audienceKey": 48,
+        "audience": 9664,
+        "scope": 9665,
+        "location": 9666,
+        "path": 9667,
+        "enabled": 9668,
+        "editable": 9670,
+        "deletable": 9671
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 9662, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 8192, "when": "length" }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5530,
+      "defaultValue": "ide",
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": ["repo", "user", "system", "admin"],
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "skillSettingsLocationSchema",
+      "values": ["project", "account", "user", "codexUser", "system", "admin"],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 8192, "when": "length" }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 9669,
+      "defaultValue": true,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "array",
+      "element": 9658,
+      "checks": [{ "check": "max_length", "maximum": 1000, "when": "length" }]
+    },
+    {
+      "type": "array",
+      "element": 9674,
+      "checks": [{ "check": "max_length", "maximum": 200, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "skillSettingsErrorSchema",
+      "shape": { "path": 9675, "message": 9676 },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 8192, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 2000, "when": "length" }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "skillSettingsDocumentSchema",
+      "shape": { "skill": 9658, "file": 9678, "files": 9681, "content": 9682 },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "skillSettingsFileSchema",
+      "shape": { "path": 9679, "sizeBytes": 9680 },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 8192, "when": "length" }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 1000000000, "inclusive": true }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 9678,
+      "checks": [{ "check": "max_length", "maximum": 500, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 1000000, "when": "length" }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "skillSettingsMutationResultSchema",
+      "shape": { "changed": 9684, "recoveryPath": 9685 },
+      "checks": []
+    },
+    { "type": "literal", "values": [true], "checks": [] },
+    { "type": "nullable", "innerType": 9686, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 8192, "when": "length" }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "skillSettingsConfigResultSchema",
+      "shape": { "skillId": 9663, "effectiveEnabled": 9688 },
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "object",
+      "name": "skillSettingsFileRequestSchema",
+      "shape": {
+        "workerId": 9642,
+        "providerId": 9643,
+        "projectId": 9644,
+        "skillId": 9663,
+        "file": 9690
+      },
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 9679,
+      "defaultValue": "SKILL.md",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "skillSettingsFileUpdateSchema",
+      "shape": {
+        "workerId": 9642,
+        "providerId": 9643,
+        "projectId": 9644,
+        "skillId": 9663,
+        "file": 9690,
+        "content": 9692
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 1000000, "when": "length" }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "skillSettingsDeleteRequestSchema",
+      "shape": {
+        "workerId": 9642,
+        "providerId": 9643,
+        "projectId": 9644,
+        "skillId": 9663
+      },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "skillSettingsConfigUpdateSchema",
+      "shape": {
+        "workerId": 9642,
+        "providerId": 9643,
+        "projectId": 9644,
+        "skillId": 9663,
+        "enabled": 9695
+      },
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] }
   ]
 }

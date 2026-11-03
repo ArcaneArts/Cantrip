@@ -562,6 +562,19 @@ export const contractRoots = [
   "configurablePermissionProfileIdSchema",
   "chatModelUpdateSchema",
   "chatReasoningUpdateSchema",
+  "skillSettingsContextSchema",
+  "skillAudienceContextSchema",
+  "skillAudienceUpdateSchema",
+  "skillAudienceSummarySchema",
+  "skillAudienceListSchema",
+  "skillSettingsInventorySchema",
+  "skillSettingsDocumentSchema",
+  "skillSettingsMutationResultSchema",
+  "skillSettingsConfigResultSchema",
+  "skillSettingsFileRequestSchema",
+  "skillSettingsFileUpdateSchema",
+  "skillSettingsDeleteRequestSchema",
+  "skillSettingsConfigUpdateSchema",
 ];
 
 // Resolve the actual source schemas, including their separate protocol modules.

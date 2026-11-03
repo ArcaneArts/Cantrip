@@ -3,12 +3,12 @@
   "completeReplacement": false,
   "inventory": {
     "path": "docs/security/server-route-inventory.json",
-    "sha256": "cab8d5e113b4d4c224cd8d0b1f1c107d84df6fd0a70f308767eaf58876b0b371",
-    "baselineCommit": "1af8bec0b9037d912e71d2e61195cab2560d1d89",
+    "sha256": "dae8c7c0fd622bd37d0d542d0ce757de6e59cd98cfcb92dddc1d24ad745f8575",
+    "baselineCommit": "64c042c50e0292074c52088567281a5ab380dabd",
     "counts": {
-      "routes": 520,
+      "routes": 522,
       "workerCommands": 278,
-      "durableTables": 114,
+      "durableTables": 115,
       "repositoryMethods": 364,
       "liveResources": 46
     },
@@ -4797,6 +4797,125 @@
         "remaining": [
           "Current-head supported-platform and packaged acceptance remain required. Complete transports/coordination, remaining public domains, product upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
         ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/skill-audiences",
+        "implementation": "cantrip_server_rs/src/http/skill_settings/mod.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/skill_settings_contracts.rs",
+          "scripts/server-rust/skill-settings-http-compatibility.mjs",
+          "scripts/server-rust/skill-settings-http-worker.mjs",
+          "scripts/server-rust/skill-settings-http-cases.mjs",
+          "scripts/server-rust/skill-audience-http-cases.mjs",
+          "scripts/server-rust/actual-skill-settings-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Remaining public domains, complete transports/coordination, upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/skill-audiences",
+        "implementation": "cantrip_server_rs/src/http/skill_settings/mod.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/skill_settings_contracts.rs",
+          "scripts/server-rust/skill-settings-http-compatibility.mjs",
+          "scripts/server-rust/skill-settings-http-worker.mjs",
+          "scripts/server-rust/skill-settings-http-cases.mjs",
+          "scripts/server-rust/skill-audience-http-cases.mjs",
+          "scripts/server-rust/actual-skill-settings-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Remaining public domains, complete transports/coordination, upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/skills",
+        "implementation": "cantrip_server_rs/src/http/skill_settings/mod.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/skill_settings_contracts.rs",
+          "scripts/server-rust/skill-settings-http-compatibility.mjs",
+          "scripts/server-rust/skill-settings-http-worker.mjs",
+          "scripts/server-rust/skill-settings-http-cases.mjs",
+          "scripts/server-rust/skill-audience-http-cases.mjs",
+          "scripts/server-rust/actual-skill-settings-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Remaining public domains, complete transports/coordination, upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/skills",
+        "implementation": "cantrip_server_rs/src/http/skill_settings/mod.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/skill_settings_contracts.rs",
+          "scripts/server-rust/skill-settings-http-compatibility.mjs",
+          "scripts/server-rust/skill-settings-http-worker.mjs",
+          "scripts/server-rust/skill-settings-http-cases.mjs",
+          "scripts/server-rust/skill-audience-http-cases.mjs",
+          "scripts/server-rust/actual-skill-settings-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Remaining public domains, complete transports/coordination, upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/skills/configuration",
+        "implementation": "cantrip_server_rs/src/http/skill_settings/mod.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/skill_settings_contracts.rs",
+          "scripts/server-rust/skill-settings-http-compatibility.mjs",
+          "scripts/server-rust/skill-settings-http-worker.mjs",
+          "scripts/server-rust/skill-settings-http-cases.mjs",
+          "scripts/server-rust/skill-audience-http-cases.mjs",
+          "scripts/server-rust/actual-skill-settings-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Remaining public domains, complete transports/coordination, upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "method": "PUT",
+        "path": "/api/skills/file",
+        "implementation": "cantrip_server_rs/src/http/skill_settings/mod.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/skill_settings_contracts.rs",
+          "scripts/server-rust/skill-settings-http-compatibility.mjs",
+          "scripts/server-rust/skill-settings-http-worker.mjs",
+          "scripts/server-rust/skill-settings-http-cases.mjs",
+          "scripts/server-rust/skill-audience-http-cases.mjs",
+          "scripts/server-rust/actual-skill-settings-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Remaining public domains, complete transports/coordination, upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/skills/read",
+        "implementation": "cantrip_server_rs/src/http/skill_settings/mod.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/skill_settings_contracts.rs",
+          "scripts/server-rust/skill-settings-http-compatibility.mjs",
+          "scripts/server-rust/skill-settings-http-worker.mjs",
+          "scripts/server-rust/skill-settings-http-cases.mjs",
+          "scripts/server-rust/skill-audience-http-cases.mjs",
+          "scripts/server-rust/actual-skill-settings-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Remaining public domains, complete transports/coordination, upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
       }
     ]
   },
@@ -5611,7 +5730,7 @@
       {
         "command": "skills.list",
         "implementation": "cantrip_server_rs/src/http/chat_customizations.rs",
-        "status": "partial",
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "cantrip_server_rs/tests/chat_customization_contracts.rs",
           "scripts/server-rust/chat-customization-http-compatibility.mjs",
@@ -5623,8 +5742,87 @@
           "scripts/server-rust/actual-chat-customizations-client.mjs"
         ],
         "remaining": [
-          "The chat-scoped skills.list branch is implemented. The separate settings skill-manager HTTP surface remains unported.",
-          "Current-head supported-platform and packaged acceptance remain required. Complete transports/coordination, remaining public domains, product upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+          "Current-head supported-platform and packaged acceptance remain required. Remaining public domains, complete transports/coordination, upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "command": "skills.settings.list",
+        "implementation": "cantrip_server_rs/src/http/skill_settings/mod.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/skill_settings_contracts.rs",
+          "scripts/server-rust/skill-settings-http-compatibility.mjs",
+          "scripts/server-rust/skill-settings-http-worker.mjs",
+          "scripts/server-rust/skill-settings-http-cases.mjs",
+          "scripts/server-rust/skill-audience-http-cases.mjs",
+          "scripts/server-rust/actual-skill-settings-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Remaining public domains, complete transports/coordination, upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "command": "skills.settings.read",
+        "implementation": "cantrip_server_rs/src/http/skill_settings/mod.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/skill_settings_contracts.rs",
+          "scripts/server-rust/skill-settings-http-compatibility.mjs",
+          "scripts/server-rust/skill-settings-http-worker.mjs",
+          "scripts/server-rust/skill-settings-http-cases.mjs",
+          "scripts/server-rust/skill-audience-http-cases.mjs",
+          "scripts/server-rust/actual-skill-settings-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Remaining public domains, complete transports/coordination, upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "command": "skills.settings.write",
+        "implementation": "cantrip_server_rs/src/http/skill_settings/mod.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/skill_settings_contracts.rs",
+          "scripts/server-rust/skill-settings-http-compatibility.mjs",
+          "scripts/server-rust/skill-settings-http-worker.mjs",
+          "scripts/server-rust/skill-settings-http-cases.mjs",
+          "scripts/server-rust/skill-audience-http-cases.mjs",
+          "scripts/server-rust/actual-skill-settings-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Remaining public domains, complete transports/coordination, upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "command": "skills.settings.delete",
+        "implementation": "cantrip_server_rs/src/http/skill_settings/mod.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/skill_settings_contracts.rs",
+          "scripts/server-rust/skill-settings-http-compatibility.mjs",
+          "scripts/server-rust/skill-settings-http-worker.mjs",
+          "scripts/server-rust/skill-settings-http-cases.mjs",
+          "scripts/server-rust/skill-audience-http-cases.mjs",
+          "scripts/server-rust/actual-skill-settings-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Remaining public domains, complete transports/coordination, upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "command": "skills.settings.configure",
+        "implementation": "cantrip_server_rs/src/http/skill_settings/mod.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/skill_settings_contracts.rs",
+          "scripts/server-rust/skill-settings-http-compatibility.mjs",
+          "scripts/server-rust/skill-settings-http-worker.mjs",
+          "scripts/server-rust/skill-settings-http-cases.mjs",
+          "scripts/server-rust/skill-audience-http-cases.mjs",
+          "scripts/server-rust/actual-skill-settings-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Remaining public domains, complete transports/coordination, upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
         ]
       }
     ]
@@ -6500,6 +6698,23 @@
         "remaining": [
           "Current-head supported-platform and packaged acceptance remain required. Shared coordination, complete upgrades/post-write rollback, artifacts, desktop packaging, Winterhold rehearsal, performance and final default cutover remain unfinished. Node remains the default server; worker remains Node."
         ]
+      },
+      {
+        "implementation": "cantrip_server_rs/src/settings/skill_audiences.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/skill_settings_contracts.rs",
+          "scripts/server-rust/skill-settings-http-compatibility.mjs",
+          "scripts/server-rust/skill-settings-http-worker.mjs",
+          "scripts/server-rust/skill-settings-http-cases.mjs",
+          "scripts/server-rust/skill-audience-http-cases.mjs",
+          "scripts/server-rust/actual-skill-settings-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Remaining public domains, complete transports/coordination, upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ],
+        "tableName": "skill_audiences",
+        "exportName": "skillAudiences"
       }
     ]
   },
@@ -8474,6 +8689,40 @@
         "remaining": [
           "Current-head supported-platform and packaged acceptance remain required. Complete transports/coordination, remaining public domains, product upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
         ]
+      },
+      {
+        "method": "listSkillAudiences",
+        "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
+        "implementation": "cantrip_server_rs/src/settings/skill_audiences.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/skill_settings_contracts.rs",
+          "scripts/server-rust/skill-settings-http-compatibility.mjs",
+          "scripts/server-rust/skill-settings-http-worker.mjs",
+          "scripts/server-rust/skill-settings-http-cases.mjs",
+          "scripts/server-rust/skill-audience-http-cases.mjs",
+          "scripts/server-rust/actual-skill-settings-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Remaining public domains, complete transports/coordination, upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "method": "updateSkillAudience",
+        "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
+        "implementation": "cantrip_server_rs/src/settings/skill_audiences.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/skill_settings_contracts.rs",
+          "scripts/server-rust/skill-settings-http-compatibility.mjs",
+          "scripts/server-rust/skill-settings-http-worker.mjs",
+          "scripts/server-rust/skill-settings-http-cases.mjs",
+          "scripts/server-rust/skill-audience-http-cases.mjs",
+          "scripts/server-rust/actual-skill-settings-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Remaining public domains, complete transports/coordination, upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
       }
     ]
   },
@@ -8779,8 +9028,11 @@
       },
       {
         "resource": "customization",
-        "implementation": "cantrip_server_rs/src/http/chat_customizations.rs",
-        "status": "partial",
+        "implementation": [
+          "cantrip_server_rs/src/http/chat_customizations.rs",
+          "cantrip_server_rs/src/http/skill_settings/mod.rs"
+        ],
+        "status": "implemented-pending-platform-acceptance",
         "evidence": [
           "cantrip_server_rs/tests/chat_customization_contracts.rs",
           "scripts/server-rust/chat-customization-http-compatibility.mjs",
@@ -8789,11 +9041,16 @@
           "scripts/server-rust/chat-customization-http-standalone.mjs",
           "scripts/server-rust/chat-configuration-http-cases.mjs",
           "scripts/server-rust/chat-permission-bound-http-cases.mjs",
-          "scripts/server-rust/actual-chat-customizations-client.mjs"
+          "scripts/server-rust/actual-chat-customizations-client.mjs",
+          "cantrip_server_rs/tests/skill_settings_contracts.rs",
+          "scripts/server-rust/skill-settings-http-compatibility.mjs",
+          "scripts/server-rust/skill-settings-http-worker.mjs",
+          "scripts/server-rust/skill-settings-http-cases.mjs",
+          "scripts/server-rust/skill-audience-http-cases.mjs",
+          "scripts/server-rust/actual-skill-settings-client.mjs"
         ],
         "remaining": [
-          "Chat-scoped skill configuration, skill roots and MCP reload publication are implemented, including disconnect completion and failed-operation suppression. Other settings customization producers remain unported.",
-          "Current-head supported-platform and packaged acceptance remain required. Complete transports/coordination, remaining public domains, product upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+          "Current-head supported-platform and packaged acceptance remain required. Remaining public domains, complete transports/coordination, upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
         ]
       }
     ]
@@ -11203,6 +11460,33 @@
       "remaining": [
         "Current-head supported-platform and packaged acceptance remain required. Complete transports/coordination, remaining public domains, product upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node.",
         "The broad pnpm check retains one unchanged15s worker history-batching timeout; all28 tests in that file pass separately with original deadlines. Global formatting retains11 byte-identical baseline files. Neither broad result is claimed green."
+      ]
+    },
+    "globalSkillSettings": {
+      "status": "implemented-pending-platform-acceptance",
+      "implementation": [
+        "cantrip_server_rs/src/http/skill_settings/mod.rs",
+        "cantrip_server_rs/src/http/skill_settings/target.rs",
+        "cantrip_server_rs/src/settings/skill_audiences.rs"
+      ],
+      "evidence": [
+        "cantrip_server_rs/tests/skill_settings_contracts.rs",
+        "scripts/server-rust/skill-settings-http-compatibility.mjs",
+        "scripts/server-rust/skill-settings-http-worker.mjs",
+        "scripts/server-rust/skill-settings-http-cases.mjs",
+        "scripts/server-rust/skill-audience-http-cases.mjs",
+        "scripts/server-rust/actual-skill-settings-client.mjs"
+      ],
+      "validatedSubset": "Local macOS: 2179 actual Source named-contract value/issue/exact-error comparisons. All nine database/authentication profiles pass1014 paired HTTP observations,42 worker commands,49 controlled downstream calls,65 cryptographic proofs,19 ordered invalidations(15current-user/4project),five durable snapshots and six failure/recovery cases per peer/profile. All5000 audience entries are returned;5001 preserves Source500 rather than silently truncating data. Actual existing browser SDK, unchanged full SkillManager/native worker and real Codex pass project/account file reads and atomic edits, project native configuration, public audience changes, scope isolation, invalid-write byte retention, server/worker restart and deletion with verified recovery-file bytes on all3stores. Account native configuration retains Source's encrypted inventory rejection. No inference is started by these settings operations.",
+      "sourceSemantics": [
+        "List context validation precedes operation identity/target lookup; unknown list query fields are ignored. Audience query/body schemas are strict.",
+        "Target loads the owned provider before project source, worker ownership and connectivity, then enriches ALL configured runtimes(including disabled) before choosing the provider. Global cwd may be null. Read/write/delete work without a configured model route; configuration alone requires one.",
+        "Global protected scope requires chatId:null and a nonnull providerId. Worker error defaults are502 for list and409 for protected mutations; unavailable workers remain503. Relay limits preserve these fallback statuses.",
+        "Audience ownership checks an independently selected active worker/provider pair. Availability, models, project membership and provider-worker placement are not additional requirements. Upserts use(owner,worker,provider,audienceKey); reads retain Source sorting and5000-entry validation.",
+        "Audience updates invalidate current-user customization. Only succeeded encrypted write/delete/configure operations invalidate their captured project/current-user scope. Actual Source publish sites are now covered for both global settings and chat customizations."
+      ],
+      "remaining": [
+        "Current-head supported-platform and packaged acceptance remain required. Remaining public domains, complete transports/coordination, upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
       ]
     }
   },

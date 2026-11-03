@@ -5,12 +5,14 @@ import { taskModelProvider } from "./task-model-provider.mjs";
 import { actualProjectAutomationsClient } from "./actual-project-automations-client.mjs";
 import { actualAgentInteractionsClient } from "./actual-agent-interactions-client.mjs";
 import { actualChatCustomizationsClient } from "./actual-chat-customizations-client.mjs";
+import { actualSkillSettingsClient } from "./actual-skill-settings-client.mjs";
 
 export async function actualProjectChatClient({
   page,
   fixture,
   projectId,
   projectRoot,
+  workerDataDirectory,
   workerId,
   startWorker,
   stopWorker,
@@ -430,6 +432,21 @@ export async function actualProjectChatClient({
         fixture,
         chatId: chat.id,
         projectRoot,
+        startWorker,
+        stopWorker,
+        model,
+        result,
+        requests,
+      });
+    if (process.argv.includes("--skill-settings"))
+      await actualSkillSettingsClient({
+        page,
+        fixture,
+        projectId,
+        chatId: chat.id,
+        projectRoot,
+        workerDataDirectory,
+        workerId,
         startWorker,
         stopWorker,
         model,
