@@ -71,6 +71,7 @@ mod run_definitions;
 mod run_secrets;
 mod sessions;
 mod settings;
+mod settings_operations;
 mod skill_settings;
 mod task_controls;
 mod terminal_direct;
@@ -217,6 +218,7 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(run_definitions::routes())
         .merge(run_secrets::routes())
         .merge(settings::routes())
+        .merge(settings_operations::routes())
         .merge(skill_settings::routes())
         .merge(mcp_settings::routes())
         .merge(terminals::routes())

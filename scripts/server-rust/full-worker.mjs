@@ -32,6 +32,7 @@ export function launchActualWorker(
     workerId = "actual-catalog-worker",
     traceShutdown = false,
     homeDirectory,
+    environment: extraEnvironment = {},
   } = {},
 ) {
   const environment = {
@@ -67,6 +68,7 @@ export function launchActualWorker(
     ...(process.env.CANTRIP_CODEX_BIN
       ? { CANTRIP_CODEX_BIN: process.env.CANTRIP_CODEX_BIN }
       : {}),
+    ...extraEnvironment,
   };
   if (homeDirectory) {
     environment.CANTRIP_TEST_WORKER_HOME = homeDirectory;

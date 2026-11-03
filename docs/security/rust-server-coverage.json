@@ -5096,6 +5096,40 @@
         "remaining": [
           "Current-head supported-platform and packaged acceptance remain required. Remaining public domains, complete transports/coordination, upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
         ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/desktop-update/active-work",
+        "implementation": "cantrip_server_rs/src/http/settings_operations.rs",
+        "status": "implemented",
+        "evidence": [
+          "cantrip_server_rs/tests/settings_operations_contracts.rs",
+          "scripts/server-rust/desktop-update-query-manifest.mjs",
+          "scripts/server-rust/settings-operations-http-compatibility.mjs",
+          "scripts/server-rust/settings-active-work-http-cases.mjs",
+          "scripts/server-rust/settings-provider-http-cases.mjs",
+          "scripts/server-rust/actual-provider-test-client.mjs"
+        ],
+        "remaining": [
+          "Fresh supported-platform acceptance and complete packaged/standalone replacement verification."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/settings/providers/:providerId/test",
+        "implementation": "cantrip_server_rs/src/http/settings_operations.rs",
+        "status": "implemented",
+        "evidence": [
+          "cantrip_server_rs/tests/settings_operations_contracts.rs",
+          "scripts/server-rust/desktop-update-query-manifest.mjs",
+          "scripts/server-rust/settings-operations-http-compatibility.mjs",
+          "scripts/server-rust/settings-active-work-http-cases.mjs",
+          "scripts/server-rust/settings-provider-http-cases.mjs",
+          "scripts/server-rust/actual-provider-test-client.mjs"
+        ],
+        "remaining": [
+          "Fresh supported-platform acceptance and complete packaged/standalone replacement verification."
+        ]
       }
     ]
   },
@@ -11798,7 +11832,8 @@
       ],
       "remaining": [
         "Current-head supported-platform and packaged acceptance remain required. Remaining public domains, complete transports/coordination, upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
-      ]
+      ],
+      "platformFixtureRemediation": "Actual native Codex path probe confirms the macOS lexical /var versus canonical /private/var mismatch caused the account configuration rejection expected by the old fixture. The acceptance caller now owns a worker directory alias on all platforms, retains every original negative assertion and adds successful canonical account configuration through the existing browser/native API. Composed PGlite acceptance passes18steps/7modelPOST perpeer; Linux/Windows verification remains required."
     },
     "mcpSettings": {
       "implementation": "cantrip_server_rs/src/http/mcp_settings.rs",
@@ -11842,6 +11877,34 @@
         "Fresh current-head repeated Linux recovery diagnostic and supported-platform acceptance.",
         "Current-head supported-platform, packaged, Redis/multi-instance, upgrade/post-write rollback, artifact, Winterhold rehearsal, performance and default-cutover acceptance remain unfinished.",
         "Mixed rollouts require both Source retry fixes. No schema/wire change; worker remains unchanged."
+      ]
+    },
+    "publicSettingsOperations": {
+      "status": "implemented-pending-platform-acceptance",
+      "implementation": [
+        "cantrip_server_rs/src/http/settings_operations.rs",
+        "cantrip_server_rs/src/settings/desktop_update.rs",
+        "cantrip_server_rs/src/settings/provider_connection.rs"
+      ],
+      "evidence": [
+        "cantrip_server_rs/tests/settings_operations_contracts.rs",
+        "scripts/server-rust/desktop-update-query-manifest.mjs",
+        "scripts/server-rust/settings-operations-http-compatibility.mjs",
+        "scripts/server-rust/settings-active-work-http-cases.mjs",
+        "scripts/server-rust/settings-provider-http-cases.mjs",
+        "scripts/server-rust/actual-provider-test-client.mjs",
+        "scripts/server-rust/provider-connection-oracle.mjs",
+        "scripts/server-rust/provider-test-boundary.mjs"
+      ],
+      "validatedSubset": "Local macOS: 513 actual Source response-contract/issue/exact-error cases and 992 provider-failure precedence/UTF-16 detail cases pass. All nine database/auth profiles pass 1281 paired HTTP observations and 369 provider commands, including all nine count queries, counted and excluded lifecycle states, standalone/archived/foreign ownership rules,14 real missing-relation faults and restoration, model/default/offline selection, malformed replies, caller disconnect, worker reconnect, actual server restart, and two-slot command backpressure without blocking desktop counts. The unmodified production120-second deadline passes on both peers with late-reply recovery. The existing browser SDK/full unchanged worker/native Codex pass19 composed steps on all3stores for both peers, retaining the original7 model POSTs plus9 separate verifiedTLS provider POSTs (3successes/6actual native authentication retries), actual key-authentication failure and recovery, public credential availability through server/worker restart and desktop counts. The strict owned proxy also validates the real MCP initialize probes of its own configured URL and returns404 without forwarding them.",
+      "sourceSemantics": [
+        "Desktop counts preserve the nine actual Drizzle SQL queries and their independent read boundaries; jobs use their recorded owner, queued prompts include archived project chats, standalone chats are excluded, and service-enabled terminals count even when closed.",
+        "Only the existing canonical Z.ai Coding Plan provider guard is accepted; prefer glm-5.3, preserve raw repeated worker query behavior, parse and ignore worker duration, and compute the public duration from server wall-clock time.",
+        "Provider lookup/model/preferences/worker repository failures remain generic500 outside the native-probe catch; native command failures and response-validation failures retain Source stage precedence and bounded public output validation.",
+        "The worker, app, protocol, crypto and Node-server production sources remain unchanged in this milestone."
+      ],
+      "remaining": [
+        "Fresh supported-platform verification and complete deployment/data/packaging acceptance remain unproven."
       ]
     }
   },
