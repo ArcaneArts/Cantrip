@@ -9,6 +9,11 @@ import { postgresFixture } from "./postgres-fixture.mjs";
 import { repositoryFixture } from "./repository-fixture.mjs";
 import { hashPassword } from "../../cantrip_server/src/auth/service.ts";
 import { nativeEventHttpSpecialCases } from "./native-event-http-special-cases.mjs";
+import { nativeEventPublicationSchedules } from "./native-event-publication-schedules.mjs";
+import {
+  nativeEventDelivery,
+  compareNativeEventTraces,
+} from "./native-event-publication-trace.mjs";
 import { password } from "./security-fixtures.mjs";
 import {
   settingsHttpFixture,
@@ -55,6 +60,7 @@ try {
   for (const profile of ["none", "password", "accounts"].filter(
     (p) =>
       !process.argv.includes("--special-only") &&
+      !process.argv.includes("--publication-schedules-only") &&
       (!option("--profile") || p === option("--profile")),
   )) {
     const outputs = [];
@@ -66,6 +72,7 @@ try {
         snapshotProofs: 0,
         cryptoProofs: 0,
         events: [],
+        rawEventDeliveries: [],
       };
       outputs.push(result);
       const url =
@@ -99,16 +106,14 @@ try {
         event,
       });
       const send = async (name, chat, event, extra = {}) => {
-        const before = live.history.filter((e) => e.type === "event").length;
+        const before = live.history.length;
         const body = await visit(name, "POST", endpoint, {
           ...auth,
           json: envelope(chat, event),
           ...extra,
         });
-        await live.ping(name);
-        const events = live.history
-          .filter((e) => e.type === "event")
-          .slice(before);
+        const events = await nativeEventDelivery(live, before, name);
+        result.rawEventDeliveries.push({ name, events });
         if (extra.status && extra.status !== 200)
           assert.equal(
             events.length,
@@ -377,10 +382,31 @@ try {
       result.diagnostics = serverProcess.diagnostics();
       assert.equal(result.diagnostics.includes(eventPrivateMarker), false);
     }
-    for (const key of ["observations", "cryptoProofs", "events"])
+    for (const key of ["observations", "cryptoProofs"])
       assert.deepEqual(outputs[1][key], outputs[0][key], profile + " " + key);
+    compareNativeEventTraces(
+      outputs[1].events,
+      outputs[0].events,
+      databaseMode,
+      profile,
+    );
   }
   if (databaseMode === "postgres")
+    await nativeEventPublicationSchedules({
+      pg,
+      root,
+      executable,
+      repositoryExecutable,
+      passwordHash,
+      report,
+      profiles: ["none", "password", "accounts"].filter(
+        (p) => !option("--profile") || p === option("--profile"),
+      ),
+    });
+  if (
+    databaseMode === "postgres" &&
+    !process.argv.includes("--publication-schedules-only")
+  )
     await nativeEventHttpSpecialCases({
       pg,
       root,
