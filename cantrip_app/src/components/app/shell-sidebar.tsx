@@ -176,6 +176,13 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
     workers,
     worktrees,
   } = bindings;
+  const projectNavigationLoading = Boolean(
+    appMode === null ||
+    bootstrap.isPending ||
+    projects?.isPending ||
+    projectWorkspaces?.isPending ||
+    workspaceConnection?.loading,
+  );
   return (
     <>
       {!isPopout ? (
@@ -352,46 +359,48 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                     </Button>
                   </div>
                 ) : null}
-                <div className="px-3 pb-2 pt-2">
-                  <ProjectSwitcher
-                    activeWorkspaceId={activeProjectWorkspace?.id ?? null}
-                    alertCounts={bindings.projectAlertCounts}
-                    projects={projects.data ?? []}
-                    selectedProjectId={selectedProjectId}
-                    workspaces={projectWorkspaces.data ?? []}
-                    onSelectWorkspace={selectProjectWorkspace}
-                    onSelectProject={selectProjectFromSidebar}
-                    onAddProject={openProjectCreateSource}
-                    onManageWorkspaces={() => {
-                      setDesktopSidebarDrawerOpen(false);
-                      setSettingsSection("workspaces");
-                      setShowSettings(true);
-                      setShowServerAdmin(false);
-                      setShowImporter(false);
-                      setShowProjectSettings(false);
-                    }}
-                    onOpenProjectSettings={openProjectSettings}
-                    onOpenOverview={returnToCompactProjectOverview}
-                    onRemoveProject={(projectId, deleteLocalFiles) =>
-                      removeProjectMutation
-                        .mutateAsync({ projectId, deleteLocalFiles })
-                        .then(() => undefined)
-                    }
-                    onRevealProject={(project, localFolder) =>
-                      revealProjectInNativeFileManager(
-                        project,
-                        localFolder,
-                        "",
-                        worktrees.data?.find(
-                          (worktree: ProjectWorktreeSummary) =>
-                            worktree.projectSourceId === project.source?.id &&
-                            worktree.isPrimary,
-                        ),
-                      )
-                    }
-                    projectRevealLabel={projectRevealLabel ?? undefined}
-                  />
-                </div>
+                {!projectNavigationLoading ? (
+                  <div className="px-3 pb-2 pt-2">
+                    <ProjectSwitcher
+                      activeWorkspaceId={activeProjectWorkspace?.id ?? null}
+                      alertCounts={bindings.projectAlertCounts}
+                      projects={projects.data ?? []}
+                      selectedProjectId={selectedProjectId}
+                      workspaces={projectWorkspaces.data ?? []}
+                      onSelectWorkspace={selectProjectWorkspace}
+                      onSelectProject={selectProjectFromSidebar}
+                      onAddProject={openProjectCreateSource}
+                      onManageWorkspaces={() => {
+                        setDesktopSidebarDrawerOpen(false);
+                        setSettingsSection("workspaces");
+                        setShowSettings(true);
+                        setShowServerAdmin(false);
+                        setShowImporter(false);
+                        setShowProjectSettings(false);
+                      }}
+                      onOpenProjectSettings={openProjectSettings}
+                      onOpenOverview={returnToCompactProjectOverview}
+                      onRemoveProject={(projectId, deleteLocalFiles) =>
+                        removeProjectMutation
+                          .mutateAsync({ projectId, deleteLocalFiles })
+                          .then(() => undefined)
+                      }
+                      onRevealProject={(project, localFolder) =>
+                        revealProjectInNativeFileManager(
+                          project,
+                          localFolder,
+                          "",
+                          worktrees.data?.find(
+                            (worktree: ProjectWorktreeSummary) =>
+                              worktree.projectSourceId === project.source?.id &&
+                              worktree.isPrimary,
+                          ),
+                        )
+                      }
+                      projectRevealLabel={projectRevealLabel ?? undefined}
+                    />
+                  </div>
+                ) : null}
 
                 <nav
                   className="flex min-h-0 flex-1 flex-col px-2 pb-4"
@@ -417,6 +426,9 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                   ) : null}
                   <ProjectSidebarPages
                     key={selectedProjectId ?? "none"}
+                    tabsVisible={
+                      !projectNavigationLoading && Boolean(selectedProject)
+                    }
                     page={projectSidebarPage ?? "files"}
                     onChange={setProjectSidebarPage}
                     conversations={
