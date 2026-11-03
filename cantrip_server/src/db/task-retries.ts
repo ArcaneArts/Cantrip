@@ -14,6 +14,7 @@ import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 import * as schema from "./schema.js";
 import {
+  classifyTaskFailure,
   scheduleTaskRetry,
   TASK_RETRY_CLAIM_MS,
   TASK_RETRY_LIMIT,
@@ -136,6 +137,35 @@ export class TaskRetryRepository {
       if (task.state === "complete") return { record: null, result: false };
       const record = scheduleTaskRetry(task.automaticRetry, key, kind, now);
       return { record, result: record !== task.automaticRetry };
+    });
+  }
+
+  async adoptFailure(
+    ownerId: string,
+    chatId: string,
+    code: string,
+    occurredAt: string,
+    now = Date.now(),
+  ) {
+    return this.mutate(ownerId, chatId, ({ task }) => {
+      // The candidate read precedes this lock. A worker may have recorded a
+      // precise failure, or the user may have changed the Task, in between.
+      if (
+        task.automaticRetry !== null ||
+        task.state !== "failed" ||
+        task.lastError?.code !== code ||
+        task.lastError.occurredAt !== occurredAt
+      )
+        return { record: task.automaticRetry, result: false };
+      return {
+        record: scheduleTaskRetry(
+          null,
+          `observed:${code}:${occurredAt}`,
+          classifyTaskFailure(code),
+          now,
+        ),
+        result: true,
+      };
     });
   }
 

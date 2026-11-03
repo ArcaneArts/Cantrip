@@ -6,7 +6,7 @@ import { repositoryFixture } from "./repository-fixture.mjs";
 const postgres = createRequire(
   new URL("../../cantrip_server/package.json", import.meta.url),
 )("postgres");
-async function waiters(sql, count) {
+export async function waiters(sql, count) {
   const until = Date.now() + 20000;
   let rows = [];
   while (Date.now() < until) {

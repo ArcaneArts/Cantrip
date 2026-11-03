@@ -44,11 +44,18 @@ export async function taskGoalFixture(original, input) {
       return (...args) => {
         if (
           input.action === "automatic" &&
-          ["listCandidates", "noteFailure", "claimDue", "finish"].includes(key)
+          [
+            "listCandidates",
+            "noteFailure",
+            "adoptFailure",
+            "claimDue",
+            "finish",
+          ].includes(key)
         ) {
           const index = {
             listCandidates: 0,
             noteFailure: 4,
+            adoptFailure: 4,
             claimDue: 2,
             finish: 4,
           }[key];

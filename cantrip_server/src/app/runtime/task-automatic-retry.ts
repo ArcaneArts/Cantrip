@@ -91,11 +91,11 @@ export function createTaskAutomaticRetry({
                 task.state === "failed" &&
                 task.lastError
               ) {
-                const changed = await repository.taskRetries.noteFailure(
+                const changed = await repository.taskRetries.adoptFailure(
                   ownerId,
                   chatId,
-                  `observed:${task.lastError.code}:${task.lastError.occurredAt}`,
-                  classifyTaskFailure(task.lastError.code),
+                  task.lastError.code,
+                  task.lastError.occurredAt,
                 );
                 if (changed) publish(chatId, projectId);
               }

@@ -10,6 +10,11 @@ enum Action {
         kind: String,
         now: f64,
     },
+    Adopt {
+        code: String,
+        occurred_at: String,
+        now: f64,
+    },
     Reset,
     Clear,
     Claim {
@@ -69,6 +74,25 @@ impl Repository {
     pub async fn reset(&self, owner: &str, chat: &str) -> Result<Value> {
         self.mutate(owner, chat, Action::Reset).await
     }
+    pub async fn adopt_failure(
+        &self,
+        owner: &str,
+        chat: &str,
+        code: &str,
+        occurred_at: &str,
+        now: Option<f64>,
+    ) -> Result<Value> {
+        self.mutate(
+            owner,
+            chat,
+            Action::Adopt {
+                code: code.into(),
+                occurred_at: occurred_at.into(),
+                now: time(now),
+            },
+        )
+        .await
+    }
     pub async fn clear_pending(&self, owner: &str, chat: &str) -> Result<Value> {
         self.mutate(owner, chat, Action::Clear).await
     }
@@ -113,6 +137,24 @@ fn apply(row: &Value, pending: bool, action: Action) -> Result<(Value, Value)> {
             ))
         }
         Action::Reset => Ok((Value::Null, json!(true))),
+        Action::Adopt {
+            code,
+            occurred_at,
+            now,
+        } => {
+            // Recheck the candidate under the existing owner/Task locks.
+            // Inferred legacy categories cannot overwrite a precise failure.
+            if !record.is_null()
+                || task["state"] != "failed"
+                || task["last_error"]["code"] != code.as_str()
+                || task["last_error"]["occurredAt"] != occurred_at.as_str()
+            {
+                return Ok((record, json!(false)));
+            }
+            let key = format!("observed:{code}:{occurred_at}");
+            let kind = super::failure_kind::classify(&json!(code));
+            Ok((policy::schedule_retry(None, &key, kind, now)?, json!(true)))
+        }
         Action::Clear => {
             if task["state"] == "complete" {
                 record = Value::Null;
