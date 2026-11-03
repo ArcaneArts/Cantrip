@@ -25,10 +25,16 @@ it("retires the workbench while preserving native tab ciphertext, placement and 
       if (name.startsWith("0229_")) break;
       await client.exec(await readFile(`${migrations}/${name}`, "utf8"));
     }
-    // Current repository fixtures select the additive worker observation cursor.
+    // Current repository fixtures select additive worker observation and CUA policy fields.
     // Keep the historical editor tables intact until the removal migration below.
     await client.exec(
       "ALTER TABLE workers ADD COLUMN project_goal_generation text",
+    );
+    await client.exec(
+      "ALTER TABLE user_settings ADD COLUMN computer_use_cantrip_app_allowed boolean NOT NULL DEFAULT false",
+    );
+    await client.exec(
+      "ALTER TABLE project_worktrees ADD COLUMN location_kind text NOT NULL DEFAULT 'worker-local', ADD COLUMN guest_path text",
     );
     const database = drizzle(client, { schema });
     const repository = new ServerRepository(

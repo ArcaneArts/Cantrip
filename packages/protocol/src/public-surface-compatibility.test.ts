@@ -545,9 +545,28 @@ const cantripOsExports = [
   "projectSourceLocationSchema",
 ].sort();
 
+const agentTaskExports = [
+  "agentTaskCreateWireSchema",
+  "agentTaskStatusWireSchema",
+  "agentTaskWireDescriptorSchema",
+  "cantripMcpTaskCreateInputSchema",
+  "cantripMcpTaskListInputSchema",
+  "cantripMcpTaskStatusInputSchema",
+  "cantripMcpTaskWaitInputSchema",
+].sort();
+
 describe("protocol public surface compatibility", () => {
   it("preserves the root runtime export baseline with reviewed CUA and managed-session additions", () => {
-    const exportNames = Object.keys(protocol).sort();
+    const allExportNames = Object.keys(protocol).sort();
+    expect(
+      allExportNames.filter((name) => agentTaskExports.includes(name)),
+    ).toEqual(agentTaskExports);
+    expect(allExportNames).toHaveLength(2158 + cantripOsExports.length);
+    // Retain every existing 2,151-export assertion and baseline fingerprint;
+    // the seven newly reviewed Task schemas are checked explicitly above.
+    const exportNames = allExportNames.filter(
+      (name) => !agentTaskExports.includes(name),
+    );
     const baselineNames = [
       ...retiredWorkbenchExports,
       ...retiredWorkspaceProfileExports,

@@ -152,6 +152,12 @@ impl LiveService {
         }
         Ok(())
     }
+    pub fn publish_group(&self, events: Vec<Value>) -> Result<()> {
+        if self.publishing.load(Ordering::Acquire) {
+            self.hub.publish_group(events)?;
+        }
+        Ok(())
+    }
     pub fn publishing_enabled(&self) -> bool {
         self.publishing.load(Ordering::Acquire)
     }

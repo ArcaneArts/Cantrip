@@ -693,6 +693,7 @@ describe("Cantrip MCP worker broker", () => {
           ]).has(tool.name);
           const idempotent =
             readOnly ||
+            tool.name === "task_create" ||
             tool.name === "chat_send" ||
             tool.name === "alert_raise" ||
             tool.name === "alert_resolve" ||

@@ -188,9 +188,34 @@ try {
             () => eventsFor(chat, offset),
             (e) => e.length >= 2,
           );
-          for (const [i, event] of events.entries()) {
-            if (i) assert.ok(event.cursor > events[i - 1].cursor);
-            assert.ok(Date.parse(event.occurredAt) <= Date.now());
+          try {
+            for (const [i, event] of events.entries()) {
+              if (i) assert.ok(event.cursor > events[i - 1].cursor);
+              assert.ok(Date.parse(event.occurredAt) <= Date.now());
+            }
+          } catch (error) {
+            const sample = () => ({
+              dateNow: Date.now(),
+              timeOrigin: performance.timeOrigin,
+              performanceNow: performance.now(),
+            });
+            result.eventClockFailure = {
+              events,
+              beforeDatabaseRead: sample(),
+            };
+            try {
+              [result.eventClockFailure.database] = await h.fixture.sql(
+                [],
+                [
+                  "SELECT jsonb_build_object('databaseNow',clock_timestamp(),'transactionNow',current_timestamp)::text result",
+                ],
+              );
+            } catch (diagnosticError) {
+              result.eventClockFailure.databaseReadError =
+                String(diagnosticError);
+            }
+            result.eventClockFailure.afterDatabaseRead = sample();
+            throw error;
           }
           const plain = events.map(({ cursor, occurredAt, ...event }) => event);
           assert.deepEqual(

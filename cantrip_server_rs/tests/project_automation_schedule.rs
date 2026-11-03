@@ -44,10 +44,17 @@ fn automation_occurrences_match_actual_source() {
             .expect("Source occurrence result")
             .as_f64()
             .map(|v| v as i64);
-        assert_eq!(actual, expected, "{}", input.stringify());
+        assert_eq!(
+            actual,
+            expected,
+            "{}; Source runtime: {}",
+            input.stringify(),
+            data["runtime"].stringify(),
+        );
     }
     println!(
-        "{} actual Source interval, weekly, cron and time-zone occurrences matched",
-        cases.len()
+        "{} actual Source interval, weekly, cron and time-zone occurrences matched; runtime: {}",
+        cases.len(),
+        data["runtime"].stringify()
     );
 }

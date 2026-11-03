@@ -289,6 +289,15 @@ try {
         (events) => events.length >= 10,
         "committed preparation Live events",
       );
+      if (events.length !== 10)
+        result.preparationEventFailure = {
+          events,
+          requested,
+          ready,
+          exited,
+          retried,
+          failed,
+        };
       assert.equal(events.length, 10);
       for (const event of events) {
         assert.deepEqual(event.scope, { kind: "chat", chatId: settingsChat });

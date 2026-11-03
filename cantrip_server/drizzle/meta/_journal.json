@@ -1723,6 +1723,13 @@
       "when": 1793774400000,
       "tag": "0245_cantrip_os_chat_placements",
       "breakpoints": true
+    },
+    {
+      "idx": 246,
+      "version": "7",
+      "when": 1793774400001,
+      "tag": "0246_project_source_identity_lock_order",
+      "breakpoints": true
     }
   ]
 }

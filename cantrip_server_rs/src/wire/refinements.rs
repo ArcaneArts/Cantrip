@@ -107,7 +107,13 @@ pub(super) fn apply(
     let mut custom = |suffix: &[&str], message: &str| {
         let mut at = path.to_vec();
         at.extend(suffix.iter().map(|v| json!(v)));
-        result.issue(json!({"code":"custom"}), &at, message.into(), false);
+        if tag == "project-alert-projection" {
+            result
+                .issues
+                .push(json!({"code":"custom","path":at,"message":message}));
+        } else {
+            result.issue(json!({"code":"custom"}), &at, message.into(), false);
+        }
     };
     if tag == "project-alert-detail" {
         if value["context"]["domain"] != json!("alert-content")

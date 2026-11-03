@@ -144,7 +144,7 @@ export async function runTurnPlacementCases(h) {
       );
       if (scenario === "wrong-source-worker")
         await seed(
-          `UPDATE project_worktrees SET project_source_id='github-beta' WHERE id='${old}'`,
+          `UPDATE project_worktrees SET project_source_id='github-beta',worker_id='beta' WHERE id='${old}'`,
         );
       fields.contexts = contexts.map((context) => ({
         ...context,

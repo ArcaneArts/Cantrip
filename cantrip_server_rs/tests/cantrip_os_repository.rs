@@ -1,6 +1,8 @@
 use anyhow::Result;
 use cantrip_server::{
-    cantrip_os::Repository, database::Database, managed_postgres::ManagedPostgres,
+    cantrip_os::{InstanceObservation, Repository},
+    database::Database,
+    managed_postgres::ManagedPostgres,
     migrations::migrate,
 };
 use serde_json::{Value, json};
@@ -176,9 +178,11 @@ async fn exercise(database: Arc<Database>) -> Result<()> {
                 "owner",
                 instance_id,
                 generation,
-                "connected",
-                scope["runtimeGeneration"].as_str(),
-                None,
+                InstanceObservation {
+                    status: "connected",
+                    runtime_generation: scope["runtimeGeneration"].as_str(),
+                    error: None,
+                },
                 scope["runtimeGeneration"].as_str()
             )
             .await

@@ -185,7 +185,13 @@ export async function smokeCantripCua(
         targetGeneration: target.generation,
       };
       const attached = noPayload(
-        await child.request({ operation: "target.attach", ...selected }),
+        // This verifier has confirmed the explicit fake backend above. Its
+        // positive full-monitor capture needs the new session grant as well.
+        await child.request({
+          operation: "target.attach",
+          allowCantripApp: true,
+          ...selected,
+        }),
       );
       sessionMatches(attached?.session, binding, target);
       const position = {

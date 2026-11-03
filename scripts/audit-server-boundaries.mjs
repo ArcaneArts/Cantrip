@@ -108,9 +108,9 @@ const CONTENT_CLASSIFICATIONS = new Set([
 // digest; regenerating the inventory alone cannot silently accept it.
 const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
-    "691b6132f5052c9af8e83552661910d6619cf238fe20bb07869f932df7989b85",
+    "c01cedeb5ad07aa7eeee81033073509e4be8826ed45621e68200d85a2c5c61b9",
   applicationRoutes:
-    "0c32570a30c39d2969932ef3f668bfaf8720a7ac56385e8b14ec8127c6afc5d6",
+    "8bed441510b67977923e39d333f1c00ac541f81a9b30843ba514248c4841c3ff",
   clientControlCommands:
     "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
   cliCommands:
@@ -118,7 +118,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   liveResources:
     "54dd12b30c184f81d2a8bdd249cc9a91e93dfb3052fcafb425233a5f8dc87a21",
   workerCommands:
-    "32c03ddad943054978bbafa0eb83244b49f225c453a6bce9fc937e05c1c50b26",
+    "9a6d10d42ffea76281b26cc9d2ef9c5e30d2446c5df35bf2c62616a051430488",
   tunnelFrameKinds:
     "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8",
 };
@@ -3837,6 +3837,14 @@ function cliCommandContentClassification(command) {
 }
 
 function agentOperationContentClassification(operation) {
+  if (
+    ["task.create", "task.list", "task.status", "task.wait"].includes(operation)
+  )
+    return {
+      classification: "endpoint-protected",
+      rationale:
+        "Worker-sealed Task briefs and Chat titles with owner/project-scoped status metadata; Task wait polls status within the worker's expiring binding without relaying plaintext task content.",
+    };
   if (operation.startsWith("alert."))
     return {
       classification: "endpoint-protected",

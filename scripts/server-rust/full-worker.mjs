@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { repositoryRoot } from "./build.mjs";
 import { fixtureEnvironment } from "./process.mjs";
+import { terminateWindowsWorkerTree } from "./windows-worker-tree.mjs";
 
 export async function eventually(read, check, timeout = 30000) {
   const expires = Date.now() + timeout;
@@ -146,16 +147,24 @@ export function launchActualWorker(
     },
     async close() {
       let forced = false;
-      if (child.exitCode === null && child.signalCode === null)
-        child.kill("SIGTERM");
+      let verifyTree;
+      const deadline = Date.now() + 30000;
       const timer = setTimeout(() => {
         forced = true;
         child.kill("SIGKILL");
       }, 30000);
       try {
+        if (child.exitCode === null && child.signalCode === null) {
+          if (process.platform === "win32") {
+            // TerminateProcess alone leaves native runtime descendants alive.
+            // End the owned tree before removing its disposable profile.
+            verifyTree = await terminateWindowsWorkerTree(child.pid, deadline);
+          } else child.kill("SIGTERM");
+        }
         const result = await completion;
+        if (verifyTree) result.treeTermination = await verifyTree();
         assert.equal(forced, false, `Worker shutdown timed out.\n${output}`);
-        // Windows TerminateProcess does not deliver Node signal handlers.
+        // Windows taskkill does not deliver Node signal handlers.
         // This exercises persisted-credential restart, not Windows graceful shutdown.
         if (!ready) return result;
         if (process.platform !== "win32") {
@@ -164,7 +173,14 @@ export function launchActualWorker(
             output.includes("Cantrip Worker stopped"),
             output.slice(-8000),
           );
-        } else assert.equal(result.signal, "SIGTERM");
+        } else {
+          assert.equal(
+            result.code,
+            1,
+            `Worker tree failed to stop.\n${output}`,
+          );
+          assert.equal(result.signal, null);
+        }
         return result;
       } finally {
         clearTimeout(timer);

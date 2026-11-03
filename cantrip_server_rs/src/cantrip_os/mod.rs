@@ -11,6 +11,12 @@ use std::sync::Arc;
 pub struct Repository {
     pub database: Arc<Database>,
 }
+
+pub struct InstanceObservation<'a> {
+    pub status: &'a str,
+    pub runtime_generation: Option<&'a str>,
+    pub error: Option<&'a str>,
+}
 pub(super) fn text<'a>(value: &'a Value, key: &str) -> Result<&'a str> {
     value[key].as_str().context("Invalid CantripOS identity")
 }

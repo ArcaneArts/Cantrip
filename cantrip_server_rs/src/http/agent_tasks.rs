@@ -100,14 +100,14 @@ pub(super) async fn execute(
             ));
         }
         let mut configuration = context["modelConfiguration"].clone();
-        if context["experience"] == "task" {
-            if let Some(caller) = repository.get(owner, text(&context["chatId"])?).await? {
-                configuration = if caller["dispatch"]["modelConfiguration"].is_null() {
-                    caller["modelConfiguration"].clone()
-                } else {
-                    caller["dispatch"]["modelConfiguration"].clone()
-                };
-            }
+        if context["experience"] == "task"
+            && let Some(caller) = repository.get(owner, text(&context["chatId"])?).await?
+        {
+            configuration = if caller["dispatch"]["modelConfiguration"].is_null() {
+                caller["modelConfiguration"].clone()
+            } else {
+                caller["dispatch"]["modelConfiguration"].clone()
+            };
         }
         if configuration["modelId"].is_null() {
             let rows = service
@@ -139,7 +139,7 @@ pub(super) async fn execute(
             .find(|task| task["chatId"] == id.as_str());
         if current.is_none() {
             let create = json!({
-                "chatId":id,"titleProtection":input["task"]["titleProtection"],"autoTitle":false,
+                "chatId":id,"worktreeMode":"agent-managed","titleProtection":input["task"]["titleProtection"],"autoTitle":false,
                 "planGoalEnabled":false,"priority":0,"modelConfiguration":configuration,"task":input["task"]["task"]
             });
             let connected = |id: &str| service.workers.bridge.is_connected(id);

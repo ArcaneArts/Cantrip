@@ -127,7 +127,6 @@ export const CANTRIP_MCP_READ_TOOL_NAMES = [
 ] as const;
 
 export const CANTRIP_MCP_WORKER_MUTATION_OPERATIONS = [
-  "task.create",
   "context.compact",
   "alert.raise",
   "alert.resolve",
@@ -152,6 +151,7 @@ export const CANTRIP_MCP_WORKER_MUTATION_OPERATIONS = [
   "web.session.type",
   "web.session.close",
   "browser.open",
+  "task.create",
 ] as const satisfies readonly z.infer<typeof cantripAgentOperationNameSchema>[];
 
 export const CANTRIP_MCP_CLIENT_CONTROL_OPERATIONS = [
@@ -167,7 +167,6 @@ export const CANTRIP_MCP_MUTATION_OPERATIONS = [
 ] as const;
 
 export const CANTRIP_MCP_MUTATION_TOOL_NAMES = [
-  "task_create",
   "context_compact",
   "alert_raise",
   "alert_resolve",
@@ -192,6 +191,7 @@ export const CANTRIP_MCP_MUTATION_TOOL_NAMES = [
   "web_session_type",
   "web_session_close",
   "browser_navigate",
+  "task_create",
   "client_notify",
   "client_focus_project",
   "client_focus_surface",

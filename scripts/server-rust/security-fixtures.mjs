@@ -1,3 +1,4 @@
+import { agentOperationWireFixtures } from "./agent-operation-wire-fixtures.mjs";
 import { threadSyncWireFixtures } from "./chat-thread-sync-fixtures.mjs";
 import { cantripOsWireFixtures } from "./cantrip-os-wire-fixtures.mjs";
 import { projectSurfaceWireFixtures } from "./project-surface-wire-fixtures.mjs";
@@ -803,3 +804,8 @@ export const securityFixtures = {
     ...commandRefinements.cases.map((item) => item.input),
   ],
 };
+
+const agentOperations = agentOperationWireFixtures(securityFixtures);
+Object.assign(securityFixtures, agentOperations.baselines);
+export const agentOperationWireCases = (name) =>
+  agentOperations.boundaries[name] ?? [];

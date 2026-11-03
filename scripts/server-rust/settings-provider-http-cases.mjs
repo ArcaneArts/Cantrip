@@ -198,7 +198,7 @@ export async function runSettingsProviderHttpCases({
   );
   h.worker.close();
   await online(false);
-  h.live.close();
+  await h.live.close();
   const port = Number(new URL(h.fixture.server.origin).port);
   await h.fixture.close();
   await h.fixture.start({ port });

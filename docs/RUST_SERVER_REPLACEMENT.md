@@ -12,6 +12,137 @@ feature set.
 
 Status: **implementation in progress; not a deployable replacement**.
 
+Native PGlite boot now restores the host's Unix SIGINT/SIGTERM handlers before
+reporting readiness. PostgreSQL's backend handlers were otherwise chained into
+host shutdown and aborted database work that still needed to drain. An owned
+process regression installs host listeners before and after native boot, sends
+real SIGTERM/SIGINT, commits a post-signal write and closes the database. At
+`fc4c084b2`, the optimized macOS arm64 executable also exits cleanly on both
+signals in standalone and desktop bootstrap modes with checkout reads and
+JavaScript execution denied. It recovers the interrupted profile's identity and
+accepted setting before a new write. Full packaging and supported-platform
+acceptance remain unfinished.
+
+The optimized `918aead5c` executable repeats all four clean signal shutdowns and
+recovers the older interrupted profile before new writes. A staged macOS runtime
+also carries PostgreSQL 17.9, native `pg_dump`, relocated libraries and database
+templates. Native PGlite profile export/restore and all three storage modes'
+standalone/desktop-bootstrap operations pass with Homebrew, checkout reads and
+JavaScript execution denied. The external database remains available after each
+server exits. PostgreSQL's compiled relative directory layout
+must be preserved for template discovery. This is a local artifact assembly
+proof; product packaging, distribution notices and release signing remain
+unfinished.
+
+Current Source worktree projections include location kind and guest path. The
+native query captures now retain both fields, and terminal-service reconciliation
+uses Source's worker-local filter. A stored guest terminal previously made Rust
+reject the entire service list because its host path is null; Source retained the
+unrelated local service. The regression fails before the filter and passes across
+all three stores afterward, including restart and SQL-error diagnostics: 69 paired
+repository comparisons and nine paired state snapshots. These checks do not
+establish complete CantripOS execution support.
+
+Concurrent source registration exposed a shared PostgreSQL trigger lock upgrade:
+canonical registration acquired a worker key-share lock before active-path
+validation acquired the same worker's update lock. Migration 0246 renames the
+registration trigger so path validation takes the worker lock first. The original
+capacity, reconnect and fault scenarios then pass on both implementations across
+all three stores: 60 provisioning jobs finish exactly once without retries.
+Existing migration bytes remain unchanged. Complete profile transfer, interrupted
+imports and reversal to Node after accepted Rust writes also pass with this
+migration.
+
+Current protocol coverage adds accepted and rejected inputs for 23 previously
+uncovered alert, Goal, context and Task schemas. Worker command cases
+cover alert content and sent/received communication; all 944 older inputs remain
+unchanged, with shifted enum coverage references reconciled against Source.
+Fixtures now use coherent source/worker pairs under the current identity
+constraints. Settings assert the current Source 404 and exact error body for a
+project unavailable on the selected worker.
+
+The 23 new roots pass 18,158 native/Source comparisons, including exact error
+strings. Alert projection errors preserve Source's `code`, `path`, `message`
+order inside `Error.message`. Rejected inputs remain explicit boundary cases;
+accepted inputs seed structural mutations. The legacy Task Worker model codec
+keeps its public native validation, while outgoing-command coverage counts the
+98 callbacks actually reachable from current commands. Moving that registration
+leaves the generated native manifest unchanged.
+
+The branch integrates upstream `e694b2ab5`, including captured Linux runtime
+environments and immutable OS chat placements: the combined manifest has 592
+roots and 10,026 nodes, outgoing commands total 285, and the migration chain has
+247 entries. The trigger-order migration follows upstream's chat-placement
+migration without changing its SQL bytes.
+All 975 earlier outgoing fixture inputs remain in order, with eight accepted OS
+execution examples added. Current Source traversal checks 54 union schemas/499
+alternatives and 163 enum schemas/628 alternatives. The rebuilt protocol suite's
+1,038 tests, five focused accounting tests, native formatting and strict
+all-target Clippy pass. The full native, migration and product matrix is being
+rerun against this integration.
+The reviewed boundary inventory classifies its 11 management routes and seven
+worker commands, keeping private provisioning intent endpoint protected. At
+`918aead5c`, all 215 Rust tests and the complete all-store historical-upgrade,
+profile-transfer, replica, maintenance and actual-worker chat/Task matrix pass.
+The upstream observation method's status/runtime/error arguments are now grouped
+without changing its expected-runtime comparison or SQL parameters; all three
+focused OS test targets and strict all-target Clippy pass afterward.
+
+Storage accounting now classifies all 122 durable tables, including seven canonical
+source and OS tables absent from the previous manifest. Guest worktrees resolve
+their project owner through canonical source identities; the previous legacy
+source join omitted them. A two-account regression checks seven added rows per
+account plus two captured-conversation rows, exact independently measured row
+bytes, and isolated metadata growth.
+It fails against the previous implementation with zero rather than seven rows.
+The new chat-placement classification also fails its previous-manifest control
+with one rather than two conversation rows; the corrected Source test passes.
+The native SQL capture uses the same corrected Source query. The all-store
+repository comparison includes these guest rows and retains existing rollback,
+lease, receipt and restart assertions.
+
+Before this latest integration, two broad checks pass 1,709 Source server, 4,391
+app and 1,038 protocol tests, but remain red: one unchanged worker
+history-projection test exceeds its 15-second deadline, including a run with no
+concurrent native compilation. Its entire file passes in isolation. Ten format
+failures are byte-identical to the then-current base. Current Linux CI also exposed a native publication race:
+the separate PostgreSQL notification thread could split the handler's
+interaction/summary pair, which Source emits synchronously. Native committed
+event publication now submits that pair under one hub-state lock. The existing
+exact trace assertions remain unchanged; concurrent producers receive an added
+regression test. All nine storage/authentication HTTP/Live combinations and six
+controlled PostgreSQL delivery schedules pass after that repair. Full validation
+after the latest upstream integration remains in progress.
+
+Schedule comparisons pin the reference runtime to Node 24.22.1, whose 2026e
+time-zone data matches the bundled native database. The floating CI selection
+used Node 24.22.0 with 2026c data. The unchanged Source oracle under those two
+runtimes produces two different results across 17,252 identical inputs, for
+Inuvik and Winnipeg. All 17,252 comparisons pass with the canonical runtime;
+no case or assertion is removed. Oracle diagnostics report Node, ICU and
+time-zone versions. Mixed-version rollout must align the time-zone basis before
+scheduling parity can be claimed.
+
+The full unchanged-worker chat/settings scenario passes on both servers across
+all three stores, retaining 19 product steps and 11 clean worker stops per run.
+Completed-turn identities come from already observed, decrypted responses before
+waiting for canonical history; all final history, synchronization and restart
+assertions remain intact. Windows acceptance teardown now terminates the owned
+worker process tree and records cleanup failures before writing its report.
+Windows CI demonstrated taskkill returning 128 after terminating the root while
+reporting descendant termination errors. Teardown now records the owned tree's
+process identities, attempts termination, then checks actual descendant liveness
+and the original worker exit assertions. Verification of this correction on
+Windows remains pending. The Windows Source foundation test's original
+15-second deadline and a Source Task shutdown failure also remain unresolved.
+
+The Windows startup diagnostic at `a31d02d60` checks six fresh processes and
+persistent directories across 244 migrations and 1,911 statements. Original
+median readiness is 4,115 ms; experimental batching is 4,016 ms, with overlapping
+run ranges. All complete migration receipts match the Source file hashes and
+journal order. Batching is not adopted into product migrations; this measured
+difference does not resolve the original reference test's 15-second timeout.
+
 The public desktop-update active-work and provider connection-test routes now
 have native implementations. Updater counts execute the nine captured Source
 queries independently, retaining ownership and lifecycle predicates, archived
@@ -27,10 +158,137 @@ real missing-table failures and restoration, default/offline worker selection,
 malformed replies, caller disconnect, worker reconnect, actual server restart
 and command backpressure while desktop counts remain available. Both peers pass
 the unchanged 120-second deadline and recover from a late reply. Strict
-all-target Clippy and focused Source/Rust tests pass. All 157 original assertions
-and polling calls in the touched existing harnesses retain their arguments and
-deadlines; 3,091 checked app/worker/Node-server/protocol/crypto files remain
-byte-identical to the baseline.
+all-target Clippy and focused Source/Rust tests pass. Across modified existing
+harnesses and tests, the assertion audit retains 3,047 original calls verbatim,
+strengthens two authority expectations with the required default-off field and
+proves four calls equivalent in two exact-byte Buffer assertions. It checks full
+matcher arguments and preserves the original deadlines. Integration with
+main `88d1c0b` preserves all 564 existing contract roots and 9,779 nodes before
+appending these three response schemas (567 roots / 9,796 nodes).
+The upstream worker build required four default-off test-fixture fields and an
+SDK callback type annotation; actual esbuild output of that callback is byte
+identical. Its new Task tools also receive explicit endpoint-protected boundary
+classifications and an updated reviewed inventory. One upstream nested Task
+configuration lookup is collapsed without changing its short-circuit behavior
+to satisfy strict Clippy. Task admission now supplies the existing agent-managed
+worktree default explicitly to both Node and Rust repositories, fixing the new
+server type error and the native missing-field failure. Positive CUA fixtures
+explicitly opt into the new Cantrip-app permission; older protocol authorities
+are verified to default to protected access. The seven new Task exports are
+checked separately while preserving the original public-export fingerprint.
+Appending Task creation to the mutation catalogs preserves their original
+ordering and operation/tool alignment. All 1,032 protocol tests pass, and the
+generated contract manifest still matches the embedded manifest exactly.
+Fresh combined-state macOS runs pass all nine HTTP profiles and all three
+nineteen-step browser/full-worker/native flows. The app suite passes 4,391 tests
+with three existing skips. The initial full Source suite passes 1,699 tests with 57
+skips and three failures; all three failures reproduce on clean upstream
+`9ce9356`. The initial broad check stops at six computer-use worker failures,
+also reproduced on that upstream checkout with the actual compiled helper.
+Positive native fixtures now explicitly grant access to their protected fake
+targets, while default-off authorities remain explicit. Inventory access
+metadata is checked separately from the unchanged native target facts. Repeated
+CUA guidance is compacted from 6,305 to 5,968 characters without changing method
+names, the initial call example, input semantics or default protection rules.
+The full native computer-use command now passes 1,461 tests across protocol,
+crypto, worker, Source and app, with three existing skips. The ten global
+formatting failures are byte-identical to upstream. The fresh broad check passes
+all 1,702 Source tests and 4,391 app tests. Its worker phase has 2,621 passes,
+133 skips and three failures: one outdated Task-create idempotency expectation
+and two unchanged 15-second timeouts in native history batching and PNG
+adaptation. The Task annotation fixture now matches the existing deterministic
+operation identity; all three entire affected files pass 72 tests with their
+original deadlines. The broad run remains red. Fresh composed flows after the
+guidance change pass all three stores at `a4afebf51`, retaining nineteen steps,
+eleven clean worker stops and the original seven plus nine TLS model POSTs per
+peer.
+The Windows native computer-use check also exceeded the PNG boundary test's
+fifteen-second deadline. Its deep Buffer matcher took 2,246 ms in an isolated
+local measurement versus 0.234 ms for native byte equality. That one assertion
+now uses `Buffer.equals`, retaining exact length and byte comparison, the actual
+Sharp decoder, size limits and the original deadline. Full-file AST comparison
+proves no other test logic changed; distinct equal buffers pass, while last-byte
+and length mismatches fail. All 28 image tests pass locally. Replacement native
+computer-use checks pass at `43727e798` on Windows, Linux and macOS, with 1,461
+tests per platform and six additional cold model-configuration tests on Windows.
+At that head, the Linux browser/full-worker/native Codex job also passes all
+three composed flows and all three Task flows. All six downloaded reports,
+their ZIP CRCs and the artifact API digest are independently verified.
+The separate Linux native-command job fails while the Node reference first
+starts, before any controlled approval request. Its unchanged command passes
+locally with all three authentication profiles and both delivery schedules.
+The test launcher now retains bounded stdout alongside stderr on startup
+failure and waits for output streams to close before reporting an early exit.
+The two real-process regression tests verify retained failure output and actual
+HTTP readiness/graceful shutdown; the first fails before the diagnostic fix.
+AST comparison retains the listening-event selection, environment, process
+launch, sixty-second startup deadline, failure cleanup and normal shutdown.
+The original five publication-oracle tests and all six local paired approval
+comparisons pass. The same Linux failure recurs at `eccce0878`; retained
+startup stdout reaches migrations before the sixty-second deadline. An isolated
+Linux arm64 reproduction uses the actual Node reference, Node 24.22.1 and
+PostgreSQL 16.15: direct startup completes in 5.85 seconds, the unchanged proxy
+exceeds sixty seconds, and enabling TCP_NODELAY on both proxy sockets completes
+two fresh starts in 4.25 and 5.00 seconds with clean shutdown. Only those two
+socket calls change; every original proxy byte outside them, frame parser,
+delivery gate, assertion and deadline remains unchanged. The original six
+paired approval schedules still pass locally in 62.14 seconds. Linux x64 CI at
+`dbe58c0b3` also passes the full native suite; the six paired approval schedules,
+actual held PostgreSQL frames and exact HTTP/Live traces are independently
+verified in its checksum-verified 100-report artifact. The Linux full-worker job at
+`dbe58c0b3` independently passes its three composed and three Task reports;
+artifact commit/digest, every ZIP CRC and all six paired reports are verified.
+The two Source reference account/handoff files also exceed the original
+fifteen-second monolithic-test deadline in Linux and Windows CI. Their exact
+22-test command passes locally. The one 256 KiB media comparison now uses
+native Buffer equality: 205 ms versus 0.108 ms in a local assertion-only
+measurement. Full-file AST equivalence, mismatch rejection and the unchanged
+fifteen-second default are verified; the same 22 tests pass after the change.
+Linux CI at `eccce0878` still exceeds that original deadline. The unchanged
+command passes on isolated Linux arm64 with two CPUs in 13.01 seconds for the
+monolithic test; CPU profiling passes at 14.13 seconds and records substantial
+PGlite and garbage-collection work. Increasing the test-worker young heap does
+not fix the deadline in alternating trials and is not adopted. Linux CI at
+`dbe58c0b3` passes the unchanged monolithic scenario in 9.879 seconds, while the
+Windows reference still exceeds its original deadline. Its first CPU artifact
+contains only the coordinator: Windows fork termination loses exit-time worker
+profiles, matching [Vitest issue 9907](https://github.com/vitest-dev/vitest/issues/9907).
+The opt-in diagnostic config now saves CPU profiles inside each actual worker
+using awaited teardown, without changing the fork pool or test deadlines. The
+unchanged 22-test scenario passes in two local runs with these hooks; a later run
+reproduces the original fifteen-second timeout and still saves the actual worker
+profile. A separate deliberate timeout also remains failed with its profile
+retained. The original required command
+and outcome remain unchanged. Profiling runs only after its failure or through an
+explicit Windows-only diagnostic dispatch; a passing diagnostic cannot replace
+the original failure. The Windows performance bottleneck remains unproven.
+A separate Windows contract failure at `eccce0878` occurs in the Node reference
+before Rust runs: the 8 MiB streamed upload reports ECONNABORTED before response
+headers. The disposable HTTP client now attaches only bounded transport counters
+to the original error, and the file-document report retains them. Removing those
+counters restores every original helper byte, including request framing,
+16 KiB writes, both poll yields, complete-response requirements, no-retry and
+abort behavior. All seven original test bodies are byte-identical; the new
+real-reset regression fails without diagnostics and passes with them while still
+requiring the reset to fail. All eight upload tests pass locally. The Windows
+upload cause and updated CI acceptance remain unproven.
+Windows archive cleanup separately fails its original timestamp upper bound in
+the Rust account profile. Failure-only capture now retains raw events, parent
+Date/performance clocks and a real database clock query, then rethrows the
+original error. The assertion loop and every other original statement are
+AST-identical. All three PGlite authentication profiles pass locally; a
+controlled parent-parser fault still fails the original assertion and retains
+both raw events and clock samples. Windows clock causation and updated CI
+acceptance remain required.
+The historical native-editor fixture now supplies the additive default-off CUA
+column required by its current repository setup, retaining the old editor tables
+until their removal migration runs. Its nine original assertions and deadline
+are unchanged, and the exact five-file CI command passes all eight tests.
+The final integrated production-deadline comparison also passes, including both
+120-second deadlines and late-reply recovery. Linux CI at `49ad2961c` passes all
+three composed flows and all three Task flows. Its downloaded artifact's commit,
+API digest, ZIP members and six paired reports are independently verified.
+Remaining server/platform CI and complete packaging acceptance are outstanding.
 
 A real native Codex path probe also explains the previous Linux skill fixture
 failure: macOS's lexical `/var` worker home differed from the native canonical
@@ -56,7 +314,12 @@ probe: a previously displayed assistant answer becomes a no-text notice, while
 the native SQLite item and rollout retain the full text. The original assertion
 fails, and the disposable runtime is archived in
 `.qa/rust-server/source-native-history-before-provider-v4.tar.gz` with its hash
-proof. This remains a required integration investigation, not a passing check.
+proof. Offline decryption and replay verify all 34 retained source records and
+preserve the full answer. At the failure, the canonical row still contains the
+started empty item at revision 1, exactly matching the third staged publication;
+the projection has committed only through source record 8. A live follow-up is
+still required to establish catch-up behavior and the correct test observation
+boundary. No production fix or resolution is claimed from the offline replay.
 
 Fenced Task failure recovery now commits dispatch settlement and precise retry
 accounting in one owner-serialized transaction. The Linux failure trace showed

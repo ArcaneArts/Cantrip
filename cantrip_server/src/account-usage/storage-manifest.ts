@@ -16,6 +16,8 @@ export type StorageAccountingClassification =
 
 export type StorageOwnerResolution =
   | "attachment"
+  | "cantrip-os-binding"
+  | "cantrip-os-instance"
   | "chat"
   | "model-profile"
   | "native-command"
@@ -29,6 +31,7 @@ export type StorageOwnerResolution =
   | "provider-account"
   | "provider-model"
   | "self"
+  | "source-identity"
   | "tunnel"
   | "tunnel-attachment"
   | "user"
@@ -182,6 +185,16 @@ export const STORAGE_ACCOUNTING_MANIFEST: readonly StorageAccountingManifestEntr
     projectOwned(schema.tabGroups),
     projectOwned(schema.tabGroupMembers),
     projectOwned(schema.projectSources),
+    projectOwned(schema.projectSourceIdentities),
+    accountOwned(schema.cantripOsInstances, "projects"),
+    accountOwned(schema.cantripOsWorkspaces, "projects", "cantrip-os-instance"),
+    projectOwned(schema.cantripOsProjectSources, "projects", "source-identity"),
+    accountOwned(schema.cantripOsSourceBindings, "projects"),
+    accountOwned(
+      schema.cantripOsProvisionAdmissions,
+      "projects",
+      "cantrip-os-binding",
+    ),
     projectOwned(schema.projectWorktrees, "projects", "project-source"),
     accountOwned(schema.projectFolderSetupJobs, "projects"),
     accountOwned(schema.projectGithubConversionJobs, "projects"),
@@ -208,6 +221,7 @@ export const STORAGE_ACCOUNTING_MANIFEST: readonly StorageAccountingManifestEntr
     projectOwned(schema.projectDockPresentationPreferences),
     projectOwned(schema.projectSurfaceLauncherPreferences),
     accountOwned(schema.managedChatPreparations, "conversations"),
+    chatOwned(schema.cantripOsChatPlacements),
     accountOwned(schema.nativeCommands, "conversations"),
     chatOwned(schema.nativeCommandActivations),
     chatOwned(schema.nativeCommandTurns),

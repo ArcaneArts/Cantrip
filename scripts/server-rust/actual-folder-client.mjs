@@ -1069,7 +1069,21 @@ try {
   if (failure) {
     report.fixtureRoot = root;
     console.error("Retained failed full-worker fixture:", root);
-  } else await rm(root, { recursive: true, force: true });
+  } else {
+    try {
+      await rm(root, { recursive: true, force: true });
+    } catch (error) {
+      failure = error;
+      report.fixtureRoot = root;
+      report.failure = { message: error.message, stack: error.stack };
+      report.cleanupFailure = {
+        code: error.code,
+        syscall: error.syscall,
+        path: error.path,
+      };
+      console.error("Retained full-worker fixture after cleanup failed:", root);
+    }
+  }
   if (reportPath) {
     await mkdir(path.dirname(path.resolve(reportPath)), { recursive: true });
     report.surfaceFixtureRequests = surfaceFixtureRequests;

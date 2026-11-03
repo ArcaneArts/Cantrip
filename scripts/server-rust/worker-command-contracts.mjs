@@ -46,11 +46,6 @@ export function registerWorkerCommandContracts(register) {
     0,
     "worker-command-unique",
   );
-  register(
-    p.taskWorkerModelConfigurationSchema,
-    1,
-    "worker-command-task-model",
-  );
   register(p.taskAutomaticRetrySchema, 0, "worker-command-retry");
   register(at(command("chat.steer"), []), 0, "worker-command-steer");
   register(

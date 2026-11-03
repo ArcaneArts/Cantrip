@@ -241,7 +241,7 @@ try {
     await seed(restore);
   }
   await seed(
-    "UPDATE project_worktrees SET worker_id='beta' WHERE id='github-alpha-main'",
+    "UPDATE project_worktrees SET project_source_id='github-beta',worker_id='beta',is_primary=false WHERE id='github-alpha-main'",
   );
   await observe(
     "moved checkout does not relocate old document",
@@ -250,7 +250,7 @@ try {
   );
   await create("moved checkout cannot rebind identity", 0, {}, conflict);
   await seed(
-    "UPDATE project_worktrees SET worker_id='alpha' WHERE id='github-alpha-main'",
+    "UPDATE project_worktrees SET project_source_id='github-alpha',worker_id='alpha',is_primary=true WHERE id='github-alpha-main'",
   );
   await seed(
     "UPDATE project_worktrees SET project_source_id='folder-alpha',is_primary=false WHERE id='github-alpha-main'",
