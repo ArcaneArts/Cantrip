@@ -31,11 +31,52 @@ export async function actualTaskRecovery({
       },
       { projectId, title },
     );
-  const read = (chatId) =>
-    page.evaluate(
+  const observations = (result.taskRecoveryObservations = []);
+  let previousSnapshot;
+  const read = async (chatId) => {
+    const task = await page.evaluate(
       async (chatId) => (await import("/src/lib/api/tasks.ts")).getTask(chatId),
       chatId,
     );
+    // Retain public state transitions even when the existing assertion times
+    // out. Never include decrypted briefs, plans, transcripts or error text.
+    const snapshot = {
+      chatId,
+      state: task.state,
+      rowVersion: task.rowVersion,
+      activeOperationId: task.activeOperationId,
+      dispatch: task.dispatch
+        ? {
+            state: task.dispatch.state,
+            operationKind: task.dispatch.operationKind,
+          }
+        : null,
+      automaticRetry: task.automaticRetry,
+      lastError: task.lastError
+        ? {
+            code: task.lastError.code,
+            operationKind: task.lastError.operationKind,
+            occurredAt: task.lastError.occurredAt,
+          }
+        : null,
+    };
+    const signature = JSON.stringify(snapshot);
+    const observedAt = Date.now();
+    if (signature === previousSnapshot) {
+      const previous = observations.at(-1);
+      previous.reads++;
+      previous.lastObservedAt = observedAt;
+    } else {
+      observations.push({
+        ...snapshot,
+        firstObservedAt: observedAt,
+        lastObservedAt: observedAt,
+        reads: 1,
+      });
+      previousSnapshot = signature;
+    }
+    return task;
+  };
   const start = (created) =>
     page.evaluate(
       async ({ chat, task }) =>
