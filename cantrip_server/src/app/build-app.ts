@@ -1,3 +1,4 @@
+import { createAgentTaskOperations } from "../agent-tools/task-operations.js";
 import { createProjectGoalReconciler } from "./runtime/project-goal-observations.js";
 import { installProjectGoalObservationRoutes } from "./routes/project-alert-goals.js";
 import { createAgentAlertOperations } from "../agent-tools/alert-operations.js";
@@ -1310,19 +1311,31 @@ export async function buildApp({
     serverId,
     repository,
   });
+  const executeTaskOperation = createAgentTaskOperations({
+    applicationOwnerId,
+    repository,
+    isWorkerConnected: (workerId) => bridge.isConnected(workerId),
+    publishTask: (chatId, projectId) => {
+      publishChatSummary(chatId, projectId);
+      publishChatInvalidation(chatId, "task");
+    },
+    queueTaskScheduleTick,
+  });
   installInternalAgentToolRoutes(app, {
     appendAudit,
     cliCommandIsMutation,
     config,
     executeAgentOperation: (context, request) =>
-      request.operation.startsWith("chat.")
-        ? executeChatOperation(context, request)
-        : request.operation.startsWith("alert.")
-          ? executeAlertOperation(context, request)
-          : agentOperationExecutor.execute(
-              chatOperationContext(context),
-              request,
-            ),
+      request.operation.startsWith("task.")
+        ? executeTaskOperation(context, request)
+        : request.operation.startsWith("chat.")
+          ? executeChatOperation(context, request)
+          : request.operation.startsWith("alert.")
+            ? executeAlertOperation(context, request)
+            : agentOperationExecutor.execute(
+                chatOperationContext(context),
+                request,
+              ),
     executeCliCommand,
     repository,
     runAsOwner,

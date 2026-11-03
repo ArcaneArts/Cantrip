@@ -45,6 +45,7 @@ export * from "./native-runtime-handoff-configuration.js";
 export { projectPaneViews } from "./project-tabs.js";
 
 export * from "./agent-chat-tools.js";
+export * from "./agent-task-tools.js";
 export * from "./chat-communication.js";
 export * from "./project-alerts.js";
 

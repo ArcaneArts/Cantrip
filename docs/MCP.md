@@ -129,8 +129,8 @@ IDE-only.
 
 ## Tool catalog
 
-The complete IDE catalog contains 48 tools. Read-only and mutation annotations
-are attached per tool. Cantrip narrows Codex's enabled tool list to the current
+The IDE catalog attaches read-only and mutation annotations per tool.
+Cantrip narrows Codex's enabled tool list to the current
 permission profile, so read-only bindings receive the Run configuration read
 tools but not authoring, lifecycle, or secret mutations; the broker and server
 independently enforce the same boundary. The standalone profile is a strict
@@ -138,6 +138,10 @@ three-tool subset, and `tool_help` only advertises tools in the active profile.
 
 | Tool                            | Kind                            | Purpose                                                                                         |
 | ------------------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `task_create`                   | Mutation                        | Queue a normal Task from a description using the caller's model, with Goal mode off.            |
+| `task_list`                     | Read                            | Page through project Tasks with exact IDs, model, state, and dispatch status.                   |
+| `task_status`                   | Read                            | Inspect one or multiple project Task IDs.                                                       |
+| `task_wait`                     | Read                            | Wait for all specified Tasks or race until any Task finishes.                                   |
 | `chat_list`                     | Read                            | List accessible Agent chats in the current project, with stable IDs and status.                 |
 | `chat_read`                     | Read                            | Read bounded text history with agent attribution, paging, and a change cursor.                  |
 | `chat_send`                     | Mutation                        | Send an attributed message through another Agent chat's normal queue.                           |
@@ -296,3 +300,31 @@ interrupts the target. Text output is capped with `maxChars`, prioritizing the n
 attachment and activity payloads are omitted. Pending delivery cards do not
 create turn boundaries while another turn is running. Once the queued input
 starts, its attributed prompt replaces the receipt in the visible transcript.
+
+## Creating and waiting for Tasks
+
+Project agents can delegate ordinary Tasks with `task_create`. Supply a
+`description`, an optional `title`, and a fresh UUID `operationId`. The server
+inherits the calling chat's model and reasoning configuration and always queues
+direct execution with Goal mode disabled. Task scheduling, capacity limits,
+permission checks, and project pause controls still apply. The task title and
+description remain encrypted; only the worker opens them. Creation does not
+open or rearrange the user's tabs.
+
+Reuse the same `operationId` only when retrying the same creation. The caller
+and operation identify one Task, including when the original response was lost
+or admission was interrupted. Retrying an existing Task never restarts it.
+`task_list` returns project Tasks in bounded pages; `task_status` accepts up to
+50 exact IDs. Both include task state, scheduling state, model configuration,
+and a `terminal` flag. Deleted, archived, and inaccessible IDs appear in
+`missingTaskIds` without exposing another project's Tasks.
+
+Use `task_wait` with `taskIds` and `mode: "all"` to wait for every task, or
+`mode: "any"` to return when the first finishes. A final failure counts as
+finished, while scheduled automatic retries, queued/running dispatches, paused
+tasks, and blocked tasks remain unfinished. Missing IDs return immediately.
+`timeoutMs: 0` (the default) holds the tool call until completion, cancellation,
+or expiry of the active turn binding. A positive timeout returns the current
+snapshot with `timedOut: true`. Waiting does not resume Tasks, and a Task cannot
+wait for itself. The broker batches status checks once per second and cancels
+the wait when its MCP request disconnects or its execution binding is revoked.

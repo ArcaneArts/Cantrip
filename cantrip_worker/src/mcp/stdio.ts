@@ -13,7 +13,8 @@ async function main() {
   const connection = await readCantripMcpConnection(cantripMcpConnectionPath());
   await verifyCantripMcpConnection(connection);
   const mcp = createCantripMcpServer(
-    (request) => invokeCantripMcpBrokerOperation(connection, request),
+    (request, signal) =>
+      invokeCantripMcpBrokerOperation(connection, request, signal),
     cantripMcpProfile(process.env.CANTRIP_MCP_PROFILE),
   );
   const transport = new StdioServerTransport();

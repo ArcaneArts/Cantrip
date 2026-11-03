@@ -1,4 +1,10 @@
 import {
+  cantripMcpTaskCreateInputSchema,
+  cantripMcpTaskListInputSchema,
+  cantripMcpTaskStatusInputSchema,
+  cantripMcpTaskWaitInputSchema,
+} from "@cantrip/protocol";
+import {
   cantripMcpAlertRaiseInputSchema,
   cantripMcpAlertResolveInputSchema,
 } from "@cantrip/protocol";
@@ -65,6 +71,10 @@ type InputSchema = {
 };
 
 const inputSchemas = {
+  task_create: cantripMcpTaskCreateInputSchema,
+  task_list: cantripMcpTaskListInputSchema,
+  task_status: cantripMcpTaskStatusInputSchema,
+  task_wait: cantripMcpTaskWaitInputSchema,
   alert_raise: cantripMcpAlertRaiseInputSchema,
   alert_resolve: cantripMcpAlertResolveInputSchema,
   chat_list: cantripMcpChatListInputSchema,
@@ -166,6 +176,12 @@ const examples: Partial<Record<ToolName, Array<Record<string, unknown>>>> = {
 };
 
 const notes: Partial<Record<ToolName, string[]>> = {
+  task_create: [
+    "Create a normal direct Task, never a Goal. Only description, optional title, and a fresh operationId are needed; model and reasoning settings are inherited from your active Chat. Reuse operationId only for a retry of the same creation. Tasks use the existing project scheduler and stay queued while project Tasks are paused.",
+  ],
+  task_wait: [
+    "Use exact task IDs returned by task_create or task_list. mode all waits for every task; any wakes on the first final success or failure. timeoutMs 0 waits until completion or cancellation/binding expiry. Positive timeouts return a snapshot. Missing IDs return immediately. Paused, blocked, and retrying Tasks remain unfinished; waiting never resumes them. Do not wait for yourself.",
+  ],
   alert_raise: [
     "Raise an actionable Alert for this Chat only, with a reason and next step. Reuse key for retries/updates; increment revision for an update. Resolved keys stay resolved; a new attention episode needs a new key. Do not duplicate an existing structured permission, task review, or Goal blocker. This cannot request permissions or approve anything.",
   ],

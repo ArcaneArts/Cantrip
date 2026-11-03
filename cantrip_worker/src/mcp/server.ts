@@ -1,4 +1,10 @@
 import {
+  cantripMcpTaskCreateInputSchema,
+  cantripMcpTaskListInputSchema,
+  cantripMcpTaskStatusInputSchema,
+  cantripMcpTaskWaitInputSchema,
+} from "@cantrip/protocol";
+import {
   cantripMcpAlertRaiseInputSchema,
   cantripMcpAlertResolveInputSchema,
 } from "@cantrip/protocol";
@@ -122,6 +128,7 @@ export const CANTRIP_MCP_STANDALONE_INSTRUCTIONS =
 
 export type CantripMcpOperationGateway = (
   request: CantripAgentOperationRequest,
+  signal?: AbortSignal,
 ) => Promise<CantripAgentOperationResult>;
 
 function compatibleToolHelpInputSchema<
@@ -1364,6 +1371,30 @@ export function createCantripMcpServer(
   );
   for (const [name, operation, inputSchema, description] of [
     [
+      "task_create",
+      "task.create",
+      cantripMcpTaskCreateInputSchema,
+      "Create and queue a normal project Task from a description using your current model and reasoning configuration. Goal mode is always off. Returns the task ID. Supply and reuse operationId to retry safely. Respects project Task scheduling and pause controls.",
+    ],
+    [
+      "task_list",
+      "task.list",
+      cantripMcpTaskListInputSchema,
+      "List current project Tasks with IDs, state, model, scheduling status, and whether they have finished.",
+    ],
+    [
+      "task_status",
+      "task.status",
+      cantripMcpTaskStatusInputSchema,
+      "Read the current status of one or more exact project Task IDs. Missing or inaccessible IDs are reported separately.",
+    ],
+    [
+      "task_wait",
+      "task.wait",
+      cantripMcpTaskWaitInputSchema,
+      "Wait for project Tasks to finish. mode all waits for every ID; mode any returns when the first finishes. Complete and final failure count as finished; paused, blocked, and automatically retrying tasks do not. timeoutMs 0 (default) hangs until finished, cancelled, or this turn binding expires; a positive timeout returns a status snapshot. Does not resume tasks. Cannot wait for yourself.",
+    ],
+    [
       "alert_raise",
       "alert.raise",
       cantripMcpAlertRaiseInputSchema,
@@ -1408,14 +1439,16 @@ export function createCantripMcpServer(
         inputSchema,
         outputSchema: cantripAgentOperationResultSchema,
         annotations:
-          operation === "chat.send" || operation.startsWith("alert.")
+          operation === "task.create" ||
+          operation === "chat.send" ||
+          operation.startsWith("alert.")
             ? idempotentMutationAnnotations
             : readAnnotations,
       },
-      async (arguments_: Record<string, unknown>) => {
+      async (arguments_: Record<string, unknown>, extra) => {
         try {
           return operationResult(
-            await gateway({ operation, arguments: arguments_ }),
+            await gateway({ operation, arguments: arguments_ }, extra.signal),
           );
         } catch (error) {
           return operationError(error);

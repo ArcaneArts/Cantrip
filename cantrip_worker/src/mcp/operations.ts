@@ -1,3 +1,4 @@
+import { executeCantripMcpTaskOperation } from "./task-operations.js";
 import { executeCantripMcpAlertOperation } from "./alert-operations.js";
 import { executeCantripMcpChatOperation } from "./chat-operations.js";
 import {
@@ -25,6 +26,9 @@ const clientControlOperations = new Set<string>(
 export function executeCantripMcpOperation(
   options: CantripMcpOperationOptions,
 ): Promise<CantripAgentOperationResult> {
+  if (options.request.operation.startsWith("task.")) {
+    return executeCantripMcpTaskOperation(options);
+  }
   if (options.request.operation.startsWith("alert."))
     return executeCantripMcpAlertOperation(options);
   if (options.request.operation.startsWith("chat."))

@@ -1,7 +1,15 @@
 //! The same live binding authority used by the Node MCP relay.
 use crate::wire::Value;
 
-pub const OPERATIONS: [&str; 3] = ["context.get", "alert.raise", "alert.resolve"];
+pub const OPERATIONS: [&str; 7] = [
+    "context.get",
+    "alert.raise",
+    "alert.resolve",
+    "task.create",
+    "task.list",
+    "task.status",
+    "task.wait",
+];
 #[derive(Debug)]
 pub struct BindingError {
     pub status: u16,
@@ -104,7 +112,10 @@ pub fn validate_binding(
     }
     if permission == &Value::from_serialize(&serde_json::json!(":read-only"))
         && operation != "context.get"
-        && !matches!(operation, "alert.raise" | "alert.resolve")
+        && !matches!(
+            operation,
+            "alert.raise" | "alert.resolve" | "task.list" | "task.status" | "task.wait"
+        )
     {
         return Err(error(
             403,

@@ -10,6 +10,10 @@ export const cantripCliArgumentsSchema = z
   });
 
 export const cantripAgentOperationNameSchema = z.enum([
+  "task.create",
+  "task.list",
+  "task.status",
+  "task.wait",
   "chat.list",
   "chat.read",
   "alert.raise",
@@ -65,6 +69,9 @@ export const cantripAgentOperationNameSchema = z.enum([
 ]);
 
 export const CANTRIP_MCP_READ_OPERATIONS = [
+  "task.list",
+  "task.status",
+  "task.wait",
   "chat.list",
   "chat.read",
   "chat.wait",
@@ -91,6 +98,9 @@ export const CANTRIP_MCP_READ_OPERATIONS = [
 ] as const satisfies readonly z.infer<typeof cantripAgentOperationNameSchema>[];
 
 export const CANTRIP_MCP_READ_TOOL_NAMES = [
+  "task_list",
+  "task_status",
+  "task_wait",
   "chat_list",
   "chat_read",
   "chat_wait",
@@ -117,6 +127,7 @@ export const CANTRIP_MCP_READ_TOOL_NAMES = [
 ] as const;
 
 export const CANTRIP_MCP_WORKER_MUTATION_OPERATIONS = [
+  "task.create",
   "context.compact",
   "alert.raise",
   "alert.resolve",
@@ -156,6 +167,7 @@ export const CANTRIP_MCP_MUTATION_OPERATIONS = [
 ] as const;
 
 export const CANTRIP_MCP_MUTATION_TOOL_NAMES = [
+  "task_create",
   "context_compact",
   "alert_raise",
   "alert_resolve",

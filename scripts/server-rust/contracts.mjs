@@ -580,6 +580,12 @@ export const contractRoots = [
   "mcpServerWireSummarySchema",
   "mcpServerWireListSchema",
   "mcpServerDiscoveryResultSchema",
+  "agentTaskCreateWireSchema",
+  "agentTaskStatusWireSchema",
+  "cantripMcpTaskCreateInputSchema",
+  "cantripMcpTaskListInputSchema",
+  "cantripMcpTaskStatusInputSchema",
+  "cantripMcpTaskWaitInputSchema",
 ];
 
 // Resolve the actual source schemas, including their separate protocol modules.

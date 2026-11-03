@@ -20,7 +20,7 @@ use axum::{
     routing::{get, post},
 };
 use std::{collections::HashMap, sync::Arc};
-fn failure(status: u16, code: &str, message: &str) -> Response {
+pub(super) fn failure(status: u16, code: &str, message: &str) -> Response {
     json_response(
         StatusCode::from_u16(status).unwrap(),
         json!({"code":code,"error":message}),
@@ -70,7 +70,7 @@ async fn capabilities(
         {
             return Ok(failure(404, "not-found", "Worker not found."));
         }
-        // New Alert tools require the current binding shape. Other MCP domains
+        // Alerts and Tasks require the current binding shape. Other MCP domains
         // are advertised only when their native runtime implementations exist.
         Ok(json_response(
             StatusCode::OK,
@@ -108,6 +108,12 @@ async fn handle(
             let public=json!({"chatId":context["chatId"],"executionLaneId":context["executionLaneId"],"permissionProfileId":permission,"projectId":context["projectId"],"rootKind":context["rootKind"],"terminalId":Value::Null,"workerId":worker,"worktreeId":context["worktreeId"],"worktreeMode":context["worktreeMode"]});
             let data=json!({"worker":json!({"id":worker,"name":name,"online":service.workers.bridge.is_connected(worker)}),"context":public,"binding":agent_alerts::readiness(binding,&context,permission),"contextWindow":Value::Null});
             return output(200,"cantripMcpContextGetResultSchema",&json!({"summary":"Returned the bound Cantrip context.","data":data,"worktreeId":context["worktreeId"],"target":Value::Null,"mutated":false,"continuationScheduled":false}));
+        }
+        if operation.starts_with("task.") {
+            return match super::agent_tasks::execute(&service,&owner,&context,operation,&call["request"]["arguments"]).await {
+                Ok(response) => Ok(response),
+                Err(cause) => super::task_controls::mutation_error(cause),
+            };
         }
         if context["contextKind"]!="project" { return Ok(failure(403,"invalid","Alerts require a project Chat.")); }
         let input=match parse("agentAlertMutationWireSchema",Some(&call["request"]["arguments"]))? { Ok(v)=>v,Err(r)=>return Ok(r) };
