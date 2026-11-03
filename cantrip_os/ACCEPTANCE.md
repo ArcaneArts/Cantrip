@@ -132,3 +132,37 @@ ISO inclusion/omission is wired into the build recipes, but a new ISO and
 installed-system service behavior await the final phase-2 acceptance cycle.
 This first package version provides lifecycle/state only; independent workspace
 accounts/desktops and the workspace viewer are the following cycles.
+
+## Phase 2, cycle 2: persistent workspace sessions
+
+Verified on 2026-11-03 with package version 0.2.0 in native ARM64 Docker:
+
+- Created `alpha`, `beta`, and `shell` through the packaged CLI. Creation made
+  persistent accounts/homes without starting a display. `shell` stayed stopped
+  through service restarts and image replacement.
+- Opened two real IceWM desktops with distinct UID/GID, displays, session buses,
+  runtime directories, and Chromium processes/profiles. Both accounts executed
+  `sudo -n` successfully. The personal desktop remained on `:0`.
+- `tests/workspace-sessions.py` passed with Chromium in both sessions: stopping
+  alpha left beta's window manager and generation unchanged; alpha's processes
+  were gone; restart recreated the selected session; service restart retained
+  files and advanced both desktop generations.
+- The test killed the actual manager with SIGKILL. Per-workspace supervisors
+  cleaned up their descendants, including Chromium; starting a new manager
+  resumed the previously active desktops without duplicate window managers.
+- The test occupied alpha's assigned display with another X server. Opening
+  alpha failed, the other X server survived, beta remained usable, and alpha
+  opened successfully once the conflict was removed. No fallback display was
+  selected.
+- Rebuilt/replaced the container and verified exact UID/GID restoration, home
+  ownership, saved document contents, valid retained Chromium Preferences,
+  running assigned displays, and the shell-only workspace's stopped state.
+- The session test ran with a 4 GiB container limit; comparative memory/CPU
+  measurements remain part of the final acceptance cycle.
+- Python/Node/shell syntax, three Node lifecycle tests, scoped formatting, and
+  diff whitespace checks passed. Full `pnpm check` still encounters the same
+  previously recorded unrelated server-boundary digest audit failure.
+
+Browser workspace selection, input/clipboard verification through two browser
+tabs, installed-VM verification, refreshed ISO, and comparative resource results
+remain for cycle 3. This cycle does not claim those acceptance items.

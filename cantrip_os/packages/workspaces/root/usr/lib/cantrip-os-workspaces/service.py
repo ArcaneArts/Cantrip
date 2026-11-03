@@ -13,8 +13,9 @@ import subprocess
 import sys
 import tempfile
 import time
+from sessions import Sessions
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 DEFAULT_CONFIG = "/etc/cantrip-os/workspaces.json"
 
 
@@ -38,9 +39,9 @@ class Store:
         self.config = json.loads(Path(config).read_text())
         self.state = Path(self.config["state_dir"])
         self.runtime = Path(self.config["runtime_dir"])
-        for directory in (self.state, self.runtime):
-            directory.mkdir(parents=True, exist_ok=True, mode=0o700)
-            directory.chmod(0o700)
+        for directory, mode in ((self.state, 0o711), (self.runtime, 0o700)):
+            directory.mkdir(parents=True, exist_ok=True, mode=mode)
+            directory.chmod(mode)
         self.socket = self.runtime / "control.sock"
         self.settings = self.state / "settings.json"
 
@@ -66,16 +67,16 @@ class Store:
         atomic_json(self.settings, value)
 
 
-def request(store, command):
+def request(store, command, name=None):
     with socket.socket(socket.AF_UNIX) as connection:
-        connection.settimeout(5)
+        connection.settimeout(60)
         connection.connect(str(store.socket))
-        connection.sendall(json.dumps({"command": command}).encode() + b"\n")
+        connection.sendall(json.dumps({"command": command, "id": name}).encode() + b"\n")
         with connection.makefile("rb") as stream:
             line = stream.readline(1024 * 1024)
         result = json.loads(line)
-        if "error" in result:
-            raise RuntimeError(result["error"])
+        if isinstance(result, dict) and "failure" in result:
+            raise RuntimeError(result["failure"])
         return result
 
 
@@ -96,6 +97,16 @@ def daemon(store):
         if not store.preferences()["enabled"]:
             print("Workspace management is disabled", flush=True)
             return
+        sessions = Sessions(store, atomic_json)
+        stop_requested = False
+
+        def stop(signum, frame):
+            nonlocal stop_requested
+            stop_requested = True
+
+        signal.signal(signal.SIGTERM, stop)
+        signal.signal(signal.SIGINT, stop)
+        sessions.is_stopping = lambda: stop_requested
         store.socket.unlink(missing_ok=True)
 
         class Server(socketserver.UnixStreamServer):
@@ -112,28 +123,24 @@ def daemon(store):
                                     "enabled": store.preferences()["enabled"],
                                     "state_dir": str(store.state)}
                     elif command == "shutdown":
-                        server.stopping = True
+                        stop(None, None)
                         response = {"service": "stopping"}
                     else:
-                        raise ValueError("Unknown command")
-                except (ValueError, OSError) as error:
-                    response = {"error": str(error)}
+                        response = sessions.dispatch(command, message.get("id"))
+                except (ValueError, OSError, RuntimeError, subprocess.SubprocessError) as error:
+                    response = {"failure": str(error)}
                 self.wfile.write(json.dumps(response).encode() + b"\n")
 
         with Server(str(store.socket), Handler) as server:
             store.socket.chmod(0o600)
-            server.stopping = False
-
-            def stop(signum, frame):
-                server.stopping = True
-
-            signal.signal(signal.SIGTERM, stop)
-            signal.signal(signal.SIGINT, stop)
-            print("[CantripOS] Workspace service ready", flush=True)
             try:
-                while not server.stopping:
+                sessions.resume()
+                print("[CantripOS] Workspace service ready", flush=True)
+                while not stop_requested:
                     server.handle_request()
+                    sessions.tick()
             finally:
+                sessions.close()
                 store.socket.unlink(missing_ok=True)
                 print("[CantripOS] Workspace service stopped", flush=True)
 
@@ -152,7 +159,7 @@ def service(store, action):
                                       "daemon"], start_new_session=True, stdin=subprocess.DEVNULL,
                                      stdout=log, stderr=subprocess.STDOUT)
         try:
-            for _ in range(100):
+            for _ in range(600):
                 if child.poll() is not None:
                     raise RuntimeError(f"Workspace service exited {child.returncode}")
                 try:
@@ -171,7 +178,7 @@ def service(store, action):
             request(store, "shutdown")
         except (FileNotFoundError, ConnectionRefusedError):
             pass
-        for _ in range(200):
+        for _ in range(600):
             try:
                 with store.lock("service", blocking=False):
                     return
@@ -185,8 +192,9 @@ def service(store, action):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", default=DEFAULT_CONFIG)
-    parser.add_argument("command", choices=["daemon", "status", "enable", "disable", "service"])
-    parser.add_argument("action", nargs="?", choices=["start", "stop", "restart", "status"])
+    workspace_commands = ["list", "create", "open", "stop", "restart", "show"]
+    parser.add_argument("command", choices=["daemon", "status", "enable", "disable", "service"] + workspace_commands)
+    parser.add_argument("action", nargs="?", help="Service action or workspace ID")
     args = parser.parse_args()
     if os.geteuid() != 0:
         parser.error("Run with sudo (local service control requires root)")
@@ -195,7 +203,9 @@ def main():
         daemon(store)
         return
     with store.lock("control"):
-        if args.command == "status" or args.action == "status":
+        if args.command in workspace_commands:
+            print(json.dumps(request(store, args.command, args.action)))
+        elif args.command == "status" or args.action == "status":
             print(json.dumps(running(store) or {"service": "stopped", "version": VERSION,
                                               "enabled": store.preferences()["enabled"],
                                               "state_dir": str(store.state)}))
@@ -204,7 +214,7 @@ def main():
             store.enabled(enable)
             service(store, "start" if enable else "stop")
             print("Workspace management " + ("enabled" if enable else "disabled"))
-        elif args.command == "service" and args.action:
+        elif args.command == "service" and args.action in ("start", "stop", "restart"):
             if args.action == "restart":
                 service(store, "stop")
                 service(store, "start")

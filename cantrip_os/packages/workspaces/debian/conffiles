@@ -1,1 +1,2 @@
 /etc/cantrip-os/workspaces.json
+/etc/sudoers.d/cantrip-workspaces

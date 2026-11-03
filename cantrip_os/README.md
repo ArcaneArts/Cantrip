@@ -6,7 +6,8 @@ standalone OS testing environment; Cantrip integration comes later.
 Workspace management is an optional Debian package. Its source, build commands,
 and service lifecycle are described in [the package guide](packages/workspaces/README.md).
 Build either edition with `CANTRIP_OS_WORKSPACES=0` for the ordinary OS alone;
-the default is `1`. Workspace accounts/desktops are the next package milestone.
+the default is `1`. Persistent workspace accounts/desktops are available through
+the package CLI; browser workspace selection follows in the next cycle.
 
 The first personal-testing checkpoint is ready. See [acceptance results](ACCEPTANCE.md)
 for the actual tested builds and platform limits. Iterate in Docker first; build

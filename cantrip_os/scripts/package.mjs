@@ -25,4 +25,4 @@ await run("docker", [
   "-c",
   "cp /out/*.deb /export/",
 ]);
-console.log(`Debian package: ${output}/cantrip-os-workspaces_0.1.0_all.deb`);
+console.log(`Debian package: ${output}/cantrip-os-workspaces_0.2.0_all.deb`);

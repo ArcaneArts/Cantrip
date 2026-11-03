@@ -1,10 +1,10 @@
 Package: cantrip-os-workspaces
-Version: 0.1.0
+Version: 0.2.0
 Architecture: all
 Maintainer: Cantrip <support@cantrip.dev>
 Section: admin
 Priority: optional
-Depends: python3, init-system-helpers
+Depends: python3, init-system-helpers, passwd, sudo, tigervnc-standalone-server, dbus-x11, icewm, x11-utils, x11-xserver-utils
 Description: Optional workspace management for CantripOS
  Local workspace service and administration commands, independently removable
  from the Debian/IceWM desktop foundation.
