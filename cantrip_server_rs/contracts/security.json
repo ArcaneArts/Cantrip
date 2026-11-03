@@ -526,7 +526,11 @@
     "projectAutomationWireListSchema": 9583,
     "projectAutomationDispatchRequestSchema": 9584,
     "projectAutomationDispatchResultSchema": 9586,
-    "projectAutomationProtectedDispatchResultSchema": 9590
+    "projectAutomationProtectedDispatchResultSchema": 9590,
+    "agentInteractionRequestWireSchema": 1070,
+    "agentInteractionResolutionWireCreateSchema": 9594,
+    "agentInteractionAcceptedSchema": 9595,
+    "cuaAgentAuthoritySchema": 2165
   },
   "nodes": [
     {
@@ -56221,6 +56225,19 @@
     },
     { "type": "boolean", "checks": [] },
     { "type": "nullable", "innerType": 9112, "checks": [] },
-    { "type": "never", "checks": [] }
+    { "type": "never", "checks": [] },
+    {
+      "type": "union",
+      "name": "agentInteractionResolutionWireCreateSchema",
+      "options": [1057, 1059],
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "agentInteractionAcceptedSchema",
+      "shape": { "accepted": 9596 },
+      "checks": []
+    },
+    { "type": "literal", "values": [true], "checks": [] }
   ]
 }

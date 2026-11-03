@@ -12,6 +12,9 @@ on:
       - cantrip_server/src/app/routes/system-status.ts
       - cantrip_server/src/app/routes/chat-catalogs.ts
       - cantrip_server/src/app/routes/project-automations.ts
+      - cantrip_server/src/app/routes/agent-interactions.ts
+      - cantrip_app/src/lib/interaction-encryption.ts
+      - cantrip_app/src/lib/api/chats.ts
       - cantrip_server/src/db/project-automations.ts
       - cantrip_server/test/project-automation-api.test.ts
       - cantrip_app/src/lib/project-automation-*.ts
@@ -1686,15 +1689,15 @@ jobs:
         run: node --import tsx scripts/server-rust/actual-folder-client.mjs --tasks --database bundled-postgres --report .qa/rust-server/actual-task-worker-bundled-postgres.json
       - name: Actual browser, full worker and native Task Goals with postgres
         run: node --import tsx scripts/server-rust/actual-folder-client.mjs --tasks --database postgres --report .qa/rust-server/actual-task-worker-postgres.json
-      - name: Actual Agent conversation, native Goal and scheduled automations with pglite
+      - name: Actual Agent conversation, native Goal, scheduled automations and approvals with pglite
         if: ${{ !cancelled() }}
-        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --project-chats --project-automations --database pglite --report .qa/rust-server/actual-project-chat-worker-pglite.json
-      - name: Actual Agent conversation, native Goal and scheduled automations with bundled-postgres
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --project-chats --project-automations --agent-interactions --database pglite --report .qa/rust-server/actual-project-chat-worker-pglite.json
+      - name: Actual Agent conversation, native Goal, scheduled automations and approvals with bundled-postgres
         if: ${{ !cancelled() }}
-        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --project-chats --project-automations --database bundled-postgres --report .qa/rust-server/actual-project-chat-worker-bundled-postgres.json
-      - name: Actual Agent conversation, native Goal and scheduled automations with postgres
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --project-chats --project-automations --agent-interactions --database bundled-postgres --report .qa/rust-server/actual-project-chat-worker-bundled-postgres.json
+      - name: Actual Agent conversation, native Goal, scheduled automations and approvals with postgres
         if: ${{ !cancelled() }}
-        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --project-chats --project-automations --database postgres --report .qa/rust-server/actual-project-chat-worker-postgres.json
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --project-chats --project-automations --agent-interactions --database postgres --report .qa/rust-server/actual-project-chat-worker-postgres.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -1757,6 +1760,18 @@ jobs:
         run: node scripts/server-rust/cargo.mjs test --test chat_contracts -- --nocapture
       - name: Automation contracts, exact errors and native recurrence
         run: node scripts/server-rust/cargo.mjs test --test project_automation_contracts --test project_automation_schedule -- --nocapture
+      - name: Interaction, reply and computer-use authority contracts and exact errors
+        if: ${{ !cancelled() }}
+        run: node scripts/server-rust/cargo.mjs test --test agent_interaction_http_contracts -- --nocapture
+      - name: Interaction HTTP, worker encryption, Live, limits and recovery with pglite
+        if: ${{ !cancelled() }}
+        run: node --import tsx scripts/server-rust/agent-interaction-http-compatibility.mjs --database pglite --report .qa/rust-server/agent-interactions-http-pglite.json
+      - name: Interaction HTTP, worker encryption, Live, limits and recovery with bundled-postgres
+        if: ${{ !cancelled() }}
+        run: node --import tsx scripts/server-rust/agent-interaction-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/agent-interactions-http-bundled-postgres.json
+      - name: Interaction HTTP, worker encryption, Live, limits and recovery with postgres
+        if: ${{ !cancelled() }}
+        run: node --import tsx scripts/server-rust/agent-interaction-http-compatibility.mjs --database postgres --report .qa/rust-server/agent-interactions-http-postgres.json
       - name: Automation SQL and legacy timezone assets match actual Source
         run: |
           node --import tsx scripts/server-rust/project-automation-query-manifest.mjs

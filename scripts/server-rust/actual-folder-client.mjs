@@ -119,6 +119,7 @@ async function flow(
     if (
       pathname.startsWith("/api/projects") ||
       pathname.startsWith("/api/chats/") ||
+      pathname.startsWith("/api/agent-requests") ||
       pathname.startsWith("/api/tasks/") ||
       pathname.startsWith("/api/tunnel") ||
       pathname.startsWith("/api/project-shares/") ||

@@ -4426,6 +4426,54 @@
         "remaining": [
           "Current-head supported-platform and packaged acceptance remain required. Shared coordination, complete upgrades/post-write rollback, artifacts, desktop packaging, Winterhold rehearsal, performance and final default cutover remain unfinished. Node remains the default server; worker remains Node."
         ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/agent-requests",
+        "implementation": "cantrip_server_rs/src/http/agent_interactions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/agent_interaction_http_contracts.rs",
+          "scripts/server-rust/agent-interaction-http-compatibility.mjs",
+          "scripts/server-rust/agent-interaction-http-cases.mjs",
+          "scripts/server-rust/agent-interaction-http-standalone.mjs",
+          "scripts/server-rust/actual-agent-interactions-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Complete transports/coordination, all remaining public domains, product upgrades and post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server and the worker remains Node."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/agent-requests/:requestId",
+        "implementation": "cantrip_server_rs/src/http/agent_interactions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/agent_interaction_http_contracts.rs",
+          "scripts/server-rust/agent-interaction-http-compatibility.mjs",
+          "scripts/server-rust/agent-interaction-http-cases.mjs",
+          "scripts/server-rust/agent-interaction-http-standalone.mjs",
+          "scripts/server-rust/actual-agent-interactions-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Complete transports/coordination, all remaining public domains, product upgrades and post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server and the worker remains Node."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/agent-requests/:requestId/respond",
+        "implementation": "cantrip_server_rs/src/http/agent_interactions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/agent_interaction_http_contracts.rs",
+          "scripts/server-rust/agent-interaction-http-compatibility.mjs",
+          "scripts/server-rust/agent-interaction-http-cases.mjs",
+          "scripts/server-rust/agent-interaction-http-standalone.mjs",
+          "scripts/server-rust/actual-agent-interactions-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Complete transports/coordination, all remaining public domains, product upgrades and post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server and the worker remains Node."
+        ]
       }
     ]
   },
@@ -10500,6 +10548,34 @@
         "globalFormattingFailures": 11,
         "formattingFailuresUnchangedFromBase": true
       }
+    },
+    "publicAgentInteractions": {
+      "status": "implemented-pending-platform-acceptance",
+      "implementation": [
+        "cantrip_server_rs/src/http/agent_interactions.rs",
+        "cantrip_server_rs/src/chats/computer_use_authority.rs",
+        "cantrip_server_rs/src/chats/live_mutations/interactions.rs"
+      ],
+      "evidence": [
+        "cantrip_server_rs/tests/agent_interaction_http_contracts.rs",
+        "scripts/server-rust/agent-interaction-http-compatibility.mjs",
+        "scripts/server-rust/agent-interaction-http-cases.mjs",
+        "scripts/server-rust/agent-interaction-http-standalone.mjs",
+        "scripts/server-rust/actual-agent-interactions-client.mjs"
+      ],
+      "validatedSubset": "Local macOS: 7695 actual Source named-contract value/issue/exact-error comparisons. All three stores and all three authentication modes pass 891 paired HTTP observations; each peer/profile proves 23 actual WorkerConnection commands, 24 scoped Live invalidations, 18 durable snapshots, endpoint cryptography and four failure/recovery scenarios. Project and standalone legacy/native replies, computer-use preview/agent authority, expiry, ownership, CSRF, malformed JSON/Buffer bodies, UTF16 worker failures, quota status/redaction, native/HTTP concurrent winner, acknowledged SQL rollback/retry, retained client-disconnect completion and offline restart/replay are covered. The existing browser SDK, full unchanged worker and actual Codex execute an encrypted command approval and preserve its winning durable reply on PGlite, bundled and external PostgreSQL; only public model HTTP output is controlled.",
+      "sourceSemantics": [
+        "Visible reply schema strips unknown fields while protected replies and list queries are strict.",
+        "Opaque replay checks its idempotency key, not ciphertext equality.",
+        "A native worker resolution event may precede the accepted HTTP resolution. The winning write owns the durable replay key.",
+        "Computer-use replays validate current authority but never dispatch another worker request.",
+        "Independent concurrent Source replies may complete in either order; the limit fixture holds both and then controls each actual acknowledgment without sorting event or response comparisons."
+      ],
+      "remaining": [
+        "Current-head supported-platform and packaging acceptance.",
+        "The actual /api/chats/:chatId/permission-profiles request returns native 404; the complete customization domain remains outside this port. The approval operation itself passes without that unrelated preflight.",
+        "Whole-server replacement requirements remain active; no default cutover or production deployment is claimed."
+      ]
     }
   },
   "remainingAcceptance": [

@@ -23,19 +23,9 @@ pub fn mentioned_skills(text: &Value) -> Result<Vec<Value>> {
     Ok(names.into_iter().map(|s| json!(s)).collect())
 }
 pub fn preview_authority(turn: &PreparedTurn, server: &str) -> Result<Value> {
-    let e = &turn.execution;
-    anyhow::ensure!(
-        e["computerUseEnabled"] == true,
-        "Computer use is not enabled."
-    );
-    let p = managed_console::permission_profile(e);
-    let mut authority = crate::settings::parse_response(
-        "cuaPreviewAuthoritySchema",
-        Some(
-            &json!({"ownerId":turn.owner,"serverId":server,"workerId":e["workerId"],"chatId":e["chatId"],"projectId":e["projectId"],"contextKind":e["contextKind"],"placementId":if e["contextKind"]=="project" {&e["worktreeId"]}else{&e["scratchRootId"]},"generation":e["computerUseAuthorityGeneration"],"profile":json!({"selectedId":p["selectedId"],"effectiveId":p["effectiveId"],"forcedByWorktreePolicy":p["forcedByWorktreePolicy"],"usesDefault":p["usesDefault"]})}),
-        ),
-    )?;
-    authority["executionLaneId"] = e["executionLaneId"].clone();
+    let mut authority =
+        crate::chats::computer_use_authority::preview(&turn.owner, server, &turn.execution)?;
+    authority["executionLaneId"] = turn.execution["executionLaneId"].clone();
     Ok(authority)
 }
 impl EventSink {
