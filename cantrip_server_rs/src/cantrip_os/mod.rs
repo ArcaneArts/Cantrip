@@ -21,6 +21,7 @@ pub struct InstanceObservation<'a> {
 pub struct Repository {
     pub database: Arc<Database>,
 }
+
 pub(super) fn text<'a>(value: &'a Value, key: &str) -> Result<&'a str> {
     value[key].as_str().context("Invalid CantripOS identity")
 }

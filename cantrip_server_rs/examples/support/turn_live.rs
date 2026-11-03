@@ -30,6 +30,17 @@ pub async fn run(database: Arc<Database>, input: &Value) -> Result<Value> {
     let service = Service::with_dependencies(
         database.clone(),
         Dependencies {
+            publish_group: {
+                let events = events.clone();
+                let fail = input["failHub"] == true;
+                Arc::new(move |group| {
+                    if fail {
+                        anyhow::bail!("Controlled live publication failure")
+                    }
+                    events.lock().unwrap().extend(group);
+                    Ok(())
+                })
+            },
             publish: {
                 let events = events.clone();
                 let fail = input["failHub"] == true;

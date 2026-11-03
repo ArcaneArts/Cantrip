@@ -675,6 +675,27 @@ try {
   });
   assert.equal(result.baseUrl, "https://openrouter.ai/api/v1");
   assert.equal(result.hasApiKey, true);
+  assert.equal(result.maxConcurrentInference, 8);
+  assert.equal(result.inferenceConfigRevision, 0);
+  const inferenceUpdate = {
+    name: providerInput.name,
+    kind: providerInput.kind,
+    baseUrl: providerInput.baseUrl,
+    maxConcurrentInference: 2,
+  };
+  for (const [label, revision] of [
+    ["provider inference limit advances revision", 1],
+    ["identical inference limit preserves revision", 1],
+  ]) {
+    result = await compare(label, {
+      op: "provider-update",
+      owner,
+      provider: providerId,
+      input: inferenceUpdate,
+    });
+    assert.equal(result.maxConcurrentInference, 2);
+    assert.equal(result.inferenceConfigRevision, revision);
+  }
   for (const op of ["provider-get", "provider-runtime", "provider-routes"]) {
     await compare(op + " owned", { op, owner, provider: providerId });
     await compare(op + " foreign", { op, owner: other, provider: providerId });
@@ -696,6 +717,12 @@ try {
     provider: providerId,
   });
   assert.deepEqual(result.protectedApiKey, policyEnvelope);
+  const retainedInference = await compare(
+    "legacy provider edit preserves inference state",
+    { op: "provider-get", owner, provider: providerId },
+  );
+  assert.equal(retainedInference.maxConcurrentInference, 2);
+  assert.equal(retainedInference.inferenceConfigRevision, 1);
   await compare("provider explicit key null", {
     op: "provider-update",
     owner,

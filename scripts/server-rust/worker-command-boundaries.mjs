@@ -14,8 +14,17 @@ function locate(input, tokens) {
       schema = d.shape[token];
       value = value[token];
     } else if (token === "innerType") schema = d.innerType;
-    else if (token === "options") schema = d.options[Number(tokens[++i])];
-    else if (token === "element") {
+    else if (token === "options") {
+      const index = Number(tokens[++i]);
+      // The enclosing request supplies its command type; added commands may
+      // shift the historical refinement fixture's numeric option index.
+      schema =
+        schema === protocol.workerCommandSchema
+          ? d.options.find(
+              (option) => option.shape.type.value === input.command.type,
+            )
+          : d.options[index];
+    } else if (token === "element") {
       schema = d.element;
       value = value[0];
     } else throw new Error("Unsupported boundary fixture path: " + token);
@@ -124,4 +133,21 @@ export function* commandBoundaries() {
       "1e999",
     ),
   };
+  for (const size of [9999, 10000, 10001]) {
+    yield {
+      name: "inference.configure:configurations:" + size,
+      input: {
+        kind: "request",
+        requestId: "fixture-inference-boundary",
+        command: {
+          type: "inference.configure",
+          configurations: Array.from({ length: size }, (_, index) => ({
+            providerId: "fixture-provider-" + index,
+            maxConcurrentInference: 8,
+            inferenceConfigRevision: 0,
+          })),
+        },
+      },
+    };
+  }
 }

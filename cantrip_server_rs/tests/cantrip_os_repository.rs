@@ -1,6 +1,8 @@
 use anyhow::Result;
 use cantrip_server::{
-    cantrip_os::Repository, database::Database, managed_postgres::ManagedPostgres,
+    cantrip_os::{InstanceObservation, Repository},
+    database::Database,
+    managed_postgres::ManagedPostgres,
     migrations::migrate,
 };
 use serde_json::{Value, json};
@@ -434,12 +436,14 @@ async fn exercise(database: Arc<Database>) -> Result<()> {
             .await
             .is_err()
     );
-    Box::pin(exercise_run_captures(
+    // Poll this phase after the large integration driver has yielded, matching
+    // an independently scheduled request without increasing the test stack.
+    tokio::spawn(exercise_run_captures(
         database.clone(),
         primary.clone(),
         worktree.clone(),
     ))
-    .await?;
+    .await??;
     database
         .execute("INSERT INTO user_settings(user_id,computer_use_enabled) VALUES('owner',true)")
         .await?;
@@ -617,10 +621,10 @@ async fn exercise(database: Arc<Database>) -> Result<()> {
                 "owner",
                 instance_id,
                 generation,
-                cantrip_server::cantrip_os::InstanceObservation {
+                InstanceObservation {
                     status: "connected",
                     runtime: scope["runtimeGeneration"].as_str(),
-                    error: None
+                    error: None,
                 },
                 scope["runtimeGeneration"].as_str()
             )

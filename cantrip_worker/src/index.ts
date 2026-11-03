@@ -1584,6 +1584,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         (error) =>
           workerLogger.event("warn", "Inference status observer failed", {
             event: "inference.status.observer-failed",
+            subsystem: "provider",
             error: workerLogError(error),
           }),
         new LocalNativeInferenceOwnership(

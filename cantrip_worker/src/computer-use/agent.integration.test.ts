@@ -84,6 +84,7 @@ async function fixture(
     executionLaneId: "lane",
     placementId: "worktree",
     generation: 1,
+    cantripAppAllowed: false,
     profile: {
       selectedId: profile,
       effectiveId: profile,

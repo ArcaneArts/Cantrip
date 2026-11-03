@@ -850,8 +850,13 @@ export function installSettingsRouteRuntime(
         if (provider && input.data.maxConcurrentInference !== undefined) {
           const workers = await repository.listWorkers(ownerId);
           const deliveries = await Promise.allSettled(
-            workers.map(({ id }) =>
-              synchronizeProviderInference(repository, bridge, ownerId, id),
+            workers.map(({ workerId }) =>
+              synchronizeProviderInference(
+                repository,
+                bridge,
+                ownerId,
+                workerId,
+              ),
             ),
           );
           deliveries.forEach((delivery, index) => {
@@ -859,7 +864,7 @@ export function installSettingsRouteRuntime(
               app.log.warn(
                 {
                   event: "inference.configuration.delivery-pending",
-                  workerId: workers[index]!.id,
+                  workerId: workers[index]!.workerId,
                 },
                 "Provider inference configuration delivery remains pending",
               );

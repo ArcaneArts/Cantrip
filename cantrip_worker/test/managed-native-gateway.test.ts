@@ -1,6 +1,9 @@
 import { NativePermissionRetentionError } from "../src/codex/native-permission-deferred.js";
+import { execFile } from "node:child_process";
 import { once } from "node:events";
 import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import WebSocket, { WebSocketServer } from "ws";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { managedNativeMethods } from "@cantrip/protocol";
@@ -769,4 +772,57 @@ describe("managed native gateway", () => {
     const [error] = await once(denied, "error");
     expect(String(error)).toContain("401");
   });
+
+  it("survives TCP resets after rejecting revoked native upgrades", async () => {
+    const script = `
+      import assert from 'node:assert/strict';
+      import net from 'node:net';
+      import { once } from 'node:events';
+      import { setTimeout as delay } from 'node:timers/promises';
+      import { createManagedNativeGateway } from ${JSON.stringify(new URL("../src/codex/managed-native-gateway.ts", import.meta.url).href)};
+      const unexpected = async () => { throw new Error('Rejected upgrade reached admission'); };
+      const gateway = await createManagedNativeGateway({
+        identity: ${JSON.stringify(identity)},
+        upstreamUrl: 'ws://127.0.0.1:9', isCurrent: () => false,
+        admit: unexpected, resolveReply: unexpected,
+      });
+      try {
+        const address = new URL(gateway.url);
+        for (let i = 0; i < 20; i++) {
+          const peer = net.connect({ host: address.hostname, port: Number(address.port) });
+          peer.on('error', () => {});
+          await once(peer, 'connect');
+          const response = new Promise((resolve, reject) => {
+            let headers = '';
+            peer.on('data', chunk => {
+              headers += chunk.toString();
+              if (headers.includes('\\r\\n\\r\\n')) resolve(headers);
+            });
+            peer.once('error', reject);
+            peer.once('end', () => {
+              if (!headers.includes('\\r\\n\\r\\n')) reject(new Error('Incomplete rejection'));
+            });
+          });
+          peer.write('GET /revoked HTTP/1.1\\r\\nHost: 127.0.0.1\\r\\nConnection: Upgrade\\r\\nUpgrade: websocket\\r\\nSec-WebSocket-Version: 13\\r\\nSec-WebSocket-Key: AAAAAAAAAAAAAAAAAAAAAA==\\r\\n\\r\\n');
+          assert.ok(String(await response).startsWith('HTTP/1.1 401'));
+          peer.resetAndDestroy();
+          await delay(10);
+        }
+        process.stdout.write('rejected-reset-upgrades:20\\n');
+      } finally {
+        await gateway.close();
+      }
+    `;
+    const { stdout } = await promisify(execFile)(
+      process.execPath,
+      ["--import", "tsx", "--input-type=module", "--eval", script],
+      {
+        cwd: fileURLToPath(new URL("..", import.meta.url)),
+        encoding: "utf8",
+        timeout: 15_000,
+        windowsHide: true,
+      },
+    );
+    expect(stdout).toContain("rejected-reset-upgrades:20");
+  }, 20_000);
 });

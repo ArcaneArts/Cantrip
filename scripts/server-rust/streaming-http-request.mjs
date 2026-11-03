@@ -17,6 +17,9 @@ function httpRequest(url, { method, headers, body, signal }, sendBody) {
   return new Promise((resolve, reject) => {
     let responseStarted = false;
     let settled = false;
+    let incoming;
+    let attemptedBytes = 0;
+    let completedWriteBytes = 0;
     const request = (new URL(url).protocol === "https:" ? https : http).request(
       url,
       {
@@ -29,6 +32,7 @@ function httpRequest(url, { method, headers, body, signal }, sendBody) {
       },
       (response) => {
         responseStarted = true;
+        incoming = response;
         const chunks = [];
         response.on("data", (chunk) => chunks.push(chunk));
         response.once("error", fail);
@@ -58,6 +62,19 @@ function httpRequest(url, { method, headers, body, signal }, sendBody) {
     function fail(error) {
       if (settled) return;
       settled = true;
+      error.httpUploadDiagnostics = {
+        sendBody,
+        bodyBytes: bytes.length,
+        attemptedBytes,
+        completedWriteBytes,
+        responseStarted,
+        responseComplete: incoming?.complete ?? false,
+        responseStatus: incoming?.statusCode ?? null,
+        socketBytesRead: request.socket?.bytesRead ?? 0,
+        socketBytesWritten: request.socket?.bytesWritten ?? 0,
+        requestDestroyed: request.destroyed,
+        socketDestroyed: request.socket?.destroyed ?? false,
+      };
       request.destroy();
       reject(error);
     }
@@ -70,9 +87,15 @@ function httpRequest(url, { method, headers, body, signal }, sendBody) {
       for (let at = 0; at < bytes.length; at += 16 * 1024) {
         if (settled || responseStarted) return;
         await new Promise((resolve, reject) => {
-          request.write(bytes.subarray(at, at + 16 * 1024), (error) =>
-            error ? reject(error) : resolve(),
-          );
+          const chunk = bytes.subarray(at, at + 16 * 1024);
+          attemptedBytes += chunk.length;
+          request.write(chunk, (error) => {
+            if (error) reject(error);
+            else {
+              completedWriteBytes += chunk.length;
+              resolve();
+            }
+          });
         });
         // A write completion can queue an immediate in the current check phase.
         // Yield another poll turn so an early reply wins over the next write.

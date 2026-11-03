@@ -145,7 +145,10 @@ describe("CUA model image adapter with actual Sharp", () => {
   it("preserves PNGs at the exact 2.5 MiB boundary", async () => {
     const bytes = padPng(small, CUA_MODEL_MAX_IMAGE_BYTES);
     const [result] = await adaptCuaModelImages([snapshot(bytes)]);
-    expect(Buffer.from(result!.content.data, "base64")).toEqual(bytes);
+    // Native equality checks every byte and the length without enumerating millions of indices.
+    expect(Buffer.from(result!.content.data, "base64").equals(bytes)).toBe(
+      true,
+    );
     expect(result!.model.byteCount).toBe(CUA_MODEL_MAX_IMAGE_BYTES);
   });
 

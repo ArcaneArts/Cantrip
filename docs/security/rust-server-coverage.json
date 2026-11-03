@@ -3,16 +3,17 @@
   "completeReplacement": false,
   "inventory": {
     "path": "docs/security/server-route-inventory.json",
-    "sha256": "dae8c7c0fd622bd37d0d542d0ce757de6e59cd98cfcb92dddc1d24ad745f8575",
-    "baselineCommit": "64c042c50e0292074c52088567281a5ab380dabd",
+    "sha256": "641b7273e519bab9beabc68f42e8cbb1288df91a0762fd084affa9425714ec61",
+    "baselineCommit": "2031c9884e272f3ecb0b43324a352b239d7ada13",
     "counts": {
-      "routes": 522,
-      "workerCommands": 278,
+      "routes": 536,
+      "workerCommands": 295,
       "durableTables": 115,
-      "repositoryMethods": 364,
-      "liveResources": 46
+      "repositoryMethods": 366,
+      "liveResources": 47
     },
-    "workingTreeNote": "Current Source inventory includes the project-alert foundation and per-Task model cutover. Retired Task Worker HTTP routes are absent in both implementations. Task catalog and admission entries describe scoped local evidence; full replacement and supported-platform/product acceptance remain unfinished."
+    "workingTreeNote": "Current Source inventory integrated through main2031c9884:536routes/295worker commands/115declared tables/366repository methods/47Live resources. Separate accounting covers122physical tables. All251preceding migrations retain their bytes and own0251 follows for252total entries. Local validation only; complete product/platform/replacement acceptance remains unfinished.",
+    "migrationBackedTableCount": 122
   },
   "interpretation": "Every row in the referenced inventory inherits its category default unless explicitly overridden. Schema creation is not domain behavior. Test commands and configured CI are not passing evidence.",
   "routes": {
@@ -5125,10 +5126,24 @@
           "scripts/server-rust/settings-operations-http-compatibility.mjs",
           "scripts/server-rust/settings-active-work-http-cases.mjs",
           "scripts/server-rust/settings-provider-http-cases.mjs",
-          "scripts/server-rust/actual-provider-test-client.mjs"
+          "scripts/server-rust/actual-provider-test-client.mjs",
+          "scripts/server-rust/settings-endpoint-provider-http-cases.mjs"
         ],
         "remaining": [
           "Fresh supported-platform acceptance and complete packaged/standalone replacement verification."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/workers/:workerId/inference",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/http/workers.rs",
+        "evidence": [
+          "scripts/server-rust/settings-operations-http-compatibility.mjs",
+          "scripts/server-rust/settings-inference-status-http-cases.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and complete packaged/standalone acceptance."
         ]
       }
     ]
@@ -6054,6 +6069,34 @@
         ],
         "remaining": [
           "Current-head supported-platform and packaged acceptance remain required. Remaining public domains, complete transports/coordination, upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "command": "model.endpoint.catalog",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": [
+          "cantrip_server_rs/src/settings/ollama.rs",
+          "cantrip_server_rs/src/settings/endpoint_providers.rs"
+        ],
+        "evidence": [
+          "scripts/server-rust/provider-catalog-http-compatibility.mjs",
+          "scripts/server-rust/endpoint-catalog-http-cases.mjs",
+          "scripts/server-rust/endpoint-provider-wire-fixtures.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and complete packaged/standalone acceptance."
+        ]
+      },
+      {
+        "command": "inference.status",
+        "status": "implemented-pending-platform-acceptance",
+        "implementation": "cantrip_server_rs/src/http/workers.rs",
+        "evidence": [
+          "scripts/server-rust/settings-inference-status-http-cases.mjs",
+          "scripts/server-rust/inference-wire-fixtures.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and complete packaged/standalone acceptance."
         ]
       }
     ]
@@ -11896,16 +11939,330 @@
         "scripts/server-rust/provider-connection-oracle.mjs",
         "scripts/server-rust/provider-test-boundary.mjs"
       ],
-      "validatedSubset": "Local macOS: 513 actual Source response-contract/issue/exact-error cases and 992 provider-failure precedence/UTF-16 detail cases pass. All nine database/auth profiles pass 1281 paired HTTP observations and 369 provider commands, including all nine count queries, counted and excluded lifecycle states, standalone/archived/foreign ownership rules,14 real missing-relation faults and restoration, model/default/offline selection, malformed replies, caller disconnect, worker reconnect, actual server restart, and two-slot command backpressure without blocking desktop counts. The unmodified production120-second deadline passes on both peers with late-reply recovery. The existing browser SDK/full unchanged worker/native Codex pass19 composed steps on all3stores for both peers, retaining the original7 model POSTs plus9 separate verifiedTLS provider POSTs (3successes/6actual native authentication retries), actual key-authentication failure and recovery, public credential availability through server/worker restart and desktop counts. The strict owned proxy also validates the real MCP initialize probes of its own configured URL and returns404 without forwarding them.",
+      "validatedSubset": "Local macOS: 513 actual Source response-contract/issue/exact-error cases and 992 provider-failure precedence/UTF-16 detail cases pass. All nine database/auth profiles pass 1281 paired HTTP observations and 369 provider commands, including all nine count queries, counted and excluded lifecycle states, standalone/archived/foreign ownership rules,14 real missing-relation faults and restoration, model/default/offline selection, malformed replies, caller disconnect, worker reconnect, actual server restart, and two-slot command backpressure without blocking desktop counts. The unmodified production120-second deadline passes on both peers with late-reply recovery. The existing browser SDK/full Node worker/native Codex pass19 composed steps on all3stores for both peers, retaining the original7 model POSTs plus9 separate verifiedTLS provider POSTs (3successes/6actual native authentication retries), actual key-authentication failure and recovery, public credential availability through server/worker restart and desktop counts. The strict owned proxy also validates the real MCP initialize probes of its own configured URL and returns404 without forwarding them. Fresh integrated state 49ad2961c repeats all nine HTTP profiles and all three nineteen-step composed flows successfully on macOS. The app suite passes 4,391 tests with three existing skips. The full Source suite passes 1,699 tests with 57 skips and three failures, all reproduced on clean upstream 9ce9356; the broad check stops at six worker CUA failures, also reproduced there with the actual compiled helper. All ten global formatting failures are freshly byte-identical to that upstream checkout. Those broad checks remain red. The fresh integrated 120-second deadline comparison passes for both peers with late-reply recovery. Linux CI run 41691759476, exact head 49ad2961cd318747f493e09600819ebac672d069, passes all three composed flows and all three Task flows; the downloaded artifact head, API SHA-256 digest, all ZIP members and all six paired reports were independently verified. The historical native-editor fixture now supplies the additive default-off CUA column needed by its current repository seed while retaining the old editor tables until the actual removal migration. Its nine original assertions and deadline remain unchanged; the exact five-file CI command passes eight tests. Production runtime sources are unchanged by this fixture repair.",
       "sourceSemantics": [
         "Desktop counts preserve the nine actual Drizzle SQL queries and their independent read boundaries; jobs use their recorded owner, queued prompts include archived project chats, standalone chats are excluded, and service-enabled terminals count even when closed.",
-        "Only the existing canonical Z.ai Coding Plan provider guard is accepted; prefer glm-5.3, preserve raw repeated worker query behavior, parse and ignore worker duration, and compute the public duration from server wall-clock time.",
+        "Account providers retain the sign-in diagnostic; all endpoint kinds use provider-labelled connection tests. Prefer the same enabled routes, retain raw repeated worker query behavior, ignore worker duration, and compute public duration from server wall-clock time. Public failures contain only known reasons and the first HTTP status, never raw worker/backend details.",
         "Provider lookup/model/preferences/worker repository failures remain generic500 outside the native-probe catch; native command failures and response-validation failures retain Source stage precedence and bounded public output validation.",
-        "The worker, app, protocol, crypto and Node-server production sources remain unchanged in this milestone."
+        "Integration with upstream88d1c0b preserves its564roots/9779nodes exactly before appending the3new roots (current567/9796). Four existing worker test fixtures add the required default-off Cantrip-app flag; one new Task MCP callback gets the official SDK extra-context type. Actual esbuild output of that callback is byte-identical before/after. The upstream Task admission helper now passes the existing agent-managed worktree default explicitly in both Node and Rust; the Node helper also retains its existing post-admission non-null assumption for typechecking. The existing protocol mutation catalogs append Task creation after the prior worker operations to preserve ordering and tool alignment; all 564 upstream contract roots and 9779 nodes are independently unchanged. The complete assertion audit retains 3,047 original calls verbatim, strengthens two expected authority records only with the required default-off field and independently proves four calls equivalent in two exact-byte Buffer assertions. Every original deadline and other expected field is retained. The protocol suite passes 1032 tests. Positive CUA smoke/test fixtures explicitly opt into the new Cantrip-app permission while older authorities retain the default-off behavior. App and crypto production sources remain unchanged by this milestone. The worker remains Node."
       ],
       "remaining": [
-        "Fresh supported-platform verification and complete deployment/data/packaging acceptance remain unproven."
-      ]
+        "Fresh supported-platform verification and complete deployment/data/packaging acceptance remain unproven.",
+        "The retained Source-only history notice failure remains under investigation: actual decryption/replay preserves the full answer through all 34 source records, while the canonical revision 1 started item exactly matches stage 3 and only source record 8 has been committed. Live catch-up behavior remains unproven; later passing composed flows do not establish a fix."
+      ],
+      "integrationFollowup": {
+        "nativeComputerUseCommand": "pnpm cua:test:worker",
+        "result": "1,461 tests pass across protocol, crypto, worker, Source and app; three existing skips. Positive real-fake-helper fixtures explicitly grant protected-target access. Two Source authority expectations gain the required default-off field. Inventory permission metadata is asserted independently of target facts.",
+        "guidance": "Repeated instructions shrink from 6,305 to 5,968 characters; same methods/initial call, exact input guidance except a redundant help sentence, and reviewed protection/sandbox/authorization/error rules. This is the only additional production worker change; no operation implementation or worker rewrite.",
+        "assertions": "The complete assertion audit retains 3,047 original calls verbatim, strengthens two expected authority records only with the required default-off field and independently proves four calls equivalent in two exact-byte Buffer assertions. Every original deadline and other expected field is retained.",
+        "remaining": "Resolve actual PR failures and verify the updated CI head before merge. Remaining supported-platform, packaging and complete replacement acceptance stay required.",
+        "broaderValidation": {
+          "command": "pnpm check",
+          "elapsedSeconds": 662.9211138328537,
+          "sourceTests": {
+            "passed": 1702,
+            "skipped": 57
+          },
+          "appTests": {
+            "passed": 4391,
+            "skipped": 3
+          },
+          "workerTests": {
+            "passed": 2621,
+            "skipped": 133,
+            "failed": 3
+          },
+          "followup": "The Task-create idempotency expectation now includes the existing deterministic Task operation. At the broad run, both timeout files were byte-identical to upstream9ce9356. All three whole files passed72tests in61.0seconds with original deadlines and two test workers. After an additional Windows timeout, the one exact PNG comparison uses equivalent native Buffer equality; its entire 28-test image file passes locally. No decoder or deadline changes. The broad run remains red."
+        },
+        "composedAfterGuidance": {
+          "head": "a4afebf51f90f3e8bc179cdd81c1be9d981d1258",
+          "stores": ["pglite", "bundled-postgres", "postgres"],
+          "checksPassed": 4,
+          "elapsedSeconds": 439.2965632909909,
+          "stepsPerPeer": 19,
+          "cleanWorkerStopsPerPeer": 11,
+          "originalModelPostsPerPeer": 7,
+          "separateVerifiedTlsProviderPostsPerPeer": 9,
+          "productionUnchangedAfterward": true
+        },
+        "pngBoundaryCheck": {
+          "reason": "Windows CUA fake capture at a4afebf51 exceeded the original 15-second PNG boundary test deadline.",
+          "change": "Only the exact 2.5MiB Buffer comparison uses native equals instead of enumerating indices through the deep matcher. Same decoded/expected operands, every byte and length checked, actual Sharp decoder/limits/default deadline retained. Full-file AST equivalence independently verified.",
+          "localImageFilePassed": 28,
+          "benchmarkBytes": 2621440,
+          "deepMatcherMs": 2245.7294159999997,
+          "nativeMatcherMs": 0.23387499999989814,
+          "negativeChecks": ["last byte differs", "length differs"],
+          "remaining": "Replacement native computer-use checks pass on Windows, Linux and macOS at43727e798. Remaining server/platform checks and full packaging acceptance remain separate."
+        },
+        "nativeCuaPlatformAcceptance": {
+          "testedHead": "43727e79800429445d47c69bc60d2fd9cb1de006",
+          "runId": 41710031226,
+          "platforms": ["win32-x64", "linux-x64", "darwin-arm64"],
+          "testsPassedPerPlatform": 1461,
+          "additionalWindowsColdModelConfigTests": 6,
+          "scope": "Native computer-use integration only; broader server/platform/package acceptance remains required."
+        },
+        "latestLinuxActualWorkerAcceptance": {
+          "testedHead": "eccce0878166cd8fda3a6b237f61bf29411450d8",
+          "runId": 41726775996,
+          "jobId": 126234308147,
+          "artifactId": 13275664720,
+          "artifactSha256": "5c7fd55cc079d677301a31ca745563368cac94505367a16d9d8d87ff43274b1e",
+          "verifiedPairedReports": 6,
+          "composedStores": 3,
+          "taskStores": 3,
+          "scope": "All three composed19step/11stop/7original+9TLSPOST flows and three Task14step/5stop/9POST flows pass for both peers. API commit/digest, every ZIP CRC and all six reports independently verified. This is scoped Linux evidence, not full replacement readiness."
+        },
+        "startupDiagnostics": {
+          "reason": "Linux native-commands job126176148289 times out starting the first Node reference before any approval HTTP request; stderr is empty. Original log and seven-report artifact retained.",
+          "change": "Test launcher captures at most32768characters of startup stdout alongside stderr, stops capture after startup and waits for output stream close before constructing an early-exit error. Listening marker, environment/spawn inputs, original60000ms startup deadline, failure kill/drain and normal shutdown are AST-identical.",
+          "regression": "Real child-process output test fails before fix and passes after. Actual HTTP readiness and graceful shutdown test passes. All five original publication oracle tests retained and pass; all6 original paired approval comparisons(12peer runs) pass locally across3auth profiles/2schedules/2peers.",
+          "remaining": "Linux startup failure reproduced with the original proxy and actual Source server on Linux arm64. TCP_NODELAY on both proxy sockets fixes those isolated starts without changing the60000ms deadline or event assertions. Updated Linux x64 CI acceptance remains required."
+        },
+        "proxyTcpNoDelay": {
+          "reason": "At eccce0878, Linux native-command job126234307782 still times out before any approval request. New startup stdout retains migration notices.",
+          "actualLinuxReproduction": {
+            "platform": "linux-arm64",
+            "node": "24.22.1",
+            "postgres": "16.15",
+            "directStartupMs": 5846.974378,
+            "originalProxyTimedOutMs": 60000,
+            "candidateStartupMs": [4252.965293000001, 4996.1659609999915],
+            "candidateShutdownsClean": true
+          },
+          "change": "Only client.setNoDelay(true) and upstream.setNoDelay(true) are added to the disposable PostgreSQL delivery proxy. Removing those two lines restores every original source byte. Real Linux candidate file hash matches the tracked file; no frame/gate/assertion/deadline or production Source/Rust server logic changes.",
+          "unchangedApprovalComparisons": 6,
+          "unchangedApprovalPeerRuns": 12,
+          "localElapsedSeconds": 62.14246775023639,
+          "remaining": "Updated CI acceptance on Linux x64 and other supported platforms remains required. This isolated reference-startup fix does not establish full replacement or packaging readiness."
+        },
+        "referenceMediaAssertion": {
+          "reason": "Linux/Windows Source-only account/handoff reference command exceeds original15second monolithic-test deadline.",
+          "change": "One262158byte plain-Buffer comparison uses native exact-byte equality. Full-file AST equivalence and every other expectation preserved; Source default15second deadline unchanged.",
+          "benchmarkMs": {
+            "deep": 204.586375,
+            "native": 0.10808300000002191
+          },
+          "localExactCommandTestsPassed": 22,
+          "localElapsedSeconds": 8.639520625118166,
+          "remaining": "Linux CI at eccce0878 still fails the original15second deadline. The unchanged command passes on isolated Linuxarm64/twoCPUs at13.01s for the monolith, with a profiled14.13s run showing substantial PGlite/GC work. Youngheap64 alternation does not fix the timeout and is not adopted. CI captures CPU profiles only after the unchanged original command fails; every original workflow step, file, worker count and deadline is retained. Diagnostic success cannot replace the original failed outcome. Updated platform acceptance remains required."
+        },
+        "streamedUploadDiagnostics": {
+          "reason": "Windows contract job126234308059 at eccce0878 fails before the Rust peer runs: Source Node reports write ECONNABORTED in the actual8MiB chunked file-document operation upload.",
+          "change": "The disposable HTTP client records bounded boolean/numeric/null transport counters only on original failure, and the file-document report retains them. Removing diagnostic declarations, counters and metadata restores every original source byte. Original framing/method/headers/body,16KiB chunks/both poll yields, write callbacks, complete HTTP response requirement, abort/deadline and no-retry behavior remain unchanged.",
+          "testsPassedLocally": 8,
+          "originalTestBodiesByteIdentical": 7,
+          "newRealResetRegression": "Fails before diagnostics; passes after while still requiring the real reset to fail and retaining no private URL/header/body data.",
+          "remaining": "Actual Windows failure counters/root cause and updated platform acceptance remain required; no reset is treated as a successful response."
+        },
+        "archiveClockDiagnostics": {
+          "reason": "Windows PGlite accounts/rust archive retry fails Date.parse(event.occurredAt)<=Date.now(); original failed event timestamp was not retained.",
+          "change": "Only after original assertion fails: retain raw events, parent Date/performance samples and actual database clocks, then rethrow the original error. Full-file AST reversal proves every original statement, assertion and wait/deadline unchanged.",
+          "normalPgliteProfilesPassed": 3,
+          "normalElapsedSeconds": 37.41024841601029,
+          "faultProof": "A deliberate parent-parser future-value fault still fails the original assertion and records both raw events and database/parent clocks. This verifies diagnostics, not Windows causation.",
+          "remaining": "Actual Windows timestamp values and root cause, updated CI and full platform/package acceptance."
+        }
+      },
+      "historicalSourceIntegrations": [
+        {
+          "baseCommit": "cbb910584034aabb0f04f1f8f75e36dfd0c25f27",
+          "schemaRoots": 599,
+          "schemaNodes": 10131,
+          "outgoingWorkerCommandTypes": 292,
+          "outgoingAlternativeCases": 1101,
+          "preservedPreviousAlternativeCasesExactlyInOrder": 1074,
+          "preservedPreviousPrimaryInputsExactlyInOrder": 286,
+          "newRoots": [
+            "cantripOsRunRootsSchema",
+            "cantripOsRunLaunchSchema",
+            "cantripOsRunCaptureSchema"
+          ],
+          "unchangedPreviousOrderedSchemaGraphs": 595,
+          "changedExistingRoot": "workerRequestEnvelopeSchema",
+          "wireValidationEngineUnchanged": true,
+          "unionSchemas": 60,
+          "unionAlternatives": 524,
+          "enumSchemas": 163,
+          "enumAlternatives": 628,
+          "scope": "Integrated persisted Linux Run epochs with 250 migration entries. Affected repositories and byte accounting pass on all three stores, and the complete prior protocol/worker corpus and wire engine are unchanged. Native/server source tests and strict checks pass locally. Platform CI, opt-in actual Linux executor integration and all final product/deployment/replacement requirements remain open.",
+          "validation": {
+            "protocolPassed": 1040,
+            "protocolFiles": 109,
+            "workerFocusedPassed": 29,
+            "workerOptInLinuxExecutorIntegrationNotRun": 1,
+            "workerTypecheck": true,
+            "serverTypecheck": true,
+            "productionWorkerBuild": true,
+            "foundationAndFailoverPassed": 22,
+            "linuxSourceVectors": 13998,
+            "nativePrimaryWorkerCommands": 292,
+            "nativeWorkerBoundaries": 83,
+            "nativeWorkerMutations": 232678,
+            "customChecksExecuted": 98,
+            "customChecksRegistered": 98,
+            "placementDatabaseModes": [
+              "pglite",
+              "bundled-postgres",
+              "postgres"
+            ],
+            "placementAdmissionsPerPeerPerMode": 165,
+            "placementCatalogCasesPerPeerPerMode": 9,
+            "constraintSqlState": "P0001",
+            "constraintMessage": "worktree source and worker mismatch",
+            "clippyAllTargetsStrict": true,
+            "rustfmt": true,
+            "boundaryAudit": true,
+            "formatAndDiff": true,
+            "finalCheckStages": 8,
+            "sourceCodeUnchangedDuringFinalChecks": true,
+            "platformAcceptanceComplete": false
+          },
+          "migrationEntries": 250,
+          "ownMigration": "0249_project_source_identity_lock_order",
+          "epochIntegration": {
+            "priorUpstreamSqlAndJournalEntriesPreserved": 249,
+            "ownSqlBytesUnchanged": true,
+            "sourceQueryCaptures": 15,
+            "nativeRepositoryTestsAtDefaultStack": true,
+            "testSchedulingChangeOnly": true,
+            "originalRepositoryAssertionsUnchanged": true,
+            "all21ChecksPassWithSourceCodeFrozen": true,
+            "allThreeStoresCover": [
+              "placement",
+              "workspace",
+              "legacy-layout",
+              "project-surfaces",
+              "usage-and-guest-storage"
+            ],
+            "windowsProfiledReferenceAt2b26": "original15s watchdog still fails with profiling enabled; ordinary current-head run remains required",
+            "focusedWindowsWorkflow": "ordinary suite first, profile only after failure; original deadlines unchanged",
+            "sourceQueryManifestsUnchangedAfterCanonicalFormatting": 15,
+            "rawOutputFormattingDifferencesOnly": [
+              "pane_layouts",
+              "project_surfaces",
+              "workspace_layouts"
+            ]
+          }
+        },
+        {
+          "baseCommit": "aae5906d4262232363668c30fa9c61be13f8b35b",
+          "schemaRoots": 603,
+          "schemaNodes": 10234,
+          "outgoingWorkerCommandTypes": 294,
+          "outgoingAlternativeCases": 1131,
+          "coverageDescriptors": 1167,
+          "preservedPreviousAlternativeCasesExactlyInOrder": 1107,
+          "preservedPreviousPrimaryInputsExactlyInOrder": 293,
+          "newRoots": ["endpointModelInventorySchema"],
+          "changedExistingRoots": [
+            "workerRequestEnvelopeSchema",
+            "settingsBundleWireSchema",
+            "providerModelCatalogResultSchema",
+            "encryptedModelProviderCreateSchema",
+            "encryptedModelProviderUpdateSchema",
+            "modelProviderWireSummarySchema",
+            "nativeModelInventorySchema",
+            "nativeChatModelInventorySchema",
+            "nativeRuntimeHandoffConfigurationSchema"
+          ],
+          "unchangedPreviousOrderedSchemaGraphs": 593,
+          "wireValidationEngineUnchanged": true,
+          "unionSchemas": 61,
+          "unionAlternatives": 529,
+          "enumSchemas": 164,
+          "enumAlternatives": 638,
+          "migrationEntries": 252,
+          "ownMigration": "0251_project_source_identity_lock_order",
+          "validation": {
+            "protocolPassed": 1054,
+            "serverFocusedPassed": 29,
+            "workerFocusedPassed": 33,
+            "actualNativeEndpointExecution": true,
+            "appFocusedPassed": 45,
+            "threeTypechecks": true,
+            "changedAndAddedWireCases": 81622,
+            "providerFailureComparisons": 1118,
+            "responseContractCases": 513,
+            "settingsHttpDatabaseModes": [
+              "pglite",
+              "bundled-postgres",
+              "postgres"
+            ],
+            "settingsHttpAuthModes": ["none", "password", "accounts"],
+            "settingsHttpObservationsPerPeerPerStore": 487,
+            "workerAdmissionSourceTimelines": 13,
+            "workerAdmissionCompleteSnapshots": 135,
+            "nativePrimaryCommands": 294,
+            "nativeCommandBoundaries": 86,
+            "platformAcceptanceComplete": false,
+            "catalogDatabaseModes": ["pglite", "bundled-postgres", "postgres"],
+            "catalogObservationsPerPeerPerStore": 161,
+            "inventorySizeBoundaries": [999, 1000, 1001],
+            "strictClippyAllTargets": true,
+            "rustfmt": true,
+            "boundaryAudit": true,
+            "formatAndDiff": true
+          },
+          "scope": "Current local macOS endpoint-provider compatibility. Earlier all-command mutation, full incoming worker, artifact, migration and Linux guest results retain their tested revisions. GitHub Actions development validation is retired under user policy #2494. Final product/platform/package/deployment/default-cutover acceptance remains unfinished."
+        }
+      ],
+      "integrationCurrentSource": {
+        "baseCommit": "2031c9884e272f3ecb0b43324a352b239d7ada13",
+        "schemaRoots": 603,
+        "schemaNodes": 10242,
+        "outgoingWorkerCommandTypes": 295,
+        "outgoingAlternativeCases": 1132,
+        "coverageDescriptors": 1168,
+        "preservedPreviousAlternativeCasesExactlyInOrder": 1131,
+        "preservedPreviousPrimaryInputsExactlyInOrder": 294,
+        "newRoots": [],
+        "changedExistingRoots": [
+          "workerInferenceStatusSchema",
+          "appLiveServerMessageSchema",
+          "workerServerEnvelopeSchema",
+          "workerRequestEnvelopeSchema"
+        ],
+        "unchangedPreviousOrderedSchemaGraphs": 599,
+        "wireValidationEngineUnchanged": true,
+        "unionSchemas": 61,
+        "unionAlternatives": 530,
+        "enumSchemas": 164,
+        "enumAlternatives": 638,
+        "migrationEntries": 252,
+        "ownMigration": "0251_project_source_identity_lock_order",
+        "validation": {
+          "protocolPassed": 1054,
+          "protocolFiles": 111,
+          "sourceMeteringDeadlineNotificationTests": 14,
+          "threeTypechecks": true,
+          "changedWireCases": 54709,
+          "settingsHttpDatabaseModes": [
+            "pglite",
+            "bundled-postgres",
+            "postgres"
+          ],
+          "settingsHttpAuthModes": ["none", "password", "accounts"],
+          "settingsHttpObservationsPerPeerPerStore": 512,
+          "httpIdentityFencesPerPeer": 4,
+          "malformedStatusRepliesPerPeer": 2,
+          "rejectedStaleOrForeignLiveNotificationsPerPeer": 5,
+          "liveAcceptedRevisions": [1000, 1005],
+          "workerAdmissionSourceTimelines": 13,
+          "workerAdmissionCompleteSnapshots": 135,
+          "nativePrimaryCommands": 295,
+          "nativeCommandBoundaries": 86,
+          "nativeBridgeTests": 6,
+          "nativeRequestAdmissionTests": 2,
+          "nativeBudgetTests": 3,
+          "strictClippyAllTargets": true,
+          "rustfmt": true,
+          "boundaryAudit": true,
+          "platformAcceptanceComplete": false
+        },
+        "scope": "Current local macOS inference-status integration: snapshots, identity fences, malformed replies and ordered Live revision rejection pass all three storage modes and all three auth modes. Earlier endpoint catalogs/native execution, complete mutation/incoming, artifact and platform evidence retain their tested revisions. Actions development validation is retired under user policy2494. Final product/platform/package/deployment/default-cutover acceptance remains unfinished."
+      }
     }
   },
   "remainingAcceptance": [
@@ -12123,6 +12480,16 @@
           "zipSha256": "4c0773fbdf2b3145e5d4348fa205ce191fa36feb596fa5afba286c43fb2678d4"
         }
       ]
+    },
+    {
+      "branch": "codex/rust-settings-completion",
+      "testedHead": "49ad2961cd318747f493e09600819ebac672d069",
+      "observedRun": "https://github.com/ArcaneArts/Cantrip/actions/runs/41691759476",
+      "platforms": ["ubuntu-24.04"],
+      "conclusion": "The actual-task-worker job succeeds on all three database modes for both servers. Broader supported-platform workflow remains in progress.",
+      "scope": "All six paired report JSON members independently inspected after verifying the artifact API head and SHA-256 digest and every ZIP CRC: three composed browser/full unchanged worker/native Codex flows each retain 19 steps, 11 worker stops, the original seven model POSTs plus nine verified TLS provider POSTs (three successes and six native authentication retries); three Task flows each retain 14 steps, five worker stops and nine model POSTs. All provider summaries and actual failure/recovery results match across peers. Scoped Linux evidence only; no packaging or complete replacement claim.",
+      "artifactId": 13260567532,
+      "artifactZipSha256": "10baa05e0e4914fdba2ef84e0312fcdb0539b35a7522a7dd356c898748e7b361"
     }
   ]
 }

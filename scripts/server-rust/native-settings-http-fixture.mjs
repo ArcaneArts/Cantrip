@@ -7,6 +7,7 @@ import { LiveProbe } from "./live-sockets.mjs";
 import { heartbeat, password } from "./security-fixtures.mjs";
 import { label, json, literal } from "./project-target-state.mjs";
 import { WorkerConnection } from "../../cantrip_worker/src/transport.ts";
+import { WorkerInferenceAdmission } from "../../cantrip_worker/src/inference-admission.ts";
 import { saveWorkerCredential } from "../../cantrip_worker/src/credential-store.ts";
 import { readProtectedNativeSettings } from "../../cantrip_worker/src/native-settings-read.ts";
 import {
@@ -331,6 +332,23 @@ export async function settingsHttpFixture({
       serverUrl: config.serverUrl,
       workerId: settingsWorker,
     });
+    const inference = new WorkerInferenceAdmission(
+      {
+        serverId,
+        ownerId: owner,
+        workerId: settingsWorker,
+        workerGeneration: "fixture",
+      },
+      (error) => {
+        throw error;
+      },
+    );
+    const inferenceSyncs = [];
+    let inferenceSnapshotOverride;
+    const inferenceSnapshot = () => ({
+      ...inference.snapshot(),
+      workerGeneration: worker.connectionGeneration(),
+    });
     async function connectWorker() {
       worker = new WorkerConnection(
         config,
@@ -349,6 +367,20 @@ export async function settingsHttpFixture({
             onLogicalCompletion
           )
             return onLogicalCompletion(command);
+          if (command.type === "inference.configure") {
+            for (const configuration of command.configurations)
+              inference.configure(configuration);
+            const status = inference.snapshot();
+            inferenceSyncs.push({
+              configurations: structuredClone(command.configurations),
+              status,
+            });
+            return status;
+          }
+          if (command.type === "inference.status")
+            return inferenceSnapshotOverride === undefined
+              ? inferenceSnapshot()
+              : inferenceSnapshotOverride;
           if (command.type === "chat.scratch.reconcile")
             return {
               retainedRootIds: command.roots.map((r) => r.rootId),
@@ -408,6 +440,11 @@ export async function settingsHttpFixture({
       scope,
       owner,
       serverId,
+      inferenceSyncs,
+      inferenceStatus: () => inference.snapshot(),
+      inferenceSnapshot,
+      setInferenceSnapshotOverride: (value) =>
+        (inferenceSnapshotOverride = value),
       updates,
       defaultsCalls,
       close,

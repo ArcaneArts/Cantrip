@@ -127,9 +127,9 @@ impl Coordinator {
         let action = text(&input["request"], "type")?
             .strip_prefix("project.run-configuration-definitions.")
             .context("Invalid Linux definition action")?;
-        let result = self.request(text(&execution["scope"], "workerId")?,
+        let result = self.request_with_timeout(text(&execution["scope"], "workerId")?,
             json!({"type":"cantrip-os.run-definition", "execution":execution, "request":input["request"]}),
-            crate::run_configurations::definitions::response_schema(action)).await?;
+            crate::run_configurations::definitions::response_schema(action), Duration::from_secs(180)).await?;
         ensure!(
             result["projectId"] == project
                 && result["operationId"] == input["request"]["operationId"],
@@ -151,6 +151,16 @@ impl Coordinator {
         }
     }
     async fn request(&self, worker: &str, command: Value, schema: &str) -> Result<Value> {
+        self.request_with_timeout(worker, command, schema, Duration::from_secs(600))
+            .await
+    }
+    async fn request_with_timeout(
+        &self,
+        worker: &str,
+        command: Value,
+        schema: &str,
+        timeout: Duration,
+    ) -> Result<Value> {
         let response = self
             .service
             .workers
@@ -158,7 +168,7 @@ impl Coordinator {
             .request(
                 worker,
                 crate::wire::Value::from_serialize(&command),
-                Some(Duration::from_secs(600)),
+                Some(timeout),
                 None,
             )
             .await?;

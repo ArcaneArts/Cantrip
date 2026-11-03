@@ -212,7 +212,25 @@ function ownerSql(resolution: StorageOwnerResolution): OwnerSql {
       return {
         expression: 'project."owner_id"',
         joins:
-          'inner join "project_sources" source on source."id" = t."project_source_id" inner join "projects" project on project."id" = source."project_id"',
+          'inner join "project_source_identities" source on source."id" = t."project_source_id" inner join "projects" project on project."id" = source."project_id"',
+      };
+    case "source-identity":
+      return {
+        expression: 'project."owner_id"',
+        joins:
+          'inner join "project_source_identities" source on source."id" = t."id" inner join "projects" project on project."id" = source."project_id"',
+      };
+    case "cantrip-os-instance":
+      return {
+        expression: 'instance."owner_id"',
+        joins:
+          'inner join "cantrip_os_instances" instance on instance."id" = t."instance_id"',
+      };
+    case "cantrip-os-binding":
+      return {
+        expression: 'binding."owner_id"',
+        joins:
+          'inner join "cantrip_os_source_bindings" binding on binding."id" = t."binding_id"',
       };
     case "workspace":
       return {

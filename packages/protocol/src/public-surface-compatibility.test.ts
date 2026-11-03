@@ -556,9 +556,83 @@ const cantripOsExports = [
   "projectSourceLocationSchema",
 ].sort();
 
+const agentTaskExports = [
+  "agentTaskCreateWireSchema",
+  "agentTaskStatusWireSchema",
+  "agentTaskWireDescriptorSchema",
+  "cantripMcpTaskCreateInputSchema",
+  "cantripMcpTaskListInputSchema",
+  "cantripMcpTaskStatusInputSchema",
+  "cantripMcpTaskWaitInputSchema",
+].sort();
+
+const inferenceAdmissionExports = [
+  "DEFAULT_MAX_CONCURRENT_INFERENCE",
+  "inferenceOperationStatusSchema",
+  "inferencePoolStatusSchema",
+  "inferenceTicketStateSchema",
+  "providerInferenceConfigurationSchema",
+  "providerInferenceLimitSchema",
+  "providerInferenceRevisionSchema",
+  "workerInferenceStatusSchema",
+].sort();
+
+// Reviewed provider setup exports and the claimed initial-label command.
+const providerSetupAndLabelExports = [
+  "initialLabelCommandSchema",
+  "isAccountProviderKind",
+  "modelProviderKinds",
+  "providerDefinitions",
+  "providerSetupDefinition",
+].sort();
+
+// Reviewed additive endpoint discovery surface; legacy assertions stay intact.
+const endpointProviderExports = [
+  "endpointModelInventoryItemSchema",
+  "endpointModelInventorySchema",
+  "isWorkerEndpointProviderKind",
+  "nativeEndpointProviderKinds",
+].sort();
+
 describe("protocol public surface compatibility", () => {
   it("preserves the root runtime export baseline with reviewed CUA and managed-session additions", () => {
-    const exportNames = Object.keys(protocol).sort();
+    const currentExportNames = Object.keys(protocol).sort();
+    expect(
+      currentExportNames.filter((name) =>
+        endpointProviderExports.includes(name),
+      ),
+    ).toEqual(endpointProviderExports);
+    const allExportNames = currentExportNames.filter(
+      (name) => !endpointProviderExports.includes(name),
+    );
+    expect(currentExportNames).toHaveLength(
+      allExportNames.length + endpointProviderExports.length,
+    );
+    expect(
+      allExportNames.filter((name) => agentTaskExports.includes(name)),
+    ).toEqual(agentTaskExports);
+    expect(
+      allExportNames.filter((name) => inferenceAdmissionExports.includes(name)),
+    ).toEqual(inferenceAdmissionExports);
+    expect(
+      allExportNames.filter((name) =>
+        providerSetupAndLabelExports.includes(name),
+      ),
+    ).toEqual(providerSetupAndLabelExports);
+    expect(allExportNames).toHaveLength(
+      2158 +
+        cantripOsExports.length +
+        inferenceAdmissionExports.length +
+        providerSetupAndLabelExports.length,
+    );
+    // Retain every existing 2,151-export assertion and baseline fingerprint;
+    // the seven newly reviewed Task schemas are checked explicitly above.
+    const exportNames = allExportNames.filter(
+      (name) =>
+        !agentTaskExports.includes(name) &&
+        !inferenceAdmissionExports.includes(name) &&
+        !providerSetupAndLabelExports.includes(name),
+    );
     const baselineNames = [
       ...retiredWorkbenchExports,
       ...retiredWorkspaceProfileExports,
@@ -685,14 +759,55 @@ describe("protocol public surface compatibility", () => {
   });
 
   it("keeps worker discriminators stable and ordered", () => {
-    const commandTypes = workerCommandSchema.options.map(
+    const inferenceStatusCommandTypes = workerCommandSchema.options.map(
       (option) => option.shape.type.value,
     );
-    const eventTypes = workerEventSchema.options.map(
+    expect(inferenceStatusCommandTypes).toHaveLength(295);
+    expect(inferenceStatusCommandTypes[6]).toBe("inference.status");
+    expect(
+      inferenceStatusCommandTypes.filter((type) => type === "inference.status"),
+    ).toEqual(["inference.status"]);
+    const currentCommandTypes = inferenceStatusCommandTypes.filter(
+      (type) => type !== "inference.status",
+    );
+    const allEventTypes = workerEventSchema.options.map(
       (option) => option.shape.type.value,
     );
-    const notificationTypes = workerNotificationSchema.options.map(
-      (option) => option.shape.type.value,
+    const inferenceStatusNotificationTypes =
+      workerNotificationSchema.options.map((option) => option.shape.type.value);
+    expect(inferenceStatusNotificationTypes).toHaveLength(16);
+    expect(inferenceStatusNotificationTypes[0]).toBe("inference.status");
+    const notificationTypes = inferenceStatusNotificationTypes.filter(
+      (type) => type !== "inference.status",
+    );
+
+    expect(currentCommandTypes).toHaveLength(294);
+    expect(
+      currentCommandTypes.filter((type) => type === "model.endpoint.catalog"),
+    ).toEqual(["model.endpoint.catalog"]);
+    expect(currentCommandTypes.indexOf("model.endpoint.catalog")).toBe(
+      currentCommandTypes.indexOf("model.ollama.catalog") + 1,
+    );
+    const allCommandTypes = currentCommandTypes.filter(
+      (type) => type !== "model.endpoint.catalog",
+    );
+
+    expect(allCommandTypes).toHaveLength(293);
+    expect(allCommandTypes[6]).toBe("inference.configure");
+    expect(
+      allCommandTypes.filter((type) => type === "inference.configure"),
+    ).toEqual(["inference.configure"]);
+    const commandTypes = allCommandTypes.filter(
+      (type) => type !== "inference.configure",
+    );
+    expect(allEventTypes).toHaveLength(24);
+    expect(allEventTypes.slice(0, 2)).toEqual([
+      "inference.command-state",
+      "agent.automatic-label",
+    ]);
+    const eventTypes = allEventTypes.filter(
+      (type) =>
+        type !== "inference.command-state" && type !== "agent.automatic-label",
     );
 
     expect(commandTypes).toHaveLength(292);

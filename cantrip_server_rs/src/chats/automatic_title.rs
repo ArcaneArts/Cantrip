@@ -367,7 +367,7 @@ pub async fn finish_prepared(
     let claim = job["operationId"].as_str().context("Initial label claim")?;
     let result = result
         .filter(|v| !v.is_null())
-        .map(|v| crate::settings::parse_response("generateLabelResultSchema", v))
+        .map(|v| crate::settings::parse_response("generateLabelResultSchema", Some(v)))
         .transpose()?;
     let settings = SettingsRepository::new(database.clone());
     let still_enabled = enabled(

@@ -116,7 +116,7 @@ impl AccountService {
                 .await?;
                 let deliveries = workers
                     .iter()
-                    .filter_map(|worker| worker["id"].as_str())
+                    .filter_map(|worker| worker["workerId"].as_str())
                     .map(|worker| service.synchronize_inference(&owner, worker));
                 // Delivery failures remain visible and owned by their sync jobs.
                 let _ = futures::future::join_all(deliveries).await;

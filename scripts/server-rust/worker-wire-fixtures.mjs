@@ -1,6 +1,10 @@
 // Accepted complete worker envelopes; the oracle parses each fixture against
 // the current authoritative protocol before generating mutation cases.
 import refinementFixtures from "./worker-wire-refinement-fixtures.json" with { type: "json" };
+import {
+  inferenceWorkerEvents,
+  inferenceNotifications,
+} from "./inference-wire-fixtures.mjs";
 export const workerIngressFixtures = [
   {
     kind: "event",
@@ -697,4 +701,10 @@ export const workerIngressFixtures = [
     error: { message: "Fixture command failed.", code: "fixture-failure" },
   },
   ...refinementFixtures.fixtures,
+  ...inferenceWorkerEvents.map((event) => ({
+    kind: "event",
+    requestId: "fixture-request",
+    event,
+  })),
+  ...inferenceNotifications,
 ];

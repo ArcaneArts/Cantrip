@@ -278,6 +278,7 @@ describe("explicit computer-use preview activation", () => {
           contextKind: "project",
           placementId: "worktree-one",
           generation: 7,
+          cantripAppAllowed: false,
           profile: {
             selectedId: ":yolo",
             effectiveId: ":read-only",

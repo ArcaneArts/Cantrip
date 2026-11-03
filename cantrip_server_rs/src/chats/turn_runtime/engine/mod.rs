@@ -155,10 +155,11 @@ impl Runtime {
         );
         self.operations.run(async move {
             let mut prepared = this.dependencies.bootstrap.prepare(&owner,&context,&input,&options).await?;
-            if let Some(encrypted)=&prepared.encrypted_chat && options.get("messageRole").filter(|v|!v.is_null()).is_none_or(|v|v=="user") {
-                if let Some(job) = this.dependencies.titles.prepare_initial(&owner, &events::text(&prepared.execution["chatId"])?, &encrypted["userMessage"], &prepared.execution).await {
-                    prepared.options["initialLabel"] = job;
-                }
+            if let Some(encrypted)=&prepared.encrypted_chat
+                && options.get("messageRole").filter(|v|!v.is_null()).is_none_or(|v|v=="user")
+                && let Some(job) = this.dependencies.titles.prepare_initial(&owner, &events::text(&prepared.execution["chatId"])?, &encrypted["userMessage"], &prepared.execution).await
+            {
+                prepared.options["initialLabel"] = job;
             }
             let turn = Arc::new(prepared);
             let scheduled=truthy(turn.options.get("taskDispatchLease"));

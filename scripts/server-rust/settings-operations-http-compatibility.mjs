@@ -15,6 +15,9 @@ import {
 import { literal } from "./project-target-state.mjs";
 import { runSettingsActiveWorkHttpCases } from "./settings-active-work-http-cases.mjs";
 import { runSettingsProviderHttpCases } from "./settings-provider-http-cases.mjs";
+import { runSettingsInferenceHttpCases } from "./settings-inference-http-cases.mjs";
+import { runSettingsInferenceStatusHttpCases } from "./settings-inference-status-http-cases.mjs";
+import { runSettingsEndpointProviderHttpCases } from "./settings-endpoint-provider-http-cases.mjs";
 const option = (key) => {
   const i = process.argv.indexOf(key);
   return i < 0 ? undefined : process.argv[i + 1];
@@ -65,6 +68,9 @@ try {
             },
           };
           return held;
+        },
+        fail(value) {
+          message = value;
         },
         reset() {
           held = undefined;
@@ -180,11 +186,17 @@ try {
           "/api/settings/providers/missing/test",
           { json: {}, status: 404 },
         );
-        await visit(
-          "other provider kind",
+        const noEndpointModel = await visit(
+          "endpoint provider without an enabled model",
           "POST",
           "/api/settings/providers/probe-plain/test",
-          { json: {}, status: 409 },
+          { json: {}, status: 200 },
+        );
+        assert.equal(noEndpointModel.ok, false);
+        assert.equal(noEndpointModel.stage, "model-availability");
+        assert.equal(
+          noEndpointModel.message,
+          "No enabled model route is available. Add a model ID or refresh the catalog and try again.",
         );
         for (const body of [undefined, null, {}, [], "ignored", false]) {
           const value = await visit(
@@ -331,6 +343,14 @@ try {
           });
         }
         controller.reset();
+        await runSettingsInferenceHttpCases(h, visit, result);
+        await runSettingsInferenceStatusHttpCases(h, visit, result, profile);
+        await runSettingsEndpointProviderHttpCases(
+          h,
+          visit,
+          result,
+          controller,
+        );
         await runSettingsProviderHttpCases({
           h,
           visit,

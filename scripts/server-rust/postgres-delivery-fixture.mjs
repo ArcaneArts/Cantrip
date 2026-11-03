@@ -13,6 +13,8 @@ export async function postgresDeliveryFixture(connection) {
   const observations = [];
   const server = net.createServer((client) => {
     const upstream = net.connect(Number(target.port || 5432), target.hostname);
+    client.setNoDelay(true);
+    upstream.setNoDelay(true);
     sockets.add(client);
     sockets.add(upstream);
     const peer = { client, held: [], holding: false };

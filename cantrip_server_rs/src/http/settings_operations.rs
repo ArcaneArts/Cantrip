@@ -40,12 +40,21 @@ async fn probe(service: &AuthService, owner: &str, id: &str, query: &Value) -> R
     let Some(provider) = repository.get_model_provider(owner, id).await? else {
         return Ok(error(404, "Provider not found."));
     };
-    if !settings::zai::is_coding_plan_provider(&provider) {
+    let kind = provider["kind"].as_str().unwrap_or("");
+    if matches!(kind, "chatgpt" | "grok") {
         return Ok(error(
             409,
-            "Connection testing is currently available for Z.ai Coding Plan providers.",
+            "Use the account's sign-in status to check this provider.",
         ));
     }
+    let coding_plan = settings::zai::is_coding_plan_provider(&provider);
+    let label = if coding_plan {
+        "Z.ai"
+    } else if kind == "openai-compatible" {
+        "OpenAI compatible"
+    } else {
+        settings::endpoint_providers::label(kind)
+    };
     let runtimes = repository
         .get_model_runtimes(owner, None, None, false, None)
         .await?
@@ -61,7 +70,7 @@ async fn probe(service: &AuthService, owner: &str, id: &str, query: &Value) -> R
             start,
             false,
             "model-availability",
-            "No enabled Z.ai model route is available. Refresh the bundled catalog and try again."
+            "No enabled model route is available. Add a model ID or refresh the catalog and try again."
                 .into(),
             Value::Null,
             Value::Null,
@@ -118,7 +127,7 @@ async fn probe(service: &AuthService, owner: &str, id: &str, query: &Value) -> R
             json!({"type":"model.provider.test","model":Value::from_serialize(&runtime["model"]),"provider":Value::from_serialize(&runtime["provider"])}),
             RequestTimeout::After(Duration::from_secs(120)), None).await?;
         settings::parse_response("workerProviderConnectionTestResultSchema", response.as_ref())?;
-        reply(start, true, "completed", format!("Connected to Z.ai through bundled Codex using {}.", runtime["model"]["name"].as_str().unwrap_or("")).into(), json!(worker), model.clone())
+        reply(start, true, "completed", format!("Connected to {label} through bundled Codex using {}.", runtime["model"]["name"].as_str().unwrap_or("")).into(), json!(worker), model.clone())
     }.await;
     match attempt {
         Ok(response) => Ok(response),
@@ -129,7 +138,7 @@ async fn probe(service: &AuthService, owner: &str, id: &str, query: &Value) -> R
                 start,
                 false,
                 stage.name(),
-                stage.message(&detail),
+                stage.message_with_provider(&detail, (!coding_plan).then_some(label)),
                 json!(worker),
                 model,
             )

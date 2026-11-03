@@ -108,17 +108,17 @@ const CONTENT_CLASSIFICATIONS = new Set([
 // digest; regenerating the inventory alone cannot silently accept it.
 const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
-    "691b6132f5052c9af8e83552661910d6619cf238fe20bb07869f932df7989b85",
+    "c01cedeb5ad07aa7eeee81033073509e4be8826ed45621e68200d85a2c5c61b9",
   applicationRoutes:
-    "0c32570a30c39d2969932ef3f668bfaf8720a7ac56385e8b14ec8127c6afc5d6",
+    "f51c331796e3918f67e7aad89abd6eaaece15b164af295e1f084f2c7736357f5",
   clientControlCommands:
     "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
   cliCommands:
     "dac89683226ba9ee6f6211eba252fb0b83a5a022aa9150f107315733a4e44251",
   liveResources:
-    "54dd12b30c184f81d2a8bdd249cc9a91e93dfb3052fcafb425233a5f8dc87a21",
+    "e45939021b223626ec22a30500fff896e905a29201c9072fb57f3523aa5b2472",
   workerCommands:
-    "32c03ddad943054978bbafa0eb83244b49f225c453a6bce9fc937e05c1c50b26",
+    "b0105664cac6d59bf9ea24587ec40e801beaa4088f22e8fad2037256e6b8777a",
   tunnelFrameKinds:
     "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8",
 };
@@ -3454,6 +3454,12 @@ function durableTableContentInventory(schemaText) {
 }
 
 function applicationRouteContentClassification(route) {
+  if (route.path === "/api/workers/:workerId/inference")
+    return {
+      classification: "minimized-operational-metadata",
+      rationale:
+        "authenticated owner reads worker-owned capacity, queue and operation identities; server/owner/worker/process generation fence the snapshot and private no-store prevents caching; no prompts, credentials or inference grants",
+    };
   if (route.path === "/api/internal/project-alerts/goals")
     return {
       classification: "endpoint-protected",
@@ -3489,6 +3495,21 @@ function applicationRouteContentClassification(route) {
         "owner/project-authorized immutable document catalog; paths use row-bound encrypted state; file requests/results use operation-bound surface-stream envelopes and exact worker-side location checks",
     };
   }
+  if (route.path === "/api/projects/:projectId/cantrip-os/run-sources")
+    return {
+      classification: "intentionally-public-control-plane",
+      rationale:
+        "owner/project-scoped Linux Run bindings, workspace identity, logical target labels and availability; no Run output or secret values",
+    };
+  if (
+    route.path ===
+    "/api/projects/:projectId/cantrip-os/bindings/:bindingId/run-definitions"
+  )
+    return {
+      classification: "intentionally-public-control-plane",
+      rationale:
+        "owner/project-authorized source/workspace Primary and current runtime route bounded revision-checked Git-shared Run definitions with secret references only; guest file access remains on the owning worker",
+    };
   const native = nativeRouteContentClassification(route);
   if (native) return native;
   const key = `${route.method} ${route.path}`;
@@ -3550,13 +3571,14 @@ function applicationRouteContentClassification(route) {
     return {
       classification: "endpoint-protected",
       rationale:
-        "bounded volatile Run output protected for its exact operation",
+        "bounded volatile Run output protected for its exact operation; owned runtime or binding identities resolve the immutable captured Linux execution without client-supplied paths or transports",
     };
   }
   if (/^\/api\/run-configuration-runtimes\//u.test(route.path)) {
     return {
       classification: "intentionally-public-control-plane",
-      rationale: "revision- and generation-bound Run lifecycle metadata",
+      rationale:
+        "revision- and generation-bound Run lifecycle metadata; optional Linux selection contains identities only, and the server resolves owned bindings or immutable runtime captures before dispatch",
     };
   }
   if (/\/run-configurations\/paths$/u.test(route.path)) {
@@ -3643,6 +3665,26 @@ function applicationRouteContentClassification(route) {
 }
 
 function workerCommandContentClassification(command) {
+  if (command === "inference.status")
+    return {
+      classification: "minimized-operational-metadata",
+      rationale:
+        "authenticated owner requests current worker queue/capacity and operation identities without inference content, credentials or new grants; response identity and process generation are fenced before publication",
+    };
+  if (command === "model.endpoint.catalog") {
+    return {
+      classification: "endpoint-protected",
+      rationale:
+        "owner-scoped enrolled worker discovers models for one provider instance; provider credentials remain opaque protected envelopes until opened by that worker, and only normalized model metadata returns to the server",
+    };
+  }
+  if (command === "inference.configure") {
+    return {
+      classification: "intentionally-public-control-plane",
+      rationale:
+        "server-owned provider IDs, bounded numeric capacity and configuration revisions configure admission pools for the authenticated owner/worker; encrypted provider material and inference content remain endpoint-owned",
+    };
+  }
   if (command === "file-document.operation") {
     return {
       classification: "endpoint-protected",
@@ -3657,6 +3699,33 @@ function workerCommandContentClassification(command) {
         "existing owner-bound encrypted chat/task input; worker-only stateless inference; generated title uses row-bound private display-label ciphertext and a rename-cancelling claim",
     };
   }
+  if (command === "cantrip-os.run-definition")
+    return {
+      classification: "intentionally-public-control-plane",
+      rationale:
+        "server-derived owner/source/workspace Primary and runtime-bound Linux execution descriptor; bounded Git-shared Run definitions contain secret references only, and worker-owned guest helpers perform file access",
+    };
+  if (command === "cantrip-os.run-runtime.output")
+    return {
+      classification: "endpoint-protected",
+      rationale:
+        "captured Linux Run identity and bounded tail request; worker protects output for the exact server/project/worktree/operation before returning it",
+    };
+  if (
+    command === "cantrip-os.run-runtime.start" ||
+    command === "cantrip-os.run-runtime.restart"
+  )
+    return {
+      classification: "endpoint-protected",
+      rationale:
+        "captured owner/worker/source/target and launch generation carry protected project secret envelopes; only the owning worker decrypts secrets, captures current Linux authority and admits guest processes",
+    };
+  if (/^cantrip-os\.run-runtime\.(?:stop|status|reconcile)$/u.test(command))
+    return {
+      classification: "worker-local",
+      rationale:
+        "captured Linux definition/target placements and runtime generations fence bounded lifecycle metadata; process ownership, journals, secret values and output stay on the worker and guest",
+    };
   const native = nativeWorkerCommandContentClassification(command);
   if (native) return native;
   if (command.startsWith("computer-use.preview.")) {
@@ -3750,6 +3819,12 @@ function workerCommandContentClassification(command) {
 }
 
 function liveResourceContentClassification(resource) {
+  if (resource === "worker-inference")
+    return {
+      classification: "minimized-operational-metadata",
+      rationale:
+        "owner-only worker capacity/queue snapshots contain operation identities and purpose, never inference content or grants; worker/server/owner/process generation and monotonic revision fence publication",
+    };
   if (resource === "project-alert")
     return {
       classification: "minimized-operational-metadata",
@@ -3837,6 +3912,14 @@ function cliCommandContentClassification(command) {
 }
 
 function agentOperationContentClassification(operation) {
+  if (
+    ["task.create", "task.list", "task.status", "task.wait"].includes(operation)
+  )
+    return {
+      classification: "endpoint-protected",
+      rationale:
+        "Worker-sealed Task briefs and Chat titles with owner/project-scoped status metadata; Task wait polls status within the worker's expiring binding without relaying plaintext task content.",
+    };
   if (operation.startsWith("alert."))
     return {
       classification: "endpoint-protected",

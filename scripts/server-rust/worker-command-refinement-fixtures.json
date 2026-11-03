@@ -19,12 +19,6 @@
       "fixture": 2
     },
     {
-      "id": 3,
-      "tag": "worker-command-task-model",
-      "schemaPath": "workerRequestEnvelopeSchema/command/options/277/input/options/1/task/dispatch/innerType/innerType/modelConfiguration/innerType",
-      "fixture": 3
-    },
-    {
       "id": 4,
       "tag": "worker-command-retry",
       "schemaPath": "workerRequestEnvelopeSchema/command/options/277/input/options/1/task/automaticRetry/innerType/innerType",

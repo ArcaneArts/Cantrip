@@ -123,6 +123,7 @@ export function createAgentTaskOperations(deps: {
             source.projectId,
             {
               chatId: id,
+              worktreeMode: "agent-managed",
               titleProtection: input.task.titleProtection,
               autoTitle: false,
               planGoalEnabled: false,
@@ -159,7 +160,7 @@ export function createAgentTaskOperations(deps: {
       }
       deps.publishTask(id, source.projectId);
       deps.queueTaskScheduleTick();
-      return result([current], [], null, true);
+      return result([current!], [], null, true);
     }
     const tasks = await deps.repository.tasks.list(owner, source.projectId);
     if (call.operation === "task.list") {

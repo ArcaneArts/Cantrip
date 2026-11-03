@@ -16,11 +16,13 @@ pub use messages::{MessageOptions, RouteSelection, WorkerUnavailable};
 use std::sync::{Arc, Mutex};
 use tokio::sync::Notify;
 pub type Publish = Arc<dyn Fn(Value) -> Result<()> + Send + Sync>;
+pub type PublishGroup = Arc<dyn Fn(Vec<Value>) -> Result<()> + Send + Sync>;
 pub type Invalidate = Arc<dyn Fn(Value) + Send + Sync>;
 pub type Request =
     Arc<dyn Fn(String, String, Value) -> BoxFuture<'static, Result<Option<Value>>> + Send + Sync>;
 pub struct Dependencies {
     pub publish: Publish,
+    pub publish_group: PublishGroup,
     pub invalidate: Invalidate,
     pub connected: Arc<dyn Fn(&str) -> bool + Send + Sync>,
     pub enabled: Arc<dyn Fn() -> bool + Send + Sync>,
@@ -39,6 +41,7 @@ impl Service {
         database: Arc<Database>,
         commands: Arc<LimitedCommandBus>,
         publish: Publish,
+        publish_group: PublishGroup,
         invalidate: Invalidate,
         enabled: Arc<dyn Fn() -> bool + Send + Sync>,
         logger: Logger,
@@ -48,6 +51,7 @@ impl Service {
             database,
             Dependencies {
                 publish,
+                publish_group,
                 invalidate,
                 enabled,
                 logger,
@@ -130,6 +134,15 @@ impl Service {
                 json!({"chatId":chat,"resource":resource}),
             );
         }
+        Self::pending_invalidation(owner, chat, resource, entity, routing)
+    }
+    fn pending_invalidation(
+        owner: &str,
+        chat: &str,
+        resource: &'static str,
+        entity: &Value,
+        routing: Option<&Value>,
+    ) -> Option<routing::Pending> {
         matches!(
             resource,
             "agent-interaction" | "chat-goal" | "chat-message" | "chat-plan" | "task"
@@ -245,8 +258,23 @@ impl Service {
         project: &Value,
         routing: &Value,
     ) {
-        let pending = self.invalidate_chat(owner, chat, resource, &Value::Null, Some(routing));
-        self.publish_summary(owner, &json!(chat), project);
+        if !(self.dependencies.enabled)() {
+            return;
+        }
+        let events = vec![
+            json!({"ownerId":owner,"scope":json!({"kind":"chat","chatId":chat}),"resource":resource,"action":"invalidated","entityId":Value::Null,"revision":Value::Null,"payload":Value::Null}),
+            json!({"ownerId":owner,"scope":super::turn_storage::project_scope(project),"resource":"chat","action":"invalidated","entityId":chat,"revision":Value::Null,"payload":Value::Null}),
+        ];
+        if let Err(error) = (self.dependencies.publish_group)(events) {
+            self.report(
+                "error",
+                "Could not publish chat live invalidation",
+                error,
+                json!({"chatId":chat,"resource":resource}),
+            );
+        }
+        let pending =
+            Self::pending_invalidation(owner, chat, resource, &Value::Null, Some(routing));
         self.fanout_message(pending.into_iter().collect()).await;
     }
 }

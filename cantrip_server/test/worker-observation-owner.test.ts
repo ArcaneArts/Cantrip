@@ -71,7 +71,9 @@ it("reconciles reconnected workers and publishes runtime changes under their cre
   vi.spyOn(
     database.repository,
     "listActiveRunConfigurationRuntimeIdentitiesForWorker",
-  ).mockImplementation(async (_owner, worker) => [identity(worker)]);
+  ).mockImplementation(async (_owner, worker, executionKind) =>
+    executionKind === "cantrip-os" ? [] : [identity(worker)],
+  );
   const observations = vi
     .spyOn(database.repository, "applyRunConfigurationRuntimeObservation")
     .mockImplementation(async (_owner, _worker, observation) => ({
@@ -90,7 +92,8 @@ it("reconciles reconnected workers and publishes runtime changes under their cre
   const requests = vi
     .spyOn(bridge, "request")
     .mockImplementation(async (_worker, command) =>
-      command.type === "project.run-configuration-runtime.reconcile"
+      command.type === "project.run-configuration-runtime.reconcile" ||
+      command.type === "cantrip-os.run-runtime.reconcile"
         ? { orphanedRuntimeIds: [], runtimes: [] }
         : { accepted: true, paths: [] },
     );
