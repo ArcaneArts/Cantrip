@@ -6,7 +6,7 @@ After=local-fs.target
 Type=simple
 ExecStart=/usr/bin/cantrip-workspaces daemon
 KillMode=control-group
-TimeoutStopSec=20
+TimeoutStopSec=30
 Restart=on-failure
 RestartSec=2
 
