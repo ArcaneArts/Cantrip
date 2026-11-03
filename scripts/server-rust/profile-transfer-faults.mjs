@@ -253,8 +253,27 @@ export async function interruptedProfileImport({
       );
       await delay(20);
     }
-  for (const staging of result.staging)
-    await rm(staging, { recursive: true, force: true });
+  for (const staging of result.staging) {
+    try {
+      // An exited postmaster PID does not certify that every staging handle
+      // has been released. Retry the actual owned-directory removal; retain
+      // the strict no-orphan deadline above and propagate persistent failures.
+      await rm(staging, {
+        recursive: true,
+        force: true,
+        maxRetries: 20,
+        retryDelay: 100,
+      });
+    } catch (error) {
+      error.profileInterruption = {
+        ...result,
+        phase: "staging-cleanup",
+        failedStaging: staging,
+        noOrphanPostmasters: true,
+      };
+      throw error;
+    }
+  }
   // The original valid bundle is retried into the same destination and the same
   // external database; an interrupted transaction must leave no committed load.
   const recovered = await run(

@@ -636,6 +636,9 @@ try {
     name: error.name,
     message: error.message,
     stack: error.stack,
+    ...(error.profileInterruption
+      ? { interruption: error.profileInterruption }
+      : {}),
   };
 } finally {
   await pg?.close();

@@ -555,6 +555,58 @@ export async function runTaskBackgroundCases(h) {
   }
   await clean({ count: 2 });
   for (const v of await run(
+    "later claimed Task can finish while the first worker preparation is held",
+    {
+      holdPrepareChats: ["task"],
+      steps: [
+        { kind: "tick" },
+        { kind: "wait-commands", chat: "background-next", count: 1 },
+        {
+          kind: "wait-sql",
+          sql: "SELECT state='succeeded' result FROM task_dispatch_cycles WHERE chat_id='background-next'",
+          value: true,
+        },
+        { kind: "snapshot", sql: selectRows },
+        { kind: "release" },
+        { kind: "drain" },
+      ],
+    },
+  )) {
+    assert.equal(v.beginError, null);
+    assert.deepEqual(
+      v.result.snapshots[0].cycles.map((c) => c.state),
+      ["claimed", "succeeded"],
+    );
+    assert.deepEqual(
+      v.commands
+        .filter((c) => c.command.type === "chat.turn")
+        .map((c) => c.command.chatId),
+      ["background-next", "task"],
+    );
+    assert.deepEqual(
+      v.logs
+        .filter((l) => l.event === "task.scheduler.claimed")
+        .map((l) => l.chatId),
+      ["task", "background-next"],
+    );
+  }
+  for (const r of await rows(
+    "held preparation preserves both claimed Task completions",
+  ))
+    assert.deepEqual(
+      r.cycles.map((c) => c.state),
+      ["succeeded", "succeeded"],
+    );
+  // Keep the second occurrence queued but ineligible until polling stops.
+  // Both already-claimed preparations can otherwise race to the worker, as
+  // the preceding controlled Source/native case demonstrates.
+  await clean({
+    count: 2,
+    extra: [
+      `UPDATE tasks SET model_configuration=${json(modelConfiguration(null))} WHERE chat_id='background-next'`,
+    ],
+  });
+  for (const v of await run(
     "stopping scheduler sources drains admitted work without losing queued Tasks",
     {
       holdTurnChats: ["task"],
@@ -563,6 +615,10 @@ export async function runTaskBackgroundCases(h) {
         { kind: "wait-commands", chat: "task", count: 1 },
         { kind: "wait" },
         { kind: "stop" },
+        {
+          kind: "sql",
+          sql: `UPDATE tasks SET model_configuration=${json(modelConfiguration("background-model"))} WHERE chat_id='background-next'`,
+        },
         {
           kind: "sql",
           sql: "UPDATE projects SET task_scheduling_paused=true,task_scheduling_paused_at=now() WHERE id='github'",
