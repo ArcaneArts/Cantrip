@@ -16,9 +16,41 @@ live/install AMD64 ISO, tested through installation and BIOS/UEFI disk boot.
 See [the acceptance record](../cantrip_os/ACCEPTANCE.md) for exact evidence and
 unverified targets.
 
-This is the owner's OS customization/testing checkpoint. Multiple workspace
-sessions, Cantrip runtime connections, and the later integration milestones
-below remain planned; begin them after feedback from this foundation.
+The next milestone delivers multiple workspace sessions as the optional
+`cantrip-os-workspaces` Debian package. The ordinary desktop remains usable
+without that package. Cantrip runtime connections and later integrations remain
+planned.
+
+## Optional package architecture
+
+The OS foundation owns Debian, IceWM, theme defaults, applications, automatic
+personal login, and the personal desktop's Docker viewer. Workspace management
+is an additive `.deb` built from `cantrip_os/packages/workspaces/`, with its own
+CLI, service, configuration, versioned state, and later workspace viewer.
+Both Docker and ISO builds can include or omit it with
+`CANTRIP_OS_WORKSPACES=1` or `0`. The worker remains the orchestrator.
+
+The package uses a systemd unit on installed systems and the same foreground
+daemon with package-owned lifecycle commands in Docker. The container's small
+startup hook starts/stops the optional service independently of its personal
+desktop. Package failure or removal must not stop that desktop.
+
+Configuration is a Debian conffile at `/etc/cantrip-os/workspaces.json`.
+Persistent state and future workspace homes live beneath
+`/var/lib/cantrip-os-workspaces`, mounted as a separate named Docker volume.
+Runtime sockets and locks live under `/run/cantrip-os-workspaces`. Administrative
+control initially uses a root-only Unix socket. No worker enrollment or public
+remote endpoint is added by installing this package.
+
+Disable and removal retain state, homes, browser profiles, and the saved
+enable/disable preference. Data deletion requires a separate explicit action;
+package purge does not imply workspace data deletion. Unknown state versions
+must fail visibly without overwriting the data.
+
+Phase 2 ships in sequential PR/worktree/auto-merge cycles: package and service
+lifecycle first; persistent accounts and independent desktop sessions second;
+workspace viewing, Docker/installed-VM acceptance, current ISO, and 4 GiB resource
+measurements third. Each dependent cycle begins only after the previous merge.
 
 ## Product intent
 

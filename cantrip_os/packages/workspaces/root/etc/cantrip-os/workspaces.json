@@ -1,0 +1,4 @@
+{
+  "state_dir": "/var/lib/cantrip-os-workspaces",
+  "runtime_dir": "/run/cantrip-os-workspaces"
+}

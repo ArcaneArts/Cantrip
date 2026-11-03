@@ -3,6 +3,11 @@
 Debian 13 (trixie), IceWM, Chromium, PCManFM, Mousepad, and xterm. This is a
 standalone OS testing environment; Cantrip integration comes later.
 
+Workspace management is an optional Debian package. Its source, build commands,
+and service lifecycle are described in [the package guide](packages/workspaces/README.md).
+Build either edition with `CANTRIP_OS_WORKSPACES=0` for the ordinary OS alone;
+the default is `1`. Workspace accounts/desktops are the next package milestone.
+
 The first personal-testing checkpoint is ready. See [acceptance results](ACCEPTANCE.md)
 for the actual tested builds and platform limits. Iterate in Docker first; build
 the ISO when you want the same source configuration as bootable media.
@@ -53,7 +58,7 @@ node cantrip_os/scripts/os.mjs restart  # Same container; retains system changes
 node cantrip_os/scripts/os.mjs rebuild  # Build succeeds first, then replace it
 node cantrip_os/scripts/os.mjs logs
 node cantrip_os/scripts/os.mjs stop
-node cantrip_os/scripts/os.mjs reset    # Explicitly DELETE this desktop's home
+node cantrip_os/scripts/os.mjs reset    # Explicitly DELETE personal home AND workspace data
 ```
 
 `CANTRIP_OS_NAME` (default `cantrip-os`) selects container/image/volume names;

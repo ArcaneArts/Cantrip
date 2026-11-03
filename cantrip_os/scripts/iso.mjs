@@ -21,6 +21,8 @@ await withInstanceLock("cantrip-os-iso-build", async () => {
     "run",
     "--rm",
     "--privileged",
+    "-e",
+    `CANTRIP_OS_WORKSPACES=${process.env.CANTRIP_OS_WORKSPACES ?? "1"}`,
     "--platform",
     "linux/amd64",
     "--mount",

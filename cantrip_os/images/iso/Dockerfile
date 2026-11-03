@@ -8,4 +8,6 @@ COPY manifests/ /source/manifests/
 COPY overlays/ /source/overlays/
 COPY images/iso/ /source/images/iso/
 COPY scripts/configure-system.sh /source/scripts/configure-system.sh
+COPY packages/ /source/packages/
+RUN /source/packages/workspaces/build.sh /source/debs
 ENTRYPOINT ["/bin/bash", "/source/images/iso/build.sh"]
