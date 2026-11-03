@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { assertGeneratedAtInOperation } from "./operation-clock.mjs";
 
 export async function runRuntimeAdmissionCases({
   pair,
@@ -41,6 +42,7 @@ export async function runRuntimeAdmissionCases({
       owner: requestOwner,
       project: "github",
       input: requestInput,
+      observeOperationClock: true,
     };
     const before = Date.now(),
       results = [];
@@ -62,11 +64,13 @@ export async function runRuntimeAdmissionCases({
       const value = structuredClone(result.value),
         receipt = value.operation;
       if (!value.replayed) {
-        assert.ok(
-          Date.parse(receipt.createdAt) >= before &&
-            Date.parse(receipt.createdAt) <= after,
-          label + " receipt clock",
-        );
+        assertGeneratedAtInOperation({
+          label: label + " receipt clock",
+          kind: index === 0 ? "node" : "rust",
+          actualGeneratedAt: receipt.createdAt,
+          parentClockWindow: [before, after],
+          operationClock: result.operationClock,
+        });
         clocks[index].set(receipt.id, receipt.createdAt);
       } else
         assert.equal(
@@ -77,11 +81,13 @@ export async function runRuntimeAdmissionCases({
       receipt.createdAt = "verified-receipt-clock";
       if (value.runtime && receipt.outcome === "accepted") {
         if (!value.replayed) {
-          assert.ok(
-            Date.parse(value.runtime.updatedAt) >= before &&
-              Date.parse(value.runtime.updatedAt) <= after,
-            label + " runtime clock",
-          );
+          assertGeneratedAtInOperation({
+            label: label + " runtime clock",
+            kind: index === 0 ? "node" : "rust",
+            actualGeneratedAt: value.runtime.updatedAt,
+            parentClockWindow: [before, after],
+            operationClock: result.operationClock,
+          });
           clocks[index].set(
             "runtime:" + value.runtime.id,
             value.runtime.updatedAt,
@@ -101,10 +107,13 @@ export async function runRuntimeAdmissionCases({
         );
         assert.equal(value.runtime.terminalId, id);
         assert.equal(receipt.runtimeId, id);
-        assert.ok(
-          Date.parse(value.runtime.createdAt) >= before &&
-            Date.parse(value.runtime.createdAt) <= after,
-        );
+        assertGeneratedAtInOperation({
+          label: label + " created clock",
+          kind: index === 0 ? "node" : "rust",
+          actualGeneratedAt: value.runtime.createdAt,
+          parentClockWindow: [before, after],
+          operationClock: result.operationClock,
+        });
         value.runtime.createdAt = "verified-created-clock";
         value.runtime.id =
           value.runtime.terminalId =

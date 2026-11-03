@@ -5721,3 +5721,44 @@ retaining PostgreSQL 16 server coverage. A fresh Linux result remains required.
 Its actual Linux full-worker Task job passes; the other observations remain open,
 and logs plus three independently checksum-verified failure artifacts are retained.
 Node remains the default server, and the worker remains Node.
+
+## Execution platform comparisons
+
+The prior Windows runtime artifact records the unchanged Source server producing
+`03:46:28.084Z` while the parent observer starts at `03:46:28.085Z`; Rust produces
+`03:46:28.090Z` inside that parent window. Runtime observation and admission now
+use the existing producer-process clock witnesses. The exact inclusive bounds,
+replay timestamps and complete value comparisons remain, with the parent readings
+retained diagnostically. No tolerance is added. The complete target/runtime corpus
+passes 431 paired cases on each store locally; 210 cases per store include the
+producer observations. Existing negative controls still reject timestamps one
+millisecond outside either producer boundary.
+
+A controlled worker-preparation gate also demonstrates that Source and Rust can
+claim Tasks in FIFO order while a later preparation completes and runs first.
+Both preserve a held first claim and a completed second occurrence before release,
+then finish both. The shutdown test now keeps its second occurrence queued but
+ineligible until polling stops, then configures its model. It retains the original
+one-turn, durable queued-state, exact restart and retained-work completion checks.
+The new reverse-preparation case remains part of the full scheduler corpus.
+All 182 paired scheduler cases, eighteen snapshots and nine reopens pass on each
+store locally. No production service implementation is changed by these fixture
+corrections. Fresh supported-platform results remain required.
+
+The Windows migration artifact `13206049545` fails during interrupted bundled
+PostgreSQL import after the main process closes and the original postmaster-exit
+assertion passes. Owned staging removal now uses bounded retries of the actual
+filesystem operation. The original 30-second no-orphan deadline, partial-profile
+checks and valid-bundle retry remain; persistent removal errors retain their phase,
+postmaster IDs and main-process exit witness in the report. The complete profile
+transfer corpus passes locally on all three stores, including retained sessions,
+identities and files, reverse conversion after Rust writes, SQL failure rollback,
+killed-import recovery and a lost-COMMIT-acknowledgement retry that preserves a
+later Rust write. This does not prove the Windows cleanup correction has passed.
+
+The milestone broad check exits 1 in 599 seconds: 1,702 Source server and 4,391 app
+tests pass; the worker passes 2,621 tests with three failures in encrypted-history
+batching, Flutter device inspection and the exact PNG-size boundary. Their three
+complete unchanged files pass all 65 tests separately with original deadlines.
+The cause remains unresolved and the broad check is not green. A separate global
+formatting run reports eleven files, all byte-identical to the milestone base.

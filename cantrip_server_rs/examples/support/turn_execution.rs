@@ -138,6 +138,7 @@ impl CommandDelegate for Control {
                     CommandError{message,code:None,unavailable:false,request_id:None,encoding_error:None}
                 }),
                 "task.operation.prepare"=>{
+                    if self.input["holdPrepareChats"].as_array().is_some_and(|chats|chats.contains(&command["task"]["chatId"])) {self.gate.wait().await;}
                     if let Some(ms)=self.input["prepareDelayMs"].as_u64(){tokio::time::sleep(Duration::from_millis(ms)).await;}
                     if let Some(sql)=self.input["prepareBeforeReplySQL"].as_str(){self.database.query(sql,&[]).await.map_err(|e|failure(e.to_string(),None,false))?;}
                     let prepared=self.input["preparedTasks"].get(command["task"]["chatId"].as_str().unwrap_or("")).or_else(||self.input.get("preparedTask"));

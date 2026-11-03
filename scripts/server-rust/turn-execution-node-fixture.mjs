@@ -104,6 +104,7 @@ export async function turnExecutionFixture(repository, input) {
         throw new Error("Controlled recovery worker failure");
       if (command.type === "task.operation.prepare") {
         const operation = (async () => {
+          if (input.holdPrepareChats?.includes(command.task.chatId)) await held;
           if (input.prepareDelayMs)
             await new Promise((resolve) =>
               setTimeout(resolve, input.prepareDelayMs),

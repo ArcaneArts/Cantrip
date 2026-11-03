@@ -10467,6 +10467,39 @@
           "changedFileFormatting": "passed"
         }
       }
+    },
+    "executionPlatformComparisons": {
+      "status": "implemented-pending-platform-acceptance",
+      "scope": "Fixture producer clocks and causal scheduler shutdown boundaries; production service behavior unchanged.",
+      "evidence": [
+        "scripts/server-rust/run-runtime-cases.mjs",
+        "scripts/server-rust/run-runtime-admission-cases.mjs",
+        "scripts/server-rust/operation-clock.test.mjs",
+        "scripts/server-rust/task-background-cases.mjs",
+        "scripts/server-rust/turn-execution-node-fixture.mjs",
+        "cantrip_server_rs/examples/support/turn_execution.rs",
+        "scripts/server-rust/profile-transfer-faults.mjs",
+        "scripts/server-rust/profile-transfer-compatibility.mjs"
+      ],
+      "validatedSubset": "Actual Windows artifact 13202641817 shows a Source timestamp one millisecond before the parent start, with Rust inside that parent window. Existing producer observations now supply the strict inclusive bounds and negative one-millisecond controls; parent diagnostics, replay timestamps and complete value checks remain. All three local stores pass 431 paired target/runtime cases, including 210 with producer clocks per store. Actual Source/native worker-preparation gates retain claim order [task, next] and turn order [next, task], with durable states [claimed, succeeded] before release, then both succeeded. Shutdown keeps the second occurrence queued but ineligible until polling stops, then configures its model; every original one-turn, queued-state, restart and retained-work assertion remains. All 182 paired scheduler cases, eighteen snapshots and nine reopens pass on each store locally. Strict all-target Clippy passes.",
+      "remaining": [
+        "Fresh supported-platform verification, including Windows.",
+        "All remaining original whole-server replacement requirements."
+      ],
+      "profileCleanup": "Windows artifact 13206049545 fails during interrupted bundled import after main close and the original postmaster-exit assertion. Owned staging removal now retries the actual filesystem operation, preserving the 30-second no-orphan deadline, partial-profile and recovery checks. Persistent failures report phase, postmaster IDs and main exit. Complete local profile transfer passes all three stores, including reverse conversion after Rust writes, killed-import recovery and lost-COMMIT acknowledgement followed by a retained later Rust write. Fresh Windows verification remains required.",
+      "broadCheck": {
+        "exitCode": 1,
+        "elapsedSeconds": 599.295,
+        "serverPassed": 1702,
+        "appPassed": 4391,
+        "workerPassed": 2621,
+        "workerFailed": 3,
+        "focusedWorkerPassed": 65,
+        "focusedWorkerElapsedSeconds": 57.022,
+        "failures": "Unchanged history batching, Flutter device inspection and exact PNG boundary; complete files pass focused with original deadlines. Cause unresolved, broad check not green.",
+        "globalFormattingFailures": 11,
+        "formattingFailuresUnchangedFromBase": true
+      }
     }
   },
   "remainingAcceptance": [
