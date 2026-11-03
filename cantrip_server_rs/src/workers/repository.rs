@@ -237,7 +237,22 @@ impl WorkerRepository {
         })).await
     }
     pub async fn get_worker(&self, owner: &str, id: &str) -> Result<Option<Value>> {
-        self.database.query(&format!("SELECT {WORKER} FROM workers WHERE id=$1 AND owner_id=$2 AND unlinked_at IS NULL LIMIT 1"),&[&id,&owner]).await?.first().map(rows::worker).transpose()
+        self.get_worker_with_query_context(owner, id, None).await
+    }
+    /// Some mutation routes expose the reference builder's SQL diagnostic.
+    /// Decorate only an actual query failure; mapping errors remain unchanged.
+    pub(crate) async fn get_worker_with_query_context(
+        &self,
+        owner: &str,
+        id: &str,
+        context: Option<(&str, &[crate::wire::Value])>,
+    ) -> Result<Option<Value>> {
+        let result = self.database.query(&format!("SELECT {WORKER} FROM workers WHERE id=$1 AND owner_id=$2 AND unlinked_at IS NULL LIMIT 1"),&[&id,&owner]).await;
+        let rows = match context {
+            Some((sql, params)) => crate::database::query_error::context(result, sql, params)?,
+            None => result?,
+        };
+        rows.first().map(rows::worker).transpose()
     }
     pub async fn owner(&self, id: &str) -> Result<Option<String>> {
         self.database

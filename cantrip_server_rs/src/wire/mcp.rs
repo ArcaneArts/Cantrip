@@ -43,6 +43,13 @@ pub(super) fn refine(
                 result.issues.push(json!({"code":"custom","path":path,"message":"Cantrip agent operations accept at most 32 arguments."}));
             }
         }
+        "mcp-discovery-worker" => {
+            if !super::coercion::truthy(value["configuration"].get("workerId")) {
+                let mut at = path.to_vec();
+                at.extend([json!("configuration"), json!("workerId")]);
+                result.issues.push(json!({"code":"custom","message":"Discovered MCP servers must be bound to their worker.","path":at}));
+            }
+        }
         _ => return Err(ValidationError::Operation),
     }
     Ok(true)

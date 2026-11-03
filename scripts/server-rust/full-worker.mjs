@@ -31,6 +31,7 @@ export function launchActualWorker(
     chromiumTraceDirectory,
     workerId = "actual-catalog-worker",
     traceShutdown = false,
+    homeDirectory,
   } = {},
 ) {
   const environment = {
@@ -67,6 +68,18 @@ export function launchActualWorker(
       ? { CANTRIP_CODEX_BIN: process.env.CANTRIP_CODEX_BIN }
       : {}),
   };
+  if (homeDirectory) {
+    environment.CANTRIP_TEST_WORKER_HOME = homeDirectory;
+    environment.NODE_OPTIONS = [
+      environment.NODE_OPTIONS,
+      "--import=" +
+        pathToFileURL(
+          path.join(repositoryRoot, "scripts/server-rust/worker-test-home.mjs"),
+        ).href,
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
   if (traceShutdown)
     environment.NODE_OPTIONS = [
       environment.NODE_OPTIONS,

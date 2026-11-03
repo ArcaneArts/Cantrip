@@ -97,7 +97,7 @@ const report = {
   databaseMode,
   completeReplacement: false,
   scope:
-    "Existing browser account encryption, project and protected repository APIs; full worker startup, real managed/existing folders, failure/retry, reconnect and retained server state. Optional --worktrees exercises actual local Git create/lock/unlock/reconcile/remove/prune, retained identity and real Run process retirement before deletion, with only disposable catalog classification seeded. Optional --replicas uses two full workers for direct local Git attachment, replay, restart and detach; --github-replicas adds real public gh clone/fetch and managed checkout deletion. Optional --github-conversion uses the existing encrypted APIs and full worker to link matching public history in a fresh managed folder, preserve dirty bytes and identities, and restart without SQL seeding or command substitutions. Optional --tasks uses existing encrypted Task APIs, the full production worker and bundled Codex for direct execution, planning, native Goal completion, failure/retry, paused admissions and retained restart; only public model HTTP responses are controlled. Optional --project-chats exercises retained Agent creation and usage, real managed native preparation, encrypted turns, completed canonical history, native Goal tools, exact restart retention and Goal clear; only public model HTTP responses are controlled. Optional --chat-customizations adds actual skills, extra roots, MCP and bound permission configuration with native restart recovery. Optional --skill-settings adds actual project/account skill files, audiences, encrypted recovery deletion and retained restart. Not whole UI, packaging or multi-instance acceptance.",
+    "Existing browser account encryption, project and protected repository APIs; full worker startup, real managed/existing folders, failure/retry, reconnect and retained server state. Optional --worktrees exercises actual local Git create/lock/unlock/reconcile/remove/prune, retained identity and real Run process retirement before deletion, with only disposable catalog classification seeded. Optional --replicas uses two full workers for direct local Git attachment, replay, restart and detach; --github-replicas adds real public gh clone/fetch and managed checkout deletion. Optional --github-conversion uses the existing encrypted APIs and full worker to link matching public history in a fresh managed folder, preserve dirty bytes and identities, and restart without SQL seeding or command substitutions. Optional --tasks uses existing encrypted Task APIs, the full production worker and bundled Codex for direct execution, planning, native Goal completion, failure/retry, paused admissions and retained restart; only public model HTTP responses are controlled. Optional --project-chats exercises retained Agent creation and usage, real managed native preparation, encrypted turns, completed canonical history, native Goal tools, exact restart retention and Goal clear; only public model HTTP responses are controlled. Optional --chat-customizations adds actual skills, extra roots, MCP and bound permission configuration with native restart recovery. Optional --skill-settings adds actual project/account skill files, audiences, encrypted recovery deletion and retained restart. Optional --mcp-settings uses an acceptance-only owned worker home and the existing encrypted browser SDK for MCP CRUD, full discovery, copy, native resource access and restart. Not whole UI, packaging or multi-instance acceptance.",
   runtimes: [],
 };
 let vite, browser, postgres, failure, surfaceRepositoryBinary;
@@ -120,6 +120,7 @@ async function flow(
       pathname.startsWith("/api/projects") ||
       pathname.startsWith("/api/chats/") ||
       pathname.startsWith("/api/skills") ||
+      pathname.startsWith("/api/settings/mcp-") ||
       pathname.startsWith("/api/skill-audiences") ||
       pathname.startsWith("/api/agent-requests") ||
       pathname.startsWith("/api/tasks/") ||
@@ -140,10 +141,15 @@ async function flow(
   const workerId = "actual-folder-worker";
   let worker, tunnel;
   const startWorker = async (enrollmentCode) => {
+    const homeDirectory = process.argv.includes("--mcp-settings")
+      ? path.join(dataDirectory, "mcp-test-home")
+      : undefined;
+    if (homeDirectory) await mkdir(homeDirectory, { recursive: true });
     worker = launchActualWorker(fixture, dataDirectory, {
       cliBinary,
       enrollmentCode,
       workerId,
+      homeDirectory,
       traceShutdown:
         process.argv.includes("--replicas") ||
         process.argv.includes("--worktrees"),
@@ -971,6 +977,11 @@ try {
     assert.deepEqual(
       report.runtimes[1].chatCustomizationSummary,
       report.runtimes[0].chatCustomizationSummary,
+    );
+  if (process.argv.includes("--mcp-settings"))
+    assert.deepEqual(
+      report.runtimes[1].mcpSettingsSummary,
+      report.runtimes[0].mcpSettingsSummary,
     );
   if (process.argv.includes("--skill-settings"))
     assert.deepEqual(

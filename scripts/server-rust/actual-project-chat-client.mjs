@@ -6,6 +6,7 @@ import { actualProjectAutomationsClient } from "./actual-project-automations-cli
 import { actualAgentInteractionsClient } from "./actual-agent-interactions-client.mjs";
 import { actualChatCustomizationsClient } from "./actual-chat-customizations-client.mjs";
 import { actualSkillSettingsClient } from "./actual-skill-settings-client.mjs";
+import { actualMcpSettingsClient } from "./actual-mcp-settings-client.mjs";
 
 export async function actualProjectChatClient({
   page,
@@ -19,7 +20,9 @@ export async function actualProjectChatClient({
   result,
   requests,
 }) {
-  const model = await taskModelProvider();
+  const model = await taskModelProvider({
+    allowMcpDiscoveryProbe: process.argv.includes("--mcp-settings"),
+  });
   const prompt = "Private actual Agent prompt 🌲",
     answer = "Private actual Agent answer 🍄",
     objective = "Private actual Agent Goal objective 🌙",
@@ -444,6 +447,20 @@ export async function actualProjectChatClient({
         fixture,
         projectId,
         chatId: chat.id,
+        projectRoot,
+        workerDataDirectory,
+        workerId,
+        startWorker,
+        stopWorker,
+        model,
+        result,
+        requests,
+      });
+    if (process.argv.includes("--mcp-settings"))
+      await actualMcpSettingsClient({
+        page,
+        fixture,
+        projectId,
         projectRoot,
         workerDataDirectory,
         workerId,

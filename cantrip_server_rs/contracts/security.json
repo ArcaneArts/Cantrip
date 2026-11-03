@@ -553,7 +553,12 @@
     "skillSettingsFileRequestSchema": 9689,
     "skillSettingsFileUpdateSchema": 9691,
     "skillSettingsDeleteRequestSchema": 9693,
-    "skillSettingsConfigUpdateSchema": 9694
+    "skillSettingsConfigUpdateSchema": 9694,
+    "encryptedMcpServerCreateSchema": 9696,
+    "encryptedMcpServerUpdateSchema": 9704,
+    "mcpServerWireSummarySchema": 9707,
+    "mcpServerWireListSchema": 9717,
+    "mcpServerDiscoveryResultSchema": 9718
   },
   "nodes": [
     {
@@ -56853,6 +56858,246 @@
       },
       "checks": []
     },
-    { "type": "boolean", "checks": [] }
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "object",
+      "name": "encryptedMcpServerCreateSchema",
+      "shape": {
+        "id": 9697,
+        "audience": 9698,
+        "enabled": 9699,
+        "workerId": 9700,
+        "nameBlindIndex": 48,
+        "protectedConfiguration": 2474
+      },
+      "catchall": 9703,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5530,
+      "defaultValue": "ide",
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 9701,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 9702, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 255, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "encryptedMcpServerUpdateSchema",
+      "shape": {
+        "enabled": 9699,
+        "workerId": 9700,
+        "nameBlindIndex": 48,
+        "protectedConfiguration": 2474,
+        "audience": 9705
+      },
+      "catchall": 9706,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 5530,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "intersection",
+      "name": "mcpServerWireSummarySchema",
+      "left": 4161,
+      "right": 9708,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "audience": 9709,
+        "scope": 9710,
+        "projectId": 9711,
+        "workerId": 9713,
+        "createdAt": 9715,
+        "updatedAt": 9716
+      },
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 5530,
+      "defaultValue": "ide",
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "mcpServerScopeSchema",
+      "values": ["global", "project"],
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 9712, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 9714, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 255, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "array",
+      "name": "mcpServerWireListSchema",
+      "element": 9707,
+      "checks": [{ "check": "max_length", "maximum": 200, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "mcpServerDiscoveryResultSchema",
+      "shape": {
+        "workerId": 9719,
+        "observedAt": 9720,
+        "candidates": 9721,
+        "issues": 9726
+      },
+      "catchall": 9731,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 255, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 9722,
+      "checks": [{ "check": "max_length", "maximum": 200, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "mcpServerDiscoveryCandidateSchema",
+      "shape": { "source": 9723, "sourceScope": 9724, "configuration": 9696 },
+      "catchall": 9725,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "mcp-discovery-worker",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "mcpServerDiscoverySourceSchema",
+      "values": ["codex", "claude", "localhost"],
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "mcpServerDiscoveryScopeSchema",
+      "values": ["user", "project"],
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "array",
+      "element": 9727,
+      "checks": [{ "check": "max_length", "maximum": 200, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "mcpServerDiscoveryIssueSchema",
+      "shape": {
+        "source": 9723,
+        "sourceScope": 9724,
+        "code": 9728,
+        "message": 9729
+      },
+      "catchall": 9730,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": ["invalid-config", "unsupported-transport"],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 500, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] }
   ]
 }

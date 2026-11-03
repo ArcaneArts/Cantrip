@@ -13,6 +13,7 @@ pub mod credential_migrations;
 pub mod enrichment;
 pub mod grok;
 pub mod lifecycle;
+mod mcp_servers;
 mod models;
 pub mod native_inventory;
 pub mod ollama;

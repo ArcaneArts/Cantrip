@@ -12,6 +12,63 @@ feature set.
 
 Status: **implementation in progress; not a deployable replacement**.
 
+The global/project MCP settings milestone implements all ten CRUD, list and
+worker-discovery endpoints. Configuration stays encrypted. Owned workers may be
+bound while offline; updates preserve an omitted audience and reset an omitted
+worker binding, matching Source. Mutation and lookup SQL comes from thirteen captured actual
+reference query builders. Database failures retain exact diagnostics only after
+the operation fails. Response-validation failures preserve Source's already
+committed row, including subsequent repair. Lists preserve SQL microsecond
+ordering before millisecond wire serialization and reject 201 rows rather than
+truncating them. Real missing-table faults reproduce and verify project/worker
+lookup diagnostics, including original UTF-16 parameters despite UTF-8 SQL
+encoding. Query context is attached only after actual query failure; ordinary
+worker lookup and row mapping retain their existing behavior.
+
+Local comparisons pass 3,334 exact Source contract/boundary cases, 1,416 paired
+HTTP observations and 324 persisted-runtime selections across all nine
+storage/authentication profiles. They cover all four scope/binding uniqueness
+constraints, tenant/CSRF isolation, opaque-byte retention, real SQL failure and
+zero-row inserts, post-write output errors, real filesystem discovery and
+endpoint cryptography, malformed worker replies, Source's accepted response
+worker identity, the production twenty-second deadline, command backpressure,
+HTTP disconnect ownership, offline behavior and exact restart retention.
+
+The existing browser SDK, full production worker and actual Codex pass the
+composed eighteen-step flow on all three stores for both servers: Agent/Goal,
+automations, approvals, customizations, permissions, skills and MCP. MCP adds
+both transports' CRUD, real Codex/Claude discovery import, fresh-identity
+cross-project copy, a real stdio peer and native MCP resource read with the
+project override, exact ciphertext retention through server/worker restart and
+deletion. The existing explicit Goal control resumes resource IO after restart;
+these MCP operations start no inference. Each composed peer makes the same seven
+scripted model requests. An acceptance-only process preload supplies the full
+worker's disposable home; production worker sources remain unchanged. The
+model fixture optionally validates real MCP discovery probes and returns 404,
+retaining all existing Responses assertions. All 120 existing assertion/poll
+calls and arguments in the four extended harness files remain unchanged.
+Supported-platform, packaged and complete replacement acceptance remain
+unfinished; Node remains the default server and worker.
+
+The milestone's broad `pnpm check` completes in 625.181 seconds with all 1,702
+server and 4,391 app tests passing. It remains red on two unchanged worker
+fifteen-second timeouts: native-history batching and the exact PNG size boundary.
+Both complete files subsequently pass all 56 tests with their original deadlines
+in 60.106 seconds. All 3,015 existing source/test files under the checked app,
+worker, Node-server, protocol and crypto roots remain byte-identical to the
+baseline. Global formatting reports eleven independently verified unchanged
+files; changed-file formatting and Rust formatting pass. This does not make the
+broad check green or establish complete replacement readiness.
+
+The fixed-head Linux Task diagnostic `41631825880` is not acceptance. Its first
+trial passes all fourteen steps and nine model POSTs for each server, but the
+second and third Rust trials end in `implementing` instead of the expected
+`complete`/`failed`, with 33/31 model POSTs. Node passes all three trials. The
+artifact was independently checked against the run head, API size/digest and
+all ZIP CRCs; public Task transitions and complete reports are retained. This
+remaining execution failure still requires a source-level fix. The independently
+reproduced stale-adoption fix below does not prove Linux product recovery.
+
 The Task retry adoption fix addresses a race reproduced in both reference and
 Rust actors with real PostgreSQL owner-lock waiters, including a Node writer
 and Rust actor. A stale read of a legacy failure could replace a newly recorded

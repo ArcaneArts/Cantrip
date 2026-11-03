@@ -4916,6 +4916,186 @@
         "remaining": [
           "Current-head supported-platform and packaged acceptance remain required. Remaining public domains, complete transports/coordination, upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
         ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/settings/mcp-servers",
+        "implementation": "cantrip_server_rs/src/http/mcp_settings.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/mcp_settings_contracts.rs",
+          "scripts/server-rust/mcp-settings-query-manifest.mjs",
+          "scripts/server-rust/mcp-settings-http-compatibility.mjs",
+          "scripts/server-rust/mcp-settings-http-cases.mjs",
+          "scripts/server-rust/mcp-settings-http-worker.mjs",
+          "scripts/server-rust/actual-mcp-settings-client.mjs",
+          "scripts/server-rust/mcp-settings-stdio-fixture.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Remaining public domains, complete transports/coordination, upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/settings/mcp-servers",
+        "implementation": "cantrip_server_rs/src/http/mcp_settings.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/mcp_settings_contracts.rs",
+          "scripts/server-rust/mcp-settings-query-manifest.mjs",
+          "scripts/server-rust/mcp-settings-http-compatibility.mjs",
+          "scripts/server-rust/mcp-settings-http-cases.mjs",
+          "scripts/server-rust/mcp-settings-http-worker.mjs",
+          "scripts/server-rust/actual-mcp-settings-client.mjs",
+          "scripts/server-rust/mcp-settings-stdio-fixture.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Remaining public domains, complete transports/coordination, upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "method": "PUT",
+        "path": "/api/settings/mcp-servers/:serverId",
+        "implementation": "cantrip_server_rs/src/http/mcp_settings.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/mcp_settings_contracts.rs",
+          "scripts/server-rust/mcp-settings-query-manifest.mjs",
+          "scripts/server-rust/mcp-settings-http-compatibility.mjs",
+          "scripts/server-rust/mcp-settings-http-cases.mjs",
+          "scripts/server-rust/mcp-settings-http-worker.mjs",
+          "scripts/server-rust/actual-mcp-settings-client.mjs",
+          "scripts/server-rust/mcp-settings-stdio-fixture.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Remaining public domains, complete transports/coordination, upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/settings/mcp-servers/:serverId",
+        "implementation": "cantrip_server_rs/src/http/mcp_settings.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/mcp_settings_contracts.rs",
+          "scripts/server-rust/mcp-settings-query-manifest.mjs",
+          "scripts/server-rust/mcp-settings-http-compatibility.mjs",
+          "scripts/server-rust/mcp-settings-http-cases.mjs",
+          "scripts/server-rust/mcp-settings-http-worker.mjs",
+          "scripts/server-rust/actual-mcp-settings-client.mjs",
+          "scripts/server-rust/mcp-settings-stdio-fixture.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Remaining public domains, complete transports/coordination, upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/settings/mcp-discovery/:workerId",
+        "implementation": "cantrip_server_rs/src/http/mcp_settings.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/mcp_settings_contracts.rs",
+          "scripts/server-rust/mcp-settings-query-manifest.mjs",
+          "scripts/server-rust/mcp-settings-http-compatibility.mjs",
+          "scripts/server-rust/mcp-settings-http-cases.mjs",
+          "scripts/server-rust/mcp-settings-http-worker.mjs",
+          "scripts/server-rust/actual-mcp-settings-client.mjs",
+          "scripts/server-rust/mcp-settings-stdio-fixture.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Remaining public domains, complete transports/coordination, upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/mcp-servers",
+        "implementation": "cantrip_server_rs/src/http/mcp_settings.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/mcp_settings_contracts.rs",
+          "scripts/server-rust/mcp-settings-query-manifest.mjs",
+          "scripts/server-rust/mcp-settings-http-compatibility.mjs",
+          "scripts/server-rust/mcp-settings-http-cases.mjs",
+          "scripts/server-rust/mcp-settings-http-worker.mjs",
+          "scripts/server-rust/actual-mcp-settings-client.mjs",
+          "scripts/server-rust/mcp-settings-stdio-fixture.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Remaining public domains, complete transports/coordination, upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/projects/:projectId/mcp-servers",
+        "implementation": "cantrip_server_rs/src/http/mcp_settings.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/mcp_settings_contracts.rs",
+          "scripts/server-rust/mcp-settings-query-manifest.mjs",
+          "scripts/server-rust/mcp-settings-http-compatibility.mjs",
+          "scripts/server-rust/mcp-settings-http-cases.mjs",
+          "scripts/server-rust/mcp-settings-http-worker.mjs",
+          "scripts/server-rust/actual-mcp-settings-client.mjs",
+          "scripts/server-rust/mcp-settings-stdio-fixture.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Remaining public domains, complete transports/coordination, upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "method": "PUT",
+        "path": "/api/projects/:projectId/mcp-servers/:serverId",
+        "implementation": "cantrip_server_rs/src/http/mcp_settings.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/mcp_settings_contracts.rs",
+          "scripts/server-rust/mcp-settings-query-manifest.mjs",
+          "scripts/server-rust/mcp-settings-http-compatibility.mjs",
+          "scripts/server-rust/mcp-settings-http-cases.mjs",
+          "scripts/server-rust/mcp-settings-http-worker.mjs",
+          "scripts/server-rust/actual-mcp-settings-client.mjs",
+          "scripts/server-rust/mcp-settings-stdio-fixture.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Remaining public domains, complete transports/coordination, upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/projects/:projectId/mcp-servers/:serverId",
+        "implementation": "cantrip_server_rs/src/http/mcp_settings.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/mcp_settings_contracts.rs",
+          "scripts/server-rust/mcp-settings-query-manifest.mjs",
+          "scripts/server-rust/mcp-settings-http-compatibility.mjs",
+          "scripts/server-rust/mcp-settings-http-cases.mjs",
+          "scripts/server-rust/mcp-settings-http-worker.mjs",
+          "scripts/server-rust/actual-mcp-settings-client.mjs",
+          "scripts/server-rust/mcp-settings-stdio-fixture.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Remaining public domains, complete transports/coordination, upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/projects/:projectId/mcp-discovery/:workerId",
+        "implementation": "cantrip_server_rs/src/http/mcp_settings.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/mcp_settings_contracts.rs",
+          "scripts/server-rust/mcp-settings-query-manifest.mjs",
+          "scripts/server-rust/mcp-settings-http-compatibility.mjs",
+          "scripts/server-rust/mcp-settings-http-cases.mjs",
+          "scripts/server-rust/mcp-settings-http-worker.mjs",
+          "scripts/server-rust/actual-mcp-settings-client.mjs",
+          "scripts/server-rust/mcp-settings-stdio-fixture.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Remaining public domains, complete transports/coordination, upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
       }
     ]
   },
@@ -5824,6 +6004,23 @@
         "remaining": [
           "Current-head supported-platform and packaged acceptance remain required. Remaining public domains, complete transports/coordination, upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
         ]
+      },
+      {
+        "command": "mcp.configurations.discover",
+        "implementation": "cantrip_server_rs/src/http/mcp_settings.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/mcp_settings_contracts.rs",
+          "scripts/server-rust/mcp-settings-query-manifest.mjs",
+          "scripts/server-rust/mcp-settings-http-compatibility.mjs",
+          "scripts/server-rust/mcp-settings-http-cases.mjs",
+          "scripts/server-rust/mcp-settings-http-worker.mjs",
+          "scripts/server-rust/actual-mcp-settings-client.mjs",
+          "scripts/server-rust/mcp-settings-stdio-fixture.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Remaining public domains, complete transports/coordination, upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
       }
     ]
   },
@@ -6715,6 +6912,24 @@
         ],
         "tableName": "skill_audiences",
         "exportName": "skillAudiences"
+      },
+      {
+        "implementation": "cantrip_server_rs/src/settings/mcp_servers.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/mcp_settings_contracts.rs",
+          "scripts/server-rust/mcp-settings-query-manifest.mjs",
+          "scripts/server-rust/mcp-settings-http-compatibility.mjs",
+          "scripts/server-rust/mcp-settings-http-cases.mjs",
+          "scripts/server-rust/mcp-settings-http-worker.mjs",
+          "scripts/server-rust/actual-mcp-settings-client.mjs",
+          "scripts/server-rust/mcp-settings-stdio-fixture.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Remaining public domains, complete transports/coordination, upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ],
+        "tableName": "mcp_servers",
+        "exportName": "mcpServers"
       }
     ]
   },
@@ -8719,6 +8934,96 @@
           "scripts/server-rust/skill-settings-http-cases.mjs",
           "scripts/server-rust/skill-audience-http-cases.mjs",
           "scripts/server-rust/actual-skill-settings-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Remaining public domains, complete transports/coordination, upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "method": "listMcpServers",
+        "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
+        "implementation": "cantrip_server_rs/src/settings/mcp_servers.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/mcp_settings_contracts.rs",
+          "scripts/server-rust/mcp-settings-query-manifest.mjs",
+          "scripts/server-rust/mcp-settings-http-compatibility.mjs",
+          "scripts/server-rust/mcp-settings-http-cases.mjs",
+          "scripts/server-rust/mcp-settings-http-worker.mjs",
+          "scripts/server-rust/actual-mcp-settings-client.mjs",
+          "scripts/server-rust/mcp-settings-stdio-fixture.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Remaining public domains, complete transports/coordination, upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "method": "createMcpServer",
+        "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
+        "implementation": "cantrip_server_rs/src/settings/mcp_servers.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/mcp_settings_contracts.rs",
+          "scripts/server-rust/mcp-settings-query-manifest.mjs",
+          "scripts/server-rust/mcp-settings-http-compatibility.mjs",
+          "scripts/server-rust/mcp-settings-http-cases.mjs",
+          "scripts/server-rust/mcp-settings-http-worker.mjs",
+          "scripts/server-rust/actual-mcp-settings-client.mjs",
+          "scripts/server-rust/mcp-settings-stdio-fixture.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Remaining public domains, complete transports/coordination, upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "method": "updateMcpServer",
+        "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
+        "implementation": "cantrip_server_rs/src/settings/mcp_servers.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/mcp_settings_contracts.rs",
+          "scripts/server-rust/mcp-settings-query-manifest.mjs",
+          "scripts/server-rust/mcp-settings-http-compatibility.mjs",
+          "scripts/server-rust/mcp-settings-http-cases.mjs",
+          "scripts/server-rust/mcp-settings-http-worker.mjs",
+          "scripts/server-rust/actual-mcp-settings-client.mjs",
+          "scripts/server-rust/mcp-settings-stdio-fixture.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Remaining public domains, complete transports/coordination, upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "method": "deleteMcpServer",
+        "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
+        "implementation": "cantrip_server_rs/src/settings/mcp_servers.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/mcp_settings_contracts.rs",
+          "scripts/server-rust/mcp-settings-query-manifest.mjs",
+          "scripts/server-rust/mcp-settings-http-compatibility.mjs",
+          "scripts/server-rust/mcp-settings-http-cases.mjs",
+          "scripts/server-rust/mcp-settings-http-worker.mjs",
+          "scripts/server-rust/actual-mcp-settings-client.mjs",
+          "scripts/server-rust/mcp-settings-stdio-fixture.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Remaining public domains, complete transports/coordination, upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "method": "listEffectiveMcpServers",
+        "file": "cantrip_server/src/db/repository-facade-project-execution.ts",
+        "implementation": "cantrip_server_rs/src/chats/mcp.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/mcp_settings_contracts.rs",
+          "scripts/server-rust/mcp-settings-query-manifest.mjs",
+          "scripts/server-rust/mcp-settings-http-compatibility.mjs",
+          "scripts/server-rust/mcp-settings-http-cases.mjs",
+          "scripts/server-rust/mcp-settings-http-worker.mjs",
+          "scripts/server-rust/actual-mcp-settings-client.mjs",
+          "scripts/server-rust/mcp-settings-stdio-fixture.mjs"
         ],
         "remaining": [
           "Current-head supported-platform and packaged acceptance remain required. Remaining public domains, complete transports/coordination, upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
@@ -11494,6 +11799,23 @@
       "remaining": [
         "Current-head supported-platform and packaged acceptance remain required. Remaining public domains, complete transports/coordination, upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
       ]
+    },
+    "mcpSettings": {
+      "implementation": "cantrip_server_rs/src/http/mcp_settings.rs",
+      "status": "implemented-pending-platform-acceptance",
+      "evidence": [
+        "cantrip_server_rs/tests/mcp_settings_contracts.rs",
+        "scripts/server-rust/mcp-settings-query-manifest.mjs",
+        "scripts/server-rust/mcp-settings-http-compatibility.mjs",
+        "scripts/server-rust/mcp-settings-http-cases.mjs",
+        "scripts/server-rust/mcp-settings-http-worker.mjs",
+        "scripts/server-rust/actual-mcp-settings-client.mjs",
+        "scripts/server-rust/mcp-settings-stdio-fixture.mjs"
+      ],
+      "remaining": [
+        "Current-head supported-platform and packaged acceptance remain required. Remaining public domains, complete transports/coordination, upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+      ],
+      "scope": "Opaque global/project CRUD, independent owned/offline worker binding, exact SQL errors and post-write output validation, persistence and backend semantics, full discovery with production20second deadline, command limits/disconnect ownership, enabled/audience/project/worker runtime precedence and actual endpoint crypto."
     }
   },
   "remainingAcceptance": [
@@ -11503,6 +11825,20 @@
     "Produce and exercise native/container/desktop artifacts and existing-data conversion with post-write rollback."
   ],
   "milestonePlatformAcceptance": [
+    {
+      "pullRequest": "https://github.com/ArcaneArts/Cantrip/pull/2460",
+      "observedRun": "https://github.com/ArcaneArts/Cantrip/actions/runs/41631825880",
+      "head": "9c2504d2544d2f453f5d64132ebb0ec3febd5b83",
+      "platforms": ["ubuntu-24.04"],
+      "conclusion": "Not platform acceptance. Fixed-head Task diagnostic trial1 passes; trials2 and3 fail only for Rust with unwanted model requests and implementing state instead of complete/failed. Node passes all3trials.",
+      "scope": "Actual job125903057790 terminal failure. Downloaded API artifact13233956672 ZIP, checked head, exact587173bytes, API SHA256 and every ZIP member CRC; inspected all3reports and retained public Task state transitions. Both servers complete14steps and9modelPOSTs in trial1; Rust completes12steps/33POSTs in trial2 and11steps/31POSTs in trial3. The remaining failure path still requires a source-level fix; no deadline or assertion changed. The independent stale-adoption SQL fix does not establish Linux product recovery.",
+      "artifacts": [
+        {
+          "id": 13233956672,
+          "zipSha256": "1fa3529e83bcb8bed31615b5467b8b1905ebbba593a7b45fe7187df0ccd03626"
+        }
+      ]
+    },
     {
       "pullRequest": "https://github.com/ArcaneArts/Cantrip/pull/2277",
       "commit": "d759084a30cba3e8641878bd51b69a7c936c4155",
