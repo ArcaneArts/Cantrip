@@ -5467,3 +5467,63 @@ node --import tsx scripts/server-rust/chat-archive-cleanup-http.mjs --database p
 node --import tsx scripts/server-rust/chat-archive-cleanup-http.mjs --database bundled-postgres --report .qa/rust-server/chat-archive-cleanup-bundled-postgres.json
 node --import tsx scripts/server-rust/chat-archive-cleanup-http.mjs --database postgres --report .qa/rust-server/chat-archive-cleanup-postgres.json
 ```
+
+## Native approval publication schedules
+
+The Linux encrypted-approval failure exposed an assumption in the HTTP oracle:
+PostgreSQL delivers committed project-alert notifications over a dedicated LISTEN
+connection, while the request handler publishes its interaction and Chat summary
+after its transaction resolves. Those two connections can complete in either order.
+The reference server's two handler publications remain an ordered, adjacent group.
+PGlite delivers its notification callback inline and retains its exact total trace.
+
+A development-only transparent TCP proxy demonstrates both PostgreSQL schedules
+against the actual unchanged Node server and the actual Rust executable. Holding
+the interaction transaction's real commit response allows the alert to arrive first.
+Holding the listener's real notification allows the handler group to arrive first.
+The test observes the held boundary before releasing the original frames, checks
+the complete three-event trace under each schedule, and compares every event field
+between both runtimes. It preserves raw frames, increasing cursors, publication
+clock checks and endpoint-encryption marker checks in the report. The proxy uses
+only disposable loopback PostgreSQL connections and records boundary labels rather
+than SQL, credentials or parameter values.
+
+The ordinary event suite waits for each of the four actual alert-changing writes'
+notification before advancing to its next request. A socket ping alone does not
+prove that a separate database listener has delivered its notification. Replays,
+rejected writes and already-terminal requests require zero additional alerts.
+PostgreSQL comparisons retain each producer's complete ordered stream and allow
+the independent alert only before or after the adjacent handler group. PGlite and
+all other event cases continue comparing their complete total trace. The report
+also retains the unmodified cross-producer deliveries and timestamps. Adversarial
+oracle tests reject missing, duplicate, interleaved and reversed events, changed
+scope/entity/action/revision/payload metadata, and changed operation sequences.
+
+The local macOS arm64 run passes all nine storage/authentication profiles with
+420 paired HTTP observations, 27 event operations and 26 raw event frames per
+peer/profile, and five endpoint-crypto proofs per peer/profile. All six controlled
+PostgreSQL schedule/profile cases pass against both executables, with 94 paired
+HTTP setup/approval observations and complete three-event trace equality under
+each chosen schedule. The existing PostgreSQL fault suite also passes its 20
+paired observations, retaining SQL rollback with zero publication, historical
+Task fanout order and a real locked transaction's post-commit publication fence.
+All five adversarial oracle tests pass.
+
+The broad `pnpm check` finishes in 695.8 seconds with all 1,702 Source and 4,391
+app tests passing (57 and three existing skips). Worker results are 2,622 passing,
+133 existing skips and the two unchanged 15-second native-history batch and CUA
+Sharp image-boundary timeouts. Both complete files pass all 56 tests on a focused
+rerun with their original deadlines. Their test/source hashes match the base and
+clean Primary. The broad check remains failing; recursive bail prevents the
+whole-repository format check. Changed-file formatting passes.
+
+The platform workflow runs the oracle tests and controlled delivery scenarios
+early in the native-command matrix. Platform acceptance still depends on the
+actual completed jobs and all remaining checks. The Windows preparation count,
+foundation timing, actual Worker/client failures and other final replacement
+requirements remain active; Node remains the default server.
+
+```sh
+node --test scripts/server-rust/native-event-publication-trace.test.mjs
+node --import tsx scripts/server-rust/native-event-http-compatibility.mjs --database postgres --publication-schedules-only --report .qa/rust-server/native-event-publication-schedules.json
+```

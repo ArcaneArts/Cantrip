@@ -1158,6 +1158,12 @@ jobs:
         run: node --import tsx scripts/server-rust/native-command-policy-manifest.mjs --check
       - name: Task pause and lease SQL diagnostics match current Source builders
         run: node --import tsx scripts/server-rust/task-pause-queries.mjs
+      - name: Native event publication oracle rejects missing and reordered events
+        run: node --test scripts/server-rust/native-event-publication-trace.test.mjs
+      - name: Native approval publication under controlled PostgreSQL delivery
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-event-http-compatibility.mjs --database postgres --publication-schedules-only --report .qa/rust-server/native-event-publication-schedules.json
       - name: Native command protocol compatibility
         run: node scripts/server-rust/cargo.mjs test --test native_command_contracts -- --nocapture
       - name: Turn protocol, lifetime and recovery scheduler compatibility
