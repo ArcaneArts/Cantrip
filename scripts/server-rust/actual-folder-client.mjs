@@ -97,7 +97,7 @@ const report = {
   databaseMode,
   completeReplacement: false,
   scope:
-    "Existing browser account encryption, project and protected repository APIs; full worker startup, real managed/existing folders, failure/retry, reconnect and retained server state. Optional --worktrees exercises actual local Git create/lock/unlock/reconcile/remove/prune, retained identity and real Run process retirement before deletion, with only disposable catalog classification seeded. Optional --replicas uses two full workers for direct local Git attachment, replay, restart and detach; --github-replicas adds real public gh clone/fetch and managed checkout deletion. Optional --github-conversion uses the existing encrypted APIs and full worker to link matching public history in a fresh managed folder, preserve dirty bytes and identities, and restart without SQL seeding or command substitutions. Optional --tasks uses existing encrypted Task APIs, the full production worker and bundled Codex for direct execution, planning, native Goal completion, failure/retry, paused admissions and retained restart; only public model HTTP responses are controlled. Optional --project-chats exercises retained Agent creation and usage, real managed native preparation, encrypted turns, completed canonical history, native Goal tools, exact restart retention and Goal clear; only public model HTTP responses are controlled. Not whole UI, packaging or multi-instance acceptance.",
+    "Existing browser account encryption, project and protected repository APIs; full worker startup, real managed/existing folders, failure/retry, reconnect and retained server state. Optional --worktrees exercises actual local Git create/lock/unlock/reconcile/remove/prune, retained identity and real Run process retirement before deletion, with only disposable catalog classification seeded. Optional --replicas uses two full workers for direct local Git attachment, replay, restart and detach; --github-replicas adds real public gh clone/fetch and managed checkout deletion. Optional --github-conversion uses the existing encrypted APIs and full worker to link matching public history in a fresh managed folder, preserve dirty bytes and identities, and restart without SQL seeding or command substitutions. Optional --tasks uses existing encrypted Task APIs, the full production worker and bundled Codex for direct execution, planning, native Goal completion, failure/retry, paused admissions and retained restart; only public model HTTP responses are controlled. Optional --project-chats exercises retained Agent creation and usage, real managed native preparation, encrypted turns, completed canonical history, native Goal tools, exact restart retention and Goal clear; only public model HTTP responses are controlled. Optional --chat-customizations adds actual skills, extra roots, MCP and bound permission configuration with native restart recovery. Not whole UI, packaging or multi-instance acceptance.",
   runtimes: [],
 };
 let vite, browser, postgres, failure, surfaceRepositoryBinary;
@@ -822,6 +822,7 @@ async function flow(
         page,
         fixture,
         projectId: first.id,
+        projectRoot: first.source.path,
         workerId,
         startWorker,
         stopWorker,
@@ -963,6 +964,11 @@ try {
   }
   assert.deepEqual(report.runtimes[1].steps, report.runtimes[0].steps);
   assert.deepEqual(report.runtimes[1].projects, report.runtimes[0].projects);
+  if (process.argv.includes("--chat-customizations"))
+    assert.deepEqual(
+      report.runtimes[1].chatCustomizationSummary,
+      report.runtimes[0].chatCustomizationSummary,
+    );
   if (
     process.argv.includes("--github-conversion") ||
     process.argv.includes("--workspace-discovery")

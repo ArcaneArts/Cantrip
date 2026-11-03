@@ -4,11 +4,13 @@ import { eventually } from "./full-worker.mjs";
 import { taskModelProvider } from "./task-model-provider.mjs";
 import { actualProjectAutomationsClient } from "./actual-project-automations-client.mjs";
 import { actualAgentInteractionsClient } from "./actual-agent-interactions-client.mjs";
+import { actualChatCustomizationsClient } from "./actual-chat-customizations-client.mjs";
 
 export async function actualProjectChatClient({
   page,
   fixture,
   projectId,
+  projectRoot,
   workerId,
   startWorker,
   stopWorker,
@@ -418,6 +420,18 @@ export async function actualProjectChatClient({
         projectId,
         chatId: chat.id,
         configuration,
+        model,
+        result,
+        requests,
+      });
+    if (process.argv.includes("--chat-customizations"))
+      await actualChatCustomizationsClient({
+        page,
+        fixture,
+        chatId: chat.id,
+        projectRoot,
+        startWorker,
+        stopWorker,
         model,
         result,
         requests,

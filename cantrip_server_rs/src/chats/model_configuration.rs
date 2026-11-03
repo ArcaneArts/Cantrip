@@ -10,6 +10,29 @@ fn text(value: &Value) -> Result<String> {
         .into_owned())
 }
 impl Repository {
+    pub async fn set_permission_profile(
+        &self,
+        owner: &str,
+        chat: &str,
+        profile: &Value,
+    ) -> Result<Option<Value>> {
+        let (owner, chat, profile) = (owner.to_owned(), chat.to_owned(), profile.clone());
+        self.database.transaction(|tx| Box::pin(async move {
+            guard::lock_chat(tx, &owner, &chat).await?;
+            let Some(context) = crate::native_commands::context::execution(tx, &owner, &chat).await? else {
+                return Ok(None);
+            };
+            if truthy(context.get("threadId")) || matches!(context["status"].as_str(), Some("running" | "waiting-for-approval")) {
+                return Err(guard::NativeCommandError::new("permission-source-required", Some(
+                    "The chat now has a native execution. Select permissions through its bound settings controller."
+                ), 409).into());
+            }
+            let profile = (!profile.is_null()).then(|| text(&profile)).transpose()?;
+            let rows = tx.query("UPDATE chats SET permission_profile_id=$3,updated_at=$4 WHERE id=$1 AND owner_id=$2 RETURNING to_jsonb(chats)::text",
+                &[&chat, &owner, &profile, &crate::auth::now()]).await?;
+            rows.first().map(|row| wire_summary(&raw(row)?)).transpose()
+        })).await
+    }
     pub async fn set_model_configuration(
         &self,
         owner: &str,

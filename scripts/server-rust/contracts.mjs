@@ -11,6 +11,7 @@ import * as taskScheduling from "../../packages/protocol/dist/task-scheduling.js
 import * as taskOperations from "../../packages/protocol/dist/tasks.js";
 import * as automations from "../../packages/protocol/dist/automations.js";
 import * as computerUseAgent from "../../packages/protocol/dist/computer-use-agent.js";
+import * as customizationContent from "../../packages/protocol/dist/customization-content.js";
 import { repositoryRoutingHandleSchema } from "../../packages/protocol/dist/repository-operation.js";
 import { cuaCursorPreferenceRecordSchema } from "../../packages/protocol/dist/computer-use-preferences.js";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -551,6 +552,16 @@ export const contractRoots = [
   "agentInteractionResolutionWireCreateSchema",
   "agentInteractionAcceptedSchema",
   "cuaAgentAuthoritySchema",
+  "customizationContentScopeSchema",
+  "protectedCustomizationRequestSchema",
+  "protectedCustomizationResponseSchema",
+  "customizationOperationIdSchema",
+  "permissionProfileCapabilitySchema",
+  "chatPermissionProfileStateSchema",
+  "chatPermissionProfileUpdateSchema",
+  "configurablePermissionProfileIdSchema",
+  "chatModelUpdateSchema",
+  "chatReasoningUpdateSchema",
 ];
 
 // Resolve the actual source schemas, including their separate protocol modules.
@@ -560,6 +571,7 @@ export function sourceContractSchema(name) {
     protocol[name] ??
     computerUsePreview[name] ??
     computerUseAgent[name] ??
+    customizationContent[name] ??
     attachmentContent[name] ??
     runConfigurationRuntime[name] ??
     runConfigurationOperations[name] ??
@@ -567,6 +579,9 @@ export function sourceContractSchema(name) {
     taskScheduling[name] ??
     taskOperations[name] ??
     automations[name] ??
+    (name === "customizationOperationIdSchema"
+      ? protocol.endpointContentContextSchema.shape.operationId
+      : undefined) ??
     (name === "nativeCommandTerminalEvidenceSchema"
       ? protocol.nativeCommandSettlementSchema.shape.reconciliation.unwrap()
       : undefined) ??
