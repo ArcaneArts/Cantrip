@@ -530,7 +530,17 @@
     "agentInteractionRequestWireSchema": 1070,
     "agentInteractionResolutionWireCreateSchema": 9594,
     "agentInteractionAcceptedSchema": 9595,
-    "cuaAgentAuthoritySchema": 2165
+    "cuaAgentAuthoritySchema": 2165,
+    "customizationContentScopeSchema": 4298,
+    "protectedCustomizationRequestSchema": 9597,
+    "protectedCustomizationResponseSchema": 9601,
+    "customizationOperationIdSchema": 9186,
+    "permissionProfileCapabilitySchema": 9607,
+    "chatPermissionProfileStateSchema": 9615,
+    "chatPermissionProfileUpdateSchema": 9629,
+    "configurablePermissionProfileIdSchema": 5712,
+    "chatModelUpdateSchema": 9637,
+    "chatReasoningUpdateSchema": 9639
   },
   "nodes": [
     {
@@ -56238,6 +56248,283 @@
       "shape": { "accepted": 9596 },
       "checks": []
     },
-    { "type": "literal", "values": [true], "checks": [] }
+    { "type": "literal", "values": [true], "checks": [] },
+    {
+      "type": "object",
+      "name": "protectedCustomizationRequestSchema",
+      "shape": {
+        "operationId": 9598,
+        "operation": 9599,
+        "scope": 4298,
+        "protectedRequest": 2222
+      },
+      "catchall": 9600,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "customizationContentOperationSchema",
+      "values": [
+        "skills.list",
+        "skills.settings.list",
+        "skills.settings.read",
+        "skills.settings.write",
+        "skills.settings.delete",
+        "skills.settings.configure",
+        "customization.inventory.read",
+        "customization.external.preview",
+        "customization.external.apply",
+        "customization.external.status",
+        "customization.skill.configure",
+        "customization.skill-roots.set",
+        "customization.mcp.resource.read",
+        "customization.mcp.oauth.start",
+        "customization.mcp.oauth.status",
+        "customization.mcp.reload"
+      ],
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "protectedCustomizationResponseSchema",
+      "shape": {
+        "operationId": 9602,
+        "operation": 9599,
+        "scope": 4298,
+        "result": 9603,
+        "lifecycle": 9604,
+        "protectedResponse": 2222
+      },
+      "catchall": 9606,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "enum", "values": ["succeeded", "failed"], "checks": [] },
+    {
+      "type": "nullable",
+      "name": "customizationContentLifecycleSchema",
+      "innerType": 9605,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": ["pending", "completed", "unknown"],
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "permissionProfileCapabilitySchema",
+      "shape": { "available": 9608, "profiles": 9609, "reason": 9613 },
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "array", "element": 9610, "checks": [] },
+    {
+      "type": "object",
+      "name": "permissionProfileSummarySchema",
+      "shape": { "id": 4459, "description": 9611, "allowed": 9612 },
+      "checks": []
+    },
+    { "type": "string", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "nullable", "innerType": 9614, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "chatPermissionProfileStateSchema",
+      "shape": {
+        "available": 9608,
+        "profiles": 9609,
+        "reason": 9613,
+        "selectedId": 4459,
+        "effectiveId": 4459,
+        "defaultId": 9616,
+        "usesDefault": 9617,
+        "forcedByWorktreePolicy": 9619,
+        "policyRevision": 9620,
+        "confirmed": 9622,
+        "transition": 9624
+      },
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 4459,
+      "defaultValue": ":workspace",
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 9618,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 9621,
+      "defaultValue": "0",
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^(0|[1-9][0-9]*)$",
+          "flags": "u",
+          "displayPattern": "/^(0|[1-9][0-9]*)$/u"
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 9623,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 9625,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 9626, "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "selectedId": 4610,
+        "resolvedSelectedId": 4459,
+        "effectiveId": 4459,
+        "expectedRevision": 4611,
+        "operationId": 9627,
+        "status": 9628
+      },
+      "catchall": 4612,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "enum",
+      "values": ["accepted", "dispatched", "applied", "rejected", "uncertain"],
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "chatPermissionProfileUpdateSchema",
+      "shape": {
+        "id": 9630,
+        "operationId": 9631,
+        "bindingId": 9633,
+        "expectedRevision": 9635
+      },
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 4459, "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 9632,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 255, "when": "length" }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 9634,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 255, "when": "length" }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 9636,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^(0|[1-9][0-9]*)$",
+          "flags": "u",
+          "displayPattern": "/^(0|[1-9][0-9]*)$/u"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "chatModelUpdateSchema",
+      "shape": { "modelId": 9638 },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "chatReasoningUpdateSchema",
+      "shape": { "reasoningEffort": 9640 },
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 789, "checks": [] }
   ]
 }

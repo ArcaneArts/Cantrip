@@ -4474,6 +4474,329 @@
         "remaining": [
           "Current-head supported-platform and packaged acceptance remain required. Complete transports/coordination, all remaining public domains, product upgrades and post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server and the worker remains Node."
         ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/chats/:chatId/customizations",
+        "implementation": "cantrip_server_rs/src/http/chat_customizations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_customization_contracts.rs",
+          "scripts/server-rust/chat-customization-http-compatibility.mjs",
+          "scripts/server-rust/chat-customization-http-worker.mjs",
+          "scripts/server-rust/chat-customization-http-cases.mjs",
+          "scripts/server-rust/chat-customization-http-standalone.mjs",
+          "scripts/server-rust/chat-configuration-http-cases.mjs",
+          "scripts/server-rust/chat-permission-bound-http-cases.mjs",
+          "scripts/server-rust/actual-chat-customizations-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Complete transports/coordination, remaining public domains, product upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/chats/:chatId/customizations/external-import",
+        "implementation": "cantrip_server_rs/src/http/chat_customizations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_customization_contracts.rs",
+          "scripts/server-rust/chat-customization-http-compatibility.mjs",
+          "scripts/server-rust/chat-customization-http-worker.mjs",
+          "scripts/server-rust/chat-customization-http-cases.mjs",
+          "scripts/server-rust/chat-customization-http-standalone.mjs",
+          "scripts/server-rust/chat-configuration-http-cases.mjs",
+          "scripts/server-rust/chat-permission-bound-http-cases.mjs",
+          "scripts/server-rust/actual-chat-customizations-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Complete transports/coordination, remaining public domains, product upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/chats/:chatId/customizations/external-import/status",
+        "implementation": "cantrip_server_rs/src/http/chat_customizations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_customization_contracts.rs",
+          "scripts/server-rust/chat-customization-http-compatibility.mjs",
+          "scripts/server-rust/chat-customization-http-worker.mjs",
+          "scripts/server-rust/chat-customization-http-cases.mjs",
+          "scripts/server-rust/chat-customization-http-standalone.mjs",
+          "scripts/server-rust/chat-configuration-http-cases.mjs",
+          "scripts/server-rust/chat-permission-bound-http-cases.mjs",
+          "scripts/server-rust/actual-chat-customizations-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Complete transports/coordination, remaining public domains, product upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/chats/:chatId/customizations/external-preview",
+        "implementation": "cantrip_server_rs/src/http/chat_customizations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_customization_contracts.rs",
+          "scripts/server-rust/chat-customization-http-compatibility.mjs",
+          "scripts/server-rust/chat-customization-http-worker.mjs",
+          "scripts/server-rust/chat-customization-http-cases.mjs",
+          "scripts/server-rust/chat-customization-http-standalone.mjs",
+          "scripts/server-rust/chat-configuration-http-cases.mjs",
+          "scripts/server-rust/chat-permission-bound-http-cases.mjs",
+          "scripts/server-rust/actual-chat-customizations-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Complete transports/coordination, remaining public domains, product upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/chats/:chatId/customizations/mcp-oauth",
+        "implementation": "cantrip_server_rs/src/http/chat_customizations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_customization_contracts.rs",
+          "scripts/server-rust/chat-customization-http-compatibility.mjs",
+          "scripts/server-rust/chat-customization-http-worker.mjs",
+          "scripts/server-rust/chat-customization-http-cases.mjs",
+          "scripts/server-rust/chat-customization-http-standalone.mjs",
+          "scripts/server-rust/chat-configuration-http-cases.mjs",
+          "scripts/server-rust/chat-permission-bound-http-cases.mjs",
+          "scripts/server-rust/actual-chat-customizations-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Complete transports/coordination, remaining public domains, product upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/chats/:chatId/customizations/mcp-oauth/status",
+        "implementation": "cantrip_server_rs/src/http/chat_customizations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_customization_contracts.rs",
+          "scripts/server-rust/chat-customization-http-compatibility.mjs",
+          "scripts/server-rust/chat-customization-http-worker.mjs",
+          "scripts/server-rust/chat-customization-http-cases.mjs",
+          "scripts/server-rust/chat-customization-http-standalone.mjs",
+          "scripts/server-rust/chat-configuration-http-cases.mjs",
+          "scripts/server-rust/chat-permission-bound-http-cases.mjs",
+          "scripts/server-rust/actual-chat-customizations-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Complete transports/coordination, remaining public domains, product upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/chats/:chatId/customizations/mcp-reload",
+        "implementation": "cantrip_server_rs/src/http/chat_customizations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_customization_contracts.rs",
+          "scripts/server-rust/chat-customization-http-compatibility.mjs",
+          "scripts/server-rust/chat-customization-http-worker.mjs",
+          "scripts/server-rust/chat-customization-http-cases.mjs",
+          "scripts/server-rust/chat-customization-http-standalone.mjs",
+          "scripts/server-rust/chat-configuration-http-cases.mjs",
+          "scripts/server-rust/chat-permission-bound-http-cases.mjs",
+          "scripts/server-rust/actual-chat-customizations-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Complete transports/coordination, remaining public domains, product upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/chats/:chatId/customizations/mcp-resource",
+        "implementation": "cantrip_server_rs/src/http/chat_customizations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_customization_contracts.rs",
+          "scripts/server-rust/chat-customization-http-compatibility.mjs",
+          "scripts/server-rust/chat-customization-http-worker.mjs",
+          "scripts/server-rust/chat-customization-http-cases.mjs",
+          "scripts/server-rust/chat-customization-http-standalone.mjs",
+          "scripts/server-rust/chat-configuration-http-cases.mjs",
+          "scripts/server-rust/chat-permission-bound-http-cases.mjs",
+          "scripts/server-rust/actual-chat-customizations-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Complete transports/coordination, remaining public domains, product upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/chats/:chatId/customizations/skill",
+        "implementation": "cantrip_server_rs/src/http/chat_customizations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_customization_contracts.rs",
+          "scripts/server-rust/chat-customization-http-compatibility.mjs",
+          "scripts/server-rust/chat-customization-http-worker.mjs",
+          "scripts/server-rust/chat-customization-http-cases.mjs",
+          "scripts/server-rust/chat-customization-http-standalone.mjs",
+          "scripts/server-rust/chat-configuration-http-cases.mjs",
+          "scripts/server-rust/chat-permission-bound-http-cases.mjs",
+          "scripts/server-rust/actual-chat-customizations-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Complete transports/coordination, remaining public domains, product upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "method": "PUT",
+        "path": "/api/chats/:chatId/customizations/skill-roots",
+        "implementation": "cantrip_server_rs/src/http/chat_customizations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_customization_contracts.rs",
+          "scripts/server-rust/chat-customization-http-compatibility.mjs",
+          "scripts/server-rust/chat-customization-http-worker.mjs",
+          "scripts/server-rust/chat-customization-http-cases.mjs",
+          "scripts/server-rust/chat-customization-http-standalone.mjs",
+          "scripts/server-rust/chat-configuration-http-cases.mjs",
+          "scripts/server-rust/chat-permission-bound-http-cases.mjs",
+          "scripts/server-rust/actual-chat-customizations-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Complete transports/coordination, remaining public domains, product upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/chats/:chatId/customizations/target",
+        "implementation": "cantrip_server_rs/src/http/chat_customizations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_customization_contracts.rs",
+          "scripts/server-rust/chat-customization-http-compatibility.mjs",
+          "scripts/server-rust/chat-customization-http-worker.mjs",
+          "scripts/server-rust/chat-customization-http-cases.mjs",
+          "scripts/server-rust/chat-customization-http-standalone.mjs",
+          "scripts/server-rust/chat-configuration-http-cases.mjs",
+          "scripts/server-rust/chat-permission-bound-http-cases.mjs",
+          "scripts/server-rust/actual-chat-customizations-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Complete transports/coordination, remaining public domains, product upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/chats/:chatId/model",
+        "implementation": "cantrip_server_rs/src/http/chat_configuration/models.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_customization_contracts.rs",
+          "scripts/server-rust/chat-customization-http-compatibility.mjs",
+          "scripts/server-rust/chat-customization-http-worker.mjs",
+          "scripts/server-rust/chat-customization-http-cases.mjs",
+          "scripts/server-rust/chat-customization-http-standalone.mjs",
+          "scripts/server-rust/chat-configuration-http-cases.mjs",
+          "scripts/server-rust/chat-permission-bound-http-cases.mjs",
+          "scripts/server-rust/actual-chat-customizations-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Complete transports/coordination, remaining public domains, product upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/chats/:chatId/permission-profile",
+        "implementation": "cantrip_server_rs/src/http/chat_configuration/permissions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_customization_contracts.rs",
+          "scripts/server-rust/chat-customization-http-compatibility.mjs",
+          "scripts/server-rust/chat-customization-http-worker.mjs",
+          "scripts/server-rust/chat-customization-http-cases.mjs",
+          "scripts/server-rust/chat-customization-http-standalone.mjs",
+          "scripts/server-rust/chat-configuration-http-cases.mjs",
+          "scripts/server-rust/chat-permission-bound-http-cases.mjs",
+          "scripts/server-rust/actual-chat-customizations-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Complete transports/coordination, remaining public domains, product upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/chats/:chatId/permission-profiles",
+        "implementation": "cantrip_server_rs/src/http/chat_configuration/permissions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_customization_contracts.rs",
+          "scripts/server-rust/chat-customization-http-compatibility.mjs",
+          "scripts/server-rust/chat-customization-http-worker.mjs",
+          "scripts/server-rust/chat-customization-http-cases.mjs",
+          "scripts/server-rust/chat-customization-http-standalone.mjs",
+          "scripts/server-rust/chat-configuration-http-cases.mjs",
+          "scripts/server-rust/chat-permission-bound-http-cases.mjs",
+          "scripts/server-rust/actual-chat-customizations-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Complete transports/coordination, remaining public domains, product upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/chats/:chatId/reasoning",
+        "implementation": "cantrip_server_rs/src/http/chat_configuration/models.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_customization_contracts.rs",
+          "scripts/server-rust/chat-customization-http-compatibility.mjs",
+          "scripts/server-rust/chat-customization-http-worker.mjs",
+          "scripts/server-rust/chat-customization-http-cases.mjs",
+          "scripts/server-rust/chat-customization-http-standalone.mjs",
+          "scripts/server-rust/chat-configuration-http-cases.mjs",
+          "scripts/server-rust/chat-permission-bound-http-cases.mjs",
+          "scripts/server-rust/actual-chat-customizations-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Complete transports/coordination, remaining public domains, product upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/chats/:chatId/reasoning",
+        "implementation": "cantrip_server_rs/src/http/chat_configuration/models.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_customization_contracts.rs",
+          "scripts/server-rust/chat-customization-http-compatibility.mjs",
+          "scripts/server-rust/chat-customization-http-worker.mjs",
+          "scripts/server-rust/chat-customization-http-cases.mjs",
+          "scripts/server-rust/chat-customization-http-standalone.mjs",
+          "scripts/server-rust/chat-configuration-http-cases.mjs",
+          "scripts/server-rust/chat-permission-bound-http-cases.mjs",
+          "scripts/server-rust/actual-chat-customizations-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Complete transports/coordination, remaining public domains, product upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/chats/:chatId/skills",
+        "implementation": "cantrip_server_rs/src/http/chat_customizations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_customization_contracts.rs",
+          "scripts/server-rust/chat-customization-http-compatibility.mjs",
+          "scripts/server-rust/chat-customization-http-worker.mjs",
+          "scripts/server-rust/chat-customization-http-cases.mjs",
+          "scripts/server-rust/chat-customization-http-standalone.mjs",
+          "scripts/server-rust/chat-configuration-http-cases.mjs",
+          "scripts/server-rust/chat-permission-bound-http-cases.mjs",
+          "scripts/server-rust/actual-chat-customizations-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Complete transports/coordination, remaining public domains, product upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
       }
     ]
   },
@@ -5067,6 +5390,241 @@
         ],
         "remaining": [
           "Current-head supported-platform and packaged acceptance remain required. Shared coordination, complete upgrades/post-write rollback, artifacts, desktop packaging, Winterhold rehearsal, performance and final default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "command": "customization.inventory.read",
+        "implementation": "cantrip_server_rs/src/http/chat_customizations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_customization_contracts.rs",
+          "scripts/server-rust/chat-customization-http-compatibility.mjs",
+          "scripts/server-rust/chat-customization-http-worker.mjs",
+          "scripts/server-rust/chat-customization-http-cases.mjs",
+          "scripts/server-rust/chat-customization-http-standalone.mjs",
+          "scripts/server-rust/chat-configuration-http-cases.mjs",
+          "scripts/server-rust/chat-permission-bound-http-cases.mjs",
+          "scripts/server-rust/actual-chat-customizations-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Complete transports/coordination, remaining public domains, product upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "command": "customization.external.preview",
+        "implementation": "cantrip_server_rs/src/http/chat_customizations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_customization_contracts.rs",
+          "scripts/server-rust/chat-customization-http-compatibility.mjs",
+          "scripts/server-rust/chat-customization-http-worker.mjs",
+          "scripts/server-rust/chat-customization-http-cases.mjs",
+          "scripts/server-rust/chat-customization-http-standalone.mjs",
+          "scripts/server-rust/chat-configuration-http-cases.mjs",
+          "scripts/server-rust/chat-permission-bound-http-cases.mjs",
+          "scripts/server-rust/actual-chat-customizations-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Complete transports/coordination, remaining public domains, product upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "command": "customization.mcp.resource.read",
+        "implementation": "cantrip_server_rs/src/http/chat_customizations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_customization_contracts.rs",
+          "scripts/server-rust/chat-customization-http-compatibility.mjs",
+          "scripts/server-rust/chat-customization-http-worker.mjs",
+          "scripts/server-rust/chat-customization-http-cases.mjs",
+          "scripts/server-rust/chat-customization-http-standalone.mjs",
+          "scripts/server-rust/chat-configuration-http-cases.mjs",
+          "scripts/server-rust/chat-permission-bound-http-cases.mjs",
+          "scripts/server-rust/actual-chat-customizations-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Complete transports/coordination, remaining public domains, product upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "command": "customization.skill.configure",
+        "implementation": "cantrip_server_rs/src/http/chat_customizations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_customization_contracts.rs",
+          "scripts/server-rust/chat-customization-http-compatibility.mjs",
+          "scripts/server-rust/chat-customization-http-worker.mjs",
+          "scripts/server-rust/chat-customization-http-cases.mjs",
+          "scripts/server-rust/chat-customization-http-standalone.mjs",
+          "scripts/server-rust/chat-configuration-http-cases.mjs",
+          "scripts/server-rust/chat-permission-bound-http-cases.mjs",
+          "scripts/server-rust/actual-chat-customizations-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Complete transports/coordination, remaining public domains, product upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "command": "customization.skill-roots.set",
+        "implementation": "cantrip_server_rs/src/http/chat_customizations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_customization_contracts.rs",
+          "scripts/server-rust/chat-customization-http-compatibility.mjs",
+          "scripts/server-rust/chat-customization-http-worker.mjs",
+          "scripts/server-rust/chat-customization-http-cases.mjs",
+          "scripts/server-rust/chat-customization-http-standalone.mjs",
+          "scripts/server-rust/chat-configuration-http-cases.mjs",
+          "scripts/server-rust/chat-permission-bound-http-cases.mjs",
+          "scripts/server-rust/actual-chat-customizations-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Complete transports/coordination, remaining public domains, product upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "command": "customization.mcp.oauth.start",
+        "implementation": "cantrip_server_rs/src/http/chat_customizations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_customization_contracts.rs",
+          "scripts/server-rust/chat-customization-http-compatibility.mjs",
+          "scripts/server-rust/chat-customization-http-worker.mjs",
+          "scripts/server-rust/chat-customization-http-cases.mjs",
+          "scripts/server-rust/chat-customization-http-standalone.mjs",
+          "scripts/server-rust/chat-configuration-http-cases.mjs",
+          "scripts/server-rust/chat-permission-bound-http-cases.mjs",
+          "scripts/server-rust/actual-chat-customizations-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Complete transports/coordination, remaining public domains, product upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "command": "customization.mcp.oauth.status",
+        "implementation": "cantrip_server_rs/src/http/chat_customizations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_customization_contracts.rs",
+          "scripts/server-rust/chat-customization-http-compatibility.mjs",
+          "scripts/server-rust/chat-customization-http-worker.mjs",
+          "scripts/server-rust/chat-customization-http-cases.mjs",
+          "scripts/server-rust/chat-customization-http-standalone.mjs",
+          "scripts/server-rust/chat-configuration-http-cases.mjs",
+          "scripts/server-rust/chat-permission-bound-http-cases.mjs",
+          "scripts/server-rust/actual-chat-customizations-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Complete transports/coordination, remaining public domains, product upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "command": "customization.mcp.reload",
+        "implementation": "cantrip_server_rs/src/http/chat_customizations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_customization_contracts.rs",
+          "scripts/server-rust/chat-customization-http-compatibility.mjs",
+          "scripts/server-rust/chat-customization-http-worker.mjs",
+          "scripts/server-rust/chat-customization-http-cases.mjs",
+          "scripts/server-rust/chat-customization-http-standalone.mjs",
+          "scripts/server-rust/chat-configuration-http-cases.mjs",
+          "scripts/server-rust/chat-permission-bound-http-cases.mjs",
+          "scripts/server-rust/actual-chat-customizations-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Complete transports/coordination, remaining public domains, product upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "command": "customization.external.apply",
+        "implementation": "cantrip_server_rs/src/http/chat_customizations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_customization_contracts.rs",
+          "scripts/server-rust/chat-customization-http-compatibility.mjs",
+          "scripts/server-rust/chat-customization-http-worker.mjs",
+          "scripts/server-rust/chat-customization-http-cases.mjs",
+          "scripts/server-rust/chat-customization-http-standalone.mjs",
+          "scripts/server-rust/chat-configuration-http-cases.mjs",
+          "scripts/server-rust/chat-permission-bound-http-cases.mjs",
+          "scripts/server-rust/actual-chat-customizations-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Complete transports/coordination, remaining public domains, product upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "command": "customization.external.status",
+        "implementation": "cantrip_server_rs/src/http/chat_customizations.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_customization_contracts.rs",
+          "scripts/server-rust/chat-customization-http-compatibility.mjs",
+          "scripts/server-rust/chat-customization-http-worker.mjs",
+          "scripts/server-rust/chat-customization-http-cases.mjs",
+          "scripts/server-rust/chat-customization-http-standalone.mjs",
+          "scripts/server-rust/chat-configuration-http-cases.mjs",
+          "scripts/server-rust/chat-permission-bound-http-cases.mjs",
+          "scripts/server-rust/actual-chat-customizations-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Complete transports/coordination, remaining public domains, product upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "command": "permission-profiles.list",
+        "implementation": "cantrip_server_rs/src/http/chat_configuration/permissions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_customization_contracts.rs",
+          "scripts/server-rust/chat-customization-http-compatibility.mjs",
+          "scripts/server-rust/chat-customization-http-worker.mjs",
+          "scripts/server-rust/chat-customization-http-cases.mjs",
+          "scripts/server-rust/chat-customization-http-standalone.mjs",
+          "scripts/server-rust/chat-configuration-http-cases.mjs",
+          "scripts/server-rust/chat-permission-bound-http-cases.mjs",
+          "scripts/server-rust/actual-chat-customizations-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Complete transports/coordination, remaining public domains, product upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "command": "chat.permissions.update",
+        "implementation": "cantrip_server_rs/src/http/chat_configuration/permissions.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_customization_contracts.rs",
+          "scripts/server-rust/chat-customization-http-compatibility.mjs",
+          "scripts/server-rust/chat-customization-http-worker.mjs",
+          "scripts/server-rust/chat-customization-http-cases.mjs",
+          "scripts/server-rust/chat-customization-http-standalone.mjs",
+          "scripts/server-rust/chat-configuration-http-cases.mjs",
+          "scripts/server-rust/chat-permission-bound-http-cases.mjs",
+          "scripts/server-rust/actual-chat-customizations-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Complete transports/coordination, remaining public domains, product upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "command": "skills.list",
+        "implementation": "cantrip_server_rs/src/http/chat_customizations.rs",
+        "status": "partial",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_customization_contracts.rs",
+          "scripts/server-rust/chat-customization-http-compatibility.mjs",
+          "scripts/server-rust/chat-customization-http-worker.mjs",
+          "scripts/server-rust/chat-customization-http-cases.mjs",
+          "scripts/server-rust/chat-customization-http-standalone.mjs",
+          "scripts/server-rust/chat-configuration-http-cases.mjs",
+          "scripts/server-rust/chat-permission-bound-http-cases.mjs",
+          "scripts/server-rust/actual-chat-customizations-client.mjs"
+        ],
+        "remaining": [
+          "The chat-scoped skills.list branch is implemented. The separate settings skill-manager HTTP surface remains unported.",
+          "Current-head supported-platform and packaged acceptance remain required. Complete transports/coordination, remaining public domains, product upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
         ]
       }
     ]
@@ -7897,6 +8455,25 @@
         "remaining": [
           "Current-head supported-platform and packaged acceptance remain required. Shared coordination, complete upgrades/post-write rollback, artifacts, desktop packaging, Winterhold rehearsal, performance and final default cutover remain unfinished. Node remains the default server; worker remains Node."
         ]
+      },
+      {
+        "method": "setChatPermissionProfile",
+        "file": "cantrip_server/src/db/repository.ts",
+        "implementation": "cantrip_server_rs/src/chats/model_configuration.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_customization_contracts.rs",
+          "scripts/server-rust/chat-customization-http-compatibility.mjs",
+          "scripts/server-rust/chat-customization-http-worker.mjs",
+          "scripts/server-rust/chat-customization-http-cases.mjs",
+          "scripts/server-rust/chat-customization-http-standalone.mjs",
+          "scripts/server-rust/chat-configuration-http-cases.mjs",
+          "scripts/server-rust/chat-permission-bound-http-cases.mjs",
+          "scripts/server-rust/actual-chat-customizations-client.mjs"
+        ],
+        "remaining": [
+          "Current-head supported-platform and packaged acceptance remain required. Complete transports/coordination, remaining public domains, product upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
       }
     ]
   },
@@ -8198,6 +8775,25 @@
         ],
         "remaining": [
           "Current-head supported-platform and packaged acceptance remain required. Shared coordination, complete upgrades/post-write rollback, artifacts, desktop packaging, Winterhold rehearsal, performance and final default cutover remain unfinished. Node remains the default server; worker remains Node."
+        ]
+      },
+      {
+        "resource": "customization",
+        "implementation": "cantrip_server_rs/src/http/chat_customizations.rs",
+        "status": "partial",
+        "evidence": [
+          "cantrip_server_rs/tests/chat_customization_contracts.rs",
+          "scripts/server-rust/chat-customization-http-compatibility.mjs",
+          "scripts/server-rust/chat-customization-http-worker.mjs",
+          "scripts/server-rust/chat-customization-http-cases.mjs",
+          "scripts/server-rust/chat-customization-http-standalone.mjs",
+          "scripts/server-rust/chat-configuration-http-cases.mjs",
+          "scripts/server-rust/chat-permission-bound-http-cases.mjs",
+          "scripts/server-rust/actual-chat-customizations-client.mjs"
+        ],
+        "remaining": [
+          "Chat-scoped skill configuration, skill roots and MCP reload publication are implemented, including disconnect completion and failed-operation suppression. Other settings customization producers remain unported.",
+          "Current-head supported-platform and packaged acceptance remain required. Complete transports/coordination, remaining public domains, product upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node."
         ]
       }
     ]
@@ -10573,8 +11169,40 @@
       ],
       "remaining": [
         "Current-head supported-platform and packaging acceptance.",
-        "The actual /api/chats/:chatId/permission-profiles request returns native 404; the complete customization domain remains outside this port. The approval operation itself passes without that unrelated preflight.",
+        "Public permission profiles and customization HTTP are now covered by publicChatCustomizations. The approval flow continues to use the unchanged native authority path.",
         "Whole-server replacement requirements remain active; no default cutover or production deployment is claimed."
+      ]
+    },
+    "publicChatCustomizations": {
+      "status": "implemented-pending-platform-acceptance",
+      "implementation": [
+        "cantrip_server_rs/src/http/chat_customizations.rs",
+        "cantrip_server_rs/src/http/chat_configuration",
+        "cantrip_server_rs/src/chats/model_configuration.rs"
+      ],
+      "evidence": [
+        "cantrip_server_rs/tests/chat_customization_contracts.rs",
+        "scripts/server-rust/chat-customization-http-compatibility.mjs",
+        "scripts/server-rust/chat-customization-http-worker.mjs",
+        "scripts/server-rust/chat-customization-http-cases.mjs",
+        "scripts/server-rust/chat-customization-http-standalone.mjs",
+        "scripts/server-rust/chat-configuration-http-cases.mjs",
+        "scripts/server-rust/chat-permission-bound-http-cases.mjs",
+        "scripts/server-rust/actual-chat-customizations-client.mjs"
+      ],
+      "validatedSubset": "Local macOS: 4736 actual Source value/issue/exact-error comparisons. All nine database/authentication profiles pass 1497 paired HTTP observations; each peer/profile proves 69 actual WorkerConnection commands, 52 endpoint cryptographic results, three native settings snapshots, eight scoped Live invalidations, eight durable snapshots and seven failure/recovery scenarios. All twelve protected customization routes and five remaining model/reasoning/permission routes preserve Source validation and owner isolation. The existing browser SDK, unchanged full worker and actual bundled Codex exercise real skill discovery/configuration/extra roots, MCP reload and encrypted native failures, confirmed bound read-only/default permission transitions, and retained configuration after server/worker restart on all three stores. Only disposable skill files and public model HTTP output are fixtures.",
+      "sourceSemantics": [
+        "The project-context hook rejects standalone customization routes before operation/schema validation; standalone model, reasoning and permission controls remain available.",
+        "Target runtime errors remain outside the protected-operation worker catch. Only succeeded skill/roots/reload operations publish customization invalidation; external import always retains HTTP202 for authenticated worker results.",
+        "Opaque operation scope is captured before dispatch. The unchanged worker authenticates request content and owns mutation replay prevention.",
+        "Worker concurrency exhaustion returns customization429; permission capability reads retain the200 unavailable fallback.",
+        "Unbound permission writes recheck the native source in the locked transaction. Bound writes resolve exact settings source and preserve durable rejection/receipt identity.",
+        "Native thread-scoped inventory reads on a cold worker retain the existing authenticated thread-not-found error. Explicit existing Goal control resumes the preserved thread without inference; skill configuration then remains intact.",
+        "Model/reasoning repository handoff conflicts preserve Fastify Error serialization (statusCode/code/error/message) and409, rather than the explicit permission response shape or generic500."
+      ],
+      "remaining": [
+        "Current-head supported-platform and packaged acceptance remain required. Complete transports/coordination, remaining public domains, product upgrades/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished. Node remains the default server; worker remains Node.",
+        "The broad pnpm check retains one unchanged15s worker history-batching timeout; all28 tests in that file pass separately with original deadlines. Global formatting retains11 byte-identical baseline files. Neither broad result is claimed green."
       ]
     }
   },

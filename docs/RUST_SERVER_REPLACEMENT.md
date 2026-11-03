@@ -12,6 +12,49 @@ feature set.
 
 Status: **implementation in progress; not a deployable replacement**.
 
+The Chat customization milestone adds all twelve protected skills, inventory,
+MCP and external-import routes, plus the five remaining model, reasoning and
+permission routes. Content remains encrypted between the browser and worker.
+The existing standalone restriction runs before operation/schema validation;
+standalone model, reasoning and permission controls remain available. Unbound
+permission writes recheck the native source inside the locked transaction;
+bound writes retain source identity, policy revisions and durable rejection
+receipts. Model/reasoning changes during a pending native handoff preserve
+Source's 409 status and complete Fastify error body. Only successful skill/roots/reload operations publish invalidations.
+
+Local comparisons pass all nine storage/authentication profiles: 161 anonymous,
+166 password and 172 account observations per store (1,497 paired observations),
+69 actual worker commands, 52 customization crypto proofs, three protected native
+settings snapshots, eight ordered Live events, eight durable snapshots and
+seven recovery cases per peer/profile. Coverage includes malformed/Buffer
+bodies, ownership/CSRF, standalone validation order, captured scope during a
+routing change, authenticated ciphertext rejection, mutation replay, relay
+limits, native-source replacement during capability reads, SQL rollback/retry,
+client-disconnect completion, offline behavior and retained server restart.
+All 4,736 named Source contract values/issues/exact errors pass; the generated
+540-root/9,641-node manifest preserves the previous 530 mappings and entire
+9,597-node prefix. Strict all-target Clippy passes locally.
+
+The existing browser SDK, unchanged full worker and actual Codex also pass on
+all three stores: real skill discovery, disable/enable and extra-root changes,
+MCP reload, encrypted native MCP/import failures, confirmed bound read-only
+and default permission transitions, and retained configuration after server
+and worker restart. These operations start no inference. Cold inventory reads
+preserve Source's authenticated thread-not-found error; explicit existing Goal
+control resumes the native thread with its preserved configuration before the
+retained skill check. Only disposable skill files and public model HTTP output
+are fixtures. Supported-platform, packaging and complete server-replacement
+acceptance remain unfinished; Node remains the default server and worker.
+
+The milestone broad `pnpm check` exits 1 after 663.998 seconds: 1,702 server and
+4,391 app tests pass; the worker has 2,623 passing tests and one existing
+15-second history-batching timeout. Its complete 28-test file passes separately
+in 58.774 seconds with the original deadlines. All 3,436 server, worker, app
+and protocol source/test files are byte-identical to the baseline. This does
+not establish the broad timeout's cause or make the broad check green. Global
+formatting reports eleven baseline files, each verified unchanged; formatting
+of every changed supported file and Rustfmt pass.
+
 The Task dashboard and Chat Goal milestone mounts the existing implementation
 dashboard and public Goal GET/POST/PATCH/DELETE controls through the same native
 runtime, routing, encrypted Task synchronization and lease services. Dashboard
