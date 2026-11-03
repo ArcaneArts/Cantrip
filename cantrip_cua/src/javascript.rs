@@ -242,6 +242,8 @@ for (const name of ['SharedArrayBuffer', 'Atomics', 'WeakRef', 'FinalizationRegi
       if (result.targets.length === 0)
         return {status:'not-found', ...result, next:'Try a shorter application/title substring or findWindows({application:...}) to inspect current titles. No window was attached by this call.'};
       const target = result.targets[0];
+      if (target.access?.allowed === false)
+        return {status:'denied', target, reason:target.access.reason, next:'This target is denied by Computer Use settings. Choose an allowed application window. Do not retry or request per-operation approval to bypass this restriction.'};
       await call({operation:'attach', target:{targetId:target.id,targetGeneration:target.generation}});
       const snapshot = await call({operation:'snapshot'});
       return {status:'attached', target:snapshot.session.target, snapshot};

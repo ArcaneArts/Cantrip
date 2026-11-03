@@ -316,6 +316,20 @@ impl MacOsBackend {
 }
 
 impl CaptureBackend for MacOsBackend {
+    fn is_cantrip_application(&self, target: &Target) -> Result<bool> {
+        let identity = self.registry.identity(target)?;
+        if let Some(id) = identity
+            .application_id
+            .as_deref()
+            .filter(|id| !id.is_empty())
+        {
+            return Ok(id == "art.cantrip" || id.starts_with("art.cantrip."));
+        }
+        Ok(target
+            .application
+            .as_deref()
+            .is_some_and(crate::target::is_cantrip_application_name))
+    }
     fn resolve_interaction_target(
         &mut self,
         target: &Target,
@@ -1112,6 +1126,7 @@ unsafe fn window_candidate(
         pixel_width,
         pixel_height,
         scale_factor,
+        access: None,
         focused: None,
         minimized: None,
     };
@@ -1147,6 +1162,7 @@ unsafe fn display_candidate(
         pixel_width,
         pixel_height,
         scale_factor,
+        access: None,
         focused: None,
         minimized: None,
     };

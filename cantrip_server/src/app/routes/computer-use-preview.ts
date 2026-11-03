@@ -142,6 +142,7 @@ export function computerUsePreviewAuthority(input: {
         ? context.worktreeId
         : context.scratchRootId,
     generation: context.computerUseAuthorityGeneration,
+    cantripAppAllowed: context.computerUseCantripAppAllowed === true,
     profile: {
       selectedId: profile.selectedId,
       effectiveId: profile.effectiveId,

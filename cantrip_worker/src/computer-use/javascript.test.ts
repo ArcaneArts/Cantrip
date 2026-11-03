@@ -48,6 +48,7 @@ function deferred<T>() {
 function options(controller = new AbortController()) {
   return {
     executionSignal: controller.signal,
+    cantripAppAllowed: () => true,
     authorize: vi.fn<CuaJavascriptOptions["authorize"]>(async () => {}),
   };
 }

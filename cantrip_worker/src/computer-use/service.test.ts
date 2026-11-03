@@ -194,7 +194,11 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
         first.targets.filter((target) => target.id > after),
       );
       expect(second.targets).toHaveLength(1);
-      expect(operations).toContainEqual({ operation: "targets.list", after });
+      expect(operations).toContainEqual({
+        operation: "targets.list",
+        after,
+        allowCantripApp: false,
+      });
       await service.inventory(scope, undefined, second.targets[0]!.id);
       const target = second.targets[0]!;
       expect(
@@ -383,7 +387,7 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
             "capabilities.get",
         ),
       ).toHaveLength(1);
-      const session = await service.open(scope, monitor);
+      const session = await service.open(scope, monitor, undefined, true);
       const id = session.binding.sessionId;
       const digests = new Set<string>();
       for (const style of ["arrow", "dot", "ring", "crosshair"] as const) {
@@ -405,7 +409,13 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
       }
       expect(digests.size).toBe(4);
       const before = service.state(scope, id);
-      const reattached = await service.attach(scope, id, monitor);
+      const reattached = await service.attach(
+        scope,
+        id,
+        monitor,
+        undefined,
+        true,
+      );
       expect(reattached.cursor).toEqual(before.cursor);
       // The caller cannot mutate cached authority/state through returned values.
       reattached.binding.workerId = "other";
@@ -421,7 +431,7 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
     });
     it("rejects each foreign ownership field and stale target without writing requests", async () => {
       const { service, operations } = create();
-      const { binding } = await service.open(scope, monitor);
+      const { binding } = await service.open(scope, monitor, undefined, true);
       for (const key of Object.keys(scope) as (keyof CuaScope)[]) {
         const count = operations.length;
         expect(() =>
@@ -437,7 +447,7 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
     });
     it("cancels only the interrupted chat and revokes all handles on terminal disconnect", async () => {
       const { service } = create();
-      const first = await service.open(scope, monitor);
+      const first = await service.open(scope, monitor, undefined, true);
       const otherScope = { ...scope, chatId: "another-chat" };
       const other = await service.open(otherScope, windowTarget);
       service.cancelChat(scope.chatId, scope.threadId);
@@ -458,7 +468,7 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
     it("releases only an exact canonical scope, with null fields never acting as wildcards", async () => {
       const { service } = create();
       const preview = { ...scope, taskId: null, threadId: null, turnId: null };
-      const own = await service.open(preview, monitor);
+      const own = await service.open(preview, monitor, undefined, true);
       const survivors = await Promise.all(
         [
           scope,
@@ -470,7 +480,7 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
           { ...preview, turnId: "turn" },
         ].map(async (identity) => ({
           identity,
-          session: await service.open(identity, monitor),
+          session: await service.open(identity, monitor, undefined, true),
         })),
       );
       expect(() =>
@@ -520,7 +530,7 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
     });
     it("allows fresh authorized requests after repeated crashes without reviving or replaying old sessions", async () => {
       const { service, children, launch } = create();
-      const session = await service.open(scope, monitor);
+      const session = await service.open(scope, monitor, undefined, true);
       await crash(children[0]!);
       expect(service.status().state).toBe("restart-available");
       expect(() => service.state(scope, session.binding.sessionId)).toThrow();
@@ -544,7 +554,7 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
           return response;
         },
       });
-      const session = await service.open(scope, monitor);
+      const session = await service.open(scope, monitor, undefined, true);
       await expect(
         service.snapshot(scope, session.binding.sessionId, monitor),
       ).rejects.toMatchObject({ code: "protocol-error" });
@@ -565,7 +575,9 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
           return response;
         },
       });
-      await expect(service.open(scope, monitor)).rejects.toMatchObject({
+      await expect(
+        service.open(scope, monitor, undefined, true),
+      ).rejects.toMatchObject({
         code: "protocol-error",
       });
       expect(service.status().sessions).toBe(0);
@@ -624,7 +636,7 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
           return response;
         },
       });
-      const { binding } = await service.open(scope, monitor);
+      const { binding } = await service.open(scope, monitor, undefined, true);
       const first = service.move(scope, binding.sessionId, monitor, {
         x: 1,
         y: 1,
@@ -678,7 +690,7 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
           return response;
         },
       });
-      const { binding } = await service.open(scope, monitor);
+      const { binding } = await service.open(scope, monitor, undefined, true);
       await expect(
         service.move(
           scope,

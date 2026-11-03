@@ -17,6 +17,7 @@ pub(crate) fn preview(owner: &str, server: &str, context: &Value) -> Result<Valu
             "contextKind":context["contextKind"],
             "placementId":if context["contextKind"]=="project" {&context["worktreeId"]}else{&context["scratchRootId"]},
             "generation":context["computerUseAuthorityGeneration"],
+            "cantripAppAllowed":context["computerUseCantripAppAllowed"]==true,
             "profile":json!({"selectedId":profile["selectedId"],"effectiveId":profile["effectiveId"],"forcedByWorktreePolicy":profile["forcedByWorktreePolicy"],"usesDefault":profile["usesDefault"]})
         })),
     )

@@ -36,7 +36,7 @@ export class CuaAuthorizationError extends Error {
         "approval-required":
           "Computer use requires approval through the active permission profile.",
         "execution-unavailable":
-          "Computer-use authority is unavailable for this agent turn. After Stop or a permission-profile change, start a new agent turn; js_reset cannot restore revoked authority.",
+          "Computer-use authority is unavailable for this agent turn. After Stop, a permission-profile change, or a computer-use settings change, start a new agent turn; js_reset cannot restore revoked authority.",
         "ownership-mismatch":
           "Computer use belongs to another execution context.",
       }[code],
@@ -185,13 +185,15 @@ export async function handleComputerUseOperation(
         data = await service.capabilities(scope, signal);
         break;
       case "targets.list":
-        data = await service.inventory(scope, signal, action.after);
+        // This encrypted endpoint is the authenticated human preview lease.
+        // Agent JavaScript uses the separate server-derived application policy.
+        data = await service.inventory(scope, signal, action.after, true);
         break;
       case "session.open":
         data = {
           session: await (dependencies.openSession
             ? dependencies.openSession(scope, target(action), signal)
-            : service.open(scope, target(action), signal)),
+            : service.open(scope, target(action), signal, true)),
         };
         break;
       case "session.state":
@@ -204,6 +206,7 @@ export async function handleComputerUseOperation(
             action.sessionId,
             target(action),
             signal,
+            true,
           ),
         };
         break;

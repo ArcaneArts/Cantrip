@@ -76,8 +76,10 @@ pub enum Operation {
     EffectsGet {},
     #[serde(rename = "capabilities.get")]
     CapabilitiesGet {},
-    #[serde(rename = "targets.list")]
+    #[serde(rename = "targets.list", rename_all = "camelCase")]
     TargetsList {
+        #[serde(default)]
+        allow_cantrip_app: bool,
         #[serde(
             default,
             skip_serializing_if = "Option::is_none",
@@ -87,6 +89,8 @@ pub enum Operation {
     },
     #[serde(rename = "target.attach", rename_all = "camelCase")]
     TargetAttach {
+        #[serde(default)]
+        allow_cantrip_app: bool,
         binding: SessionBinding,
         target_id: String,
         target_generation: u64,
@@ -241,6 +245,7 @@ impl OperationResult {
 pub struct CuaService<B: CaptureBackend> {
     backend: B,
     sessions: HashMap<String, SessionState>,
+    cantrip_app_grants: HashMap<String, bool>,
     javascript: bool,
     interactions: crate::interaction::Participants,
     remote_captures: crate::remote_capture::Captures,
@@ -251,6 +256,7 @@ impl<B: CaptureBackend> CuaService<B> {
         Self {
             backend,
             sessions: HashMap::new(),
+            cantrip_app_grants: HashMap::new(),
             javascript: false,
             interactions: crate::interaction::Participants::default(),
             remote_captures: crate::remote_capture::Captures::default(),
@@ -322,6 +328,13 @@ impl<B: CaptureBackend> CuaService<B> {
             .target
             .as_ref()
             .ok_or_else(|| CuaError::new(ErrorCode::TargetNotFound, "No CUA target attached."))?;
+        self.authorize_target(
+            target,
+            self.cantrip_app_grants
+                .get(&binding.session_id)
+                .copied()
+                .unwrap_or(false),
+        )?;
         if target.id != target_id || target.generation != generation {
             return Err(CuaError::new(
                 ErrorCode::StaleTarget,
@@ -329,6 +342,40 @@ impl<B: CaptureBackend> CuaService<B> {
             ));
         }
         Ok(state.clone())
+    }
+
+    fn target_access(&self, target: &Target, allowed: bool) -> Result<crate::target::TargetAccess> {
+        use crate::target::{DenialReason, TargetAccess, TargetKind};
+        let reason = if allowed {
+            None
+        } else if target.kind == TargetKind::Monitor {
+            Some(DenialReason::DisplayMayIncludeCantrip)
+        } else if self.backend.is_cantrip_application(target)? {
+            Some(DenialReason::CantripAppProtected)
+        } else {
+            None
+        };
+        Ok(TargetAccess {
+            allowed: reason.is_none(),
+            reason,
+        })
+    }
+
+    fn authorize_target(&self, target: &Target, allowed: bool) -> Result<()> {
+        if let Some(reason) = self.target_access(target, allowed)?.reason {
+            return Err(CuaError::new(
+                ErrorCode::PermissionDenied,
+                match reason {
+                    crate::target::DenialReason::CantripAppProtected => {
+                        "Computer use on Cantrip is disabled in Settings > Computer Use. This restriction cannot be approved per operation."
+                    }
+                    crate::target::DenialReason::DisplayMayIncludeCantrip => {
+                        "Full displays may expose protected Cantrip windows. Select an allowed application window, or enable computer use on Cantrip in Settings > Computer Use."
+                    }
+                },
+            ));
+        }
+        Ok(())
     }
 
     pub(crate) fn dispatch(
@@ -614,8 +661,14 @@ impl<B: CaptureBackend> CuaService<B> {
                     "JavaScript requires the framed runtime owner.",
                 ))
             }
-            Operation::TargetsList { after } => {
-                let page = self.inventory(after.as_deref(), cancel)?;
+            Operation::TargetsList {
+                after,
+                allow_cantrip_app,
+            } => {
+                let mut page = self.inventory(after.as_deref(), cancel)?;
+                for target in &mut page.targets {
+                    target.access = Some(self.target_access(target, allow_cantrip_app)?);
+                }
                 cancel.check()?;
                 let mut data = json!({ "targets": page.targets });
                 if page.truncated {
@@ -627,6 +680,7 @@ impl<B: CaptureBackend> CuaService<B> {
                 Ok(OperationResult::json(data))
             }
             Operation::TargetAttach {
+                allow_cantrip_app,
                 binding,
                 target_id,
                 target_generation,
@@ -645,6 +699,7 @@ impl<B: CaptureBackend> CuaService<B> {
                     .backend
                     .resolve_target(&target_id, target_generation, cancel)?;
                 target.validate()?;
+                self.authorize_target(&target, allow_cantrip_app)?;
                 if target.generation != target_generation {
                     return Err(CuaError::new(
                         ErrorCode::StaleTarget,
@@ -679,6 +734,8 @@ impl<B: CaptureBackend> CuaService<B> {
                 }
                 state.target = Some(target);
                 cancel.check()?;
+                self.cantrip_app_grants
+                    .insert(binding.session_id.clone(), allow_cantrip_app);
                 self.sessions.insert(binding.session_id, state.clone());
                 Ok(OperationResult::session(&state, "targetAttached"))
             }
@@ -876,6 +933,18 @@ impl<B: CaptureBackend> CuaService<B> {
                 global_input,
                 delivery,
             } => {
+                if global_input
+                    && !self
+                        .cantrip_app_grants
+                        .get(&binding.session_id)
+                        .copied()
+                        .unwrap_or(false)
+                {
+                    return Err(CuaError::new(
+                        ErrorCode::PermissionDenied,
+                        "Shared-pointer input can reach protected Cantrip windows. Use window-directed input, or enable computer use on Cantrip in Settings > Computer Use.",
+                    ));
+                }
                 if global_input && delivery.is_some() {
                     return Err(CuaError::invalid(
                         "Global input and process delivery are mutually exclusive.",
@@ -952,6 +1021,7 @@ impl<B: CaptureBackend> CuaService<B> {
                 self.backend.close_input(&binding.session_id)?;
                 self.backend.clear_controls(&binding.session_id);
                 self.sessions.remove(&binding.session_id);
+                self.cantrip_app_grants.remove(&binding.session_id);
                 Ok(OperationResult {
                     data: json!({ "closed": true }),
                     payload: vec![],

@@ -19,6 +19,7 @@ pub const DEFAULT_MODEL_ROUTE_ID: &str = "00000000-0000-0000-0000-000000000021";
 
 const PREFERENCES: &[&str] = &[
     "computerUseEnabled",
+    "computerUseCantripAppAllowed",
     "computerUseEffects",
     "computerUseEffectsRevision",
     "protectedComputerUseCursor",
