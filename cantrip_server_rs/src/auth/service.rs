@@ -131,6 +131,12 @@ impl AuthService {
         crate::tunnels::Repository::new(database.clone())
             .reset_transient()
             .await?;
+        crate::chats::execution_lanes::LaneRepository::new(database.clone())
+            .reset_interrupted()
+            .await?;
+        crate::tasks::Repository::new(database.clone())
+            .reconcile_interrupted_operations()
+            .await?;
         let normalized_admin = config
             .admin_email
             .as_ref()

@@ -5527,3 +5527,117 @@ requirements remain active; Node remains the default server.
 node --test scripts/server-rust/native-event-publication-trace.test.mjs
 node --import tsx scripts/server-rust/native-event-http-compatibility.mjs --database postgres --publication-schedules-only --report .qa/rust-server/native-event-publication-schedules.json
 ```
+
+## Worker native queue HTTP
+
+The Rust server implements all six enrolled-worker queue actions: `lookup`,
+`read`, `mutate`, `start-receipt`, `import` and `import-ack`. Each action uses
+`worker:agent-tools` authentication and the credential owner. Validation precedes
+authentication. The existing canonical repository owns revisions, immutable
+receipts, imports, runner fencing, claims and retained encrypted input.
+
+The HTTP adapter preserves the reference's two error boundaries: rejected
+`lookup`, `read` and `import` promises reach the framework error envelope, while
+`mutate`, `import-ack` and `start-receipt` return the route's code-only domain
+errors. Generic receipt read failures and the real 90-second deadline return
+`queue-receipt-pending`. Binary bodies use the registered upload limit and fail
+the required object schema; this does not establish general Buffer behavior for
+other domains.
+
+Mutation and successful import acknowledgment publish their actual Chat queue
+invalidations and conditionally dispatch through the existing execution graph.
+Mutation replay still publishes as Source does. Pending receipts share the same
+notification service and 750-millisecond fallback as native settlement. Dropping
+the HTTP view aborts its waiter, while an already-started database read remains
+owned until it finishes. Completed writes and dispatch work retain their owned
+lifetime when their HTTP waiter disappears.
+
+The compatibility suites use unchanged worker SDK requests and actual HTTP,
+worker transport and Live sockets. Queue and future-message ciphertext comes
+from the production worker encryption helper. The client decrypts every returned
+copy, checks exact ciphertext retention and verifies that private input does not
+appear in HTTP, Live or server diagnostics. Native import identity hashes are
+independently recomputed before normalizing per-instance owner-derived IDs.
+Import replay, runner replacement, uncertain deletion, conflict, changed-source
+replacement and acknowledgment retain their complete Source responses.
+
+The receipt suite exercises real settlement, replay, caller disconnect, SQL
+failure, the actual 90-second deadline and a PostgreSQL read held by a real
+exclusive table lock. Its account cases cover all six cross-owner denials,
+unchanged foreign encrypted rows and exact worker/Live notice metadata. The
+first read creates revision zero with a pending notice; the suite observes its
+real acknowledgment before adding revision one, preventing scheduling from
+coalescing those two independently verified notices.
+
+The transaction case uses concurrent identical SDK mutations, SQL exceptions
+after queue effects, import/acknowledgment rollback, exact-operation retry and
+actual server restart with the existing worker reconnecting. Explicit frozen-item
+start verifies the deterministic claim and retained decryptable input. A failed
+dispatch releases the claim; replay preserves the immutable receipt and returns
+the current queue state. The suite does not assume that the whole snapshot stays
+unchanged after dispatch.
+
+That restart case exposed missing production startup wiring: the existing lane
+reset and Task-operation reconciliation repositories were implemented but never
+called. Startup now runs both in the existing single-coordinator transient
+recovery sequence, matching Source's suspended lanes and interrupted Chat
+statuses before dispatch resumes. Redis/multi-instance startup recovery still
+requires its own coordinator-aware implementation and acceptance.
+
+The normal production executable serves the ordinary queue/auth/crypto/import
+suite. SQL fault and lock controls exist only in the explicit development
+example and Source oracle opt-in; the example includes the actual server main.
+Full native runtime/product acceptance uses the separate existing browser/full
+worker/bundled Codex flow. Local and configured CI checks do not establish
+supported-platform, packaged or complete replacement acceptance. Node remains
+the default server and the worker remains Node.
+
+The final local macOS arm64 HTTP comparison passes all nine storage/authentication
+profiles with 888 paired observations, 40 endpoint decryption proofs and five
+worker SDK operations per peer/profile. All 37 receipt-matrix scenarios pass:
+12 each for PGlite and bundled PostgreSQL, and 13 for external PostgreSQL. A
+further focused external-PostgreSQL case holds an actual mutation inside SQL,
+closes its HTTP caller, observes the original database operation still blocked,
+then releases it. The mutation commits once, publishes both route and durable
+notifications, and the unchanged worker SDK reconciles and replays the original
+receipt without duplicate encrypted input. The existing locked-read regression
+also passes with that helper.
+
+All six existing browser/full-worker/bundled-Codex product suites pass after the
+startup fix: Agent conversations and Tasks on each backend. Each Chat peer
+completes two canonical turns, uses native Goal tools and preserves encrypted
+history, usage, synchronization and Goal state through server/worker restart.
+Each Task peer completes direct execution, planning/native Goal implementation,
+manual retry after an actual controlled quota response, paused admission through
+server/worker restart and retained completion without duplicate inference. Only
+the public model HTTP responses are controlled.
+
+All 47 Rust library tests, 44,824 native-command contract comparisons, strict
+all-target Clippy, boundary audit and changed-file formatting pass. The broad
+`pnpm check` exits 1 after 728.2 seconds: Source has 1,702 passing tests and the app
+has 4,391 (57 and three existing skips). Worker results are 2,620 passing, 133
+skipped and four failures: GitHub/native-history/Sharp 15-second timeouts, a
+project Goal delivery assertion, plus an unhandled Codex RPC `EPIPE`. All five
+complete implicated worker files pass 94 focused tests with original deadlines;
+six relevant test/source files match the base and clean Primary byte for byte.
+A separate full standalone worker run on clean Primary passes all 2,624 tests
+with 133 skips and zero errors, leaving Primary clean. That does not reproduce
+the broad run's context or prove its failure cause. The broad check remains
+failing and prevents its final whole-repository formatting step.
+
+Latest retained #2453 platform evidence also remains unresolved: the Linux
+controlled-publication test times out starting its first Node server before
+any Rust server or held frame; Windows archive cleanup fails its event-clock
+assertion; Linux/Windows Source foundation exceeds the original 15-second
+deadline; and Windows private-PostgreSQL Run transitions fail a transaction-clock
+assertion. Actual job logs and two original artifacts with verified API SHA-256
+digests are retained. No assertions or deadlines are weakened by this milestone.
+
+```sh
+node --import tsx scripts/server-rust/native-queue-http-compatibility.mjs --database pglite --report .qa/rust-server/native-queue-http-pglite.json
+node --import tsx scripts/server-rust/native-queue-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/native-queue-http-bundled-postgres.json
+node --import tsx scripts/server-rust/native-queue-http-compatibility.mjs --database postgres --report .qa/rust-server/native-queue-http-postgres.json
+node --import tsx scripts/server-rust/native-queue-receipt-http.mjs --database pglite --report .qa/rust-server/native-queue-receipt-pglite.json
+node --import tsx scripts/server-rust/native-queue-receipt-http.mjs --database bundled-postgres --report .qa/rust-server/native-queue-receipt-bundled-postgres.json
+node --import tsx scripts/server-rust/native-queue-receipt-http.mjs --database postgres --report .qa/rust-server/native-queue-receipt-postgres.json
+```

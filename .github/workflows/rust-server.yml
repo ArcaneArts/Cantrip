@@ -1156,6 +1156,30 @@ jobs:
         run: node scripts/server-rust/cargo.mjs test --lib native_commands -- --nocapture
       - name: Native method policy matches the TypeScript authority
         run: node --import tsx scripts/server-rust/native-command-policy-manifest.mjs --check
+      - name: Worker queue HTTP, endpoint encryption and imports with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-queue-http-compatibility.mjs --database pglite --report .qa/rust-server/native-queue-http-pglite.json
+      - name: Worker queue HTTP, endpoint encryption and imports with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-queue-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/native-queue-http-bundled-postgres.json
+      - name: Worker queue HTTP, endpoint encryption and imports with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-queue-http-compatibility.mjs --database postgres --report .qa/rust-server/native-queue-http-postgres.json
+      - name: Queue receipt lifetimes, tenant isolation and transaction recovery with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-queue-receipt-http.mjs --database pglite --report .qa/rust-server/native-queue-receipt-pglite.json
+      - name: Queue receipt lifetimes, tenant isolation and transaction recovery with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-queue-receipt-http.mjs --database bundled-postgres --report .qa/rust-server/native-queue-receipt-bundled-postgres.json
+      - name: Queue receipt lifetimes, tenant isolation and transaction recovery with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-queue-receipt-http.mjs --database postgres --report .qa/rust-server/native-queue-receipt-postgres.json
       - name: Task pause and lease SQL diagnostics match current Source builders
         run: node --import tsx scripts/server-rust/task-pause-queries.mjs
       - name: Native event publication oracle rejects missing and reordered events

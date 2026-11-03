@@ -4180,6 +4180,144 @@
         "remaining": [
           "Actual supported-platform, full-worker filesystem and packaged acceptance remain required; Node remains the default server."
         ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/internal/native-queue/lookup",
+        "implementation": "cantrip_server_rs/src/http/native_queue.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/native-queue-http-compatibility.mjs",
+          "scripts/server-rust/native-queue-http-cases.mjs",
+          "scripts/server-rust/native-queue-http-authorization.mjs",
+          "scripts/server-rust/native-queue-http-content.mjs",
+          "scripts/server-rust/native-queue-http-imports.mjs",
+          "scripts/server-rust/native-queue-receipt-http.mjs",
+          "scripts/server-rust/native-queue-receipt-cases.mjs",
+          "scripts/server-rust/native-queue-receipt-lock.mjs",
+          "scripts/server-rust/native-queue-authority-case.mjs",
+          "scripts/server-rust/native-queue-transaction-case.mjs",
+          "cantrip_server_rs/tests/native_command_contracts.rs",
+          "scripts/server-rust/native-queue-disconnected-mutation.mjs"
+        ],
+        "remaining": [
+          "Supported-platform, full failure/product and packaged acceptance remain required. Shared coordination, complete installation upgrade/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/internal/native-queue/read",
+        "implementation": "cantrip_server_rs/src/http/native_queue.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/native-queue-http-compatibility.mjs",
+          "scripts/server-rust/native-queue-http-cases.mjs",
+          "scripts/server-rust/native-queue-http-authorization.mjs",
+          "scripts/server-rust/native-queue-http-content.mjs",
+          "scripts/server-rust/native-queue-http-imports.mjs",
+          "scripts/server-rust/native-queue-receipt-http.mjs",
+          "scripts/server-rust/native-queue-receipt-cases.mjs",
+          "scripts/server-rust/native-queue-receipt-lock.mjs",
+          "scripts/server-rust/native-queue-authority-case.mjs",
+          "scripts/server-rust/native-queue-transaction-case.mjs",
+          "cantrip_server_rs/tests/native_command_contracts.rs",
+          "scripts/server-rust/native-queue-disconnected-mutation.mjs"
+        ],
+        "remaining": [
+          "Supported-platform, full failure/product and packaged acceptance remain required. Shared coordination, complete installation upgrade/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/internal/native-queue/mutate",
+        "implementation": "cantrip_server_rs/src/http/native_queue.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/native-queue-http-compatibility.mjs",
+          "scripts/server-rust/native-queue-http-cases.mjs",
+          "scripts/server-rust/native-queue-http-authorization.mjs",
+          "scripts/server-rust/native-queue-http-content.mjs",
+          "scripts/server-rust/native-queue-http-imports.mjs",
+          "scripts/server-rust/native-queue-receipt-http.mjs",
+          "scripts/server-rust/native-queue-receipt-cases.mjs",
+          "scripts/server-rust/native-queue-receipt-lock.mjs",
+          "scripts/server-rust/native-queue-authority-case.mjs",
+          "scripts/server-rust/native-queue-transaction-case.mjs",
+          "cantrip_server_rs/tests/native_command_contracts.rs",
+          "scripts/server-rust/native-queue-disconnected-mutation.mjs"
+        ],
+        "remaining": [
+          "Supported-platform, full failure/product and packaged acceptance remain required. Shared coordination, complete installation upgrade/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/internal/native-queue/start-receipt",
+        "implementation": "cantrip_server_rs/src/http/native_queue.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/native-queue-http-compatibility.mjs",
+          "scripts/server-rust/native-queue-http-cases.mjs",
+          "scripts/server-rust/native-queue-http-authorization.mjs",
+          "scripts/server-rust/native-queue-http-content.mjs",
+          "scripts/server-rust/native-queue-http-imports.mjs",
+          "scripts/server-rust/native-queue-receipt-http.mjs",
+          "scripts/server-rust/native-queue-receipt-cases.mjs",
+          "scripts/server-rust/native-queue-receipt-lock.mjs",
+          "scripts/server-rust/native-queue-authority-case.mjs",
+          "scripts/server-rust/native-queue-transaction-case.mjs",
+          "cantrip_server_rs/tests/native_command_contracts.rs",
+          "scripts/server-rust/native-queue-disconnected-mutation.mjs"
+        ],
+        "remaining": [
+          "Supported-platform, full failure/product and packaged acceptance remain required. Shared coordination, complete installation upgrade/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/internal/native-queue/import",
+        "implementation": "cantrip_server_rs/src/http/native_queue.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/native-queue-http-compatibility.mjs",
+          "scripts/server-rust/native-queue-http-cases.mjs",
+          "scripts/server-rust/native-queue-http-authorization.mjs",
+          "scripts/server-rust/native-queue-http-content.mjs",
+          "scripts/server-rust/native-queue-http-imports.mjs",
+          "scripts/server-rust/native-queue-receipt-http.mjs",
+          "scripts/server-rust/native-queue-receipt-cases.mjs",
+          "scripts/server-rust/native-queue-receipt-lock.mjs",
+          "scripts/server-rust/native-queue-authority-case.mjs",
+          "scripts/server-rust/native-queue-transaction-case.mjs",
+          "cantrip_server_rs/tests/native_command_contracts.rs",
+          "scripts/server-rust/native-queue-disconnected-mutation.mjs"
+        ],
+        "remaining": [
+          "Supported-platform, full failure/product and packaged acceptance remain required. Shared coordination, complete installation upgrade/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished."
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/internal/native-queue/import-ack",
+        "implementation": "cantrip_server_rs/src/http/native_queue.rs",
+        "status": "implemented-pending-platform-acceptance",
+        "evidence": [
+          "scripts/server-rust/native-queue-http-compatibility.mjs",
+          "scripts/server-rust/native-queue-http-cases.mjs",
+          "scripts/server-rust/native-queue-http-authorization.mjs",
+          "scripts/server-rust/native-queue-http-content.mjs",
+          "scripts/server-rust/native-queue-http-imports.mjs",
+          "scripts/server-rust/native-queue-receipt-http.mjs",
+          "scripts/server-rust/native-queue-receipt-cases.mjs",
+          "scripts/server-rust/native-queue-receipt-lock.mjs",
+          "scripts/server-rust/native-queue-authority-case.mjs",
+          "scripts/server-rust/native-queue-transaction-case.mjs",
+          "cantrip_server_rs/tests/native_command_contracts.rs",
+          "scripts/server-rust/native-queue-disconnected-mutation.mjs"
+        ],
+        "remaining": [
+          "Supported-platform, full failure/product and packaged acceptance remain required. Shared coordination, complete installation upgrade/post-write rollback, artifacts, Winterhold rehearsal, performance and default cutover remain unfinished."
+        ]
       }
     ]
   },
@@ -9856,6 +9994,96 @@
         "Shared generic Buffer/prototype validation semantics on other routes remain to audit and implement.",
         "All original full-replacement requirements, remaining known CI/timing/formatting failures, Redis/multi-instance, existing-data upgrades/post-write rollback, final artifacts/app/Winterhold/performance and default cutover."
       ]
+    },
+    "workerNativeQueueHttp": {
+      "status": "implemented-pending-platform-acceptance",
+      "scope": "All six worker:agent-tools queue routes use the credential owner, existing canonical queue repositories, exact Source schema/error boundaries, shared receipt notifications and owned dispatch/persistence lifetimes. Production startup invokes the already-ported interrupted-lane and Task-operation recovery routines alongside existing local-coordinator transient recovery. No production SQL endpoint or Node delegation.",
+      "evidence": [
+        "cantrip_server_rs/src/http/native_queue.rs",
+        "cantrip_server_rs/src/auth/service.rs",
+        "scripts/server-rust/native-queue-http-compatibility.mjs",
+        "scripts/server-rust/native-queue-http-cases.mjs",
+        "scripts/server-rust/native-queue-http-authorization.mjs",
+        "scripts/server-rust/native-queue-http-content.mjs",
+        "scripts/server-rust/native-queue-http-imports.mjs",
+        "scripts/server-rust/native-queue-receipt-http.mjs",
+        "scripts/server-rust/native-queue-receipt-cases.mjs",
+        "scripts/server-rust/native-queue-receipt-lock.mjs",
+        "scripts/server-rust/native-queue-authority-case.mjs",
+        "scripts/server-rust/native-queue-transaction-case.mjs",
+        "cantrip_server_rs/tests/native_command_contracts.rs",
+        "scripts/server-rust/actual-project-chat-client.mjs",
+        "scripts/server-rust/native-queue-disconnected-mutation.mjs"
+      ],
+      "validatedSubset": "Final local macOS arm64 production HTTP comparison passes all nine database/authentication profiles: 888 paired observations, 40 endpoint decryption proofs and five unchanged worker SDK operations per peer/profile. The full receipt matrix passes 37 paired scenarios (12 PGlite,12 bundled PostgreSQL,13 external PostgreSQL), plus one focused locked-write disconnect scenario and repeat of the existing locked-read scenario. It includes real 90-second accounts deadlines on each backend; settlement/disconnect/SQL failures under every auth mode; all six real foreign-owner denials, exact drained revision-zero/one worker and Live notices; four concurrent identical mutations; mutate/import/ack SQL rollback and retry; actual restart/reconnect; deterministic explicit-start claims and retained decryptable input; dispatch-failure release and receipt replay. The actual PostgreSQL mutation SQL read remains owned after caller disconnect, then commits once and publishes both route and durable notifications; the unchanged SDK reconciles and replays the original operation without duplicates. All 47 Rust library tests,44824 native-command contract comparisons,strict all-target Clippy,boundary audit and changed-file formatting pass. Actual browser SDK/full production worker/bundled Codex Agent Chat and Task regressions pass all three stores after startup recovery is wired; public model HTTP responses alone are controlled. This is local scoped evidence,not platform/package/full replacement acceptance.",
+      "remaining": [
+        "Resolve broad-run timing, Goal-delivery assertion and unhandled EPIPE; focused and standalone Primary success do not establish a broad green check or the failure cause.",
+        "Observe supported-platform CI and retain actual failures; configured workflows and local macOS success do not prove Linux/Windows readiness.",
+        "Complete other feature, coercion/Buffer, shared coordination, existing-data upgrade/post-write rollback, artifact/app/Winterhold/performance and default-cutover requirements. Node remains the default server and the worker remains Node."
+      ],
+      "localAcceptance": {
+        "platform": "macOS arm64",
+        "pairedQueueHttpObservations": 888,
+        "receiptMatrixCases": 37,
+        "additionalLockedMutationScenario": 1,
+        "existingLockedReadRegressionRepeated": true,
+        "ordinaryHttpProfiles": 9,
+        "cryptoProofsPerHttpPeerProfile": 40,
+        "sdkOperationsPerHttpPeerProfile": 5,
+        "receipts": {
+          "pglite": {
+            "scenarios": 12,
+            "pairedHttpSetupAndAssertions": 197
+          },
+          "bundledPostgres": {
+            "scenarios": 12,
+            "pairedHttpSetupAndAssertions": 197
+          },
+          "externalPostgres": {
+            "scenarios": 13,
+            "pairedHttpSetupAndAssertions": 212
+          }
+        },
+        "realServerDeadlines": "Actual90seconds,accounts mode on all3stores; no shortened timer or artificial clock.",
+        "productionProductFlows": {
+          "stores": 3,
+          "agentChat": {
+            "stepsPerPeer": 13,
+            "workerStopsPerPeer": 4,
+            "canonicalTurnsPerPeer": 2,
+            "modelRequestsPerPeer": 4,
+            "historyGoalUsageRetainedThroughServerWorkerRestart": true
+          },
+          "task": {
+            "stepsPerPeer": 14,
+            "workerStopsPerPeer": 5,
+            "modelRequestsPerPeer": 9,
+            "nativeGoalCompleted": true,
+            "quotaFailureRetried": true,
+            "pausedAdmissionRetainedAcrossServerWorkerRestart": true
+          },
+          "runtime": "Actual bundled codex-cli0.166.0; model HTTP responses controlled.",
+          "limitation": "Supported-platform,whole UI,packaging,multi-instance and complete failure matrix remain required."
+        },
+        "rustLibraryTests": 47,
+        "nativeCommandContractComparisons": 44824,
+        "strictAllTargetClippy": "passed",
+        "broadRepositoryCheck": {
+          "exitCode": 1,
+          "elapsedSeconds": 728.2,
+          "sourcePassed": 1702,
+          "sourceSkipped": 57,
+          "appPassed": 4391,
+          "appSkipped": 3,
+          "workerPassed": 2620,
+          "workerSkipped": 133,
+          "workerFailed": 4,
+          "failures": "Three unchanged15-second timeouts in GitHub/native-history/Sharp tests,project Goal delivery assertion,and one unhandled Codex RPC EPIPE.",
+          "focusedValidation": "All five complete implicated worker files pass94tests with original deadlines; six test/source hashes match base and clean Primary.",
+          "primaryWorkerValidation": "Separate full standalone worker test on clean Primary passes2624tests,133skips,zero errors in85seconds; Primary remains clean. This does not reproduce the broad context or prove its failure cause.",
+          "formatting": "Recursive bail prevents whole-repository formatting; changed-file Prettier and Rust formatting pass."
+        }
+      }
     }
   },
   "remainingAcceptance": [
