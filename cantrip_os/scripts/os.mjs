@@ -75,6 +75,8 @@ export async function up() {
       "-d",
       "--name",
       container,
+      "--hostname",
+      container,
       "--label",
       "io.cantrip.os=foundation",
       "--shm-size=1g",

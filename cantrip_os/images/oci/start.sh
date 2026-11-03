@@ -4,6 +4,12 @@ install -d -o cantrip -g cantrip -m 0700 /run/user/1000
 install -d -m 1777 /tmp/.X11-unix
 export XDG_RUNTIME_DIR=/run/user/1000
 rm -f /tmp/.X0-lock /tmp/.X11-unix/X0
+# Startup runs before any desktop/browser process. A retained home belongs to
+# this one instance; processes from the stopped container cannot still own it.
+# Remove only Chromium's process coordination files, never its profile data.
+rm -f /home/cantrip/.config/chromium/SingletonLock \
+    /home/cantrip/.config/chromium/SingletonSocket \
+    /home/cantrip/.config/chromium/SingletonCookie
 pids=()
 cleanup() {
     trap - TERM INT EXIT
