@@ -1091,6 +1091,9 @@ export const userSettings = pgTable(
     computerUseEnabled: boolean("computer_use_enabled")
       .notNull()
       .default(false),
+    computerUseCantripAppAllowed: boolean("computer_use_cantrip_app_allowed")
+      .notNull()
+      .default(false),
     computerUseEffects: jsonb("computer_use_effects")
       .$type<CuaEffectConfiguration>()
       .notNull()

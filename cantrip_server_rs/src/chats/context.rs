@@ -127,6 +127,7 @@ impl Repository {
             "contextKind":if standalone{"standalone"}else{"project"},
             "automationPaused":chat["automation_paused"],"chatId":chat_id,
             "computerUseEnabled":settings["computer_use_enabled"]==Value::Bool(true),
+            "computerUseCantripAppAllowed":settings["computer_use_cantrip_app_allowed"]==Value::Bool(true),
             "computerUseAuthorityGeneration":chat["computer_use_authority_generation"],
             "managedInputRevision":chat["managed_input_revision"],
             "cwd":if standalone{nullish(root.get("protected_path_handle"),json!("standalone-root-unavailable"))}else{root["absolute_path"].clone()},

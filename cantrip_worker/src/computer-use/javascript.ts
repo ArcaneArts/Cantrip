@@ -92,6 +92,8 @@ export interface CuaJavascriptOperationOutcome {
 }
 
 export interface CuaJavascriptOptions {
+  /** Current server-owned policy; never read from script arguments. */
+  cantripAppAllowed?: () => boolean;
   /** Actual runtime turn lifetime, not the transient MCP HTTP request signal. */
   executionSignal: AbortSignal;
   signal?: AbortSignal;
@@ -410,7 +412,13 @@ export class CuaJavascriptContexts {
                 ].includes(action.operation)
               )
                 inputRequested = true;
-              const result = await this.host(context, action, signal, images);
+              const result = await this.host(
+                context,
+                action,
+                signal,
+                images,
+                options.cantripAppAllowed?.() === true,
+              );
               completedHostCalls += 1;
               if (result && typeof result === "object" && "input" in result)
                 inputReceipt = result.input as CuaInputReceipt;
@@ -518,10 +526,16 @@ export class CuaJavascriptContexts {
     action: CuaJavascriptAction,
     signal: AbortSignal,
     images: CuaSnapshot[],
+    allowCantripApp: boolean,
   ): Promise<unknown> {
     const { scope } = context;
     if (action.operation === "targets")
-      return this.service.inventory(scope, signal, action.after);
+      return this.service.inventory(
+        scope,
+        signal,
+        action.after,
+        allowCantripApp,
+      );
     const state = () =>
       context.sessionId ? this.service.state(scope, context.sessionId) : null;
     if (action.operation === "state") return { session: state() };
@@ -537,8 +551,14 @@ export class CuaJavascriptContexts {
             context.sessionId,
             action.target,
             signal,
+            allowCantripApp,
           )
-        : await this.service.open(scope, action.target, signal);
+        : await this.service.open(
+            scope,
+            action.target,
+            signal,
+            allowCantripApp,
+          );
       try {
         this.live(context, signal);
       } catch (error) {

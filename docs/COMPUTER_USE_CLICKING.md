@@ -21,7 +21,7 @@ Input receipts still do not prove that an application acted on an event.
 ## Enable computer use
 
 Computer use is off by default for existing and new accounts. Enable it in
-**Settings → General → Computer use** before starting a new agent turn. While
+**Settings → Computer Use** before starting a new agent turn. While
 disabled, agents receive only “Computer use is not enabled.” and no managed CUA
 tools or setup guidance. The chat-header Computer use button has been removed.
 
@@ -34,6 +34,28 @@ Turning the setting off revokes active CUA sessions and approvals through the
 existing authority-generation notifications, including selected YOLO profiles.
 Later operations are denied; enabling again requires a new agent turn. Existing
 macOS permission grants are not removed by this app setting.
+
+### Protecting Cantrip itself
+
+**Allow computer use on Cantrip** is a separate account setting, off by default.
+Agents can still use other application windows when computer use is enabled.
+Native target discovery (`cua.targets` and `cua.findWindows`) includes
+`access.allowed` and `access.reason`; `cua.openWindow` returns `status: "denied"`
+for a protected match without attaching or capturing it. Native attachment,
+capture, controls, and input enforce the policy independently of discovery.
+On macOS, Cantrip is identified by its native bundle identity (`art.cantrip`,
+including its variants), with exact application names for development builds;
+window titles do not determine access. All Cantrip windows, including popouts,
+are covered.
+
+When Cantrip is protected, full-display targets report
+`display-may-include-cantrip` and shared-pointer input is denied, since either
+could bypass application-window protection. Use an allowed application's window
+and window-directed input instead. Per-operation approvals and YOLO mode cannot
+override the setting. Human Remote Desktop preview/control remains available.
+Changing the setting advances every chat's durable authority generation and
+stops existing computer-use sessions and native timelines. Start a new agent
+turn after changing it.
 
 ## Finding the tools
 
@@ -833,7 +855,6 @@ hypothesis but does not identify the branch taken in the user's trial. The
 reference "make key" records carry a Command modifier and are synthetic mouse
 records, so they are not an unmodified-click solution and are not used here.
 
-
 ## Extended input (API 14)
 
 Mouse input now accepts `left`, `right`, `middle`, `back`, and `forward`.
@@ -842,9 +863,9 @@ substitutions. Back/forward behavior depends on the target application's support
 Window delivery preserves the human cursor and the existing background routing.
 
 ```js
-await cua.click({x:120,y:90}, {button:"middle"});
-await cua.click({x:120,y:90}, {button:"back"});
-await cua.pointerPress({x:120,y:90}, 150, ["Shift"], "right");
+await cua.click({ x: 120, y: 90 }, { button: "middle" });
+await cua.click({ x: 120, y: 90 }, { button: "back" });
+await cua.pointerPress({ x: 120, y: 90 }, 150, ["Shift"], "right");
 await cua.keyPress("A", ["Meta"]);
 await cua.keyPress("F12", ["Control", "Shift"]);
 await cua.keyChord(["C", "B", "M"], 500, ["Shift"]);
@@ -868,10 +889,10 @@ release-only frames. Existing ordered, balanced timeline rules still apply.
 
 ```js
 await cua.inputTimeline([
-  {atMs:0, keyDown:["A"], keyModifiers:["Meta"]},
-  {atMs:100, keyUp:["A"]},
-  {atMs:200, pointerDown:{x:120,y:90}, pointerButton:"forward"},
-  {atMs:350, pointerUp:true}
+  { atMs: 0, keyDown: ["A"], keyModifiers: ["Meta"] },
+  { atMs: 100, keyUp: ["A"] },
+  { atMs: 200, pointerDown: { x: 120, y: 90 }, pointerButton: "forward" },
+  { atMs: 350, pointerUp: true },
 ]);
 ```
 
@@ -990,11 +1011,14 @@ For a preplanned interface whose coordinates are already known, agents can send
 one compact score instead of constructing every down/up frame:
 
 ```js
-await cua.clickSequence([
-  { atMs: 100, x: 767, y: 530 },
-  { atMs: 200, x: 820, y: 530, holdMs: 60 },
-  { atMs: 350, x: 873, y: 530 },
-], { holdMs: 40 });
+await cua.clickSequence(
+  [
+    { atMs: 100, x: 767, y: 530 },
+    { atMs: 200, x: 820, y: 530, holdMs: 60 },
+    { atMs: 350, x: 873, y: 530 },
+  ],
+  { holdMs: 40 },
+);
 ```
 
 Coordinates above are illustrative: select them from the actual target snapshot.

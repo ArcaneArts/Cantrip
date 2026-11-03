@@ -10,9 +10,31 @@ pub enum TargetKind {
     Window,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DenialReason {
+    CantripAppProtected,
+    DisplayMayIncludeCantrip,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TargetAccess {
+    pub allowed: bool,
+    pub reason: Option<DenialReason>,
+}
+
+pub(crate) fn is_cantrip_application_name(name: &str) -> bool {
+    ["Cantrip", "Cantrip Dev", "cantrip-app", "cantrip_app"]
+        .iter()
+        .any(|candidate| name.eq_ignore_ascii_case(candidate))
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Target {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub access: Option<TargetAccess>,
     pub id: String,
     pub generation: u64,
     pub kind: TargetKind,

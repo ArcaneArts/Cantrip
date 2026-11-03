@@ -58,6 +58,7 @@ interface ChatExecutionContextBase {
   /** Filled by getChatExecutionContext; optional for older execution adapters. */
   computerUseAuthorityGeneration?: number;
   computerUseEnabled?: boolean;
+  computerUseCantripAppAllowed?: boolean;
   cwd: string;
   experience: ChatWireSummary["experience"];
   defaultPermissionProfileId?: UserSettings["defaultPermissionProfileId"];
@@ -625,6 +626,8 @@ export class ChatExecutionLaneRepository {
           contextKind: "project",
           automationPaused: row.chat.automationPaused,
           computerUseEnabled: row.settings?.computerUseEnabled === true,
+          computerUseCantripAppAllowed:
+            row.settings?.computerUseCantripAppAllowed === true,
           computerUseAuthorityGeneration:
             row.chat.computerUseAuthorityGeneration,
           chatId,
@@ -840,6 +843,8 @@ export class ChatExecutionLaneRepository {
         contextKind: "standalone",
         automationPaused: false,
         computerUseEnabled: row.settings?.computerUseEnabled === true,
+        computerUseCantripAppAllowed:
+          row.settings?.computerUseCantripAppAllowed === true,
         computerUseAuthorityGeneration: row.chat.computerUseAuthorityGeneration,
         chatId,
         cwd: row.root.protectedPathHandle,

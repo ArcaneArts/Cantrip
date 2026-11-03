@@ -415,6 +415,7 @@ export class CuaAgentCoordinator {
             }),
           );
         },
+        cantripAppAllowed: () => record.authority.cantripAppAllowed,
         authorize: async (action, callSignal) => {
           const authority = await this.refresh(record, binding, callSignal);
           if (action.operation === "wait") return; // lifetime/authority was refreshed above; no new observation or input.

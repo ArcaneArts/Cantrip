@@ -12,6 +12,7 @@ export const cuaPreviewAuthoritySchema = z.strictObject({
   contextKind: z.enum(["project", "standalone"]),
   placementId: cuaIdSchema,
   generation: z.number().int().min(1).max(2_147_483_647),
+  cantripAppAllowed: z.boolean().default(false),
   profile: z.strictObject({
     selectedId: cuaIdSchema,
     effectiveId: cuaIdSchema,

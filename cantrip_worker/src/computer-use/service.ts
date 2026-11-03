@@ -361,7 +361,12 @@ export class CantripCuaService {
   async targets(input: CuaScope, signal?: AbortSignal) {
     return (await this.inventory(input, signal)).targets;
   }
-  async inventory(input: CuaScope, signal?: AbortSignal, after?: string) {
+  async inventory(
+    input: CuaScope,
+    signal?: AbortSignal,
+    after?: string,
+    allowCantripApp = false,
+  ) {
     if (after !== undefined) cuaIdSchema.parse(after);
     return this.track(this.scope(input), signal, async (active) => {
       const runtime = await waitBeforeCuaSend(this.ensureRuntime(), active);
@@ -369,6 +374,7 @@ export class CantripCuaService {
       const response = await runtime.transport.request(
         {
           operation: "targets.list",
+          allowCantripApp,
           ...(after === undefined ? {} : { after }),
         },
         { signal: active },
@@ -390,6 +396,7 @@ export class CantripCuaService {
     input: CuaScope,
     target: CuaTargetReference,
     signal?: AbortSignal,
+    allowCantripApp = false,
   ): Promise<CuaSession> {
     const scope = this.scope(input);
     const reference = cuaTargetReferenceSchema.parse(target);
@@ -415,7 +422,7 @@ export class CantripCuaService {
         return (await this.execute(
           record,
           "target.attach",
-          reference,
+          { ...reference, allowCantripApp },
           active,
         )) as CuaSession;
       } catch (error) {
@@ -631,12 +638,13 @@ export class CantripCuaService {
     sessionId: string,
     target: CuaTargetReference,
     signal?: AbortSignal,
+    allowCantripApp = false,
   ) {
     return this.mutate(
       input,
       sessionId,
       "target.attach",
-      cuaTargetReferenceSchema.parse(target),
+      { ...cuaTargetReferenceSchema.parse(target), allowCantripApp },
       signal,
     ) as Promise<CuaSession>;
   }

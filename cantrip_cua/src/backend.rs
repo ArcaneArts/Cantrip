@@ -31,6 +31,13 @@ impl Raster {
 }
 
 pub trait CaptureBackend: Send {
+    /// Native application identity, never a window title supplied by the model.
+    fn is_cantrip_application(&self, target: &Target) -> Result<bool> {
+        Ok(target
+            .application
+            .as_deref()
+            .is_some_and(crate::target::is_cantrip_application_name))
+    }
     /// Own the native capture wait without holding the service/input executor.
     /// Backends without an independent capture path keep the synchronous path.
     fn capture_work(
@@ -283,6 +290,7 @@ impl CaptureBackend for FakeBackend {
                 pixel_width: 640,
                 pixel_height: 360,
                 scale_factor: 2.0,
+                access: None,
                 focused: None,
                 minimized: None,
             },
@@ -302,6 +310,7 @@ impl CaptureBackend for FakeBackend {
                 pixel_width: 320,
                 pixel_height: 200,
                 scale_factor: 2.0,
+                access: None,
                 focused: Some(false),
                 minimized: Some(false),
             },

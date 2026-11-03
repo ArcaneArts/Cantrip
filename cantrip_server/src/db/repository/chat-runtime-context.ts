@@ -113,6 +113,8 @@ export class ChatRuntimeContextRepository {
       automationPaused: row.chat.automationPaused,
       chatId: row.chat.id,
       computerUseEnabled: row.settings?.computerUseEnabled === true,
+      computerUseCantripAppAllowed:
+        row.settings?.computerUseCantripAppAllowed === true,
       computerUseAuthorityGeneration: row.chat.computerUseAuthorityGeneration,
       managedInputRevision: row.chat.managedInputRevision,
       cwd: row.worktree.absolutePath,
@@ -219,6 +221,8 @@ export class ChatRuntimeContextRepository {
       automationPaused: row.chat.automationPaused,
       chatId,
       computerUseEnabled: row.settings?.computerUseEnabled === true,
+      computerUseCantripAppAllowed:
+        row.settings?.computerUseCantripAppAllowed === true,
       computerUseAuthorityGeneration: row.chat.computerUseAuthorityGeneration,
       managedInputRevision: row.chat.managedInputRevision,
       cwd: row.root.protectedPathHandle ?? "standalone-root-unavailable",

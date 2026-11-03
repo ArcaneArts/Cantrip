@@ -264,9 +264,9 @@ export const settingsNavigationSections: readonly SettingsNavigationSection<Sett
           id: "computer-use",
           label: "Computer Use",
           description:
-            "Enable computer use, macOS permissions, and window effects.",
+            "Enable computer use, allow or deny Cantrip app access, macOS permissions, and window effects.",
           keywords: [
-            "accessibility privacy screen recording window effects filter worker capture",
+            "accessibility privacy screen recording window effects filter worker capture cantrip app allow deny protected self control",
           ],
         },
       ],
@@ -1872,6 +1872,15 @@ export function SettingsPage({
                   matchesSetting("computer-use") ? (
                     <div>
                       <ComputerUseSettings
+                        cantripAppAllowed={
+                          settings.data?.preferences
+                            .computerUseCantripAppAllowed ?? false
+                        }
+                        onCantripAppAllowedChange={(
+                          computerUseCantripAppAllowed,
+                        ) =>
+                          preferences.mutate({ computerUseCantripAppAllowed })
+                        }
                         enabled={
                           settings.data?.preferences.computerUseEnabled ?? false
                         }

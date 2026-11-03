@@ -367,8 +367,14 @@ export class CuaPreviewCoordinator {
           preview.sessionId,
           target,
           active,
+          true,
         );
-      const session = await this.options.service.open(scope, target, active);
+      const session = await this.options.service.open(
+        scope,
+        target,
+        active,
+        true,
+      );
       // Stop may race an already-resolved native operation. Its service-level
       // cancellation has invalidated that handle; never repopulate a closed lease.
       if (active.aborted) throw new CuaProcessError("cancelled", "unknown");

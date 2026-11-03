@@ -42,6 +42,14 @@ export const cuaTargetSchema = z.strictObject({
   scaleFactor: z.number().positive(),
   focused: z.boolean().nullable(),
   minimized: z.boolean().nullable(),
+  access: z
+    .strictObject({
+      allowed: z.boolean(),
+      reason: z
+        .enum(["cantrip-app-protected", "display-may-include-cantrip"])
+        .nullable(),
+    })
+    .optional(),
 });
 export const cuaCursorAppearanceSchema = z.strictObject({
   version: z.literal(1),

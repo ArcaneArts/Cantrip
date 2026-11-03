@@ -317,6 +317,7 @@ mod tests {
             pixel_width: 500,
             pixel_height: 400,
             scale_factor: 1.,
+            access: None,
             focused: None,
             minimized: None,
         }

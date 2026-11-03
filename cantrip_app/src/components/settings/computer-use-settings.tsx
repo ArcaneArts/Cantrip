@@ -15,10 +15,14 @@ export function ComputerUseSettings({
   enabled,
   pending,
   onChange,
+  cantripAppAllowed = false,
+  onCantripAppAllowedChange,
 }: {
   enabled: boolean;
   pending: boolean;
   onChange(enabled: boolean): void;
+  cantripAppAllowed?: boolean;
+  onCantripAppAllowedChange?(allowed: boolean): void;
 }) {
   const [error, setError] = useState<string | null>(null);
   const openPermissions = async (kind: keyof typeof permissionUrls) => {
@@ -55,6 +59,28 @@ export function ComputerUseSettings({
           />
           Enable computer use
         </label>
+      </div>
+      <div className="mt-3 flex items-center justify-between gap-4">
+        <div>
+          <h3 className="text-sm">Allow computer use on Cantrip</h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Allow agents to view and control Cantrip’s own windows. Off by
+            default. When off, agents must use individual application windows
+            instead of full displays or the shared system pointer. Changing this
+            stops active computer-use sessions; start a new agent turn to apply
+            it.
+          </p>
+        </div>
+        <input
+          type="checkbox"
+          aria-label="Allow computer use on Cantrip"
+          className="size-3.5 shrink-0 accent-primary"
+          checked={cantripAppAllowed}
+          disabled={pending || !onCantripAppAllowedChange}
+          onChange={(event) =>
+            onCantripAppAllowedChange?.(event.target.checked)
+          }
+        />
       </div>
       {enabled ? (
         <div className="mt-3 space-y-2 text-xs text-muted-foreground">
