@@ -1,0 +1,133 @@
+# Cantrip OLED: modified 2026-11-03 from IamJony's Icewm_Nord_style_small.
+# GPL-2.0; original attribution retained below, license in COPYING.
+ThemeName="Cantrip OLED"
+ThemeDescription="Pitch-black monochrome adaptation of Icewm_Nord_style_small"
+	ThemeAuthor="IamJony | www.github/IamJony"
+License="GPL"
+Look=flat
+
+TitleBarHeight=26
+TitleBarCentered=1
+TitleBarJustify=54
+RolloverButtonsSupported=1		# 0/1
+ShowMenuButtonIcon=1			# 0/1 Show application icon on menuButton
+TaskBarEnableSystemTray=1
+TitleButtonsLeft="s"
+
+
+TitleButtonsRight="xmir"		# Rollup button displayed
+TitleButtonsSupported="sxmir"		# Rollup button displayed
+
+BorderSizeX=4
+BorderSizeY=4
+DlgBorderSizeX=4
+DlgBorderSizeY=4
+CornerSizeX=24
+CornerSizeY=24
+
+MenuIconSize=22					# Menu
+SmallIconSize=18 				# Taskbar & Titlebar. Taskbar height = height of linux.xpm. Titlebar height = TitleBarHeight in *.theme
+LargeIconSize=32				# Quickswitch window
+HugeIconSize=48					# ?  Cannot identify what it applies to
+
+Gradients=""
+
+ColorNormalBorder="#222222"
+ColorActiveBorder="#444444"
+
+ColorNormalTitleBar="#000000"
+ColorActiveTitleBar="#000000"
+ColorNormalTitleBarText="#888888"
+ColorActiveTitleBarText="#eeeeee"
+
+ColorNormalMenu="#000000"
+ColorActiveMenuItem="#242424"
+ColorNormalMenuItemText="#eeeeee"
+ColorActiveMenuItemText="#eeeeee"
+ColorDisabledMenuItemText="#888888"
+
+ColorMoveSizeStatus="#000000"
+ColorMoveSizeStatusText="#eeeeee"
+
+PagerShowBorders=0				# Menu
+ColorDefaultTaskBar="#000000"
+ColorNormalTaskBarApp="#000000"
+ColorNormalTaskBarAppText="#eeeeee"
+ColorActiveTaskBarApp="#242424"
+ColorActiveTaskBarAppText="#eeeeee"
+ColorMinimizedTaskBarApp="#000000"
+ColorMinimizedTaskBarAppText="#888888"
+ColorActiveWorkspaceButton="#242424"
+ColorActiveWorkspaceButtonText="#eeeeee"
+
+ColorNormalButton="#000000"
+ColorNormalButtonText="#eeeeee"
+
+ColorListBox="#000000"
+ColorListBoxText="#eeeeee"
+ColorListBoxSelection="#242424"
+ColorListBoxSelectionText="#eeeeee"
+
+
+ColorCPUStatusUser="#aaaaaa"
+ColorCPUStatusSystem="#aaaaaa"
+ColorCPUStatusNice="#aaaaaa"
+ColorCPUStatusIdle="#000000"
+ColorMEMStatusFree="#000000"
+ColorMEMStatusBuffers="#aaaaaa"
+ColorMEMStatusCached="#aaaaaa"
+ColorNetSend="#aaaaaa"
+ColorNetReceive="#aaaaaa"
+ColorNetIdle="#000000"
+
+TaskBarClockLeds=0				# 0/1
+ColorClock="#000000"
+ColorClockText="#eeeeee"
+
+ColorToolTip="#000000"
+ColorToolTipText="#eeeeee"
+ColorLabel="#000000"
+ColorLabelText="#eeeeee"
+ColorDialog="#000000"
+
+ColorQuickSwitch="#000000"
+ColorQuickSwitchActive="#242424"
+ColorQuickSwitchText="#eeeeee"
+ColorQuickSwitchSelectionText="#eeeeee"
+
+
+ColorInput="#000000"
+ColorInputText="#eeeeee"
+ColorInputSelection="#242424"
+ColorInputSelectionText="#eeeeee"
+
+TitleFontNameXft="DejaVu Sans:size=10:bold"
+MenuFontNameXft="DejaVu Sans:size=10"
+StatusFontNameXft="DejaVu Sans:size=10"
+QuickSwitchFontNameXft="DejaVu Sans:size=10"
+NormalButtonFontNameXft="DejaVu Sans:size=10"
+ActiveButtonFontNameXft="DejaVu Sans:size=10"
+NormalTaskBarFontNameXft="DejaVu Sans:size=10"
+ActiveTaskBarFontNameXft="DejaVu Sans:size=10"
+ToolButtonFontNameXft="DejaVu Sans:size=10"
+NormalWorkspaceFontNameXft="DejaVu Sans:size=10"
+ActiveWorkspaceFontNameXft="DejaVu Sans:size=10:bold"
+MinimizedWindowFontNameXft="DejaVu Sans:size=10"
+ListBoxFontNameXft="DejaVu Sans:size=10"
+ToolTipFontNameXft="DejaVu Sans:size=10"
+ClockFontNameXft="DejaVu Sans:size=10"
+ApmFontNameXft="DejaVu Sans:size=10"
+InputFontNameXft="DejaVu Sans:size=10"
+LabelFontNameXft="DejaVu Sans:size=10"
+
+ColorNormalWorkspaceButton="#000000"
+ColorNormalWorkspaceButtonText="#aaaaaa"
+ColorActiveButton="#242424"
+ColorActiveButtonText="#ffffff"
+ColorScrollBar="#000000"
+ColorScrollBarSlider="#333333"
+ColorScrollBarButton="#000000"
+ColorScrollBarButtonArrow="#eeeeee"
+ColorScrollBarInactiveArrow="#888888"
+DesktopBackgroundColor="#000000"
+DesktopBackgroundImage=""

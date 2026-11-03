@@ -18,7 +18,7 @@ cleanup() {
 }
 trap cleanup TERM INT EXIT
 runuser -u cantrip -- Xtigervnc :0 -geometry 1440x900 -depth 24 \
-    -SecurityTypes None -localhost yes -AlwaysShared -ac -rfbport 5900 &
+    -SecurityTypes None -localhost no -AlwaysShared -ac -rfbport 5900 &
 pids+=("$!")
 # Try the actual display connection while the server starts. No capability
 # guess or permission preflight substitutes for the X server's own result.
@@ -26,6 +26,11 @@ for ((attempt=0; attempt<100; attempt++)); do
     if runuser -u cantrip -- xdpyinfo -display :0 >/dev/null 2>&1; then break; fi
     sleep 0.1
 done
+# LightDM's Xsession does this in the ISO; Docker starts IceWM directly.
+runuser -u cantrip -- xrdb -merge /etc/X11/Xresources/50-cantrip-oled
+if [ -r /home/cantrip/.Xresources ]; then
+    runuser -u cantrip -- xrdb -merge /home/cantrip/.Xresources
+fi
 runuser -u cantrip -- env HOME=/home/cantrip dbus-run-session -- icewm-session &
 pids+=("$!")
 websockify --web=/usr/share/novnc 0.0.0.0:6080 127.0.0.1:5900 &

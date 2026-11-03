@@ -8,6 +8,7 @@ fonts-liberation
 git
 icewm
 locales
+libglib2.0-bin
 mesa-utils
 mousepad
 openssh-client

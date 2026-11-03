@@ -1,0 +1,8 @@
+/* XPM */
+/* Cantrip OLED frame: one-pixel outline, 2026-11-03. */
+static char * dframeAR[] = {
+"4 1 2 1",
+"  c #000000",
+". c #555555",
+"   ."
+};

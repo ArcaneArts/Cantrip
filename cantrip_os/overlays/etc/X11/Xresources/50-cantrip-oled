@@ -1,0 +1,24 @@
+! Shared X11 defaults. Personal ~/.Xresources is merged afterward.
+XTerm*background: #000000
+XTerm*foreground: #eeeeee
+XTerm*cursorColor: #ffffff
+XTerm*pointerColor: #eeeeee
+XTerm*pointerColorBackground: #000000
+XTerm*highlightColor: #333333
+XTerm*highlightTextColor: #ffffff
+XTerm*faceName: DejaVu Sans Mono
+XTerm*faceSize: 10
+XTerm*colorBD: #ffffff
+XTerm*colorUL: #cccccc
+! Keep ANSI semantic colors readable; the normal terminal surface is black.
+XTerm*color0: #000000
+XTerm*color7: #dddddd
+XTerm*color8: #777777
+XTerm*color15: #ffffff
+Xmessage*background: #000000
+Xmessage*foreground: #eeeeee
+Xmessage*form.background: #000000
+Xmessage*message.background: #000000
+Xmessage*message.foreground: #eeeeee
+Xmessage*Command.background: #161616
+Xmessage*Command.foreground: #eeeeee

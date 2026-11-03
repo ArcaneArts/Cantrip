@@ -70,3 +70,36 @@ separately. Live ISO changes are temporary until installed or otherwise saved.
 Single-user passwordless testing is intentional. Additional workspace sessions,
 Cantrip execution/CUA integration, provider credentials, and orchestration are
 later work. This checkpoint ends before those integrations.
+
+## OLED desktop and foreground launcher follow-up
+
+Also verified on 2026-11-03 on the native ARM64 Docker edition:
+
+- Built and ran the source-managed Cantrip OLED theme. Only this IceWM theme
+  remains installed; DejaVu Sans replaces the optional downloaded text font.
+- Visually checked black PCManFM and Mousepad interiors, the Mousepad editing
+  surface, and xterm, alongside the black desktop and complete window outlines.
+  GTK3 loaded the theme and GtkSourceView palette; GTK2 fallback is configured
+  but was not exercised with a GTK2 application.
+- Used the title-bar **Tile → Left Half** menu on PCManFM and the **Size** menu
+  with arrow keys. IceWM loaded the new resize/tiling preferences. Modifier
+  shortcuts and pointer dragging still need ordinary human-input confirmation;
+  automated input did not reliably forward modifiers/dragging through noVNC.
+- Checked the black viewer, bolt, and removal of the connected label/fullscreen
+  button. Entering and exiting native Brave fullscreen hid/restored the toolbar.
+- Ran `pnpm os`, watched source changes rebuild/replace the desktop, and observed
+  build and container logs in the same console. The open viewer reconnected.
+- Interrupted a real Docker build with Ctrl+C: the build command ended, the
+  container stopped, and the launcher exited. Restarting retained the saved
+  `Documents/persistence-check.txt` file from the foundation test.
+- Verified the native VNC socket handshake on host loopback port 5900. A second
+  foreground launcher failed without stopping the existing owner's desktop.
+- The three focused lifecycle tests pass: foreground ownership, cancellation
+  while waiting for the lifecycle lock, and child-process shutdown on abort.
+
+Node/shell syntax, scoped formatting, and diff whitespace checks passed.
+`pnpm check` stops at the existing server-boundary `agentOperations` digest
+mismatch; the same failure was reproduced on unchanged Primary `main`.
+
+The shared overlays also feed future ISO builds. The ISO identified above was
+**not rebuilt** for this follow-up and still contains the original appearance.

@@ -2,13 +2,22 @@
 <html lang="en">
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#000000" />
+  <link rel="icon" type="image/svg+xml" href="./bolt.svg" />
   <title>CantripOS</title>
   <style>
+    :root {
+      color-scheme: dark;
+    }
+    * {
+      box-sizing: border-box;
+    }
     html,
     body {
       margin: 0;
       height: 100%;
-      background: #172d38;
+      overflow: hidden;
+      background: #000;
       color: #eee;
       font: 14px system-ui;
     }
@@ -18,85 +27,117 @@
     }
     header {
       display: flex;
+      flex-shrink: 0;
       align-items: center;
-      gap: 12px;
-      padding: 8px 12px;
-      background: #10212a;
+      gap: 8px;
+      min-height: 44px;
+      padding: 4px 12px;
+      background: #000;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+    }
+    .brand img {
+      width: 24px;
+      height: 24px;
+    }
+    .brand strong {
+      font-weight: 500;
     }
     #status {
       flex: 1;
+      color: #999;
+      font-size: 12px;
+      text-align: right;
     }
     button {
+      appearance: none;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: #ccc;
+      font: inherit;
+      padding: 8px 10px;
       cursor: pointer;
+    }
+    button:hover:enabled,
+    button:focus-visible {
+      background: #171717;
+      color: #fff;
+    }
+    button:focus-visible {
+      outline: 1px solid #888;
+      outline-offset: -1px;
+    }
+    button:active:enabled {
+      background: #262626;
+    }
+    button:disabled {
+      opacity: 0.4;
+      cursor: default;
     }
     #screen {
       flex: 1;
       min-height: 0;
+      overflow: hidden;
+      background: #000;
+    }
+    /* Browser-owned fullscreen (including F11 where supported), no extra toggle. */
+    @media (display-mode: fullscreen) {
+      header {
+        display: none;
+      }
+    }
+    html:fullscreen header,
+    html.browser-fullscreen header {
+      display: none;
     }
     dialog {
-      background: #10212a;
+      width: min(440px, calc(100vw - 32px));
+      background: #000;
       color: #eee;
-      border: 1px solid #789;
+      border: 1px solid #262626;
+      border-radius: 10px;
+      padding: 16px;
+    }
+    dialog::backdrop {
+      background: #0009;
     }
     textarea {
       display: block;
-      width: 360px;
+      width: 100%;
       height: 160px;
-      margin: 10px 0;
+      margin: 12px 0;
+      padding: 10px;
+      background: #000;
+      color: #eee;
+      border: 1px solid #333;
+      border-radius: 6px;
+      resize: vertical;
+    }
+    textarea:focus-visible {
+      outline: 1px solid #888;
+      outline-offset: -1px;
     }
   </style>
   <header>
-    <strong>CantripOS</strong><span id="status">Connecting…</span
-    ><button id="clipboard">Clipboard</button
-    ><button id="fullscreen">Fullscreen</button>
+    <span class="brand"
+      ><img src="./bolt.svg" alt="" /><strong>CantripOS</strong></span
+    >
+    <span id="status" role="status">Connecting…</span>
+    <button id="clipboard" disabled>Clipboard</button>
   </header>
-  <main id="screen"></main>
-  <dialog id="clip-dialog">
+  <main id="screen" aria-label="Linux desktop"></main>
+  <dialog id="clip-dialog" aria-label="Desktop clipboard">
     <label for="clip"
       >Copy text from Linux, or paste text below to send it.</label
-    ><textarea id="clip"></textarea><button id="send">Send to Linux</button
+    >
+    <textarea id="clip"></textarea>
+    <button id="send" disabled>Send to Linux</button
     ><button id="close">Close</button>
   </dialog>
-  <script type="module">
-    import RFB from "./core/rfb.js";
-    const screen = document.querySelector("#screen");
-    const status = document.querySelector("#status");
-    const clip = document.querySelector("#clip");
-    const dialog = document.querySelector("#clip-dialog");
-    let rfb, timer;
-    function connect() {
-      clearTimeout(timer);
-      status.textContent = "Connecting…";
-      rfb = new RFB(
-        screen,
-        `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/websockify`,
-      );
-      rfb.scaleViewport = true;
-      rfb.resizeSession = true;
-      rfb.addEventListener("connect", () => {
-        status.textContent = "Connected · Debian + IceWM";
-      });
-      rfb.addEventListener("disconnect", () => {
-        status.textContent =
-          "Desktop disconnected or restarting. Reconnecting…";
-        timer = setTimeout(connect, 1500);
-      });
-      rfb.addEventListener("clipboard", (event) => {
-        clip.value = event.detail.text;
-      });
-    }
-    document.querySelector("#clipboard").onclick = () => dialog.showModal();
-    document.querySelector("#send").onclick = () => {
-      rfb.clipboardPasteFrom(clip.value);
-      dialog.close();
-      rfb.focus();
-    };
-    document.querySelector("#close").onclick = () => {
-      dialog.close();
-      rfb.focus();
-    };
-    document.querySelector("#fullscreen").onclick = () =>
-      document.documentElement.requestFullscreen();
-    connect();
-  </script>
+  <script type="module" src="./viewer.mjs"></script>
 </html>
