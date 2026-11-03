@@ -1707,13 +1707,13 @@ jobs:
         run: node --import tsx scripts/server-rust/actual-folder-client.mjs --tasks --database postgres --report .qa/rust-server/actual-task-worker-postgres.json
       - name: Actual Agent, Goal, automations, approvals, customizations, permissions, global skills and MCP settings with pglite
         if: ${{ !cancelled() }}
-        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --project-chats --project-automations --agent-interactions --chat-customizations --skill-settings --mcp-settings --database pglite --report .qa/rust-server/actual-project-chat-worker-pglite.json
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --project-chats --project-automations --agent-interactions --chat-customizations --skill-settings --mcp-settings --provider-test --database pglite --report .qa/rust-server/actual-project-chat-worker-pglite.json
       - name: Actual Agent, Goal, automations, approvals, customizations, permissions, global skills and MCP settings with bundled-postgres
         if: ${{ !cancelled() }}
-        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --project-chats --project-automations --agent-interactions --chat-customizations --skill-settings --mcp-settings --database bundled-postgres --report .qa/rust-server/actual-project-chat-worker-bundled-postgres.json
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --project-chats --project-automations --agent-interactions --chat-customizations --skill-settings --mcp-settings --provider-test --database bundled-postgres --report .qa/rust-server/actual-project-chat-worker-bundled-postgres.json
       - name: Actual Agent, Goal, automations, approvals, customizations, permissions, global skills and MCP settings with postgres
         if: ${{ !cancelled() }}
-        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --project-chats --project-automations --agent-interactions --chat-customizations --skill-settings --mcp-settings --database postgres --report .qa/rust-server/actual-project-chat-worker-postgres.json
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --project-chats --project-automations --agent-interactions --chat-customizations --skill-settings --mcp-settings --provider-test --database postgres --report .qa/rust-server/actual-project-chat-worker-postgres.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -1827,6 +1827,24 @@ jobs:
       - name: Global/project MCP HTTP, discovery, encryption, persistence and recovery with postgres
         if: ${{ !cancelled() }}
         run: node --import tsx scripts/server-rust/mcp-settings-http-compatibility.mjs --database postgres --report .qa/rust-server/mcp-settings-http-postgres.json
+      - name: Desktop update SQL matches actual Source query builders
+        if: ${{ !cancelled() }}
+        run: node --import tsx scripts/server-rust/desktop-update-query-manifest.mjs
+      - name: Settings operation response contracts and provider diagnostics
+        if: ${{ !cancelled() }}
+        run: node scripts/server-rust/cargo.mjs test --test settings_operations_contracts -- --nocapture
+      - name: Desktop update and provider-test HTTP with pglite
+        if: ${{ !cancelled() }}
+        run: node --import tsx scripts/server-rust/settings-operations-http-compatibility.mjs --database pglite --report .qa/rust-server/settings-operations-pglite.json
+      - name: Desktop update and provider-test HTTP with bundled-postgres
+        if: ${{ !cancelled() }}
+        run: node --import tsx scripts/server-rust/settings-operations-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/settings-operations-bundled-postgres.json
+      - name: Desktop update and provider-test HTTP with postgres
+        if: ${{ !cancelled() }}
+        run: node --import tsx scripts/server-rust/settings-operations-http-compatibility.mjs --database postgres --report .qa/rust-server/settings-operations-postgres.json
+      - name: Provider-test production two-minute deadline and late-reply recovery
+        if: ${{ !cancelled() }}
+        run: node --import tsx scripts/server-rust/settings-operations-http-compatibility.mjs --database pglite --profile none --deadline --report .qa/rust-server/settings-operations-real-deadline.json
       - name: Automation SQL and legacy timezone assets match actual Source
         run: |
           node --import tsx scripts/server-rust/project-automation-query-manifest.mjs

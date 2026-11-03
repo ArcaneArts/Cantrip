@@ -9,12 +9,15 @@ const { sql } = require("drizzle-orm");
 
 export function installLiveSqlFixture(app, database) {
   app.post("/__fixture/sql", async (request) => {
-    let values;
+    let values,
+      statementIndex = -1;
     try {
       values = await database.repository.settings.database.transaction(
         async (tx) => {
-          for (const statement of request.body.statements)
+          for (const statement of request.body.statements) {
+            statementIndex++;
             await tx.execute(sql.raw(statement));
+          }
           const values = [];
           for (const query of request.body.queries ?? []) {
             const result = await tx.execute(sql.raw(query));
@@ -28,8 +31,9 @@ export function installLiveSqlFixture(app, database) {
       console.error(
         JSON.stringify({
           event: "fixture.sql.failed",
-          message: error.cause?.message ?? error.name,
-          code: error.cause?.code ?? null,
+          message: error.cause?.message ?? error.message ?? error.name,
+          code: error.cause?.code ?? error.code ?? null,
+          statementIndex,
         }),
       );
       throw error;

@@ -331,57 +331,60 @@ export async function settingsHttpFixture({
       serverUrl: config.serverUrl,
       workerId: settingsWorker,
     });
-    worker = new WorkerConnection(
-      config,
-      async (command, emit) => {
-        if (onCommand) {
-          const result = await onCommand(command, emit, {
-            encryption,
-            owner,
-            serverId,
-            scope,
-          });
-          if (result !== undefined) return result;
-        }
-        if (
-          command.type === "chat.native-logical.complete" &&
-          onLogicalCompletion
-        )
-          return onLogicalCompletion(command);
-        if (command.type === "chat.scratch.reconcile")
-          return {
-            retainedRootIds: command.roots.map((r) => r.rootId),
-            missingRootIds: [],
-            orphanedRootIds: [],
-            dueRootIds: [],
-          };
-        if (command.type === "chat.settings.read")
-          return readProtectedNativeSettings({
-            scope: command.scope,
-            resolve: () => ({ scope, runtime, generation: "runtime" }),
-            service: encryption,
-          });
-        if (command.type === "chat.settings.update")
-          return updateProtectedNativeSettings({
-            request: command,
-            resolve: () => ({ scope, runtime, generation: "runtime" }),
-            service: encryption,
-          });
-        if (command.type === "chat.account-defaults")
-          return protectedNativeAccountDefaults({
-            command,
-            resolve: () => ({ scope, runtime, generation: "runtime" }),
-            service: encryption,
-          });
-        throw new Error("Controlled settings worker command is unsupported");
-      },
-      undefined,
-      undefined,
-      undefined,
-      1000,
-      () => connections++,
-    );
-    worker.start();
+    async function connectWorker() {
+      worker = new WorkerConnection(
+        config,
+        async (command, emit) => {
+          if (onCommand) {
+            const result = await onCommand(command, emit, {
+              encryption,
+              owner,
+              serverId,
+              scope,
+            });
+            if (result !== undefined) return result;
+          }
+          if (
+            command.type === "chat.native-logical.complete" &&
+            onLogicalCompletion
+          )
+            return onLogicalCompletion(command);
+          if (command.type === "chat.scratch.reconcile")
+            return {
+              retainedRootIds: command.roots.map((r) => r.rootId),
+              missingRootIds: [],
+              orphanedRootIds: [],
+              dueRootIds: [],
+            };
+          if (command.type === "chat.settings.read")
+            return readProtectedNativeSettings({
+              scope: command.scope,
+              resolve: () => ({ scope, runtime, generation: "runtime" }),
+              service: encryption,
+            });
+          if (command.type === "chat.settings.update")
+            return updateProtectedNativeSettings({
+              request: command,
+              resolve: () => ({ scope, runtime, generation: "runtime" }),
+              service: encryption,
+            });
+          if (command.type === "chat.account-defaults")
+            return protectedNativeAccountDefaults({
+              command,
+              resolve: () => ({ scope, runtime, generation: "runtime" }),
+              service: encryption,
+            });
+          throw new Error("Controlled settings worker command is unsupported");
+        },
+        undefined,
+        undefined,
+        undefined,
+        1000,
+        () => connections++,
+      );
+      worker.start();
+    }
+    await connectWorker();
     await until(
       () => connections,
       (n) => n === 1,
@@ -390,7 +393,17 @@ export async function settingsHttpFixture({
       fixture,
       visit,
       live,
-      worker,
+      get worker() {
+        return worker;
+      },
+      reconnectWorker: async () => {
+        const previous = connections;
+        await connectWorker();
+        await until(
+          () => connections,
+          (n) => n === previous + 1,
+        );
+      },
       encryption,
       scope,
       owner,

@@ -589,7 +589,10 @@
     "cantripOsWorkspaceSummarySchema": 9983,
     "cantripOsProjectSourceSummarySchema": 9988,
     "cantripOsProjectWorktreeSummarySchema": 9995,
-    "cantripOsSourceBindingSummarySchema": 9997
+    "cantripOsSourceBindingSummarySchema": 9997,
+    "desktopUpdateActiveWorkSummarySchema": 10009,
+    "providerConnectionTestResultSchema": 10014,
+    "workerProviderConnectionTestResultSchema": 10023
   },
   "nodes": [
     {
@@ -58929,6 +58932,116 @@
         }
       ]
     },
-    { "type": "never", "checks": [] }
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "desktopUpdateActiveWorkSummarySchema",
+      "shape": {
+        "activeChats": 10010,
+        "queuedPrompts": 10011,
+        "terminalServices": 10012,
+        "backgroundJobs": 10013
+      },
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 4294967295, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 4294967295, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 4294967295, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 4294967295, "inclusive": true }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "providerConnectionTestResultSchema",
+      "shape": {
+        "ok": 10015,
+        "stage": 10016,
+        "message": 10017,
+        "workerId": 10018,
+        "modelName": 10020,
+        "durationMs": 10022
+      },
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "enum",
+      "name": "providerConnectionTestStageSchema",
+      "values": [
+        "worker-placement",
+        "codex-startup",
+        "key-authentication",
+        "endpoint-compatibility",
+        "model-availability",
+        "provider-response",
+        "completed"
+      ],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 20000, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 10019, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 10021, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "workerProviderConnectionTestResultSchema",
+      "shape": { "accepted": 10024, "durationMs": 10025 },
+      "checks": []
+    },
+    { "type": "literal", "values": [true], "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    }
   ]
 }

@@ -12,6 +12,52 @@ feature set.
 
 Status: **implementation in progress; not a deployable replacement**.
 
+The public desktop-update active-work and provider connection-test routes now
+have native implementations. Updater counts execute the nine captured Source
+queries independently, retaining ownership and lifecycle predicates, archived
+queue behavior, standalone exclusion, terminal service semantics and integer
+bounds. Provider tests retain the existing Z.ai guard, model/worker selection,
+body parsing, repeated-query behavior, native reply validation, failure-stage
+precedence and production two-minute deadline. The worker stays in Node.
+
+Local comparisons pass 513 actual Source response-contract/error cases and 992
+failure-stage/UTF-16 detail cases. All nine storage/authentication combinations
+pass 1,281 paired HTTP observations and 369 provider commands, including fourteen
+real missing-table failures and restoration, default/offline worker selection,
+malformed replies, caller disconnect, worker reconnect, actual server restart
+and command backpressure while desktop counts remain available. Both peers pass
+the unchanged 120-second deadline and recover from a late reply. Strict
+all-target Clippy and focused Source/Rust tests pass. All 157 original assertions
+and polling calls in the touched existing harnesses retain their arguments and
+deadlines; 3,091 checked app/worker/Node-server/protocol/crypto files remain
+byte-identical to the baseline.
+
+A real native Codex path probe also explains the previous Linux skill fixture
+failure: macOS's lexical `/var` worker home differed from the native canonical
+`/private/var` inventory. An owned directory alias now exercises the original
+inventory rejection on every platform, while an additional canonical-path
+account configuration round trip proves the successful behavior. Original
+negative assertions remain. The composed PGlite browser/full-worker/native test
+passes eighteen steps and its original seven model requests per peer.
+
+The composed browser/full-worker/native Codex flow now passes nineteen steps
+on all three storage modes for both servers. Its original seven model requests
+remain separate from nine provider HTTPS requests: three successes and the
+actual six native authentication retries on a controlled401 response, followed
+by successful recovery. Provider identity and credential availability survive
+server/worker restart. A disposable trusted CA and strict local CONNECT proxy
+route only the owned model listener; certificate verification stays enabled.
+MCP discovery of the proxy URL is validated and answered404, preserving the
+original discovery assertions. These local results do not establish platform,
+packaging or complete replacement readiness.
+
+One retained Source-only native-history failure occurs before the provider
+probe: a previously displayed assistant answer becomes a no-text notice, while
+the native SQLite item and rollout retain the full text. The original assertion
+fails, and the disposable runtime is archived in
+`.qa/rust-server/source-native-history-before-provider-v4.tar.gz` with its hash
+proof. This remains a required integration investigation, not a passing check.
+
 Fenced Task failure recovery now commits dispatch settlement and precise retry
 accounting in one owner-serialized transaction. The Linux failure trace showed
 saved-outcome recovery settling a failed dispatch before its live RPC callback;
