@@ -5,6 +5,7 @@ import {
 import { actualProjectWorktrees } from "./actual-project-worktrees.mjs";
 import { actualTaskClient } from "./actual-task-client.mjs";
 import { actualProjectChatClient } from "./actual-project-chat-client.mjs";
+import { providerTestBoundary } from "./provider-test-boundary.mjs";
 import { actualGithubConversion } from "./actual-github-conversion.mjs";
 import { actualWorkspaceDiscovery } from "./actual-workspace-discovery.mjs";
 import {
@@ -28,6 +29,7 @@ import {
   realpath,
   rm,
   stat,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -121,6 +123,7 @@ async function flow(
       pathname.startsWith("/api/chats/") ||
       pathname.startsWith("/api/skills") ||
       pathname.startsWith("/api/settings/mcp-") ||
+      pathname.startsWith("/api/settings/providers") ||
       pathname.startsWith("/api/skill-audiences") ||
       pathname.startsWith("/api/agent-requests") ||
       pathname.startsWith("/api/tasks/") ||
@@ -135,12 +138,31 @@ async function flow(
         body: request.postData(),
       });
   });
-  const dataDirectory = path.join(root, fixture.kind, "worker");
+  const canonicalDataDirectory = path.join(root, fixture.kind, "worker");
+  const dataDirectory = process.argv.includes("--skill-settings")
+    ? path.join(root, fixture.kind, "worker-path-alias")
+    : canonicalDataDirectory;
+  if (dataDirectory !== canonicalDataDirectory) {
+    await mkdir(canonicalDataDirectory, { recursive: true });
+    // SkillManager returns lexical account paths; native discovery returns
+    // canonical paths. Exercise that real rejection on every platform instead
+    // of accidentally depending on macOS's /var alias.
+    await symlink(
+      await realpath(canonicalDataDirectory),
+      dataDirectory,
+      process.platform === "win32" ? "junction" : "dir",
+    );
+  }
   const existingPath = path.join(root, fixture.kind, "private-existing-folder");
   const missingPath = path.join(root, fixture.kind, "private-repaired-folder");
   const workerId = "actual-folder-worker";
+  const providerBoundary = process.argv.includes("--provider-test")
+    ? await providerTestBoundary(
+        path.join(root, fixture.kind, "provider-test-boundary"),
+      )
+    : undefined;
   let worker, tunnel;
-  const startWorker = async (enrollmentCode) => {
+  const startWorker = async (enrollmentCode, { providerTest = false } = {}) => {
     const homeDirectory = process.argv.includes("--mcp-settings")
       ? path.join(dataDirectory, "mcp-test-home")
       : undefined;
@@ -150,7 +172,9 @@ async function flow(
       enrollmentCode,
       workerId,
       homeDirectory,
+      environment: providerTest ? providerBoundary?.environment : undefined,
       traceShutdown:
+        process.argv.includes("--trace-worker-shutdown") ||
         process.argv.includes("--replicas") ||
         process.argv.includes("--worktrees"),
       ...(process.argv.includes("--surfaces")
@@ -837,15 +861,29 @@ async function flow(
         stopWorker,
         result,
         requests,
+        providerBoundary,
       });
     result.requests = requests;
     result.events = await page.evaluate(() => window.folderEvents);
     assert.deepEqual(errors, []);
   } finally {
-    await stopWorker();
-    await tunnel?.close();
-    await page.evaluate(() => window.folderLive?.stop()).catch(() => {});
-    await context.close();
+    try {
+      await stopWorker();
+      await tunnel?.close();
+    } finally {
+      if (providerBoundary) {
+        result.providerBoundaryDiagnostics = {
+          failures: providerBoundary.failures,
+          requests: providerBoundary.requests,
+          tunnels: providerBoundary.tunnels,
+          blockedTunnels: providerBoundary.blockedTunnels,
+          discoveryProbes: providerBoundary.discoveryProbes,
+        };
+        await providerBoundary.close();
+      }
+      await page.evaluate(() => window.folderLive?.stop()).catch(() => {});
+      await context.close();
+    }
   }
 }
 try {
@@ -988,6 +1026,16 @@ try {
       report.runtimes[1].skillSettingsSummary,
       report.runtimes[0].skillSettingsSummary,
     );
+  if (process.argv.includes("--provider-test")) {
+    assert.deepEqual(
+      report.runtimes[1].nativeProviderProbeResults,
+      report.runtimes[0].nativeProviderProbeResults,
+    );
+    assert.deepEqual(
+      report.runtimes[1].providerConnectionSummary,
+      report.runtimes[0].providerConnectionSummary,
+    );
+  }
   if (
     process.argv.includes("--github-conversion") ||
     process.argv.includes("--workspace-discovery")
@@ -1022,7 +1070,21 @@ try {
   if (failure) {
     report.fixtureRoot = root;
     console.error("Retained failed full-worker fixture:", root);
-  } else await rm(root, { recursive: true, force: true });
+  } else {
+    try {
+      await rm(root, { recursive: true, force: true });
+    } catch (error) {
+      failure = error;
+      report.fixtureRoot = root;
+      report.failure = { message: error.message, stack: error.stack };
+      report.cleanupFailure = {
+        code: error.code,
+        syscall: error.syscall,
+        path: error.path,
+      };
+      console.error("Retained full-worker fixture after cleanup failed:", root);
+    }
+  }
   if (reportPath) {
     await mkdir(path.dirname(path.resolve(reportPath)), { recursive: true });
     report.surfaceFixtureRequests = surfaceFixtureRequests;

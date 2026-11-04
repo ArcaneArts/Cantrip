@@ -1,5 +1,6 @@
 //! Worker admission phases pause queue/suspension time without removing deadlines.
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use tokio::time::Instant;
 
 #[derive(Clone, Copy)]
 enum Phase {

@@ -35,14 +35,15 @@ impl Service {
         {
             return;
         }
-        if revisions.len() >= 4096 && !revisions.contains_key(worker) {
-            if let Some(key) = revisions.keys().next().cloned() {
-                revisions.remove(&key);
-            }
+        if revisions.len() >= 4096
+            && !revisions.contains_key(worker)
+            && let Some(key) = revisions.keys().next().cloned()
+        {
+            revisions.remove(&key);
         }
         revisions.insert(worker.into(), (generation.into(), revision));
         let _ = self.inference_live.publish_event(json!({
-            "ownerId":owner, "scope":{"kind":"current-user"},
+            "ownerId":owner, "scope":json!({"kind":"current-user"}),
             "resource":"worker-inference", "action":"status",
             "entityId":worker, "revision":revision, "payload":status,
         }));

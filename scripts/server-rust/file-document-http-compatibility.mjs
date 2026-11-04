@@ -499,6 +499,8 @@ try {
 } catch (error) {
   failure = error;
   report.failure = error.stack;
+  if (error.httpUploadDiagnostics)
+    report.httpUploadFailure = error.httpUploadDiagnostics;
   report.retainedRoot = root;
 } finally {
   try {

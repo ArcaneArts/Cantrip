@@ -348,7 +348,7 @@ async fn execute(
                 None,
             )
             .await?;
-        let status = wire::parse("workerInferenceStatusSchema", Some(&result))
+        let status = wire::parse("workerInferenceStatusSchema", result.as_ref())
             .map_err(|_| anyhow::anyhow!("Invalid worker inference snapshot."))?;
         let current = state.bridge.connection_identity(worker);
         if identity.as_ref().is_none_or(|p| {

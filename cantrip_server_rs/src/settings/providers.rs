@@ -29,8 +29,8 @@ pub fn normalize_responses_base_url(value: &str) -> Result<String> {
     url.set_fragment(None);
     let path = ENDPOINT
         .get_or_init(|| regex::Regex::new(r"(?i)/(?:chat/completions|chat|responses)$").unwrap())
-        .replace(url.path().trim_end_matches('/'), "");
-    let path = path.trim_end_matches('/').to_owned();
+        .replace(url.path().trim_end_matches('/'), "")
+        .into_owned();
     if !url.cannot_be_a_base() {
         url.set_path(&path);
     }

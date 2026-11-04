@@ -114,14 +114,18 @@ export async function runSkillSettingsHttpCases({
     status: 503,
   });
   await sql(
-    `UPDATE project_worktrees SET worker_id=${literal(audiences.otherWorker)} WHERE id=${literal(tree)}`,
+    `INSERT INTO project_sources(id,project_id,worker_id,absolute_path,display_path) VALUES('skill-settings-other-source',${literal(project)},${literal(audiences.otherWorker)},'/fixture/skill-settings-other','/fixture/skill-settings-other')`,
+    `UPDATE project_worktrees SET project_source_id='skill-settings-other-source',worker_id=${literal(audiences.otherWorker)} WHERE id=${literal(tree)}`,
   );
-  await call(27, 0, {
+  const unavailableSource = await call(27, 0, {
     target: { ...context, projectId: project },
-    status: 409,
+    status: 404,
+  });
+  assert.deepEqual(unavailableSource.raw, {
+    error: "Project source not found.",
   });
   await sql(
-    `UPDATE project_worktrees SET worker_id=${literal(worker)} WHERE id=${literal(tree)}`,
+    `UPDATE project_worktrees SET project_source_id='settings-source',worker_id=${literal(worker)} WHERE id=${literal(tree)}`,
     `UPDATE project_worktrees SET lifecycle_state='removing' WHERE id=${literal(tree)}`,
   );
   await call(28, 0, {

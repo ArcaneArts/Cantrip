@@ -16,8 +16,13 @@ import {
   cantripMcpChatWaitInputSchema,
 } from "@cantrip/protocol";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type {
+  CallToolResult,
+  ServerRequest,
+  ServerNotification,
+} from "@modelcontextprotocol/sdk/types.js";
 import { cantripVersion } from "@cantrip/version";
 import { z } from "zod";
 import type {
@@ -1445,7 +1450,10 @@ export function createCantripMcpServer(
             ? idempotentMutationAnnotations
             : readAnnotations,
       },
-      async (arguments_: Record<string, unknown>, extra) => {
+      async (
+        arguments_: Record<string, unknown>,
+        extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
+      ) => {
         try {
           return operationResult(
             await gateway({ operation, arguments: arguments_ }, extra.signal),

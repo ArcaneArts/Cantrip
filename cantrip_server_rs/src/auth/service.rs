@@ -211,6 +211,10 @@ impl AuthService {
             },
             {
                 let live = live.clone();
+                Arc::new(move |events| live.publish_group(events))
+            },
+            {
+                let live = live.clone();
                 Arc::new(move |event| {
                     let resource = event["resource"].clone();
                     if let Err(error) = live.publish_event(event) {

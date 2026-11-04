@@ -622,6 +622,9 @@ export const contractRoots = [
   "cantripOsRunCaptureSchema",
   "cantripOsRunSelectionSchema",
   "cantripOsRunSourceSchema",
+  "desktopUpdateActiveWorkSummarySchema",
+  "providerConnectionTestResultSchema",
+  "workerProviderConnectionTestResultSchema",
 ];
 
 // Resolve the actual source schemas, including their separate protocol modules.
@@ -888,6 +891,13 @@ registerChecks(protocol.encryptedPrivateDisplayLabelSchema, [
   "private-label-envelope",
 ]);
 registerChecks(protocol.modelConfigurationSchema, ["model-configuration"]);
+// The legacy Task Worker codec remains public but is no longer part of an
+// outgoing worker command. Keep its native check in the public contract corpus.
+registerCustom(
+  taskScheduling.taskWorkerModelConfigurationSchema,
+  1,
+  "worker-command-task-model",
+);
 registerChecks(protocol.accountResourceUsageHistoryQuerySchema, [
   "usage-history-window",
 ]);

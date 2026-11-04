@@ -538,6 +538,7 @@ describe.sequential("atomic model configuration API", () => {
         placementId: beforeDispatch!.worktreeId,
         executionLaneId: observedTurn!.executionLaneId,
         generation: beforeDispatch!.computerUseAuthorityGeneration,
+        cantripAppAllowed: false,
         profile: {
           selectedId: selectedProfile ?? ":read-only",
           effectiveId: selectedProfile ?? ":read-only",

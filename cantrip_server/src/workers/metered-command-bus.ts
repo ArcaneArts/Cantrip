@@ -122,6 +122,10 @@ export class MeteredWorkerCommandBus implements WorkerCommandBus {
     return this.delegate.isConnected(workerId);
   }
 
+  connectionIdentity(workerId: string) {
+    return this.delegate.connectionIdentity?.(workerId) ?? null;
+  }
+
   stats(): WorkerCommandBusStats {
     return (
       this.delegate.stats?.() ?? {

@@ -2370,6 +2370,13 @@ afterAll(async () => {
   await rm(dataDirectory, { recursive: true, force: true });
 });
 
+// Poll synchronous state assertions promptly without adding repeated database
+// queries. Async queries retain the original Vitest interval. Every wait keeps
+// its original timeout, and the complete scenario keeps its 15-second budget.
+function waitForFoundationState<T>(callback: () => T) {
+  return vi.waitFor(callback, { interval: 5 });
+}
+
 describe("local server foundation", () => {
   it("persists server configuration, workers, and conversations", async () => {
     const firstDatabase = await connectDatabase(config);
@@ -3088,7 +3095,9 @@ describe("local server foundation", () => {
         payload: { workerId: "unknown-worker" },
       }),
     ).toMatchObject({ statusCode: 404 });
-    await vi.waitFor(() => expect(releaseProjectClone).not.toBeNull());
+    await waitForFoundationState(() =>
+      expect(releaseProjectClone).not.toBeNull(),
+    );
     const parallelResponse = await firstApp.inject({
       method: "POST",
       url: "/api/projects/from-github",
@@ -3661,7 +3670,7 @@ describe("local server foundation", () => {
         new Uint8Array([1, 2, 3]),
       ),
     );
-    await vi.waitFor(() =>
+    await waitForFoundationState(() =>
       expect(relayedSurfaceFrames.at(-1)).toEqual({
         workerId: "test-worker",
         sequence: 0,
@@ -5504,7 +5513,7 @@ describe("local server foundation", () => {
         }),
       }),
     ).toMatchObject({ statusCode: 202 });
-    await vi.waitFor(() => expect(turnPrompts).toHaveLength(2));
+    await waitForFoundationState(() => expect(turnPrompts).toHaveLength(2));
     expect(turnPolicyContexts[1]).toEqual({ policies: [] });
     expect(turnPrompts[1]).toContain(
       "Continue this existing Cantrip conversation",
@@ -5549,7 +5558,7 @@ describe("local server foundation", () => {
         resume: null,
       }),
     );
-    await vi.waitFor(() =>
+    await waitForFoundationState(() =>
       expect(richLiveEvents.at(-1)).toMatchObject({ type: "ready" }),
     );
     richLiveClient.send(
@@ -5559,7 +5568,7 @@ describe("local server foundation", () => {
         scopes: [{ kind: "chat", chatId: richChat.id }],
       }),
     );
-    await vi.waitFor(() =>
+    await waitForFoundationState(() =>
       expect(richLiveEvents.at(-1)).toMatchObject({
         type: "subscribed",
         requestId: "rich-chat",
@@ -5898,8 +5907,8 @@ describe("local server foundation", () => {
       Buffer.concat([
         Buffer.from(firstChunk.data, "base64"),
         Buffer.from(lastChunk.data, "base64"),
-      ]),
-    ).toEqual(explorerMediaBytes);
+      ]).equals(explorerMediaBytes),
+    ).toBe(true);
     const rangedMedia = await readMedia(2, 6);
     expect(rangedMedia).toMatchObject({ offset: 2, eof: false });
     expect(Buffer.from(rangedMedia.data, "base64")).toEqual(
@@ -6674,7 +6683,7 @@ describe("local server foundation", () => {
         }),
       }),
     ).toMatchObject({ statusCode: 202 });
-    await vi.waitFor(() => expect(turnModelIds).toHaveLength(3));
+    await waitForFoundationState(() => expect(turnModelIds).toHaveLength(3));
     expect(turnModelIds.at(-1)).toBe(selectedModel.id);
 
     const queueChat = chatWireSummarySchema.parse(
@@ -6711,7 +6720,7 @@ describe("local server foundation", () => {
         idempotencyKey: "queue-running",
       }),
     });
-    await vi.waitFor(() => expect(releaseHeldTurn).not.toBeNull());
+    await waitForFoundationState(() => expect(releaseHeldTurn).not.toBeNull());
     const heldReceipt = heldTurnCommand!.nativeCommandReceipt!;
     expect(heldReceipt.status).toBe("accepted");
     const queueContext =
@@ -7124,7 +7133,7 @@ describe("local server foundation", () => {
     expect(chatPauseStateSchema.parse(queueResumeResponse.json())).toEqual({
       paused: false,
     });
-    await vi.waitFor(() =>
+    await waitForFoundationState(() =>
       expect(turnPrompts).toContain("Edited second follow-up"),
     );
     await vi.waitFor(async () => {
@@ -7258,7 +7267,7 @@ describe("local server foundation", () => {
       }),
     });
     expect(pooledTurn.statusCode).toBe(202);
-    await vi.waitFor(() =>
+    await waitForFoundationState(() =>
       expect(turnProviderAccountIds.at(-1)).toBe(additionalAccount.id),
     );
     expect(turnCredentialHomeKeys.at(-1)).toBe(additionalAccount.id);
@@ -7294,10 +7303,10 @@ describe("local server foundation", () => {
       }),
     });
     expect(stickyTurn.statusCode).toBe(202);
-    await vi.waitFor(() =>
+    await waitForFoundationState(() =>
       expect(turnPrompts.at(-1)).toBe("Continue on the current account."),
     );
-    await vi.waitFor(() =>
+    await waitForFoundationState(() =>
       expect(turnProviderAccountIds.at(-1)).toBe(additionalAccount.id),
     );
     expect(turnThreadIds.at(-1)).toBe(pooledThreadId);
@@ -7345,7 +7354,7 @@ describe("local server foundation", () => {
       }),
     });
     expect(reserveTurn.statusCode).toBe(202);
-    await vi.waitFor(() =>
+    await waitForFoundationState(() =>
       expect(turnPrompts.at(-1)).toBe(
         "Continue with remaining weekly allowance.",
       ),
@@ -7390,7 +7399,7 @@ describe("local server foundation", () => {
       }),
     });
     expect(switchedTurn.statusCode).toBe(202);
-    await vi.waitFor(() =>
+    await waitForFoundationState(() =>
       expect(turnProviderAccountIds.at(-1)).toBe(
         chatGptProvider.accounts[0]!.id,
       ),
@@ -7493,7 +7502,7 @@ describe("local server foundation", () => {
       }),
     });
     expect(grokTurn.statusCode).toBe(202);
-    await vi.waitFor(() =>
+    await waitForFoundationState(() =>
       expect(turnProviderIds.at(-1)).toBe(grokProvider.id),
     );
     expect(turnProviderAccountIds.at(-1)).toBe(grokProvider.accounts[0]!.id);
@@ -7553,7 +7562,9 @@ describe("local server foundation", () => {
       providerId: provider.id,
       providerModelName: "gpt-fallback",
     });
-    await vi.waitFor(() => expect(turnProviderIds.at(-1)).toBe(provider.id));
+    await waitForFoundationState(() =>
+      expect(turnProviderIds.at(-1)).toBe(provider.id),
+    );
     expect(turnRouteIds.at(-1)).toBe(routedModel.routes[1]?.id);
 
     await selectNewChatModel(selectedModel.id);
@@ -7589,7 +7600,9 @@ describe("local server foundation", () => {
     expect(
       chatMessageOpaqueSummarySchema.parse(planTurn.json().message).mode,
     ).toBe("plan");
-    await vi.waitFor(() => expect(turnPlanModes.at(-1)).toBe("plan"));
+    await waitForFoundationState(() =>
+      expect(turnPlanModes.at(-1)).toBe("plan"),
+    );
     const readPlanState = async () => {
       const response = await firstApp.inject({
         method: "GET",
@@ -7697,7 +7710,9 @@ describe("local server foundation", () => {
     expect(
       chatMessageOpaqueSummarySchema.parse(defaultTurn.json().message).mode,
     ).toBe("default");
-    await vi.waitFor(() => expect(turnPlanModes.at(-1)).toBe("default"));
+    await waitForFoundationState(() =>
+      expect(turnPlanModes.at(-1)).toBe("default"),
+    );
     expect((await readPlanState()).mode).toBe("default");
 
     const goalChat = chatWireSummarySchema.parse(
@@ -7774,7 +7789,7 @@ describe("local server foundation", () => {
       status: "active",
       tokenBudget: null,
     });
-    await vi.waitFor(() =>
+    await waitForFoundationState(() =>
       expect(turnPrompts).toContain("Finish the long-running goal"),
     );
     await vi.waitFor(async () => {
@@ -7900,7 +7915,7 @@ describe("local server foundation", () => {
         resume: null,
       }),
     );
-    await vi.waitFor(() =>
+    await waitForFoundationState(() =>
       expect(approvalLiveEvents.at(-1)).toMatchObject({ type: "ready" }),
     );
     approvalLiveClient.send(
@@ -7910,7 +7925,7 @@ describe("local server foundation", () => {
         scopes: [{ kind: "chat", chatId: bridgedApprovalChat.id }],
       }),
     );
-    await vi.waitFor(() =>
+    await waitForFoundationState(() =>
       expect(approvalLiveEvents.at(-1)).toMatchObject({
         type: "subscribed",
         requestId: "approval-chat",
@@ -7960,7 +7975,7 @@ describe("local server foundation", () => {
       )?.status,
     ).toBe("waiting-for-approval");
     expect(deliveredAgentInteractionResponses).toEqual([]);
-    await vi.waitFor(() =>
+    await waitForFoundationState(() =>
       expect(
         approvalLiveEvents.filter(
           (event) =>
@@ -8006,7 +8021,7 @@ describe("local server foundation", () => {
         )?.status,
       ).toBe("idle");
     });
-    await vi.waitFor(() =>
+    await waitForFoundationState(() =>
       expect(
         approvalLiveEvents.filter(
           (event) =>

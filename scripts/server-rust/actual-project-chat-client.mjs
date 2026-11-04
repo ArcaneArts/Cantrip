@@ -7,6 +7,7 @@ import { actualAgentInteractionsClient } from "./actual-agent-interactions-clien
 import { actualChatCustomizationsClient } from "./actual-chat-customizations-client.mjs";
 import { actualSkillSettingsClient } from "./actual-skill-settings-client.mjs";
 import { actualMcpSettingsClient } from "./actual-mcp-settings-client.mjs";
+import { actualProviderTestClient } from "./actual-provider-test-client.mjs";
 
 export async function actualProjectChatClient({
   page,
@@ -19,6 +20,7 @@ export async function actualProjectChatClient({
   stopWorker,
   result,
   requests,
+  providerBoundary,
 }) {
   const model = await taskModelProvider({
     allowMcpDiscoveryProbe: process.argv.includes("--mcp-settings"),
@@ -27,6 +29,19 @@ export async function actualProjectChatClient({
     answer = "Private actual Agent answer 🍄",
     objective = "Private actual Agent Goal objective 🌙",
     goalAnswer = "Private actual Agent Goal completed ☀";
+  const observedMessageSnapshots = {};
+  const responseIdentity = (messages, text) => {
+    const item = messages
+      .flatMap((message) => message.content)
+      .find((item) => item.type === "text" && item.text === text);
+    assert.ok(item, "the browser decrypted the expected native response");
+    assert.ok(item.correlation?.threadId, "the response identifies its thread");
+    assert.ok(item.correlation?.turnId, "the response identifies its turn");
+    return {
+      threadId: item.correlation.threadId,
+      turnId: item.correlation.turnId,
+    };
+  };
   try {
     await page.evaluate(() => window.folderLive.start());
     await startWorker();
@@ -137,13 +152,19 @@ export async function actualProjectChatClient({
     );
     assert.equal(admitted.status, "started");
     const readMessages = () =>
-      page.evaluate(
-        async (chatId) =>
-          (await import("/src/lib/api/chats.ts")).getMessages(chatId),
-        chat.id,
-      );
-    await eventually(readMessages, (messages) =>
-      assert.ok(JSON.stringify(messages).includes(answer)),
+      page.evaluate(async (chatId) => {
+        const messages = await (
+          await import("/src/lib/api/chats.ts")
+        ).getMessages(chatId);
+        window.actualProjectChatCanonicalSnapshot = messages;
+        return messages;
+      }, chat.id);
+    observedMessageSnapshots.afterAgentAnswer = await eventually(
+      readMessages,
+      (messages) => {
+        assert.ok(JSON.stringify(messages).includes(answer));
+        responseIdentity(messages, answer);
+      },
     );
     const idle = () =>
       eventually(
@@ -181,8 +202,12 @@ export async function actualProjectChatClient({
       { chatId: chat.id, configuration },
     );
     assert.equal(goalTurn.status, "started");
-    await eventually(readMessages, (messages) =>
-      assert.ok(JSON.stringify(messages).includes(goalAnswer)),
+    observedMessageSnapshots.afterGoalAnswer = await eventually(
+      readMessages,
+      (messages) => {
+        assert.ok(JSON.stringify(messages).includes(goalAnswer));
+        responseIdentity(messages, goalAnswer);
+      },
     );
     await idle();
     const goal = await page.evaluate(
@@ -202,23 +227,12 @@ export async function actualProjectChatClient({
     assert.equal(native.goal.threadId, goal.goal.threadId);
     assert.equal(model.requests.filter((r) => r.method === "POST").length, 4);
     assert.deepEqual(model.failures, []);
-    const completedTurns = await page.evaluate(
-      async ({ chatId, answers }) => {
-        const api = await import("/src/lib/api/chats.ts");
-        const messages = await api.getMessages(chatId);
-        window.actualProjectChatCanonicalSnapshot = messages;
-        return answers.map((answer) => {
-          const item = messages
-            .flatMap((m) => m.content)
-            .find((item) => item.type === "text" && item.text === answer);
-          return {
-            threadId: item.correlation.threadId,
-            turnId: item.correlation.turnId,
-          };
-        });
-      },
-      { chatId: chat.id, answers: [answer, goalAnswer] },
-    );
+    // Live responses identify the turns. Canonical projection commits on an
+    // independent pump; wait for its archive before requiring the final view.
+    const completedTurns = [
+      responseIdentity(observedMessageSnapshots.afterAgentAnswer, answer),
+      responseIdentity(observedMessageSnapshots.afterGoalAnswer, goalAnswer),
+    ];
     const canonical = await eventually(
       () =>
         page.evaluate(
@@ -470,8 +484,23 @@ export async function actualProjectChatClient({
         result,
         requests,
       });
+    if (providerBoundary)
+      await actualProviderTestClient({
+        page,
+        fixture,
+        workerId,
+        startWorker,
+        stopWorker,
+        result,
+        requests,
+        boundary: providerBoundary,
+      });
   } catch (error) {
-    result.projectChatFailure = { message: error.message, stack: error.stack };
+    result.projectChatFailure = {
+      message: error.message,
+      stack: error.stack,
+      observedMessageSnapshots,
+    };
     result.projectChatFailure.canonicalMessageSnapshot = await page
       .evaluate(() => window.actualProjectChatCanonicalSnapshot)
       .catch((cause) => ({ diagnosticError: cause.message }));

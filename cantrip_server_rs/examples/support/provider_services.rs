@@ -110,7 +110,7 @@ impl CatalogBackend for Delegate {
                 Family::Public => "public",
                 Family::ChatGpt => "chatgpt",
                 Family::Grok => "grok",
-                Family::Ollama => "ollama",
+                Family::Ollama | Family::Endpoint => "ollama",
             };
             let mut call = Wire::from_serialize(
                 &json!({"kind":kind,"owner":request.owner,"provider":request.provider}),

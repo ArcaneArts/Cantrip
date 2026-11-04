@@ -10,6 +10,11 @@ import { postgresFixture } from "./postgres-fixture.mjs";
 import { repositoryFixture } from "./repository-fixture.mjs";
 import { heartbeat } from "./security-fixtures.mjs";
 import { policyEnvelope } from "./policy-wire-fixtures.mjs";
+import { endpointInventoryModel } from "./endpoint-provider-wire-fixtures.mjs";
+import {
+  endpointCatalogHttpCases,
+  seedEndpointCatalogProviders,
+} from "./endpoint-catalog-http-cases.mjs";
 
 const option = (key) => {
   const i = process.argv.indexOf(key);
@@ -115,6 +120,7 @@ try {
         releaseHeld,
         heldSeen;
       let controlledFailure = false;
+      const endpointState = { providers: new Map() };
       let completedCancel = false;
       const pendingCatalog = (provider) =>
         catalog(provider, `?workerId=${encodeURIComponent(workerId)}`);
@@ -207,6 +213,7 @@ try {
           await repository.seed(
             `INSERT INTO model_providers(id,owner_id,name,kind,base_url) VALUES(${literal(id)},${literal(who)},${literal(id)},${literal(family)},${literal(url)})`,
           );
+        await seedEndpointCatalogProviders(repository, literal, owner);
         for (const [id, provider] of [
           ["11111111-1111-4111-8111-111111111111", "catalog-chatgpt"],
           ["22222222-2222-4222-8222-222222222222", "catalog-grok"],
@@ -322,6 +329,45 @@ try {
           query: `workerId=${encodeURIComponent(workerId)}&connectionGeneration=${generation}`,
           credential: fixture.records.get("paired").credential,
           onRequest(frame, socket) {
+            if (frame.command.type === "model.endpoint.catalog") {
+              result.commands.push(frame.command);
+              const second = frame.command.provider.id.endsWith("-b");
+              const state = endpointState.providers.get(
+                frame.command.provider.id,
+              ) ?? {
+                loaded: second,
+                contextWindow: second ? 8192 : 4096,
+                fail: false,
+              };
+              socket.send(
+                JSON.stringify({
+                  kind: "response",
+                  requestId: frame.requestId,
+                  ok: !state.fail,
+                  ...(state.fail
+                    ? {
+                        error: {
+                          code: "fixture-endpoint",
+                          message: "Controlled endpoint offline.",
+                        },
+                      }
+                    : {
+                        result: {
+                          models: [
+                            {
+                              ...endpointInventoryModel,
+                              nativeModelId: "shared-model",
+                              loaded: state.loaded,
+                              contextWindow: state.contextWindow,
+                            },
+                          ],
+                          observedAt: "2026-11-04T00:00:00.000Z",
+                        },
+                      }),
+                }),
+              );
+              return true;
+            }
             if (frame.command.type !== "model.ollama.catalog") return false;
             result.commands.push(frame.command);
             const reply = (name = "base-model") =>
@@ -361,6 +407,14 @@ try {
         await worker.open();
         assert.equal((await worker.message()).state, "pending");
         assert.equal((await worker.message()).state, "ready");
+        await endpointCatalogHttpCases({
+          visit,
+          result,
+          state: endpointState,
+          pendingCatalog,
+          refresh,
+          mode,
+        });
         await visit(
           "actual refresh SQL failure",
           "POST",

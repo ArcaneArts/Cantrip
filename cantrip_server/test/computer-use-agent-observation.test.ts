@@ -144,6 +144,7 @@ async function fixture(
     permissionProfile: profile,
     afterChunkPublished,
     context: {
+      computerUseCantripAppAllowed: true,
       experience: contentDomain === "task" ? "task" : "agent",
       contextKind: "project",
       projectId: "fixture-project",

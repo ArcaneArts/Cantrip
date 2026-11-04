@@ -135,6 +135,33 @@
       }
     },
     {
+      "type": "inference.status",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "inference.status"
+        }
+      }
+    },
+    {
+      "type": "inference.configure",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "inference.configure",
+          "configurations": [
+            {
+              "providerId": "fixture-provider",
+              "maxConcurrentInference": 8,
+              "inferenceConfigRevision": 0
+            }
+          ]
+        }
+      }
+    },
+    {
       "type": "direct.capability.prepare",
       "input": {
         "kind": "request",
@@ -761,6 +788,25 @@
             "name": "fixture",
             "kind": "ollama",
             "baseUrl": "stun:example.test",
+            "protectedApiKey": null,
+            "accountId": null,
+            "credentialHomeKey": null
+          }
+        }
+      }
+    },
+    {
+      "type": "model.endpoint.catalog",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "model.endpoint.catalog",
+          "provider": {
+            "id": "fixture",
+            "name": "fixture",
+            "kind": "lm-studio",
+            "baseUrl": "http://127.0.0.1:1234/v1",
             "protectedApiKey": null,
             "accountId": null,
             "credentialHomeKey": null
@@ -5876,7 +5922,7 @@
               "runtimeGeneration": "12345678-1234-4234-8234-123456789abc",
               "bindingId": "12345678-1234-4234-8234-123456789abc",
               "bindingGeneration": "12345678-1234-4234-8234-123456789abc",
-              "projectId": "12345678-1234-4234-8234-123456789abc",
+              "projectId": "00000000-0000-4000-8000-000000000001",
               "projectSourceId": "12345678-1234-4234-8234-123456789abc",
               "sourceKind": "git",
               "worktreeId": "12345678-1234-4234-8234-123456789abc",
@@ -5897,8 +5943,8 @@
           },
           "request": {
             "type": "project.run-configuration-definitions.list",
-            "operationId": "12345678-1234-4234-8234-123456789abc",
-            "projectId": "12345678-1234-4234-8234-123456789abc"
+            "operationId": "00000000-0000-4000-8000-000000000001",
+            "projectId": "00000000-0000-4000-8000-000000000001"
           }
         }
       }

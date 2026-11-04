@@ -176,8 +176,8 @@ export async function actualTaskClient({
     const implementation = model.reply({
       text: "Private full-worker implementation result 🌤",
     });
-    // Native Goal activation drives its first turn. The existing server then
-    // submits its saved encrypted Task control message as a separate turn.
+    // Goal activation attempts an idle turn. The saved encrypted Task control
+    // can arrive first and make that automatic turn unnecessary.
     model.reply({ text: "Private full-worker implementation result 🌤" });
     await page.evaluate(
       async ({ chatId, rowVersion }) =>
@@ -258,6 +258,16 @@ export async function actualTaskClient({
       "the existing Task APIs plan, review and finalize through real Codex; its native Goal tool completes implementation and the browser decrypts the objective and transcript",
     );
     await stopWorker();
+    const inferenceBeforeRestart = structuredClone(
+      model.requests.filter((request) => request.method === "POST"),
+    );
+    assert.ok(
+      inferenceBeforeRestart.every((request) => request.completed),
+      "Task inference completes before restarting its server and worker",
+    );
+    result.taskInferenceBeforeRestart = {
+      postRequests: inferenceBeforeRestart.length,
+    };
     const port = Number(new URL(fixture.server.origin).port);
     await fixture.close();
     await fixture.start({ port });
@@ -266,9 +276,9 @@ export async function actualTaskClient({
     await startWorker();
     assert.equal((await readTask()).briefMarkdown, brief);
     assert.deepEqual(await readMessages(), messages);
-    assert.equal(
-      model.requests.filter((request) => request.method === "POST").length,
-      6,
+    assert.deepEqual(
+      model.requests.filter((request) => request.method === "POST"),
+      inferenceBeforeRestart,
       "restart does not repeat completed Task inference",
     );
     await page.evaluate(async (workerId) => {

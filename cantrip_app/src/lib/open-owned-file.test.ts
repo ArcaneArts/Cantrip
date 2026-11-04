@@ -192,6 +192,41 @@ it("does not invent a worker binding when the selected worktree is absent", asyn
   ).toEqual([]);
 });
 
+it("opens captured OS files with their supplied worker without a host worktree lookup", async () => {
+  vi.mocked(getProjectWorktrees).mockResolvedValue([]);
+  vi.mocked(createFileDocument).mockResolvedValue({
+    ...resource,
+    workerId: "os-worker",
+    cantripOsBindingId: "binding",
+    cantripOsRuntimeGeneration: "generation",
+  });
+  const input = fixture();
+  await openOwnedFile({
+    ...input,
+    workerId: "os-worker",
+    cantripOsBindingId: "binding",
+    cantripOsRuntimeGeneration: "generation",
+  });
+  expect(getProjectWorktrees).not.toHaveBeenCalled();
+  expect(surfaceTitleEncryption.fileDocumentId).toHaveBeenCalledWith({
+    projectId: "project",
+    workerId: "os-worker",
+    worktreeId: "tree",
+    path: "src/lib.rs",
+    cantripOsBindingId: "binding",
+    cantripOsRuntimeGeneration: "generation",
+  });
+  expect(createFileDocument).toHaveBeenCalledWith({
+    id: "scoped-document-id",
+    projectId: "project",
+    workerId: "os-worker",
+    worktreeId: "tree",
+    path: "src/lib.rs",
+    cantripOsBindingId: "binding",
+    cantripOsRuntimeGeneration: "generation",
+  });
+});
+
 it("does not interpret a catalog failure as permission to create a duplicate", async () => {
   vi.mocked(getFileDocuments).mockRejectedValue(
     new Error("catalog unavailable"),

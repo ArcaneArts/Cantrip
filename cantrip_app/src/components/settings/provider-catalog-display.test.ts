@@ -21,6 +21,8 @@ const provider = {
   baseUrl: "http://127.0.0.1:11434/v1",
   hasApiKey: false,
   weeklyUsageReservePercent: 3,
+  maxConcurrentInference: 8,
+  inferenceConfigRevision: 0,
   accounts: [],
   tokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
   agentTime: {

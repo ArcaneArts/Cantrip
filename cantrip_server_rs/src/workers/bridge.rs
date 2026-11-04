@@ -533,10 +533,9 @@ impl WorkerBridge {
             if event["type"] == "inference.command-state" {
                 if let (Some(sequence), Some(phase)) =
                     (event["sequence"].as_u64(), event["state"].as_str())
+                    && pending.deadline.lock().unwrap().observe(sequence, phase)
                 {
-                    if pending.deadline.lock().unwrap().observe(sequence, phase) {
-                        pending.deadline_changed.send_replace(());
-                    }
+                    pending.deadline_changed.send_replace(());
                 }
                 return;
             }

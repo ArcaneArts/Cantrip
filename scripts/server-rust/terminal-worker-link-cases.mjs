@@ -340,7 +340,10 @@ export async function terminalWorkerLinkCases({
           action,
         }),
       ),
-      ["terminal", "terminal", "project-tab-layout"].map((resource) => ({
+      (state.mode === "ready-exited"
+        ? ["terminal", "terminal", "terminal", "project-tab-layout"]
+        : ["terminal", "terminal", "project-tab-layout"]
+      ).map((resource) => ({
         resource,
         scope: { kind: "current-user" },
         entityId: id,

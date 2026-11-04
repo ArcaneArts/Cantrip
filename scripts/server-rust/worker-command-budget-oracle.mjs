@@ -3,6 +3,7 @@ import { LimitedWorkerCommandBus } from "../../cantrip_server/src/workers/limite
 import { RelayQuotaManager } from "../../cantrip_server/src/operations/relay-quotas.ts";
 import { RelayLimitError } from "../../cantrip_server/src/security/abuse-limits.ts";
 import { WorkerUnavailableError } from "../../cantrip_server/src/workers/bridge.ts";
+import fixtures from "./worker-command-fixtures.json" with { type: "json" };
 let now = 0;
 const originalNow = Date.now;
 Date.now = () => now;
@@ -21,6 +22,8 @@ const start = (id, worker = "w0", extra = {}) => ({
   ...extra,
 });
 const reply = (id, extra = {}) => ({ op: "reply", id, ...extra });
+const fixtureCommand = (type) =>
+  fixtures.commands.find((entry) => entry.type === type).input.command;
 const scenarios = [
   {
     name: "raw-worker-references-keep-independent-worker-budgets",
@@ -161,6 +164,45 @@ const scenarios = [
       { op: "close" },
       start("c"),
       start("d", "missing"),
+    ],
+  },
+  {
+    name: "queued-inference-retains-independent-control-headroom",
+    limits: {
+      accountConcurrency: 1,
+      accountRatePerMinute: 2,
+      workerConcurrency: 1,
+      workerRatePerMinute: 2,
+    },
+    steps: [
+      start("inference", "w0", { command: fixtureCommand("label.generate") }),
+      start("configuration", "w0", {
+        command: fixtureCommand("inference.configure"),
+      }),
+      start("ordinary-rejected", "w0", {
+        command: fixtureCommand("label.generate"),
+      }),
+      reply("configuration"),
+      start("control-still-admitted"),
+      reply("control-still-admitted"),
+      start("ordinary-rate-rejected", "w0", {
+        command: fixtureCommand("label.generate"),
+      }),
+      reply("inference"),
+    ],
+  },
+  {
+    name: "control-concurrency-is-capped-at-eight-with-ordinary-capacity-retained",
+    limits: { ...limits, accountConcurrency: 10, workerConcurrency: 10 },
+    steps: [
+      ...Array.from({ length: 9 }, (_, index) => start("control-" + index)),
+      ...Array.from({ length: 11 }, (_, index) =>
+        start("ordinary-" + index, "w0", {
+          command: fixtureCommand("label.generate"),
+        }),
+      ),
+      ...Array.from({ length: 8 }, (_, index) => reply("control-" + index)),
+      ...Array.from({ length: 10 }, (_, index) => reply("ordinary-" + index)),
     ],
   },
 ];
