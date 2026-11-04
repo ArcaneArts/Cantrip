@@ -15,6 +15,51 @@ tests the helper without capturing a real desktop or requesting capture permissi
 For the short product walkthrough, sample MCP calls and native fixture commands,
 see [first-tranche acceptance](../docs/COMPUTER_USE_ACCEPTANCE.md).
 
+## Assigned Linux X11 backend
+
+The Linux helper has an explicit X11 backend for a selected desktop:
+
+```sh
+cantrip-cua --x11-display :100 --desktop-generation DESKTOP_GENERATION
+```
+
+The caller supplies the authorized workspace display and generation. The helper
+opens one local X connection, captures that root display, and posts XTEST input
+there. It never discovers an inherited display or reconnects to a replacement X
+server. Its target generation also changes with each helper lifetime. Capture,
+input and interaction requests use the existing framed protocol and shared input
+ownership/cleanup implementation. Default Linux startup still reports unavailable
+until the owning integration supplies an explicit desktop.
+
+Pointer input moves the real pointer and focus inside that selected desktop.
+The backend supports click/hold, buttons, key combinations, text, wheel, drag and
+balanced timelines. Unicode text uses stable keyboard mappings for the helper
+lifetime, restored on teardown; this avoids racing application XKB refreshes.
+Only empty keymap slots are allocated, and exhaustion reports an actual capacity
+error. Text does not overwrite the clipboard. Accessibility, media controls and
+window-specific inventory are not supplied by this display backend.
+
+This is the native Phase 4 component. Guest package lifecycle, captured Linux
+agent routing, clipboard APIs, integrated viewing/takeover and managed services
+are subsequent dependent cycles; this command alone does not supply those
+product features or authorization.
+
+The real Linux acceptance test runs against two explicitly selected disposable
+workspace desktops, with xterm and xwininfo installed:
+
+```sh
+CANTRIP_CUA_X11_TEST_DISPLAY=:100 \
+CANTRIP_CUA_X11_TEST_OTHER_DISPLAY=:101 \
+  cargo test --locked --manifest-path cantrip_cua/Cargo.toml \
+  --test linux_x11 -- --ignored --nocapture
+```
+
+Use `CANTRIP_CUA_X11_TEST_TIMEOUT_MS=120000` for an emulated VM. The fixture
+checks actual UTF-8 bytes received by xterm, native capture pixels, button/wheel/
+drag events delivered to another X client, stale display identity rejection,
+input sequence rejection, held-key cleanup and cancellation of a long hold. It
+is component acceptance, not a real-model product test.
+
 ## Build and verify
 
 ```sh

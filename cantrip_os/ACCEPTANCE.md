@@ -1461,3 +1461,48 @@ Linux computer use, integrated desktop transport, general SSH/SFTP/TCP product
 access, cloud provisioning, backups and automatic mirroring remain later phases.
 The tested platform matrix is native ARM64 Docker and emulated AMD64 live/
 installed VMs, not arbitrary hardware.
+
+## Phase 4: native Linux backend checkpoint (2026-11-04)
+
+The existing `cantrip-cua` helper now has an explicit Linux X11 backend. It uses
+one local display connection, the supplied desktop generation and a fresh helper
+generation. Capture and native input never discover another display or reconnect
+to a replacement. Input uses the shared participant ownership/sequence/cleanup
+machinery, with an additional display-level fence while another participant owns
+physical holds. Long gestures execute outside the service request loop.
+
+An actual ARM64 Docker test on two workspace desktops passed in 2.98 seconds.
+A real xterm received the exact UTF-8 string `Cantrip Linux 日本語 café 🌙`,
+including uppercase, accents and emoji bytes. Its selected font rendered some
+characters as missing glyphs; that is not a claim of complete font coverage.
+Native root capture returned actual pixels. Another real X client received drag,
+wheel and repeated button events. Stale display identities and repeated input
+sequences were rejected. Cancellation of a 60-second hold released the actual X
+button state; capture on the other desktop remained independent.
+
+Repeated acceptance caught a keymap race: restoring/reusing one temporary keycode
+between characters lost or changed text while clients refreshed XKB state. The
+backend now uses existing layout mappings and keeps allocated Unicode mappings
+stable for the connection. Empty slots are restored on teardown unless an
+external layout change replaced them. Exhausting the finite free slots is a
+reported capacity failure, not a clipboard fallback.
+
+The same test passed in the installed AMD64 VM in 67.94 seconds, using explicit
+displays 104/105 and workspace UID 20004 for the first target. Its inherited
+DISPLAY was deliberately :0; the test still operated only the explicit
+workspace displays. The VM had 2 emulated CPUs and 4 GiB RAM. The test fixture
+uses an actual PTY-child readiness marker and an unmanaged X window for exact
+coordinate assertions, avoiding assumptions about window-manager placement.
+
+Both ARM64 and AMD64 Linux builds compiled. Linux Clippy with all targets and
+warnings denied passed. Seven existing integration suites passed (83 tests).
+The full library run passed 85 tests and retained one existing fake-backend
+shared-pointer permission assertion failure in `input::targeted_tests`; this
+cycle does not change that test or its authorization path. Required local
+`pnpm check` stops on existing decomposition budgets in `build-app.ts`
+(1503/1500) and `chat-turn-runtime.ts` (2101/1999 after rebase). Formatting/diff checks passed.
+
+This checkpoint is a native backend, not completion of Phase 4. Optional package
+lifecycle, clipboard APIs, captured real-agent integration, integrated streaming/
+takeover, SSH/SFTP/VNC/TCP access, and refreshed distribution acceptance remain
+required. The personal OS and default Host helper selection are unchanged.
