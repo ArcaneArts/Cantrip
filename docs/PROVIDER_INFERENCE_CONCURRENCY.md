@@ -126,7 +126,35 @@ The control lane allows at most eight additional requests per owner and worker
 rate counters using the existing configured rates. All traffic still shares the
 existing relay bandwidth quota and authorization. Request statistics count both
 lanes; neither server grants provider tickets. This preserves control headroom
-without removing transport resource bounds or creating a second prompt queue.
+without creating a second prompt queue.
+
+The ordinary command-concurrency counters cover dispatch until a positive worker
+admission acknowledgment, rather than a queued inference RPC's entire lifetime.
+After the keeper acknowledges the operation's journal entry, the worker emits
+one private `inference.command-state` event with `admitted: true` for that
+correlated request. An earlier `waiting` phase alone cannot release the counter.
+Both server buses release their account/worker dispatch counters idempotently at
+this handoff, or at final RPC settlement if no handoff arrives. Provider tickets
+remain entirely worker-owned. A backlog for one provider consequently does not
+retain all ordinary dispatch slots and prevent a free provider from being reached.
+
+The original RPC continues to carry its stream, result, execution deadlines and
+errors. `activeRequests` still counts that full lifetime, including admitted
+waiters; it is not a provider utilization metric. Existing byte/rate quotas,
+coordinator pending/publication limits and disconnect handling remain in force.
+This adds no prompt store, detached response buffer or second request registry:
+pending RPC state is proportional to the currently outstanding operations, and
+final settlement removes it. This handoff acknowledges durable operation metadata,
+not exactly-once execution or a new durable copy of the input. Canonical input and
+recovery rules described below remain authoritative.
+
+The request envelope opts into this acknowledgment explicitly. Older workers
+strip that envelope field and keep the conservative full-lifetime dispatch count;
+new workers talking to older servers do not emit the extended strict event shape.
+Coordinated Node relays preserve the private event across the authenticated hop.
+The limiter consumes it before domain chat/task event handlers, even for requests
+without a domain stream handler. Late or duplicate acknowledgments cannot release
+a different request's counter or decrement a settled request twice.
 
 Native patch `0050` extends the same worker lifetime keeper with a versioned
 admission journal. The exclusive keeper is its only writer, so a retired Node

@@ -7,7 +7,10 @@ import {
   type InferenceJournalRecord,
 } from "./inference-journal.js";
 import type { NativeInferenceOwnership } from "./native-inference-ownership.js";
-import { observeInferenceCommand } from "./inference-command.js";
+import {
+  observeInferenceCommand,
+  observeInferenceCommandAdmission,
+} from "./inference-command.js";
 import {
   providerInferenceConfigurationSchema,
   inferenceNeverStarted,
@@ -95,6 +98,7 @@ interface Ticket {
   lease: InferenceLease;
   resuming?: Promise<void>;
   observe?: (state: InferenceTicketState) => void;
+  admitted?: () => void;
   journalKey: string | null;
   durableQueueReady: boolean;
 }
@@ -370,6 +374,7 @@ export class WorkerInferenceAdmission {
       reject,
       stopListening: () => {},
       observe: observeInferenceCommand(),
+      admitted: observeInferenceCommandAdmission(),
       journalKey:
         this.journal?.key(runtime.generation, input.operationId) ?? null,
       durableQueueReady: !this.journal,
@@ -404,6 +409,10 @@ export class WorkerInferenceAdmission {
         })
         .then(() => {
           if (ticket.state !== "waiting") return;
+          // Waiting phase alone precedes durable storage. Only this positive
+          // journal ACK allows the relay to release its dispatch counter.
+          ticket.admitted?.();
+          ticket.admitted = undefined;
           ticket.durableQueueReady = !ticket.recoveryPending;
           this.drain(pool);
           this.changed();
@@ -551,6 +560,7 @@ export class WorkerInferenceAdmission {
         .catch((error) => this.reportJournalError(error));
     ticket.observe?.(ticket.state);
     ticket.observe = undefined;
+    ticket.admitted = undefined;
     ticket.stopListening();
     ticket.pool.active.delete(ticket);
     const index = ticket.pool.queue.indexOf(ticket);

@@ -6908,12 +6908,16 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   let commandWorkerLinkRespond: WorkerLinkFrameResponder;
   const commandConnection = new WorkerConnection(
     config,
-    async (command, emit) => {
+    async (command, emit, context) => {
       try {
         const resolved = await routingRegistry.resolveCommand(command);
         return await routingRegistry.protectResult(
           command.type,
-          await withInferenceCommand(emit, () => handleCommand(resolved, emit)),
+          await withInferenceCommand(
+            emit,
+            () => handleCommand(resolved, emit),
+            context.inferenceAdmissionAck === true,
+          ),
         );
       } catch (error) {
         throw routingRegistry.protectError(command.type, error);

@@ -537,7 +537,9 @@ impl WorkerBridge {
                 {
                     pending.deadline_changed.send_replace(());
                 }
-                return;
+                if event["admitted"].as_bool() != Some(true) {
+                    return;
+                }
             }
             let _ = pending.delivery.send(Delivery::Event(event));
         }
@@ -564,6 +566,7 @@ impl WorkerBridge {
                 ("kind", Value::String("request".into())),
                 ("requestId", Value::String(id.clone().into())),
                 ("command", command),
+                ("inferenceAdmissionAck", Value::Bool(true)),
             ]);
             let envelope =
                 wire::parse("workerRequestEnvelopeSchema", Some(&envelope)).map_err(|error| {

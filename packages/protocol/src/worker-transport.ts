@@ -13,6 +13,9 @@ export const workerRequestEnvelopeSchema = z.object({
   kind: z.literal("request"),
   requestId: z.string().min(1),
   command: workerCommandSchema,
+  // Older workers strip this optional envelope field. New workers only emit
+  // the extended private admission event when the requesting server opts in.
+  inferenceAdmissionAck: z.literal(true).optional(),
 });
 
 export const WORKER_WEBSOCKET_LEGACY_SUBPROTOCOL = "cantrip-worker-legacy";

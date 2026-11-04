@@ -10,8 +10,29 @@ class InferenceCommand {
   private phase: Phase = "preparing";
   private sequence = 0;
   private closed = false;
+  private admitted = false;
 
-  constructor(private readonly emit: (event: WorkerEvent) => void) {}
+  constructor(
+    private readonly emit: (event: WorkerEvent) => void,
+    private readonly admissionAck: boolean,
+  ) {}
+
+  /** Captured by the operation at creation, before any asynchronous journal IO. */
+  observeAdmission(): (() => void) | undefined {
+    if (this.closed || !this.admissionAck) return undefined;
+    return () => {
+      if (this.closed || this.admitted) return;
+      this.admitted = true;
+      try {
+        this.emit({
+          type: "inference.command-state",
+          sequence: this.sequence++,
+          state: this.phase,
+          admitted: true,
+        });
+      } catch {}
+    };
+  }
 
   observe(): ((state: InferenceTicketState) => void) | undefined {
     if (this.closed) return undefined;
@@ -56,6 +77,10 @@ export function observeInferenceCommand():
   return commands.getStore()?.observe();
 }
 
+export function observeInferenceCommandAdmission(): (() => void) | undefined {
+  return commands.getStore()?.observeAdmission();
+}
+
 /** Socket callbacks can inherit the context that created the socket. Native
  * independent operations must not attach to that unrelated old command. */
 export function withoutInferenceCommand<T>(action: () => T): T {
@@ -65,8 +90,9 @@ export function withoutInferenceCommand<T>(action: () => T): T {
 export async function withInferenceCommand<T>(
   emit: (event: WorkerEvent) => void,
   action: () => Promise<T>,
+  admissionAck = false,
 ): Promise<T> {
-  const command = new InferenceCommand(emit);
+  const command = new InferenceCommand(emit, admissionAck);
   try {
     return await commands.run(command, action);
   } finally {

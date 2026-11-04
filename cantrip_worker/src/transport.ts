@@ -36,6 +36,7 @@ import { workerLogError, workerLogger } from "./logger.js";
 type CommandHandler = (
   command: WorkerCommand,
   emit: (event: WorkerEvent) => void,
+  context: Pick<WorkerRequestEnvelope, "inferenceAdmissionAck">,
 ) => Promise<unknown>;
 
 type SurfaceFrameHandler = (
@@ -1238,7 +1239,9 @@ export class WorkerConnection {
           event,
         });
       };
-      const result = await this.handleCommand(request.command, emit);
+      const result = await this.handleCommand(request.command, emit, {
+        inferenceAdmissionAck: request.inferenceAdmissionAck,
+      });
       this.sendServerEnvelope({
         kind: "response",
         requestId: request.requestId,
