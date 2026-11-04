@@ -35,6 +35,7 @@ interface LimitedWorkerCommandBusOptions {
 // carrying new inference input use the ordinary lane, including native steer.
 const EXECUTION_CONTROL_COMMANDS = new Set<WorkerCommand["type"]>([
   "inference.configure",
+  "inference.status",
   "worker.version",
   "worker.restart",
   "worker.credential.rotate",

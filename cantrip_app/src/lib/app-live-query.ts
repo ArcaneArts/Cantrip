@@ -1,8 +1,10 @@
+import { workerInferenceQueryKey } from "./worker-inference";
 import { publishFileChangeActivity } from "./file-change-activity";
 import {
   chatMessageSchema,
   codeGraphProjectStatusSchema,
   providerAuthLiveStatusSchema,
+  workerInferenceStatusSchema,
   gitConflictListSchema,
   gitManagedOperationResponseSchema,
   gitStatusSchema,
@@ -23,6 +25,7 @@ import type {
   WorkerObservationEnvelope,
   WorkerObservationEventIdentity,
   WorkspaceRepositoryDiscoverySnapshot,
+  WorkerInferenceStatus,
 } from "@cantrip/protocol";
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
 import { chatMessageOpaqueSummarySchema } from "@cantrip/protocol/communication-content";
@@ -84,6 +87,10 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
       return [["account-resource-usage"], ["account-resource-usage-history"]];
     case "settings":
       return [["settings"], ["code-settings-worker-status"]];
+    case "worker-inference":
+      return event.entityId
+        ? [workerInferenceQueryKey(event.entityId)]
+        : [["worker-inference"]];
     case "provider-auth":
       return [["codex-auth"]];
     case "policy":
@@ -96,6 +103,7 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
       ];
     case "worker":
       return [
+        ["worker-inference"],
         ["workers"],
         ["worker-management"],
         ["worker-enrollment-status"],
@@ -104,6 +112,7 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
       ];
     case "worker-availability":
       return [
+        ["worker-inference"],
         ["workers"],
         ["worker-management"],
         ["worker-enrollment-status"],
@@ -433,6 +442,7 @@ export function appLiveScopeQueryKeys(scope: AppLiveScope): QueryKey[] {
   switch (scope.kind) {
     case "current-user":
       return [
+        ["worker-inference"],
         ["project-alert-counts"],
         ["project-alerts"],
         ["server-bootstrap"],
@@ -824,6 +834,7 @@ export class AppLiveQueryBridge {
       this.#applyInferenceProgressEvent(event) ||
       this.#applyCodeGraphStatusEvent(event) ||
       this.#applyProviderAuthEvent(event) ||
+      this.#applyWorkerInferenceEvent(event) ||
       this.#applyWorkspaceRepositoryDiscoveryProgressEvent(event) ||
       this.#applyGitOperationEvent(event) ||
       this.#applyGitConflictEvent(event) ||
@@ -1437,6 +1448,44 @@ export class AppLiveQueryBridge {
       revisionKey,
       event.revision,
     );
+    return true;
+  }
+
+  #applyWorkerInferenceEvent(event: AppLiveEvent): boolean {
+    if (
+      event.resource !== "worker-inference" ||
+      event.action !== "status" ||
+      event.scope.kind !== "current-user" ||
+      !event.entityId
+    )
+      return false;
+    const parsed = workerInferenceStatusSchema.safeParse(event.payload);
+    if (
+      !parsed.success ||
+      parsed.data.workerId !== event.entityId ||
+      parsed.data.revision !== event.revision
+    )
+      return false;
+    const status = parsed.data;
+    const queryKey = workerInferenceQueryKey(status.workerId);
+    const current =
+      this.#queryClient.getQueryData<WorkerInferenceStatus>(queryKey);
+    if (
+      !current ||
+      current.workerGeneration !== status.workerGeneration ||
+      current.serverId !== status.serverId ||
+      current.ownerId !== status.ownerId
+    ) {
+      // A delayed retired generation must never replace the current snapshot.
+      // Confirm any generation change against the authenticated current worker.
+      void this.#queryClient
+        .cancelQueries({ queryKey, exact: true })
+        .then(() => this.#queryClient.resetQueries({ queryKey, exact: true }));
+      return true;
+    }
+    if (status.revision <= current.revision) return true;
+    void this.#queryClient.cancelQueries({ queryKey, exact: true });
+    this.#queryClient.setQueryData<WorkerInferenceStatus>(queryKey, status);
     return true;
   }
 

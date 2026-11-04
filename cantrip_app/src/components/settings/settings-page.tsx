@@ -19,6 +19,8 @@ import type {
   TunnelSummary,
 } from "@cantrip/protocol";
 import {
+  DEFAULT_MAX_CONCURRENT_INFERENCE,
+  providerInferenceLimitSchema,
   shouldUseChatGptCredits,
   PROVIDER_REAUTH_REQUIRED_ERROR_CODE,
   ZAI_CODING_PLAN_BASE_URL,
@@ -367,7 +369,9 @@ export const settingsNavigationSections: readonly SettingsNavigationSection<Sett
           id: "providers",
           label: "Model providers",
           description: "Ollama, ChatGPT, Grok, xAI, and compatible APIs.",
-          keywords: ["openai openrouter zai oauth endpoint api key"],
+          keywords: [
+            "openai openrouter zai oauth endpoint api key maximum concurrent inference limit queue",
+          ],
         },
         {
           id: "models",
@@ -1166,6 +1170,9 @@ export function SettingsPage({
   const [editingProvider, setEditingProvider] =
     useState<ModelProviderSummary | null>(null);
   const [providerName, setProviderName] = useState("");
+  const [providerInferenceLimit, setProviderInferenceLimit] = useState(
+    String(DEFAULT_MAX_CONCURRENT_INFERENCE),
+  );
   const [providerKind, setProviderKind] = useState<ModelProviderKind>("ollama");
   const [providerSetup, setProviderSetup] =
     useState<ProviderSetupKind>("ollama");
@@ -1326,6 +1333,9 @@ export function SettingsPage({
       if (providerUnavailableReason) throw new Error(providerUnavailableReason);
       const input = {
         name: providerName,
+        maxConcurrentInference: providerInferenceLimitSchema.parse(
+          Number(providerInferenceLimit),
+        ),
         kind: providerKind,
         baseUrl: isAccountProviderKind(providerKind)
           ? providerKind === "grok"
@@ -1575,6 +1585,11 @@ export function SettingsPage({
     consumeRateLimitReset.reset();
     setEditingProvider(provider);
     setProviderName(provider?.name ?? defaults.name);
+    setProviderInferenceLimit(
+      String(
+        provider?.maxConcurrentInference ?? DEFAULT_MAX_CONCURRENT_INFERENCE,
+      ),
+    );
     setProviderKind(provider?.kind ?? defaults.kind);
     setProviderSetup(provider ? providerSetupFor(provider) : setup);
     setBaseUrl(provider?.baseUrl ?? defaults.baseUrl);
@@ -2427,6 +2442,27 @@ export function SettingsPage({
                     );
                   })}
                 </NativeSelect>
+              </Field>
+              <Field label="Maximum concurrent inference">
+                <div className="space-y-1.5">
+                  <input
+                    required
+                    type="number"
+                    min={1}
+                    max={2_147_483_647}
+                    step={1}
+                    value={providerInferenceLimit}
+                    onChange={(event) =>
+                      setProviderInferenceLimit(event.target.value)
+                    }
+                    className={inputClass}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Shared by all models, accounts, and projects on each worker.
+                    Additional turns queue automatically. Each worker has its
+                    own limit.
+                  </p>
+                </div>
               </Field>
               {!isAccountProviderKind(providerKind) &&
               providerSetup !== "zai" ? (

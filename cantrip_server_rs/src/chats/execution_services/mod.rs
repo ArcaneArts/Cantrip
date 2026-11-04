@@ -1,5 +1,6 @@
 //! Production execution graph. Every turn, recovery, receipt and scheduler uses
 //! the same worker command bus, durable writers and owner-scoped Live service.
+mod inference_feedback;
 mod notifications;
 mod scheduling;
 mod turns;
@@ -72,6 +73,9 @@ pub struct Service {
     bridge: Arc<WorkerBridge>,
     logger: Logger,
     subscriptions: Mutex<HashMap<String, NotificationSubscription>>,
+    inference_revisions: Mutex<HashMap<String, (String, u64)>>,
+    inference_live: Arc<LiveService>,
+    inference_server_id: String,
 }
 
 impl Service {
@@ -234,6 +238,9 @@ impl Service {
             bridge: d.bridge.clone(),
             logger: d.logger.clone(),
             subscriptions: Mutex::default(),
+            inference_revisions: Mutex::default(),
+            inference_live: d.application_live.clone(),
+            inference_server_id: d.server_id.clone(),
         })
     }
 
@@ -256,6 +263,7 @@ impl Service {
         self.outcome_timers.clear();
         self.goals.close();
         self.subscriptions.lock().unwrap().clear();
+        self.inference_revisions.lock().unwrap().clear();
         self.usage.close();
     }
 

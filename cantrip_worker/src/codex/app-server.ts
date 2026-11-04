@@ -2740,6 +2740,7 @@ export class CodexAppServer implements CodexRuntime {
       throw new Error("The native inference process is no longer connected.");
     const inference = await this.#inference?.acquire({
       operationId: options.operationGeneration,
+      purpose: "turn",
       provider: options.provider,
       chatId: options.chatId,
       threadId: options.threadId,
@@ -2860,6 +2861,7 @@ export class CodexAppServer implements CodexRuntime {
       operationId:
         options.operationGeneration ??
         `turn:${options.clientMessageId}:${randomUUID()}`,
+      purpose: "turn",
       recoveryKey: `chat:${options.chatId}:message:${options.clientMessageId}`,
       recovery: options.inferenceRecovery?.() ?? {
         messageId: options.clientMessageId,
@@ -5132,6 +5134,7 @@ export class CodexAppServer implements CodexRuntime {
     await this.ensureStarted(options.model, options.provider);
     const inference = await this.#inference?.acquire({
       operationId: `label:${options.operationId ?? randomUUID()}`,
+      purpose: "label",
       recoveryKey: options.operationId ? `label:${options.operationId}` : null,
       provider: options.provider,
       chatId: options.chatId,

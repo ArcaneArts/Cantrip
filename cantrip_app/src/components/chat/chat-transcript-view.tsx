@@ -1,4 +1,8 @@
 import {
+  InferenceQueueNotice,
+  useChatInferenceQueue,
+} from "./inference-queue-notice";
+import {
   ArrowDown,
   FilePlus2,
   FolderOpen,
@@ -226,6 +230,11 @@ export function ChatTranscriptView({
     viewTurnTrajectory,
     viewingAttachment,
   } = controller;
+  const inferenceQueue = useChatInferenceQueue({
+    chatId: chat.id,
+    workerId: chat.activeWorkerId,
+    enabled: Boolean(activeChatWorker?.online),
+  });
   const composerContainerRef = useRef<HTMLFormElement>(null);
   const [composerHeight, setComposerHeight] = useState(0);
   const reservedSidePanelWidth = `min(${sidePanelWidth}px, 100%)`;
@@ -589,6 +598,14 @@ export function ChatTranscriptView({
               ))}
             </div>
           ) : null}
+          <InferenceQueueNotice
+            queue={inferenceQueue.data}
+            providers={settings?.providers}
+            onCancel={
+              effectiveInspectOnly ? undefined : () => interrupt.mutate()
+            }
+            cancelPending={interrupt.isPending}
+          />
           {chat.automationPaused ? (
             <div
               role="status"
@@ -641,6 +658,7 @@ export function ChatTranscriptView({
               ) : null}
               <GoalPanel
                 key={chat.id}
+                waitingForInference={Boolean(inferenceQueue.data)}
                 automationPaused={chat.automationPaused}
                 executionFailed={chat.status === "failed"}
                 error={

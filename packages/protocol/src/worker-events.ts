@@ -1,3 +1,4 @@
+import { workerInferenceStatusSchema } from "./inference-admission.js";
 import { nativeTurnModelAttributionSchema } from "./native-turn-model-attribution.js";
 import { z } from "zod";
 import { generateLabelResultSchema } from "./labeling.js";
@@ -349,6 +350,12 @@ export const workerEventEnvelopeSchema = z.object({
 });
 
 export const workerNotificationSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("inference.status"),
+      status: workerInferenceStatusSchema,
+    })
+    .strict(),
   cuaApprovalTerminalSchema,
   workerLinkPeerSignalNotificationSchema,
   workerLinkPeerCandidateNotificationSchema,

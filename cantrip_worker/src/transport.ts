@@ -241,6 +241,12 @@ export class WorkerConnection {
   readonly #pendingCommandEnvelopes: string[] = [];
   readonly #reconnectDelayMs: number;
   #reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  #pendingInferenceStatus: Extract<
+    WorkerNotification,
+    { type: "inference.status" }
+  > | null = null;
+  #inferenceStatusRetry: ReturnType<typeof setTimeout> | null = null;
+  #inferenceStatusVersion = Symbol();
   #readySocket: WebSocket | null = null;
   #socket: WebSocket | null = null;
   #socketReadiness: "idle" | "negotiating" | "protocol-pending" | "ready" =
@@ -664,6 +670,11 @@ export class WorkerConnection {
   }
 
   private clearSocketNegotiation(): void {
+    if (this.#inferenceStatusRetry) clearTimeout(this.#inferenceStatusRetry);
+    this.#inferenceStatusRetry = null;
+    // The configuration handshake supplies a fresh snapshot on reconnect.
+    this.#pendingInferenceStatus = null;
+    this.#inferenceStatusVersion = Symbol();
     this.clearSocketNegotiationTimers();
     this.#connectionReadyDeadlineMs = null;
     this.#connectionPendingObserved = false;
@@ -991,7 +1002,68 @@ export class WorkerConnection {
     return waiting;
   }
 
+  private retryInferenceStatus(): void {
+    if (
+      this.#inferenceStatusRetry ||
+      !this.#pendingInferenceStatus ||
+      this.#closed ||
+      this.#readySocket?.readyState !== WebSocket.OPEN
+    )
+      return;
+    // This timer exists only while a latest snapshot is blocked by transport
+    // congestion. It never polls capacity or runs while idle/disconnected.
+    this.#inferenceStatusRetry = setTimeout(() => {
+      this.#inferenceStatusRetry = null;
+      this.flushInferenceStatus();
+    }, 100);
+    this.#inferenceStatusRetry.unref();
+  }
+
+  private flushInferenceStatus(): boolean {
+    const socket = this.#readySocket;
+    const notification = this.#pendingInferenceStatus;
+    if (!socket || socket.readyState !== WebSocket.OPEN || !notification)
+      return false;
+    if (socket.bufferedAmount > MAX_BUFFERED_NOTIFICATION_BYTES) {
+      this.retryInferenceStatus();
+      return false;
+    }
+    const version = this.#inferenceStatusVersion;
+    this.#pendingInferenceStatus = null;
+    if (this.#inferenceStatusRetry) clearTimeout(this.#inferenceStatusRetry);
+    this.#inferenceStatusRetry = null;
+    const retry = () => {
+      if (
+        this.#readySocket !== socket ||
+        this.#inferenceStatusVersion !== version
+      )
+        return;
+      // A newer snapshot, including an already-successful write, wins.
+      this.#pendingInferenceStatus ??= notification;
+      this.retryInferenceStatus();
+    };
+    try {
+      socket.send(
+        encodeWorkerServerEnvelope({ kind: "notification", notification }),
+        (error) => {
+          if (error) retry();
+        },
+      );
+      return true;
+    } catch {
+      retry();
+      return false;
+    }
+  }
+
   sendNotification(notification: WorkerNotification): boolean {
+    if (notification.type === "inference.status") {
+      if (this.#closed || this.#readySocket?.readyState !== WebSocket.OPEN)
+        return false;
+      this.#inferenceStatusVersion = Symbol();
+      this.#pendingInferenceStatus = notification;
+      return this.flushInferenceStatus();
+    }
     const socket = this.#readySocket;
     if (
       !socket ||

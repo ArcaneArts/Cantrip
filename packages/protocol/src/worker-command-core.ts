@@ -48,6 +48,7 @@ import {
 } from "./workspace-repository-discovery.js";
 
 export const workerCoreCommandSchemas = [
+  z.object({ type: z.literal("inference.status") }).strict(),
   z
     .object({
       type: z.literal("inference.configure"),

@@ -32,6 +32,7 @@ export const inferenceTicketStateSchema = z.enum([
 ]);
 
 export const inferenceOperationStatusSchema = z.object({
+  purpose: z.enum(["turn", "label", "child", "helper"]).default("helper"),
   operationId: z.string().min(1),
   runtimeGeneration: z.string().min(1),
   providerId: z.string().min(1),

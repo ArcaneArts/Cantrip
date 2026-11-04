@@ -8,6 +8,7 @@ import {
   type GitManagedOperationRecord,
   type ProviderAuthLiveStatus,
   type WorkerNotification,
+  type WorkerInferenceStatus,
   type WorktreeStatusResult,
 } from "@cantrip/protocol";
 import {
@@ -85,6 +86,7 @@ export interface WorkerNotificationRuntimeDependencies {
       projectId?: string | null;
     },
   ) => void;
+  publishInferenceStatus: (status: WorkerInferenceStatus) => void;
   publishProviderAuthStatus: (
     status: Omit<ProviderAuthLiveStatus, "revision">,
   ) => ProviderAuthLiveStatus;
@@ -138,6 +140,7 @@ export function createWorkerNotificationRuntime({
   publishGitOperation,
   publishLiveInvalidation,
   publishProviderAuthStatus,
+  publishInferenceStatus,
   reconcileObservedChatThread,
   recordLiveWorktreeStatus,
   recoverChatTurnOutcome,
@@ -557,11 +560,45 @@ export function createWorkerNotificationRuntime({
       })();
     });
   };
+  const inferenceRevisions = new Map<
+    string,
+    { generation: string; revision: number }
+  >();
   const handleWorkerNotification = async (
     ownerId: string,
     workerId: string,
     notification: WorkerNotification,
   ): Promise<void> => {
+    if (notification.type === "inference.status") {
+      const status = notification.status;
+      const identity = bridge.connectionIdentity?.(workerId);
+      if (
+        !bridge.isConnected(workerId) ||
+        !identity ||
+        identity.ownerId !== ownerId ||
+        status.ownerId !== ownerId ||
+        status.serverId !== serverId() ||
+        status.workerId !== workerId ||
+        status.workerGeneration !== identity.workerProcessGeneration
+      )
+        return;
+      const previous = inferenceRevisions.get(workerId);
+      if (
+        previous?.generation === status.workerGeneration &&
+        previous.revision >= status.revision
+      )
+        return;
+      inferenceRevisions.delete(workerId);
+      inferenceRevisions.set(workerId, {
+        generation: status.workerGeneration,
+        revision: status.revision,
+      });
+      // Status is bounded by worker identities, never by streamed tokens.
+      if (inferenceRevisions.size > 4096)
+        inferenceRevisions.delete(inferenceRevisions.keys().next().value!);
+      publishInferenceStatus(status);
+      return;
+    }
     if (notification.type === "computer-use.approval.terminal") {
       await applyComputerUseApprovalTerminal({
         ownerId,
@@ -988,6 +1025,7 @@ export function createWorkerNotificationRuntime({
         unsubscribe();
       }
       workerNotificationSubscriptions.clear();
+      inferenceRevisions.clear();
     },
     ensureWorkerNotificationSubscription,
     reconcileRunConfigurationRuntimesForWorker,

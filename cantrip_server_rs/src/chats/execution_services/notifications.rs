@@ -15,7 +15,9 @@ impl Service {
                     worker,
                     Arc::new(move |owner, notification| {
                         if let Some(service) = service.upgrade() {
-                            if notification["type"] == "chat.turn.outcome" {
+                            if notification["type"] == "inference.status" {
+                                service.inference_status(&owner, &worker_id, &notification);
+                            } else if notification["type"] == "chat.turn.outcome" {
                                 service.receive_outcome(owner, worker_id.clone(), notification);
                             } else if notification["type"] == "chat.thread.changed" {
                                 service.thread_sync.notification(

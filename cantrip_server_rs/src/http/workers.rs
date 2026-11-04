@@ -334,6 +334,44 @@ async fn execute(
         .get("workerId")
         .context("worker credential route identity")?;
     let owner = owner.context("worker credential owner")?;
+    if path.ends_with("/inference") && read {
+        if repository.get_worker(owner, worker).await?.is_none() {
+            return Ok(error(404, "Worker not found."));
+        }
+        let identity = state.bridge.connection_identity(worker);
+        let result = state
+            .commands
+            .request(
+                worker,
+                Value::from_serialize(&json!({"type":"inference.status"})),
+                Some(Duration::from_secs(15)),
+                None,
+            )
+            .await?;
+        let status = wire::parse("workerInferenceStatusSchema", Some(&result))
+            .map_err(|_| anyhow::anyhow!("Invalid worker inference snapshot."))?;
+        let current = state.bridge.connection_identity(worker);
+        if identity.as_ref().is_none_or(|p| {
+            status["workerGeneration"].as_str() != Some(p.process_generation.as_str())
+        }) || current.as_ref().is_none_or(|p| {
+            p.owner != owner
+                || status["workerGeneration"].as_str() != Some(p.process_generation.as_str())
+        }) || !state.bridge.is_connected(worker)
+            || status["serverId"].as_str() != Some(service.server_id.as_str())
+            || status["workerId"].as_str() != Some(worker.as_str())
+            || status["ownerId"].as_str() != Some(owner)
+        {
+            return Ok(error(
+                409,
+                "Worker inference status changed. Retry the snapshot.",
+            ));
+        }
+        let mut response = output(200, "workerInferenceStatusSchema", status)?;
+        response
+            .headers_mut()
+            .insert("cache-control", "private, no-store".parse().unwrap());
+        return Ok(response);
+    }
     if read {
         return match repository.list_credentials(owner, worker).await? {
             Some(value) => output(200, "workerCredentialListSchema", json!(value)),
@@ -456,6 +494,7 @@ async fn handle(
 pub(super) fn routes() -> Router<Arc<AuthService>> {
     Router::new()
         .route("/api/workers", get(handle))
+        .route("/api/workers/{workerId}/inference", get(handle))
         .route("/api/workers/enrollment-codes", post(handle))
         .route(
             "/api/workers/enrollment-codes/{enrollmentCodeId}",

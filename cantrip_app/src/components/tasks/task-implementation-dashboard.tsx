@@ -1,3 +1,4 @@
+import { useChatInferenceQueue } from "@/components/chat/inference-queue-notice";
 import type {
   ChatSummary,
   TaskAssociatedPullRequest,
@@ -333,7 +334,12 @@ export function TaskImplementationDashboard({
     pause.error ?? resume.error ?? stop.error ?? recover.error;
   const controlPending =
     pause.isPending || resume.isPending || stop.isPending || recover.isPending;
-  const statusLabel = taskImplementationStatusLabel(
+  const inferenceQueue = useChatInferenceQueue({
+    chatId: chat.id,
+    workerId: chat.activeWorkerId,
+    enabled: visible && chat.status !== "offline",
+  });
+  const executionStatusLabel = taskImplementationStatusLabel(
     task,
     goal,
     active,
@@ -342,6 +348,11 @@ export function TaskImplementationDashboard({
     chat.automationPaused,
     task.planGoalEnabled && chat.status === "offline",
   );
+  const statusLabel =
+    inferenceQueue.data &&
+    ["Running", "Starting"].includes(executionStatusLabel)
+      ? "Queued"
+      : executionStatusLabel;
   const showResume =
     statusLabel === "Paused" &&
     taskImplementationCanResume(task, goal, chat.automationPaused);
@@ -364,7 +375,7 @@ export function TaskImplementationDashboard({
   const showStop =
     active &&
     !chat.automationPaused &&
-    ["Running", "Needs approval", "Starting"].includes(statusLabel);
+    ["Running", "Needs approval", "Starting", "Queued"].includes(statusLabel);
   const placement = dashboard.data?.placement;
   const directFolder = placement?.kind === "folder";
 

@@ -302,6 +302,18 @@ export async function buildApp({
     publishGitOperation,
     publishLiveInvalidation,
     publishProviderAuthStatus,
+    publishInferenceStatus: (status) => {
+      if (!isLivePublishingEnabled()) return;
+      liveHub.publish({
+        ownerId: status.ownerId,
+        scope: { kind: "current-user" },
+        resource: "worker-inference",
+        action: "status",
+        entityId: status.workerId,
+        revision: status.revision,
+        payload: status,
+      });
+    },
     reconcileObservedChatThread: (...args) =>
       reconcileObservedChatThread(...args),
     recordLiveWorktreeStatus,

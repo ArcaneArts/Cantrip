@@ -143,7 +143,8 @@ fn is_execution_control(command: &Value) -> bool {
             Some("interrupt" | "pause" | "reply")
         ),
         Some(
-            "inference.configure"
+            "inference.status"
+            | "inference.configure"
             | "worker.version"
             | "worker.restart"
             | "worker.credential.rotate"
