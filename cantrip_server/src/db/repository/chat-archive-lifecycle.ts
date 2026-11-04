@@ -7,6 +7,7 @@ import type {
 import { and, eq, inArray, isNotNull, isNull, lte, sql } from "drizzle-orm";
 
 import * as schema from "../schema.js";
+import { queueStateChanged } from "./native-command-queue.js";
 import { removeResourceWorkspaceViews } from "../workspace-resource-removal.js";
 import {
   attachProjectTab,
@@ -98,6 +99,7 @@ export class ChatArchiveLifecycleRepository {
           updatedAt: now,
         })
         .where(eq(schema.chats.id, chatId));
+      await queueStateChanged(tx, chatId);
       return "archived";
     });
   }

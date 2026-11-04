@@ -11,6 +11,7 @@ export async function finishManagedGui(input: {
   workerId: string;
   receipt: NativeCommandReceipt;
   status: "idle" | "failed";
+  transportEnded?: boolean;
   onAcknowledgementError(error: unknown): void;
 }): Promise<boolean> {
   const finished = await input.repository.nativeCommands.finishLogicalGui(
@@ -19,6 +20,7 @@ export async function finishManagedGui(input: {
     input.receipt.operationId,
     input.receipt.operationGeneration,
     input.status,
+    input.transportEnded ?? false,
   );
   try {
     const completion =

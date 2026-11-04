@@ -1571,6 +1571,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     workerId: config.workerId,
   });
   // This belongs to the worker, outside the per-project/per-model runtime maps.
+  const nativeCommands = new NativeCommandClient({
+    serverUrl: config.serverUrl,
+    workerId: config.workerId,
+    token: () => config.token,
+  });
   const inferenceAdmissions = new Map<string, WorkerInferenceAdmission>();
   let inferenceAuthorityRetired = false;
   const retireInferenceAuthority = async () => {
@@ -1626,6 +1631,15 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               workerGeneration: workerProcessGeneration,
               error: workerLogError(error),
             },
+          ),
+        (record, signal) =>
+          nativeCommands.reconcileInference(
+            {
+              serverId: scope.serverId,
+              workerGeneration: workerProcessGeneration,
+              record,
+            },
+            signal,
           ),
       );
       admission.subscribe((status) => {
@@ -1825,11 +1839,6 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     path.join(config.dataDirectory, "managed-chat-sessions"),
   );
   const threadObservations = new ThreadObservationRegistry();
-  const nativeCommands = new NativeCommandClient({
-    serverUrl: config.serverUrl,
-    workerId: config.workerId,
-    token: () => config.token,
-  });
   const nativeSettingsDelivery = new NativeSettingsDelivery({
     directory: config.dataDirectory,
     workerId: config.workerId,
@@ -3367,6 +3376,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return inferenceAdmissionForWorker().snapshot();
       case "inference.configure": {
         const admission = inferenceAdmissionForWorker();
+        admission.wakeRecovery();
         for (const configuration of command.configurations)
           admission.configure(configuration);
         const status = admission.snapshot();
@@ -4942,6 +4952,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return codec.normalizePrompt(command.prompt);
       }
       case "chat.queue.changed": {
+        for (const admission of inferenceAdmissions.values())
+          admission.wakeRecovery(command.chatId);
         const current = managedCurrentRuntimes.get(command.chatId);
         const entries = current
           ? managedCommandSessions.get(current)
@@ -6928,6 +6940,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     () => {
       if (managedGuiBridgeLifetime.signal.aborted)
         managedGuiBridgeLifetime = new AbortController();
+      for (const admission of inferenceAdmissions.values())
+        admission.wakeRecovery();
       for (const [chatId, entry] of settingsPublishers) {
         if (entry.publisher.closed)
           observeManagedSettings(chatId, entry.runtime, entry.threadId);

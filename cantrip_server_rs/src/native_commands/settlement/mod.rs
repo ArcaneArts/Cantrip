@@ -94,10 +94,11 @@ async fn settle(tx: &Transaction<'_>, owner: &str, input: &Value) -> Result<Valu
             "protected_result",
             "terminal_result_digest",
             "protected_terminal_result",
-            "terminal_evidence",
         ]
         .iter()
-        .all(|field| !truthy(current.get(field)));
+        .all(|field| !truthy(current.get(field)))
+        && (!truthy(current.get("terminal_evidence"))
+            || super::transport_evidence::is_transport_closure(current.get("terminal_evidence")));
     let state = Settlement {
         owner,
         input,

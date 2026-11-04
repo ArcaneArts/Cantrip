@@ -24,6 +24,9 @@ import {
   type NativeCommandContinuation,
   type NativeCommandSettlement,
   type NativePendingRequest,
+  nativeInferenceRecoverySchema,
+  nativeInferenceRecoveryResultSchema,
+  type NativeInferenceRecovery,
 } from "@cantrip/protocol";
 import { z } from "zod";
 import { CantripServerRequestError } from "./cli-client.js";
@@ -95,6 +98,28 @@ export class NativeCommandClient {
       nativeSettingsStateSchema,
       signal,
     );
+  }
+
+  async reconcileInference(
+    input: Omit<NativeInferenceRecovery, "workerId">,
+    signal?: AbortSignal,
+  ) {
+    const result = await this.post(
+      "inference-recovery",
+      nativeInferenceRecoverySchema.parse({
+        ...input,
+        workerId: this.options.workerId,
+      }),
+      nativeInferenceRecoveryResultSchema,
+      signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(15_000)])
+        : AbortSignal.timeout(15_000),
+    );
+    if (result.key !== input.record.key)
+      throw new Error(
+        "Inference recovery returned another operation's receipt.",
+      );
+    return result;
   }
 
   resolvePermissionTransition(

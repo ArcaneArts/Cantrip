@@ -10,6 +10,16 @@ impl Runtime {
     ) -> Result<()> {
         let e = &turn.execution;
         let worker_interrupted = worker_interrupted(&turn, error);
+        let transport = error
+            .downcast_ref::<CommandFailure>()
+            .and_then(|cause| match cause {
+                CommandFailure::Bridge(cause) => Some(cause),
+                _ => None,
+            })
+            .or_else(|| error.downcast_ref::<CommandError>());
+        let transport_ended = transport.is_some_and(|cause| {
+            cause.unavailable || cause.code.as_deref() == Some("worker-command-timeout")
+        });
         let failure = Failure {
             turn: turn.clone(),
             error: error.clone(),
@@ -59,7 +69,7 @@ impl Runtime {
         let finished = self
             .dependencies
             .bootstrap
-            .finish(
+            .finish_with_transport(
                 &turn,
                 if interrupted || e["contextKind"] == "standalone" {
                     "idle"
@@ -67,6 +77,7 @@ impl Runtime {
                     "failed"
                 },
                 worker_interrupted,
+                transport_ended,
             )
             .await?;
         self.dependencies

@@ -305,6 +305,7 @@ export function createChatTurnRuntime({
     const finishExecution = (
       status: "idle" | "failed",
       pauseAutomation = false,
+      transportEnded = false,
     ) =>
       nativeCommandReceipt
         ? finishManagedGui({
@@ -314,6 +315,7 @@ export function createChatTurnRuntime({
             workerId: execution.workerId,
             receipt: nativeCommandReceipt,
             status,
+            transportEnded,
             onAcknowledgementError: () =>
               app.log.warn(
                 {

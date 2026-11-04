@@ -2,7 +2,7 @@ import { toEncryptedQueuedPrompt } from "./queued-prompts.js";
 import { retainManagedQueueInput } from "./managed-queue-input-snapshot.js";
 import { createHash, randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
   managedQueueClaimSchema,
   managedQueueSnapshotSchema,
@@ -17,7 +17,8 @@ import {
 import type { ServerRepository } from "../repository.js";
 import * as schema from "../schema.js";
 import type { RepositoryDatabase, RepositoryTransaction } from "./database.js";
-import { NativeCommandError } from "./native-commands.js";
+import { NativeCommandError } from "./native-command-errors.js";
+import { nativeCommandContext } from "./native-command-context.js";
 import { projectChatExecutionLock } from "./chat-execution-lock.js";
 import { managedConsoleSessionContext } from "../../terminals/managed-session.js";
 
@@ -42,6 +43,76 @@ function noPendingPermission(chatId: typeof schema.chats.id | string) {
 }
 function noPendingHandoff(chatId: typeof schema.chats.id | string) {
   return sql`NOT EXISTS (SELECT 1 FROM native_runtime_handoffs h WHERE h.chat_id = ${chatId} AND h.phase IN ('preparing','prepared','committed'))`;
+}
+
+/** Canonical queue eligibility for restoring an old worker FIFO position. This
+ * never chooses a provider route or preflights whether inference will succeed. */
+export async function managedQueueRecoveryEligible(
+  tx: RepositoryTransaction,
+  ownerId: string,
+  workerId: string,
+  chatId: string,
+  promptId: string,
+): Promise<boolean> {
+  const context = await nativeCommandContext(tx, ownerId, chatId);
+  if (!context || context.workerId !== workerId) return false;
+  const [eligible] = await tx
+    .select({ id: schema.queuedPrompts.id })
+    .from(schema.queuedPrompts)
+    .innerJoin(schema.chats, eq(schema.chats.id, schema.queuedPrompts.chatId))
+    .where(
+      and(
+        eq(schema.queuedPrompts.id, promptId),
+        eq(schema.chats.id, chatId),
+        isNull(schema.chats.archivedAt),
+        eq(schema.chats.automationPaused, false),
+        eq(schema.chats.managedAutonomyStopped, false),
+        eq(schema.queuedPrompts.frozen, false),
+        inArray(schema.queuedPrompts.state, ["pending", "claimed"]),
+        noPendingPermission(chatId),
+        noPendingHandoff(chatId),
+        sql`NOT EXISTS (SELECT 1 FROM managed_queue_claims c WHERE c.prompt_id = ${schema.queuedPrompts.id} AND c.prompt_revision = ${schema.queuedPrompts.revision} AND c.status = 'rejected')`,
+      ),
+    );
+  if (!eligible) return false;
+  const [active] = await tx
+    .select()
+    .from(schema.managedQueueClaims)
+    .where(
+      and(
+        eq(schema.managedQueueClaims.chatId, chatId),
+        inArray(schema.managedQueueClaims.status, [
+          "claimed",
+          "accepted",
+          "dispatched",
+          "uncertain",
+        ]),
+      ),
+    )
+    .orderBy(asc(schema.managedQueueClaims.createdAt))
+    .limit(1);
+  if (active)
+    return (
+      active.promptId === promptId &&
+      ["claimed", "accepted"].includes(active.status)
+    );
+  const [head] = await tx
+    .select({ id: schema.queuedPrompts.id })
+    .from(schema.queuedPrompts)
+    .where(
+      and(
+        eq(schema.queuedPrompts.chatId, chatId),
+        eq(schema.queuedPrompts.state, "pending"),
+        eq(schema.queuedPrompts.frozen, false),
+        sql`NOT EXISTS (SELECT 1 FROM managed_queue_claims c WHERE c.prompt_id = ${schema.queuedPrompts.id} AND c.prompt_revision = ${schema.queuedPrompts.revision} AND c.status = 'rejected')`,
+      ),
+    )
+    .orderBy(
+      asc(schema.queuedPrompts.position),
+      asc(schema.queuedPrompts.createdAt),
+    )
+    .limit(1);
+  return head?.id === promptId;
 }
 /** Canonical executable queue. Native requests mutate this state; they never enqueue a second native copy. */
 export class ManagedQueueRepository {
@@ -92,13 +163,40 @@ export class ManagedQueueRepository {
       const context = await this.repository(
         this.database as RepositoryTransaction,
       ).getChatExecutionContext(row.ownerId, row.state.chatId);
-      if (context)
+      const previous = await this.database
+        .selectDistinct({ workerId: schema.nativeCommands.workerId })
+        .from(schema.nativeCommands)
+        .where(
+          and(
+            eq(schema.nativeCommands.ownerId, row.ownerId),
+            eq(schema.nativeCommands.chatId, row.state.chatId),
+            eq(
+              schema.nativeCommands.rejectionCode,
+              "worker-inference-deferred",
+            ),
+          ),
+        );
+      const workerIds = [
+        ...new Set([
+          ...(context ? [context.workerId] : []),
+          ...previous.map((entry) => entry.workerId),
+        ]),
+      ];
+      const workerId = workerIds.shift();
+      if (workerId)
         result.push({
           ownerId: row.ownerId,
-          workerId: context.workerId,
+          workerId,
           chatId: row.state.chatId,
           revision: row.state.revision,
+          ...(workerIds.length ? { additionalWorkerIds: workerIds } : {}),
+          ...(!context ? { recoveryOnly: true } : {}),
         });
+      else
+        await this.acknowledgeNotification(
+          row.state.chatId,
+          row.state.revision,
+        );
     }
     return result;
   }
