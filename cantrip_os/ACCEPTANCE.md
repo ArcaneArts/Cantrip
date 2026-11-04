@@ -1100,3 +1100,29 @@ Linux Run definition deletion remains disabled until its source-scoped runtime
 retirement is integrated. Broader delegated Cantrip/Git/artifact tools, GUI launch
 context, and refreshed distribution acceptance remain outstanding. This is not
 complete Phase 3 acceptance.
+
+## Captured Linux recovery checkpoint (2026-11-04)
+
+Stored message and managed queue reads, plus chat live subscriptions, now use
+account-owned routing rather than a current executable Linux context. A stale
+Linux Plan read returns its canonical stored state. Execution and filesystem
+operations retain their original generation checks. Both Server implementations
+use this distinction for messages, queue, and live scope authorization.
+
+A failed captured Linux terminal attachment retains its target and unknown
+outcome, stops automatic reconnect attempts, and offers explicit reconnect even
+before its first output. Ordinary Host reconnect behavior is preserved.
+
+Validation: 34 app tests passed, including failed Linux attachment before/after
+ready and the missing-worktree error regression. Eight Server persistence/live/
+queue tests passed, plus a focused stored-history route test. Native HTTP tested
+actual stale Linux captures with successful message/queue reads and owned live
+subscriptions; PostgreSQL/PGlite generation tests passed. The actual workspace
+query manifest was regenerated and its check passed. The Native observation
+interface now groups its observation fields without suppressing Clippy. App
+types passed; Server types retain the same two Task errors. Required pnpm check
+still fails on the recorded agentOperations audit digest mismatch.
+
+The next UI revision merges Host and Linux Run configurations into one list,
+with per-configuration placement and destination choice during creation; the
+previous header source switch is being removed at the user's request.

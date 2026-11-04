@@ -373,6 +373,18 @@ it("captures an OS binding before native preparation and preserves lane identity
     await expect(
       repository.getChatExecutionContext("owner", input.id),
     ).rejects.toThrow(/unavailable or changed/);
+    expect(await repository.getChatLiveRouting("owner", input.id)).toEqual({
+      experience: "agent",
+      projectId: "project",
+    });
+    expect(await repository.getChatLiveRouting("other", input.id)).toBeNull();
+    expect(
+      await repository.getChatPlanWireState("owner", input.id),
+    ).toMatchObject({ chatId: input.id });
+    expect(
+      await repository.managedQueue.snapshot("owner", input.id),
+    ).toMatchObject({ items: [], claims: [] });
+
     await expect(
       repository.getExplorerExecutionContext("owner", explorer!.id),
     ).rejects.toThrow(/unavailable or changed/);

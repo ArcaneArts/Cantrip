@@ -42,7 +42,7 @@ export function installLiveRoute(
         );
       case "chat":
         return Boolean(
-          await repository.getChatExecutionContext(ownerId, scope.chatId),
+          await repository.getChatLiveRouting(ownerId, scope.chatId),
         );
     }
     return false;

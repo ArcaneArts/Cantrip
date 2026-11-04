@@ -20,7 +20,7 @@ use std::sync::Arc;
 
 async fn read(service: &AuthService, owner: &str, id: &str, query: Value) -> Result<Response> {
     let repository = Repository::new(service.repository.database.clone());
-    let Some(context) = repository.execution_context(owner, id).await? else {
+    let Some(context) = repository.live_routing(owner, id).await? else {
         return Ok(error(404, "Chat source not found."));
     };
     let task = context["experience"] == "task";

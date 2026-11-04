@@ -25,6 +25,7 @@ export interface ChatSyncAndMessageReadRouteDependencies {
   repository: Pick<
     ServerRepository,
     | "getChatExecutionContext"
+    | "getChatLiveRouting"
     | "listEncryptedMessagePage"
     | "listEncryptedMessages"
     | "listTaskMessagePage"
@@ -87,7 +88,7 @@ export function installChatSyncAndMessageReadRoutes(
     Params: { chatId: string };
     Querystring: { beforeSequence?: string; limit?: string };
   }>("/api/chats/:chatId/messages", async (request, reply) => {
-    const context = await repository.getChatExecutionContext(
+    const context = await repository.getChatLiveRouting(
       applicationOwnerId(),
       request.params.chatId,
     );
