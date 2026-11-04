@@ -856,3 +856,49 @@ Receipts and logs are under ignored `artifacts/phase3-run-definitions/`.
 The header source picker, delegated Run lifecycle, project tools/Git,
 attachments/artifacts, notifications, and fresh Docker/ISO acceptance remain
 subsequent blocks. This checkpoint is not full Phase 3 completion.
+
+## Native Run generation checkpoint (2026-11-04)
+
+Executor 0.6.0 and the Worker generation driver passed actual Docker and
+installed-VM component tests. This checkpoint does not yet connect the product
+Run header or Server runtime records to this driver.
+
+- A Linux-owned Git checkout and a real secondary worktree used definitions
+  and the live Codex environment from Primary, environment files from the
+  secondary tree, and plain-variable/secret precedence. The configured setup
+  and before-launch commands wrote files in the selected worktree. Python
+  verified that target's bytes, UID, cwd, reserved path, real 120×40 PTY, zero
+  effective capabilities, and available passwordless sudo. A Host-only variable
+  did not enter the process.
+- A real native read response was deliberately lost while its connection was
+  closed. The driver resumed the recorded native session/process, delivered
+  output, and started the runtime process only once. The execution-count file
+  contained one line. Reopening the completed admission in another driver
+  returned its saved completion without another execution.
+- A purpose-specific encrypted Run secret was opened on the Worker and used
+  in Linux. Its printed value was redacted from callback output; neither its
+  plaintext nor the resolved command appeared in the Worker admission journal.
+- Cancellation initially exposed a detached root child that had already been
+  orphaned through `sudo`/`setsid`. Adding a small unprivileged subreaper parent
+  per managed command retained its ownership. The final test interrupted the
+  ordinary parent, confirmed that the adopted child kept the command owned,
+  then force-stopped it. The root child exited; an independent native job
+  remained running. This does not create a barrier around unrestricted root.
+
+The final Docker test passed in 8.9 seconds. The checksum-verified AMD64 package
+passed the same installed-VM test in 66.8 seconds. A changed definition revision
+failed before runtime launch, and a mismatched workspace was rejected. The shared helper and integration test passed standalone strict type checks. The required repository check retains the same
+`agentOperations` audit mismatch; Worker type checking retains the same five
+CUA/MCP baseline errors.
+
+Tested package SHA-256 values:
+
+```text
+arm64 f15296a7cec79a7629ae6fd68d846bbca01ffa30a71c853121bb40e1d71a87f3
+amd64 c1a47dbc5e96a54b8ced25f30cc0f31fbd83eead49844391961b3dc6451a3801
+```
+
+Proofs and logs are under ignored `artifacts/phase3-run-execution/`. Server
+runtime captures, the Run header/source picker, delegated project tools/Git,
+attachments/artifacts, notifications, and current distribution acceptance remain
+subsequent work.

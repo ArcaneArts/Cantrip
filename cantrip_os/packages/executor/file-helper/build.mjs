@@ -54,3 +54,11 @@ await build({
   entryPoints: [path.join(directory, "run-definitions.ts")],
   outfile: path.join(path.dirname(output), "run-definitions.mjs"),
 });
+await build({
+  ...options,
+  banner: {
+    js: 'import { createRequire } from "node:module"; const require = createRequire(import.meta.url);',
+  },
+  entryPoints: [path.join(directory, "run-plan.ts")],
+  outfile: path.join(path.dirname(output), "run-plan.mjs"),
+});

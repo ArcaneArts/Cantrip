@@ -28,14 +28,14 @@ to `0` in this first cycle while product placement is being implemented.
 Workspace support remains enabled by default. Including the executor requires
 the workspace package; apt enforces that dependency.
 
-Output: `cantrip_os/artifacts/packages/cantrip-os-executor_0.5.0_<arch>.deb`.
+Output: `cantrip_os/artifacts/packages/cantrip-os-executor_0.6.0_<arch>.deb`.
 It contains the source/patch fingerprint manifest, binary hashes, licenses, and
 sandbox helper. Docker and ISO recipes install the same package.
 
 Inside Linux, after copying the package there:
 
 ```sh
-sudo apt install ./cantrip-os-executor_0.5.0_arm64.deb  # amd64 for the VM edition
+sudo apt install ./cantrip-os-executor_0.6.0_arm64.deb  # amd64 for the VM edition
 sudo cantrip-executor enable
 sudo cantrip-executor status
 sudo cantrip-executor attach OWNER_ID WORKER_ID
@@ -134,3 +134,18 @@ path. The owning Worker retains admissions and observes known native processes
 after uncertain delivery. No Worker environment, broker token, provider account,
 or model credential is sent into this helper. Run process lifecycle integration
 is a separate milestone.
+
+Version 0.6.0 adds the finite `run-plan.mjs` preparation helper and the small
+`process-owner` binary for managed Run generations. Preparation reuses shared
+provider, environment-file, and live Codex environment behavior in Linux. It
+receives only purpose-specific Run secret values; account and provider keys
+remain on the Worker. The Worker retains native process identities, output
+redaction, cancellation, and operation recovery.
+
+The process owner runs without extra privileges, adopts orphaned descendants,
+and remains alive until its command tree ends. This lets native termination
+also reach detached root children after `sudo`/`setsid` forks. Ordinary commands
+keep the selected workspace UID and unrestricted sudo. GCC is used only in the
+package build stage. No compiler, scheduler, or new daemon is added by this
+helper. This generation driver is an execution component; product Run routing
+and the source picker are the following milestone.
