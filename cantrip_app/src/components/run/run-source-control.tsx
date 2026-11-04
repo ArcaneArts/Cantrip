@@ -1,21 +1,11 @@
-import { useSyncExternalStore, type ComponentProps } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { type ComponentProps } from "react";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import type { CantripOsRunSource } from "@cantrip/protocol";
 import { RunConfigurationControl } from "./run-configuration-control";
 import { getCantripOsRunSources } from "@/lib/api/cantrip-os";
-import {
-  linuxRunDefinitionApi,
-  RunDefinitionSourceProvider,
-} from "@/lib/run-definition-source";
+import { linuxRunDefinitionApi } from "@/lib/run-definition-source";
 import { listRunConfigurationRuntimes } from "@/lib/run-configuration-api";
-import {
-  readRunSource,
-  writeRunSource,
-  parseRunSource,
-  RUN_SOURCE_EVENT,
-} from "@/lib/run-source-selection";
-import { NativeSelect } from "@/components/ui/native-select";
-import { InlineAlert } from "@/components/ui/inline-alert";
+import type { RunConfigurationCatalog } from "@/lib/run-configuration-catalog";
 
 export function runSourceSelection(source: CantripOsRunSource) {
   return {
@@ -26,24 +16,11 @@ export function runSourceSelection(source: CantripOsRunSource) {
     runtimeGeneration: source.instance.runtimeGeneration!,
   };
 }
-const subscribe = (notify: () => void) => {
-  window.addEventListener(RUN_SOURCE_EVENT, notify);
-  window.addEventListener("storage", notify);
-  return () => {
-    window.removeEventListener(RUN_SOURCE_EVENT, notify);
-    window.removeEventListener("storage", notify);
-  };
-};
 
+/** One combined catalog. Placement belongs to each configuration, not the header. */
 export function RunSourceControl(
   props: ComponentProps<typeof RunConfigurationControl>,
 ) {
-  const encoded = useSyncExternalStore(
-    subscribe,
-    () => readRunSource(props.projectId),
-    () => "host",
-  );
-  const selection = parseRunSource(encoded);
   const sources = useQuery({
     queryKey: ["cantrip-os-run-sources", props.projectId],
     queryFn: () => getCantripOsRunSources(props.projectId),
@@ -52,107 +29,62 @@ export function RunSourceControl(
   });
   const groups = new Map<string, CantripOsRunSource>();
   for (const source of sources.data ?? []) {
-    const group = `${source.binding.projectSourceId}:${source.binding.workspaceId}`;
-    if (!groups.has(group) || source.target.isPrimary)
-      groups.set(group, source);
+    const key = `${source.binding.projectSourceId}:${source.binding.workspaceId}`;
+    if (!groups.has(key) || source.target.isPrimary) groups.set(key, source);
   }
   const choices = [...groups.values()];
-  const current = selection
-    ? choices.find(
-        (source) => JSON.stringify(runSourceSelection(source)) === encoded,
-      )
-    : undefined;
-  const linux = encoded !== "host";
-  const available = Boolean(current?.available && current.target.isPrimary);
-  const inventory = useQuery({
-    enabled: linux && available,
-    queryKey: ["run-configurations", props.projectId, encoded],
-    queryFn: () =>
-      linuxRunDefinitionApi(current!.binding).listRunConfigurations(
+  const inventories = useQueries({
+    queries: choices.map((source) => ({
+      queryKey: [
+        "run-configurations",
         props.projectId,
-      ),
-    refetchInterval: 5000,
-    retry: false,
+        JSON.stringify(runSourceSelection(source)),
+      ],
+      queryFn: () =>
+        linuxRunDefinitionApi(source.binding).listRunConfigurations(
+          props.projectId,
+        ),
+      enabled: source.available && source.target.isPrimary,
+      refetchInterval: 5000,
+      retry: false,
+    })),
   });
-  const runtimes = useQuery({
-    enabled: linux && available,
-    queryKey: ["run-configuration-runtimes", props.projectId, encoded],
-    queryFn: () =>
-      listRunConfigurationRuntimes(props.projectId, { osSource: selection! }),
-    refetchInterval: 1000,
-    retry: false,
+  const runtimes = useQueries({
+    queries: choices.map((source) => ({
+      queryKey: [
+        "run-configuration-runtimes",
+        props.projectId,
+        JSON.stringify(runSourceSelection(source)),
+      ],
+      queryFn: () =>
+        listRunConfigurationRuntimes(props.projectId, {
+          osSource: runSourceSelection(source),
+        }),
+      enabled: source.available && source.target.isPrimary,
+      refetchInterval: 1000,
+      retry: false,
+    })),
   });
-  const targets = (sources.data ?? []).filter(
-    (source) =>
-      current &&
-      source.binding.projectSourceId === current.binding.projectSourceId &&
-      source.binding.workspaceId === current.binding.workspaceId,
-  );
-  const label = current
-    ? `Linux · ${current.instance.name} / ${current.workspace.guestWorkspaceId}`
-    : linux
-      ? "Linux source unavailable"
-      : "Host";
-  return (
-    <div className="flex min-w-0 items-center gap-1" data-run-source-control>
-      <NativeSelect
-        aria-label="Run source"
-        className="max-w-60"
-        value={linux ? encoded : "host"}
-        onChange={(event) => {
-          props.onEditorConfigurationChange(null);
-          if (event.target.value === "host")
-            writeRunSource(props.projectId, null);
-          else {
-            const selected = parseRunSource(event.target.value);
-            if (selected) writeRunSource(props.projectId, selected);
-          }
-        }}
-      >
-        <option value="host">Host</option>
-        {linux && !current ? <option value={encoded}>{label}</option> : null}
-        {choices.map((source) => {
-          const value = JSON.stringify(runSourceSelection(source));
-          return (
-            <option
-              key={value}
-              value={value}
-              disabled={
-                !source.target.isPrimary || !source.instance.runtimeGeneration
-              }
-            >
-              Linux · {source.instance.name} /{" "}
-              {source.workspace.guestWorkspaceId} ·{" "}
-              {source.binding.projectSourceId.slice(0, 8)}
-              {source.available ? "" : " (unavailable)"}
-            </option>
-          );
-        })}
-      </NativeSelect>
-      {!linux ? (
-        <RunConfigurationControl {...props} />
-      ) : available && current ? (
-        <RunDefinitionSourceProvider binding={current.binding}>
-          <RunConfigurationControl
-            {...props}
-            key={encoded}
-            sourceKey={encoded}
-            osSelection={selection!}
-            inventory={inventory.data}
-            runtimes={runtimes.data ?? []}
-            worktrees={targets.map((source) => source.target)}
-            loading={inventory.isLoading}
-            error={inventory.error?.message ?? runtimes.error?.message ?? null}
-          />
-        </RunDefinitionSourceProvider>
-      ) : (
-        <InlineAlert tone="error">
-          {sources.isLoading
-            ? "Loading Linux Run source…"
-            : (sources.error?.message ??
-              "The selected Linux source changed or is unavailable. Select its current epoch after refreshing/verifying it in Settings. Primary must be bound in this workspace.")}
-        </InlineAlert>
-      )}
-    </div>
-  );
+  const catalogs: RunConfigurationCatalog[] = choices.map((source, index) => ({
+    key: JSON.stringify(runSourceSelection(source)),
+    label: `CantripOS · ${source.instance.name === "CantripOS" ? "" : `${source.instance.name} / `}${source.workspace.guestWorkspaceId}${choices.filter((other) => other.instance.id === source.instance.id && other.binding.workspaceId === source.binding.workspaceId).length > 1 ? ` · ${source.binding.projectSourceId.slice(0, 8)}` : ""}`,
+    binding: source.binding,
+    selection: runSourceSelection(source),
+    available: source.available && source.target.isPrimary,
+    inventory: inventories[index]?.data,
+    runtimes: runtimes[index]?.data ?? [],
+    worktrees: (sources.data ?? [])
+      .filter(
+        (target) =>
+          target.binding.projectSourceId === source.binding.projectSourceId &&
+          target.binding.workspaceId === source.binding.workspaceId,
+      )
+      .map((target) => target.target),
+    loading: inventories[index]?.isLoading,
+    error:
+      inventories[index]?.error?.message ??
+      runtimes[index]?.error?.message ??
+      (!source.available ? "The captured Linux source is unavailable." : null),
+  }));
+  return <RunConfigurationControl {...props} additionalCatalogs={catalogs} />;
 }

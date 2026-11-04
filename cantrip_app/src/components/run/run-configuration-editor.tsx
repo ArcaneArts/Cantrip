@@ -444,6 +444,7 @@ function ProviderGlyph({
 }
 
 function RunConfigurationCreationChooser({
+  destinationLabel,
   candidates,
   capabilities,
   diagnostics,
@@ -453,6 +454,7 @@ function RunConfigurationCreationChooser({
   onChooseCandidate,
   onChooseProvider,
 }: {
+  destinationLabel?: string;
   candidates: RunConfigurationDetectionCandidate[];
   capabilities: RunConfigurationProviderCapability[];
   diagnostics: string[];
@@ -490,6 +492,7 @@ function RunConfigurationCreationChooser({
         <DialogDescription>
           Review a statically detected project target or start with a typed
           blank configuration. Nothing is written until you save.
+          {destinationLabel ? ` Destination: ${destinationLabel}.` : ""}
         </DialogDescription>
       </DialogHeader>
       {loading ? (
@@ -822,6 +825,7 @@ function RustTargetEditor({
 }
 
 export function RunConfigurationEditor({
+  destinationLabel,
   creating,
   entry,
   open,
@@ -829,6 +833,7 @@ export function RunConfigurationEditor({
   onOpenChange,
   onSaved,
 }: {
+  destinationLabel?: string;
   creating: boolean;
   entry: RunConfigurationRepositoryEntry | null;
   open: boolean;
@@ -1080,6 +1085,7 @@ export function RunConfigurationEditor({
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
         <RunConfigurationCreationChooser
+          destinationLabel={destinationLabel}
           candidates={detection.data?.candidates ?? []}
           capabilities={capabilities.data ?? []}
           diagnostics={
@@ -1125,6 +1131,7 @@ export function RunConfigurationEditor({
           <DialogDescription>
             Shared as{" "}
             <code>.cantrip/run-configurations/{document.id}.json</code>.
+            {destinationLabel ? ` Destination: ${destinationLabel}.` : ""}
           </DialogDescription>
         </DialogHeader>
         <form className="grid gap-5" onSubmit={submit}>

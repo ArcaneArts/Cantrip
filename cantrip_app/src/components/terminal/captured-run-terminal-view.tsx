@@ -4,7 +4,7 @@ import { RunTerminalView } from "./run-terminal-view";
 import { getCantripOsRunSources } from "@/lib/api/cantrip-os";
 import { listRunConfigurationRuntimes } from "@/lib/run-configuration-api";
 import { linuxRunDefinitionApi } from "@/lib/run-definition-source";
-import { writeRunSource } from "@/lib/run-source-selection";
+import { runConfigurationCatalogKey } from "@/lib/run-configuration-catalog";
 import { InlineAlert } from "@/components/ui/inline-alert";
 
 export function CapturedRunTerminalView(
@@ -96,8 +96,12 @@ export function CapturedRunTerminalView(
         ["run-configurations", terminal.projectId, JSON.stringify(selection)],
         inventory,
       );
-      writeRunSource(terminal.projectId, selection);
-      props.onEditConfiguration?.(terminal.runConfigurationId);
+      props.onEditConfiguration?.(
+        runConfigurationCatalogKey(
+          JSON.stringify(selection),
+          terminal.runConfigurationId,
+        ),
+      );
     },
   });
   if (!runtime)

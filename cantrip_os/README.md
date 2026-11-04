@@ -21,7 +21,7 @@ The [authorized dispatch APIs](DISPATCH.md) and [native runtime adapter](NATIVE_
 are available as internal checkpoints, including captured placement for new agent
 chats. The [client attachment/selection workflow](PRODUCT_WORKFLOW.md) is available
 in Project Settings → CantripOS. Captured Linux agents, files/editor/Explorer,
-terminals, and the header Run source selector now use these bindings. Delegated
+terminals, and the combined Run list now use these bindings. Delegated
 project/Git/artifact tools and final distribution acceptance remain in progress.
 The executor edition is currently opt-in with `CANTRIP_OS_EXECUTOR=1`.
 

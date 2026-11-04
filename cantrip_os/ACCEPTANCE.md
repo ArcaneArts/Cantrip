@@ -1126,3 +1126,26 @@ still fails on the recorded agentOperations audit digest mismatch.
 The next UI revision merges Host and Linux Run configurations into one list,
 with per-configuration placement and destination choice during creation; the
 previous header source switch is being removed at the user's request.
+
+## Combined Run list revision (2026-11-04)
+
+The header source switch has been removed. Host and CantripOS definitions share
+one configuration list; Linux entries show their destination. Creating a config
+chooses a destination only when multiple destinations exist. Host-only projects
+go straight to configuration creation. Selection and editing belong to individual
+configuration identities, including their captured Linux epochs. A missing Linux
+entry stays unavailable rather than selecting Host.
+
+Local validation: 57 focused app tests passed, including equal configuration UUIDs
+on Host/Linux, scoped launch dispatch, unavailable selection retention, Host-only
+controls, per-new-config destination choice, and existing Run interactions. App
+type checking and production build passed. Required pnpm check reached the same
+recorded agentOperations audit mismatch. No protocol or executor package changed.
+
+Actual Codex in-app-browser acceptance created and saved a Host configuration,
+showed Host and CantripOS entries together, executed the Host entry to exit 0,
+and started the Linux entry on its exact Primary before explicitly stopping it.
+The creation dialog showed destination choices within the new-configuration flow.
+Screenshots and local validation logs are retained under ignored
+artifacts/phase3-unified-run-list/. This revision supersedes the earlier global
+source picker workflow. Full Phase 3 acceptance remains in progress.
