@@ -286,7 +286,10 @@ export function installTerminalRelayWebSocketRoute(
             ),
           );
           if (result.status === "exited") {
-            await updateTerminalStatus(terminalId, "exited");
+            await updateTerminalStatus(
+              terminalId,
+              result.executionOutcome === "unknown" ? "offline" : "exited",
+            );
             if (!closed) send({ type: "exit", ...result });
           }
         } catch (error) {

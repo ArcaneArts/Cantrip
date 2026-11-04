@@ -18,6 +18,7 @@ import {
   recoverCantripOsBinding,
   verifyCantripOsBinding,
 } from "@/lib/api/cantrip-os";
+import { ensureChatWorkerEncryption } from "@/lib/chat-worker-encryption";
 import { prepareConversationCreation } from "@/lib/api/conversations";
 import { errorMessage } from "@/lib/error-message";
 import { CantripOsAttachForm } from "./cantrip-os-attach-form";
@@ -110,6 +111,12 @@ export function CantripOsSettings({
     mutationFn: async (binding: CantripOsSourceBindingSummary) => {
       await refreshCantripOs(binding.instanceId);
       await verifyCantripOsBinding(project.id, binding.id);
+      const workerId = instances.data?.find(
+        (instance) => instance.id === binding.instanceId,
+      )?.workerId;
+      await ensureChatWorkerEncryption({
+        worker: workers.find((worker) => worker.workerId === workerId),
+      });
       let create = creations.current.get(binding.id);
       if (!create) {
         create = await prepareConversationCreation(

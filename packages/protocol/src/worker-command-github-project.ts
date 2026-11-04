@@ -1,3 +1,4 @@
+import { cantripOsExecutionSchema } from "./worker-command-cantrip-os.js";
 import { z } from "zod";
 import { repositoryRoutingHandleSchema } from "./repository-operation.js";
 import { protectedTunnelContentRecordSchema } from "./tunnel-content.js";
@@ -412,7 +413,10 @@ export const workerGithubProjectCommandSchemas = [
       operationId: z.string().uuid(),
       terminalId: z.string().min(1).max(200),
       serverId: z.string().min(1).max(255),
-      worktreePath: z.string().min(1).max(8_192),
+      worktreePath: z.union([
+        z.string().min(1).max(8_192),
+        cantripOsExecutionSchema,
+      ]),
       stateProtection: terminalPrivateStateOpaqueSchema,
     })
     .strict(),

@@ -956,6 +956,7 @@ registerChecks(
 
 registerChecks(protocol.encryptedTerminalCreateSchema, [
   "terminal-placement",
+  "cantrip-os-file-placement",
   "terminal-title",
 ]);
 registerChecks(protocol.encryptedTerminalUpdateSchema, ["terminal-title"]);

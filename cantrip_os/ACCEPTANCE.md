@@ -686,3 +686,94 @@ The required `pnpm check` still stops on the existing unreviewed
 Server type checks retain their existing five CUA/MCP and two Task errors.
 These results do not establish terminal/Run, full provider-agent product turns,
 attachment/artifact, live notification, or fresh ISO acceptance.
+
+## Product terminal checkpoint (2026-11-04)
+
+Captured interactive terminal integration is implemented in the optional executor
+0.4.0 cycle. This remains a Phase 3 checkpoint: setup/Run, delegated Cantrip
+project tools, attachments/artifact delivery, notifications, and current ISO
+acceptance are not established by these results.
+
+Both final package archives were built from the reviewed patch and current
+source:
+
+| Package                               | SHA-256                                                            |
+| ------------------------------------- | ------------------------------------------------------------------ |
+| `cantrip-os-executor_0.4.0_arm64.deb` | `349d561d5c493334990ac7a19131e54dc500f01c0187f6ae0ea3445ee360c1ac` |
+| `cantrip-os-executor_0.4.0_amd64.deb` | `8b1e8c9d6bce21f8c9094eadb58c6af1fe6fad371ed32b5816c074fa8f88e580` |
+
+Actual operations exercised in this cycle:
+
+- An ARM64 Docker and installed AMD64 VM ran the same native terminal carrier
+  suite: workspace UID/cwd, real `stty` resize to 37×119, nano save with exact
+  Unicode bytes, and interrupting a live Python process using the terminal's
+  interrupt byte. The final-archive VM run completed in 33.5 seconds after installation.
+- Killed the worker-side carrier, resumed its original native session/process,
+  and verified one mutation execution. An unknown native handle reported an
+  unknown outcome without starting a replacement shell. Explicit termination
+  removed sudo Python and its detached root child; an independent native job
+  continued. A fresh launcher instance closed an orphan through its saved
+  native handle. A changed directory or stale generation could not retarget
+  an existing terminal.
+- In Codex's in-app browser, selected a Linux-owned agent and created a Linux
+  terminal through the normal menu. It reported UID 20000 and the correct
+  checkout, executed the editor's Python file, and wrote Unicode content. A
+  second, linked workspace terminal reported UID 20001; guest edits were read
+  from the host mount and host edits were read from Linux. Files from the
+  independent Linux-owned source did not appear in the linked source.
+- Forced a real product carrier interruption. The UI displayed **Command
+  outcome unknown** and **Reconnect to Linux**; the Server recorded `offline`.
+  After explicit reconnect, the same shell read an execution-count file with
+  one line. Screenshots and local receipts are under
+  `artifacts/phase3-terminals/`.
+- The native Server captured terminal/console placements on both PGlite and
+  PostgreSQL. Stale execution was rejected; owner-authorized removal of a stale
+  terminal remained possible. Actual Node/native terminal repository comparisons
+  matched 87 cases and 91 durable snapshots on PGlite. An older Worker rejected
+  the OS terminal descriptor instead of selecting a host path.
+- A real local Qwen model, through the full client/Server/Worker/native runtime,
+  read/searched this Linux-owned folder and wrote `os-agent-proof.py`. Its first
+  turn was explicitly interrupted after the shell write. A second turn executed
+  the verified existing script, saved and checked `os-agent-proof.json`, and
+  completed. Independent reading verified UID 20000, the intended checkout,
+  exact Unicode message, and UID 20000 ownership of both files. This provider
+  emitted invalid function calls for the freeform patch tool; the real write
+  used shell instead. The earlier deterministic native-tool fixture remains the
+  separate evidence for valid patch dispatch.
+
+The real-model startup exposed two integration gaps fixed in this cycle:
+required worker-local stdio MCP servers cannot start in the pinned remote
+native environment, and Linux-agent creation needed the ordinary chat-content
+worker grant before native preparation. OS sessions now omit managed Host MCP
+injection and reject enabled user stdio configurations explicitly; configured
+network MCP servers remain supported. Delegated project-tool access is still
+subsequent work. The managed native console displayed the real agent's result.
+The app initially showed only the completed activity; reopening the test page
+displayed the complete final response, including the verified JSON. The product
+editor opened the actual agent-created JSON through the Linux Files sidebar. A
+fresh product terminal read that JSON and executed the agent-created script
+under the same UID and checkout, then exited normally.
+Both views are captured under `artifacts/phase3-terminals/`. Immediate live
+final-response rendering is not established by this reload-based observation.
+
+CI review also exposed a failed-turn race introduced during the native OS
+adapter work: a workspace read could overwrite a newer turn's file-change
+state. The existing regression failed before the fix and passed after restoring
+the generation check before assignment. All 205 runtime/lifetime regression
+cases in four files passed. Native console creation now also refuses a missing
+OS chat capture; the actual PGlite and PostgreSQL tests both passed.
+
+The production app build and its 80 focused client tests passed. Focused Worker
+terminal/MCP tests passed 27 cases; Host terminal regressions passed 24. The
+final Server relay/placement/console run passed 10 cases. The required
+`pnpm check` still stops at the same boundary-audit `agentOperations` digest
+mismatch described above; Worker and Server type checking retain the same five
+CUA/MCP and two Task errors. These checks are not a green repository-wide run.
+
+The native PTY resize unit passed against the final reviewed patch, including a
+real terminal-size change and rejection of an unknown process handle. The final
+ARM64 archive passed the complete terminal suite and the product-file regression
+suite in Docker. The exact final AMD64 archive was checksum-verified, installed
+in the VM, and passed the complete terminal suite. The installed VM also
+reported htop 3.4.1, nano 8.4, and Python 3.13.5 through the `python` command.
+Fresh Docker image and ISO distribution acceptance remains subsequent work.

@@ -3898,6 +3898,13 @@ export const taskDispatchCycles = pgTable(
 export const terminals = pgTable(
   "terminals",
   {
+    cantripOsBindingId: text("cantrip_os_binding_id").references(
+      () => cantripOsSourceBindings.id,
+      { onDelete: "restrict" },
+    ),
+    osBindingGeneration: text("os_binding_generation"),
+    osAttachmentGeneration: text("os_attachment_generation"),
+    osRuntimeGeneration: text("os_runtime_generation"),
     id: text("id").primaryKey(),
     projectId: text("project_id")
       .notNull()

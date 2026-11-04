@@ -66,6 +66,8 @@ export function createSidebarExplorerCommands({
   }>;
   newTerminal: MutationOperation<{
     directoryPath?: string;
+    cantripOsBindingId?: string;
+    cantripOsRuntimeGeneration?: string;
     projectId: string;
     paneId?: string;
     target?: ExecutionTarget;
@@ -375,6 +377,12 @@ export function createSidebarExplorerCommands({
     entry: ExplorerEntry,
     localFolder: boolean,
   ) => {
+    if (explorer.cantripOsBindingId) {
+      setPopoutError(
+        "Open this Linux folder in its CantripOS workspace desktop.",
+      );
+      return;
+    }
     const project = (projects ?? []).find(
       (candidate) => candidate.id === explorer.projectId,
     );
@@ -393,6 +401,12 @@ export function createSidebarExplorerCommands({
     explorer: ExplorerSummary,
     localFolder: boolean,
   ) => {
+    if (explorer.cantripOsBindingId) {
+      setPopoutError(
+        "Open this Linux folder in its CantripOS workspace desktop.",
+      );
+      return;
+    }
     const project = (projects ?? []).find(
       (candidate) => candidate.id === explorer.projectId,
     );
@@ -416,11 +430,17 @@ export function createSidebarExplorerCommands({
       directoryPath: entry.path,
       paneId: sidebarFilePaneId() ?? undefined,
       title: `Terminal · ${entry.name}`,
-      target: {
-        kind: "worktree",
-        projectId: explorer.projectId,
-        worktreeId: explorer.worktreeId,
-      },
+      cantripOsBindingId: explorer.cantripOsBindingId,
+      cantripOsRuntimeGeneration: explorer.cantripOsRuntimeGeneration,
+      ...(explorer.cantripOsBindingId
+        ? { worktreeId: explorer.worktreeId }
+        : {
+            target: {
+              kind: "worktree",
+              projectId: explorer.projectId,
+              worktreeId: explorer.worktreeId,
+            },
+          }),
     });
   };
   const openSidebarFolderGraph = (

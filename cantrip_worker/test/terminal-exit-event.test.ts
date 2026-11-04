@@ -1,3 +1,6 @@
+import { mkdtemp, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { tmpdir } from "node:os";
 import type { IPty } from "node-pty";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -50,6 +53,50 @@ afterEach(() => {
 });
 
 describe("terminal native exit events", () => {
+  it.each(["unknown", "interrupted", "exited"] as const)(
+    "preserves the Linux %s outcome in completion, snapshot and lifecycle notification",
+    async (state) => {
+      const directory = await mkdtemp(
+        path.join(tmpdir(), "cantrip-linux-terminal-outcome-"),
+      );
+      const lifecycle = vi.fn();
+      const manager = new TerminalManager({ observeLifecycle: lifecycle });
+      managers.push(manager);
+      await writeFile(
+        path.join(directory, "native.json"),
+        JSON.stringify({ identity: "same", processId: "same" }),
+      );
+      await writeFile(
+        path.join(directory, "outcome.json"),
+        JSON.stringify({ identity: "same", processId: "same", state }),
+      );
+      const opened = manager.open(
+        "linux",
+        "view",
+        directory,
+        80,
+        24,
+        {
+          type: "os-shell",
+          configurationFile: path.join(directory, "descriptor.json"),
+        },
+        () => {},
+      );
+      children[0]!.exit(198);
+      expect(await opened).toMatchObject({
+        status: "exited",
+        exitCode: 198,
+        executionOutcome: state,
+      });
+      expect(manager.snapshot("linux", 1000)).toMatchObject({
+        executionOutcome: state,
+      });
+      expect(lifecycle).toHaveBeenCalledWith(
+        expect.objectContaining({ executionOutcome: state }),
+      );
+    },
+  );
+
   it.each([
     { exitCode: undefined, signal: undefined, expected: -1 },
     { exitCode: undefined, signal: 15, expected: -1 },

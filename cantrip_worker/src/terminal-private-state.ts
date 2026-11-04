@@ -1,4 +1,5 @@
 import path from "node:path";
+import type { CantripOsExecution } from "@cantrip/protocol";
 
 import { terminalPrivateStateProtectedContentSchema } from "@cantrip/protocol/surface-private-state";
 
@@ -8,12 +9,13 @@ import type { WorkerEncryptionService } from "./worker-encryption.js";
 export interface TerminalPrivateStateRuntime {
   cwd: string;
   serviceCommand: string;
+  osExecution?: CantripOsExecution;
 }
 
 export async function openTerminalPrivateState(input: {
   serverId: string;
   terminalId: string;
-  worktreePath: string;
+  worktreePath: string | CantripOsExecution;
   stateProtection: unknown;
   service: WorkerEncryptionService;
 }): Promise<TerminalPrivateStateRuntime> {
@@ -31,18 +33,31 @@ export async function openTerminalPrivateState(input: {
       service: input.service,
     }),
   );
-  const root = path.resolve(input.worktreePath);
+  const osExecution =
+    typeof input.worktreePath === "string" ? undefined : input.worktreePath;
+  const paths = osExecution ? path.posix : path;
+  const root = osExecution
+    ? osExecution.scope.guestPath
+    : paths.resolve(input.worktreePath as string);
   if (content.directory.kind === "project-root") {
-    return { cwd: root, serviceCommand: content.serviceCommand };
+    return {
+      cwd: root,
+      serviceCommand: content.serviceCommand,
+      ...(osExecution ? { osExecution } : {}),
+    };
   }
-  const cwd = path.resolve(root, content.directory.path);
-  const relative = path.relative(root, cwd);
+  const cwd = paths.resolve(root, content.directory.path);
+  const relative = paths.relative(root, cwd);
   if (
     relative === ".." ||
-    relative.startsWith(`..${path.sep}`) ||
-    path.isAbsolute(relative)
+    relative.startsWith(`..${paths.sep}`) ||
+    paths.isAbsolute(relative)
   ) {
     throw new Error("The protected terminal directory escapes its worktree.");
   }
-  return { cwd, serviceCommand: content.serviceCommand };
+  return {
+    cwd,
+    serviceCommand: content.serviceCommand,
+    ...(osExecution ? { osExecution } : {}),
+  };
 }

@@ -9,7 +9,8 @@ export function surfaceOsFilePlacement(
   if (
     surface?.kind === "chat" ||
     surface?.kind === "explorer" ||
-    surface?.kind === "file"
+    surface?.kind === "file" ||
+    surface?.kind === "terminal"
   )
     return surface.entity.cantripOsBindingId
       ? {

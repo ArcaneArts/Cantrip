@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 
 import {
   terminalOpenResultSchema,
@@ -172,11 +173,19 @@ export function installWorkerLinkTerminalGrantRoute(
           },
         );
         void opened
-          .then((result) => {
+          .then(async (result) => {
             const parsed = terminalOpenResultSchema.parse(result);
             if (parsed.status === "exited") {
+              await updateTerminalStatus(
+                context.terminalId,
+                parsed.executionOutcome === "unknown" ? "offline" : "exited",
+              );
               markFailed?.(
-                new Error("Terminal process exited during startup."),
+                new Error(
+                  parsed.executionOutcome === "unknown"
+                    ? "The Linux terminal disconnected; command outcome is unknown."
+                    : "Terminal process exited during startup.",
+                ),
               );
             }
           })
@@ -219,7 +228,7 @@ export function installWorkerLinkTerminalGrantRoute(
           !current ||
           current.kind === "run-configuration" ||
           current.workerId !== context.workerId ||
-          current.worktreePath !== context.worktreePath
+          !isDeepStrictEqual(current.worktreePath, context.worktreePath)
         ) {
           await workerLinks.revokeGrant(
             session.sessionId,

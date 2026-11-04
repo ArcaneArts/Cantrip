@@ -1,3 +1,4 @@
+import { osNativeMcpServers } from "./os-executor/native-mcp.js";
 import { ProjectGoalDelivery } from "./project-goal-delivery.js";
 import { BinaryFileWrites } from "./binary-file-writes.js";
 import { dispatchRepositoryOperation } from "./repository-operation-dispatch.js";
@@ -319,6 +320,7 @@ import { WorkerConnection } from "./transport.js";
 import { WorkerEncryptionService } from "./worker-encryption.js";
 import { WorktreeManager } from "./worktrees.js";
 import { CantripOsController } from "./os-executor/controller.js";
+import { OsTerminalLauncher } from "./os-executor/terminal-launcher.js";
 import { OsFileOperations } from "./os-executor/files.js";
 import { OsNativeEnvironment } from "./os-executor/native-environment.js";
 import { OsAgentPlacements } from "./os-executor/agent-placements.js";
@@ -954,6 +956,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     config.dataDirectory,
     config.workerId,
   );
+  const osTerminals = new OsTerminalLauncher(
+    config.dataDirectory,
+    cantripOs,
+    workerEncryption,
+  );
   const osFiles = new OsFileOperations(
     config.dataDirectory,
     cantripOs,
@@ -1224,6 +1231,20 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     profile: CantripMcpProfile = "ide",
     computerUseEnabled = false,
   ): Promise<McpServerConfiguration[]> => {
+    if (
+      attachment &&
+      osAgentPlacements.resolve({
+        ...nativeNamespaceScope(),
+        chatId: attachment.chatId,
+      })
+    ) {
+      return osNativeMcpServers(
+        await openMcpServers({
+          servers: configured,
+          service: workerEncryption,
+        }),
+      );
+    }
     let managedCodeGraph: McpServerConfiguration | null = null;
     if (profile === "ide" && codegraphProjects && codegraphInvocation) {
       try {
@@ -4315,13 +4336,34 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           });
         };
         try {
-          const { cwd } = await openTerminalPrivateState({
+          const { cwd, osExecution } = await openTerminalPrivateState({
             serverId: command.serverId,
             terminalId: command.terminalId,
             worktreePath: command.worktreePath,
             stateProtection: command.stateProtection,
             service: workerEncryption,
           });
+          if (osExecution && command.launch.type === "shell") {
+            const carrier = await osTerminals.prepare(
+              command.terminalId,
+              osExecution,
+              cwd,
+              command.cols,
+              command.rows,
+              command.serverId,
+            );
+            const result = await terminals.open(
+              command.terminalId,
+              command.attachmentId,
+              carrier.cwd,
+              command.cols,
+              command.rows,
+              carrier.launch,
+              protectedEmit,
+            );
+            await outputQueue;
+            return result;
+          }
           if (command.launch.type === "codex") {
             if (command.launch.session && !command.launch.threadId) {
               throw new Error(
@@ -4407,18 +4449,20 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             const result = await terminals.open(
               command.terminalId,
               command.attachmentId,
-              cwd,
+              osExecution ? runtime.managedHistoryHome : cwd,
               command.cols,
               command.rows,
               {
                 ...command.launch,
                 threadId: prepared?.threadId ?? command.launch.threadId,
                 binary: config.codexBinary,
-                codexHome: accountBackedProvider(provider().kind)
-                  ? accountHomeFor(
-                      provider().credentialHomeKey ?? provider().id,
-                    )
-                  : codexHome,
+                codexHome: osExecution
+                  ? runtime.managedHistoryHome
+                  : accountBackedProvider(provider().kind)
+                    ? accountHomeFor(
+                        provider().credentialHomeKey ?? provider().id,
+                      )
+                    : codexHome,
                 provider: provider(),
                 remoteUrl,
               },
@@ -4497,9 +4541,12 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       case "terminal.resize":
         terminals.resize(command.terminalId, command.cols, command.rows);
         return { accepted: true };
-      case "terminal.close":
+      case "terminal.close": {
+        const live = terminals.hasLiveSession(command.terminalId);
         terminals.close(command.terminalId);
+        if (!live) await osTerminals.close(command.terminalId);
         return { accepted: true };
+      }
       case "terminal.snapshot": {
         const streamContext = {
           serverId: command.serverId,
@@ -4556,6 +4603,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                   ...service,
                   service: workerEncryption,
                 });
+                if (state.osExecution)
+                  throw new Error(
+                    "Linux terminal services require their delegated service lifecycle; no Host command was started.",
+                  );
                 if (state.serviceCommand.trim().length === 0) {
                   throw new Error(
                     "An enabled terminal service needs a command.",

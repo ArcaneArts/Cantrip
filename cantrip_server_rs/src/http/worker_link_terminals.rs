@@ -24,6 +24,7 @@ use std::{
 async fn bootstrap(
     service: &AuthService,
     context: &Value,
+    owner: &str,
     operation: &Value,
     attachment: &str,
     launch: Value,
@@ -64,7 +65,7 @@ async fn bootstrap(
             ready=&mut receive=>{ready.context("Terminal readiness ended")?;break;}
             value=&mut opened, if result.is_none()=>{
                 let value=value?;
-                if value["status"]=="exited" {bail!("Terminal process exited during startup.");}
+                if value["status"]=="exited" {service.worker_maintenance.record_status(owner,context["terminalId"].as_str().unwrap_or(""),if value["executionOutcome"]=="unknown" {"offline"} else {"exited"}).await?; bail!(if value["executionOutcome"]=="unknown" {"The Linux terminal disconnected; command outcome is unknown."} else {"Terminal process exited during startup."});}
                 result=Some(value);
             }
             _=&mut startup=>bail!("Terminal process startup timed out."),
@@ -137,7 +138,7 @@ pub(super) async fn execute(
             let (Some(chat),Some(runtime))=(chat,runtime)else{return Ok(error(409,"Choose a model for this chat before opening its Codex console."));};
             launch=service.managed_console.prepare_launch(owner,&chat,&runtime).await?;
         }
-        bootstrap(service,&context,&input["operationId"],&attachment,launch,&mut detached).await?;
+        bootstrap(service,&context,owner,&input["operationId"],&attachment,launch,&mut detached).await?;
         service.worker_maintenance.record_status(owner,terminal_id,"running").await?;
         let grant=service.worker_links.local.issue_grant(json!({"attachmentId":input["operationId"],"lanes":["interactive"],"maxChannels":1,"operations":["stream:open","stream:read","stream:write"],"resourceId":context["terminalId"],"resourceKind":"terminal","sessionId":session["sessionId"]})).await?;
         let current=repository.context(owner,terminal_id).await?;

@@ -223,6 +223,48 @@ async fn exercise(database: Arc<Database>) -> Result<()> {
             .await
             .is_err()
     );
+    let terminals = cantrip_server::terminals::Repository::new(database.clone());
+    let terminal_id = id();
+    let terminal_input = cantrip_server::wire::Value::from_serialize(
+        &json!({"id":terminal_id,"worktreeId":binding["worktreeId"],"cantripOsBindingId":binding["id"],"cantripOsRuntimeGeneration":instance["runtimeGeneration"],"titleProtection":{"classification":{"recordKind":"terminal"},"protectedLabel":input["protectedRequest"]},"stateProtection":{"classification":{"recordKind":"terminal-state"},"protectedState":input["protectedRequest"]}}),
+    );
+    let terminal = terminals
+        .create("owner", "project", &terminal_input, None)
+        .await?
+        .unwrap();
+    assert_eq!(
+        terminal["cantripOsBindingId"].as_str(),
+        binding["id"].as_str()
+    );
+    assert_eq!(
+        terminals.context("owner", &terminal_id).await?.unwrap()["worktreePath"],
+        context["osExecution"]
+    );
+    assert!(terminals.context("other", &terminal_id).await?.is_none());
+    let console_id = id();
+    let mut console_input = terminal_input.clone();
+    console_input["id"] = cantrip_server::wire::Value::from_serialize(&console_id);
+    let console = terminals
+        .get_or_create_chat_console("owner", &chat_id, &console_input)
+        .await?
+        .unwrap();
+    assert_eq!(
+        console["cantripOsBindingId"],
+        terminal["cantripOsBindingId"]
+    );
+    assert_eq!(
+        terminals.context("owner", &console_id).await?.unwrap()["worktreePath"],
+        context["osExecution"]
+    );
+    assert!(
+        database
+            .query(
+                "UPDATE terminals SET os_runtime_generation=$1 WHERE id=$2",
+                &[&id(), &terminal_id]
+            )
+            .await
+            .is_err()
+    );
     let next = id();
     repository
         .observe(
@@ -255,6 +297,8 @@ async fn exercise(database: Arc<Database>) -> Result<()> {
             .is_err()
     );
     assert!(chats.execution_context("owner", &chat_id).await.is_err());
+    assert!(terminals.context("owner", &terminal_id).await.is_err());
+    assert!(terminals.context("owner", &console_id).await.is_err());
     assert!(
         explorers
             .context(
@@ -271,6 +315,10 @@ async fn exercise(database: Arc<Database>) -> Result<()> {
             .await
             .is_err()
     );
+    assert_eq!(
+        terminals.delete("owner", &terminal_id).await?.unwrap()["terminalId"].as_str(),
+        Some(terminal_id.as_str())
+    );
     let mut current = scope.clone();
     current["runtimeGeneration"] = json!(next);
     receipt["runtimeGeneration"] = current["runtimeGeneration"].clone();
@@ -282,6 +330,21 @@ async fn exercise(database: Arc<Database>) -> Result<()> {
         .await?
         .unwrap();
     assert_eq!(admission["scope"], scope);
+    // A missing durable OS chat capture must not create a Host console.
+    terminals.delete("owner", &console_id).await?;
+    database
+        .query(
+            "DELETE FROM cantrip_os_chat_placements WHERE chat_id=$1",
+            &[&chat_id],
+        )
+        .await?;
+    console_input["id"] = cantrip_server::wire::Value::from_serialize(&id());
+    assert!(
+        terminals
+            .get_or_create_chat_console("owner", &chat_id, &console_input)
+            .await
+            .is_err()
+    );
     Ok(())
 }
 #[tokio::test]

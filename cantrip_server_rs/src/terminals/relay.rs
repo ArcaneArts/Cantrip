@@ -231,8 +231,8 @@ impl Relay {
             let result = self.service.workers.commands.request_with_timeout(worker,json!({"type":"terminal.open","terminalId":context["terminalId"],"attachmentId":self.attachment,"operationId":self.operation,"serverId":self.service.server_id,"worktreePath":context["worktreePath"],"stateProtection":context["stateProtection"],"cols":80,"rows":24,"launch":launch}),RequestTimeout::Disabled,Some(event)).await?;
             let result = crate::settings::parse_response("terminalOpenResultSchema",result.as_ref())?;
             if result["status"] == "exited" {
-                self.status(&context,"exited").await?;
-                if !self.closed.load(Ordering::Acquire) { self.send(json!({"type":"exit","exitCode":result["exitCode"],"signal":result["signal"]}))?; }
+                self.status(&context,if result["executionOutcome"]=="unknown" {"offline"} else {"exited"}).await?;
+                if !self.closed.load(Ordering::Acquire) { let mut message=json!({"type":"exit","exitCode":result["exitCode"],"signal":result["signal"]}); if let Some(outcome)=result.get("executionOutcome") {message["executionOutcome"]=outcome.clone();} self.send(message)?; }
             }
             Ok(())
         }.await;

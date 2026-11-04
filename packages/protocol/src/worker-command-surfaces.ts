@@ -1,3 +1,4 @@
+import { cantripOsExecutionSchema } from "./worker-command-cantrip-os.js";
 import { z } from "zod";
 import {
   managedSessionContextSchema,
@@ -99,7 +100,10 @@ export const workerSurfaceCommandSchemas = [
       attachmentId: z.string().min(1),
       operationId: surfaceStreamWireRequestSchema.shape.operationId,
       serverId: z.string().min(1).max(255),
-      worktreePath: z.string().min(1).max(8_192),
+      worktreePath: z.union([
+        z.string().min(1).max(8_192),
+        cantripOsExecutionSchema,
+      ]),
       stateProtection: terminalPrivateStateOpaqueSchema,
       cols: z.number().int().min(1).max(1_000),
       rows: z.number().int().min(1).max(1_000),

@@ -589,7 +589,11 @@ export function createWorkerNotificationRuntime({
             entityId: changed.chatId,
           });
         }
-      } else await updateTerminalStatus(notification.terminalId, "exited");
+      } else
+        await updateTerminalStatus(
+          notification.terminalId,
+          notification.executionOutcome === "unknown" ? "offline" : "exited",
+        );
       return;
     }
     if (notification.type === "chat.turn.outcome") {

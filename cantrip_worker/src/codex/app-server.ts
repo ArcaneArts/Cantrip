@@ -7818,9 +7818,11 @@ export class CodexAppServer implements CodexRuntime {
       }
       this.#interactions.clearInteractionsForTurn(active, error.message);
       try {
-        active.diffChanges = await workspaceChanges(active, (cwd) =>
+        const changes = await workspaceChanges(active, (cwd) =>
           this.snapshotWorkspace(cwd),
         );
+        if (!isCurrent()) return;
+        active.diffChanges = changes;
       } catch (observationError) {
         if (!this.nativeEnvironment) throw observationError;
         workerLogger.event(

@@ -673,6 +673,8 @@ External implementation references consulted on 2026-11-03:
 The Phase 3 product file checkpoint supplies captured Explorer/document
 placements and optional executor 0.3.0 filesystem support. Linked and
 Linux-owned file views were exercised through the actual client, Server, Worker
-and guest; terminal/Run and final distribution acceptance remain pending.
+and guest. The following terminal cycle adds captured interactive Linux shells
+with native PTY resizing and observation-only reconnect. Setup/Run and final
+distribution acceptance remain pending.
 See [the workflow](../cantrip_os/PRODUCT_WORKFLOW.md#files-and-editor) and
 [recorded evidence](../cantrip_os/ACCEPTANCE.md#product-file-checkpoint-2026-11-04).
