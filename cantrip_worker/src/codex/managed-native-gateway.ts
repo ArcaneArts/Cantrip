@@ -158,7 +158,10 @@ export async function createManagedNativeGateway(
       actual.length !== expected.length ||
       !timingSafeEqual(actual, expected)
     ) {
-      socket.end("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
+      socket.once("error", () => socket.destroy());
+      socket.end("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n", () =>
+        socket.destroy(),
+      );
       return;
     }
     sockets.handleUpgrade(request, socket, head, (client) =>
