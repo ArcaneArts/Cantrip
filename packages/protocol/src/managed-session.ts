@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { cantripOsExecutionSchema } from "./worker-command-cantrip-os.js";
 
 import { projectRootKindSchema } from "./project-foundation.js";
 import {
@@ -17,6 +18,7 @@ export const managedSessionContextSchema = z.discriminatedUnion("contextKind", [
     .object({
       ...common,
       contextKind: z.literal("project"),
+      osExecution: cantripOsExecutionSchema.optional(),
       projectId: z.string().min(1),
       worktreeId: z.string().min(1),
       rootKind: projectRootKindSchema,

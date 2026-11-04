@@ -586,6 +586,8 @@ export const contractRoots = [
   "cantripMcpTaskListInputSchema",
   "cantripMcpTaskStatusInputSchema",
   "cantripMcpTaskWaitInputSchema",
+  "cantripOsExecutionSchema",
+  "cantripOsExecutionScopeSchema",
   "cantripOsDispatchScopeSchema",
   "cantripOsSourceDispatchScopeSchema",
   "cantripOsProvisionIntentSchema",

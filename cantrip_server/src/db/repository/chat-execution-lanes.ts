@@ -1,4 +1,4 @@
-import { requireWorkerLocalPath } from "./worker-local-source-path.js";
+import { CantripOsChatRepository } from "./cantrip-os-chats.js";
 import { assertNativeRuntimeWritable } from "./native-runtime-handoff-guard.js";
 import { randomUUID } from "node:crypto";
 
@@ -60,6 +60,8 @@ interface ChatExecutionContextBase {
   computerUseAuthorityGeneration?: number;
   computerUseEnabled?: boolean;
   computerUseCantripAppAllowed?: boolean;
+  /** cwd is interpreted through this explicit guest placement when present. */
+  osExecution?: import("@cantrip/protocol").CantripOsExecution;
   cwd: string;
   experience: ChatWireSummary["experience"];
   defaultPermissionProfileId?: UserSettings["defaultPermissionProfileId"];
@@ -632,7 +634,11 @@ export class ChatExecutionLaneRepository {
           computerUseAuthorityGeneration:
             row.chat.computerUseAuthorityGeneration,
           chatId,
-          cwd: requireWorkerLocalPath(row.worktree.absolutePath),
+          ...(await new CantripOsChatRepository(transaction).resolve(
+            ownerId,
+            chatId,
+            row.worktree,
+          )),
           experience: row.chat.experience as ChatWireSummary["experience"],
           defaultPermissionProfileId:
             (row.settings?.defaultPermissionProfileId as

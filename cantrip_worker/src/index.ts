@@ -319,6 +319,9 @@ import { WorkerConnection } from "./transport.js";
 import { WorkerEncryptionService } from "./worker-encryption.js";
 import { WorktreeManager } from "./worktrees.js";
 import { CantripOsController } from "./os-executor/controller.js";
+import { OsNativeEnvironment } from "./os-executor/native-environment.js";
+import { OsAgentPlacements } from "./os-executor/agent-placements.js";
+import type { CantripOsExecution } from "@cantrip/protocol";
 import { prepareOsSourceCommand } from "./os-executor/protected-source.js";
 import { handleWorkerLinkCommand } from "./commands/worker-link.js";
 import { handleGithubCommand } from "./commands/github.js";
@@ -1504,12 +1507,15 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     workerId: config.workerId,
   });
   const handoffStaging = new ManagedRuntimeHandoffStaging<CodexAppServer>();
+  const osAgentPlacements = new OsAgentPlacements(config.dataDirectory);
   const runtimeFor = (
     command: {
       threadId?: string | null;
       chatId?: string | null;
       executionProfile?: "ide" | "standalone-chat";
       standaloneSkillRoot?: string | null;
+      osExecution?: CantripOsExecution;
+      session?: ManagedSessionContext;
       model: Extract<WorkerCommand, { type: "chat.turn" }>["model"];
       provider: RuntimeProvider;
       subagentDefaults?: RuntimeSubagentDefaults | null;
@@ -1547,9 +1553,27 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           : []
         : globalCodexSkillRoots,
     );
-    const runtimeId = namespace
-      ? `${baseRuntimeId}:namespace:${namespace.operationId}`
+    const osTarget = managedRuntimeTarget(command);
+    const os =
+      osTarget.chatId || osTarget.osExecution
+        ? osAgentPlacements.resolve(
+            { ...nativeNamespaceScope(), chatId: osTarget.chatId },
+            osTarget.osExecution,
+          )
+        : undefined;
+    const nativeEnvironment = os
+      ? new OsNativeEnvironment(
+          { ...os.scope, serverId: workerEncryption.serverIdentity() },
+          os.transport,
+          cantripOs,
+        )
+      : null;
+    const placementRuntimeId = nativeEnvironment
+      ? `${baseRuntimeId}:os:${nativeEnvironment.id}`
       : baseRuntimeId;
+    const runtimeId = namespace
+      ? `${placementRuntimeId}:namespace:${namespace.operationId}`
+      : placementRuntimeId;
     let runtime = codexRuntimes.get(runtimeId);
     if (!runtime) {
       const directoryName = createHash("sha256")
@@ -1559,13 +1583,28 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         config.codexBinary,
         path.join(config.dataDirectory, "codex-runtimes", directoryName),
         namespace?.home ??
-          (command.executionProfile === "standalone-chat"
+          (nativeEnvironment
             ? path.join(
                 config.dataDirectory,
-                "codex-standalone-homes",
-                directoryName,
+                "codex-os-homes",
+                createHash("sha256")
+                  .update(
+                    JSON.stringify([
+                      nativeEnvironment.id,
+                      configurationHome,
+                      command.provider.id,
+                      command.provider.credentialHomeKey ?? null,
+                    ]),
+                  )
+                  .digest("hex"),
               )
-            : configurationHome),
+            : command.executionProfile === "standalone-chat"
+              ? path.join(
+                  config.dataDirectory,
+                  "codex-standalone-homes",
+                  directoryName,
+                )
+              : configurationHome),
         codexRuntime,
         undefined,
         async (provider) =>
@@ -1593,7 +1632,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             ? [command.standaloneSkillRoot]
             : []
           : globalCodexSkillRoots,
-        namespace ? configurationHome : null,
+        namespace || nativeEnvironment ? configurationHome : null,
+        nativeEnvironment,
       );
       runtime.setGoalObserver((threadId, goal) => {
         if (runtime && handoffStaging.held(runtime, threadId)) return;
@@ -2133,6 +2173,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       : null;
     const runtime = runtimeFor({
       ...options,
+      session,
       chatId: session.chatId,
       executionProfile,
       subagentDefaults,
@@ -4773,6 +4814,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           : undefined;
         preparationSignal?.throwIfAborted();
         const standalone = command.executionProfile === "standalone-chat";
+        const executionProfile = standalone
+          ? ("standalone-chat" as const)
+          : ("ide" as const);
         if (
           standalone &&
           (command.contextKind !== "standalone" ||
@@ -4820,7 +4864,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           : null;
         const runtime = runtimeFor({
           ...managedRuntimeTarget(command),
-          executionProfile: command.executionProfile,
+          executionProfile: executionProfile,
           standaloneSkillRoot,
           model: command.model,
           provider: provider(),
@@ -4829,7 +4873,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         if (standalone) {
           await runtime.reloadSkills({
             cwd: command.cwd,
-            executionProfile: command.executionProfile,
+            executionProfile: executionProfile,
             model: command.model,
             provider: provider(),
             subagentDefaults,
@@ -5140,7 +5184,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               clientMessageId: command.clientMessageId,
               cwd: command.cwd,
               executionLaneId: command.executionLaneId,
-              executionProfile: command.executionProfile,
+              executionProfile: executionProfile,
               isPrimary: command.isPrimary,
               mcpServers: resolvedMcpServers,
               model: command.model,
@@ -5644,7 +5688,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                     model: command.model,
                     provider: provider(),
                     permissionProfileId: command.permissionProfileId,
-                    executionProfile: command.executionProfile,
+                    executionProfile: executionProfile,
                     subagentDefaults,
                     mcpServers: resolvedMcpServers,
                     planMode: command.planMode,

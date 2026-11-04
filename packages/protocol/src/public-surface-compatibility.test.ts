@@ -519,6 +519,8 @@ const agentChatExports = [
 const cantripOsExports = [
   "cantripOsDispatchScopeSchema",
   "cantripOsSourceDispatchScopeSchema",
+  "cantripOsExecutionSchema",
+  "cantripOsExecutionScopeSchema",
   "cantripOsProvisionIntentSchema",
   "cantripOsProvisionRequestContentSchema",
   "cantripOsObservedInstanceSchema",

@@ -301,7 +301,8 @@ impl Runtime {
         // The Source expression has no `u` flag: its dot consumes one UTF-16
         // code unit, so a surrogate pair cannot be the single rate.?limit gap.
         let retry_error=RETRY.get_or_init(||regress::Regex::with_flags(r"(quota|usage limit|rate.?limit|\b429\b|unauthori[sz]ed|\b401\b|forbidden|\b403\b|authentication|credentials|model.+(?:not found|unavailable|at capacity)|\b404\b|timed? out|timeout|ECONN|connection|network|socket|\b5\d\d\b|service unavailable|overloaded)","i").unwrap()).find_from_ucs2(message(error).units(),0).next().is_some();
-        let retry = !interrupted
+        let retry = turn.execution.get("osExecution").is_none()
+            && !interrupted
             && automatic
             && native_accepted
             && (overloaded || (!state.activity && retry_error))

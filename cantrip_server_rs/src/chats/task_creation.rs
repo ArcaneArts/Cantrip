@@ -103,25 +103,47 @@ impl Repository {
             .get("worktreeId")
             .filter(|id| crate::wire::coercion::truthy(Some(id)))
             .map(|id| json!({"kind":"worktree","projectId":project,"worktreeId":id}));
-        let placement = PlacementRepository::new(self.database.clone())?
-            .resolve(
-                owner,
-                project,
-                "chat",
-                input.get("target").or(legacy.as_ref()),
-                connected,
-                false,
+        anyhow::ensure!(
+            !task || input.get("cantripOsBindingId").is_none(),
+            "OS placement is currently available for agent chats."
+        );
+        let os_placement = if let Some(binding) = input.get("cantripOsBindingId") {
+            Some(
+                crate::cantrip_os::chats::select(
+                    crate::database::Executor::Database(&self.database),
+                    owner,
+                    project,
+                    &text(binding)?,
+                )
+                .await?,
             )
-            .await?;
-        let Some(selected) = TargetRepository::new(self.database.clone())
-            .worktree_context(
-                owner,
-                project,
-                &text(&placement["placement"]["worktreeId"])?,
-            )
-            .await?
-        else {
-            return Ok(None);
+        } else {
+            None
+        };
+        let selected = if let Some(os) = &os_placement {
+            Value::from_serialize(&os["selected"])
+        } else {
+            let placement = PlacementRepository::new(self.database.clone())?
+                .resolve(
+                    owner,
+                    project,
+                    "chat",
+                    input.get("target").or(legacy.as_ref()),
+                    connected,
+                    false,
+                )
+                .await?;
+            let Some(selected) = TargetRepository::new(self.database.clone())
+                .worktree_context(
+                    owner,
+                    project,
+                    &text(&placement["placement"]["worktreeId"])?,
+                )
+                .await?
+            else {
+                return Ok(None);
+            };
+            selected
         };
         let worker = text(&selected["workerId"])?;
         let worktree = text(&selected["worktree"]["id"])?;
@@ -179,6 +201,7 @@ impl Repository {
                 let request = input.stringify();
                 tx.query("INSERT INTO conversation_creation_requests(chat_id,request) VALUES($1,$2::text::jsonb)", &[&id,&request]).await.map_err(|error|statement_failure(error,&[&id,&request]))?;
             }
+            if let Some(os)=&os_placement {crate::cantrip_os::chats::capture(tx,&id,&os["source"]).await?;}
             let runtime = uuid::Uuid::new_v4().to_string();
             tx.query("INSERT INTO chat_runtime_sessions(id,chat_id,worker_id,worktree_id) VALUES($1,$2,$3,$4)", &[&runtime,&id,&worker,&worktree]).await.map_err(|error| statement_failure(error, &[&worker,&worktree]))?;
             let lane = uuid::Uuid::new_v4().to_string();

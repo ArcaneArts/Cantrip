@@ -83,8 +83,9 @@ It does not yet enable client target selection or claim end-to-end agent executi
 The [native runtime adapter](../cantrip_os/NATIVE_RUNTIME.md) now exercises the
 pinned app-server against Docker and an installed VM, including native patching,
 permissions, and process-tree cancellation. Its deterministic model fixture is
-component acceptance; Server chat selection and product surface routing remain
-the next delivery steps.
+component acceptance. Both Server implementations now capture a binding for a
+new agent chat before native preparation and select a private worker-side runtime.
+The client picker and remaining product surface routing are the next delivery steps.
 
 The canonical model keeps `project_sources.absolute_path` worker-local. A shared
 source identity preserves worktree IDs and leases, while Linux-owned source

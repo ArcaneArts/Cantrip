@@ -147,6 +147,16 @@ impl Repository {
             "worktreeMode":if standalone{Value::Null}else{chat["worktree_mode"].clone()},
             "worktreePolicy":if standalone{Value::Null}else{row["project"]["worktree_policy"].clone()}
         });
+        if !standalone {
+            let raw: serde_json::Value = serde_json::from_str(&root.stringify())?;
+            if let Some(placement) =
+                crate::cantrip_os::chats::resolve(executor, owner, chat_id, &raw).await?
+            {
+                for (key, value) in placement.as_object().unwrap() {
+                    context[key.as_str()] = Value::from_serialize(value);
+                }
+            }
+        }
         if standalone {
             context["scratchRootStatus"] = root["status"].clone();
         }

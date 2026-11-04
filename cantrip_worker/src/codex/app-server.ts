@@ -5894,7 +5894,10 @@ export class CodexAppServer implements CodexRuntime {
   ): Promise<void> {
     const startedAtMs = Date.now();
     this.#appServerSessionId = randomUUID();
-    await mkdir(this.codexHome, { recursive: true });
+    await mkdir(this.codexHome, {
+      recursive: true,
+      ...(this.nativeEnvironment ? { mode: 0o700 } : {}),
+    });
     await this.nativeEnvironment?.prepare(this.codexHome);
     const [runtimeProvider, managedInventory] = await Promise.all([
       this.resolveProvider ? this.resolveProvider(provider) : provider,
@@ -5922,6 +5925,14 @@ export class CodexAppServer implements CodexRuntime {
         "app-server",
         "-c",
         'cli_auth_credentials_store="file"',
+        ...(this.nativeEnvironment
+          ? [
+              "features.computer_use=false",
+              "features.browser_use=false",
+              "features.browser_use_external=false",
+              "features.in_app_browser=false",
+            ].flatMap((setting) => ["-c", setting])
+          : []),
         ...(this.methodAvailable("thread/goal/get")
           ? ["-c", "features.goals=true"]
           : []),

@@ -111,6 +111,48 @@ async fn exercise(database: Arc<Database>) -> Result<()> {
         .await?;
     assert_eq!(stored[0].get::<String>(0)?, "a".repeat(40));
     assert_eq!(stored[0].get::<String>(1)?, "ctrr:protected-branch");
+    database
+        .execute("INSERT INTO user_settings(user_id,computer_use_enabled) VALUES('owner',true)")
+        .await?;
+    let chat_id = id();
+    let chats = cantrip_server::chats::Repository::new(database.clone());
+    let chat_input = cantrip_server::wire::Value::from_serialize(
+        &json!({"id":chat_id,"titleProtection":{"classification":{"recordKind":"chat"},"protectedLabel":input["protectedRequest"]},"attachToTabLayout":false,"worktreeMode":"pinned","cantripOsBindingId":binding["id"]}),
+    );
+    let chat = chats
+        .create_project_chat("owner", "project", &chat_input, None)
+        .await?
+        .unwrap();
+    assert_eq!(
+        chat["activeWorktreeId"].as_str(),
+        binding["worktreeId"].as_str()
+    );
+    let context = chats.execution_context("owner", &chat_id).await?.unwrap();
+    assert_eq!(context["cwd"].as_str(), binding["guestPath"].as_str());
+    assert_eq!(
+        context["osExecution"]["scope"]["bindingId"].as_str(),
+        binding["id"].as_str()
+    );
+    assert_eq!(
+        context["computerUseEnabled"],
+        cantrip_server::wire::Value::Bool(false)
+    );
+    let lanes = cantrip_server::chats::execution_lanes::LaneRepository::new(database.clone());
+    let lane = lanes
+        .start("owner", &chat_id, "user", "OS acceptance")
+        .await?
+        .unwrap();
+    assert_eq!(lane["worktreeId"].as_str(), binding["worktreeId"].as_str());
+    assert_eq!(lane["osExecution"], context["osExecution"]);
+    assert!(
+        database
+            .query(
+                "UPDATE cantrip_os_chat_placements SET runtime_generation=$1 WHERE chat_id=$2",
+                &[&id(), &chat_id]
+            )
+            .await
+            .is_err()
+    );
     let next = id();
     repository
         .observe(
@@ -142,6 +184,7 @@ async fn exercise(database: Arc<Database>) -> Result<()> {
             .await
             .is_err()
     );
+    assert!(chats.execution_context("owner", &chat_id).await.is_err());
     let mut current = scope.clone();
     current["runtimeGeneration"] = json!(next);
     receipt["runtimeGeneration"] = current["runtimeGeneration"].clone();

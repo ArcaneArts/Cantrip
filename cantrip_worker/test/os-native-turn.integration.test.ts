@@ -441,6 +441,35 @@ time.sleep(300)`;
         return;
       }
       const result = await runtime.runTurn(options);
+      const nativeConfig = await (
+        runtime as unknown as {
+          request(
+            method: string,
+            params: unknown,
+          ): Promise<{ config: { features: Record<string, boolean> } }>;
+        }
+      ).request("config/read", { includeLayers: false });
+      expect(nativeConfig.config.features).toMatchObject({
+        computer_use: false,
+        browser_use: false,
+        browser_use_external: false,
+        in_app_browser: false,
+      });
+      await writeFile(
+        path.join(directory, "native-host-features-proof.json"),
+        JSON.stringify(
+          Object.fromEntries(
+            [
+              "computer_use",
+              "browser_use",
+              "browser_use_external",
+              "in_app_browser",
+            ].map((name) => [name, nativeConfig.config.features[name]]),
+          ),
+          null,
+          2,
+        ),
+      );
       expect(providerError).toBeUndefined();
       expect(result.status).toBe("completed");
       expect(requests).toHaveLength(4);

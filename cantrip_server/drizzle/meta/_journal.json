@@ -1716,6 +1716,13 @@
       "when": 1793768580000,
       "tag": "0244_cantrip_os_admissions",
       "breakpoints": true
+    },
+    {
+      "idx": 245,
+      "version": "7",
+      "when": 1793774400000,
+      "tag": "0245_cantrip_os_chat_placements",
+      "breakpoints": true
     }
   ]
 }

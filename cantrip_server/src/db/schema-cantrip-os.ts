@@ -17,7 +17,7 @@ import {
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import { projects, projectWorktrees, users, workers } from "./schema.js";
+import { chats, projects, projectWorktrees, users, workers } from "./schema.js";
 
 /** Stable ownership shared by worker-local and Linux-owned source details. */
 export const projectSourceIdentities = pgTable(
@@ -267,3 +267,19 @@ export const cantripOsProvisionAdmissions = pgTable(
       .defaultNow(),
   },
 );
+
+/** A chat captures its initial OS placement; later execution cannot retarget it. */
+export const cantripOsChatPlacements = pgTable("cantrip_os_chat_placements", {
+  chatId: text("chat_id")
+    .primaryKey()
+    .references(() => chats.id, { onDelete: "cascade" }),
+  bindingId: text("binding_id")
+    .notNull()
+    .references(() => cantripOsSourceBindings.id, { onDelete: "restrict" }),
+  bindingGeneration: text("binding_generation").notNull(),
+  attachmentGeneration: text("attachment_generation").notNull(),
+  runtimeGeneration: text("runtime_generation").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});

@@ -1,4 +1,4 @@
-import { requireWorkerLocalPath } from "./worker-local-source-path.js";
+import { CantripOsChatRepository } from "./cantrip-os-chats.js";
 import { randomUUID } from "node:crypto";
 import { lockNativeCommandChat } from "./native-command-lock.js";
 import { assertNativeRuntimeWritable } from "./native-runtime-handoff-guard.js";
@@ -118,7 +118,11 @@ export class ChatRuntimeContextRepository {
         row.settings?.computerUseCantripAppAllowed === true,
       computerUseAuthorityGeneration: row.chat.computerUseAuthorityGeneration,
       managedInputRevision: row.chat.managedInputRevision,
-      cwd: requireWorkerLocalPath(row.worktree.absolutePath),
+      ...(await new CantripOsChatRepository(this.database).resolve(
+        ownerId,
+        chatId,
+        row.worktree,
+      )),
       experience: row.chat.experience as ChatWireSummary["experience"],
       defaultPermissionProfileId:
         (row.settings?.defaultPermissionProfileId as

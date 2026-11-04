@@ -1,3 +1,4 @@
+import { cantripOsExecutionSchema } from "./worker-command-cantrip-os.js";
 import {
   nativeSettingsUpdateCommandSchema,
   nativePermissionUpdateCommandSchema,
@@ -134,12 +135,15 @@ export const workerChatCommandSchemas = [
   z
     .object({
       type: z.literal("chat.turn"),
+      osExecution: cantripOsExecutionSchema.optional(),
       nativeCommandReceipt: nativeCommandReceiptSchema.optional(),
       protectedNativeInput: encryptedPayloadEnvelopeSchema.optional(),
       nativeClientUserMessageId: z.string().min(1).max(255).optional(),
       queuedPromptId: z.string().min(1).optional(),
       computerUseAuthority: cuaAgentAuthoritySchema.optional(),
-      executionProfile: z.enum(["ide", "standalone-chat"]).default("ide"),
+      executionProfile: z
+        .enum(["ide", "standalone-chat", "cantrip-os"])
+        .default("ide"),
       contextKind: chatContextKindSchema.default("project"),
       chatId: z.string().min(1),
       clientMessageId: z.string().min(1),
@@ -192,8 +196,40 @@ export const workerChatCommandSchemas = [
       taskDispatchLease: taskDispatchWorkerLeaseSchema.optional(),
     })
     .superRefine((command, context) => {
+      if (
+        (command.executionProfile === "cantrip-os") !==
+        Boolean(command.osExecution)
+      ) {
+        context.addIssue({
+          code: "custom",
+          message:
+            "OS execution requires its explicit execution profile and captured placement together.",
+          path: ["executionProfile"],
+        });
+      }
+
+      if (command.osExecution) {
+        const scope = command.osExecution.scope;
+        if (
+          command.contextKind !== "project" ||
+          command.worktreeId !== scope.worktreeId ||
+          command.policyProjectId !== scope.projectId ||
+          command.cwd !== scope.guestPath ||
+          command.computerUseAuthority !== undefined ||
+          command.rootKind !==
+            (scope.sourceKind === "git" ? "git-worktree" : "folder-root")
+        ) {
+          context.addIssue({
+            code: "custom",
+            message:
+              "OS turns must use their exact captured project, worktree, guest cwd, and Linux capabilities.",
+            path: ["osExecution"],
+          });
+        }
+      }
       const projectShape =
-        command.executionProfile === "ide" &&
+        (command.executionProfile === "ide" ||
+          command.executionProfile === "cantrip-os") &&
         command.contextKind === "project" &&
         command.worktreeId !== null &&
         command.scratchRootId === null &&
@@ -225,7 +261,7 @@ export const workerChatCommandSchemas = [
         });
       }
       if (
-        command.executionProfile === "ide" &&
+        command.executionProfile !== "standalone-chat" &&
         (command.standalonePolicies.policies.length > 0 ||
           command.chatSkillAudienceKeys.length > 0)
       ) {
