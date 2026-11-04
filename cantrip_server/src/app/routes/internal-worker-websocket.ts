@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { synchronizeProviderInference } from "../../workers/provider-inference-config.js";
 
 import {
   encodeWorkerConnectionEnvelope,
@@ -29,7 +30,7 @@ import {
 } from "../shared/constants.js";
 
 export interface InternalWorkerWebsocketRouteDependencies {
-  bridge: Pick<WorkerCommandBus, "attach">;
+  bridge: Pick<WorkerCommandBus, "attach" | "request">;
   catalogWorkers: Map<string, string>;
   chatImportJobExecutor: Pick<ChatImportJobExecutor, "workerConnected">;
   chatRelocationJobExecutor: Pick<ChatRelocationJobExecutor, "workerConnected">;
@@ -72,7 +73,9 @@ export interface InternalWorkerWebsocketRouteDependencies {
   ) => Promise<void>;
   repository: Pick<
     ServerRepository,
-    "authenticateWorkerCredential" | "getWorkerOwnerId"
+    | "authenticateWorkerCredential"
+    | "getWorkerOwnerId"
+    | "listProviderInferenceConfigurations"
   >;
   resumeNativeRuntimeHandoffsForWorker: (
     ownerId: string,
@@ -338,6 +341,17 @@ export function installInternalWorkerWebsocketRoute(
           workerProcessGeneration: resolvedWorkerProcessGeneration,
         });
         catalogWorkers.set(workerId, workerAuth.ownerId);
+        void synchronizeProviderInference(
+          repository,
+          bridge,
+          workerAuth.ownerId,
+          workerId,
+        ).catch(() =>
+          app.log.warn(
+            { event: "inference.configuration.delivery-pending", workerId },
+            "Provider inference configuration delivery remains pending",
+          ),
+        );
         void runAsOwner(workerAuth.ownerId, async () => {
           await reconcileProjectGoalSourcesForWorker?.(
             workerAuth.ownerId,

@@ -282,6 +282,11 @@ async fn run(
         return;
     }
     state.invalidate(&owner, "worker-availability", &worker);
+    drop(
+        service
+            .provider_accounts
+            .synchronize_inference(&owner, &worker),
+    );
     service.execution.worker_connected(&worker);
     crate::project_alerts::worker_connected(
         service.clone(),

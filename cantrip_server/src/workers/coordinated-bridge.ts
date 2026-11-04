@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { WorkerCommandDeadline } from "./command-deadline.js";
 
 import {
   createWorkerLinkFrame,
@@ -63,7 +64,8 @@ interface PendingRemoteRequest {
   reject(error: Error): void;
   resolve(value: unknown): void;
   startedAtMs: number;
-  timeout: ReturnType<typeof setTimeout> | undefined;
+  deadline: WorkerCommandDeadline;
+  forwardInferenceTiming?: boolean;
   workerId: string;
 }
 
@@ -402,7 +404,7 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
     this.#attachmentGenerations.clear();
     this.#local.close();
     for (const pending of this.#pending.values()) {
-      clearTimeout(pending.timeout);
+      pending.deadline.close();
       pending.reject(new WorkerUnavailableError("Server is shutting down."));
     }
     this.#pending.clear();
@@ -631,40 +633,37 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
       workerId,
     });
     return new Promise((resolve, reject) => {
-      const timeout =
-        timeoutMs === null
-          ? undefined
-          : setTimeout(() => {
-              this.#pending.delete(requestId);
-              this.#failedRequests += 1;
-              serverLogger.event("warn", "Remote worker command timed out", {
-                event: "coordination.command.timed-out",
-                subsystem: "relay-coordination",
-                operation: command.type,
-                requestId,
-                reasonCode: "timeout",
-                status: "failed",
-                durationMs: Date.now() - startedAtMs,
-                workerId,
-              });
-              reject(
-                new WorkerCommandError(
-                  `Worker command ${command.type} timed out.`,
-                  "worker-command-timeout",
-                  { operation: command.type, requestId, workerId },
-                ),
-              );
-            }, timeoutMs);
-      timeout?.unref();
+      const deadline = new WorkerCommandDeadline(timeoutMs, () => {
+        this.#pending.delete(requestId);
+        this.#failedRequests += 1;
+        serverLogger.event("warn", "Remote worker command timed out", {
+          event: "coordination.command.timed-out",
+          subsystem: "relay-coordination",
+          operation: command.type,
+          requestId,
+          reasonCode: "timeout",
+          status: "failed",
+          durationMs: Date.now() - startedAtMs,
+          workerId,
+        });
+        reject(
+          new WorkerCommandError(
+            `Worker command ${command.type} timed out.`,
+            "worker-command-timeout",
+            { operation: command.type, requestId, workerId },
+          ),
+        );
+      });
       this.#pending.set(requestId, {
         commandType: command.type,
         instanceId: presence.instanceId,
         eventQueue: Promise.resolve(),
         onEvent: options.onEvent,
+        forwardInferenceTiming: options.forwardInferenceTiming,
         reject,
         resolve,
         startedAtMs,
-        timeout,
+        deadline,
         workerId,
       });
       void this.#coordinator
@@ -684,7 +683,7 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
         .catch((error) => {
           const pending = this.#pending.get(requestId);
           if (!pending) return;
-          clearTimeout(pending.timeout);
+          pending.deadline.close();
           this.#pending.delete(requestId);
           this.#failedRequests += 1;
           serverLogger.event("error", "Remote worker command relay failed", {
@@ -711,13 +710,14 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
         return;
       case "worker-command-event": {
         const pending = this.#pending.get(message.requestId);
-        if (
-          !pending?.onEvent ||
-          pending.instanceId !== message.sourceInstanceId
-        )
-          return;
+        if (!pending || pending.instanceId !== message.sourceInstanceId) return;
         const event = workerEventSchema.safeParse(message.event);
         if (!event.success) return;
+        if (event.data.type === "inference.command-state") {
+          pending.deadline.observe(event.data.sequence, event.data.state);
+          if (!pending.forwardInferenceTiming) return;
+        }
+        if (!pending.onEvent) return;
         const eventQueue = pending.eventQueue.then(() =>
           pending.onEvent?.(event.data),
         );
@@ -725,7 +725,7 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
         void eventQueue
           .catch((error: unknown) => {
             if (this.#pending.get(message.requestId) !== pending) return;
-            clearTimeout(pending.timeout);
+            pending.deadline.close();
             this.#pending.delete(message.requestId);
             this.#failedRequests += 1;
             serverLogger.event(
@@ -752,7 +752,7 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
       case "worker-command-response": {
         const pending = this.#pending.get(message.requestId);
         if (!pending || pending.instanceId !== message.sourceInstanceId) return;
-        clearTimeout(pending.timeout);
+        pending.deadline.close();
         this.#pending.delete(message.requestId);
         try {
           await pending.eventQueue;
@@ -982,6 +982,7 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
       const result = await this.#local.request(message.workerId, command.data, {
         ownerId: message.ownerId,
         timeoutMs: remainingTimeoutMs,
+        forwardInferenceTiming: true,
         onEvent: async (event) => {
           await this.#coordinator.publish(
             {
@@ -1227,7 +1228,7 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
         pending.instanceId === retainedInstanceId
       )
         continue;
-      clearTimeout(pending.timeout);
+      pending.deadline.close();
       this.#pending.delete(requestId);
       this.#failedRequests += 1;
       pending.reject(

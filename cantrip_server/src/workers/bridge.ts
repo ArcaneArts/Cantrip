@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { WorkerCommandDeadline } from "./command-deadline.js";
 
 import {
   decodeWorkerServerEnvelope,
@@ -126,16 +127,19 @@ export interface WorkerRequestOptions {
   onEvent?(event: WorkerEvent): Promise<void> | void;
   ownerId?: string;
   timeoutMs?: number | null;
+  /** Internal relay hop only; domain consumers do not observe clock-control events. */
+  forwardInferenceTiming?: boolean;
 }
 
 interface PendingRequest {
   commandType: WorkerCommand["type"];
   eventQueue: Promise<void>;
   onEvent?: WorkerRequestOptions["onEvent"];
+  forwardInferenceTiming?: boolean;
   reject(error: Error): void;
   resolve(value: unknown): void;
   startedAtMs: number;
-  timeout: ReturnType<typeof setTimeout> | null;
+  deadline: WorkerCommandDeadline;
   workerId: string;
 }
 
@@ -478,14 +482,19 @@ export class WorkerBridge implements WorkerCommandBus {
     event: WorkerEvent,
   ): void {
     const pending = this.#pending.get(requestId);
-    if (!pending || pending.workerId !== workerId || !pending.onEvent) return;
+    if (!pending || pending.workerId !== workerId) return;
+    if (event.type === "inference.command-state") {
+      pending.deadline.observe(event.sequence, event.state);
+      if (!pending.forwardInferenceTiming) return;
+    }
+    if (!pending.onEvent) return;
     const eventQueue = pending.eventQueue.then(() => pending.onEvent?.(event));
     pending.eventQueue = eventQueue;
     void eventQueue
       .catch((error: unknown) => {
         if (this.#pending.get(requestId) !== pending) return;
         this.#pending.delete(requestId);
-        if (pending.timeout) clearTimeout(pending.timeout);
+        pending.deadline.close();
         this.#failedRequests += 1;
         this.logger.event("warn", "Worker command event handling failed", {
           event: "worker.command.event-handler-failed",
@@ -511,7 +520,7 @@ export class WorkerBridge implements WorkerCommandBus {
     const pending = this.#pending.get(response.requestId);
     if (!pending || pending.workerId !== workerId) return;
     this.#pending.delete(response.requestId);
-    if (pending.timeout) clearTimeout(pending.timeout);
+    pending.deadline.close();
     const durationMs = Math.max(0, Date.now() - pending.startedAtMs);
     void pending.eventQueue.then(
       () => {
@@ -789,48 +798,46 @@ export class WorkerBridge implements WorkerCommandBus {
         status: "dispatched",
         workerId,
       });
-      const timeout =
-        options.timeoutMs === null
-          ? null
-          : setTimeout(
-              () => {
-                this.#pending.delete(requestId);
-                this.#failedRequests += 1;
-                this.logger.event("warn", "Worker command timed out", {
-                  event: "worker.command.timed-out",
-                  subsystem: "worker-command",
-                  operation: command.type,
-                  requestId,
-                  reasonCode: "timeout",
-                  status: "failed",
-                  durationMs: Math.max(0, Date.now() - startedAtMs),
-                  workerId,
-                });
-                reject(
-                  new WorkerCommandError(
-                    `Worker command ${command.type} timed out.`,
-                    "worker-command-timeout",
-                    { operation: command.type, requestId, workerId },
-                  ),
-                );
-              },
-              options.timeoutMs ?? 10 * 60_000,
-            );
+      const deadline = new WorkerCommandDeadline(
+        options.timeoutMs === null ? null : (options.timeoutMs ?? 10 * 60_000),
+        () => {
+          this.#pending.delete(requestId);
+          this.#failedRequests += 1;
+          this.logger.event("warn", "Worker command timed out", {
+            event: "worker.command.timed-out",
+            subsystem: "worker-command",
+            operation: command.type,
+            requestId,
+            reasonCode: "timeout",
+            status: "failed",
+            durationMs: Math.max(0, Date.now() - startedAtMs),
+            workerId,
+          });
+          reject(
+            new WorkerCommandError(
+              `Worker command ${command.type} timed out.`,
+              "worker-command-timeout",
+              { operation: command.type, requestId, workerId },
+            ),
+          );
+        },
+      );
       this.#pending.set(requestId, {
         commandType: command.type,
         eventQueue: Promise.resolve(),
         onEvent: options.onEvent,
+        forwardInferenceTiming: options.forwardInferenceTiming,
         reject,
         resolve,
         startedAtMs,
-        timeout,
+        deadline,
         workerId,
       });
 
       try {
         socket.send(envelope);
       } catch {
-        if (timeout) clearTimeout(timeout);
+        deadline.close();
         this.#pending.delete(requestId);
         this.#failedRequests += 1;
         this.logger.event("error", "Worker command dispatch failed", {
@@ -894,7 +901,7 @@ export class WorkerBridge implements WorkerCommandBus {
     this.#workerDisconnectListeners.clear();
     this.#workerOfflineListeners.clear();
     for (const pending of this.#pending.values()) {
-      if (pending.timeout) clearTimeout(pending.timeout);
+      pending.deadline.close();
       pending.reject(new WorkerUnavailableError("Server is shutting down."));
     }
     this.#pending.clear();
@@ -911,7 +918,7 @@ export class WorkerBridge implements WorkerCommandBus {
       if (pending.workerId !== workerId) {
         continue;
       }
-      if (pending.timeout) clearTimeout(pending.timeout);
+      pending.deadline.close();
       pending.reject(error);
       this.#pending.delete(requestId);
       rejected += 1;

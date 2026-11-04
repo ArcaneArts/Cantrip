@@ -19,6 +19,7 @@ import {
   modelProfileSummarySchema,
   modelProfileUpdateSchema,
   modelProviderWireSummarySchema,
+  normalizeResponsesBaseUrl,
   providerConnectionTestResultSchema,
   providerModelCatalogResultSchema,
   settingsBundleWireSchema,
@@ -68,6 +69,7 @@ import {
   isZaiCodingPlanProvider,
   type ZaiCatalogService,
 } from "../../models/zai-catalog.js";
+import { synchronizeProviderInference } from "../../workers/provider-inference-config.js";
 import { WorkerUnavailableError } from "../../workers/bridge.js";
 import type { LimitedWorkerCommandBus } from "../../workers/limited-command-bus.js";
 import type { installProviderAccountAuthRoutes } from "../routes/provider-account-auth.js";
@@ -821,26 +823,50 @@ export function installSettingsRouteRuntime(
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       try {
-        openRouterRuntimeCatalogs.invalidate(request.params.providerId);
+        const ownerId = applicationOwnerId();
+        const current = await repository.getModelProvider(
+          ownerId,
+          request.params.providerId,
+        );
+        const nativeConfigurationChanged =
+          !current ||
+          current.baseUrl !== normalizeResponsesBaseUrl(input.data.baseUrl) ||
+          input.data.protectedApiKey !== undefined;
+        if (nativeConfigurationChanged)
+          openRouterRuntimeCatalogs.invalidate(request.params.providerId);
         const provider = await repository.updateModelProvider(
-          applicationOwnerId(),
+          ownerId,
           request.params.providerId,
           input.data,
         );
-        if (provider && isZaiCodingPlanProvider(provider)) {
-          await loadProviderCatalog(
-            applicationOwnerId(),
-            provider.id,
-            undefined,
-            true,
+        if (provider && input.data.maxConcurrentInference !== undefined) {
+          const workers = await repository.listWorkers(ownerId);
+          const deliveries = await Promise.allSettled(
+            workers.map(({ id }) =>
+              synchronizeProviderInference(repository, bridge, ownerId, id),
+            ),
           );
-        } else if (provider?.kind === "ollama") {
-          void loadProviderCatalog(
-            applicationOwnerId(),
-            provider.id,
-            undefined,
-            true,
-          ).catch(() => undefined);
+          deliveries.forEach((delivery, index) => {
+            if (delivery.status === "rejected")
+              app.log.warn(
+                {
+                  event: "inference.configuration.delivery-pending",
+                  workerId: workers[index]!.id,
+                },
+                "Provider inference configuration delivery remains pending",
+              );
+          });
+        }
+        if (
+          nativeConfigurationChanged &&
+          provider &&
+          isZaiCodingPlanProvider(provider)
+        ) {
+          await loadProviderCatalog(ownerId, provider.id, undefined, true);
+        } else if (nativeConfigurationChanged && provider?.kind === "ollama") {
+          void loadProviderCatalog(ownerId, provider.id, undefined, true).catch(
+            () => undefined,
+          );
         }
         return provider
           ? reply.send(modelProviderWireSummarySchema.parse(provider))

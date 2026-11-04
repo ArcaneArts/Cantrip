@@ -348,6 +348,9 @@ export class ProviderCatalogRepository {
         "Provider type cannot be changed. Create a new provider instead.",
       );
     }
+    const nativeConfigurationChanged =
+      current.baseUrl !== normalizeResponsesBaseUrl(input.baseUrl) ||
+      input.protectedApiKey !== undefined;
     const result = await this.database
       .update(schema.modelProviders)
       .set({
@@ -375,7 +378,7 @@ export class ProviderCatalogRepository {
       )
       .returning();
     const provider = result[0];
-    if (provider) {
+    if (provider && nativeConfigurationChanged) {
       const routes = await this.database
         .select({ id: schema.modelRoutes.id })
         .from(schema.modelRoutes)
@@ -392,6 +395,17 @@ export class ProviderCatalogRepository {
       }
     }
     return provider ? toProviderSummary(provider) : null;
+  }
+
+  async listProviderInferenceConfigurations(ownerId: string) {
+    return this.database
+      .select({
+        providerId: schema.modelProviders.id,
+        maxConcurrentInference: schema.modelProviders.maxConcurrentInference,
+        inferenceConfigRevision: schema.modelProviders.inferenceConfigRevision,
+      })
+      .from(schema.modelProviders)
+      .where(eq(schema.modelProviders.ownerId, ownerId));
   }
 
   async getModelProviderCatalogRuntime(

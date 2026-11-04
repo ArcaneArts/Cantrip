@@ -1,4 +1,5 @@
 import { CodexInteractions } from "./interactions.js";
+import { withoutInferenceCommand } from "../inference-command.js";
 import { CodexAuthRecovery } from "./auth-recovery.js";
 import {
   CodexInferenceAdmission,
@@ -6540,7 +6541,9 @@ export class CodexAppServer implements CodexRuntime {
       message.method === "thread/managedExecution/requested" &&
       objectRecord(message.params)?.trigger === "inference"
     ) {
-      void this.handleNativeInferenceControl(message.params).catch(() => {
+      void withoutInferenceCommand(() =>
+        this.handleNativeInferenceControl(message.params),
+      ).catch(() => {
         workerLogger.event("warn", "Native inference admission failed", {
           event: "inference.native-control.failed",
           subsystem: "codex",
