@@ -1,6 +1,8 @@
 import type {
   CantripOsDependencyOverlay,
   CantripOsTransport,
+  CantripOsSourceDispatchScope,
+  repositoryOperationOpaqueSchema,
   ProjectSourceKind,
   ProjectSourceLocation,
 } from "@cantrip/protocol";
@@ -244,4 +246,24 @@ export const cantripOsSourceBindings = pgTable(
       sql`jsonb_typeof(${table.dependencyOverlays}) = 'array' AND jsonb_array_length(${table.dependencyOverlays}) <= 32`,
     ),
   ],
+);
+
+/** The encrypted request and original generations are immutable admission data.
+ * A reconnect observes this operation instead of rebuilding or replaying it. */
+export const cantripOsProvisionAdmissions = pgTable(
+  "cantrip_os_provision_admissions",
+  {
+    operationId: text("operation_id").primaryKey(),
+    bindingId: text("binding_id")
+      .notNull()
+      .unique()
+      .references(() => cantripOsSourceBindings.id, { onDelete: "cascade" }),
+    scope: jsonb("scope").$type<CantripOsSourceDispatchScope>().notNull(),
+    protectedRequest: jsonb("protected_request")
+      .$type<ReturnType<typeof repositoryOperationOpaqueSchema.parse>>()
+      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
 );

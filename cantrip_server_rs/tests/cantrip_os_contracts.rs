@@ -6,6 +6,17 @@ use std::{path::PathBuf, process::Command};
 fn linux_source_contracts_match_the_actual_protocol() -> Result<()> {
     let mut count = 0;
     for name in [
+        "cantripOsDispatchScopeSchema",
+        "cantripOsSourceDispatchScopeSchema",
+        "cantripOsProvisionIntentSchema",
+        "cantripOsProvisionRequestContentSchema",
+        "cantripOsObservedInstanceSchema",
+        "cantripOsSourceReceiptSchema",
+        "cantripOsOperationResultSchema",
+        "cantripOsInspectSchema",
+        "cantripOsWorkspaceCreateSchema",
+        "cantripOsBindingCreateSchema",
+        "cantripOsProvisionSchema",
         "cantripOsGuestPathSchema",
         "projectSourceLocationSchema",
         "cantripOsTransportSchema",

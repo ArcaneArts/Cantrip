@@ -318,6 +318,8 @@ import { SkillManager } from "./skill-manager.js";
 import { WorkerConnection } from "./transport.js";
 import { WorkerEncryptionService } from "./worker-encryption.js";
 import { WorktreeManager } from "./worktrees.js";
+import { CantripOsController } from "./os-executor/controller.js";
+import { prepareOsSourceCommand } from "./os-executor/protected-source.js";
 import { handleWorkerLinkCommand } from "./commands/worker-link.js";
 import { handleGithubCommand } from "./commands/github.js";
 import { handleGitCommand } from "./commands/git.js";
@@ -944,6 +946,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   });
   remoteSurfaces.setEncryptionService(workerEncryption);
   const worktrees = new WorktreeManager(config.dataDirectory);
+  const cantripOs = new CantripOsController(
+    config.dataDirectory,
+    config.workerId,
+  );
   let codegraphNotificationEmitter:
     ((notification: WorkerNotification) => boolean) | null = null;
   const runConfigurationDefinitions = new RunConfigurationDefinitionService({
@@ -3145,6 +3151,21 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       return runtimeProvider;
     };
     switch (command.type) {
+      case "cantrip-os.inspect":
+      case "cantrip-os.attach":
+      case "cantrip-os.workspaces.list":
+      case "cantrip-os.workspaces.create":
+      case "cantrip-os.source.inspect":
+      case "cantrip-os.operation.inspect":
+        return cantripOs.handle(command);
+      case "cantrip-os.source.provision":
+        return cantripOs.handle(
+          await prepareOsSourceCommand(
+            command,
+            workerEncryption,
+            routingRegistry,
+          ),
+        );
       case "label.generate":
         return generatePrivateLabel(
           command,

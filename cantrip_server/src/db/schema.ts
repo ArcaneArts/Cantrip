@@ -5,6 +5,7 @@ export {
   cantripOsWorkspaces,
   cantripOsProjectSources,
   cantripOsSourceBindings,
+  cantripOsProvisionAdmissions,
 } from "./schema-cantrip-os.js";
 import { projectSourceIdentities } from "./schema-cantrip-os.js";
 import type { CuaEffectConfiguration } from "@cantrip/protocol/computer-use-effects";

@@ -1,3 +1,4 @@
+import { osDispatchFixtures } from "./cantrip-os-dispatch-fixtures.mjs";
 import { worktreeWireFixtures } from "./worktree-wire-fixtures.mjs";
 
 export function cantripOsWireFixtures() {
@@ -26,6 +27,7 @@ export function cantripOsWireFixtures() {
     homeGuestPath: "/home/example",
   };
   return {
+    ...osDispatchFixtures(),
     cantripOsGuestPathSchema: [
       "/home/example",
       "/literal # % ? 日本語",

@@ -1671,6 +1671,48 @@
     },
     {
       "kind": "union",
+      "path": ["command"],
+      "index": 278,
+      "case": 944
+    },
+    {
+      "kind": "union",
+      "path": ["command"],
+      "index": 279,
+      "case": 946
+    },
+    {
+      "kind": "union",
+      "path": ["command"],
+      "index": 280,
+      "case": 948
+    },
+    {
+      "kind": "union",
+      "path": ["command"],
+      "index": 281,
+      "case": 950
+    },
+    {
+      "kind": "union",
+      "path": ["command"],
+      "index": 282,
+      "case": 952
+    },
+    {
+      "kind": "union",
+      "path": ["command"],
+      "index": 283,
+      "case": 960
+    },
+    {
+      "kind": "union",
+      "path": ["command"],
+      "index": 284,
+      "case": 968
+    },
+    {
+      "kind": "union",
       "path": ["command", "options", "0", "preferences", "configuration"],
       "index": 0,
       "case": 0
@@ -1836,7 +1878,7 @@
         "domain"
       ],
       "index": 0,
-      "case": 298
+      "case": 971
     },
     {
       "kind": "enum",
@@ -1849,7 +1891,7 @@
         "domain"
       ],
       "index": 1,
-      "case": 299
+      "case": 298
     },
     {
       "kind": "enum",
@@ -1862,7 +1904,7 @@
         "domain"
       ],
       "index": 2,
-      "case": 300
+      "case": 299
     },
     {
       "kind": "enum",
@@ -1875,6 +1917,19 @@
         "domain"
       ],
       "index": 3,
+      "case": 300
+    },
+    {
+      "kind": "enum",
+      "path": [
+        "command",
+        "options",
+        "1",
+        "request",
+        "protectedContent",
+        "domain"
+      ],
+      "index": 4,
       "case": 1
     },
     {
@@ -2871,6 +2926,12 @@
       "kind": "enum",
       "path": ["command", "options", "34", "component"],
       "index": 15,
+      "case": 972
+    },
+    {
+      "kind": "enum",
+      "path": ["command", "options", "34", "component"],
+      "index": 16,
       "case": 387
     },
     {
@@ -5893,6 +5954,42 @@
       "path": ["command", "options", "243", "message", "content", "element"],
       "index": 2,
       "case": 649
+    },
+    {
+      "kind": "enum",
+      "path": [
+        "command",
+        "options",
+        "243",
+        "message",
+        "content",
+        "element",
+        "options",
+        "0",
+        "chatCommunication",
+        "innerType",
+        "direction"
+      ],
+      "index": 0,
+      "case": 969
+    },
+    {
+      "kind": "enum",
+      "path": [
+        "command",
+        "options",
+        "243",
+        "message",
+        "content",
+        "element",
+        "options",
+        "0",
+        "chatCommunication",
+        "innerType",
+        "direction"
+      ],
+      "index": 1,
+      "case": 970
     },
     {
       "kind": "enum",
@@ -11445,6 +11542,70 @@
       "path": ["command", "options", "277", "input"],
       "index": 1,
       "case": 943
+    },
+    {
+      "kind": "union",
+      "path": ["command", "options", "278", "transport"],
+      "index": 0,
+      "case": 944
+    },
+    {
+      "kind": "union",
+      "path": ["command", "options", "278", "transport"],
+      "index": 1,
+      "case": 945
+    },
+    {
+      "kind": "union",
+      "path": ["command", "options", "282", "scope"],
+      "index": 0,
+      "case": 952
+    },
+    {
+      "kind": "union",
+      "path": ["command", "options", "282", "scope"],
+      "index": 1,
+      "case": 956
+    },
+    {
+      "kind": "enum",
+      "path": [
+        "command",
+        "options",
+        "282",
+        "scope",
+        "options",
+        "0",
+        "sourceKind"
+      ],
+      "index": 0,
+      "case": 952
+    },
+    {
+      "kind": "enum",
+      "path": [
+        "command",
+        "options",
+        "282",
+        "scope",
+        "options",
+        "0",
+        "sourceKind"
+      ],
+      "index": 1,
+      "case": 954
+    },
+    {
+      "kind": "enum",
+      "path": ["command", "options", "283", "sourceKind"],
+      "index": 0,
+      "case": 960
+    },
+    {
+      "kind": "enum",
+      "path": ["command", "options", "283", "sourceKind"],
+      "index": 1,
+      "case": 962
     }
   ],
   "cases": [
@@ -43252,6 +43413,1061 @@
             "accountId": null,
             "credentialHomeKey": null
           }
+        }
+      }
+    },
+    {
+      "name": "CantripOS 944",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.inspect",
+          "ownerId": "owner",
+          "workerId": "worker",
+          "transport": {
+            "kind": "docker",
+            "container": "cantrip-os"
+          }
+        }
+      }
+    },
+    {
+      "name": "CantripOS 945",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.inspect",
+          "ownerId": "owner",
+          "workerId": "worker",
+          "transport": {
+            "kind": "ssh",
+            "host": "localhost",
+            "port": 2222,
+            "user": "cantrip",
+            "identityFile": "/private/key",
+            "knownHostsFile": "/private/known"
+          }
+        }
+      }
+    },
+    {
+      "name": "CantripOS 946",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.attach",
+          "scope": {
+            "ownerId": "owner",
+            "workerId": "worker",
+            "serverId": "server",
+            "instanceId": "12345678-1234-4234-8234-123456789abc",
+            "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+            "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+            "runtimeGeneration": "12345678-1234-4234-8234-123456789abc"
+          },
+          "transport": {
+            "kind": "docker",
+            "container": "cantrip-os"
+          }
+        }
+      }
+    },
+    {
+      "name": "CantripOS 947",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.attach",
+          "scope": {
+            "ownerId": "owner",
+            "workerId": "worker",
+            "serverId": "server",
+            "instanceId": "12345678-1234-4234-8234-123456789abc",
+            "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+            "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+            "runtimeGeneration": "12345678-1234-4234-8234-123456789abc"
+          },
+          "transport": {
+            "kind": "ssh",
+            "host": "localhost",
+            "port": 2222,
+            "user": "cantrip",
+            "identityFile": "/private/key",
+            "knownHostsFile": "/private/known"
+          }
+        }
+      }
+    },
+    {
+      "name": "CantripOS 948",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.workspaces.list",
+          "scope": {
+            "ownerId": "owner",
+            "workerId": "worker",
+            "serverId": "server",
+            "instanceId": "12345678-1234-4234-8234-123456789abc",
+            "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+            "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+            "runtimeGeneration": "12345678-1234-4234-8234-123456789abc"
+          },
+          "transport": {
+            "kind": "docker",
+            "container": "cantrip-os"
+          }
+        }
+      }
+    },
+    {
+      "name": "CantripOS 949",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.workspaces.list",
+          "scope": {
+            "ownerId": "owner",
+            "workerId": "worker",
+            "serverId": "server",
+            "instanceId": "12345678-1234-4234-8234-123456789abc",
+            "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+            "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+            "runtimeGeneration": "12345678-1234-4234-8234-123456789abc"
+          },
+          "transport": {
+            "kind": "ssh",
+            "host": "localhost",
+            "port": 2222,
+            "user": "cantrip",
+            "identityFile": "/private/key",
+            "knownHostsFile": "/private/known"
+          }
+        }
+      }
+    },
+    {
+      "name": "CantripOS 950",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.workspaces.create",
+          "scope": {
+            "ownerId": "owner",
+            "workerId": "worker",
+            "serverId": "server",
+            "instanceId": "12345678-1234-4234-8234-123456789abc",
+            "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+            "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+            "runtimeGeneration": "12345678-1234-4234-8234-123456789abc"
+          },
+          "transport": {
+            "kind": "docker",
+            "container": "cantrip-os"
+          },
+          "guestWorkspaceId": "example",
+          "operationId": "12345678-1234-4234-8234-123456789abc"
+        }
+      }
+    },
+    {
+      "name": "CantripOS 951",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.workspaces.create",
+          "scope": {
+            "ownerId": "owner",
+            "workerId": "worker",
+            "serverId": "server",
+            "instanceId": "12345678-1234-4234-8234-123456789abc",
+            "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+            "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+            "runtimeGeneration": "12345678-1234-4234-8234-123456789abc"
+          },
+          "transport": {
+            "kind": "ssh",
+            "host": "localhost",
+            "port": 2222,
+            "user": "cantrip",
+            "identityFile": "/private/key",
+            "knownHostsFile": "/private/known"
+          },
+          "guestWorkspaceId": "example",
+          "operationId": "12345678-1234-4234-8234-123456789abc"
+        }
+      }
+    },
+    {
+      "name": "CantripOS 952",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.source.provision",
+          "scope": {
+            "ownerId": "owner",
+            "workerId": "worker",
+            "serverId": "server",
+            "instanceId": "12345678-1234-4234-8234-123456789abc",
+            "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+            "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+            "runtimeGeneration": "12345678-1234-4234-8234-123456789abc",
+            "bindingId": "12345678-1234-4234-8234-123456789abc",
+            "bindingGeneration": "12345678-1234-4234-8234-123456789abc",
+            "projectId": "project",
+            "projectSourceId": "12345678-1234-4234-8234-123456789abc",
+            "sourceKind": "git",
+            "worktreeId": "12345678-1234-4234-8234-123456789abc",
+            "workspaceId": "12345678-1234-4234-8234-123456789abc",
+            "guestWorkspaceId": "example",
+            "uid": 20000,
+            "gid": 20000,
+            "homeGuestPath": "/home/example",
+            "guestPath": "/home/example/checkouts/source",
+            "dependencyOverlays": [],
+            "mode": "linked",
+            "linkedWorkerPath": "ctrr:worker-path"
+          },
+          "transport": {
+            "kind": "docker",
+            "container": "cantrip-os"
+          },
+          "operationId": "12345678-1234-4234-8234-123456789abc",
+          "protectedRequest": {
+            "formatVersion": 1,
+            "keyRevision": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "AAAAAAAAAAAAAAAAAAAAAA"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "CantripOS 953",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.source.provision",
+          "scope": {
+            "ownerId": "owner",
+            "workerId": "worker",
+            "serverId": "server",
+            "instanceId": "12345678-1234-4234-8234-123456789abc",
+            "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+            "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+            "runtimeGeneration": "12345678-1234-4234-8234-123456789abc",
+            "bindingId": "12345678-1234-4234-8234-123456789abc",
+            "bindingGeneration": "12345678-1234-4234-8234-123456789abc",
+            "projectId": "project",
+            "projectSourceId": "12345678-1234-4234-8234-123456789abc",
+            "sourceKind": "git",
+            "worktreeId": "12345678-1234-4234-8234-123456789abc",
+            "workspaceId": "12345678-1234-4234-8234-123456789abc",
+            "guestWorkspaceId": "example",
+            "uid": 20000,
+            "gid": 20000,
+            "homeGuestPath": "/home/example",
+            "guestPath": "/home/example/checkouts/source",
+            "dependencyOverlays": [],
+            "mode": "linked",
+            "linkedWorkerPath": "ctrr:worker-path"
+          },
+          "transport": {
+            "kind": "ssh",
+            "host": "localhost",
+            "port": 2222,
+            "user": "cantrip",
+            "identityFile": "/private/key",
+            "knownHostsFile": "/private/known"
+          },
+          "operationId": "12345678-1234-4234-8234-123456789abc",
+          "protectedRequest": {
+            "formatVersion": 1,
+            "keyRevision": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "AAAAAAAAAAAAAAAAAAAAAA"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "CantripOS 954",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.source.provision",
+          "scope": {
+            "ownerId": "owner",
+            "workerId": "worker",
+            "serverId": "server",
+            "instanceId": "12345678-1234-4234-8234-123456789abc",
+            "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+            "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+            "runtimeGeneration": "12345678-1234-4234-8234-123456789abc",
+            "bindingId": "12345678-1234-4234-8234-123456789abc",
+            "bindingGeneration": "12345678-1234-4234-8234-123456789abc",
+            "projectId": "project",
+            "projectSourceId": "12345678-1234-4234-8234-123456789abc",
+            "sourceKind": "folder",
+            "worktreeId": "12345678-1234-4234-8234-123456789abc",
+            "workspaceId": "12345678-1234-4234-8234-123456789abc",
+            "guestWorkspaceId": "example",
+            "uid": 20000,
+            "gid": 20000,
+            "homeGuestPath": "/home/example",
+            "guestPath": "/home/example/checkouts/source",
+            "dependencyOverlays": [],
+            "mode": "linked",
+            "linkedWorkerPath": "ctrr:worker-path"
+          },
+          "transport": {
+            "kind": "docker",
+            "container": "cantrip-os"
+          },
+          "operationId": "12345678-1234-4234-8234-123456789abc",
+          "protectedRequest": {
+            "formatVersion": 1,
+            "keyRevision": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "AAAAAAAAAAAAAAAAAAAAAA"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "CantripOS 955",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.source.provision",
+          "scope": {
+            "ownerId": "owner",
+            "workerId": "worker",
+            "serverId": "server",
+            "instanceId": "12345678-1234-4234-8234-123456789abc",
+            "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+            "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+            "runtimeGeneration": "12345678-1234-4234-8234-123456789abc",
+            "bindingId": "12345678-1234-4234-8234-123456789abc",
+            "bindingGeneration": "12345678-1234-4234-8234-123456789abc",
+            "projectId": "project",
+            "projectSourceId": "12345678-1234-4234-8234-123456789abc",
+            "sourceKind": "folder",
+            "worktreeId": "12345678-1234-4234-8234-123456789abc",
+            "workspaceId": "12345678-1234-4234-8234-123456789abc",
+            "guestWorkspaceId": "example",
+            "uid": 20000,
+            "gid": 20000,
+            "homeGuestPath": "/home/example",
+            "guestPath": "/home/example/checkouts/source",
+            "dependencyOverlays": [],
+            "mode": "linked",
+            "linkedWorkerPath": "ctrr:worker-path"
+          },
+          "transport": {
+            "kind": "ssh",
+            "host": "localhost",
+            "port": 2222,
+            "user": "cantrip",
+            "identityFile": "/private/key",
+            "knownHostsFile": "/private/known"
+          },
+          "operationId": "12345678-1234-4234-8234-123456789abc",
+          "protectedRequest": {
+            "formatVersion": 1,
+            "keyRevision": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "AAAAAAAAAAAAAAAAAAAAAA"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "CantripOS 956",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.source.provision",
+          "scope": {
+            "ownerId": "owner",
+            "workerId": "worker",
+            "serverId": "server",
+            "instanceId": "12345678-1234-4234-8234-123456789abc",
+            "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+            "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+            "runtimeGeneration": "12345678-1234-4234-8234-123456789abc",
+            "bindingId": "12345678-1234-4234-8234-123456789abc",
+            "bindingGeneration": "12345678-1234-4234-8234-123456789abc",
+            "projectId": "project",
+            "projectSourceId": "12345678-1234-4234-8234-123456789abc",
+            "sourceKind": "git",
+            "worktreeId": "12345678-1234-4234-8234-123456789abc",
+            "workspaceId": "12345678-1234-4234-8234-123456789abc",
+            "guestWorkspaceId": "example",
+            "uid": 20000,
+            "gid": 20000,
+            "homeGuestPath": "/home/example",
+            "guestPath": "/home/example/checkouts/source",
+            "dependencyOverlays": [],
+            "mode": "linux-owned",
+            "linkedWorkerPath": null
+          },
+          "transport": {
+            "kind": "docker",
+            "container": "cantrip-os"
+          },
+          "operationId": "12345678-1234-4234-8234-123456789abc",
+          "protectedRequest": {
+            "formatVersion": 1,
+            "keyRevision": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "AAAAAAAAAAAAAAAAAAAAAA"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "CantripOS 957",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.source.provision",
+          "scope": {
+            "ownerId": "owner",
+            "workerId": "worker",
+            "serverId": "server",
+            "instanceId": "12345678-1234-4234-8234-123456789abc",
+            "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+            "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+            "runtimeGeneration": "12345678-1234-4234-8234-123456789abc",
+            "bindingId": "12345678-1234-4234-8234-123456789abc",
+            "bindingGeneration": "12345678-1234-4234-8234-123456789abc",
+            "projectId": "project",
+            "projectSourceId": "12345678-1234-4234-8234-123456789abc",
+            "sourceKind": "git",
+            "worktreeId": "12345678-1234-4234-8234-123456789abc",
+            "workspaceId": "12345678-1234-4234-8234-123456789abc",
+            "guestWorkspaceId": "example",
+            "uid": 20000,
+            "gid": 20000,
+            "homeGuestPath": "/home/example",
+            "guestPath": "/home/example/checkouts/source",
+            "dependencyOverlays": [],
+            "mode": "linux-owned",
+            "linkedWorkerPath": null
+          },
+          "transport": {
+            "kind": "ssh",
+            "host": "localhost",
+            "port": 2222,
+            "user": "cantrip",
+            "identityFile": "/private/key",
+            "knownHostsFile": "/private/known"
+          },
+          "operationId": "12345678-1234-4234-8234-123456789abc",
+          "protectedRequest": {
+            "formatVersion": 1,
+            "keyRevision": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "AAAAAAAAAAAAAAAAAAAAAA"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "CantripOS 958",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.source.provision",
+          "scope": {
+            "ownerId": "owner",
+            "workerId": "worker",
+            "serverId": "server",
+            "instanceId": "12345678-1234-4234-8234-123456789abc",
+            "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+            "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+            "runtimeGeneration": "12345678-1234-4234-8234-123456789abc",
+            "bindingId": "12345678-1234-4234-8234-123456789abc",
+            "bindingGeneration": "12345678-1234-4234-8234-123456789abc",
+            "projectId": "project",
+            "projectSourceId": "12345678-1234-4234-8234-123456789abc",
+            "sourceKind": "folder",
+            "worktreeId": "12345678-1234-4234-8234-123456789abc",
+            "workspaceId": "12345678-1234-4234-8234-123456789abc",
+            "guestWorkspaceId": "example",
+            "uid": 20000,
+            "gid": 20000,
+            "homeGuestPath": "/home/example",
+            "guestPath": "/home/example/checkouts/source",
+            "dependencyOverlays": [],
+            "mode": "linux-owned",
+            "linkedWorkerPath": null
+          },
+          "transport": {
+            "kind": "docker",
+            "container": "cantrip-os"
+          },
+          "operationId": "12345678-1234-4234-8234-123456789abc",
+          "protectedRequest": {
+            "formatVersion": 1,
+            "keyRevision": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "AAAAAAAAAAAAAAAAAAAAAA"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "CantripOS 959",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.source.provision",
+          "scope": {
+            "ownerId": "owner",
+            "workerId": "worker",
+            "serverId": "server",
+            "instanceId": "12345678-1234-4234-8234-123456789abc",
+            "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+            "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+            "runtimeGeneration": "12345678-1234-4234-8234-123456789abc",
+            "bindingId": "12345678-1234-4234-8234-123456789abc",
+            "bindingGeneration": "12345678-1234-4234-8234-123456789abc",
+            "projectId": "project",
+            "projectSourceId": "12345678-1234-4234-8234-123456789abc",
+            "sourceKind": "folder",
+            "worktreeId": "12345678-1234-4234-8234-123456789abc",
+            "workspaceId": "12345678-1234-4234-8234-123456789abc",
+            "guestWorkspaceId": "example",
+            "uid": 20000,
+            "gid": 20000,
+            "homeGuestPath": "/home/example",
+            "guestPath": "/home/example/checkouts/source",
+            "dependencyOverlays": [],
+            "mode": "linux-owned",
+            "linkedWorkerPath": null
+          },
+          "transport": {
+            "kind": "ssh",
+            "host": "localhost",
+            "port": 2222,
+            "user": "cantrip",
+            "identityFile": "/private/key",
+            "knownHostsFile": "/private/known"
+          },
+          "operationId": "12345678-1234-4234-8234-123456789abc",
+          "protectedRequest": {
+            "formatVersion": 1,
+            "keyRevision": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "AAAAAAAAAAAAAAAAAAAAAA"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "CantripOS 960",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.source.inspect",
+          "scope": {
+            "ownerId": "owner",
+            "workerId": "worker",
+            "serverId": "server",
+            "instanceId": "12345678-1234-4234-8234-123456789abc",
+            "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+            "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+            "runtimeGeneration": "12345678-1234-4234-8234-123456789abc",
+            "bindingId": "12345678-1234-4234-8234-123456789abc",
+            "bindingGeneration": "12345678-1234-4234-8234-123456789abc",
+            "projectId": "project",
+            "projectSourceId": "12345678-1234-4234-8234-123456789abc",
+            "sourceKind": "git",
+            "worktreeId": "12345678-1234-4234-8234-123456789abc",
+            "workspaceId": "12345678-1234-4234-8234-123456789abc",
+            "guestWorkspaceId": "example",
+            "uid": 20000,
+            "gid": 20000,
+            "homeGuestPath": "/home/example",
+            "guestPath": "/home/example/checkouts/source",
+            "dependencyOverlays": [],
+            "mode": "linked",
+            "linkedWorkerPath": "ctrr:worker-path"
+          },
+          "transport": {
+            "kind": "docker",
+            "container": "cantrip-os"
+          },
+          "sourceKind": "git"
+        }
+      }
+    },
+    {
+      "name": "CantripOS 961",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.source.inspect",
+          "scope": {
+            "ownerId": "owner",
+            "workerId": "worker",
+            "serverId": "server",
+            "instanceId": "12345678-1234-4234-8234-123456789abc",
+            "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+            "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+            "runtimeGeneration": "12345678-1234-4234-8234-123456789abc",
+            "bindingId": "12345678-1234-4234-8234-123456789abc",
+            "bindingGeneration": "12345678-1234-4234-8234-123456789abc",
+            "projectId": "project",
+            "projectSourceId": "12345678-1234-4234-8234-123456789abc",
+            "sourceKind": "git",
+            "worktreeId": "12345678-1234-4234-8234-123456789abc",
+            "workspaceId": "12345678-1234-4234-8234-123456789abc",
+            "guestWorkspaceId": "example",
+            "uid": 20000,
+            "gid": 20000,
+            "homeGuestPath": "/home/example",
+            "guestPath": "/home/example/checkouts/source",
+            "dependencyOverlays": [],
+            "mode": "linked",
+            "linkedWorkerPath": "ctrr:worker-path"
+          },
+          "transport": {
+            "kind": "ssh",
+            "host": "localhost",
+            "port": 2222,
+            "user": "cantrip",
+            "identityFile": "/private/key",
+            "knownHostsFile": "/private/known"
+          },
+          "sourceKind": "git"
+        }
+      }
+    },
+    {
+      "name": "CantripOS 962",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.source.inspect",
+          "scope": {
+            "ownerId": "owner",
+            "workerId": "worker",
+            "serverId": "server",
+            "instanceId": "12345678-1234-4234-8234-123456789abc",
+            "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+            "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+            "runtimeGeneration": "12345678-1234-4234-8234-123456789abc",
+            "bindingId": "12345678-1234-4234-8234-123456789abc",
+            "bindingGeneration": "12345678-1234-4234-8234-123456789abc",
+            "projectId": "project",
+            "projectSourceId": "12345678-1234-4234-8234-123456789abc",
+            "sourceKind": "folder",
+            "worktreeId": "12345678-1234-4234-8234-123456789abc",
+            "workspaceId": "12345678-1234-4234-8234-123456789abc",
+            "guestWorkspaceId": "example",
+            "uid": 20000,
+            "gid": 20000,
+            "homeGuestPath": "/home/example",
+            "guestPath": "/home/example/checkouts/source",
+            "dependencyOverlays": [],
+            "mode": "linked",
+            "linkedWorkerPath": "ctrr:worker-path"
+          },
+          "transport": {
+            "kind": "docker",
+            "container": "cantrip-os"
+          },
+          "sourceKind": "folder"
+        }
+      }
+    },
+    {
+      "name": "CantripOS 963",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.source.inspect",
+          "scope": {
+            "ownerId": "owner",
+            "workerId": "worker",
+            "serverId": "server",
+            "instanceId": "12345678-1234-4234-8234-123456789abc",
+            "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+            "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+            "runtimeGeneration": "12345678-1234-4234-8234-123456789abc",
+            "bindingId": "12345678-1234-4234-8234-123456789abc",
+            "bindingGeneration": "12345678-1234-4234-8234-123456789abc",
+            "projectId": "project",
+            "projectSourceId": "12345678-1234-4234-8234-123456789abc",
+            "sourceKind": "folder",
+            "worktreeId": "12345678-1234-4234-8234-123456789abc",
+            "workspaceId": "12345678-1234-4234-8234-123456789abc",
+            "guestWorkspaceId": "example",
+            "uid": 20000,
+            "gid": 20000,
+            "homeGuestPath": "/home/example",
+            "guestPath": "/home/example/checkouts/source",
+            "dependencyOverlays": [],
+            "mode": "linked",
+            "linkedWorkerPath": "ctrr:worker-path"
+          },
+          "transport": {
+            "kind": "ssh",
+            "host": "localhost",
+            "port": 2222,
+            "user": "cantrip",
+            "identityFile": "/private/key",
+            "knownHostsFile": "/private/known"
+          },
+          "sourceKind": "folder"
+        }
+      }
+    },
+    {
+      "name": "CantripOS 964",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.source.inspect",
+          "scope": {
+            "ownerId": "owner",
+            "workerId": "worker",
+            "serverId": "server",
+            "instanceId": "12345678-1234-4234-8234-123456789abc",
+            "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+            "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+            "runtimeGeneration": "12345678-1234-4234-8234-123456789abc",
+            "bindingId": "12345678-1234-4234-8234-123456789abc",
+            "bindingGeneration": "12345678-1234-4234-8234-123456789abc",
+            "projectId": "project",
+            "projectSourceId": "12345678-1234-4234-8234-123456789abc",
+            "sourceKind": "git",
+            "worktreeId": "12345678-1234-4234-8234-123456789abc",
+            "workspaceId": "12345678-1234-4234-8234-123456789abc",
+            "guestWorkspaceId": "example",
+            "uid": 20000,
+            "gid": 20000,
+            "homeGuestPath": "/home/example",
+            "guestPath": "/home/example/checkouts/source",
+            "dependencyOverlays": [],
+            "mode": "linux-owned",
+            "linkedWorkerPath": null
+          },
+          "transport": {
+            "kind": "docker",
+            "container": "cantrip-os"
+          },
+          "sourceKind": "git"
+        }
+      }
+    },
+    {
+      "name": "CantripOS 965",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.source.inspect",
+          "scope": {
+            "ownerId": "owner",
+            "workerId": "worker",
+            "serverId": "server",
+            "instanceId": "12345678-1234-4234-8234-123456789abc",
+            "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+            "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+            "runtimeGeneration": "12345678-1234-4234-8234-123456789abc",
+            "bindingId": "12345678-1234-4234-8234-123456789abc",
+            "bindingGeneration": "12345678-1234-4234-8234-123456789abc",
+            "projectId": "project",
+            "projectSourceId": "12345678-1234-4234-8234-123456789abc",
+            "sourceKind": "git",
+            "worktreeId": "12345678-1234-4234-8234-123456789abc",
+            "workspaceId": "12345678-1234-4234-8234-123456789abc",
+            "guestWorkspaceId": "example",
+            "uid": 20000,
+            "gid": 20000,
+            "homeGuestPath": "/home/example",
+            "guestPath": "/home/example/checkouts/source",
+            "dependencyOverlays": [],
+            "mode": "linux-owned",
+            "linkedWorkerPath": null
+          },
+          "transport": {
+            "kind": "ssh",
+            "host": "localhost",
+            "port": 2222,
+            "user": "cantrip",
+            "identityFile": "/private/key",
+            "knownHostsFile": "/private/known"
+          },
+          "sourceKind": "git"
+        }
+      }
+    },
+    {
+      "name": "CantripOS 966",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.source.inspect",
+          "scope": {
+            "ownerId": "owner",
+            "workerId": "worker",
+            "serverId": "server",
+            "instanceId": "12345678-1234-4234-8234-123456789abc",
+            "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+            "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+            "runtimeGeneration": "12345678-1234-4234-8234-123456789abc",
+            "bindingId": "12345678-1234-4234-8234-123456789abc",
+            "bindingGeneration": "12345678-1234-4234-8234-123456789abc",
+            "projectId": "project",
+            "projectSourceId": "12345678-1234-4234-8234-123456789abc",
+            "sourceKind": "folder",
+            "worktreeId": "12345678-1234-4234-8234-123456789abc",
+            "workspaceId": "12345678-1234-4234-8234-123456789abc",
+            "guestWorkspaceId": "example",
+            "uid": 20000,
+            "gid": 20000,
+            "homeGuestPath": "/home/example",
+            "guestPath": "/home/example/checkouts/source",
+            "dependencyOverlays": [],
+            "mode": "linux-owned",
+            "linkedWorkerPath": null
+          },
+          "transport": {
+            "kind": "docker",
+            "container": "cantrip-os"
+          },
+          "sourceKind": "folder"
+        }
+      }
+    },
+    {
+      "name": "CantripOS 967",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.source.inspect",
+          "scope": {
+            "ownerId": "owner",
+            "workerId": "worker",
+            "serverId": "server",
+            "instanceId": "12345678-1234-4234-8234-123456789abc",
+            "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+            "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+            "runtimeGeneration": "12345678-1234-4234-8234-123456789abc",
+            "bindingId": "12345678-1234-4234-8234-123456789abc",
+            "bindingGeneration": "12345678-1234-4234-8234-123456789abc",
+            "projectId": "project",
+            "projectSourceId": "12345678-1234-4234-8234-123456789abc",
+            "sourceKind": "folder",
+            "worktreeId": "12345678-1234-4234-8234-123456789abc",
+            "workspaceId": "12345678-1234-4234-8234-123456789abc",
+            "guestWorkspaceId": "example",
+            "uid": 20000,
+            "gid": 20000,
+            "homeGuestPath": "/home/example",
+            "guestPath": "/home/example/checkouts/source",
+            "dependencyOverlays": [],
+            "mode": "linux-owned",
+            "linkedWorkerPath": null
+          },
+          "transport": {
+            "kind": "ssh",
+            "host": "localhost",
+            "port": 2222,
+            "user": "cantrip",
+            "identityFile": "/private/key",
+            "knownHostsFile": "/private/known"
+          },
+          "sourceKind": "folder"
+        }
+      }
+    },
+    {
+      "name": "CantripOS 968",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.operation.inspect",
+          "scope": {
+            "ownerId": "owner",
+            "workerId": "worker",
+            "serverId": "server",
+            "instanceId": "12345678-1234-4234-8234-123456789abc",
+            "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+            "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+            "runtimeGeneration": "12345678-1234-4234-8234-123456789abc"
+          },
+          "operationId": "12345678-1234-4234-8234-123456789abc"
+        }
+      }
+    },
+    {
+      "name": "Existing chat provenance sent",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.message.protect",
+          "message": {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "fixture",
+                "chatCommunication": {
+                  "deliveryId": "12345678-1234-4234-8234-123456789abc",
+                  "sourceChatId": "source",
+                  "sourceTitle": "Source",
+                  "targetChatId": "target",
+                  "targetTitle": "Target",
+                  "direction": "sent"
+                }
+              }
+            ],
+            "idempotencyKey": "fixture",
+            "id": "00000000-0000-4000-8000-000000000001"
+          },
+          "attachments": []
+        }
+      }
+    },
+    {
+      "name": "Existing chat provenance received",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.message.protect",
+          "message": {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "fixture",
+                "chatCommunication": {
+                  "deliveryId": "12345678-1234-4234-8234-123456789abc",
+                  "sourceChatId": "source",
+                  "sourceTitle": "Source",
+                  "targetChatId": "target",
+                  "targetTitle": "Target",
+                  "direction": "received"
+                }
+              }
+            ],
+            "idempotencyKey": "fixture",
+            "id": "00000000-0000-4000-8000-000000000001"
+          },
+          "attachments": []
+        }
+      }
+    },
+    {
+      "name": "Existing enum coverage [[\"command\",\"options\",\"1\",\"request\",\"protectedContent\",\"domain\"],\"alert-content\"]",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "computer-use.operation",
+          "serverId": "fixture",
+          "chatId": "fixture",
+          "executionLaneId": null,
+          "request": {
+            "operationId": "00000000-0000-4000-8000-000000000001",
+            "operation": "capabilities.get",
+            "protectedContent": {
+              "formatVersion": 1,
+              "domain": "alert-content",
+              "keyRevision": 1,
+              "envelope": {
+                "version": 1,
+                "algorithm": "AES-256-GCM",
+                "keyRevision": 1,
+                "nonce": "AAAAAAAAAAAAAAAA",
+                "ciphertext": "00000000-0000-4000-8000-000000000001"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Existing enum coverage [[\"command\",\"options\",\"34\",\"component\"],\"alert-content\"]",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "component": "alert-content",
+          "keyRevision": 1,
+          "type": "worker.encryption.refresh"
         }
       }
     }

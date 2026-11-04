@@ -1,6 +1,7 @@
 pub mod agent_interactions;
 pub mod auth;
 pub mod browsers;
+pub mod cantrip_os;
 pub mod chats;
 pub mod config;
 pub mod database;

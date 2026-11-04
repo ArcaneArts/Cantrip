@@ -14,6 +14,13 @@ interface RoutingRegistryFile {
 }
 
 const protectedResultTypes = new Set([
+  "cantrip-os.inspect",
+  "cantrip-os.attach",
+  "cantrip-os.workspaces.list",
+  "cantrip-os.workspaces.create",
+  "cantrip-os.source.provision",
+  "cantrip-os.source.inspect",
+  "cantrip-os.operation.inspect",
   "project.clone",
   "project.folder.materialize",
   "workspace.repositories.discover",

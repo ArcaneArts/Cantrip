@@ -496,3 +496,47 @@ but the linked-host acceptance above was performed on macOS Docker Desktop.
 
 Reproduce with [the source backend guide](SOURCES.md). Detailed receipts and
 screenshots are generated under the ignored `artifacts/phase3-sources/` directory.
+
+## Phase 3: authorized source dispatch checkpoint
+
+Both Server implementations now expose owned attachment, profile creation,
+source admission/provisioning, operation observation, and read-only verification.
+The Server persists the original generations and encrypted request before a
+provisioning mutation. Repeated admission observes the recorded operation.
+Guest UID/home observations and successful provisioning receipts come only from
+the owning worker. Worker commands keep private native session/process provenance
+on the worker and use the existing repository-content encryption for clone URLs.
+
+Actual Docker and installed-VM tests passed through the administrative HTTP
+handlers, production worker routing/encryption code, and native executor. Each
+cloned an exact Git revision, read a literal Unicode/special-character filename,
+ran Python with the selected workspace UID/cwd, and read the resulting artifact
+bytes. A deliberately lost response recovered the saved result; reposting its
+admission did not provision again. Tests used synthetic encryption component keys,
+not a product account-key installation flow. Receipts are under
+`artifacts/phase3-dispatch/`.
+
+The native Server's production HTTP router/worker bridge test passed with a
+simulated worker and isolated PostgreSQL. Native PGlite and PostgreSQL repository
+tests passed. Source protocol parity matched 6,125 cases. All 285 outgoing worker
+command fixtures and 83 boundary cases matched. A broader sweep matched 209,900
+mutation cases, then failed its existing callback-coverage requirement because
+`worker-command-task-model` was not exercised (98/99 checks). That sweep is not
+claimed green. Fixture-ledger updates also cover previously omitted chat
+provenance and shifted encryption-component enum samples.
+
+Focused regressions passed: 71 Server and 25 worker tests. Additional checks
+cover private durable operation records, real AES-GCM placement binding, stale
+runtime compare-and-swap, disconnected observation without replay, UID/home
+consistency, and retained Git common-directory identity. Runtime observations
+cannot overwrite a newer observed generation. Repository/large-file budgets,
+Rust formatting, and diff whitespace checks passed.
+
+Required `pnpm check` still stops at the same agent-operations digest mismatch.
+Typechecking reports the previously recorded five worker CUA/MCP errors and two
+Server Task errors. Public protocol compatibility retains its seven unreviewed
+pre-existing exports; the new OS exports/commands are explicitly reviewed.
+
+This remains an internal source-control checkpoint. Real agent execution,
+terminal/editor/Explorer/Run integration, the attachment picker, and refreshed
+bootable media remain outstanding. See [the dispatch guide](DISPATCH.md).
