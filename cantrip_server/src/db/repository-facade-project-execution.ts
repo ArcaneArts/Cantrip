@@ -875,10 +875,12 @@ export abstract class ProjectExecutionRepositoryFacade extends IdentityModelRepo
   async getRunConfigurationRuntimeOperationResult(
     ownerId: string,
     operationId: string,
+    executionKey = "worker",
   ): Promise<RunConfigurationRuntimeOperationResult | null> {
     return this.runConfigurationState.getRunConfigurationRuntimeOperationResult(
       ownerId,
       operationId,
+      executionKey,
     );
   }
 
@@ -897,12 +899,14 @@ export abstract class ProjectExecutionRepositoryFacade extends IdentityModelRepo
     projectId: string,
     configurationId: string,
     worktreeId: string,
+    executionKey = "worker",
   ): Promise<RunConfigurationRuntime | null> {
     return this.runConfigurationState.getRunConfigurationRuntime(
       ownerId,
       projectId,
       configurationId,
       worktreeId,
+      executionKey,
     );
   }
 
@@ -912,6 +916,7 @@ export abstract class ProjectExecutionRepositoryFacade extends IdentityModelRepo
     input: {
       configurationId?: string;
       worktreeId?: string;
+      executionKey?: string | null;
       limit?: number;
     } = {},
   ): Promise<RunConfigurationRuntime[]> {
@@ -937,10 +942,19 @@ export abstract class ProjectExecutionRepositoryFacade extends IdentityModelRepo
   async listActiveRunConfigurationRuntimeIdentitiesForWorker(
     ownerId: string,
     workerId: string,
+    family: "worker" | "cantrip-os" = "worker",
   ): Promise<RunConfigurationRuntimeWorkerIdentity[]> {
     return this.runConfigurationState.listActiveRunConfigurationRuntimeIdentitiesForWorker(
       ownerId,
       workerId,
+      family,
+    );
+  }
+
+  async getRunConfigurationRuntimeCapture(ownerId: string, runtimeId: string) {
+    return this.runConfigurationState.getRunConfigurationRuntimeCapture(
+      ownerId,
+      runtimeId,
     );
   }
 

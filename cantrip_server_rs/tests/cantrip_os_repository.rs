@@ -11,6 +11,161 @@ fn id() -> String {
 fn scope(owner: &str, instance: &Value, workspace: &Value, binding: &Value) -> Value {
     json!({"ownerId":owner,"workerId":"worker","serverId":"server","instanceId":instance["id"],"guestInstanceId":instance["guestInstanceId"],"attachmentGeneration":instance["attachmentGeneration"],"runtimeGeneration":instance["runtimeGeneration"],"bindingId":binding["id"],"bindingGeneration":binding["bindingGeneration"],"projectId":"project","projectSourceId":binding["projectSourceId"],"worktreeId":binding["worktreeId"],"sourceKind":"git","workspaceId":workspace["id"],"guestWorkspaceId":workspace["guestWorkspaceId"],"uid":workspace["uid"],"gid":workspace["gid"],"homeGuestPath":workspace["homeGuestPath"],"guestPath":binding["guestPath"],"mode":binding["mode"],"linkedWorkerPath":binding["linkedWorkerPath"],"dependencyOverlays":binding["dependencyOverlays"]})
 }
+async fn exercise_run_captures(
+    database: Arc<Database>,
+    primary: Value,
+    worktree: Value,
+) -> Result<()> {
+    // Run admission uses the same canonical Linux source, without requiring a
+    // Worker-local project_sources row for this Linux-owned checkout.
+    let runs = cantrip_server::run_configurations::Repository::new(database.clone());
+    let mut target = primary.clone();
+    for (key, binding_key) in [
+        ("bindingId", "id"),
+        ("bindingGeneration", "bindingGeneration"),
+        ("worktreeId", "worktreeId"),
+        ("guestPath", "guestPath"),
+    ] {
+        target["scope"][key] = worktree[binding_key].clone();
+    }
+    let roots = cantrip_server::wire::Value::from_serialize(
+        &json!({"definitions":primary,"target":target}),
+    );
+    let execution_key = cantrip_server::run_configurations::execution::key(&roots)?;
+    let configuration = id();
+    let request = cantrip_server::wire::Value::from_serialize(
+        &json!({"operation":"start","operationId":id(),"projectId":"project","configurationId":configuration,"worktreeId":worktree["worktreeId"],"workerId":"worker","definitionRevision":"a".repeat(64),"codexEnvironmentRevision":null,"osExecution":serde_json::from_str::<Value>(&roots.stringify())?}),
+    );
+    let admitted = runs.request_operation("owner", &request).await?;
+    let runtime = &admitted["runtime"];
+    assert_eq!(runtime["generation"].as_f64(), Some(1.0));
+    assert_eq!(
+        runtime["worktreeId"].as_str(),
+        worktree["worktreeId"].as_str()
+    );
+    assert!(
+        runs.get(
+            "owner",
+            "project",
+            &configuration,
+            worktree["worktreeId"].as_str().unwrap()
+        )
+        .await?
+        .is_none()
+    );
+    assert_eq!(
+        runs.get_in_execution(
+            "owner",
+            "project",
+            &configuration,
+            worktree["worktreeId"].as_str().unwrap(),
+            &execution_key
+        )
+        .await?
+        .unwrap()["id"],
+        runtime["id"]
+    );
+    assert!(
+        runs.operation_result("owner", request["operationId"].as_str().unwrap())
+            .await?
+            .is_none()
+    );
+    assert!(
+        runs.operation_result_in_execution(
+            "owner",
+            request["operationId"].as_str().unwrap(),
+            &execution_key
+        )
+        .await?
+        .is_some()
+    );
+    assert!(runs.active_identities("owner", "worker").await?.is_empty());
+    assert_eq!(runs.active_os_captures("owner", "worker").await?.len(), 1);
+    assert!(
+        runs.list("owner", "project", Some(&configuration), None, 256)
+            .await?
+            .is_empty()
+    );
+    assert_eq!(
+        runs.list_in_execution("owner", "project", Some(&configuration), None, 256, None)
+            .await?
+            .len(),
+        1
+    );
+    let captured = runs
+        .captured("owner", runtime["id"].as_str().unwrap())
+        .await?
+        .unwrap();
+    assert_eq!(captured["osExecution"], roots);
+    assert_eq!(
+        captured["executionKey"].as_str(),
+        Some(execution_key.as_str())
+    );
+    assert!(
+        runs.captured("other", runtime["id"].as_str().unwrap())
+            .await?
+            .is_none()
+    );
+    assert_eq!(
+        runs.request_operation("owner", &request).await?["replayed"],
+        cantrip_server::wire::Value::Bool(true)
+    );
+    let mut wrong = request.clone();
+    wrong["osExecution"]["target"]["scope"]["guestPath"] =
+        cantrip_server::wire::Value::from_serialize(&"/different-root");
+    assert!(runs.request_operation("owner", &wrong).await.is_err());
+    wrong = request.clone();
+    wrong["osExecution"] = cantrip_server::wire::Value::Null;
+    wrong["operationId"] = cantrip_server::wire::Value::from_serialize(&id());
+    assert!(runs.request_operation("owner", &wrong).await.is_err());
+    let runtime_id = runtime["id"].as_str().unwrap();
+    assert!(
+        database
+            .query(
+                "UPDATE run_configuration_runtimes SET os_execution='{}'::jsonb WHERE id=$1",
+                &[&runtime_id]
+            )
+            .await
+            .is_err()
+    );
+    assert!(
+        database
+            .query(
+                "UPDATE run_configuration_runtimes SET execution_key='worker' WHERE id=$1",
+                &[&runtime_id]
+            )
+            .await
+            .is_err()
+    );
+    let mut stop = request.clone();
+    stop["operation"] = cantrip_server::wire::Value::from_serialize(&"stop");
+    stop["operationId"] = cantrip_server::wire::Value::from_serialize(&id());
+    stop["definitionRevision"] = cantrip_server::wire::Value::Null;
+    stop["codexEnvironmentRevision"] = cantrip_server::wire::Value::Null;
+    let stopped = runs.request_operation("owner", &stop).await?;
+    assert_eq!(stopped["runtime"]["id"], runtime["id"]);
+    assert_eq!(stopped["runtime"]["state"].as_str(), Some("stopping"));
+    assert_eq!(stopped["runtime"]["generation"].as_f64(), Some(1.0));
+    // Compare against the actual Node implementation, not a copied hash formula.
+    let mut oracle = std::process::Command::new("node");
+    oracle
+        .args(["--import", "tsx", "scripts/server-rust/os-run-epoch.mjs"])
+        .current_dir(PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap())
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped());
+    let mut child = oracle.spawn()?;
+    use std::io::Write;
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(roots.stringify().as_bytes())?;
+    let output = child.wait_with_output()?;
+    assert!(output.status.success());
+    assert_eq!(String::from_utf8(output.stdout)?.trim(), execution_key);
+    Ok(())
+}
+
 async fn exercise(database: Arc<Database>) -> Result<()> {
     migrate(&database).await?;
     database.execute("INSERT INTO users(id,kind,display_name) VALUES('owner','anonymous','Owner'),('other','anonymous','Other');
@@ -198,6 +353,12 @@ async fn exercise(database: Arc<Database>) -> Result<()> {
             .await
             .is_err()
     );
+    Box::pin(exercise_run_captures(
+        database.clone(),
+        primary.clone(),
+        worktree.clone(),
+    ))
+    .await?;
     database
         .execute("INSERT INTO user_settings(user_id,computer_use_enabled) VALUES('owner',true)")
         .await?;

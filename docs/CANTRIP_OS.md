@@ -689,5 +689,9 @@ observation-only reconciliation commands. Host and Linux reconciliation are
 separate so one family cannot retire the other's active processes.
 The Run header source picker, Server runtime routing, and final distribution
 acceptance remain pending.
+Server runtime persistence now separates Host and Linux execution epochs and
+retains immutable definition/target captures. Both Server implementations admit
+Linux-owned worktrees through their canonical OS source rather than a Host-only
+source join. The public lifecycle routes and source picker remain the next block.
 See [the workflow](../cantrip_os/PRODUCT_WORKFLOW.md#files-and-editor) and
 [recorded evidence](../cantrip_os/ACCEPTANCE.md#product-file-checkpoint-2026-11-04).

@@ -1,3 +1,12 @@
+import { isDeepStrictEqual } from "node:util";
+import {
+  cantripOsRunRootsSchema,
+  type CantripOsRunRoots,
+} from "@cantrip/protocol";
+import {
+  captureOsRunAdmission,
+  osRunExecutionKey,
+} from "./cantrip-os-run-capture.js";
 import { createHash, randomUUID } from "node:crypto";
 
 import type {
@@ -40,6 +49,7 @@ interface RunConfigurationRuntimeOperationRequestBase {
   configurationId: string;
   worktreeId: string;
   workerId: string;
+  osExecution?: CantripOsRunRoots;
 }
 
 export type RunConfigurationRuntimeOperationRequest =
@@ -393,6 +403,7 @@ export class RunConfigurationStateRepository {
   async getRunConfigurationRuntimeOperationResult(
     ownerId: string,
     operationId: string,
+    executionKey = "worker",
   ): Promise<RunConfigurationRuntimeOperationResult | null> {
     const rows = await this.database
       .select({ operation: schema.runConfigurationRuntimeOperations })
@@ -401,6 +412,10 @@ export class RunConfigurationStateRepository {
         and(
           eq(schema.runConfigurationRuntimeOperations.id, operationId),
           eq(schema.runConfigurationRuntimeOperations.ownerId, ownerId),
+          eq(
+            schema.runConfigurationRuntimeOperations.executionKey,
+            executionKey,
+          ),
         ),
       )
       .limit(1);
@@ -431,6 +446,12 @@ export class RunConfigurationStateRepository {
     ownerId: string,
     input: RunConfigurationRuntimeOperationRequest,
   ): Promise<RunConfigurationRuntimeOperationResult> {
+    const requestedCapture = input.osExecution
+      ? cantripOsRunRootsSchema.parse(input.osExecution)
+      : null;
+    const executionKey = requestedCapture
+      ? osRunExecutionKey(requestedCapture)
+      : "worker";
     const terminalPosition = await this.collaborators.nextProjectTabPosition(
       input.projectId,
     );
@@ -448,6 +469,7 @@ export class RunConfigurationStateRepository {
       ): Promise<RunConfigurationRuntimeOperationResult> => {
         if (
           row.ownerId !== ownerId ||
+          row.executionKey !== executionKey ||
           row.projectId !== input.projectId ||
           row.configurationId !== input.configurationId ||
           row.worktreeId !== input.worktreeId ||
@@ -472,6 +494,11 @@ export class RunConfigurationStateRepository {
               )
               .limit(1)
           : [];
+        if (
+          runtimeRows[0] &&
+          !isDeepStrictEqual(runtimeRows[0].osExecution, requestedCapture)
+        )
+          throw new Error("The Run configuration placement capture changed.");
         return {
           operation: toRunConfigurationRuntimeOperation(row),
           replayed: true,
@@ -483,30 +510,54 @@ export class RunConfigurationStateRepository {
 
       if (operationRows[0]) return replay(operationRows[0]);
 
-      const placements = await transaction
-        .select({ workerId: schema.projectWorktrees.workerId })
-        .from(schema.projectWorktrees)
-        .innerJoin(
-          schema.projectSources,
-          eq(schema.projectSources.id, schema.projectWorktrees.projectSourceId),
-        )
-        .innerJoin(
-          schema.projects,
-          and(
-            eq(schema.projects.id, schema.projectSources.projectId),
-            eq(schema.projects.ownerId, ownerId),
-          ),
-        )
-        .where(
-          and(
-            eq(schema.projects.id, input.projectId),
-            eq(schema.projectWorktrees.id, input.worktreeId),
-            eq(schema.projectWorktrees.workerId, input.workerId),
-            eq(schema.projectWorktrees.lifecycleState, "ready"),
-            isNull(schema.projectSources.removedAt),
-          ),
-        )
-        .limit(1);
+      const osExecution = await captureOsRunAdmission(
+        transaction,
+        ownerId,
+        input,
+      );
+      const placements = osExecution
+        ? await transaction
+            .select({ workerId: schema.projectWorktrees.workerId })
+            .from(schema.projectWorktrees)
+            .where(
+              and(
+                eq(schema.projectWorktrees.id, input.worktreeId),
+                eq(schema.projectWorktrees.workerId, input.workerId),
+                eq(
+                  schema.projectWorktrees.projectSourceId,
+                  osExecution.target.scope.projectSourceId,
+                ),
+                eq(schema.projectWorktrees.lifecycleState, "ready"),
+              ),
+            )
+            .limit(1)
+        : await transaction
+            .select({ workerId: schema.projectWorktrees.workerId })
+            .from(schema.projectWorktrees)
+            .innerJoin(
+              schema.projectSources,
+              eq(
+                schema.projectSources.id,
+                schema.projectWorktrees.projectSourceId,
+              ),
+            )
+            .innerJoin(
+              schema.projects,
+              and(
+                eq(schema.projects.id, schema.projectSources.projectId),
+                eq(schema.projects.ownerId, ownerId),
+              ),
+            )
+            .where(
+              and(
+                eq(schema.projects.id, input.projectId),
+                eq(schema.projectWorktrees.id, input.worktreeId),
+                eq(schema.projectWorktrees.workerId, input.workerId),
+                eq(schema.projectWorktrees.lifecycleState, "ready"),
+                isNull(schema.projectSources.removedAt),
+              ),
+            )
+            .limit(1);
       if (!placements[0]) {
         throw new Error(
           "The Run configuration target worktree is not available on that worker.",
@@ -524,6 +575,7 @@ export class RunConfigurationStateRepository {
               input.configurationId,
             ),
             eq(schema.runConfigurationRuntimes.worktreeId, input.worktreeId),
+            eq(schema.runConfigurationRuntimes.executionKey, executionKey),
           ),
         )
         .limit(1)
@@ -539,6 +591,8 @@ export class RunConfigurationStateRepository {
             configurationId: input.configurationId,
             worktreeId: input.worktreeId,
             workerId: input.workerId,
+            executionKey,
+            osExecution,
             definitionRevision: input.definitionRevision,
             codexEnvironmentRevision: input.codexEnvironmentRevision,
             generation: 0,
@@ -550,6 +604,7 @@ export class RunConfigurationStateRepository {
               schema.runConfigurationRuntimes.projectId,
               schema.runConfigurationRuntimes.configurationId,
               schema.runConfigurationRuntimes.worktreeId,
+              schema.runConfigurationRuntimes.executionKey,
             ],
           });
         runtimeRows = await transaction
@@ -563,6 +618,7 @@ export class RunConfigurationStateRepository {
                 input.configurationId,
               ),
               eq(schema.runConfigurationRuntimes.worktreeId, input.worktreeId),
+              eq(schema.runConfigurationRuntimes.executionKey, executionKey),
             ),
           )
           .limit(1)
@@ -579,6 +635,8 @@ export class RunConfigurationStateRepository {
       if (racedOperationRows[0]) return replay(racedOperationRows[0]);
 
       let current = runtimeRows[0];
+      if (current && !isDeepStrictEqual(current.osExecution, requestedCapture))
+        throw new Error("The Run configuration placement capture changed.");
       let outcome: RunConfigurationRuntimeOperationRecord["outcome"];
       let generation = current?.generation ?? 0;
       if (!current) {
@@ -706,6 +764,7 @@ export class RunConfigurationStateRepository {
           runtimeId: current?.id ?? null,
           workerId: input.workerId,
           operation: input.operation,
+          executionKey,
           outcome,
           generation,
           definitionRevision: input.definitionRevision,
@@ -791,6 +850,7 @@ export class RunConfigurationStateRepository {
     projectId: string,
     configurationId: string,
     worktreeId: string,
+    executionKey = "worker",
   ): Promise<RunConfigurationRuntime | null> {
     const rows = await this.database
       .select({ runtime: schema.runConfigurationRuntimes })
@@ -807,10 +867,33 @@ export class RunConfigurationStateRepository {
           eq(schema.runConfigurationRuntimes.projectId, projectId),
           eq(schema.runConfigurationRuntimes.configurationId, configurationId),
           eq(schema.runConfigurationRuntimes.worktreeId, worktreeId),
+          eq(schema.runConfigurationRuntimes.executionKey, executionKey),
         ),
       )
       .limit(1);
     return rows[0] ? toRunConfigurationRuntime(rows[0].runtime) : null;
+  }
+
+  async getRunConfigurationRuntimeCapture(ownerId: string, runtimeId: string) {
+    const [row] = await this.database
+      .select()
+      .from(schema.runConfigurationRuntimes)
+      .where(
+        and(
+          eq(schema.runConfigurationRuntimes.id, runtimeId),
+          eq(schema.runConfigurationRuntimes.ownerId, ownerId),
+        ),
+      )
+      .limit(1);
+    return row
+      ? {
+          runtime: toRunConfigurationRuntime(row),
+          executionKey: row.executionKey,
+          osExecution: row.osExecution
+            ? cantripOsRunRootsSchema.parse(row.osExecution)
+            : null,
+        }
+      : null;
   }
 
   async listRunConfigurationRuntimes(
@@ -819,6 +902,7 @@ export class RunConfigurationStateRepository {
     input: {
       configurationId?: string;
       worktreeId?: string;
+      executionKey?: string | null;
       limit?: number;
     } = {},
   ): Promise<RunConfigurationRuntime[]> {
@@ -835,6 +919,12 @@ export class RunConfigurationStateRepository {
       .where(
         and(
           eq(schema.runConfigurationRuntimes.projectId, projectId),
+          input.executionKey === null
+            ? undefined
+            : eq(
+                schema.runConfigurationRuntimes.executionKey,
+                input.executionKey ?? "worker",
+              ),
           input.configurationId
             ? eq(
                 schema.runConfigurationRuntimes.configurationId,
@@ -880,6 +970,7 @@ export class RunConfigurationStateRepository {
   async listActiveRunConfigurationRuntimeIdentitiesForWorker(
     ownerId: string,
     workerId: string,
+    family: "worker" | "cantrip-os" = "worker",
   ): Promise<RunConfigurationRuntimeWorkerIdentity[]> {
     const rows = await this.database
       .select({ runtime: schema.runConfigurationRuntimes })
@@ -888,6 +979,9 @@ export class RunConfigurationStateRepository {
         and(
           eq(schema.runConfigurationRuntimes.ownerId, ownerId),
           eq(schema.runConfigurationRuntimes.workerId, workerId),
+          family === "worker"
+            ? eq(schema.runConfigurationRuntimes.executionKey, "worker")
+            : sql`${schema.runConfigurationRuntimes.osExecution} IS NOT NULL`,
           inArray(schema.runConfigurationRuntimes.state, [
             "starting",
             "running",

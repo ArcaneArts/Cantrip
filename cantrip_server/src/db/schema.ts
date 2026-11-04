@@ -1,3 +1,4 @@
+import type { CantripOsRunRoots } from "@cantrip/protocol";
 export { projectAlerts, chatGoalObservations } from "./schema-alerts.js";
 export {
   projectSourceIdentities,
@@ -3010,6 +3011,8 @@ export const runConfigurationRuntimes = pgTable(
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
     configurationId: text("configuration_id").notNull(),
+    executionKey: text("execution_key").notNull().default("worker"),
+    osExecution: jsonb("os_execution").$type<CantripOsRunRoots>(),
     worktreeId: text("worktree_id")
       .notNull()
       .references(() => projectWorktrees.id, { onDelete: "cascade" }),
@@ -3042,6 +3045,7 @@ export const runConfigurationRuntimes = pgTable(
       table.projectId,
       table.configurationId,
       table.worktreeId,
+      table.executionKey,
     ),
     uniqueIndex("run_configuration_runtimes_terminal_unique")
       .on(table.terminalId)
@@ -3055,6 +3059,10 @@ export const runConfigurationRuntimes = pgTable(
       table.workerId,
       table.state,
       table.updatedAt,
+    ),
+    check(
+      "run_configuration_runtimes_execution_check",
+      sql`(${table.executionKey} = 'worker' AND ${table.osExecution} IS NULL) OR (${table.executionKey} ~ '^cantrip-os:[0-9a-f]{64}$' AND ${table.osExecution} IS NOT NULL AND jsonb_typeof(${table.osExecution}) = 'object')`,
     ),
     check(
       "run_configuration_runtimes_id_check",
@@ -3106,6 +3114,7 @@ export const runConfigurationRuntimeOperations = pgTable(
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
     configurationId: text("configuration_id").notNull(),
+    executionKey: text("execution_key").notNull().default("worker"),
     worktreeId: text("worktree_id")
       .notNull()
       .references(() => projectWorktrees.id, { onDelete: "cascade" }),
