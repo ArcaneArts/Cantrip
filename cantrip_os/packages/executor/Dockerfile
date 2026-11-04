@@ -1,3 +1,4 @@
+ARG EXECUTOR_RUNTIME_STAGE=compiler
 # Bundle only shared application filesystem semantics. No worker orchestration,
 # account encryption, model-provider credentials, or network listener is shipped.
 FROM debian:trixie-slim@sha256:f6b08b09a05725f9431502d3b5714f5c4576e82c1a84fa1debe0c24a7e0c3ec4 AS file-helper
@@ -39,11 +40,13 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     && binary_arch=$(node -p process.arch) \
     && cp -a "cantrip_codex/.build/linux-$binary_arch/executor/bundle/." /executor/
 
+FROM ${EXECUTOR_RUNTIME_STAGE} AS executor-runtime
+
 FROM scratch AS runtime
-COPY --from=compiler /executor/ /
+COPY --from=executor-runtime /executor/ /
 
 FROM debian:trixie-slim@sha256:f6b08b09a05725f9431502d3b5714f5c4576e82c1a84fa1debe0c24a7e0c3ec4 AS package
-COPY --from=compiler /executor/ /runtime/
+COPY --from=executor-runtime /executor/ /runtime/
 COPY cantrip_os/packages/executor/ /package/
 COPY --from=file-helper /out/file-operations.mjs /out/run-definitions.mjs /out/run-plan.mjs /package/root/usr/lib/cantrip-os-executor/
 COPY --from=file-helper /out/process-owner /package/root/usr/lib/cantrip-os-executor/process-owner

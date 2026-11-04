@@ -713,7 +713,9 @@ Linux-owned worktrees through their canonical OS source rather than a Host-only
 source join. Public requests contain owned binding epochs or a captured runtime
 ID; guest paths, accounts, and transports are resolved on the Server. The combined
 configuration list, definition retirement, attachments and returned file links
-are connected. GUI launch context and final distribution remain in progress.
+are connected. Executor 0.9.0 adds explicit `cantrip-desktop` GUI launches on the
+assigned workspace display, with ordinary shell lifetimes independent of it.
+Final distribution acceptance remains in progress.
 Host-only MCP Run/worktree/task-creation adapters remain unavailable in Linux
 sessions; use the source-aware product workflows.
 See [the workflow](../cantrip_os/PRODUCT_WORKFLOW.md#files-and-editor) and

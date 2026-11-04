@@ -1,9 +1,9 @@
 # Optional execution package
 
 Phase 3 is in progress. The package supports captured project sources, native
-agent execution, product file operations, and interactive Linux terminals
-through the existing worker. Setup/Run, attachment/artifact integration, and
-final distribution acceptance remain in subsequent cycles.
+agent execution, product file operations, interactive Linux terminals, setup/Run,
+attachment/artifact delivery and explicit workspace GUI commands through the
+existing worker. Final distribution acceptance remains in progress.
 Installing this package alone does not move an existing chat into Linux.
 
 `cantrip-os-executor` depends on the workspace package. It runs the pinned,
@@ -24,18 +24,18 @@ CANTRIP_OS_EXECUTOR=1 node cantrip_os/scripts/iso.mjs
 
 Cold Rust builds take time. BuildKit caches source downloads and compilation;
 ordinary theme/package edits reuse the native build. Executor inclusion defaults
-to `0` in this first cycle while product placement is being implemented.
+to `0`; set it to `1` to include the optional integration package.
 Workspace support remains enabled by default. Including the executor requires
 the workspace package; apt enforces that dependency.
 
-Output: `cantrip_os/artifacts/packages/cantrip-os-executor_0.8.0_<arch>.deb`.
+Output: `cantrip_os/artifacts/packages/cantrip-os-executor_0.9.0_<arch>.deb`.
 It contains the source/patch fingerprint manifest, binary hashes, licenses, and
 sandbox helper. Docker and ISO recipes install the same package.
 
 Inside Linux, after copying the package there:
 
 ```sh
-sudo apt install ./cantrip-os-executor_0.8.0_arm64.deb  # amd64 for the VM edition
+sudo apt install ./cantrip-os-executor_0.9.0_arm64.deb  # amd64 for the VM edition
 sudo cantrip-executor enable
 sudo cantrip-executor status
 sudo cantrip-executor attach OWNER_ID WORKER_ID
@@ -163,3 +163,33 @@ inside the captured Linux source. Copies are content-addressed and checked on
 reuse. A changed or uncertain copy is reported without overwriting it or
 replaying an unconfirmed write. Original uploads and native model image input
 remain on the worker; Linux prompts contain the guest paths.
+
+Version 0.9.0 adds `cantrip-desktop command [args ...]`. Run it as the assigned
+workspace account, for example `cantrip-desktop pcmanfm .` or
+`cantrip-desktop xterm`. Open that workspace's desktop through the workspace
+selector first. The wrapper looks up the account's assigned display and home,
+keeps the current directory and UID, discards inherited X/Wayland/auth/session
+values, and creates a private D-Bus session. Current workspace X servers use
+local sockets with `-ac`, so no Xauthority cookie is required or inherited.
+The actual GUI command fails normally if its display is stopped; it never starts
+a desktop or uses the personal console as a fallback. Commands retain normal
+native executor cancellation. Ordinary shell commands receive no DISPLAY and
+continue independently of desktop lifetime. Root administration must explicitly
+choose the workspace account, e.g. `sudo -u ctw-work cantrip-desktop pcmanfm .`.
+
+For package-only iteration with an already tested native bundle, place the selected
+architecture's complete runtime under `<context>/executor/` and build with:
+
+```sh
+CANTRIP_OS_ARCH=arm64 CANTRIP_OS_EXECUTOR_RUNTIME_CONTEXT=/absolute/runtime-context \
+  node cantrip_os/scripts/executor-package.mjs
+```
+
+This explicit option rebuilds the shared file helpers and Debian package while
+reusing that supplied bundle. It never selects a previous binary automatically.
+Keep the bundle's build manifest and resources together and use the matching
+architecture. Omit the option to build the pinned native source normally. Changes
+to native executor code require the normal source build. This avoids waiting for
+the shared compiler cache when changing only Python services, scripts or desktop
+configuration; it is also usable by Docker/ISO builders through the same package
+preparation function.

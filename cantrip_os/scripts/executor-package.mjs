@@ -13,7 +13,7 @@ export async function prepareExecutor(architecture, options = {}) {
   const context = resolve(
     root,
     ".build/executor-packages",
-    "0.8.0",
+    "0.9.0",
     architecture,
   );
   await mkdir(output, { recursive: true });
@@ -22,6 +22,14 @@ export async function prepareExecutor(architecture, options = {}) {
     "docker",
     [
       "build",
+      ...(process.env.CANTRIP_OS_EXECUTOR_RUNTIME_CONTEXT
+        ? [
+            "--build-context",
+            `cached-executor-runtime=${resolve(process.env.CANTRIP_OS_EXECUTOR_RUNTIME_CONTEXT)}`,
+            "--build-arg",
+            "EXECUTOR_RUNTIME_STAGE=cached-executor-runtime",
+          ]
+        : []),
       "--platform",
       `linux/${architecture}`,
       "-f",
@@ -34,7 +42,7 @@ export async function prepareExecutor(architecture, options = {}) {
     ],
     options,
   );
-  const name = `cantrip-os-executor_0.8.0_${architecture}.deb`;
+  const name = `cantrip-os-executor_0.9.0_${architecture}.deb`;
   await cp(resolve(output, name), resolve(context, name));
   console.log(`Executor package: ${output}/${name}`);
   return context;

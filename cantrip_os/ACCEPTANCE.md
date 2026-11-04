@@ -1285,3 +1285,59 @@ are kept under ignored artifacts/phase3-chat-artifacts/. GUI context and refresh
 media remain in progress. Host-only Run/worktree/task-creation MCP adapters remain
 explicitly unavailable in Linux sessions; the corresponding supported product
 workflows retain their captured placements.
+
+## Assigned workspace GUI checkpoint (2026-11-04)
+
+Executor 0.9.0 adds `cantrip-desktop command [args ...]`. It resolves the current
+workspace UID through the authoritative workspace registry, keeps that UID and
+cwd, selects its assigned X display/home/runtime directory, discards inherited
+auth/Wayland/session context, and executes the app with a private D-Bus session.
+It does not start or substitute a desktop. Ordinary commands still receive no
+DISPLAY. Root administration explicitly selects a workspace account before
+launching a GUI app. All files live in the optional executor package.
+
+Actual ARM64 Docker acceptance passed in 6.62 seconds (9.59 seconds including
+runner setup). Two fresh accounts used displays 152 and 153 and different Unicode
+working directories despite deliberately poisoned personal-console environment
+values. Native process execution created xterm windows and verified the actual
+child UID/cwd/environment. Each display's X tree contained only its own test
+window. Stopping one desktop left its independent native shell alive; attempting
+a later GUI launch failed against that assigned display without another target
+being selected. The second desktop remained usable. The first test attempt read
+the proof file before the xterm child wrote it; the test now polls the actual file.
+
+Codex's in-app browser opened the existing real agent's workspace. A native GUI
+launch displayed the agent-produced JSON artifact from the exact Linux checkout
+as UID 20000. Native cancellation removed that xterm window while leaving the
+desktop alive. Screenshots and the captured native process identity are retained.
+
+Both ARM64 and AMD64 0.9.0 packages were built using the explicit
+`CANTRIP_OS_EXECUTOR_RUNTIME_CONTEXT` option, reusing the complete tested native
+bundles from the corresponding 0.8.0 packages while rebuilding the shared helpers
+and Debian package. The GUI change does not change native executor source. Full
+native-source builds were attempted but queued behind another build's shared
+compiler cache; only our two queued jobs were canceled. The normal Docker target
+still selects the compiler stage by default, verified through Docker's target
+outline. These results do not claim a fresh native compilation for 0.9.0.
+
+The installed AMD64 VM accepted the package upgrade. Its initial GUI run wrote
+proof with UID 20040, the correct Unicode cwd, display :140, no inherited
+Xauthority/Wayland values and a private D-Bus address. The window-tree check did
+not see the xterm within its initial 30-second wait. With a 120-second window
+wait and no guest code changes, the full two-workspace rerun passed in 61.52
+seconds (65.67 seconds including runner setup), including the same no-crossover,
+correct child environment, independent shell and stopped-display assertions.
+
+Seven OS lifecycle/carrier tests passed. Worker types retain the six recorded
+baseline errors with no new errors. Required pnpm check now stops earlier at
+Main's chat-turn-runtime.ts line budget (2029 lines against 1999); this cycle does
+not modify that file. Scoped formatting, Python syntax and diff checks passed.
+Package SHA-256:
+
+- ARM64: ebc31166b2e11f061dbb6babc739888407611820da862a2fcda97b9d5c8e8183
+- AMD64: 626c4bd356307acc12e5a6719f90e9181550983b73fae78013f8ca19860db367
+
+Packages and explicit native contexts are retained under ignored artifacts/packages/
+and .build/gui-runtime/. Logs, receipts and browser images are retained under
+ignored artifacts/phase3-workspace-gui/. Fresh distribution and package lifecycle
+acceptance remain in progress.
