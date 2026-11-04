@@ -45,6 +45,7 @@ const protocolChecks = {
     "multiAgentEnabled",
   ],
   "v2/ThreadHistoryTurnMetadata.ts": ["initialSettings", "retention"],
+  "v2/ThreadResumeParams.ts": ["expectedSuspension"],
 };
 
 async function expectedRuntime() {
