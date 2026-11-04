@@ -61,6 +61,7 @@ async function fixture(t, change = {}) {
       path.join(out, "ClientRequest.ts"),
       JSON.stringify([
         "turn/pause",
+        "turn/suspension",
         "thread/settings/update",
         "turn/settings/update",
         "thread/settings/read",
