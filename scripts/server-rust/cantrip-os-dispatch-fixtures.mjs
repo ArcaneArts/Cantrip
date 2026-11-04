@@ -38,7 +38,43 @@ export const osOpaque = {
   },
 };
 const transport = { kind: "docker", container: "cantrip-os" };
+const runExecution = {
+  kind: "cantrip-os",
+  scope: Object.fromEntries(
+    Object.entries({ ...osSourceScope, projectId: id }).filter(
+      ([key]) => key !== "serverId",
+    ),
+  ),
+  transport,
+};
+const runRoots = { definitions: runExecution, target: runExecution };
+const runIdentity = {
+  runtimeId: id,
+  projectId: id,
+  configurationId: id,
+  worktreeId: id,
+  workerId: "worker",
+  definitionRevision: "a".repeat(64),
+  codexEnvironmentRevision: null,
+  generation: 1,
+  operationId: id,
+  terminalId: id,
+};
+const runLaunch = { ...runRoots, identity: runIdentity, protectedSecrets: [] };
+const runCapture = { ...runRoots, identity: runIdentity };
 export const osCommands = [
+  { type: "cantrip-os.run-runtime.start", ...runLaunch },
+  { type: "cantrip-os.run-runtime.restart", ...runLaunch },
+  { type: "cantrip-os.run-runtime.stop", ...runCapture },
+  { type: "cantrip-os.run-runtime.status", ...runCapture },
+  {
+    type: "cantrip-os.run-runtime.output",
+    ...runCapture,
+    requestOperationId: id,
+    serverId: "server",
+    tail: 1024,
+  },
+  { type: "cantrip-os.run-runtime.reconcile", captures: [runCapture] },
   {
     type: "cantrip-os.run-definition",
     execution: {
@@ -122,6 +158,9 @@ export function osDispatchFixtures() {
   const { serverId: _server, ...executionScope } = osSourceScope;
   const { serverId: _linkedServer, ...linkedExecutionScope } = linked;
   return {
+    cantripOsRunRootsSchema: [runRoots],
+    cantripOsRunLaunchSchema: [runLaunch],
+    cantripOsRunCaptureSchema: [runCapture],
     cantripOsRunDefinitionRequestSchema: [
       {
         type: "project.run-configuration-definitions.list",

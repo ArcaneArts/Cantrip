@@ -1,15 +1,15 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir, readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { isDeepStrictEqual } from "node:util";
-import { z } from "zod";
-import { cantripOsExecutionSchema } from "@cantrip/protocol";
-import { runConfigurationRuntimeLaunchIdentitySchema } from "@cantrip/protocol/run-configuration-runtime";
 import {
-  runConfigurationProtectedSecretListSchema,
-  type RunConfigurationProtectedSecret,
-} from "@cantrip/protocol/run-configuration-secrets";
+  cantripOsRunLaunchSchema,
+  cantripOsRunCaptureSchema,
+  type CantripOsRunCapture,
+  type CantripOsRunLaunch,
+} from "@cantrip/protocol";
+import type { RunConfigurationProtectedSecret } from "@cantrip/protocol/run-configuration-secrets";
 import type { CantripOsController } from "./controller.js";
 import {
   OsExecutorConnection,
@@ -24,15 +24,8 @@ import {
 } from "./run-plan-contract.js";
 import { RunConfigurationOutputRedactor } from "../run-configuration-output-redactor.js";
 
-export const osRunLaunchSchema = z
-  .object({
-    identity: runConfigurationRuntimeLaunchIdentitySchema,
-    definitions: cantripOsExecutionSchema,
-    target: cantripOsExecutionSchema,
-    protectedSecrets: runConfigurationProtectedSecretListSchema,
-  })
-  .strict();
-export type OsRunLaunch = z.infer<typeof osRunLaunchSchema>;
+export const osRunLaunchSchema = cantripOsRunLaunchSchema;
+export type OsRunLaunch = CantripOsRunLaunch;
 export type OsRunResult =
   | {
       outcome: "exited" | "interrupted";
@@ -133,6 +126,206 @@ export class OsRunExecution {
     this.active.set(key, job);
     void job.completion.finally(() => this.active.delete(key));
     return job;
+  }
+
+  /** Reconcile a known generation after Worker memory was lost. Only its
+   * admitted native handles are stopped; no command or input is replayed. */
+  async stopRecorded(supplied: CantripOsRunCapture): Promise<OsRunResult> {
+    const input = cantripOsRunCaptureSchema.parse(supplied);
+    if (
+      input.target.scope.ownerId !== this.authority.ownerId() ||
+      input.definitions.scope.ownerId !== this.authority.ownerId()
+    )
+      throw new Error("The Linux Run belongs to another account.");
+    const file = path.join(
+      this.directory,
+      "os-run-generations",
+      input.identity.runtimeId,
+      `${input.identity.generation}.json`,
+    );
+    let saved: RunJournal;
+    try {
+      saved = JSON.parse(await readFile(file, "utf8"));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      return {
+        outcome: "unknown",
+        phase: "reconcile",
+        code: "linux-admission-unavailable",
+        message:
+          "The recorded Linux Run admission is unavailable; no replacement process was started.",
+      };
+    }
+    if (
+      saved.version !== 1 ||
+      !isDeepStrictEqual(saved.definitions, input.definitions) ||
+      !isDeepStrictEqual(saved.target, input.target) ||
+      [
+        "runtimeId",
+        "projectId",
+        "configurationId",
+        "worktreeId",
+        "workerId",
+        "terminalId",
+        "generation",
+        "definitionRevision",
+        "codexEnvironmentRevision",
+      ].some(
+        (key) =>
+          Reflect.get(saved.identity, key) !== Reflect.get(input.identity, key),
+      )
+    )
+      throw new Error(
+        "The Linux Run cleanup differs from its captured placement.",
+      );
+    const pending = saved.processes.filter((process) => !process.exited);
+    if (!pending.length)
+      return {
+        outcome: "interrupted",
+        exitCode:
+          saved.result && "exitCode" in saved.result
+            ? saved.result.exitCode
+            : null,
+        signal: null,
+      };
+    if (!saved.native)
+      return {
+        outcome: "unknown",
+        phase: "reconcile",
+        code: "linux-session-unavailable",
+        message:
+          "The admitted native session is unavailable; its process was not replaced.",
+      };
+    const binding = await this.controller.captureExecutionBinding(
+      input.target.transport,
+      { ...input.target.scope, serverId: this.authority.serverIdentity() },
+    );
+    if (binding.executor_generation !== saved.native.executorGeneration)
+      return {
+        outcome: "unknown",
+        phase: "reconcile",
+        code: "linux-session-changed",
+        message:
+          "The native executor changed before termination could be confirmed.",
+      };
+    const connection = new OsExecutorConnection(
+      input.target.transport,
+      binding,
+    );
+    let exitCode: number | null = null;
+    try {
+      const initialized = await connection.request<{ sessionId: string }>(
+        "initialize",
+        {
+          clientName: "cantrip-run-reconcile-stop",
+          resumeSessionId: saved.native.sessionId,
+        },
+      );
+      connection.notify("initialized");
+      if (initialized.sessionId !== saved.native.sessionId)
+        throw new Error("The native Run session changed.");
+      saved.stopRequested = true;
+      await durableTerminalJson(file, saved);
+      for (const process of pending) {
+        const terminated = await connection.request<{ running: boolean }>(
+          "process/terminate",
+          { processId: process.id },
+        );
+        if (terminated.running) {
+          const deadline = Date.now() + 10_000;
+          for (;;) {
+            const observed = await connection.request<Read>("process/read", {
+              processId: process.id,
+              afterSeq: null,
+              maxBytes: 1,
+              waitMs: 200,
+            });
+            if (observed.exited && observed.closed) {
+              exitCode = observed.exitCode;
+              break;
+            }
+            if (Date.now() >= deadline)
+              throw new Error("The native Run did not confirm termination.");
+          }
+        }
+        process.exited = true;
+      }
+      const result: OsRunResult = {
+        outcome: "interrupted",
+        exitCode,
+        signal: null,
+      };
+      saved.result = result;
+      await durableTerminalJson(file, saved);
+      return result;
+    } catch (error) {
+      return {
+        outcome: "unknown",
+        phase: "reconcile",
+        code: "linux-termination-unknown",
+        message:
+          "Linux Run termination is unconfirmed. No replacement was started.",
+      };
+    } finally {
+      await connection.close();
+    }
+  }
+
+  /** A new explicit generation cannot overlap an unresolved older native
+   * generation of this same durable runtime. */
+  async stopPrior(input: OsRunLaunch) {
+    const directory = path.join(
+      this.directory,
+      "os-run-generations",
+      input.identity.runtimeId,
+    );
+    let names: string[];
+    try {
+      names = await readdir(directory);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+      throw error;
+    }
+    for (const name of names) {
+      if (
+        !/^\d+\.json$/.test(name) ||
+        Number(name.slice(0, -5)) >= input.identity.generation
+      )
+        continue;
+      const saved = JSON.parse(
+        await readFile(path.join(directory, name), "utf8"),
+      ) as RunJournal;
+      if (
+        saved.version !== 1 ||
+        !isDeepStrictEqual(saved.definitions, input.definitions) ||
+        !isDeepStrictEqual(saved.target, input.target) ||
+        [
+          "runtimeId",
+          "projectId",
+          "configurationId",
+          "worktreeId",
+          "workerId",
+          "terminalId",
+        ].some(
+          (key) =>
+            Reflect.get(saved.identity, key) !==
+            Reflect.get(input.identity, key),
+        )
+      )
+        throw new Error(
+          "The durable Run cannot move to a different Linux placement.",
+        );
+      if (!saved.processes.some((process) => !process.exited)) continue;
+      const result = await this.stopRecorded({
+        identity: saved.identity,
+        definitions: saved.definitions,
+        target: saved.target,
+      });
+      if (result.outcome === "unknown")
+        throw new Error(
+          "The previous Linux Run generation has an unknown termination outcome.",
+        );
+    }
   }
 }
 
@@ -337,12 +530,24 @@ export class OsRunGeneration {
         arg0: null,
         sandbox: null,
       });
-      if (process.tty)
-        await this.connection!.request("process/resize", {
-          processId: process.id,
-          cols: 120,
-          rows: 40,
-        });
+      if (process.tty) {
+        try {
+          await this.connection!.request("process/resize", {
+            processId: process.id,
+            cols: 120,
+            rows: 40,
+          });
+        } catch (error) {
+          if (error instanceof OsExecutorDeliveryError) throw error;
+          // A short-lived process can finish before resize reaches its PTY.
+          // Confirm that actual outcome; an unavailable live PTY still fails.
+          const observed = await this.connection!.request<Read>(
+            "process/read",
+            { processId: process.id, afterSeq: null, maxBytes: 1, waitMs: 0 },
+          );
+          if (!observed.exited || !observed.closed) throw error;
+        }
+      }
       if (stdin !== undefined) {
         const input = Buffer.from(stdin);
         for (let offset = 0; offset < input.length; offset += 32768) {
@@ -411,6 +616,7 @@ export class OsRunGeneration {
         this.input.target.transport,
         { ...this.input.target.scope, serverId },
       );
+      await this.driver.stopPrior(this.input);
       await mkdir(path.dirname(this.file), { recursive: true, mode: 0o700 });
       let saved: RunJournal | null = null;
       try {

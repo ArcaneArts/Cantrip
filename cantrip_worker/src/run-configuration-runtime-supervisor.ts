@@ -1,5 +1,15 @@
 import { realpath } from "node:fs/promises";
 import path from "node:path";
+import { isDeepStrictEqual } from "node:util";
+import type {
+  CantripOsRunRoots,
+  CantripOsRunCapture,
+  CantripOsRunWorkerCommand,
+} from "@cantrip/protocol";
+import type {
+  OsRunExecution,
+  OsRunResult,
+} from "./os-executor/run-execution.js";
 
 import type {
   RunConfigurationEnvironment,
@@ -13,6 +23,7 @@ import {
   runConfigurationRuntimeWorkerOperationResultSchema,
   runConfigurationRuntimeWorkerOutputSchema,
   runConfigurationRuntimeWorkerReconciliationSchema,
+  runConfigurationRuntimeFailurePhaseSchema,
   type RunConfigurationRuntimeLaunchIdentity,
   type RunConfigurationRuntimeWorkerCommand,
   type RunConfigurationRuntimeWorkerIdentity,
@@ -57,15 +68,15 @@ const MAX_ENVIRONMENT_LAYER_ENTRIES = 256;
 const MAX_ENVIRONMENT_LAYER_VALUE_CHARS = 16 * 1024;
 const MAX_ENVIRONMENT_LAYER_TOTAL_CHARS = 128 * 1024;
 
-type StartCommand = Extract<
+type HostStartCommand = Extract<
   RunConfigurationRuntimeWorkerCommand,
   { type: "project.run-configuration-runtime.start" }
 >;
-type RestartCommand = Extract<
+type HostRestartCommand = Extract<
   RunConfigurationRuntimeWorkerCommand,
   { type: "project.run-configuration-runtime.restart" }
 >;
-type StopCommand = Extract<
+type HostStopCommand = Extract<
   RunConfigurationRuntimeWorkerCommand,
   { type: "project.run-configuration-runtime.stop" }
 >;
@@ -73,7 +84,26 @@ type OutputCommand = Extract<
   RunConfigurationRuntimeWorkerCommand,
   { type: "project.run-configuration-runtime.output" }
 >;
-type RuntimeOutputRequest = Omit<OutputCommand, "serverId"> & {
+type LinuxStartCommand = Extract<
+  CantripOsRunWorkerCommand,
+  { type: "cantrip-os.run-runtime.start" }
+>;
+type LinuxRestartCommand = Extract<
+  CantripOsRunWorkerCommand,
+  { type: "cantrip-os.run-runtime.restart" }
+>;
+type StartCommand = HostStartCommand | LinuxStartCommand;
+type RestartCommand = HostRestartCommand | LinuxRestartCommand;
+type StopCommand =
+  | HostStopCommand
+  | Extract<CantripOsRunWorkerCommand, { type: "cantrip-os.run-runtime.stop" }>;
+type RuntimeOutputRequest = (
+  | Omit<OutputCommand, "serverId">
+  | Extract<
+      CantripOsRunWorkerCommand,
+      { type: "cantrip-os.run-runtime.output" }
+    >
+) & {
   serverId?: string;
 };
 type LaunchCommand = StartCommand | RestartCommand;
@@ -108,7 +138,15 @@ export interface RunConfigurationRuntimeEnvironmentInput {
 }
 
 export interface RunConfigurationRuntimeSupervisorOptions {
-  authorize(input: LaunchCommand): Promise<AuthorizedRunConfigurationRoots>;
+  authorize(
+    input: HostStartCommand | HostRestartCommand,
+  ): Promise<AuthorizedRunConfigurationRoots>;
+  linux?: {
+    start(
+      ...args: Parameters<OsRunExecution["start"]>
+    ): Pick<ReturnType<OsRunExecution["start"]>, "completion" | "signal">;
+    stopRecorded: OsRunExecution["stopRecorded"];
+  };
   environment?: NodeJS.ProcessEnv;
   notify?(observation: RunConfigurationRuntimeWorkerObservation): void;
   platform?: NodeJS.Platform;
@@ -118,7 +156,8 @@ export interface RunConfigurationRuntimeSupervisorOptions {
 }
 
 interface TrackedProcess {
-  child: pty.IPty;
+  child: pty.IPty | null;
+  nativeStop?(gracePeriodMs: number, force: boolean): Promise<ProcessExit>;
   exit: Promise<ProcessExit>;
   generation: number;
   operationId: string;
@@ -126,7 +165,7 @@ interface TrackedProcess {
 }
 
 interface ProcessExit {
-  exitCode: number;
+  exitCode: number | null;
   signal: string | null;
 }
 
@@ -138,7 +177,8 @@ interface RuntimeSession extends RunConfigurationRuntimeLaunchIdentity {
   launchTask: Promise<void> | null;
   outputRedactor: RunConfigurationOutputRedactor;
   process: TrackedProcess | null;
-  requestedRootKind: LaunchCommand["rootKind"];
+  linuxRoots: CantripOsRunRoots | null;
+  requestedRootKind: HostStartCommand["rootKind"] | null;
   requestedSourcePath: string;
   requestedTargetPath: string;
   signal: string | null;
@@ -342,9 +382,15 @@ function launchRequestMatches(
 ): boolean {
   return (
     generationIdentityMatches(session, command.identity) &&
-    session.requestedRootKind === command.rootKind &&
-    session.requestedSourcePath === command.sourcePath &&
-    session.requestedTargetPath === command.targetPath
+    ("definitions" in command
+      ? isDeepStrictEqual(session.linuxRoots, {
+          definitions: command.definitions,
+          target: command.target,
+        })
+      : session.linuxRoots === null &&
+        session.requestedRootKind === command.rootKind &&
+        session.requestedSourcePath === command.sourcePath &&
+        session.requestedTargetPath === command.targetPath)
   );
 }
 
@@ -402,9 +448,11 @@ export class RunConfigurationRuntimeSupervisor {
     RunConfigurationRuntimeSupervisorOptions["resolveEnvironment"]
   >;
   readonly #runtimes = new Map<string, RuntimeSession>();
+  readonly #linux: RunConfigurationRuntimeSupervisorOptions["linux"];
   #closing = false;
 
   constructor(options: RunConfigurationRuntimeSupervisorOptions) {
+    this.#linux = options.linux;
     this.#authorize = options.authorize;
     this.#environment = options.environment ?? process.env;
     this.#notify = options.notify ?? (() => undefined);
@@ -452,13 +500,17 @@ export class RunConfigurationRuntimeSupervisor {
       const existing = this.#runtimes.get(command.identity.runtimeId);
       if (existing) {
         this.#assertStableIdentity(existing, command.identity);
+        this.#assertPlacement(
+          existing,
+          "definitions" in command ? command : undefined,
+        );
         if (launchRequestMatches(existing, command)) {
           return this.#operationResult("replayed", existing);
         }
         if (command.identity.generation <= existing.generation) {
           return this.#operationResult("stale", existing);
         }
-        if (activeState(existing.state)) {
+        if (activeState(existing.state) || existing.process) {
           throw new Error(
             "A start cannot replace an active Run configuration generation.",
           );
@@ -484,9 +536,13 @@ export class RunConfigurationRuntimeSupervisor {
         launchTask: null,
         outputRedactor: new RunConfigurationOutputRedactor([]),
         process: null,
-        requestedRootKind: command.rootKind,
-        requestedSourcePath: command.sourcePath,
-        requestedTargetPath: command.targetPath,
+        linuxRoots:
+          "definitions" in command
+            ? { definitions: command.definitions, target: command.target }
+            : null,
+        requestedRootKind: "rootKind" in command ? command.rootKind : null,
+        requestedSourcePath: "sourcePath" in command ? command.sourcePath : "",
+        requestedTargetPath: "targetPath" in command ? command.targetPath : "",
         signal: null,
         sourceRoot: null,
         startedAt: null,
@@ -508,6 +564,10 @@ export class RunConfigurationRuntimeSupervisor {
       const session = this.#runtimes.get(command.identity.runtimeId);
       if (!session) return this.#operationResult("not-found", null);
       this.#assertStableIdentity(session, command.identity);
+      this.#assertPlacement(
+        session,
+        "definitions" in command ? command : undefined,
+      );
       const replayingInterruptedRestart =
         launchRequestMatches(session, command) &&
         session.state === "restarting";
@@ -557,8 +617,15 @@ export class RunConfigurationRuntimeSupervisor {
   ): Promise<RunConfigurationRuntimeWorkerOperationResult> {
     return this.#withLock(command.identity.runtimeId, async () => {
       const session = this.#runtimes.get(command.identity.runtimeId);
-      if (!session) return this.#operationResult("not-found", null);
+      if (!session) {
+        if ("definitions" in command) await this.#stopRecorded(command);
+        return this.#operationResult("not-found", null);
+      }
       this.#assertStableIdentity(session, command.identity);
+      this.#assertPlacement(
+        session,
+        "definitions" in command ? command : undefined,
+      );
       const replayingInterruptedStop =
         generationIdentityMatches(session, command.identity) &&
         session.state === "stopping";
@@ -581,13 +648,14 @@ export class RunConfigurationRuntimeSupervisor {
           "The stop target does not match the active generation.",
         );
       }
-      if (!activeState(session.state)) {
+      if (!activeState(session.state) && !session.process) {
         return this.#operationResult("replayed", session);
       }
 
       if (!replayingInterruptedStop) {
         session.operationId = command.identity.operationId;
         session.state = "stopping";
+        session.endedAt = null;
         session.failure = null;
         this.#emit(session);
       }
@@ -618,8 +686,10 @@ export class RunConfigurationRuntimeSupervisor {
 
   status(
     identity: RunConfigurationRuntimeWorkerIdentity,
+    roots?: CantripOsRunRoots,
   ): RunConfigurationRuntimeWorkerLookup {
     const session = this.#runtimes.get(identity.runtimeId);
+    if (session) this.#assertPlacement(session, roots);
     if (!session || !generationIdentityMatches(session, identity)) {
       return runConfigurationRuntimeWorkerLookupSchema.parse({
         found: false,
@@ -634,6 +704,11 @@ export class RunConfigurationRuntimeSupervisor {
 
   output(command: RuntimeOutputRequest): RunConfigurationRuntimeWorkerOutput {
     const session = this.#runtimes.get(command.identity.runtimeId);
+    if (session)
+      this.#assertPlacement(
+        session,
+        "definitions" in command ? command : undefined,
+      );
     if (!session || !generationIdentityMatches(session, command.identity)) {
       throw new Error(
         "The Run configuration output is not available on this worker.",
@@ -657,6 +732,7 @@ export class RunConfigurationRuntimeSupervisor {
     const runtimes = identities.map((identity) => this.status(identity));
     const orphaned = [...this.#runtimes.values()]
       .filter((session) => {
+        if (session.linuxRoots) return false;
         const identity = expected.get(session.runtimeId);
         return (
           activeState(session.state) &&
@@ -677,6 +753,36 @@ export class RunConfigurationRuntimeSupervisor {
     return this.#stopMatching((session) => session.projectId === projectId);
   }
 
+  async reconcileLinux(
+    captures: CantripOsRunCapture[],
+  ): Promise<RunConfigurationRuntimeWorkerReconciliation> {
+    const expected = new Map(
+      captures.map((capture) => [capture.identity.runtimeId, capture]),
+    );
+    const runtimes = [];
+    for (const capture of captures) {
+      const status = this.status(capture.identity, capture);
+      if (!status.found) await this.#stopRecorded(capture);
+      runtimes.push(status);
+    }
+    const orphaned = [...this.#runtimes.values()]
+      .filter((session) => {
+        if (!session.linuxRoots || !activeState(session.state)) return false;
+        const capture = expected.get(session.runtimeId);
+        return (
+          !capture || !generationIdentityMatches(session, capture.identity)
+        );
+      })
+      .slice(0, RUN_CONFIGURATION_RUNTIME_LIST_LIMIT);
+    await Promise.all(
+      orphaned.map((session) => this.#markLost(session.runtimeId)),
+    );
+    return runConfigurationRuntimeWorkerReconciliationSchema.parse({
+      runtimes,
+      orphanedRuntimeIds: orphaned.map((session) => session.runtimeId),
+    });
+  }
+
   async stopForPath(targetPath: string): Promise<number> {
     const canonical = await realpath(targetPath).catch(() =>
       path.resolve(targetPath),
@@ -685,6 +791,19 @@ export class RunConfigurationRuntimeSupervisor {
       (
         await Promise.all(
           [...this.#runtimes.values()].map(async (session) => {
+            if (session.linuxRoots) {
+              // Only explicit linked paths are Worker paths. Guest paths must
+              // never be resolved on the Worker during deletion cleanup.
+              const linked = [
+                session.linuxRoots.definitions.scope.linkedWorkerPath,
+                session.linuxRoots.target.scope.linkedWorkerPath,
+              ].filter((value): value is string => Boolean(value));
+              return linked.some((value) =>
+                pathIsAtOrInside(canonical, path.resolve(value)),
+              )
+                ? session.runtimeId
+                : null;
+            }
             const source = await realpath(
               session.sourceRoot ?? session.requestedSourcePath,
             ).catch(() =>
@@ -728,11 +847,154 @@ export class RunConfigurationRuntimeSupervisor {
     void task;
   }
 
+  #assertPlacement(session: RuntimeSession, roots?: CantripOsRunRoots): void {
+    const supplied = roots
+      ? { definitions: roots.definitions, target: roots.target }
+      : null;
+    if (!isDeepStrictEqual(session.linuxRoots, supplied))
+      throw new Error(
+        "The runtime is bound to a different execution placement.",
+      );
+  }
+
+  async #stopRecorded(capture: CantripOsRunCapture): Promise<ProcessExit> {
+    if (!this.#linux)
+      throw new Error("Linux Run execution is unavailable on this worker.");
+    const result = await this.#linux.stopRecorded({
+      identity: capture.identity,
+      definitions: capture.definitions,
+      target: capture.target,
+    });
+    if (result.outcome !== "exited" && result.outcome !== "interrupted")
+      throw new RuntimeLaunchError(
+        "stop",
+        "termination-unconfirmed",
+        "Linux Run termination could not be confirmed. Its command was not repeated.",
+        true,
+      );
+    return { exitCode: result.exitCode, signal: result.signal };
+  }
+
+  async #launchLinux(
+    session: RuntimeSession,
+    command: LinuxStartCommand | LinuxRestartCommand,
+  ): Promise<void> {
+    if (!this.#linux)
+      throw new RuntimeLaunchError(
+        "target",
+        "linux-executor-unavailable",
+        "Linux Run execution is unavailable on this worker.",
+        true,
+      );
+    // Track preparation immediately so stop/restart also owns setup commands.
+    const job = this.#linux.start(
+      {
+        identity: command.identity,
+        definitions: command.definitions,
+        target: command.target,
+        protectedSecrets: command.protectedSecrets,
+      },
+      {
+        output: (data) => {
+          if (generationIdentityMatches(session, command.identity))
+            this.#appendOutput(session, data);
+        },
+        started: (grace) => {
+          if (!generationLaunchIsCurrent(session, command.identity)) return;
+          session.stopGracePeriodMs = grace;
+          session.startedAt = new Date().toISOString();
+          session.state = "running";
+          this.#emit(session);
+        },
+      },
+    );
+    const asExit = (result: OsRunResult): ProcessExit => ({
+      exitCode: "exitCode" in result ? result.exitCode : null,
+      signal: "signal" in result ? result.signal : null,
+    });
+    const completionWithin = (timeout: number): Promise<OsRunResult | null> =>
+      new Promise((resolve) => {
+        const timer = setTimeout(() => resolve(null), timeout);
+        timer.unref();
+        void job.completion.then((result) => {
+          clearTimeout(timer);
+          resolve(result);
+        });
+      });
+    const tracked: TrackedProcess = {
+      child: null,
+      exit: job.completion.then(asExit),
+      generation: command.identity.generation,
+      operationId: command.identity.operationId,
+      phase: "runtime",
+      nativeStop: async (grace, force) => {
+        try {
+          await job.signal(force);
+          let result = await completionWithin(
+            force ? 10000 : Math.max(1, grace),
+          );
+          if (!result && !force) {
+            await job.signal(true);
+            result = await completionWithin(10000);
+          }
+          if (
+            result &&
+            (result.outcome === "exited" ||
+              result.outcome === "interrupted" ||
+              result.outcome === "failed")
+          )
+            return asExit(result);
+        } catch {
+          // Observe/terminate the recorded native ID instead of resending input.
+        }
+        return this.#stopRecorded(command);
+      },
+    };
+    session.process = tracked;
+    const result = await job.completion;
+    await this.#withLock(session.runtimeId, async () => {
+      if (
+        !generationIdentityMatches(session, command.identity) ||
+        (session.state !== "starting" && session.state !== "running")
+      )
+        return;
+      if (result.outcome === "exited" || result.outcome === "interrupted") {
+        if (session.process === tracked) session.process = null;
+        this.#flushOutput(session);
+        session.state = "exited";
+        session.exitCode = result.exitCode;
+        session.signal = result.signal;
+      } else if ("phase" in result) {
+        const phase = runConfigurationRuntimeFailurePhaseSchema.safeParse(
+          result.phase,
+        );
+        session.state = result.outcome === "unknown" ? "lost" : "failed";
+        session.failure = boundedFailure(
+          new RuntimeLaunchError(
+            phase.success ? phase.data : "reconcile",
+            result.code,
+            result.message,
+            true,
+          ),
+        );
+        // Unknown handles remain tracked for explicit stop/cleanup.
+        if (result.outcome === "failed" && session.process === tracked)
+          session.process = null;
+      }
+      session.endedAt = new Date().toISOString();
+      this.#emit(session);
+    });
+  }
+
   async #launchGeneration(
     session: RuntimeSession,
     command: LaunchCommand,
   ): Promise<void> {
     try {
+      if ("definitions" in command) {
+        await this.#launchLinux(session, command);
+        return;
+      }
       const roots = await this.#authorize(command);
       if (!generationLaunchIsCurrent(session, command.identity)) return;
       session.sourceRoot = roots.sourceRoot;
@@ -834,14 +1096,23 @@ export class RunConfigurationRuntimeSupervisor {
           protectedSecrets: command.protectedSecrets,
           sourceRoot: roots.sourceRoot,
           targetRoot: roots.targetRoot,
-          execute: (environmentCommand, environment, timeoutMs) =>
-            this.#runBeforeLaunch(
+          execute: async (environmentCommand, environment, timeoutMs) => {
+            const result = await this.#runBeforeLaunch(
               session,
               command.identity,
               environmentCommand,
               environment,
               timeoutMs,
-            ),
+            );
+            if (result.exitCode === null)
+              throw new RuntimeLaunchError(
+                "environment",
+                "environment-exit-unknown",
+                "The environment setup exit status is unknown.",
+                true,
+              );
+            return { ...result, exitCode: result.exitCode };
+          },
         });
       } catch (error) {
         if (error instanceof RuntimeLaunchError) throw error;
@@ -1097,6 +1368,10 @@ export class RunConfigurationRuntimeSupervisor {
     gracePeriodMs: number,
     forceImmediately: boolean,
   ): Promise<ProcessExit> {
+    if (tracked.nativeStop)
+      return tracked.nativeStop(gracePeriodMs, forceImmediately);
+    if (!tracked.child)
+      throw new Error("The Run process handle is unavailable.");
     if (forceImmediately) {
       await this.#signalProcessTree(tracked.child, true);
       return this.#waitForExit(tracked, FORCE_EXIT_WAIT_MS);
@@ -1180,9 +1455,11 @@ export class RunConfigurationRuntimeSupervisor {
     state: "restarting" | "starting",
   ): void {
     Object.assign(session, command.identity);
-    session.requestedRootKind = command.rootKind;
-    session.requestedSourcePath = command.sourcePath;
-    session.requestedTargetPath = command.targetPath;
+    session.requestedRootKind = "rootKind" in command ? command.rootKind : null;
+    session.requestedSourcePath =
+      "sourcePath" in command ? command.sourcePath : "";
+    session.requestedTargetPath =
+      "targetPath" in command ? command.targetPath : "";
     session.sourceRoot = null;
     session.targetRoot = null;
     session.state = state;

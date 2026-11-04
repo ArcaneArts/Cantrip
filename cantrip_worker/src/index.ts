@@ -1,4 +1,6 @@
 import { osNativeMcpServers } from "./os-executor/native-mcp.js";
+import { OsRunExecution } from "./os-executor/run-execution.js";
+import { handleOsRunCommand } from "./os-executor/run-commands.js";
 import { ProjectGoalDelivery } from "./project-goal-delivery.js";
 import { BinaryFileWrites } from "./binary-file-writes.js";
 import { dispatchRepositoryOperation } from "./repository-operation-dispatch.js";
@@ -978,6 +980,17 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     emit: (notification) => workerNotificationEmitter?.(notification) ?? false,
   });
   const runConfigurationRuntimes = new RunConfigurationRuntimeSupervisor({
+    linux: new OsRunExecution(
+      config.dataDirectory,
+      cantripOs,
+      workerEncryption,
+      (projectId, secret) =>
+        openRunConfigurationSecretValue({
+          projectId,
+          secret,
+          service: workerEncryption,
+        }),
+    ),
     authorize: async (input) => {
       if (input.rootKind === "folder-root") {
         const sourceRoot = await realpath(input.sourcePath);
@@ -3225,6 +3238,17 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       return runtimeProvider;
     };
     switch (command.type) {
+      case "cantrip-os.run-runtime.start":
+      case "cantrip-os.run-runtime.restart":
+      case "cantrip-os.run-runtime.stop":
+      case "cantrip-os.run-runtime.status":
+      case "cantrip-os.run-runtime.output":
+      case "cantrip-os.run-runtime.reconcile":
+        return handleOsRunCommand(
+          command,
+          runConfigurationRuntimes,
+          workerEncryption,
+        );
       case "cantrip-os.run-definition":
         return osRunDefinitions.execute(command);
       case "cantrip-os.inspect":

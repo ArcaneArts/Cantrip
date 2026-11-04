@@ -35,6 +35,9 @@ fn linux_source_contracts_match_the_actual_protocol() -> Result<()> {
         "cantripOsRunDefinitionApiSchema",
         "cantripOsRunDefinitionResponseSchema",
         "cantripOsRunPrimarySchema",
+        "cantripOsRunRootsSchema",
+        "cantripOsRunLaunchSchema",
+        "cantripOsRunCaptureSchema",
     ] {
         let output = Command::new("node")
             .args(["scripts/server-rust/security-oracle.mjs", "--vectors", name])

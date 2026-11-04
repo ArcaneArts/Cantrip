@@ -902,3 +902,52 @@ Proofs and logs are under ignored `artifacts/phase3-run-execution/`. Server
 runtime captures, the Run header/source picker, delegated project tools/Git,
 attachments/artifacts, notifications, and current distribution acceptance remain
 subsequent work.
+
+## Worker Run lifecycle checkpoint (2026-11-04)
+
+The common Worker `RunConfigurationRuntimeSupervisor` now uses the native
+Linux driver for six explicit `cantrip-os.run-runtime.*` commands. It retains
+captured definition/target placements without resolving guest paths on the
+Host. Host and Linux reconciliation operate on their own runtime families.
+
+Actual Docker and installed-VM tests exercised the common supervisor in addition
+to the earlier driver acceptance:
+
+- A secondary Linux worktree ran its Primary definition, setup environment,
+  before-launch commands, and purpose-specific secret. Its output was redacted.
+  Repeating the completed start returned the same generation without another
+  execution. Host authorization was never called.
+- Host status/output/start commands could not access or retarget a Linux
+  runtime. Changed workspace roots were rejected. An empty Host reconciliation
+  left the Linux process running.
+- Restart advanced the managed generation and stopped its old detached root
+  child. Stop interrupted the next generation, escalated as necessary, and
+  confirmed the root child had exited. Independent native work remained alive.
+- A disposable Node Worker process started another real Linux generation and
+  was killed with `SIGKILL`. A fresh supervisor read its durable journal,
+  resumed the recorded native session, and stopped the known process tree.
+  Reconciliation reported the absent in-memory runtime without recreating it;
+  the child PID file remained unchanged.
+- A short-lived before-launch step exposed a PTY resize/exit race. The driver
+  now reads that process's actual completion after a resize error. It does not
+  repeat the command or infer success from the resize failure.
+
+The first complete lifecycle pass took 16.2 seconds in Docker and 122 seconds
+in the installed VM, using the unchanged checksum-verified 0.6.0 packages above.
+Focused common lifecycle/Host regression tests passed (29 tests). Standalone
+strict integration-test type checking passed. Worker type checking retains its
+five CUA/MCP baseline errors; the protocol public-surface test retains its seven
+unreviewed baseline exports. The required repository check retains the same
+`agentOperations` audit mismatch.
+
+Native Server OS contracts passed (two tests), as did the complete 292-command
+fixture comparison and command-boundary comparison. The full mutation comparison
+matched all 234,912 cases, then failed its existing coverage receipt: the stale
+`worker-command-task-model` registration names a schema that is unreachable from
+both the current command graph and the preceding 285-command graph. The receipt
+executed 98 of 99 registrations. That unrelated Task registration was preserved;
+this is not a claim that the entire Native contract suite is green.
+
+This checkpoint supplies the Worker lifecycle, not the Server Run API or header
+source picker. Canonical captured runtime records and product routing remain
+the next block. Evidence is under ignored `artifacts/phase3-run-lifecycle/`.
