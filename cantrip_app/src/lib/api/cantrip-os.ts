@@ -1,0 +1,180 @@
+import { z } from "zod";
+import {
+  cantripOsAttachSchema,
+  cantripOsBindingCreateSchema,
+  cantripOsInspectSchema,
+  cantripOsInstanceSummarySchema,
+  cantripOsObservedInstanceSchema,
+  cantripOsOperationResultSchema,
+  cantripOsSourceBindingSummarySchema,
+  cantripOsWorkspaceSummarySchema,
+  cantripOsWorkspaceCreateSchema,
+  cantripOsProvisionRequestContentSchema,
+  type CantripOsSourceBindingSummary,
+  type CantripOsProvisionIntent,
+} from "@cantrip/protocol";
+import { request, CantripApiError } from "@/lib/api-client";
+import {
+  getClientSessionIdentitySnapshot,
+  clientSessionIdentityMatches,
+} from "@/lib/client-session";
+import { ensureRepositoryWorkerEncryption } from "@/lib/repository-worker-encryption";
+import { protectRepositoryOperationContent } from "@/lib/repository-operation-encryption";
+import { getWorkers, refreshWorkerEncryption } from "./worker-wire";
+
+const route = (value: string) => encodeURIComponent(value);
+const project = (id: string) =>
+  `/api/projects/${route(id)}/cantrip-os/bindings`;
+const refreshed = z.object({
+  instance: cantripOsInstanceSummarySchema,
+  workspaces: z.array(cantripOsWorkspaceSummarySchema),
+});
+
+/** Mutations are bound to one authenticated lifetime and never replayed for
+ * connection or CSRF recovery. Provision admissions are recovered by identity. */
+async function mutate<T>(
+  path: string,
+  body: unknown,
+  schema: { parse(value: unknown): T },
+) {
+  const identity = getClientSessionIdentitySnapshot();
+  if (!identity)
+    throw new CantripApiError("An authenticated session is required.", 401);
+  return schema.parse(
+    await request(
+      path,
+      { method: "POST", body: JSON.stringify(body) },
+      { expectedIdentity: identity, allowCsrfRecovery: false },
+    ),
+  );
+}
+export async function getCantripOsInstances() {
+  return z
+    .array(cantripOsInstanceSummarySchema)
+    .parse(await request("/api/cantrip-os"));
+}
+export async function inspectCantripOs(
+  input: z.input<typeof cantripOsInspectSchema>,
+) {
+  return mutate(
+    "/api/cantrip-os/inspect",
+    cantripOsInspectSchema.parse(input),
+    cantripOsObservedInstanceSchema,
+  );
+}
+export async function attachCantripOs(
+  input: z.input<typeof cantripOsAttachSchema>,
+) {
+  return mutate(
+    "/api/cantrip-os/attach",
+    cantripOsAttachSchema.parse(input),
+    refreshed,
+  );
+}
+export async function refreshCantripOs(instanceId: string) {
+  return mutate(`/api/cantrip-os/${route(instanceId)}/refresh`, {}, refreshed);
+}
+export async function getCantripOsWorkspaces(instanceId: string) {
+  return z
+    .array(cantripOsWorkspaceSummarySchema)
+    .parse(await request(`/api/cantrip-os/${route(instanceId)}/workspaces`));
+}
+export async function createCantripOsWorkspace(
+  instanceId: string,
+  input: z.input<typeof cantripOsWorkspaceCreateSchema>,
+) {
+  return mutate(
+    `/api/cantrip-os/${route(instanceId)}/workspaces`,
+    cantripOsWorkspaceCreateSchema.parse(input),
+    cantripOsOperationResultSchema,
+  );
+}
+export async function getCantripOsBindings(projectId: string) {
+  return z
+    .array(cantripOsSourceBindingSummarySchema)
+    .parse(await request(project(projectId)));
+}
+export async function createCantripOsBinding(
+  projectId: string,
+  input: z.input<typeof cantripOsBindingCreateSchema>,
+) {
+  return mutate(
+    project(projectId),
+    cantripOsBindingCreateSchema.parse(input),
+    cantripOsSourceBindingSummarySchema,
+  );
+}
+export async function recoverCantripOsBinding(
+  projectId: string,
+  bindingId: string,
+) {
+  return mutate(
+    `${project(projectId)}/${route(bindingId)}/recover`,
+    {},
+    cantripOsOperationResultSchema,
+  );
+}
+export async function verifyCantripOsBinding(
+  projectId: string,
+  bindingId: string,
+) {
+  return mutate(
+    `${project(projectId)}/${route(bindingId)}/verify`,
+    {},
+    cantripOsSourceBindingSummarySchema,
+  );
+}
+
+/** Prepare once. Keep this closure while its outcome is uncertain; the recover
+ * endpoint observes the Server's saved admission without a second mutation. */
+export async function prepareCantripOsProvision(
+  binding: CantripOsSourceBindingSummary,
+  intent: CantripOsProvisionIntent,
+) {
+  const identity = getClientSessionIdentitySnapshot();
+  if (!identity)
+    throw new CantripApiError("An authenticated session is required.", 401);
+  const worker = (await getWorkers()).find(
+    (worker) => worker.workerId === binding.workerId,
+  );
+  await ensureRepositoryWorkerEncryption({
+    refresh: refreshWorkerEncryption,
+    worker,
+  });
+  const operationId = crypto.randomUUID();
+  const protectedRequest = await protectRepositoryOperationContent({
+    context: {
+      projectId: binding.projectId,
+      worktreeId: binding.worktreeId,
+      operationId,
+      direction: "request",
+    },
+    schema: cantripOsProvisionRequestContentSchema,
+    content: {
+      type: "cantrip-os.source.provision",
+      instanceId: binding.instanceId,
+      workspaceId: binding.workspaceId,
+      bindingId: binding.id,
+      bindingGeneration: binding.bindingGeneration,
+      intent,
+    },
+  });
+  if (!clientSessionIdentityMatches(identity))
+    throw new CantripApiError(
+      "The account or server changed while preparing this source.",
+      409,
+    );
+  const body = JSON.stringify({
+    operationId,
+    bindingGeneration: binding.bindingGeneration,
+    protectedRequest,
+  });
+  return async () =>
+    cantripOsOperationResultSchema.parse(
+      await request(
+        `${project(binding.projectId)}/${route(binding.id)}/provision`,
+        { method: "POST", body },
+        { expectedIdentity: identity, allowCsrfRecovery: false },
+      ),
+    );
+}

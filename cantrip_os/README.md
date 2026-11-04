@@ -19,8 +19,8 @@ The [source backend](SOURCES.md) now materializes linked Docker worktrees and
 Linux-owned checkouts/worktrees, including explicit Linux dependency overlays.
 The [authorized dispatch APIs](DISPATCH.md) and [native runtime adapter](NATIVE_RUNTIME.md)
 are available as internal checkpoints, including captured placement for new agent
-chats. The client attachment/selection workflow and remaining product surfaces
-are still being implemented.
+chats. The [client attachment/selection workflow](PRODUCT_WORKFLOW.md) is available
+in Project Settings → CantripOS. Remaining product surfaces are still being implemented.
 Its current package/transport cycle is opt-in with `CANTRIP_OS_EXECUTOR=1`;
 Cantrip project selection and full agent placement are subsequent cycles.
 

@@ -119,6 +119,7 @@ export async function prepareConversationCreation(
   projectId: string,
   title = "New agent",
   autoTitle = true,
+  placement?: { cantripOsBindingId: string; worktreeMode: "pinned" },
 ) {
   const captured = identity();
   const id = crypto.randomUUID();
@@ -130,6 +131,7 @@ export async function prepareConversationCreation(
       titleProtection,
       autoTitle,
       attachToTabLayout: false,
+      ...placement,
     }),
   );
   return async () => {

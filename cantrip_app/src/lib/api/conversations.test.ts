@@ -341,3 +341,31 @@ it("does not reconcile or retry a fork into a changed account", async () => {
   await expect(run()).rejects.toThrow("account or server changed");
   expect(mocks.request).toHaveBeenCalledTimes(1);
 });
+
+it("captures a selected Linux binding in the same encrypted creation identity", async () => {
+  mocks.protect.mockResolvedValue(chat("seed").titleProtection);
+  const bindingId = "00000000-0000-4000-8000-000000000044";
+  const create = await prepareConversationCreation(
+    "project/id",
+    "Linux",
+    false,
+    {
+      cantripOsBindingId: bindingId,
+      worktreeMode: "pinned",
+    },
+  );
+  mocks.request.mockRejectedValue(new TypeError("reply lost"));
+  await expect(create()).rejects.toThrow("reply lost");
+  await expect(create()).rejects.toThrow("reply lost");
+  expect(mocks.request.mock.calls[0]).toEqual(mocks.request.mock.calls[1]);
+  expect(JSON.parse(mocks.request.mock.calls[0]![1].body)).toMatchObject({
+    cantripOsBindingId: bindingId,
+    worktreeMode: "pinned",
+    autoTitle: false,
+    attachToTabLayout: false,
+  });
+  expect(mocks.request.mock.calls[0]![2]).toEqual({
+    expectedIdentity: identity,
+    allowCsrfRecovery: false,
+  });
+});

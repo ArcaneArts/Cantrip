@@ -84,6 +84,7 @@ import { updateProjectWorktreePolicy } from "@/lib/project-encryption";
 import { ProjectAutomationsSettings } from "./project-automations-settings";
 import { ProjectArchiveSettings } from "./project-archive-settings";
 import { ProjectReplicaSettings } from "./project-replica-settings";
+import { CantripOsSettings } from "./cantrip-os-settings";
 import { ExternalChatImportSettings } from "./external-chat-import";
 import { ProjectExportSettings } from "./project-export-settings";
 import { ProjectGithubConversion } from "./project-github-conversion";
@@ -102,6 +103,7 @@ export type ProjectSettingsSection =
   | "archive"
   | "automations"
   | "replicas"
+  | "cantrip-os"
   | "worktrees"
   | "tunnels"
   | "skills"
@@ -184,6 +186,21 @@ export const projectSettingsSections: readonly SettingsNavigationSection<Project
           label: "Worker replicas",
           description: "Manage source copies across connected workers.",
           keywords: ["sync clone machine"],
+        },
+      ],
+    },
+    {
+      id: "cantrip-os",
+      label: "CantripOS",
+      description: "Linux execution workspaces",
+      icon: SquareTerminal,
+      searchItems: [
+        {
+          id: "cantrip-os-sources",
+          label: "CantripOS sources",
+          description:
+            "Attach Linux, bind project files, and start a Linux agent.",
+          keywords: ["docker linux desktop workspace"],
         },
       ],
     },
@@ -732,6 +749,14 @@ export function ProjectSettingsPage({
             ) : null}
             {section === "replicas" ? (
               <ProjectReplicaSettings project={project} workers={workers} />
+            ) : null}
+            {section === "cantrip-os" ? (
+              <CantripOsSettings
+                project={project}
+                workers={workers}
+                worktrees={worktrees}
+                onOpenAgent={onOpenImportedChat}
+              />
             ) : null}
             {section === "policies" ? (
               <div
