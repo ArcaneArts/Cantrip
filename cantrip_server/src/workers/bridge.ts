@@ -485,7 +485,7 @@ export class WorkerBridge implements WorkerCommandBus {
     if (!pending || pending.workerId !== workerId) return;
     if (event.type === "inference.command-state") {
       pending.deadline.observe(event.sequence, event.state);
-      if (!pending.forwardInferenceTiming) return;
+      if (!pending.forwardInferenceTiming && event.admitted !== true) return;
     }
     if (!pending.onEvent) return;
     const eventQueue = pending.eventQueue.then(() => pending.onEvent?.(event));
@@ -785,6 +785,7 @@ export class WorkerBridge implements WorkerCommandBus {
       kind: "request",
       requestId,
       command,
+      inferenceAdmissionAck: true,
     });
 
     return new Promise((resolve, reject) => {

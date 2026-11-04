@@ -90,6 +90,7 @@ export class LimitedWorkerCommandBus implements WorkerCommandBus {
   readonly #ordinary: CommandLane;
   readonly #control: CommandLane;
   readonly #ownerIds = new Map<string, string>();
+  #activeRequests = 0;
   #failedRequests = 0;
   #routedRequests = 0;
   #succeededRequests = 0;
@@ -130,9 +131,7 @@ export class LimitedWorkerCommandBus implements WorkerCommandBus {
   stats(): WorkerCommandBusStats {
     const delegate = this.delegate.stats?.();
     return {
-      activeRequests:
-        this.#ordinary.accountActive.total() +
-        this.#control.accountActive.total(),
+      activeRequests: this.#activeRequests,
       connectedWorkers: delegate?.connectedWorkers ?? 0,
       failedRequests: this.#failedRequests,
       routedRequests: this.#routedRequests,
@@ -273,32 +272,42 @@ export class LimitedWorkerCommandBus implements WorkerCommandBus {
       );
     }
     this.#routedRequests += 1;
+    this.#activeRequests += 1;
+    let admissionReleased = false;
+    const releaseAdmission = () => {
+      if (admissionReleased) return;
+      admissionReleased = true;
+      releaseWorker();
+      releaseAccount();
+    };
     try {
-      const delegatedOptions =
-        options?.onEvent && this.options.consumeRelayBytes
-          ? {
-              ...options,
+      const delegatedOptions: WorkerRequestOptions = {
+        ...options,
+        ownerId,
+        onEvent: async (event) => {
+          // Only a correlated durable worker ACK transfers transport admission.
+          // The RPC, bandwidth quotas, stream and final outcome retain their
+          // existing lifetime; this is not a server-owned provider semaphore.
+          if (event.type === "inference.command-state" && event.admitted)
+            releaseAdmission();
+          if (
+            this.options.consumeRelayBytes &&
+            !this.options.consumeRelayBytes(
               ownerId,
-              onEvent: async (
-                event: Parameters<
-                  NonNullable<WorkerRequestOptions["onEvent"]>
-                >[0],
-              ) => {
-                if (
-                  !this.options.consumeRelayBytes!(
-                    ownerId,
-                    workerId,
-                    serializedJsonBytes(event),
-                  )
-                ) {
-                  throw new RelayLimitError(
-                    "Relay bandwidth quota reached. Retry later.",
-                  );
-                }
-                await options.onEvent!(event);
-              },
-            }
-          : { ...options, ownerId };
+              workerId,
+              serializedJsonBytes(event),
+            )
+          )
+            throw new RelayLimitError(
+              "Relay bandwidth quota reached. Retry later.",
+            );
+          if (
+            event.type !== "inference.command-state" ||
+            options?.forwardInferenceTiming
+          )
+            await options?.onEvent?.(event);
+        },
+      };
       const result = await this.delegate.request(
         workerId,
         command,
@@ -322,8 +331,8 @@ export class LimitedWorkerCommandBus implements WorkerCommandBus {
       this.#failedRequests += 1;
       throw error;
     } finally {
-      releaseWorker();
-      releaseAccount();
+      releaseAdmission();
+      this.#activeRequests -= 1;
     }
   }
 

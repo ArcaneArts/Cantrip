@@ -240,6 +240,8 @@ export const workerEventSchema = z.discriminatedUnion("type", [
       type: z.literal("inference.command-state"),
       sequence: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
       state: z.enum(["waiting", "preparing", "running"]),
+      /** The correlated operation is durably owned by worker admission. */
+      admitted: z.literal(true).optional(),
     })
     .strict(),
   z

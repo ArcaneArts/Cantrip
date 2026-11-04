@@ -17,7 +17,7 @@ use std::{
     collections::HashMap,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     time::Duration,
 };
@@ -198,6 +198,7 @@ struct State {
     failed: f64,
     routed: f64,
     succeeded: f64,
+    active_requests: usize,
 }
 pub struct LimitedCommandBus {
     dispatch: Arc<tokio::sync::Mutex<()>>,
@@ -210,17 +211,30 @@ pub struct LimitedCommandBus {
     drained: Notify,
 }
 struct ActiveRequest {
+    admission: Arc<AdmissionPermit>,
+}
+struct AdmissionPermit {
     bus: Arc<LimitedCommandBus>,
     owner: String,
     worker: String,
     lane: usize,
+    released: AtomicBool,
 }
-impl Drop for ActiveRequest {
-    fn drop(&mut self) {
+impl AdmissionPermit {
+    fn release(&self) {
+        if self.released.swap(true, Ordering::AcqRel) {
+            return;
+        }
         let mut state = self.bus.state.lock().unwrap();
         let lane = &mut state.lanes[self.lane];
         lane.worker_active.release(&self.worker);
         lane.account_active.release(&self.owner);
+    }
+}
+impl Drop for ActiveRequest {
+    fn drop(&mut self) {
+        self.admission.release();
+        self.admission.bus.state.lock().unwrap().active_requests -= 1;
     }
 }
 struct RequestTask(Arc<LimitedCommandBus>);
@@ -319,6 +333,7 @@ impl LimitedCommandBus {
                 failed: 0.0,
                 routed: 0.0,
                 succeeded: 0.0,
+                active_requests: 0,
             }),
             tasks: AtomicUsize::new(0),
             drained: Notify::new(),
@@ -327,11 +342,7 @@ impl LimitedCommandBus {
     pub fn stats(&self) -> CommandStats {
         let state = self.state.lock().unwrap();
         CommandStats {
-            active_requests: state
-                .lanes
-                .iter()
-                .map(|lane| lane.account_active.total())
-                .sum(),
+            active_requests: state.active_requests,
             connected_workers: self.delegate.stats().connected_workers,
             failed_requests: state.failed,
             routed_requests: state.routed,
@@ -431,11 +442,15 @@ impl LimitedCommandBus {
             return Err(CommandFailure::Limit(error.before_dispatch()));
         }
         state.routed += 1.0;
+        state.active_requests += 1;
         Ok(ActiveRequest {
-            bus: self.clone(),
-            owner: owner.into(),
-            worker: worker.identity.clone(),
-            lane: lane_index,
+            admission: Arc::new(AdmissionPermit {
+                bus: self.clone(),
+                owner: owner.into(),
+                worker: worker.identity.clone(),
+                lane: lane_index,
+                released: AtomicBool::new(false),
+            }),
         })
     }
     async fn run(
@@ -458,22 +473,30 @@ impl LimitedCommandBus {
         };
         let permit = self.admit(&owner, &worker, &command)?;
         let event_limit = Arc::new(Mutex::new(None));
-        let on_event = on_event.map(|handler| {
+        let on_event = Some({
+            let handler = on_event;
+            let admission = permit.admission.clone();
             let quotas = self.quotas.clone();
             let clock = self.clock.clone();
             let owner = owner.clone();
             let worker = worker.identity.clone();
             let event_limit = event_limit.clone();
             Arc::new(move |event: Value| {
-                let (quotas, clock, owner, worker, handler, event_limit) = (
+                let (quotas, clock, owner, worker, handler, event_limit, admission) = (
                     quotas.clone(),
                     clock.clone(),
                     owner.clone(),
                     worker.clone(),
                     handler.clone(),
                     event_limit.clone(),
+                    admission.clone(),
                 );
                 Box::pin(async move {
+                    if event["type"] == "inference.command-state"
+                        && event["admitted"].as_bool() == Some(true)
+                    {
+                        admission.release();
+                    }
                     if !quotas.consume_relay_at(
                         &owner,
                         &worker,
@@ -491,7 +514,13 @@ impl LimitedCommandBus {
                             encoding_error: None,
                         });
                     }
-                    handler(event).await
+                    // Private admission/clock events never enter domain streams.
+                    if event["type"] != "inference.command-state" {
+                        if let Some(handler) = handler {
+                            handler(event).await?;
+                        }
+                    }
+                    Ok(())
                 }) as BoxFuture<'static, Result<(), CommandError>>
             }) as EventHandler
         });

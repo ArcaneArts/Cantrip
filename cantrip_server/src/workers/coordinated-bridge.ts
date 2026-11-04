@@ -725,7 +725,8 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
         if (!event.success) return;
         if (event.data.type === "inference.command-state") {
           pending.deadline.observe(event.data.sequence, event.data.state);
-          if (!pending.forwardInferenceTiming) return;
+          if (!pending.forwardInferenceTiming && event.data.admitted !== true)
+            return;
         }
         if (!pending.onEvent) return;
         const eventQueue = pending.eventQueue.then(() =>
