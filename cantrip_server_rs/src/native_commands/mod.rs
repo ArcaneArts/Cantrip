@@ -28,6 +28,7 @@ pub mod settings_state;
 mod settlement;
 mod thread_observation;
 pub mod transaction;
+mod transport_evidence;
 pub mod turns;
 mod undispatched_gui;
 use crate::database::Database;

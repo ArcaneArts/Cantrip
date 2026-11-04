@@ -45,6 +45,18 @@ impl Repository {
         generation: &str,
         status: &str,
     ) -> Result<bool> {
+        self.finish_logical_gui_with_transport(owner, worker, root, generation, status, false)
+            .await
+    }
+    pub async fn finish_logical_gui_with_transport(
+        &self,
+        owner: &str,
+        worker: &str,
+        root: &str,
+        generation: &str,
+        status: &str,
+        transport_ended: bool,
+    ) -> Result<bool> {
         let (owner, worker, root, generation, status) = (
             owner.to_owned(),
             worker.to_owned(),
@@ -55,7 +67,16 @@ impl Repository {
         self.database
             .transaction(|tx| {
                 Box::pin(async move {
-                    outcomes::finish(tx, &owner, &worker, &root, &generation, &status).await
+                    outcomes::finish(
+                        tx,
+                        &owner,
+                        &worker,
+                        &root,
+                        &generation,
+                        &status,
+                        transport_ended,
+                    )
+                    .await
                 })
             })
             .await

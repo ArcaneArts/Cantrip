@@ -1,14 +1,15 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
-
-/** Opaque canonical identities only. Never include prompts, titles or credentials. */
-export interface InferenceRecoveryIdentity {
-  commandId?: string | null;
-  commandGeneration?: string | null;
-  messageId?: string | null;
-  threadId?: string | null;
-  turnId?: string | null;
-}
+import {
+  inferenceJournalIdentitySchema as identitySchema,
+  inferenceJournalRecordSchema as recordSchema,
+  type InferenceRecoveryIdentity,
+  type InferenceJournalRecord,
+} from "@cantrip/protocol";
+export type {
+  InferenceRecoveryIdentity,
+  InferenceJournalRecord,
+} from "@cantrip/protocol";
 
 export function recoveryIdentity(
   value?: InferenceRecoveryIdentity | null,
@@ -22,55 +23,6 @@ export function recoveryIdentity(
   ]);
 }
 
-const identifier = z
-  .string()
-  .min(1)
-  .max(4_096)
-  .refine(
-    (value) => Buffer.from(value, "utf8").toString("utf8") === value,
-    "Admission identifiers must be valid Unicode.",
-  );
-const recoverySchema = z
-  .object({
-    commandId: identifier.nullable().optional(),
-    commandGeneration: identifier.nullable().optional(),
-    messageId: identifier.nullable().optional(),
-    threadId: identifier.nullable().optional(),
-    turnId: identifier.nullable().optional(),
-  })
-  .strict();
-const identitySchema = z
-  .object({
-    operationId: identifier,
-    providerId: identifier,
-    runtimeGeneration: z.uuid(),
-    recoveryKey: identifier.nullable(),
-    recovery: recoverySchema.nullable(),
-    chatId: identifier.nullable(),
-    projectId: identifier.nullable(),
-  })
-  .strict();
-const recordSchema = z
-  .object({
-    key: z.string().regex(/^[a-f0-9]{64}$/u),
-    identity: identitySchema,
-    workerGeneration: z.uuid(),
-    state: z.enum(["waiting", "granted", "released"]),
-    order: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
-    revision: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
-    everGranted: z.boolean(),
-    outcome: z
-      .enum([
-        "completed",
-        "failed",
-        "interrupted",
-        "runtime-exited",
-        "never-started",
-        "cancelled",
-      ])
-      .nullable(),
-  })
-  .strict();
 const snapshotSchema = z
   .object({
     version: z.literal(1),
@@ -79,9 +31,14 @@ const snapshotSchema = z
   })
   .strict();
 
-export type InferenceJournalRecord = z.infer<typeof recordSchema>;
 export type InferenceJournalMutation =
   | { action: "enqueue"; key: string; identity: z.infer<typeof identitySchema> }
+  | {
+      action: "adopt";
+      key: string;
+      identity: z.infer<typeof identitySchema>;
+      previous: InferenceRecoveryReference[];
+    }
   | { action: "grant" | "requeue"; key: string }
   | {
       action: "release";
@@ -90,8 +47,15 @@ export type InferenceJournalMutation =
     };
 export type InferenceJournalCommand =
   | { action: "snapshot" }
+  | { action: "forget"; previous: InferenceRecoveryReference }
   | InferenceJournalMutation
   | { action: "batch"; commands: InferenceJournalMutation[] };
+
+interface InferenceRecoveryReference {
+  key: string;
+  workerGeneration: string;
+  revision: number;
+}
 
 /** Serial durable metadata operations travel over the existing lifetime keeper.
  * The keeper's exclusive OS ownership also fences journal writers on takeover. */
@@ -102,7 +66,7 @@ export class WorkerInferenceJournal {
   private readonly queuedWrites: Array<{
     command: InferenceJournalMutation;
     bytes: number;
-    resolve(): void;
+    resolve(record: InferenceJournalRecord): void;
     reject(error: unknown): void;
   }> = [];
   private scheduled = false;
@@ -138,31 +102,143 @@ export class WorkerInferenceJournal {
       .digest("hex");
   }
 
-  async enqueue(
+  enqueue(
     key: string,
     identity: z.infer<typeof identitySchema>,
-  ): Promise<void> {
-    await this.write({
+  ): Promise<InferenceJournalRecord> {
+    return this.write({
       action: "enqueue",
       key,
       identity: identitySchema.parse(identity),
     });
   }
-  grant(key: string): Promise<void> {
+  grant(key: string): Promise<InferenceJournalRecord> {
     return this.write({ action: "grant", key });
   }
-  requeue(key: string): Promise<void> {
+  requeue(key: string): Promise<InferenceJournalRecord> {
     return this.write({ action: "requeue", key });
   }
   release(
     key: string,
     outcome: NonNullable<InferenceJournalRecord["outcome"]>,
-  ): Promise<void> {
+  ): Promise<InferenceJournalRecord> {
     return this.write({ action: "release", key, outcome });
   }
 
-  private write(command: InferenceJournalMutation): Promise<void> {
-    const pending = new Promise<void>((resolve, reject) => {
+  async adopt(
+    key: string,
+    identity: z.infer<typeof identitySchema>,
+    previous: readonly InferenceJournalRecord[],
+    retainedOrder: number | null = null,
+    signal?: AbortSignal,
+  ): Promise<InferenceJournalRecord> {
+    const validatedIdentity = identitySchema.parse(identity);
+    // Persist the oldest same-provider ordinal in the first chunk. Every later
+    // chunk retains that replacement while acknowledging more physical aliases.
+    const ordered = [...previous].sort(
+      (a, b) =>
+        Number(b.identity.providerId === identity.providerId) -
+          Number(a.identity.providerId === identity.providerId) ||
+        a.order - b.order,
+    );
+    const baseBytes = Buffer.byteLength(
+      JSON.stringify({
+        action: "adopt",
+        key,
+        identity: validatedIdentity,
+        previous: [],
+      }),
+      "utf8",
+    );
+    const chunks: InferenceJournalRecord[][] = [];
+    let chunk: InferenceJournalRecord[] = [];
+    let bytes = baseBytes;
+    for (const item of ordered) {
+      const itemBytes = Buffer.byteLength(
+        JSON.stringify(this.reference(item)),
+        "utf8",
+      );
+      if (chunk.length && bytes + itemBytes + 1 > 60_000) {
+        chunks.push(chunk);
+        chunk = [];
+        bytes = baseBytes;
+      }
+      bytes += itemBytes + Number(chunk.length > 0);
+      chunk.push(item);
+    }
+    if (chunk.length) chunks.push(chunk);
+    const sameProvider = previous.filter(
+      (item) => item.identity.providerId === identity.providerId,
+    );
+    const orders = sameProvider.map((item) => item.order);
+    if (retainedOrder !== null) orders.push(retainedOrder);
+    const expectedOrder = orders.length
+      ? orders.reduce((a, b) => Math.min(a, b))
+      : null;
+    let record: InferenceJournalRecord | undefined;
+    for (const chunk of chunks) {
+      signal?.throwIfAborted();
+      record = await this.write({
+        action: "adopt",
+        key,
+        identity: validatedIdentity,
+        previous: chunk.map((item) => this.reference(item)),
+      });
+      if (
+        record.state !== "waiting" ||
+        record.everGranted ||
+        (expectedOrder !== null && record.order !== expectedOrder)
+      )
+        throw new Error(
+          "Inference recovery did not retain the expected queue order.",
+        );
+      const replaced = new Set(chunk.map((item) => item.key));
+      this.recovered = this.recovered.filter((item) => !replaced.has(item.key));
+    }
+    if (!record)
+      throw new Error("Inference recovery requires a source record.");
+    return record;
+  }
+
+  forget(previous: InferenceJournalRecord): Promise<void> {
+    const pending = this.request({
+      action: "forget",
+      previous: this.reference(previous),
+    }).then((result) => {
+      if (
+        !result ||
+        typeof result !== "object" ||
+        !("key" in result) ||
+        result.key !== previous.key ||
+        !("forgotten" in result) ||
+        result.forgotten !== true
+      )
+        throw new Error(
+          "Inference recovery acknowledgement did not match its record.",
+        );
+      this.recovered = this.recovered.filter(
+        (item) => item.key !== previous.key,
+      );
+    });
+    this.writes.add(pending);
+    void pending.finally(() => this.writes.delete(pending)).catch(() => {});
+    return pending;
+  }
+
+  private reference(
+    record: InferenceJournalRecord,
+  ): InferenceRecoveryReference {
+    return {
+      key: record.key,
+      workerGeneration: record.workerGeneration,
+      revision: record.revision,
+    };
+  }
+
+  private write(
+    command: InferenceJournalMutation,
+  ): Promise<InferenceJournalRecord> {
+    const pending = new Promise<InferenceJournalRecord>((resolve, reject) => {
       // Bound actual encoded frames, including the private request envelope.
       const bytes = Buffer.byteLength(JSON.stringify(command), "utf8");
       if (bytes > 60_000) {
@@ -231,7 +307,10 @@ export class WorkerInferenceJournal {
                 throw new Error(
                   "Inference journal did not acknowledge the requested transition.",
                 );
-              if (item.command.action === "enqueue") {
+              if (
+                item.command.action === "enqueue" ||
+                item.command.action === "adopt"
+              ) {
                 const expected = item.command.identity;
                 const actual = record.identity;
                 if (
@@ -248,7 +327,7 @@ export class WorkerInferenceJournal {
                     "Inference journal changed the queued operation identity.",
                   );
               }
-              item.resolve();
+              item.resolve(record);
             } catch (error) {
               item.reject(error);
             }
@@ -263,6 +342,6 @@ export class WorkerInferenceJournal {
   async flush(): Promise<void> {
     // Actual ticket settlement is independent of status/housekeeping delivery.
     // A failed durable grant never resolves the ticket's ready promise.
-    await Promise.allSettled([...this.writes]);
+    while (this.writes.size) await Promise.allSettled([...this.writes]);
   }
 }

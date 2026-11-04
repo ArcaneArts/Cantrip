@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { setTimeout as retryDelay } from "node:timers/promises";
 import {
   WorkerInferenceJournal,
   recoveryIdentity,
@@ -9,6 +10,8 @@ import type { NativeInferenceOwnership } from "./native-inference-ownership.js";
 import { observeInferenceCommand } from "./inference-command.js";
 import {
   providerInferenceConfigurationSchema,
+  inferenceNeverStarted,
+  type NativeInferenceRecoveryResult,
   type InferenceOperationStatus,
   type InferencePoolStatus,
   type InferenceTicketState,
@@ -74,6 +77,9 @@ interface Pool {
 }
 
 interface Ticket {
+  sequence: number;
+  restoredOrder: number | null;
+  recoveryPending: boolean;
   runtime: Runtime;
   pool: Pool;
   input: InferenceRequest;
@@ -93,6 +99,13 @@ interface Ticket {
   durableQueueReady: boolean;
 }
 
+interface RestoredWaiter {
+  record: InferenceJournalRecord;
+  records: InferenceJournalRecord[];
+  enqueuedAt: number;
+  claimed: Ticket | null;
+}
+
 /**
  * One instance per worker/server/owner, outside all project and runtime maps.
  * All state transitions are synchronous. Promise consumers and status observers
@@ -109,6 +122,16 @@ export class WorkerInferenceAdmission {
   private closing = false;
   private closure: Promise<void> | null = null;
   private readonly journal: WorkerInferenceJournal | null;
+  private sequence = 0;
+  private recoveryInitialized = false;
+  private readonly recoveryPending = new Map<string, string>();
+  private readonly restored = new Map<string, RestoredWaiter>();
+  private readonly recoveryLifetime = new AbortController();
+  private recoveryWork: Promise<void> | null = null;
+  private recoveryAll = false;
+  private readonly recoveryChats = new Set<string>();
+  private recoveryRetry: ReturnType<typeof setTimeout> | null = null;
+  private recoveryRetryMs = 1_000;
 
   constructor(
     private readonly scope: Pick<
@@ -118,6 +141,10 @@ export class WorkerInferenceAdmission {
     private readonly onObserverError: (error: unknown) => void,
     private readonly nativeOwnership?: NativeInferenceOwnership,
     private readonly onJournalError: (error: unknown) => void = onObserverError,
+    private readonly reconcileRecovery?: (
+      record: InferenceJournalRecord,
+      signal: AbortSignal,
+    ) => Promise<NativeInferenceRecoveryResult>,
   ) {
     this.journal = nativeOwnership
       ? new WorkerInferenceJournal(scope.workerGeneration, (command) =>
@@ -132,9 +159,13 @@ export class WorkerInferenceAdmission {
   close(): Promise<void> {
     if (this.closure) return this.closure;
     this.closing = true;
+    this.recoveryLifetime.abort(new Error("Inference ownership is retiring."));
+    if (this.recoveryRetry) clearTimeout(this.recoveryRetry);
+    this.recoveryRetry = null;
     this.closure = (async () => {
       const retired = [...this.runtimes].map((runtime) => this.retire(runtime));
       await Promise.all(retired);
+      await this.recoveryWork?.catch(() => {});
       await this.journal?.flush();
       await this.nativeOwnership?.close();
     })();
@@ -215,6 +246,7 @@ export class WorkerInferenceAdmission {
             runtime.generation,
           );
           await this.journal?.initialize();
+          this.initializeRecovery();
           if (this.closing || runtime.retiring || runtime.retired)
             throw new Error("The inference runtime was retired during launch.");
           runtime.prepared = true;
@@ -239,6 +271,7 @@ export class WorkerInferenceAdmission {
   snapshot(): WorkerInferenceStatus {
     const pools: InferencePoolStatus[] = [];
     for (const pool of this.pools.values()) {
+      const queued = this.queueEntries(pool);
       const suspended = [...this.runtimes].flatMap((runtime) =>
         [...runtime.records.values()].filter(
           (ticket) => ticket.pool === pool && ticket.state === "suspended",
@@ -247,10 +280,29 @@ export class WorkerInferenceAdmission {
       pools.push({
         ...pool.configuration,
         activeCount: pool.active.size,
-        queuedCount: pool.queue.length,
-        operations: [...pool.active, ...pool.queue, ...suspended].map(
-          (ticket) => this.status(ticket),
-        ),
+        queuedCount: queued.length,
+        operations: [
+          ...[...pool.active].map((ticket) => this.status(ticket)),
+          ...queued.map((entry, index) =>
+            entry.ticket
+              ? this.status(entry.ticket, index + 1)
+              : {
+                  purpose: "turn" as const,
+                  operationId: entry.waiter!.record.identity.operationId,
+                  runtimeGeneration:
+                    entry.waiter!.record.identity.runtimeGeneration,
+                  providerId: pool.configuration.providerId,
+                  chatId: entry.waiter!.record.identity.chatId,
+                  projectId: entry.waiter!.record.identity.projectId,
+                  state: "waiting" as const,
+                  queuePosition: index + 1,
+                  enqueuedAt: entry.waiter!.enqueuedAt,
+                  grantedAt: null,
+                  startedAt: null,
+                },
+          ),
+          ...suspended.map((ticket) => this.status(ticket)),
+        ],
       });
     }
     return { ...this.scope, revision: this.revision, pools };
@@ -300,6 +352,9 @@ export class WorkerInferenceAdmission {
     // Admission can be cancelled before its owner starts awaiting it.
     void ready.catch(() => {});
     const ticket: Ticket = {
+      sequence: ++this.sequence,
+      restoredOrder: null,
+      recoveryPending: false,
       runtime,
       pool,
       input: {
@@ -349,7 +404,7 @@ export class WorkerInferenceAdmission {
         })
         .then(() => {
           if (ticket.state !== "waiting") return;
-          ticket.durableQueueReady = true;
+          ticket.durableQueueReady = !ticket.recoveryPending;
           this.drain(pool);
           this.changed();
         })
@@ -369,6 +424,7 @@ export class WorkerInferenceAdmission {
       ticket.stopListening = () => signal.removeEventListener("abort", cancel);
       if (signal.aborted) cancel();
     }
+    this.adoptRestorations();
     this.drain(pool);
     ticket.observe?.(ticket.state);
     this.changed();
@@ -407,10 +463,10 @@ export class WorkerInferenceAdmission {
     }
     this.release(
       ticket,
-      ticket.runtime.retiring
-        ? "runtime-exited"
-        : ticket.startedAt === null
-          ? "never-started"
+      ticket.startedAt === null
+        ? "never-started"
+        : ticket.runtime.retiring
+          ? "runtime-exited"
           : "interrupted",
     );
     ticket.reject(reason);
@@ -449,6 +505,8 @@ export class WorkerInferenceAdmission {
       })
       .catch(() => {});
     ticket.state = "waiting";
+    ticket.sequence = ++this.sequence;
+    ticket.restoredOrder = null;
     ticket.enqueuedAt = Date.now();
     ticket.durableQueueReady = !this.journal;
     ticket.pool.queue.push(ticket);
@@ -506,6 +564,10 @@ export class WorkerInferenceAdmission {
   private drain(pool: Pool): void {
     if (
       this.closing ||
+      (this.journal && this.reconcileRecovery && !this.recoveryInitialized) ||
+      [...this.recoveryPending.values()].includes(
+        pool.configuration.providerId,
+      ) ||
       (this.nativeOwnership && !this.nativeOwnership.available)
     )
       return;
@@ -515,9 +577,11 @@ export class WorkerInferenceAdmission {
     ) {
       // An asynchronous metadata write cannot let a newer waiter bypass the
       // head. Install the reservation before starting its durable grant write.
-      const ticket = pool.queue[0]!;
+      const entry = this.queueEntries(pool)[0];
+      if (!entry?.ticket) break;
+      const ticket = entry.ticket;
       if (!ticket.durableQueueReady) break;
-      pool.queue.shift();
+      pool.queue.splice(pool.queue.indexOf(ticket), 1);
       if (ticket.state !== "waiting") continue;
       ticket.state = "granted";
       ticket.grantedAt = Date.now();
@@ -593,7 +657,7 @@ export class WorkerInferenceAdmission {
     this.changed();
   }
 
-  private status(ticket: Ticket): InferenceOperationStatus {
+  private status(ticket: Ticket, position?: number): InferenceOperationStatus {
     return {
       purpose: ticket.input.purpose ?? "helper",
       operationId: ticket.input.operationId,
@@ -604,12 +668,292 @@ export class WorkerInferenceAdmission {
       state: ticket.state,
       queuePosition:
         ticket.state === "waiting"
-          ? ticket.pool.queue.indexOf(ticket) + 1
+          ? (position ??
+            this.queueEntries(ticket.pool).findIndex(
+              (entry) => entry.ticket === ticket,
+            ) + 1)
           : null,
       enqueuedAt: ticket.enqueuedAt,
       grantedAt: ticket.grantedAt,
       startedAt: ticket.startedAt,
     };
+  }
+
+  private queueEntries(pool: Pool) {
+    const entries: Array<{
+      ticket: Ticket | null;
+      waiter: RestoredWaiter | null;
+      order: number;
+      sequence: number;
+    }> = pool.queue.map((ticket) => ({
+      ticket,
+      waiter: null,
+      order: ticket.restoredOrder ?? Infinity,
+      sequence: ticket.sequence,
+    }));
+    for (const waiter of new Set(this.restored.values())) {
+      if (
+        waiter.record.identity.providerId !== pool.configuration.providerId ||
+        (waiter.claimed && waiter.claimed.state !== "released")
+      )
+        continue;
+      entries.push({
+        ticket: null,
+        waiter,
+        order: waiter.record.order,
+        sequence: 0,
+      });
+    }
+    return entries.sort((a, b) => a.order - b.order || a.sequence - b.sequence);
+  }
+
+  private recoverable(record: InferenceJournalRecord): boolean {
+    const identity = record.identity.recovery;
+    return (
+      inferenceNeverStarted(record) &&
+      Boolean(
+        record.identity.chatId &&
+        identity?.commandId &&
+        identity.commandGeneration &&
+        identity.messageId &&
+        record.identity.operationId === identity.commandGeneration,
+      )
+    );
+  }
+
+  private initializeRecovery(): void {
+    if (this.recoveryInitialized) return;
+    if (this.reconcileRecovery)
+      for (const record of this.journal?.recoverySnapshot() ?? [])
+        if (this.recoverable(record))
+          this.recoveryPending.set(record.key, record.identity.providerId);
+    this.recoveryInitialized = true;
+    this.wakeRecovery();
+  }
+
+  /** Existing queue/reconnect notifications wake metadata reconciliation only. */
+  wakeRecovery(chatId?: string): void {
+    if (
+      !this.recoveryInitialized ||
+      !this.journal ||
+      !this.reconcileRecovery ||
+      this.closing
+    )
+      return;
+    if (chatId) this.recoveryChats.add(chatId);
+    else this.recoveryAll = true;
+    if (this.recoveryWork) return;
+    this.recoveryWork = this.refreshRecovery().finally(() => {
+      this.recoveryWork = null;
+      if (this.recoveryAll || this.recoveryChats.size) this.wakeRecovery();
+    });
+    void this.recoveryWork.catch((error) => this.reportJournalError(error));
+  }
+
+  private async refreshRecovery(): Promise<void> {
+    let failed = false;
+    do {
+      const all = this.recoveryAll;
+      const chats = new Set(this.recoveryChats);
+      this.recoveryAll = false;
+      this.recoveryChats.clear();
+      const records = (this.journal?.recoverySnapshot() ?? []).filter(
+        (record) =>
+          this.recoverable(record) &&
+          (all || chats.has(record.identity.chatId!)),
+      );
+      let next = 0;
+      await Promise.all(
+        Array.from({ length: Math.min(4, records.length) }, async () => {
+          while (next < records.length && !this.closing) {
+            const record = records[next++]!;
+            try {
+              const result = await this.reconcileRecovery!(
+                record,
+                this.recoveryLifetime.signal,
+              );
+              if (
+                this.closing ||
+                !this.journal!.recoverySnapshot().some(
+                  (item) => item.key === record.key,
+                )
+              )
+                continue;
+              if (result.key !== record.key)
+                throw new Error(
+                  "Recovery returned another admission identity.",
+                );
+              if (result.disposition === "retired") {
+                const claimed = this.restored.get(record.key)?.claimed;
+                // An accepted replacement owns its own pause/cancel lifecycle.
+                // Do not cancel it from an older metadata snapshot or remove a
+                // source record while its durable adoption is still in flight.
+                if (claimed?.state !== "waiting") {
+                  await this.journal!.forget(record);
+                  this.removeRestoration(record.key);
+                }
+              } else if (result.disposition === "requeued") {
+                if (!this.pools.has(record.identity.providerId))
+                  this.configure({ providerId: record.identity.providerId });
+                if (!this.restored.has(record.key)) {
+                  const previous = [...new Set(this.restored.values())].find(
+                    (waiter) =>
+                      waiter.record.identity.chatId ===
+                        record.identity.chatId &&
+                      waiter.record.identity.recovery?.messageId ===
+                        record.identity.recovery?.messageId,
+                  );
+                  const waiter = previous ?? {
+                    record,
+                    records: [],
+                    enqueuedAt: Date.now(),
+                    claimed: null,
+                  };
+                  waiter.records.push(record);
+                  if (record.order < waiter.record.order)
+                    waiter.record = record;
+                  this.restored.set(record.key, waiter);
+                }
+              } else {
+                // Uncertain input is not eligible for whole-prompt replay. Keep
+                // its evidence for canonical runtime reconciliation, not a slot.
+                this.removeRestoration(record.key);
+              }
+              this.recoveryPending.delete(record.key);
+              this.adoptRestorations();
+            } catch (error) {
+              if (!this.closing) {
+                failed = true;
+                this.reportJournalError(error);
+              }
+            }
+          }
+        }),
+      );
+      for (const pool of this.pools.values()) this.drain(pool);
+      this.changed();
+    } while (!this.closing && (this.recoveryAll || this.recoveryChats.size));
+    if (failed && !this.closing && !this.recoveryRetry) {
+      this.recoveryRetry = setTimeout(() => {
+        this.recoveryRetry = null;
+        this.wakeRecovery();
+      }, this.recoveryRetryMs);
+      this.recoveryRetry.unref();
+      this.recoveryRetryMs = Math.min(this.recoveryRetryMs * 2, 30_000);
+    } else if (!failed) this.recoveryRetryMs = 1_000;
+  }
+
+  private adoptRestorations(): void {
+    for (const waiter of new Set(this.restored.values())) {
+      if (waiter.claimed) continue;
+      if (
+        this.journal!.recoverySnapshot().some(
+          (record) =>
+            this.recoveryPending.has(record.key) &&
+            record.identity.chatId === waiter.record.identity.chatId &&
+            record.identity.recovery?.messageId ===
+              waiter.record.identity.recovery?.messageId,
+        )
+      )
+        continue;
+      const ticket = [...this.pools.values()]
+        .flatMap((pool) => pool.queue)
+        .find(
+          (ticket) =>
+            ticket.state === "waiting" &&
+            ticket.startedAt === null &&
+            !ticket.recoveryPending &&
+            ticket.input.chatId === waiter.record.identity.chatId &&
+            ticket.input.recovery?.messageId ===
+              waiter.record.identity.recovery?.messageId,
+        );
+      if (!ticket?.journalKey) continue;
+      waiter.claimed = ticket;
+      ticket.recoveryPending = true;
+      ticket.durableQueueReady = false;
+      const sameProvider = waiter.records.filter(
+        (record) => record.identity.providerId === ticket.input.providerId,
+      );
+      const orders = sameProvider.map((record) => record.order);
+      if (ticket.restoredOrder !== null) orders.push(ticket.restoredOrder);
+      ticket.restoredOrder = orders.length
+        ? orders.reduce((a, b) => Math.min(a, b))
+        : null;
+      const records = [...waiter.records];
+      const identity = {
+        operationId: ticket.input.operationId,
+        providerId: ticket.input.providerId,
+        runtimeGeneration: ticket.runtime.generation,
+        recoveryKey: ticket.input.recoveryKey ?? null,
+        recovery: ticket.input.recovery ?? null,
+        chatId: ticket.input.chatId ?? null,
+        projectId: ticket.input.projectId ?? null,
+      };
+      void this.adoptWithRetry(ticket, identity, records)
+        .then(() => {
+          for (const record of records) this.removeRestoration(record.key);
+          waiter.claimed = null;
+          ticket.recoveryPending = false;
+          if (ticket.state === "waiting")
+            ticket.durableQueueReady = waiter.records.length === 0;
+          this.adoptRestorations();
+          for (const pool of this.pools.values()) this.drain(pool);
+          this.changed();
+        })
+        .catch((error) => {
+          waiter.claimed = null;
+          ticket.recoveryPending = false;
+          ticket.restoredOrder = null;
+          this.cancel(ticket, error);
+          this.reportJournalError(error);
+          this.wakeRecovery(ticket.input.chatId ?? undefined);
+        });
+    }
+  }
+
+  private async adoptWithRetry(
+    ticket: Ticket,
+    identity: Parameters<WorkerInferenceJournal["adopt"]>[1],
+    records: readonly InferenceJournalRecord[],
+  ): Promise<void> {
+    let delay = 1_000;
+    const signal = AbortSignal.any([
+      ticket.controller.signal,
+      this.recoveryLifetime.signal,
+    ]);
+    for (;;) {
+      signal.throwIfAborted();
+      if (ticket.state !== "waiting")
+        throw new Error("Recovered admission is no longer waiting.");
+      try {
+        await this.journal!.adopt(
+          ticket.journalKey!,
+          identity,
+          records,
+          ticket.restoredOrder,
+          signal,
+        );
+        return;
+      } catch (error) {
+        signal.throwIfAborted();
+        this.reportJournalError(error);
+        // An unobserved durable acknowledgement must retry the same physical
+        // identity, not create a new turn or discard the previous FIFO record.
+        await retryDelay(delay, undefined, { signal, ref: false });
+        delay = Math.min(delay * 2, 30_000);
+      }
+    }
+  }
+
+  private removeRestoration(key: string): void {
+    const waiter = this.restored.get(key);
+    this.restored.delete(key);
+    if (!waiter) return;
+    waiter.records = waiter.records.filter((record) => record.key !== key);
+    if (waiter.records.length)
+      waiter.record = waiter.records.reduce((a, b) =>
+        a.order < b.order ? a : b,
+      );
   }
 
   private changed(): void {

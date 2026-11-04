@@ -39,10 +39,13 @@ impl Settlement<'_> {
                 "protected_result",
                 "terminal_result_digest",
                 "protected_terminal_result",
-                "terminal_evidence",
             ]
             .iter()
             .any(|field| truthy(current.get(field)))
+            || (truthy(current.get("terminal_evidence"))
+                && !crate::native_commands::transport_evidence::is_transport_closure(
+                    current.get("terminal_evidence"),
+                ))
             || !truthy(input.get("protectedResult"))
             || !truthy(input.get("resultDigest"))
             || row["method"] != "turn/start"

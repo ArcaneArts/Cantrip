@@ -54,6 +54,7 @@ impl Repository {
             detach(tx,&owner,&project,&id).await?;
             let at=crate::auth::now();
             tx.query("UPDATE chats SET archived_at=$1,automation_paused=true,status='idle',updated_at=$1 WHERE id=$2",&[&at,&id]).await?;
+            crate::native_commands::queue_state_changed(tx, &id).await?;
             Ok(json!("archived"))
         })).await
     }

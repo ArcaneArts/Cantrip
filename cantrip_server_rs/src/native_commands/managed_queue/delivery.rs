@@ -17,14 +17,36 @@ impl QueueRepository {
         for row in rows {
             let chat = row.get::<String>(0)?;
             let owner = row.get::<String>(2)?;
-            if let Some(context) = crate::chats::Repository::execution_context_with(
+            let context = crate::chats::Repository::execution_context_with(
                 Executor::Database(&self.database),
                 &owner,
                 &chat,
             )
-            .await?
-            {
-                result.push(json!({"ownerId":owner,"workerId":context["workerId"],"chatId":chat,"revision":row.get::<i32>(1)?}));
+            .await?;
+            let previous = self.database.query("SELECT DISTINCT worker_id FROM native_commands WHERE owner_id=$1 AND chat_id=$2 AND rejection_code='worker-inference-deferred'", &[&owner,&chat]).await?;
+            let mut workers = Vec::new();
+            if let Some(context) = &context {
+                workers.push(text(&context["workerId"])?);
+            }
+            for row in previous {
+                let worker = row.get::<String>(0)?;
+                if !workers.contains(&worker) {
+                    workers.push(worker);
+                }
+            }
+            if !workers.is_empty() {
+                let worker = workers.remove(0);
+                let mut entry = json!({"ownerId":owner,"workerId":worker,"chatId":chat,"revision":row.get::<i32>(1)?});
+                if !workers.is_empty() {
+                    entry["additionalWorkerIds"] = Value::from_serialize(&workers);
+                }
+                if context.is_none() {
+                    entry["recoveryOnly"] = true.into();
+                }
+                result.push(entry);
+            } else {
+                self.acknowledge_notification(&chat, row.get::<i32>(1)? as f64)
+                    .await?;
             }
         }
         Ok(result)

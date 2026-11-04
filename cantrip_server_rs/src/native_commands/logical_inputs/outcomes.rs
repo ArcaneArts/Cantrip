@@ -99,12 +99,15 @@ pub(super) async fn finish(
     root: &str,
     generation: &str,
     status: &str,
+    transport_ended: bool,
 ) -> Result<bool> {
-    // Preserve the source's read before the lock, including its captured state.
+    let captured =
+        context::read(Executor::Transaction(tx), owner, worker, root, generation).await?;
+    let chat = text(&captured["chat_id"])?;
+    context::lock_chat(tx, owner, &chat).await?;
+    // A replacement or recovery can have finished while this callback waited.
     let original =
         context::read(Executor::Transaction(tx), owner, worker, root, generation).await?;
-    let chat = text(&original["chat_id"])?;
-    context::lock_chat(tx, owner, &chat).await?;
     if original["origin"] != "gui"
         || original.get("logical_operation_id") != original.get("operation_id")
     {
@@ -160,7 +163,26 @@ pub(super) async fn finish(
         Some("dispatched") => (json!("uncertain"), json!("missing-native-receipt")),
         _ => (head["status"].clone(), head["rejection_code"].clone()),
     };
-    tx.query("UPDATE native_commands SET execution_completed_at=$1,status=$2,rejection_code=$3 WHERE operation_id=$4",&[&crate::auth::now(),&text(&status)?,&super::super::admit::optional(&code)?,&text(&head["operation_id"])?]).await?;
+    let transport_evidence = if transport_ended
+        && !truthy(active.get("logical_cancelled"))
+        && matches!(head["status"].as_str(), Some("accepted" | "dispatched"))
+        && [
+            "result_digest",
+            "protected_result",
+            "terminal_result_digest",
+            "protected_terminal_result",
+            "terminal_evidence",
+        ]
+        .iter()
+        .all(|key| !truthy(head.get(key)))
+    {
+        Some(serde_json::to_string(
+            &json!({"kind":"transport-ended","source":"worker-command"}),
+        )?)
+    } else {
+        None
+    };
+    tx.query("UPDATE native_commands SET execution_completed_at=$1,status=$2,rejection_code=$3,terminal_evidence=CASE WHEN $5::text IS NULL THEN terminal_evidence ELSE $5::text::jsonb END WHERE operation_id=$4",&[&crate::auth::now(),&text(&status)?,&super::super::admit::optional(&code)?,&text(&head["operation_id"])?,&transport_evidence]).await?;
     let completed = raw_one(
         tx,
         "SELECT to_jsonb(n)::text FROM native_commands n WHERE operation_id=$1",

@@ -156,11 +156,47 @@ observer is not evidence that its accepted prompt was cancelled. Shutdown drains
 metadata delivery before releasing keeper ownership. Prior-generation snapshots
 are available to worker recovery without creating another prompt-delivery queue.
 
-This journal is the evidence layer for recovery. Canonical reconciliation,
-redelivery of eligible pending work, the restored-order barrier, and acknowledgement
-of old pending journal records remain to be integrated. Merely loading ordinals
-is not yet complete FIFO recovery across a restart. In-memory runtime/controller
-tombstones also still need the final bounded-lifecycle audit.
+Patch `0052` lets the current native keeper atomically adopt previous-generation
+records into a replacement ticket. It checks the captured generation/revision,
+positive no-start evidence, and stable canonical chat/message identity. Adoption
+preserves the oldest ordinal on the same provider; a provider change keeps the
+destination ticket's new ordinal. Multiple unstarted physical attempts for one
+canonical input become one restored waiter. The replacement is durable before
+old records disappear, including across another crash or an unobserved reply.
+Large groups are adopted in bounded frames, oldest same-provider ordinal first;
+the replacement remains waiting until every required adoption acknowledges.
+Resolved canonical records have a separately fenced, idempotent acknowledgement.
+
+Worker recovery now reconciles recorded unstarted managed GUI queue claims through
+the authenticated server. Native ownership takeover fences surviving execution
+first. Only providers with unresolved initial eligible records hold new grants;
+native startup and other providers can proceed. Verified pending inputs reserve
+their restored order until the existing canonical dispatcher delivers them. They
+appear in queue counts/positions and do not hold active inference capacity. Each
+replacement must durably adopt its order before its grant can resolve.
+
+Both servers atomically distinguish command transport loss from model/native
+completion when closing a GUI attempt. That marker alone authorizes no replay.
+Combined with exact previous-generation journal no-start evidence, it allows the
+original unconsumed canonical input to recover after the server already closed
+the lost attempt. User cancellation, consumed input, native terminal evidence,
+and later activations remain fenced. Completion callbacks re-read their logical
+root under the chat lock so a late callback cannot undo committed recovery.
+
+The server uses existing queue eligibility: pause, archive, freeze, pending
+permission/handoff, moved worker, rejected revision, and another head input cannot
+leave an ineligible restored position blocking other chats. Queue revisions notify
+current and former recovery workers, including after archive removes the normal
+execution context. Actual disconnected former owners reconcile on reconnect;
+timeouts and other delivery failures retain the existing durable notice.
+Recovery uses bounded concurrent metadata requests and retries actual failures,
+not an idle polling loop. No prompt content is copied into the journal.
+
+This is recovery of proven unstarted managed GUI inputs, not permission to replay
+potentially executed work. Granted/resumed execution still needs its canonical
+native checkpoint/terminal lifecycle. Standalone/Task recovery, current-generation
+abandoned preparations, transport admission, execution/wait accounting, and the
+final bounded runtime/controller audit remain separate unfinished goal work.
 
 ## Canonical submission and transport backpressure
 
@@ -193,7 +229,7 @@ goal cycle, spending its retry budget, or abandoning a live analytics record.
 Worker queue waiting and execution-time accounting still require the final audit.
 
 This step covers managed IDE submission and transport admission. Standalone Chat,
-Task dispatch, edited-message retries, native recovery, and restart FIFO must
+Task dispatch, edited-message retries, and potentially executed native recovery must
 still complete their existing canonical lifecycle integration. It does not yet
 remove the ordinary RPC concurrency ceiling: a full transport retains inputs
 for retry rather than claiming that they have entered a provider's FIFO queue.

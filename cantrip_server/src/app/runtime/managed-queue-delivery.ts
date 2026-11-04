@@ -1,5 +1,6 @@
 import type { ServerRepository } from "../../db/repository.js";
 import type { WorkerCommandBus } from "../../workers/bridge.js";
+import { WorkerUnavailableError } from "../../workers/bridge.js";
 /** A durable revision cursor makes lost queue notices recoverable without replaying input. */
 export function createManagedQueueDelivery(options: {
   repository: ServerRepository["managedQueue"];
@@ -46,14 +47,35 @@ export function createManagedQueueDelivery(options: {
             const entry = entries[next++]!;
             try {
               options.publish(entry.ownerId, entry.chatId);
-              await options.bridge.request(
+              // A moved/archived chat can still have a restored FIFO position
+              // on its previous worker. One durable revision covers all notices.
+              const workers = [
                 entry.workerId,
-                {
-                  type: "chat.queue.changed",
-                  chatId: entry.chatId,
-                  revision: entry.revision,
-                },
-                { ownerId: entry.ownerId, timeoutMs: 10000 },
+                ...(entry.additionalWorkerIds ?? []),
+              ];
+              await Promise.all(
+                workers.map(async (workerId) => {
+                  try {
+                    await options.bridge.request(
+                      workerId,
+                      {
+                        type: "chat.queue.changed",
+                        chatId: entry.chatId,
+                        revision: entry.revision,
+                      },
+                      { ownerId: entry.ownerId, timeoutMs: 10000 },
+                    );
+                  } catch (error) {
+                    // Attempt delivery, rather than preflighting cached presence.
+                    // A disconnected former owner reconciles on its reconnect;
+                    // timeouts and other failures retain this durable notice.
+                    if (
+                      (workerId === entry.workerId && !entry.recoveryOnly) ||
+                      !(error instanceof WorkerUnavailableError)
+                    )
+                      throw error;
+                  }
+                }),
               );
               if (!stopped)
                 await options.repository.acknowledgeNotification(

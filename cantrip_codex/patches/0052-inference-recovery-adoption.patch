@@ -1,0 +1,204 @@
+diff --git a/codex-rs/cli/src/cantrip_inference_journal.rs b/codex-rs/cli/src/cantrip_inference_journal.rs
+--- a/codex-rs/cli/src/cantrip_inference_journal.rs
++++ b/codex-rs/cli/src/cantrip_inference_journal.rs
+@@ -77,17 +77,66 @@
+ }
+ 
+ #[derive(Deserialize)]
++#[serde(rename_all = "camelCase", deny_unknown_fields)]
++struct RecoveryReference {
++    key: String,
++    worker_generation: String,
++    revision: u64,
++}
++
++#[derive(Deserialize)]
+ #[serde(tag = "action", rename_all = "camelCase", deny_unknown_fields)]
+ enum Command {
+     Snapshot,
+-    Batch { commands: Vec<Command> },
+-    Enqueue { key: String, identity: Identity },
+-    Grant { key: String },
+-    Requeue { key: String },
+-    Release { key: String, outcome: String },
++    Batch {
++        commands: Vec<Command>,
++    },
++    Enqueue {
++        key: String,
++        identity: Identity,
++    },
++    Adopt {
++        key: String,
++        identity: Identity,
++        previous: Vec<RecoveryReference>,
++    },
++    Forget {
++        previous: RecoveryReference,
++    },
++    Grant {
++        key: String,
++    },
++    Requeue {
++        key: String,
++    },
++    Release {
++        key: String,
++        outcome: String,
++    },
+ }
+ 
+ impl Journal {
++    fn recovered(
++        &self,
++        reference: &RecoveryReference,
++        generation: &str,
++    ) -> anyhow::Result<&Operation> {
++        anyhow::ensure!(
++            reference.worker_generation != generation,
++            "recovery requires a retired generation"
++        );
++        let previous = self
++            .operations
++            .get(&reference.key)
++            .context("unknown recovered operation")?;
++        anyhow::ensure!(
++            previous.worker_generation == reference.worker_generation
++                && previous.revision == reference.revision,
++            "stale recovery evidence"
++        );
++        Ok(previous)
++    }
++
+     fn read(path: &Path) -> anyhow::Result<Self> {
+         match fs::read(path) {
+             Ok(bytes) => {
+@@ -157,7 +206,10 @@
+                 anyhow::ensure!(commands.len() <= 32, "admission batch exceeds its bound");
+                 let mut results = Vec::with_capacity(commands.len());
+                 for command in commands {
+-                    let result = if matches!(&command, Command::Snapshot | Command::Batch { .. }) {
++                    let result = if matches!(
++                        &command,
++                        Command::Snapshot | Command::Batch { .. } | Command::Forget { .. }
++                    ) {
+                         Err(anyhow::anyhow!("invalid admission mutation"))
+                     } else {
+                         self.apply(command, generation)
+@@ -203,6 +255,116 @@
+                 let result = serde_json::to_value(&operation)?;
+                 self.operations.insert(key, operation);
+                 Ok(result)
++            }
++            Command::Adopt {
++                key,
++                identity,
++                previous,
++            } => {
++                anyhow::ensure!(
++                    key.len() == 64 && key.bytes().all(|byte| byte.is_ascii_hexdigit()),
++                    "invalid admission key"
++                );
++                anyhow::ensure!(
++                    !previous.is_empty()
++                        && previous
++                            .iter()
++                            .all(|p| p.worker_generation != generation && key != p.key),
++                    "invalid recovery generation"
++                );
++                if previous
++                    .iter()
++                    .all(|p| !self.operations.contains_key(&p.key))
++                {
++                    // The durable replacement can have committed before its ack
++                    // was observed. Redelivery must not mint another ordinal.
++                    let current = self
++                        .operations
++                        .get(&key)
++                        .context("recovery has no replacement")?;
++                    anyhow::ensure!(
++                        current.worker_generation == generation
++                            && current.identity == identity
++                            && current.state != State::Released,
++                        "recovery replacement identity changed"
++                    );
++                    return Ok(serde_json::to_value(current)?);
++                }
++                let message = identity
++                    .recovery
++                    .as_ref()
++                    .and_then(|r| r.message_id.as_ref());
++                let mut restored_order: Option<u64> = None;
++                for reference in &previous {
++                    let old = self.recovered(reference, generation)?;
++                    anyhow::ensure!(
++                        (!old.ever_granted && old.state != State::Granted)
++                            || (old.state == State::Released
++                                && old.outcome.as_deref() == Some("never-started")),
++                        "recovery cannot replay potentially executed input"
++                    );
++                    anyhow::ensure!(
++                        identity.chat_id.is_some()
++                            && identity.chat_id == old.identity.chat_id
++                            && message.is_some_and(|m| !m.is_empty())
++                            && message
++                                == old
++                                    .identity
++                                    .recovery
++                                    .as_ref()
++                                    .and_then(|r| r.message_id.as_ref()),
++                        "recovery changed canonical input"
++                    );
++                    if identity.provider_id == old.identity.provider_id {
++                        restored_order =
++                            Some(restored_order.map_or(old.order, |order| order.min(old.order)));
++                    }
++                }
++                let existing_order = if let Some(current) = self.operations.get(&key) {
++                    anyhow::ensure!(
++                        current.worker_generation == generation
++                            && current.identity == identity
++                            && current.state == State::Waiting
++                            && !current.ever_granted,
++                        "replacement already executed or changed identity"
++                    );
++                    Some(current.order)
++                } else {
++                    None
++                };
++                let revision = self.next()?;
++                let order = match (restored_order, existing_order) {
++                    (Some(old), Some(current)) => old.min(current),
++                    (old, current) => old.or(current).unwrap_or(revision),
++                };
++                let replacement = Operation {
++                    key: key.clone(),
++                    identity,
++                    worker_generation: generation.to_owned(),
++                    state: State::Waiting,
++                    order,
++                    revision,
++                    ever_granted: false,
++                    outcome: None,
++                };
++                let result = serde_json::to_value(&replacement)?;
++                for reference in previous {
++                    self.operations.remove(&reference.key);
++                }
++                self.operations.insert(key, replacement);
++                Ok(result)
++            }
++            Command::Forget { previous } => {
++                anyhow::ensure!(
++                    previous.worker_generation != generation,
++                    "recovery requires a retired generation"
++                );
++                if self.operations.contains_key(&previous.key) {
++                    self.recovered(&previous, generation)?;
++                    self.next()?;
++                    self.operations.remove(&previous.key);
++                }
++                Ok(serde_json::json!({ "key": previous.key, "forgotten": true }))
+             }
+             Command::Grant { key } => {
+                 let revision = self.next()?;

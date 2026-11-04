@@ -11,7 +11,7 @@ use crate::{
     database::Database,
     native_commands::{
         Repository as NativeCommands,
-        runtime::{finish_gui::finish_managed_gui, gui_admission::GuiAdmission},
+        runtime::{finish_gui::finish_managed_gui_with_transport, gui_admission::GuiAdmission},
     },
     operations::logging::{self, LogCall, Logger},
     wire::{Value, coercion::truthy, value::json},
@@ -212,10 +212,20 @@ impl Bootstrap {
         status: &str,
         pause_automation: bool,
     ) -> Result<bool> {
+        self.finish_with_transport(turn, status, pause_automation, false)
+            .await
+    }
+    pub async fn finish_with_transport(
+        &self,
+        turn: &PreparedTurn,
+        status: &str,
+        pause_automation: bool,
+        transport_ended: bool,
+    ) -> Result<bool> {
         let chat = text(&turn.execution, "chatId")?;
         if let Some(receipt) = &turn.native_receipt {
             let logger = self.logger.clone();
-            finish_managed_gui(&NativeCommands::new(self.database.clone()),&self.commands,&turn.owner,text(&turn.execution,"workerId")?,receipt,status,&move |_| {
+            finish_managed_gui_with_transport(&NativeCommands::new(self.database.clone()),&self.commands,&turn.owner,text(&turn.execution,"workerId")?,receipt,status,transport_ended,&move |_| {
                 (logger)(LogCall::event("warn","The worker did not acknowledge logical GUI completion.",json!({"event":"native-command.logical-completion-ack-failed","chatId":chat,"operationId":receipt["operationId"]})));
             }).await
         } else {

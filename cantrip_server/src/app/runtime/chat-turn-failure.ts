@@ -5,6 +5,10 @@ import type {
 } from "../../db/repository.js";
 import { taskGoalWorkerInterrupted } from "../../chats/execution-helpers.js";
 import { errorMessage } from "../../http/request-helpers.js";
+import {
+  WorkerCommandError,
+  WorkerUnavailableError,
+} from "../../workers/bridge.js";
 import type {
   ChatTurnOptions,
   ChatTurnRuntimeDependencies,
@@ -60,6 +64,7 @@ export async function settleChatTurnFailure({
   finishExecution(
     status: "idle" | "failed",
     pauseAutomation?: boolean,
+    transportEnded?: boolean,
   ): Promise<boolean>;
 }) {
   const workerInterrupted = taskGoalWorkerInterrupted(
@@ -147,6 +152,9 @@ export async function settleChatTurnFailure({
   const finished = await finishExecution(
     interrupted || execution.contextKind === "standalone" ? "idle" : "failed",
     workerInterrupted,
+    error instanceof WorkerUnavailableError ||
+      (error instanceof WorkerCommandError &&
+        error.code === "worker-command-timeout"),
   );
   cancelChatTurnOutcomeRecovery(
     execution.workerId,

@@ -1,4 +1,8 @@
-import { deferUndispatchedGui } from "./native-undispatched-gui.js";
+import {
+  deferUndispatchedGui,
+  reconcileUnstartedGui,
+} from "./native-undispatched-gui.js";
+import { isNativeTransportClosure } from "./native-transport-evidence.js";
 import { reconcileNativeThreadObservation } from "./native-thread-observation.js";
 import { NativeCommandRecoveryRepository } from "./native-command-recovery.js";
 import {
@@ -863,6 +867,12 @@ export class NativeCommandRepository {
       generation,
     );
   }
+  reconcileInference(
+    ownerId: string,
+    input: Parameters<typeof reconcileUnstartedGui>[3],
+  ) {
+    return reconcileUnstartedGui(this.database, this.lanes, ownerId, input);
+  }
   finishLogicalGui(
     ...args: Parameters<NativeLogicalInputRepository["finishLogicalGui"]>
   ) {
@@ -1643,7 +1653,8 @@ export class NativeCommandRepository {
         !current.protectedResult &&
         !current.terminalResultDigest &&
         !current.protectedTerminalResult &&
-        !current.terminalEvidence;
+        (!current.terminalEvidence ||
+          isNativeTransportClosure(current.terminalEvidence));
       if (
         current.executionCompletedAt &&
         input.executionComplete &&
@@ -1689,7 +1700,8 @@ export class NativeCommandRepository {
           current.protectedResult ||
           current.terminalResultDigest ||
           current.protectedTerminalResult ||
-          current.terminalEvidence ||
+          (current.terminalEvidence &&
+            !isNativeTransportClosure(current.terminalEvidence)) ||
           !input.protectedResult ||
           !input.resultDigest ||
           row.method !== "turn/start" ||

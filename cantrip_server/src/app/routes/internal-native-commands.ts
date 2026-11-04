@@ -11,6 +11,8 @@ import {
   nativeCommandDispatchSchema,
   nativeCommandSettlementSchema,
   nativePendingRequestSchema,
+  nativeInferenceRecoverySchema,
+  nativeInferenceRecoveryResultSchema,
 } from "@cantrip/protocol";
 import type { FastifyInstance } from "fastify";
 import type { ServerConfig } from "../../config.js";
@@ -22,6 +24,7 @@ import {
 import type { ApplicationOwnerContext } from "../http/owner-context.js";
 import { authenticateWorkerRequest } from "../../workers/credentials.js";
 import { computerUsePreviewAuthority } from "./computer-use-preview.js";
+import type { WorkerCommandBus } from "../../workers/bridge.js";
 
 export function installInternalNativeCommandRoutes(
   app: FastifyInstance,
@@ -37,6 +40,7 @@ export function installInternalNativeCommandRoutes(
       | "getAgentInteractionRequestByKey"
     >;
     runAsOwner: ApplicationOwnerContext["runAsOwner"];
+    bridge?: Pick<WorkerCommandBus, "isConnected" | "connectionIdentity">;
     live: Pick<
       ReturnType<typeof createLiveMutationRuntime>,
       | "publishEncryptedChatMessage"
@@ -68,6 +72,49 @@ export function installInternalNativeCommandRoutes(
           }
         : null,
   });
+  app.post(
+    "/api/internal/native-commands/inference-recovery",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const parsed = nativeInferenceRecoverySchema.safeParse(request.body);
+      if (!parsed.success)
+        return reply.code(400).send({ code: "invalid-inference-recovery" });
+      const input = parsed.data;
+      const authentication = await authenticateWorkerRequest(
+        repository,
+        config,
+        request,
+        input.workerId,
+        "worker:agent-tools",
+      );
+      if (!authentication)
+        return reply.code(401).send({ code: "unauthorized" });
+      const current = () => {
+        const identity = dependencies.bridge?.connectionIdentity?.(
+          input.workerId,
+        );
+        return (
+          input.serverId === serverId &&
+          identity?.ownerId === authentication.ownerId &&
+          identity.workerProcessGeneration === input.workerGeneration &&
+          dependencies.bridge?.isConnected(input.workerId)
+        );
+      };
+      if (!current())
+        return reply.code(409).send({ code: "stale-worker-generation" });
+      return runAsOwner(authentication.ownerId, async () => {
+        const result = await repository.nativeCommands.reconcileInference(
+          authentication.ownerId,
+          input,
+        );
+        if (!current())
+          return reply.code(409).send({ code: "stale-worker-generation" });
+        if (result.chatId && result.disposition !== "unresolved")
+          live.publishChatInvalidation(result.chatId, "chat");
+        return nativeInferenceRecoveryResultSchema.parse(result);
+      });
+    },
+  );
   app.post(
     "/api/internal/native-commands/permission-transition",
     { logLevel: "warn" },

@@ -87,6 +87,26 @@ pub(crate) fn deep_equal(left: &Value, right: &Value) -> bool {
 }
 pub(super) const NO_PERMISSION: &str = "NOT EXISTS (SELECT 1 FROM native_settings_states s WHERE s.chat_id=c.id AND (EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(s.state->'pending','[]'::jsonb)) p WHERE p->'intent'->'permissionTransition' IS NOT NULL) OR (s.state->>'desiredStatus'='uncertain' AND s.state->'desired'->'permissionTransition' IS NOT NULL)))";
 pub(super) const NO_HANDOFF: &str = "NOT EXISTS (SELECT 1 FROM native_runtime_handoffs h WHERE h.chat_id=c.id AND h.phase IN ('preparing','prepared','committed'))";
+/// Restore order only for the next canonical executable input. Provider routing
+/// and model availability remain the responsibility of the actual dispatcher.
+pub(super) async fn recovery_eligible(
+    tx: &Transaction<'_>,
+    owner: &str,
+    worker: &str,
+    chat: &str,
+    prompt: &str,
+) -> Result<bool> {
+    let context = super::context::execution(tx, owner, chat).await?;
+    if context.as_ref().and_then(|c| c["workerId"].as_str()) != Some(worker) {
+        return Ok(false);
+    }
+    if tx.query(&format!("SELECT p.id FROM queued_prompts p JOIN chats c ON c.id=p.chat_id WHERE p.id=$1 AND c.id=$2 AND c.archived_at IS NULL AND c.automation_paused=false AND c.managed_autonomy_stopped=false AND p.frozen=false AND p.state IN ('pending','claimed') AND {NO_PERMISSION} AND {NO_HANDOFF} AND NOT EXISTS(SELECT 1 FROM managed_queue_claims q WHERE q.prompt_id=p.id AND q.prompt_revision=p.revision AND q.status='rejected')"), &[&prompt,&chat]).await?.is_empty() { return Ok(false); }
+    if let Some(active) = raw_one(tx, "SELECT to_jsonb(q)::text FROM managed_queue_claims q WHERE q.chat_id=$1 AND q.status IN ('claimed','accepted','dispatched','uncertain') ORDER BY q.created_at ASC LIMIT 1", &[&chat]).await? {
+        return Ok(active["prompt_id"].as_str() == Some(prompt) && matches!(active["status"].as_str(),Some("claimed"|"accepted")));
+    }
+    let head = raw_one(tx, "SELECT to_jsonb(p)::text FROM queued_prompts p WHERE p.chat_id=$1 AND p.state='pending' AND p.frozen=false AND NOT EXISTS(SELECT 1 FROM managed_queue_claims q WHERE q.prompt_id=p.id AND q.prompt_revision=p.revision AND q.status='rejected') ORDER BY p.position ASC,p.created_at ASC LIMIT 1", &[&chat]).await?;
+    Ok(head.as_ref().and_then(|p| p["id"].as_str()) == Some(prompt))
+}
 pub(super) async fn bump(tx: &Transaction<'_>, chat: &str) -> Result<()> {
     super::queue::changed(tx, chat).await
 }

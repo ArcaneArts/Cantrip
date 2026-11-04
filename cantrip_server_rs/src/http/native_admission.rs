@@ -52,6 +52,40 @@ async fn apply(
     input: Value,
     phase: String,
 ) -> Result<Value> {
+    if phase == "inference-recovery" {
+        let worker = input["workerId"].as_str().unwrap();
+        let current = || {
+            service.server_id.as_str() == input["serverId"].as_str().unwrap()
+                && service
+                    .workers
+                    .bridge
+                    .connection_identity(worker)
+                    .is_some_and(|identity| {
+                        identity.owner == owner
+                            && Some(identity.process_generation.as_str())
+                                == input["workerGeneration"].as_str()
+                    })
+                && service.workers.bridge.is_connected(worker)
+        };
+        if !current() {
+            return Err(CommandError::new("stale-worker-generation", None, 409).into());
+        }
+        let repo = Repository::new(service.repository.database.clone());
+        let result = repo.reconcile_inference(&owner, &input).await?;
+        if !current() {
+            return Err(CommandError::new("stale-worker-generation", None, 409).into());
+        }
+        if truthy(result.get("chatId")) && result["disposition"] != "unresolved" {
+            invalidation(
+                &service,
+                &owner,
+                json!({"kind":"chat","chatId":result["chatId"]}),
+                &Value::Null,
+            );
+        }
+        return wire::parse("nativeInferenceRecoveryResultSchema", Some(&result))
+            .map_err(Into::into);
+    }
     if phase == "receipt" {
         return service.execution.receipts.settle(&owner, &input).await;
     }
@@ -130,6 +164,7 @@ async fn handle(
             "continue" => "nativeCommandContinuationSchema",
             "settings-evidence" => "nativeSettingsEvidenceSchema",
             "receipt" => "nativeCommandSettlementSchema",
+            "inference-recovery" => "nativeInferenceRecoverySchema",
             _ => "nativeCommandDispatchSchema",
         },
         body.as_ref(),
@@ -182,6 +217,10 @@ pub(super) fn routes() -> Router<Arc<AuthService>> {
         .route("/api/internal/native-commands/dispatch", post(handle))
         .route("/api/internal/native-commands/continue", post(handle))
         .route("/api/internal/native-commands/receipt", post(handle))
+        .route(
+            "/api/internal/native-commands/inference-recovery",
+            post(handle),
+        )
         .route(
             "/api/internal/native-commands/settings-evidence",
             post(handle),

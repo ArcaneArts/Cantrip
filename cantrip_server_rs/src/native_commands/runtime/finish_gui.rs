@@ -16,10 +16,40 @@ pub async fn finish_managed_gui(
     status: &str,
     on_acknowledgment_error: &(dyn Fn(anyhow::Error) + Send + Sync),
 ) -> Result<bool> {
+    finish_managed_gui_with_transport(
+        repository,
+        commands,
+        owner,
+        worker,
+        receipt,
+        status,
+        false,
+        on_acknowledgment_error,
+    )
+    .await
+}
+
+pub async fn finish_managed_gui_with_transport(
+    repository: &Repository,
+    commands: &Arc<LimitedCommandBus>,
+    owner: &str,
+    worker: &str,
+    receipt: &Value,
+    status: &str,
+    transport_ended: bool,
+    on_acknowledgment_error: &(dyn Fn(anyhow::Error) + Send + Sync),
+) -> Result<bool> {
     let operation = text(&receipt["operationId"])?;
     let generation = text(&receipt["operationGeneration"])?;
     let finished = repository
-        .finish_logical_gui(owner, worker, &operation, &generation, status)
+        .finish_logical_gui_with_transport(
+            owner,
+            worker,
+            &operation,
+            &generation,
+            status,
+            transport_ended,
+        )
         .await?;
     let acknowledgment = async {
         if let Some(entry) = repository

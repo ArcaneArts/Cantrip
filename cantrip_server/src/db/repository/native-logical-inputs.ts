@@ -389,8 +389,17 @@ export class NativeLogicalInputRepository {
     rootOperationId: string,
     rootOperationGeneration: string,
     status: "idle" | "failed",
+    transportEnded = false,
   ): Promise<boolean> {
     return this.database.transaction(async (tx) => {
+      const captured = await readNativeCommand(
+        tx,
+        ownerId,
+        workerId,
+        rootOperationId,
+        rootOperationGeneration,
+      );
+      await lockNativeCommandChat(tx, ownerId, captured.chatId);
       const root = await readNativeCommand(
         tx,
         ownerId,
@@ -398,7 +407,6 @@ export class NativeLogicalInputRepository {
         rootOperationId,
         rootOperationGeneration,
       );
-      await lockNativeCommandChat(tx, ownerId, root.chatId);
       if (root.origin !== "gui" || root.logicalOperationId !== root.operationId)
         throw new NativeCommandError("invalid-continuation-lineage");
       if (root.logicalCompletedAt) {
@@ -457,6 +465,21 @@ export class NativeLogicalInputRepository {
         .update(schema.nativeCommands)
         .set({
           executionCompletedAt: new Date(),
+          ...(transportEnded &&
+          !activation.logicalCancelled &&
+          ["accepted", "dispatched"].includes(head.status) &&
+          !head.resultDigest &&
+          !head.protectedResult &&
+          !head.terminalResultDigest &&
+          !head.protectedTerminalResult &&
+          !head.terminalEvidence
+            ? {
+                terminalEvidence: {
+                  kind: "transport-ended",
+                  source: "worker-command",
+                },
+              }
+            : {}),
           ...(head.status === "accepted"
             ? { status: "rejected", rejectionCode: "not-dispatched" }
             : head.status === "dispatched"

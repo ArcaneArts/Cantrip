@@ -433,3 +433,14 @@ The source patch was formatted and applied to an owned copy of its pre-patch sou
 No native build, tests, benchmarks, or computer-use validation were run under the
 current goal's restriction. Normal future packaging fingerprints the ordered patch
 set; this change does not manufacture a prebuilt binary or update upstream hashes.
+
+Patch `0052` extends the existing worker lifetime keeper's admission journal with
+atomic recovery adoption and acknowledgement. Only the current scope owner may
+reconcile previous-generation records, using captured revision and canonical
+chat/message identity. Proven unstarted attempts can transfer their oldest
+same-provider ordinal to one replacement; changing providers retains the new
+destination ordinal. The durable replacement and removal of old metadata share
+one snapshot write. Redelivery after an unobserved acknowledgement returns the
+same replacement. Potentially executed input cannot use this adoption path.
+This is metadata ownership, not another native prompt queue. No new runtime
+binary was built or executed under the active goal's validation restriction.

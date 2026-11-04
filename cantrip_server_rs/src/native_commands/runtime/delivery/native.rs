@@ -43,14 +43,25 @@ impl Backend for Native {
     fn request(&self, entry: Value) -> BoxFuture<'_, Result<()>> {
         async move {
             let command=json!({"type":"chat.queue.changed","chatId":entry["chatId"],"revision":entry["revision"]});
-            self.commands
-                .request(
-                    &text(&entry["workerId"])?,
-                    command,
+            let primary = text(&entry["workerId"])?;
+            let mut workers = vec![primary.clone()];
+            if let Some(Value::Array(additional)) = entry.get("additionalWorkerIds") {
+                for worker in additional { workers.push(text(worker)?); }
+            }
+            let outcomes = futures::future::join_all(workers.into_iter().map(|worker| {
+                let command = command.clone();
+                let former = worker != primary || entry["recoveryOnly"] == true;
+                async move { match self.commands.request(
+                    &worker, command,
                     Some(Duration::from_secs(10)),
                     None,
-                )
-                .await?;
+                ).await {
+                    Ok(_) => Ok(()),
+                    Err(crate::workers::command_bus::CommandFailure::Bridge(error)) if former && error.unavailable => Ok(()),
+                    Err(error) => Err(anyhow::Error::from(error)),
+                } }
+            })).await;
+            for outcome in outcomes { outcome?; }
             Ok(())
         }
         .boxed()
