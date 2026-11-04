@@ -333,7 +333,6 @@ describe("Run configuration control", () => {
     await act(async () => selector.props.onClick());
 
     expect(invalidate).toHaveBeenCalledWith({
-      exact: true,
       queryKey: ["run-configurations", "project"],
     });
     expect(onEditorConfigurationChange).not.toHaveBeenCalled();

@@ -2,7 +2,8 @@
 import type { ProjectWorktreeSummary, WorkerSummary } from "@cantrip/protocol";
 import type { RunConfigurationRuntime } from "@cantrip/protocol/run-configuration-runtime";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act } from "react";
+import { act, type ComponentProps } from "react";
+import type { RunConfigurationCatalog } from "@/lib/run-configuration-catalog";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -132,7 +133,10 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-async function renderControl(active: boolean) {
+async function renderControl(
+  active: boolean,
+  extra: Partial<ComponentProps<typeof RunConfigurationControl>> = {},
+) {
   await act(async () =>
     root.render(
       <TooltipProvider>
@@ -160,6 +164,7 @@ async function renderControl(active: boolean) {
             }
             onEditorConfigurationChange={onEdit}
             onFocusTerminal={vi.fn()}
+            {...extra}
           />
         </QueryClientProvider>
       </TooltipProvider>,
@@ -304,4 +309,46 @@ describe("Run configuration portal interactions", () => {
       });
     });
   }
+});
+
+it("merges Host and Linux entries with identical config IDs and dispatches the clicked Linux entry to its own source", async () => {
+  const selection = {
+    kind: "binding" as const,
+    bindingId: configurationId,
+    bindingGeneration: configurationId,
+    attachmentGeneration: configurationId,
+    runtimeGeneration: configurationId,
+  };
+  const linux: RunConfigurationCatalog = {
+    key: JSON.stringify(selection),
+    label: "CantripOS / work",
+    selection,
+    binding: { id: configurationId } as RunConfigurationCatalog["binding"],
+    available: true,
+    inventory: {
+      ...inventory,
+      entries: inventory.entries.map((entry) => ({
+        ...entry,
+        document: { ...entry.document, name: "Linux Development server" },
+      })),
+    },
+    runtimes: [],
+    worktrees: [{ ...worktree, id: "linux-primary", displayPath: "/linux" }],
+  };
+  await renderControl(false, { additionalCatalogs: [linux] });
+  await click(button("Development server"));
+  const rows = [...document.querySelectorAll<HTMLElement>('[role="option"]')];
+  expect(rows).toHaveLength(2);
+  const linuxRow = rows.find((row) =>
+    row.textContent?.includes("Linux Development server"),
+  )!;
+  expect(linuxRow.textContent).toContain("CantripOS / work");
+  await click(linuxRow);
+  expect(operateRunConfigurationRuntime).toHaveBeenCalledExactlyOnceWith({
+    configurationId,
+    operation: "start",
+    projectId: "project",
+    targetWorktreeId: null,
+    osSource: selection,
+  });
 });

@@ -2,7 +2,7 @@
 
 This checkpoint adds the client workflow for the executor, source provisioning,
 captured agent placement, file/editor/Explorer operations, and interactive Linux
-terminals, and explicit Linux Run source selection. Delegated project tools,
+terminals, and Run configurations with per-configuration destinations. Delegated project tools,
 attachment/artifact delivery, safe Run definition deletion, and final distribution
 acceptance remain in subsequent integration work. This checkpoint is not complete Phase 3
 acceptance.
@@ -141,34 +141,35 @@ metadata. Run and broader Git product integration remain subsequent work.
 ## Linux Run configurations
 
 1. Attach and verify the intended source in **Project Settings → CantripOS**.
-2. In the project header, choose **Run source → Linux · instance / workspace**.
-   Distinct checkouts have distinct short source IDs. **Host** retains the existing
-   default Worker Run behavior. This selection is independent of the selected chat.
-3. Open the Run configuration menu and choose **New Run configuration**. Discovery,
-   directory/file suggestions, provider validation, and saved definitions use this
-   Linux source's Primary. Definitions are ordinary revisioned files under
-   `.cantrip/run-configurations`. The editor reports its Linux validation target.
-4. The main **Run** button runs Primary. For an alternate target choose the
-   configuration's **More options → Run in Worktree…**, then its exact worktree
-   identity and displayed Linux path. That target must be bound in the same
-   checkout source and workspace; it never follows the current chat implicitly.
+2. Open **Run Configurations** in the project header. Host and CantripOS definitions
+   share one list. Linux entries show their OS/workspace and short checkout source
+   ID; there is no global Host/Linux switch.
+3. Choose **New Run configuration**. When multiple destinations exist, choose
+   **Host** or the intended **CantripOS** destination for that new configuration.
+   A Host-only project skips this choice. Discovery, suggestions, validation and
+   saved definitions use the chosen destination's Primary. The resulting ordinary
+   revisioned file lives under `.cantrip/run-configurations` in that source.
+4. Choose a configuration to run it on its own Primary. For an alternate target,
+   use its **More options → Run in Worktree…** and select the exact worktree/path
+   within that configuration's source and workspace. The active chat does not
+   change its destination.
 
-A Run output tab retains its captured runtime. Changing the header to **Host** or
-another Linux source does not redirect its output, Start/Restart, or Stop actions.
-**Edit** on a Linux Run opens its original definition source and selects that Run
-source in the header. Unavailable captured sources report an error. A lost Linux
-Run offers Stop before another Start; only confirmed cleanup reports Stopped.
+Each row and captured output tab retains its own placement. Selecting a different
+configuration never redirects existing output, Start/Restart, or Stop actions.
+**Edit** opens that configuration's original definition source. A lost Linux Run
+offers Stop before another Start; only confirmed cleanup reports Stopped.
 
 The Files sidebar follows the focused Run's captured target. Its files and editor
 use the same Linux directory, including Linux dependency overlays. Identically
 named files in Primary and an alternate worktree open as distinct documents.
 Earlier Linux Run terminals gain this capture through migration `0249`.
 
-Selections and their configuration choices are scoped to the authenticated
-server/account, project, source, workspace, and captured generations. An old or
-unavailable Linux selection stays unavailable. Refresh the OS, verify its files,
-then explicitly choose its current source epoch. No unavailable selection selects
-Host automatically. Existing resources retain their earlier captures.
+Configuration selection is scoped to the authenticated server/account and project.
+Linux entry identity additionally captures its source, workspace and generations;
+equal config UUIDs on Host and Linux remain separate entries. An old selection
+stays unavailable after an OS restart. Refresh and verify the OS, then explicitly
+choose the current configuration from the combined list. It never selects Host
+as a fallback. Existing resources retain their earlier captures.
 
 Linux definition deletion is currently disabled while its stop/retirement path
 is integrated. Stop controls remain available. This is a Run integration milestone;
