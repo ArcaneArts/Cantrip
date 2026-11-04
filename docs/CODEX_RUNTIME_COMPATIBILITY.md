@@ -324,7 +324,9 @@ Patch `0048` adds the native checkpoint storage foundation, including atomic
 replacement, exclusive process ownership, revisioned settlement, explicit format
 and runtime compatibility, and forced-process-termination storage tests. It is
 consumed by patch `0051` through experimental native capture/read/resume/discard
-operations. Cantrip's existing product pause acknowledgement still describes
-the live in-memory boundary until worker/server/client adoption. The contract,
-remaining milestones, and evidence boundary are documented in
+operations. Patch `0053` adds stored inspection and the explicit
+`thread/resume.expectedSuspension` attachment hold, and checks runtime metadata
+before decoding a continuation. Cantrip's existing product pause acknowledgement
+still describes the live in-memory boundary until worker/server/client adoption.
+The contract, remaining milestones, and evidence boundary are documented in
 [the durable suspension guide](DURABLE_TURN_SUSPENSION.md).

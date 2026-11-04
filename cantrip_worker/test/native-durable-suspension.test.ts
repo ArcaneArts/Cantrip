@@ -3,14 +3,19 @@ import {
   execFile,
   type ChildProcessWithoutNullStreams,
 } from "node:child_process";
+import { createHash } from "node:crypto";
 import { once } from "node:events";
+import { constants } from "node:fs";
 import {
   mkdtemp,
   mkdir,
+  open,
   readFile,
+  readdir,
   rename,
   rm,
   writeFile,
+  type FileHandle,
 } from "node:fs/promises";
 import { createServer, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
@@ -24,6 +29,18 @@ import { verifyBuiltRuntime } from "../../scripts/cantrip-codex/verify-built-run
 const binary = process.env.CANTRIP_CODEX_TEST_BINARY?.trim();
 type Json = Record<string, any>;
 const execute = promisify(execFile);
+
+function incompatibleCheckpoint(original: Buffer) {
+  const envelope = JSON.parse(original.toString());
+  const record = JSON.parse(envelope.recordJson);
+  record.runtimeVersion = "incompatible-native-runtime/continuation-v99";
+  record.continuation = { unknownFutureContinuation: true };
+  envelope.recordJson = JSON.stringify(record);
+  envelope.sha256 = createHash("sha256")
+    .update(envelope.recordJson)
+    .digest("hex");
+  return Buffer.from(JSON.stringify(envelope));
+}
 
 /** Kill the actual isolated native tree, including separately grouped helpers.
  * This does not send graceful shutdown or fabricate a suspended rollout. */
@@ -142,6 +159,14 @@ describe.skipIf(!binary)(
         let child: ChildProcessWithoutNullStreams | undefined,
           client: CodexRpcClient | undefined;
         let completedSuccessfully = false;
+        let retirementPipe:
+          | {
+              path: string;
+              original: Buffer;
+              opening?: Promise<FileHandle>;
+              writer?: FileHandle;
+            }
+          | undefined;
         let frames: Json[] = [];
         const allFrames: Json[][] = [];
         const nativeStderr: string[] = [];
@@ -210,7 +235,13 @@ describe.skipIf(!binary)(
             summary: "concise",
           });
           const turnId = first.turn.id;
+          const checkpointFile = path.join(
+            home,
+            "turn-suspensions",
+            `${createHash("sha256").update(threadId).digest("hex")}.json`,
+          );
           const modes = ["cold", "live", "cold"] as const;
+          const checkpointSnapshots: Buffer[] = [];
           const steers = [
             "ACCEPTED_DURABLE_STEER",
             "LIVE_DURABLE_STEER",
@@ -317,6 +348,7 @@ describe.skipIf(!binary)(
             expect(paused.suspension).toMatchObject({ threadId, turnId });
             // No grace delay or history read after durable acknowledgement.
             if (modes[cycle] === "cold") await kill();
+            checkpointSnapshots.push(await readFile(checkpointFile));
             const counter = await readFile(
               path.join(cwd, "durable-counter.txt"),
               "utf8",
@@ -327,7 +359,101 @@ describe.skipIf(!binary)(
             expect(requests).toHaveLength(cycle + 1);
             if (modes[cycle] === "cold") {
               await start();
-              await rpc("thread/resume", { threadId });
+              // Inspect the actual committed continuation before any native
+              // session exists. Repeated reads must not attach or prewarm it.
+              for (let read = 0; read < 2; read++) {
+                expect(
+                  await rpc("turn/suspension", {
+                    threadId,
+                    operation: { type: "read" },
+                  }),
+                ).toMatchObject({
+                  paused: true,
+                  suspension: paused.suspension,
+                });
+                expect(
+                  (await rpc("thread/loaded/list", {})).data,
+                ).not.toContain(threadId);
+              }
+              await new Promise((resolve) => setTimeout(resolve, 200));
+              expect(requests).toHaveLength(cycle + 1);
+              const original = await readFile(checkpointFile);
+              if (cycle > 0) {
+                // An old checkpoint still names this same unfinished turn, but
+                // completed work after its boundary makes it stale.
+                await writeFile(checkpointFile, checkpointSnapshots[0]!);
+                await expect(
+                  rpc("turn/suspension", {
+                    threadId,
+                    operation: { type: "read" },
+                  }),
+                ).rejects.toThrow(
+                  /history.*(advanced|changed)|execution.*advanced/i,
+                );
+                expect(await readFile(checkpointFile)).toEqual(
+                  checkpointSnapshots[0],
+                );
+                expect(
+                  (await rpc("thread/loaded/list", {})).data,
+                ).not.toContain(threadId);
+                await writeFile(checkpointFile, original);
+              }
+              if (cycle === 0) await rm(checkpointFile);
+              else await writeFile(checkpointFile, "{corrupt checkpoint");
+              // The saved intent must hold attachment even if data disappears
+              // after a successful stored inspection. No preflight read can
+              // substitute for this hold at native startup.
+              await rpc("thread/resume", {
+                threadId,
+                expectedSuspension: paused.suspension,
+              });
+              for (const damage of cycle === 0
+                ? [null]
+                : [
+                    Buffer.from("{corrupt checkpoint"),
+                    incompatibleCheckpoint(original),
+                  ]) {
+                if (damage) await writeFile(checkpointFile, damage);
+                const reason =
+                  cycle === 0
+                    ? /missing/i
+                    : damage?.equals(Buffer.from("{corrupt checkpoint"))
+                      ? /corrupt/i
+                      : /runtime version is unsupported.*incompatible-native-runtime/i;
+                await expect(
+                  rpc("turn/suspension", {
+                    threadId,
+                    operation: { type: "read" },
+                  }),
+                ).rejects.toThrow(reason);
+                await expect(
+                  rpc("turn/suspension", {
+                    threadId,
+                    operation: {
+                      type: "resume",
+                      suspension: paused.suspension,
+                    },
+                  }),
+                ).rejects.toThrow(reason);
+                await expect(
+                  rpc("turn/start", {
+                    threadId,
+                    input: [
+                      { type: "text", text: "MUST_NOT_REPLACE_SUSPENDED_TURN" },
+                    ],
+                  }),
+                ).rejects.toThrow(/paused|suspend/i);
+                if (damage)
+                  expect(await readFile(checkpointFile)).toEqual(damage);
+                await new Promise((resolve) => setTimeout(resolve, 200));
+                expect(requests).toHaveLength(cycle + 1);
+              }
+              await writeFile(checkpointFile, original);
+            } else {
+              await rpc("thread/resume", {
+                threadId,
+                expectedSuspension: paused.suspension,
+              });
             }
             const observed = await rpc("turn/suspension", {
               threadId,
@@ -399,6 +525,20 @@ describe.skipIf(!binary)(
             await vi.waitFor(() => expect(requests).toHaveLength(cycle + 2), {
               timeout: 15000,
             });
+            await expect(
+              rpc("thread/resume", {
+                threadId,
+                expectedSuspension: observed.suspension,
+              }),
+            ).rejects.toThrow(/running|suspend/i);
+            expect(
+              (
+                await rpc("turn/suspension", {
+                  threadId,
+                  operation: { type: "read" },
+                })
+              ).suspension,
+            ).toBeNull();
             const modelInput = JSON.stringify(requests[cycle + 1]!.body.input);
             expect(modelInput.match(/ORIGINAL_DURABLE_REQUEST/g)).toHaveLength(
               1,
@@ -423,6 +563,25 @@ describe.skipIf(!binary)(
             ).toBe(counter);
           }
           expect(requests).toHaveLength(modes.length + 1);
+          expect(
+            (
+              await rpc("turn/suspension", {
+                threadId,
+                operation: { type: "read" },
+              })
+            ).suspension,
+          ).toBeNull();
+          if (process.platform !== "win32") {
+            retirementPipe = {
+              path: checkpointFile,
+              original: await readFile(checkpointFile),
+            };
+            await rm(checkpointFile);
+            await execute("mkfifo", ["-m", "600", checkpointFile]);
+            // The writer-open handshake proves the old turn's real checkpoint
+            // read has started. Keep it blocked while a later turn pauses.
+            retirementPipe.opening = open(checkpointFile, "w");
+          }
           answer(
             requests[modes.length]!.response,
             "durable-final",
@@ -439,6 +598,8 @@ describe.skipIf(!binary)(
               ).toBe("completed"),
             { timeout: 15000 },
           );
+          if (retirementPipe)
+            retirementPipe.writer = await retirementPipe.opening;
           const history = await rpc("thread/read", {
             threadId,
             includeTurns: true,
@@ -470,14 +631,15 @@ describe.skipIf(!binary)(
           expect(
             allFrames.flat().filter((frame) => frame.method === "turn/started"),
           ).toHaveLength(1);
-          expect(
-            (
-              await rpc("turn/suspension", {
-                threadId,
-                operation: { type: "read" },
-              })
-            ).suspension,
-          ).toBeNull();
+          if (!retirementPipe)
+            expect(
+              (
+                await rpc("turn/suspension", {
+                  threadId,
+                  operation: { type: "read" },
+                })
+              ).suspension,
+            ).toBeNull();
           expect(
             (await rpc("thread/settings/read", { threadId })).threadSettings
               .model,
@@ -492,8 +654,88 @@ describe.skipIf(!binary)(
             { timeout: 15000 },
           );
           expect(requests[modes.length + 1]!.body.model).toBe("gpt-5.1");
+          if (retirementPipe) {
+            const racingPause = rpc("turn/suspension", {
+              threadId,
+              operation: { type: "pause", turnId: next.turn.id },
+            });
+            void racingPause.catch(() => undefined);
+            stream(requests[modes.length + 1]!.response, [
+              tool(
+                requests[modes.length + 1]!.body,
+                "printf 'done\\n' >> retirement-counter.txt",
+                "retirement-tool",
+              ),
+              completed("retirement-tool-response"),
+            ]);
+            await vi.waitFor(
+              async () =>
+                expect(
+                  await readFile(
+                    path.join(cwd, "retirement-counter.txt"),
+                    "utf8",
+                  ),
+                ).toBe("done\n"),
+              { timeout: 15000 },
+            );
+            const accepted: string[] = [];
+            await vi.waitFor(
+              async () => {
+                const text = `RETIREMENT_PENDING_STEER_${accepted.length}`;
+                const response = await client!.request("turn/steer", {
+                  threadId,
+                  expectedTurnId: next.turn.id,
+                  input: [{ type: "text", text }],
+                });
+                if (!response.error) {
+                  accepted.push(text);
+                  throw new Error(
+                    "the later turn has not frozen its boundary yet",
+                  );
+                }
+                expect(JSON.stringify(response.error)).toMatch(
+                  // App Server maps native NotIdle from the frozen gate to
+                  // this same error as an absent active turn.
+                  /paused|suspend|not.?idle|no active turn to steer/i,
+                );
+              },
+              { timeout: 15000 },
+            );
+            // Replace the pathname before releasing EOF. The old read still
+            // owns its FIFO inode; the later capture reads the regular file.
+            await rm(checkpointFile);
+            await writeFile(checkpointFile, retirementPipe.original, {
+              mode: 0o600,
+              flag: "wx",
+            });
+            await retirementPipe.writer!.writeFile(retirementPipe.original);
+            await retirementPipe.writer!.close();
+            retirementPipe = undefined;
+            const raced = await racingPause;
+            expect(raced.suspension.turnId).toBe(next.turn.id);
+            const frozenInput = await client!.request("turn/steer", {
+              threadId,
+              expectedTurnId: next.turn.id,
+              input: [{ type: "text", text: "AFTER_RETIREMENT_MUST_REJECT" }],
+            });
+            expect(frozenInput.error).toBeDefined();
+            await rpc("turn/suspension", {
+              threadId,
+              operation: { type: "resume", suspension: raced.suspension },
+            });
+            await vi.waitFor(
+              () => expect(requests).toHaveLength(modes.length + 3),
+              { timeout: 15000 },
+            );
+            const input = JSON.stringify(requests.at(-1)!.body.input);
+            for (const text of accepted)
+              expect(input.split(text).length - 1).toBe(1);
+            expect(
+              await readFile(path.join(cwd, "retirement-counter.txt"), "utf8"),
+            ).toBe("done\n");
+          }
           answer(
-            requests[modes.length + 1]!.response,
+            requests.at(-1)!.response,
             "next-final",
             "NEXT_TURN_COMPLETED",
           );
@@ -512,103 +754,165 @@ describe.skipIf(!binary)(
             allFrames.flat().filter((frame) => frame.method === "turn/started"),
           ).toHaveLength(2);
 
-          const stopped = await rpc("turn/start", {
-            threadId,
-            input: [{ type: "text", text: "STOP_DURABLE_TURN" }],
-          });
-          await vi.waitFor(
-            () => expect(requests).toHaveLength(modes.length + 3),
-            { timeout: 15000 },
-          );
-          const stoppingPause = rpc("turn/suspension", {
-            threadId,
-            operation: { type: "pause", turnId: stopped.turn.id },
-          });
-          stream(requests[modes.length + 2]!.response, [
-            tool(
-              requests[modes.length + 2]!.body,
-              process.platform === "win32"
-                ? "Add-Content -Path stopped-counter.txt -Value 'done'"
-                : "printf 'done\\n' >> stopped-counter.txt",
-              "stopped-tool",
-            ),
-            completed("stopped-tool-response"),
-          ]);
-          const stopCheckpoint = await stoppingPause;
-          expect(stopCheckpoint.suspension.turnId).toBe(stopped.turn.id);
-          expect(
-            await rpc("turn/suspension", {
+          let starts = 2;
+          for (const stopMode of ["live", "corrupt", "incompatible"] as const) {
+            const requestIndex = requests.length;
+            const counterName = `stopped-${stopMode}.txt`;
+            const stopped = await rpc("turn/start", {
               threadId,
-              operation: { type: "discard", turnId: stopped.turn.id },
-            }),
-          ).toMatchObject({ paused: false, suspension: null });
-          await vi.waitFor(
-            () =>
-              expect(
-                frames.find(
-                  (frame) =>
-                    frame.method === "turn/completed" &&
-                    frame.params.turn.id === stopped.turn.id,
-                )?.params.turn.status,
-              ).toBe("interrupted"),
-            { timeout: 15000 },
-          );
-          await kill();
-          await start();
-          await rpc("thread/resume", { threadId });
-          expect(
-            (
-              await rpc("turn/suspension", {
+              input: [{ type: "text", text: `STOP_DURABLE_TURN_${stopMode}` }],
+            });
+            await vi.waitFor(
+              () => expect(requests).toHaveLength(requestIndex + 1),
+              { timeout: 15000 },
+            );
+            const stoppingPause = rpc("turn/suspension", {
+              threadId,
+              operation: { type: "pause", turnId: stopped.turn.id },
+            });
+            stream(requests[requestIndex]!.response, [
+              tool(
+                requests[requestIndex]!.body,
+                process.platform === "win32"
+                  ? `Add-Content -Path ${counterName} -Value 'done'`
+                  : `printf 'done\\n' >> ${counterName}`,
+                `stopped-tool-${stopMode}`,
+              ),
+              completed(`stopped-tool-response-${stopMode}`),
+            ]);
+            const stopCheckpoint = await stoppingPause;
+            expect(stopCheckpoint.suspension.turnId).toBe(stopped.turn.id);
+            let damaged: Buffer | undefined;
+            if (stopMode !== "live") {
+              await kill();
+              const original = await readFile(checkpointFile);
+              damaged =
+                stopMode === "corrupt"
+                  ? Buffer.from("{keep these corrupt checkpoint bytes")
+                  : incompatibleCheckpoint(original);
+              await writeFile(checkpointFile, damaged);
+              await start();
+              await rpc("thread/resume", {
                 threadId,
-                operation: { type: "read" },
-              })
-            ).suspension,
-          ).toBeNull();
-          await expect(
-            rpc("turn/suspension", {
-              threadId,
-              operation: {
-                type: "resume",
-                suspension: stopCheckpoint.suspension,
-              },
-            }),
-          ).rejects.toThrow(/ended|no longer|identity|suspended/i);
-          await new Promise((resolve) => setTimeout(resolve, 200));
-          expect(requests).toHaveLength(modes.length + 3);
-          const afterStop = await rpc("turn/start", {
-            threadId,
-            input: [{ type: "text", text: "NORMAL_TURN_AFTER_STOP" }],
-          });
-          expect(afterStop.turn.id).not.toBe(stopped.turn.id);
-          await vi.waitFor(
-            () => expect(requests).toHaveLength(modes.length + 4),
-            { timeout: 15000 },
-          );
-          answer(
-            requests[modes.length + 3]!.response,
-            "after-stop-final",
-            "NORMAL_TURN_AFTER_STOP_COMPLETED",
-          );
-          await vi.waitFor(
-            () =>
+                expectedSuspension: stopCheckpoint.suspension,
+              });
+              await expect(
+                rpc("turn/suspension", {
+                  threadId,
+                  operation: { type: "read" },
+                }),
+              ).rejects.toThrow(/corrupt|unsupported/i);
+              expect(await readFile(checkpointFile)).toEqual(damaged);
+              expect(requests).toHaveLength(requestIndex + 1);
+            }
+            for (let attempt = 0; attempt < 2; attempt++) {
               expect(
-                frames.find(
-                  (frame) =>
-                    frame.method === "turn/completed" &&
-                    frame.params.turn.id === afterStop.turn.id,
-                )?.params.turn.status,
-              ).toBe("completed"),
-            { timeout: 15000 },
-          );
-          expect(
-            await readFile(path.join(cwd, "stopped-counter.txt"), "utf8"),
-          ).toMatch(/^done\r?\n$/);
-          expect(
-            allFrames.flat().filter((frame) => frame.method === "turn/started"),
-          ).toHaveLength(4);
+                await rpc("turn/suspension", {
+                  threadId,
+                  operation: { type: "discard", turnId: stopped.turn.id },
+                }),
+              ).toMatchObject({ paused: false, suspension: null });
+              await vi.waitFor(
+                () =>
+                  expect(
+                    frames.filter(
+                      (frame) =>
+                        frame.method === "turn/completed" &&
+                        frame.params.turn.id === stopped.turn.id,
+                    ),
+                  ).toHaveLength(1),
+                { timeout: 15000 },
+              );
+            }
+            if (damaged) {
+              const prefix =
+                path.basename(checkpointFile, ".json") + ".retired-";
+              const retained = await Promise.all(
+                (await readdir(path.dirname(checkpointFile)))
+                  .filter((name) => name.startsWith(prefix))
+                  .map((name) =>
+                    readFile(path.join(path.dirname(checkpointFile), name)),
+                  ),
+              );
+              expect(retained.some((bytes) => bytes.equals(damaged!))).toBe(
+                true,
+              );
+            }
+            await kill();
+            await start();
+            await rpc("thread/resume", { threadId });
+            expect(
+              (
+                await rpc("turn/suspension", {
+                  threadId,
+                  operation: { type: "read" },
+                })
+              ).suspension,
+            ).toBeNull();
+            await expect(
+              rpc("turn/suspension", {
+                threadId,
+                operation: {
+                  type: "resume",
+                  suspension: stopCheckpoint.suspension,
+                },
+              }),
+            ).rejects.toThrow(/ended|no longer|identity|suspended|missing/i);
+            await new Promise((resolve) => setTimeout(resolve, 200));
+            expect(requests).toHaveLength(requestIndex + 1);
+            const afterStop = await rpc("turn/start", {
+              threadId,
+              input: [
+                { type: "text", text: `NORMAL_TURN_AFTER_STOP_${stopMode}` },
+              ],
+            });
+            expect(afterStop.turn.id).not.toBe(stopped.turn.id);
+            await vi.waitFor(
+              () => expect(requests).toHaveLength(requestIndex + 2),
+              { timeout: 15000 },
+            );
+            answer(
+              requests[requestIndex + 1]!.response,
+              `after-stop-final-${stopMode}`,
+              "NORMAL_TURN_AFTER_STOP_COMPLETED",
+            );
+            await vi.waitFor(
+              () =>
+                expect(
+                  frames.find(
+                    (frame) =>
+                      frame.method === "turn/completed" &&
+                      frame.params.turn.id === afterStop.turn.id,
+                  )?.params.turn.status,
+                ).toBe("completed"),
+              { timeout: 15000 },
+            );
+            expect(await readFile(path.join(cwd, counterName), "utf8")).toMatch(
+              /^done\r?\n$/,
+            );
+            starts += 2;
+            expect(
+              allFrames
+                .flat()
+                .filter((frame) => frame.method === "turn/started"),
+            ).toHaveLength(starts);
+          }
           completedSuccessfully = true;
         } finally {
           requests.forEach(({ response }) => response.destroy());
+          if (retirementPipe) {
+            // Unblock an outstanding writer-open even when a failing native
+            // cleanup never reached its read; do not leak a libuv operation.
+            const reader = await open(
+              retirementPipe.path,
+              constants.O_RDONLY | constants.O_NONBLOCK,
+            ).catch(() => undefined);
+            const writer =
+              retirementPipe.writer ??
+              (await retirementPipe.opening?.catch(() => undefined));
+            await writer?.close().catch(() => undefined);
+            await reader?.close().catch(() => undefined);
+          }
           await kill();
           provider.closeAllConnections();
           await new Promise<void>((resolve) => provider.close(() => resolve()));

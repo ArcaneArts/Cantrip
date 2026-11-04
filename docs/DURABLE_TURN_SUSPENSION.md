@@ -5,8 +5,10 @@
 This feature is being implemented in sequential, independently merged milestones.
 The checkpoint storage foundation is implemented in patch `0048`; patch `0051`
 connects native capture and original-ID restoration through experimental native
-operations. Cantrip's current product pause remains an in-memory execution gate
-until the worker/server/client integration is delivered. Do not treat the
+operations. Patch `0053` adds stored inspection, explicit attachment holds and
+terminal-history-based retirement of unreadable records. Cantrip's current
+product pause remains an in-memory execution gate until the worker/server/client
+integration is delivered. Do not treat the
 existing product acknowledgement as a process-termination guarantee.
 
 The complete acceptance target is:
@@ -92,16 +94,42 @@ return explicit errors. Settled records do not block later runtime upgrades.
 The runtime still needs to validate the actual history and lifecycle evidence;
 the store alone cannot establish that a turn remains unfinished.
 
+Runtime compatibility is checked from validated envelope metadata before decoding
+the runtime-specific continuation. An unsupported runtime error identifies the
+required and current contracts; it does not destroy the saved continuation.
+After actual committed terminal history proves the latest native turn ended,
+an unreadable record can be retired to a private `<thread-hash>.retired-*.json`
+inspection copy. The copy is synced before the active file is removed. Retired
+files never become recovery candidates, and the permanent lock is retained.
+A later suspension gets a new checkpoint identity and a fresh revision chain
+when retirement removed an unreadable active record. Valid records normally
+settle to revisioned tombstones instead. Terminal cleanup uses its actual native
+history snapshot and coordinator generation to avoid retiring a later turn's
+checkpoint. It does not change the current turn's live pause controls. A failed
+settlement of a readable record remains an error; it does not trigger archival.
+
 ## Native continuation primitives
 
 Patch `0051` adds the experimental native `turn/suspension` operation. Its
 `pause` action names the active native turn and returns a checkpoint identity
 only after native history and the continuation are committed. `read` inspects
-that identity without starting execution. `resume` requires the exact thread,
-turn, checkpoint and revision. `discard` records Stop in native terminal history,
-including when an incompatible or corrupt continuation cannot be decoded.
+that identity without attaching an unloaded thread or starting execution. A
+loaded thread retains its existing owner; stored inspection takes temporary
+exclusive ownership and reads actual native history. `resume` requires the exact
+thread, turn, checkpoint and revision. `discard` records Stop in native terminal
+history, including when an incompatible or corrupt continuation cannot be decoded.
 These primitives do not yet replace Cantrip's product pause operation; the
 worker/server/client integration remains a separate delivery milestone.
+
+`thread/resume.expectedSuspension` carries the saved checkpoint identity into
+attachment before startup prewarm or automatic input admission. It keeps an
+explicit hold even if the file disappeared after inspection or its contents
+cannot be decoded. Attachment does not authorize execution. Reads and explicit
+Resume report the actual missing/corrupt/incompatible-data error, and repair can
+be retried without replacing the original turn. A stale attachment request
+cannot freeze an unrelated running turn. Held threads skip idle lifecycle
+callbacks. Restoring Goal accounting and extension-owned turn bookkeeping still
+requires implementation and acceptance.
 
 The continuation retains pending accepted inputs with native metadata, the
 sampling-loop decisions, cumulative file diff, selected and pinned step settings,
@@ -111,6 +139,8 @@ conversation authority. A SHA-256 binding covers its committed prefix, and
 actual native start/terminal events fence stopped or superseded work.
 Both paginated and legacy storage supply their full committed native history;
 the checkpoint does not bind only the model's compacted context suffix.
+Execution records after the bound prefix also invalidate an older checkpoint,
+even if they still name the same unfinished turn.
 
 The current native continuation contract is
 `0.166.0/cantrip-suspension-v2`. Original initial, next-step and already-pinned
@@ -122,7 +152,8 @@ ordinary turn. Runtime credentials and inference admission are acquired afresh.
 
 A cold native attachment establishes the pause gate before model prewarm or
 automatic input admission. Explicit Resume uses the original-ID native recovery
-reservation and enters the shared sampling loop after turn-start contributors.
+reservation and enters the shared sampling loop without repeating the turn-start
+lifecycle. Extension-owned continuation bookkeeping remains a separate milestone.
 It reconstructs fresh runtime handles, acquires fresh inference admission, and
 waits for restoration readiness before acknowledging resumption. It does not
 submit the original user prompt or emit another native TurnStarted event.
@@ -146,8 +177,8 @@ worker/server/UI acceptance remain distinct from the checkpoint-store tests.
 Extend real-process validation of the native primitives across failed capture,
 interrupted restoration, duplicate controls and terminal invalidation. Verify
 native observers and the physical TUI against the same original-ID lifecycle.
-Complete terminal invalidation and corrupt/incompatible-checkpoint acceptance,
-including an ordinary new turn after explicit Stop. No supported path may
+Extend terminal invalidation to all resource and Goal lifecycle cases, including
+an ordinary new turn after explicit Stop. No supported path may
 duplicate TurnStarted, accepted input, completed tools or
 history items, retain old execution authorization, or advance merely on attach.
 
@@ -167,11 +198,10 @@ never reuse old grants/tickets. Retain project/source/environment boundaries.
 Bind fresh admission to the suspended execution's original provider/account/model
 route, including when future chat defaults have changed.
 
-The current inspection primitive requires an attached native thread. Add stored
-checkpoint inspection without starting a session, and carry the server's expected
-suspension into native attachment before prewarm or autonomous admission. A
-successful earlier inspection alone cannot keep attachment idle if its checkpoint
-subsequently disappears. Missing or unreadable data must retain the explicit pause
+Use stored checkpoint inspection without starting a session, and carry the
+server's expected suspension into native attachment before prewarm or autonomous
+admission. A successful earlier inspection alone cannot keep attachment idle if
+its checkpoint subsequently disappears. Missing or unreadable data must retain the explicit pause
 hold and produce the actual restoration error.
 
 Opening a chat, startup, reconnect and restoration must not run inference,
@@ -225,7 +255,7 @@ CANTRIP_CODEX_TEST_BINARY="$PWD/cantrip_codex/.build/darwin-arm64/bundle/codex" 
   test/native-durable-suspension.test.ts test/native-shared-pause.test.ts
 ```
 
-On macOS ARM64, the release bundle built from all 51 patches passed eight tests:
+On macOS ARM64, the release bundle built from all 53 patches passed eight tests:
 two durable-continuation cases and six existing GUI/native-TUI shared-pause
 cases. The durable fixture verifies the bundle's actual artifact hashes and
 current patch fingerprint before starting isolated native processes against a
@@ -236,10 +266,20 @@ original turn settings despite changed future defaults, exact-once completed
 tool effects, unique history items and a single original TurnStarted. It also
 forces actual checkpoint-creation and live-settlement I/O failures, repairs the
 filesystem, retries, verifies cumulative token accounting, completes the original
-turn and starts a normal next turn. A further durably paused turn is explicitly
-stopped; after process restart its old checkpoint cannot resume and an ordinary
-new turn can complete. Attachment and read operations are checked for unintended
+turn and starts a normal next turn. Further durably paused turns are explicitly
+stopped with live, corrupt and incompatible checkpoints; duplicate Stop emits
+one terminal event, and archived records preserve the exact damaged bytes.
+After process restart their old checkpoints cannot resume and ordinary new
+turns can complete. Attachment and read operations are checked for unintended
 provider requests.
+
+The expanded recovery fixtures also exercise stored inspection without native
+attachment, missing data after inspection, corrupt and incompatible continuations,
+repair and retry, stale same-turn checkpoints, and Stop followed by fresh work.
+A Unix FIFO holds an older turn's actual checkpoint read while a later turn
+reaches durable pause; the later turn must still reject input after cleanup
+finishes. This interleaving reproduced acceptance of steering after a durable
+acknowledgement before the cleanup fix in patch `0053`.
 
 These tests establish the native milestone only. They do not kill and recover a
 complete Cantrip worker/server deployment, validate the product Paused indicator,

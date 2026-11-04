@@ -90,6 +90,10 @@ async function fixture(t, change = {}) {
       path.join(out, "v2/ThreadHistoryTurnMetadata.ts"),
       "initialSettings retention",
     );
+    await writeFile(
+      path.join(out, "v2/ThreadResumeParams.ts"),
+      "expectedSuspension",
+    );
     return { stdout: "" };
   };
   return { directory, expected, manifest, calls, run };
