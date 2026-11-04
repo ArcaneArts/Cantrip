@@ -681,7 +681,9 @@ resizing and observation-only reconnect. The worktree admission cycle exposes
 Linux-owned Git worktrees through Settings with editor/terminal routing to their
 original source identity. Executor 0.5.0 adds source-specific Primary Run
 definition files, discovery, and Linux validation through the protected Worker
-path. The Run header source picker, process lifecycle, and final distribution
+path. Executor 0.6.0 adds a tested Worker/native Run generation driver, including
+Linux setup/environment resolution and cancellation of adopted root descendants.
+The Run header source picker, Server runtime routing, and final distribution
 acceptance remain pending.
 See [the workflow](../cantrip_os/PRODUCT_WORKFLOW.md#files-and-editor) and
 [recorded evidence](../cantrip_os/ACCEPTANCE.md#product-file-checkpoint-2026-11-04).
