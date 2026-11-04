@@ -317,3 +317,13 @@ To widen support for a new Codex release:
 6. run the real-Codex compatibility smoke test and package every supported
    worker target; and
 7. change the tested range only after the full Cantrip check passes.
+
+## Durable turn suspension work
+
+Patch `0048` adds the native checkpoint storage foundation, including atomic
+replacement, exclusive process ownership, revisioned settlement, explicit format
+and runtime compatibility, and forced-process-termination storage tests. It is
+not yet wired into native pause or restoration. Existing pause acknowledgement
+still describes the live in-memory boundary. The implementation contract,
+remaining milestones, and evidence boundary are documented in
+[the durable suspension guide](DURABLE_TURN_SUSPENSION.md).

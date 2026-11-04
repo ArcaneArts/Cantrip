@@ -1,0 +1,544 @@
+diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
+index e65160f..b91723b 100644
+--- a/codex-rs/Cargo.lock
++++ b/codex-rs/Cargo.lock
+@@ -5144,6 +5144,16 @@ dependencies = [
+  "zbus",
+ ]
+ 
++[[package]]
++name = "codex-turn-checkpoint"
++version = "0.166.0"
++dependencies = [
++ "serde",
++ "serde_json",
++ "sha2 0.10.9",
++ "tempfile",
++]
++
+ [[package]]
+ name = "codex-uds"
+ version = "0.0.0"
+diff --git a/codex-rs/Cargo.toml b/codex-rs/Cargo.toml
+index 85cd80b..105fa26 100644
+--- a/codex-rs/Cargo.toml
++++ b/codex-rs/Cargo.toml
+@@ -161,6 +161,7 @@ members = [
+     "test-binary-support",
+     "thread-manager-sample",
+     "thread-store",
++    "turn-checkpoint",
+     "uds",
+     "codex-experimental-api-macros",
+     "plugin",
+diff --git a/codex-rs/turn-checkpoint/Cargo.toml b/codex-rs/turn-checkpoint/Cargo.toml
+new file mode 100644
+index 0000000..467c6ac
+--- /dev/null
++++ b/codex-rs/turn-checkpoint/Cargo.toml
+@@ -0,0 +1,17 @@
++[package]
++edition.workspace = true
++license.workspace = true
++name = "codex-turn-checkpoint"
++version.workspace = true
++
++[lib]
++doctest = false
++
++[lints]
++workspace = true
++
++[dependencies]
++serde = { workspace = true, features = ["derive"] }
++serde_json = { workspace = true }
++sha2 = { workspace = true }
++tempfile = { workspace = true }
+diff --git a/codex-rs/turn-checkpoint/src/lib.rs b/codex-rs/turn-checkpoint/src/lib.rs
+new file mode 100644
+index 0000000..7a79083
+--- /dev/null
++++ b/codex-rs/turn-checkpoint/src/lib.rs
+@@ -0,0 +1,226 @@
++//! Durable storage and exclusive process ownership for suspended native turns.
++//!
++//! This crate stores a caller-defined continuation, not a second conversation.
++//! The native turn owner must first commit the referenced history boundary, then
++//! commit this record, then acknowledge pause. Keep the returned lock for the
++//! entire lifetime of any execution that could consume or replace this record.
++//! All methods perform blocking filesystem operations; async callers must use
++//! their blocking pool. No operation here starts a turn or invokes a tool.
++
++use serde::Deserialize;
++use serde::Serialize;
++use serde::de::DeserializeOwned;
++use sha2::Digest;
++use sha2::Sha256;
++use std::fs::File;
++use std::fs::OpenOptions;
++use std::io;
++use std::io::Write;
++use std::marker::PhantomData;
++use std::path::Path;
++use std::path::PathBuf;
++
++const FORMAT_VERSION: u32 = 1;
++
++#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
++#[serde(rename_all = "camelCase", deny_unknown_fields)]
++pub struct CheckpointIdentity {
++    pub thread_id: String,
++    pub turn_id: String,
++    pub checkpoint_id: String,
++}
++
++#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
++#[serde(rename_all = "camelCase")]
++pub enum CheckpointState {
++    Suspended,
++    Consumed,
++    Invalidated,
++}
++
++/// The payload must contain continuation data or references to already durable
++/// native history. Callers must never include credentials or execution grants.
++#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
++#[serde(rename_all = "camelCase", deny_unknown_fields)]
++pub struct Checkpoint<T> {
++    pub identity: CheckpointIdentity,
++    pub revision: u64,
++    pub runtime_version: String,
++    /// Exact history-position evidence, interpreted by the native runtime.
++    pub history_binding: String,
++    pub state: CheckpointState,
++    pub continuation: Option<T>,
++}
++
++#[derive(Deserialize, Serialize)]
++#[serde(rename_all = "camelCase", deny_unknown_fields)]
++struct Envelope {
++    format_version: u32,
++    // Hash the original serialized bytes, independent of map ordering after
++    // deserialization. This is corruption detection, not authentication.
++    record_json: String,
++    sha256: String,
++}
++
++fn digest(bytes: &[u8]) -> String {
++    format!("{:x}", Sha256::digest(bytes))
++}
++
++fn invalid(message: &str) -> io::Error {
++    io::Error::new(io::ErrorKind::InvalidData, message)
++}
++
++/// Owns the operating-system lock, which is released even by SIGKILL or a crash.
++/// The lock file is permanent: unlinking it would let another process lock a
++/// different inode while an existing owner still holds the original lock.
++pub struct LockedCheckpoint<T> {
++    directory: PathBuf,
++    path: PathBuf,
++    thread_id: String,
++    _lock: File,
++    _payload: PhantomData<T>,
++}
++
++impl<T: Serialize + DeserializeOwned> LockedCheckpoint<T> {
++    /// Acquire actual exclusive ownership. A competing live owner produces an
++    /// error from the OS lock; no PID files, age guesses or stale-lock probes.
++    pub fn acquire(directory: &Path, thread_id: &str) -> io::Result<Self> {
++        if thread_id.is_empty() {
++            return Err(invalid("checkpoint thread identity is empty"));
++        }
++        let mut builder = std::fs::DirBuilder::new();
++        builder.recursive(true);
++        #[cfg(unix)]
++        {
++            use std::os::unix::fs::DirBuilderExt;
++            builder.mode(0o700);
++        }
++        builder.create(directory)?;
++        // No user-supplied identifier becomes a path component.
++        let key = digest(thread_id.as_bytes());
++        let mut options = OpenOptions::new();
++        options.read(true).write(true).create(true).truncate(false);
++        #[cfg(unix)]
++        {
++            use std::os::unix::fs::OpenOptionsExt;
++            options.mode(0o600);
++        }
++        let lock = options.open(directory.join(format!("{key}.lock")))?;
++        lock.try_lock().map_err(io::Error::from)?;
++        Ok(Self {
++            directory: directory.to_path_buf(),
++            path: directory.join(format!("{key}.json")),
++            thread_id: thread_id.to_owned(),
++            _lock: lock,
++            _payload: PhantomData,
++        })
++    }
++
++    /// Read without modifying missing, corrupt or unsupported checkpoints.
++    /// Compatibility is explicit; a runtime upgrade cannot silently discard one.
++    pub fn read(&self, runtime_version: &str) -> io::Result<Option<Checkpoint<T>>> {
++        let contents = match std::fs::read(&self.path) {
++            Ok(contents) => contents,
++            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
++            Err(error) => return Err(error),
++        };
++        // Inspect version before decoding the current envelope's structure.
++        let header: serde_json::Value =
++            serde_json::from_slice(&contents).map_err(|_| invalid("checkpoint JSON is corrupt"))?;
++        if header
++            .get("formatVersion")
++            .and_then(serde_json::Value::as_u64)
++            != Some(u64::from(FORMAT_VERSION))
++        {
++            return Err(invalid("checkpoint format version is unsupported"));
++        }
++        let envelope: Envelope = serde_json::from_value(header)
++            .map_err(|_| invalid("checkpoint envelope is corrupt"))?;
++        if digest(envelope.record_json.as_bytes()) != envelope.sha256 {
++            return Err(invalid("checkpoint checksum does not match"));
++        }
++        let record: Checkpoint<T> = serde_json::from_str(&envelope.record_json)
++            .map_err(|_| invalid("checkpoint continuation is corrupt or unsupported"))?;
++        self.validate(&record)?;
++        if record.state == CheckpointState::Suspended && record.runtime_version != runtime_version {
++            return Err(invalid("checkpoint runtime version is unsupported"));
++        }
++        Ok(Some(record))
++    }
++
++    fn validate(&self, record: &Checkpoint<T>) -> io::Result<()> {
++        if record.identity.thread_id != self.thread_id
++            || record.identity.turn_id.is_empty()
++            || record.identity.checkpoint_id.is_empty()
++            || record.runtime_version.is_empty()
++            || record.history_binding.is_empty()
++            || record.revision == 0
++            || (record.state == CheckpointState::Suspended) != record.continuation.is_some()
++        {
++            return Err(invalid(
++                "checkpoint identity, revision or lifecycle is invalid",
++            ));
++        }
++        Ok(())
++    }
++
++    /// Compare and replace under the held process lock. First commit is revision
++    /// one; replacement must advance exactly once from the observed revision.
++    /// A failure before atomic replacement leaves the previous valid record intact.
++    /// An error syncing the directory after replacement can leave the new record
++    /// committed; the caller must reread before retrying and never acknowledge it.
++    pub fn commit(&self, expected_revision: Option<u64>, record: &Checkpoint<T>) -> io::Result<()> {
++        self.validate(record)?;
++        let previous = self.read(&record.runtime_version)?;
++        if previous.as_ref().map(|value| value.revision) != expected_revision {
++            return Err(io::Error::new(
++                io::ErrorKind::AlreadyExists,
++                "checkpoint revision changed",
++            ));
++        }
++        let next = expected_revision
++            .unwrap_or(0)
++            .checked_add(1)
++            .ok_or_else(|| invalid("checkpoint revision is exhausted"))?;
++        if record.revision != next {
++            return Err(invalid("checkpoint replacement must advance its revision"));
++        }
++        if let Some(previous) = &previous {
++            // A terminal tombstone cannot be reopened by an old suspension.
++            if previous.state != CheckpointState::Suspended
++                && previous.identity.checkpoint_id == record.identity.checkpoint_id
++                && record.state == CheckpointState::Suspended
++            {
++                return Err(invalid("a terminal checkpoint cannot be suspended again"));
++            }
++            if record.state != CheckpointState::Suspended && previous.identity != record.identity {
++                return Err(invalid(
++                    "checkpoint settlement belongs to another suspension",
++                ));
++            }
++        } else if record.state != CheckpointState::Suspended {
++            return Err(invalid("checkpoint settlement has no suspension"));
++        }
++        let record_json = serde_json::to_string(record)
++            .map_err(|_| invalid("checkpoint continuation could not be serialized"))?;
++        let envelope = Envelope {
++            format_version: FORMAT_VERSION,
++            sha256: digest(record_json.as_bytes()),
++            record_json,
++        };
++        let bytes = serde_json::to_vec(&envelope)
++            .map_err(|_| invalid("checkpoint envelope could not be serialized"))?;
++        let mut staged = tempfile::NamedTempFile::new_in(&self.directory)?;
++        staged.write_all(&bytes)?;
++        staged.as_file().sync_all()?;
++        // Same-directory replacement: readers see the old or new complete record.
++        // Never delete the old checkpoint before replacing it.
++        staged.persist(&self.path).map_err(|error| error.error)?;
++        #[cfg(unix)]
++        File::open(&self.directory)?.sync_all()?;
++        Ok(())
++    }
++}
++
++#[cfg(test)]
++mod tests;
+diff --git a/codex-rs/turn-checkpoint/src/tests.rs b/codex-rs/turn-checkpoint/src/tests.rs
+new file mode 100644
+index 0000000..1d64d17
+--- /dev/null
++++ b/codex-rs/turn-checkpoint/src/tests.rs
+@@ -0,0 +1,250 @@
++use super::*;
++use serde_json::json;
++use std::io::BufRead;
++use std::process::Command;
++use std::process::Stdio;
++
++type Store = LockedCheckpoint<serde_json::Value>;
++
++fn checkpoint(revision: u64) -> Checkpoint<serde_json::Value> {
++    Checkpoint {
++        identity: CheckpointIdentity {
++            thread_id: "thread/with/unsafe/path".into(),
++            turn_id: "original-turn".into(),
++            checkpoint_id: "pause-1".into(),
++        },
++        revision,
++        runtime_version: "fixture-runtime-1".into(),
++        history_binding: "committed-native-history-head".into(),
++        state: CheckpointState::Suspended,
++        continuation: Some(json!({ "pendingInput": ["accepted steer"], "nextStep": 3 })),
++    }
++}
++
++fn store(path: &Path) -> Store {
++    Store::acquire(path, "thread/with/unsafe/path").unwrap()
++}
++
++#[test]
++fn persists_continuation_across_fresh_owners_and_repeated_replacements() {
++    let directory = tempfile::tempdir().unwrap();
++    assert_eq!(
++        store(directory.path()).read("fixture-runtime-1").unwrap(),
++        None
++    );
++    for revision in 1..=4 {
++        let owner = store(directory.path());
++        owner
++            .commit(
++                (revision > 1).then_some(revision - 1),
++                &checkpoint(revision),
++            )
++            .unwrap();
++        drop(owner);
++        assert_eq!(
++            store(directory.path()).read("fixture-runtime-1").unwrap(),
++            Some(checkpoint(revision))
++        );
++    }
++    assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 2);
++}
++
++#[test]
++fn a_live_owner_excludes_another_owner() {
++    let directory = tempfile::tempdir().unwrap();
++    let owner = store(directory.path());
++    assert!(Store::acquire(directory.path(), "thread/with/unsafe/path").is_err());
++    drop(owner);
++    assert!(Store::acquire(directory.path(), "thread/with/unsafe/path").is_ok());
++}
++
++#[test]
++fn stale_and_skipped_revisions_preserve_the_committed_checkpoint() {
++    let directory = tempfile::tempdir().unwrap();
++    let owner = store(directory.path());
++    owner.commit(None, &checkpoint(1)).unwrap();
++    assert!(owner.commit(None, &checkpoint(2)).is_err());
++    assert!(owner.commit(Some(1), &checkpoint(3)).is_err());
++    assert_eq!(
++        owner.read("fixture-runtime-1").unwrap(),
++        Some(checkpoint(1))
++    );
++}
++
++#[test]
++fn terminal_tombstones_reject_reopening_and_allow_a_new_suspension() {
++    for state in [CheckpointState::Consumed, CheckpointState::Invalidated] {
++        let directory = tempfile::tempdir().unwrap();
++        let owner = store(directory.path());
++        owner.commit(None, &checkpoint(1)).unwrap();
++        let mut terminal = checkpoint(2);
++        terminal.state = state;
++        terminal.continuation = None;
++        owner.commit(Some(1), &terminal).unwrap();
++        assert!(owner.commit(Some(2), &checkpoint(3)).is_err());
++        let mut next = checkpoint(3);
++        next.identity.checkpoint_id = "pause-2".into();
++        owner.commit(Some(2), &next).unwrap();
++        assert_eq!(owner.read("fixture-runtime-1").unwrap(), Some(next));
++    }
++}
++
++#[test]
++fn rejects_a_foreign_settlement_and_invalid_payload_lifecycles() {
++    let directory = tempfile::tempdir().unwrap();
++    let owner = store(directory.path());
++    owner.commit(None, &checkpoint(1)).unwrap();
++    let mut next = checkpoint(2);
++    next.state = CheckpointState::Consumed;
++    assert!(owner.commit(Some(1), &next).is_err());
++    next.continuation = None;
++    next.identity.turn_id = "other-turn".into();
++    assert!(owner.commit(Some(1), &next).is_err());
++    next = checkpoint(2);
++    next.identity.thread_id = "other-thread".into();
++    assert!(owner.commit(Some(1), &next).is_err());
++    assert_eq!(
++        owner.read("fixture-runtime-1").unwrap(),
++        Some(checkpoint(1))
++    );
++}
++
++#[test]
++fn corrupt_and_future_versions_are_retained_without_fallback() {
++    let directory = tempfile::tempdir().unwrap();
++    let owner = store(directory.path());
++    owner.commit(None, &checkpoint(1)).unwrap();
++    let original = std::fs::read(&owner.path).unwrap();
++    assert!(owner.read("other-runtime").is_err());
++    assert_eq!(std::fs::read(&owner.path).unwrap(), original);
++    for bytes in [
++        b"{broken".to_vec(),
++        br#"{"formatVersion":99,"newFormat":"preserve me"}"#.to_vec(),
++        {
++            let mut envelope: Envelope = serde_json::from_slice(&original).unwrap();
++            envelope.record_json.push(' ');
++            serde_json::to_vec(&envelope).unwrap()
++        },
++    ] {
++        std::fs::write(&owner.path, &bytes).unwrap();
++        assert!(owner.read("fixture-runtime-1").is_err());
++        assert!(owner.commit(Some(1), &checkpoint(2)).is_err());
++        assert_eq!(std::fs::read(&owner.path).unwrap(), bytes);
++    }
++}
++
++#[test]
++fn staging_failure_preserves_the_previous_record() {
++    let directory = tempfile::tempdir().unwrap();
++    let owner = store(directory.path());
++    owner.commit(None, &checkpoint(1)).unwrap();
++    let previous = std::fs::read(&owner.path).unwrap();
++    // Point only staging at a real non-directory; reads still use the old path.
++    let blocker = directory.path().join("not-a-directory");
++    std::fs::write(&blocker, "occupied").unwrap();
++    let mut owner = owner;
++    owner.directory = blocker;
++    assert!(owner.commit(Some(1), &checkpoint(2)).is_err());
++    assert_eq!(std::fs::read(&owner.path).unwrap(), previous);
++    assert_eq!(
++        owner.read("fixture-runtime-1").unwrap(),
++        Some(checkpoint(1))
++    );
++}
++
++#[cfg(unix)]
++#[test]
++fn checkpoint_and_lock_files_are_private() {
++    use std::os::unix::fs::PermissionsExt;
++    let directory = tempfile::tempdir().unwrap();
++    let path = directory.path().join("private");
++    let owner = store(&path);
++    owner.commit(None, &checkpoint(1)).unwrap();
++    assert_eq!(
++        std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
++        0o700
++    );
++    for entry in std::fs::read_dir(path).unwrap() {
++        assert_eq!(
++            entry.unwrap().metadata().unwrap().permissions().mode() & 0o777,
++            0o600
++        );
++    }
++}
++
++#[test]
++fn checkpoint_lock_child() {
++    let Some(path) = std::env::var_os("CANTRIP_CHECKPOINT_LOCK_CHILD") else {
++        return;
++    };
++    let owner = store(Path::new(&path));
++    owner.commit(None, &checkpoint(1)).unwrap();
++    println!("CHECKPOINT_COMMITTED");
++    std::io::stdout().flush().unwrap();
++    loop {
++        std::thread::park();
++    }
++}
++
++#[test]
++fn a_killed_process_releases_ownership_and_leaves_a_readable_checkpoint() {
++    let directory = tempfile::tempdir().unwrap();
++    let mut child = Command::new(std::env::current_exe().unwrap())
++        .args(["--exact", "tests::checkpoint_lock_child", "--nocapture"])
++        .env("CANTRIP_CHECKPOINT_LOCK_CHILD", directory.path())
++        .stdout(Stdio::piped())
++        .spawn()
++        .unwrap();
++    let output = child.stdout.take().unwrap();
++    let (sender, receiver) = std::sync::mpsc::channel();
++    std::thread::spawn(move || {
++        let ready = std::io::BufReader::new(output)
++            .lines()
++            .any(|line| line.is_ok_and(|line| line == "CHECKPOINT_COMMITTED"));
++        let _ = sender.send(ready);
++    });
++    let ready = receiver.recv_timeout(std::time::Duration::from_secs(10));
++    if !matches!(ready, Ok(true)) {
++        let _ = child.kill();
++        let _ = child.wait();
++        panic!("child did not commit checkpoint: {ready:?}");
++    }
++    let competing = Store::acquire(directory.path(), "thread/with/unsafe/path");
++    child.kill().unwrap();
++    child.wait().unwrap();
++    assert!(competing.is_err());
++    assert_eq!(
++        store(directory.path()).read("fixture-runtime-1").unwrap(),
++        Some(checkpoint(1))
++    );
++}
++
++#[test]
++fn settled_records_do_not_block_a_later_runtime_upgrade() {
++    let directory = tempfile::tempdir().unwrap();
++    let owner = store(directory.path());
++    owner.commit(None, &checkpoint(1)).unwrap();
++    let mut terminal = checkpoint(2);
++    terminal.state = CheckpointState::Consumed;
++    terminal.continuation = None;
++    owner.commit(Some(1), &terminal).unwrap();
++    let mut next = checkpoint(3);
++    next.identity.checkpoint_id = "next-pause".into();
++    next.runtime_version = "fixture-runtime-2".into();
++    owner.commit(Some(2), &next).unwrap();
++    assert_eq!(owner.read("fixture-runtime-2").unwrap(), Some(next));
++}
++
++#[test]
++fn uncommitted_temporary_files_are_not_recovery_candidates() {
++    let directory = tempfile::tempdir().unwrap();
++    let owner = store(directory.path());
++    owner.commit(None, &checkpoint(1)).unwrap();
++    let mut temporary = tempfile::NamedTempFile::new_in(directory.path()).unwrap();
++    temporary.write_all(b"partial checkpoint").unwrap();
++    temporary.as_file().sync_all().unwrap();
++    assert_eq!(
++        owner.read("fixture-runtime-1").unwrap(),
++        Some(checkpoint(1))
++    );
++}
