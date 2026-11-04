@@ -16,7 +16,7 @@ import uuid
 sys.path.insert(0, "/usr/lib/cantrip-os-workspaces")
 from service import Store, atomic_json, request as workspace_request
 
-VERSION = "0.6.0"
+VERSION = "0.7.0"
 CONFIG = "/etc/cantrip-os/executor.json"
 HERE = Path(__file__).parent
 

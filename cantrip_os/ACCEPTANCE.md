@@ -1149,3 +1149,43 @@ The creation dialog showed destination choices within the new-configuration flow
 Screenshots and local validation logs are retained under ignored
 artifacts/phase3-unified-run-list/. This revision supersedes the earlier global
 source picker workflow. Full Phase 3 acceptance remains in progress.
+
+## Source-scoped Run deletion checkpoint (2026-11-04)
+
+Executor 0.7.0 supports revisioned Linux Run definition deletion. Both Server
+implementations read the actual definition before retirement, serialize project
+changes, and stop captured Host/Linux instances only in that definition's source.
+A separate Linux checkout with an equal configuration UUID remains untouched.
+Lost Linux runs require confirmed process-tree cleanup before metadata or the
+shared definition can be removed. The combined Run list enables Linux deletion;
+confirmed deletion selects a remaining entry without launching it. Unavailable
+captured epochs still retain their identity.
+
+Actual Server/Worker/package tests passed in ARM64 Docker (14.54 seconds) and the
+installed AMD64 VM (143.99 seconds). Each started Primary and worktree processes,
+rejected a revision mismatch without stopping them, lost the first real cleanup
+reply, retained the definition, then explicitly retried the same delete intent
+and confirmed both process trees and the definition were removed. The VM also
+exposed a natural-exit/Stop identity race; the Worker now confirms recorded Linux
+cleanup under the current Stop identity, with a focused regression test.
+
+Codex's in-app browser created and ran a disposable Linux definition, deleted it,
+and verified the actual guest file and process were gone while the existing
+Host and Linux definitions remained. A second deletion verified selection cleanup.
+The stale terminal displayed its retained Linux target and unknown outcome;
+explicit reconnect returned to that state without a Host fallback.
+
+Local validation: 36 focused app tests, 32 Worker tests, 11 protocol tests,
+20 Server tests plus the expanded 12-test shared-source API suite, Native HTTP
+and PostgreSQL/PGlite tests (3), and Native contracts (2) passed. The generated
+Worker command alternatives validate all 525 registered alternatives. Direct
+Vite production bundling passed. Standard app build/type checking is blocked by
+13 existing provider-fixture errors introduced by the separate provider-limits
+change; Server types retain two Task errors and Worker types retain six existing
+CUA/MCP/provider-log errors. Required pnpm check still fails on the recorded
+agentOperations digest mismatch. No checks were bypassed or changed.
+
+Packages and evidence are retained under ignored artifacts/packages/ and
+artifacts/phase3-run-retirement/. This supersedes the earlier disabled-deletion
+checkpoint. Broader delegated project/artifact tools, GUI launch context, and
+refreshed distribution acceptance remain outstanding; Phase 3 is still active.

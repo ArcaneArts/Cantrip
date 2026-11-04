@@ -27,6 +27,42 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 describe("Linux definition admissions", () => {
+  it("retains a delete admission after an unknown reply and adapter recreation", async () => {
+    const id = crypto.randomUUID();
+    const binding = {
+      id,
+      bindingGeneration: id,
+      provisionedAttachmentGeneration: id,
+      provisionedRuntimeGeneration: id,
+    } as CantripOsSourceBindingSummary;
+    mocks.execute.mockRejectedValueOnce(new Error("delete reply lost"));
+    await expect(
+      linuxRunDefinitionApi(binding).deleteRunConfiguration(
+        id,
+        id,
+        "a".repeat(64),
+      ),
+    ).rejects.toThrow("delete reply lost");
+    const admitted = mocks.execute.mock.calls[0]![1].operationId;
+    mocks.execute.mockResolvedValue({
+      result: {
+        operation: "delete",
+        operationId: admitted,
+        projectId: id,
+        result: { outcome: "deleted", id, revision: "a".repeat(64) },
+      },
+    });
+    expect(
+      await linuxRunDefinitionApi(binding).deleteRunConfiguration(
+        id,
+        id,
+        "a".repeat(64),
+      ),
+    ).toMatchObject({ outcome: "deleted" });
+    expect(mocks.execute.mock.calls[1]![1].operationId).toBe(admitted);
+    expect(values.size).toBe(0);
+  });
+
   it("retains the write operation across a lost reply and adapter recreation, and stores only receipt identities", async () => {
     const id = crypto.randomUUID();
     const binding = {

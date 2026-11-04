@@ -722,6 +722,28 @@ describe("Run configuration runtime persistence", () => {
         )
       ).map((run) => run.runtimeId),
     ).toContain(linux.runtime!.id);
+    expect(
+      (
+        await repository.listRunConfigurationRuntimes(
+          LOCAL_USER_ID,
+          projectId,
+          {
+            configurationId,
+            executionKey: null,
+            projectSourceId: roots.definitions.scope.projectSourceId,
+          },
+        )
+      )
+        .map((run) => run.id)
+        .sort(),
+    ).toEqual([host.runtime!.id, linux.runtime!.id].sort());
+    expect(
+      await repository.listRunConfigurationRuntimes(LOCAL_USER_ID, projectId, {
+        configurationId,
+        executionKey: null,
+        projectSourceId: randomUUID(),
+      }),
+    ).toEqual([]);
     const changed = {
       ...roots,
       target: {
@@ -751,6 +773,13 @@ describe("Run configuration runtime persistence", () => {
       workerId,
       observation(linux.runtime!, "lost"),
     );
+    expect(
+      await repository.deleteRunConfigurationRuntimes(
+        LOCAL_USER_ID,
+        projectId,
+        [linux.runtime!.id],
+      ),
+    ).toBe(0);
     await expect(
       repository.requestRunConfigurationRuntimeOperation(LOCAL_USER_ID, {
         ...request,
@@ -819,12 +848,37 @@ describe("Run configuration runtime persistence", () => {
     const ownedRun = await repository.requestRunConfigurationRuntimeOperation(
       LOCAL_USER_ID,
       {
-        ...startRequest(randomUUID()),
+        ...startRequest(configurationId),
         worktreeId: owned.binding.worktreeId,
         osExecution: { definitions: ownedPrimary, target: ownedPrimary },
       },
     );
     expect(ownedRun.runtime!.worktreeId).toBe(owned.binding.worktreeId);
+    expect(
+      (
+        await repository.listRunConfigurationRuntimes(
+          LOCAL_USER_ID,
+          projectId,
+          {
+            configurationId,
+            executionKey: null,
+            projectSourceId: owned.binding.projectSourceId,
+          },
+        )
+      ).map((run) => run.id),
+    ).toEqual([ownedRun.runtime!.id]);
+    const scopedBeforeLimit = await repository.listRunConfigurationRuntimes(
+      LOCAL_USER_ID,
+      projectId,
+      {
+        configurationId,
+        executionKey: null,
+        projectSourceId: roots.definitions.scope.projectSourceId,
+        limit: 1,
+      },
+    );
+    expect(scopedBeforeLimit).toHaveLength(1);
+    expect(scopedBeforeLimit[0]!.id).not.toBe(ownedRun.runtime!.id);
     await expect(
       repository.requestRunConfigurationRuntimeOperation(LOCAL_USER_ID, {
         ...startRequest(randomUUID()),

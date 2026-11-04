@@ -700,12 +700,15 @@ multiple destinations exist. Each entry retains independent source/epoch caches
 and Primary/worktree semantics. Captured Run tabs preserve their original target
 when another configuration is selected; Edit resolves their original definition. Migration `0249` projects the
 captured Run target into terminal file placement, including earlier Linux Runs.
-Definition retirement routing and final distribution acceptance remain pending.
+Executor 0.7.0 adds source-scoped definition deletion after confirmed cleanup of
+affected Host/Linux Runs. Unknown cleanup retains the file and captured state.
+Final distribution acceptance remains pending.
 Server runtime persistence now separates Host and Linux execution epochs and
 retains immutable definition/target captures. Both Server implementations admit
 Linux-owned worktrees through their canonical OS source rather than a Host-only
 source join. Public requests contain owned binding epochs or a captured runtime
 ID; guest paths, accounts, and transports are resolved on the Server. The combined
-configuration list is connected; definition retirement remains the next block.
+configuration list and definition retirement are connected. Broader delegated
+project/Git/artifact tools and final distribution remain in progress.
 See [the workflow](../cantrip_os/PRODUCT_WORKFLOW.md#files-and-editor) and
 [recorded evidence](../cantrip_os/ACCEPTANCE.md#product-file-checkpoint-2026-11-04).

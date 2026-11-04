@@ -939,6 +939,7 @@ export class RunConfigurationStateRepository {
     projectId: string,
     input: {
       configurationId?: string;
+      projectSourceId?: string;
       worktreeId?: string;
       executionKey?: string | null;
       osDefinition?: Pick<
@@ -972,6 +973,9 @@ export class RunConfigurationStateRepository {
               ),
           input.osDefinition
             ? sql`${schema.runConfigurationRuntimes.osExecution}->'definitions'->'scope'->>'bindingId' = ${input.osDefinition.bindingId} AND ${schema.runConfigurationRuntimes.osExecution}->'definitions'->'scope'->>'bindingGeneration' = ${input.osDefinition.bindingGeneration} AND ${schema.runConfigurationRuntimes.osExecution}->'definitions'->'scope'->>'attachmentGeneration' = ${input.osDefinition.attachmentGeneration} AND ${schema.runConfigurationRuntimes.osExecution}->'definitions'->'scope'->>'runtimeGeneration' = ${input.osDefinition.runtimeGeneration}`
+            : undefined,
+          input.projectSourceId
+            ? sql`((${schema.runConfigurationRuntimes.osExecution}->'definitions'->'scope'->>'projectSourceId' = ${input.projectSourceId}) OR (${schema.runConfigurationRuntimes.osExecution} IS NULL AND EXISTS (SELECT 1 FROM project_worktrees w WHERE w.id = ${schema.runConfigurationRuntimes.worktreeId} AND w.project_source_id = ${input.projectSourceId})))`
             : undefined,
           input.configurationId
             ? eq(
@@ -1008,7 +1012,7 @@ export class RunConfigurationStateRepository {
           eq(schema.runConfigurationRuntimes.ownerId, ownerId),
           eq(schema.runConfigurationRuntimes.projectId, projectId),
           inArray(schema.runConfigurationRuntimes.id, [...runtimeIds]),
-          sql`${schema.runConfigurationRuntimes.state} NOT IN ('starting', 'running', 'restarting', 'stopping')`,
+          sql`${schema.runConfigurationRuntimes.state} NOT IN ('starting', 'running', 'restarting', 'stopping') AND (${schema.runConfigurationRuntimes.osExecution} IS NULL OR ${schema.runConfigurationRuntimes.state} <> 'lost')`,
         ),
       )
       .returning({ id: schema.runConfigurationRuntimes.id });

@@ -150,7 +150,7 @@ pub fn mutate(
             if !found || revision != input["expectedRevision"] {
                 return crate::settings::parse_response(response_schema("delete"),Some(&json!({"operation":"delete","operationId":input["operationId"],"projectId":project,"result":json!({"outcome":if found {"revision-mismatch"} else {"not-found"},"id":input["configurationId"],"currentRevision":revision})})));
             }
-            super::retirement::retire(&service,&owner,project,Some(text(&input,"configurationId")?),None).await?;
+            super::retirement::retire_in_source(&service,&owner,project,Some(text(&input,"configurationId")?),None,Some(text(&source,"projectReplicaId")?)).await?;
         }
         let result = dispatch(&service,&source,action,&input).await?;
         if action == "delete" && result["result"]["outcome"] == "deleted" {

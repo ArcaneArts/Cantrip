@@ -145,6 +145,7 @@ describe.skipIf(!enabled)(
         let provisions = 0,
           drop = true;
         let dropRunReply = false;
+        let dropRetirementStopReply = false;
         const commands: WorkerCommand[] = [];
         const bridge = {
           isConnected: (id: string) => id === workerId,
@@ -204,6 +205,15 @@ describe.skipIf(!enabled)(
                 "Lost Run reply after admission to the real executor",
               );
             }
+            if (
+              trusted.type === "cantrip-os.run-runtime.stop" &&
+              dropRetirementStopReply
+            ) {
+              dropRetirementStopReply = false;
+              throw new Error(
+                "Lost reply after the real Linux cleanup completed",
+              );
+            }
             const protectedResult = await routing.protectResult(
               command.type,
               result,
@@ -220,12 +230,6 @@ describe.skipIf(!enabled)(
             return protectedResult;
           },
         } as unknown as LimitedWorkerCommandBus;
-        installCantripOsRoutes(app, {
-          applicationOwnerId: () => ownerId,
-          serverId,
-          repository: productRepository,
-          bridge,
-        });
         const runRuntime = createRunConfigurationRuntime({
           applicationOwnerId: () => ownerId,
           serverId,
@@ -240,6 +244,16 @@ describe.skipIf(!enabled)(
             serialize: async (_id: string, operation: () => Promise<unknown>) =>
               operation(),
           } as unknown as ProjectWorktreeCoordinator,
+        });
+        installCantripOsRoutes(app, {
+          applicationOwnerId: () => ownerId,
+          serverId,
+          repository: productRepository,
+          bridge,
+          definitionLifecycle: {
+            serialize: async (_project, operation) => operation(),
+            retire: runRuntime.retireRunConfigurationRuntimes,
+          },
         });
         runRuntime.installAppRuntimeRoutes(app);
         const post = async (
@@ -669,23 +683,19 @@ describe.skipIf(!enabled)(
         );
         expect(paths.result.operation).toBe("paths");
         const callsBeforeDelete = commands.length;
+        const mismatchedDelete = await post(
+          runUrl,
+          runRequest({
+            type: "project.run-configuration-definitions.delete",
+            request: { id: configurationId, expectedRevision: "b".repeat(64) },
+          }),
+        );
+        expect(mismatchedDelete.result.result.outcome).toBe(
+          "revision-mismatch",
+        );
         expect(
-          (
-            await app.inject({
-              method: "POST",
-              url: runUrl,
-              payload: runRequest({
-                type: "project.run-configuration-definitions.delete",
-                request: {
-                  id: configurationId,
-                  expectedRevision:
-                    savedDefinition.result.result.entry.revision,
-                },
-              }),
-            })
-          ).statusCode,
-        ).toBe(400);
-        expect(commands).toHaveLength(callsBeforeDelete);
+          commands.slice(callsBeforeDelete).map(({ type }) => type),
+        ).toEqual(["cantrip-os.run-definition"]);
         const osSource = {
           kind: "binding" as const,
           bindingId: worktree.id,
@@ -965,6 +975,72 @@ describe.skipIf(!enabled)(
             .statusCode,
         ).toBe(409);
         expect(commands).toHaveLength(callsBeforeStale);
+        const deletingRuns = [
+          await startRun(null),
+          await startRun(worktree.worktreeId),
+        ];
+        const beforeRetirement = commands.length;
+        const deleteRequest = runRequest({
+          type: "project.run-configuration-definitions.delete",
+          request: {
+            id: configurationId,
+            expectedRevision: savedDefinition.result.result.entry.revision,
+          },
+        });
+        dropRetirementStopReply = true;
+        const unconfirmedDelete = await app.inject({
+          method: "POST",
+          url: runUrl,
+          payload: deleteRequest,
+        });
+        expect(unconfirmedDelete.statusCode, unconfirmedDelete.body).toBe(409);
+        await connection.request("fs/getMetadata", {
+          path: guestFileUri(
+            `${binding.guestPath}/.cantrip/run-configurations/${configurationId}.json`,
+          ),
+          sandbox: null,
+        });
+        expect(
+          commands
+            .slice(beforeRetirement)
+            .filter((command) => command.type === "cantrip-os.run-definition")
+            .every(
+              (command) =>
+                command.request.type ===
+                "project.run-configuration-definitions.get",
+            ),
+        ).toBe(true);
+        const deletedDefinition = await post(runUrl, deleteRequest);
+        expect(deletedDefinition.result.result.outcome).toBe("deleted");
+        const retirementCommands = commands.slice(beforeRetirement);
+        const stops = retirementCommands.filter(
+          (command) => command.type === "cantrip-os.run-runtime.stop",
+        );
+        expect(
+          new Set(stops.map((command) => command.identity.runtimeId)),
+        ).toEqual(new Set(deletingRuns.map((run) => run.runtime.id)));
+        expect(retirementCommands.at(-1)?.type).toBe(
+          "cantrip-os.run-definition",
+        );
+        expect(
+          await productRepository.listRunConfigurationRuntimes(
+            ownerId,
+            projectId,
+            {
+              configurationId,
+              executionKey: null,
+              projectSourceId: binding.projectSourceId,
+            },
+          ),
+        ).toEqual([]);
+        await expect(
+          connection.request("fs/getMetadata", {
+            path: guestFileUri(
+              `${binding.guestPath}/.cantrip/run-configurations/${configurationId}.json`,
+            ),
+            sandbox: null,
+          }),
+        ).rejects.toThrow();
         const proof = {
           transport: transport.kind,
           instance: attached.instance,
@@ -983,10 +1059,12 @@ describe.skipIf(!enabled)(
           nativeRuns,
           uncertainRun,
           confirmedStop: confirmedStop.json(),
+          deletedDefinition,
+          retirementCommands: retirementCommands.map(({ type }) => type),
           admission: await repository.provisionAdmission(ownerId, binding.id),
         };
         const artifacts = new URL(
-          "../../cantrip_os/artifacts/phase3-run-product/",
+          "../../cantrip_os/artifacts/phase3-run-retirement/",
           import.meta.url,
         );
         await mkdir(artifacts, { recursive: true });

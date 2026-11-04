@@ -279,31 +279,56 @@ export function createRunConfigurationRuntime({
   const retireRunConfigurationRuntimes = async (
     ownerId: string,
     projectId: string,
-    filter: { configurationId?: string; worktreeId?: string } = {},
+    filter: {
+      configurationId?: string;
+      worktreeId?: string;
+      projectSourceId?: string;
+    } = {},
   ): Promise<void> => {
     while (true) {
       const runtimes = await repository.listRunConfigurationRuntimes(
         ownerId,
         projectId,
-        { ...filter, limit: 256 },
+        { ...filter, executionKey: null, limit: 256 },
       );
       if (runtimes.length === 0) return;
       for (const current of runtimes) {
         if (
           ["starting", "running", "restarting", "stopping"].includes(
             current.state,
-          )
+          ) ||
+          (current.osDefinition && current.state === "lost")
         ) {
           if (!bridge.isConnected(current.workerId)) {
             throw new WorkerUnavailableError(
               "Every active Run configuration worker must be online before deletion.",
             );
           }
-          const target = await resolveRunConfigurationRuntimeTarget(
-            ownerId,
-            projectId,
-            current.worktreeId,
-          );
+          const capture = current.osDefinition
+            ? await repository.getRunConfigurationRuntimeCapture(
+                ownerId,
+                current.id,
+              )
+            : null;
+          if (current.osDefinition && !capture?.osExecution)
+            throw new ExecutionLaneConflictError(
+              "The captured Linux Run target is unavailable.",
+            );
+          const target = capture?.osExecution
+            ? {
+                workerId: current.workerId,
+                worktree: { id: current.worktreeId },
+                osExecution: capture.osExecution,
+              }
+            : {
+                ...(await resolveRunConfigurationRuntimeTarget(
+                  ownerId,
+                  projectId,
+                  current.worktreeId,
+                )),
+                osExecution: null,
+              };
+
           const operationId = randomUUID();
           const durable =
             await repository.requestRunConfigurationRuntimeOperation(ownerId, {
@@ -313,6 +338,9 @@ export function createRunConfigurationRuntime({
               worktreeId: target.worktree.id,
               workerId: target.workerId,
               operation: "stop",
+              ...(target.osExecution
+                ? { osExecution: target.osExecution }
+                : {}),
               definitionRevision: null,
               codexEnvironmentRevision: null,
             });
@@ -338,10 +366,16 @@ export function createRunConfigurationRuntime({
             runConfigurationRuntimeWorkerOperationResultSchema.parse(
               await bridge.request(
                 target.workerId,
-                {
-                  type: "project.run-configuration-runtime.stop",
-                  identity,
-                },
+                target.osExecution
+                  ? {
+                      type: "cantrip-os.run-runtime.stop",
+                      ...target.osExecution,
+                      identity,
+                    }
+                  : {
+                      type: "project.run-configuration-runtime.stop",
+                      identity,
+                    },
                 { timeoutMs: 30_000 },
               ),
             );
@@ -370,7 +404,8 @@ export function createRunConfigurationRuntime({
           if (
             ["starting", "running", "restarting", "stopping"].includes(
               applied.runtime.state,
-            )
+            ) ||
+            (applied.runtime.osDefinition && applied.runtime.state === "lost")
           ) {
             throw new ExecutionLaneConflictError(
               "The Run configuration instance remained active after its stop request.",
@@ -715,6 +750,7 @@ export function createRunConfigurationRuntime({
         }
         await retireRunConfigurationRuntimes(ownerId, projectId, {
           configurationId: id,
+          projectSourceId: source.projectReplicaId,
         });
         const result = runConfigurationDeleteResponseSchema.parse(
           await bridge.request(source.workerId, {

@@ -12,6 +12,8 @@ import path from "node:path";
 
 import {
   appLiveServerMessageSchema,
+  cantripOsSourceReceiptSchema,
+  type CantripOsSourceBindingSummary,
   terminalWireListSchema,
   unprobedCodexRuntimeReport,
   type AppLiveServerMessage,
@@ -194,6 +196,7 @@ const bridge: WorkerCommandBus = {
             failure: null,
           },
         });
+      case "cantrip-os.run-runtime.stop":
       case "project.run-configuration-runtime.stop": {
         const result = runConfigurationRuntimeWorkerOperationResultSchema.parse(
           {
@@ -1846,6 +1849,118 @@ script = ""
       expect(started.statusCode).toBe(202);
     }
 
+    // Simulated executor replies exercise the real Server/source authority and
+    // real Host definition file. Actual guest process cleanup is covered by the
+    // Docker/installed-VM management acceptance fixture.
+    const repository = database.repository,
+      os = repository.cantripOs;
+    const instance = await os.attach(LOCAL_USER_ID, {
+      workerId,
+      guestInstanceId: randomUUID(),
+      name: "Definition sharing",
+      transport: { kind: "docker", container: "definition-sharing-fixture" },
+      expectedAttachmentGeneration: null,
+    });
+    const generation = randomUUID();
+    await os.observe(
+      LOCAL_USER_ID,
+      instance.id,
+      instance.attachmentGeneration,
+      { status: "connected", runtimeGeneration: generation, lastError: null },
+    );
+    const workspace = await os.recordWorkspace(
+      LOCAL_USER_ID,
+      instance.id,
+      instance.attachmentGeneration,
+      {
+        guestWorkspaceId: "shared",
+        uid: 20000,
+        gid: 20000,
+        homeGuestPath: "/home/shared",
+      },
+    );
+    const linked = await os.createLinkedBinding(LOCAL_USER_ID, {
+      workspaceId: workspace.id,
+      worktreeId: primary.id,
+      dependencyOverlays: [],
+    });
+    const owned = (
+      await os.createLinuxSource(LOCAL_USER_ID, {
+        projectId,
+        workspaceId: workspace.id,
+        sourceKind: "git",
+      })
+    ).binding;
+    const admitLinux = async (binding: CantripOsSourceBindingSummary) => {
+      await os.recordBindingOutcome(
+        LOCAL_USER_ID,
+        binding.id,
+        {
+          bindingGeneration: binding.bindingGeneration,
+          attachmentGeneration: instance.attachmentGeneration,
+          runtimeGeneration: generation,
+        },
+        {
+          state: "ready",
+          lastError: null,
+          sourceReceipt: cantripOsSourceReceiptSchema.parse({
+            bindingId: binding.id,
+            workspaceId: workspace.id,
+            guestWorkspaceId: workspace.guestWorkspaceId,
+            mode: binding.mode,
+            guestPath: binding.guestPath,
+            runtimeGeneration: generation,
+            uid: workspace.uid,
+            homeGuestPath: workspace.homeGuestPath,
+            head: binding.mode === "linux-owned" ? "a".repeat(40) : null,
+            branch: null,
+            detached: binding.mode === "linux-owned",
+            repositoryFingerprint:
+              binding.mode === "linux-owned" ? "separate-linux-checkout" : null,
+            gitCommonGuestPath:
+              binding.mode === "linux-owned"
+                ? `${binding.guestPath}/.git`
+                : null,
+            recreated: false,
+            interruptedGuestWorkspaces: [],
+            dependencyOverlays: [],
+            cleanupWarnings: [],
+          }),
+        },
+      );
+      const root = await os.runPrimary(
+        LOCAL_USER_ID,
+        projectId,
+        binding.id,
+        generation,
+      );
+      const admitted = await repository.requestRunConfigurationRuntimeOperation(
+        LOCAL_USER_ID,
+        {
+          operation: "start",
+          operationId: randomUUID(),
+          projectId,
+          configurationId,
+          worktreeId: binding.worktreeId,
+          workerId,
+          definitionRevision: inventory.result.found
+            ? inventory.result.entry.revision!
+            : "",
+          codexEnvironmentRevision: null,
+          osExecution: { definitions: root, target: root },
+        },
+      );
+      if (!admitted.runtime) throw new Error("Expected captured Linux runtime");
+      await repository.applyRunConfigurationRuntimeObservation(
+        LOCAL_USER_ID,
+        workerId,
+        runtimeObservation(admitted.runtime, "running"),
+      );
+      return admitted.runtime;
+    };
+    const linkedRuntime = await admitLinux(linked);
+    const independentRuntime = await admitLinux(owned);
+
     commands.length = 0;
     const stale = await app.inject({
       method: "DELETE",
@@ -1882,6 +1997,42 @@ script = ""
       ({ type }) => type === "project.run-configuration-definitions.delete",
     );
     expect(stopIndexes).toHaveLength(2);
+    const linuxStops = commands.filter(
+      (command) => command.type === "cantrip-os.run-runtime.stop",
+    );
+    expect(linuxStops).toHaveLength(1);
+    expect(linuxStops[0]!.identity.runtimeId).toBe(linkedRuntime.id);
+    expect(
+      await repository.getRunConfigurationRuntimeCapture(
+        LOCAL_USER_ID,
+        linkedRuntime.id,
+      ),
+    ).toBeNull();
+    expect(
+      (await repository.getRunConfigurationRuntimeCapture(
+        LOCAL_USER_ID,
+        independentRuntime.id,
+      ))!.runtime.state,
+    ).toBe("running");
+    // Retire the independent fixture only after proving shared deletion kept it.
+    await repository.applyRunConfigurationRuntimeObservation(
+      LOCAL_USER_ID,
+      workerId,
+      runtimeObservation(independentRuntime, "exited"),
+    );
+    await repository.deleteTerminal(
+      LOCAL_USER_ID,
+      independentRuntime.terminalId!,
+    );
+    expect(
+      await repository.deleteRunConfigurationRuntimes(
+        LOCAL_USER_ID,
+        projectId,
+        [independentRuntime.id],
+      ),
+    ).toBe(1);
+    await os.retireBinding(LOCAL_USER_ID, linked.id, linked.bindingGeneration);
+    await os.retireBinding(LOCAL_USER_ID, owned.id, owned.bindingGeneration);
     expect(stopIndexes.every((index) => index < deleteIndex)).toBe(true);
     expect(
       await database.repository.listRunConfigurationRuntimes(

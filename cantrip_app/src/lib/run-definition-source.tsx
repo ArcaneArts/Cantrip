@@ -8,6 +8,7 @@ import * as host from "./run-configuration-api";
 import { executeCantripOsRunDefinition } from "./api/cantrip-os";
 import {
   runConfigurationCapabilitiesResponseSchema,
+  runConfigurationDeleteResponseSchema,
   runConfigurationDetectResponseSchema,
   runConfigurationFlutterDevicesResponseSchema,
   runConfigurationGetResponseSchema,
@@ -21,7 +22,7 @@ export function linuxRunDefinitionApi(binding: CantripOsSourceBindingSummary) {
   const admissions = new Map<string, string>();
   const call = async (request: CantripOsRunDefinitionRequest) => {
     let storedKey: string | null = null;
-    if (request.type.endsWith(".write")) {
+    if (request.type.endsWith(".write") || request.type.endsWith(".delete")) {
       const { operationId, ...intent } = request;
       const bytes = await crypto.subtle.digest(
         "SHA-256",
@@ -174,11 +175,20 @@ export function linuxRunDefinitionApi(binding: CantripOsSourceBindingSummary) {
           operationId,
         }),
       ).result,
-    deleteRunConfiguration: async (): Promise<never> => {
-      throw new Error(
-        "Delete is not available for Linux Run configurations yet.",
-      );
-    },
+    deleteRunConfiguration: async (
+      projectId: string,
+      configurationId: string,
+      expectedRevision: string,
+      operationId = crypto.randomUUID(),
+    ) =>
+      runConfigurationDeleteResponseSchema.parse(
+        await call({
+          type: "project.run-configuration-definitions.delete",
+          projectId,
+          operationId,
+          request: { id: configurationId, expectedRevision },
+        }),
+      ).result,
   };
   return api;
 }
