@@ -305,6 +305,7 @@ export async function createLinuxWorktree(
     guestPath: string;
     revision: string;
     branch: string | null;
+    expectedRepositoryFingerprint?: string;
   },
   options: SourceMutationOptions,
 ) {
@@ -323,6 +324,18 @@ export async function createLinuxWorktree(
       posix.join(connection.binding.home, "worktrees", plan.worktreeId)
   )
     throw new Error("Worktree locations do not match the selected workspace.");
+  if (plan.expectedRepositoryFingerprint) {
+    const actual = await gitIdentity(
+      connection,
+      plan.sourceId,
+      plan.sourceGuestPath,
+      options,
+    );
+    if (actual.repositoryFingerprint !== plan.expectedRepositoryFingerprint)
+      throw new Error(
+        "The Linux Git common directory changed; no worktree mutation was started.",
+      );
+  }
   await connection.request("fs/createDirectory", {
     path: guestFileUri(posix.dirname(plan.guestPath)),
     recursive: true,
