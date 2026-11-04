@@ -96,6 +96,7 @@
     "@types/node": "^26.1.2",
     "concurrently": "^10.0.4",
     "cross-env": "^10.1.0",
+    "esbuild": "0.28.1",
     "playwright-core": "1.62.1",
     "prettier": "^3.9.6",
     "tsx": "^4.23.9",

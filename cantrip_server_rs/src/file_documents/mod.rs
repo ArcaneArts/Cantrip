@@ -21,9 +21,14 @@ pub struct Repository {
 }
 fn summary(row: &Row) -> Result<Value> {
     let text = |key| row.get::<String>(column(key));
-    let value = json!({"id":text("id")?,"projectId":text("projectId")?,"workerId":text("workerId")?,
+    let mut value = json!({"id":text("id")?,"projectId":text("projectId")?,"workerId":text("workerId")?,
         "worktreeId":text("worktreeId")?,"stateProtection":row.get::<postgres_types::Json<Value>>(column("protectedState"))?.0,
         "createdAt":crate::auth::iso(row.get::<chrono::DateTime<chrono::Utc>>(column("createdAt"))?)});
+    if let Some(binding) = row.get::<Option<String>>(column("cantripOsBindingId"))? {
+        value["cantripOsBindingId"] = json!(binding);
+        value["cantripOsRuntimeGeneration"] =
+            json!(row.get::<String>(column("osRuntimeGeneration"))?);
+    }
     crate::settings::parse_response("fileDocumentWireSummarySchema", Some(&value))
 }
 impl Repository {
@@ -50,23 +55,59 @@ impl Repository {
         let input = crate::settings::parse_response("fileDocumentCreateSchema", Some(input))?;
         let mut bindings = json!({"owner":owner,"project":project,"id":input["id"],
             "worktree":input["worktreeId"],"state":input["stateProtection"]});
+        let (owner, project) = (owner.to_owned(), project.to_owned());
         self.database
             .transaction(|tx| {
                 Box::pin(async move {
-                    let targets = Query::new("target", &bindings)?.write(tx).await?;
-                    let Some(target) = targets.first() else {
-                        return Ok(None);
+                    let os = if let Some(binding) = input["cantripOsBindingId"].as_str() {
+                        Some(
+                            crate::cantrip_os::files::capture(
+                                crate::database::Executor::Transaction(tx),
+                                &owner,
+                                &project,
+                                input["worktreeId"].as_str().unwrap(),
+                                binding,
+                                input["cantripOsRuntimeGeneration"].as_str().unwrap_or(""),
+                            )
+                            .await?,
+                        )
+                    } else {
+                        None
                     };
-                    bindings["worker"] = json!(target.get::<String>(0)?);
-                    if let Some(row) = Query::new("insert", &bindings)?.write(tx).await?.first() {
+                    if let Some(captured) = &os {
+                        bindings["worker"] = Value::from_serialize(&captured["worker_id"]);
+                    } else {
+                        let targets = Query::new("target", &bindings)?.write(tx).await?;
+                        let Some(target) = targets.first() else {
+                            return Ok(None);
+                        };
+                        bindings["worker"] = json!(target.get::<String>(0)?);
+                    }
+                    let insert = Query::new("insert", &bindings)?;
+                    let insert = if let Some(captured) = &os {
+                        insert.with_os_capture(captured)?
+                    } else {
+                        insert
+                    };
+                    if let Some(row) = insert.write(tx).await?.first() {
                         return summary(row).map(Some);
                     }
                     let rows = Query::new("existing", &bindings)?.write(tx).await?;
                     let Some(row) = rows.first() else {
                         return Err(BindingConflict.into());
                     };
-                    if row.get::<String>(column("workerId"))?
-                        != bindings["worker"].as_str().unwrap()
+                    if json!(row.get::<Option<String>>(column("cantripOsBindingId"))?)
+                        != input
+                            .get("cantripOsBindingId")
+                            .cloned()
+                            .unwrap_or(Value::Null)
+                        || json!(row.get::<Option<String>>(column("osRuntimeGeneration"))?)
+                            != input
+                                .get("cantripOsRuntimeGeneration")
+                                .cloned()
+                                .unwrap_or(Value::Null)
+                        || row.get::<String>(column("workerId"))?
+                            != bindings["worker"].as_str().unwrap()
                         || json!(row.get::<String>(column("worktreeId"))?) != input["worktreeId"]
                         || row
                             .get::<postgres_types::Json<Value>>(column("protectedState"))?
@@ -84,12 +125,25 @@ impl Repository {
         let rows = Query::new("context", &json!({"owner":owner,"id":id}))?
             .read(&self.database)
             .await?;
-        rows.first()
-            .map(|row| {
-                let mut value = summary(row)?;
-                value["root"] = json!(row.get::<String>(queries::width())?);
-                Ok(value)
-            })
-            .transpose()
+        let Some(row) = rows.first() else {
+            return Ok(None);
+        };
+        let mut value = summary(row)?;
+        let captured = serde_json::json!({
+            "binding_id":row.get::<Option<String>>(column("cantripOsBindingId"))?,
+            "binding_generation":row.get::<Option<String>>(column("osBindingGeneration"))?,
+            "attachment_generation":row.get::<Option<String>>(column("osAttachmentGeneration"))?,
+            "runtime_generation":row.get::<Option<String>>(column("osRuntimeGeneration"))?
+        });
+        value["root"] = crate::cantrip_os::files::root(
+            crate::database::Executor::Database(&self.database),
+            owner,
+            value["projectId"].as_str().unwrap(),
+            value["worktreeId"].as_str().unwrap(),
+            value["workerId"].as_str().unwrap(),
+            &captured,
+        )
+        .await?;
+        Ok(Some(value))
     }
 }

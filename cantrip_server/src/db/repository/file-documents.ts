@@ -5,10 +5,11 @@ import {
   type FileDocumentCreate,
   type FileDocumentWireSummary,
 } from "@cantrip/protocol";
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, isNull, isNotNull, or } from "drizzle-orm";
 import * as schema from "../schema.js";
 import type { RepositoryDatabase } from "./database.js";
-import { requireWorkerLocalPath } from "./worker-local-source-path.js";
+import { CantripOsFileRepository } from "./cantrip-os-files.js";
+import { CantripOsChatRepository } from "./cantrip-os-chats.js";
 
 export class FileDocumentConflictError extends Error {}
 
@@ -18,6 +19,12 @@ function summary(row: typeof schema.fileDocuments.$inferSelect) {
     projectId: row.projectId,
     workerId: row.workerId,
     worktreeId: row.worktreeId,
+    ...(row.cantripOsBindingId
+      ? {
+          cantripOsBindingId: row.cantripOsBindingId,
+          cantripOsRuntimeGeneration: row.osRuntimeGeneration!,
+        }
+      : {}),
     stateProtection: row.protectedState,
     createdAt: row.createdAt.toISOString(),
   });
@@ -72,38 +79,62 @@ export class FileDocumentRepository {
     return this.database.transaction(async (transaction) => {
       // Lock the actual authority records until insertion completes; a removed
       // source or concurrent checkout mutation cannot invalidate this binding.
-      const targets = await transaction
-        .select({ workerId: schema.projectWorktrees.workerId })
-        .from(schema.projectWorktrees)
-        .innerJoin(
-          schema.projectSources,
-          eq(schema.projectSources.id, schema.projectWorktrees.projectSourceId),
-        )
-        .innerJoin(
-          schema.projects,
-          eq(schema.projects.id, schema.projectSources.projectId),
-        )
-        .innerJoin(
-          schema.workers,
-          eq(schema.workers.id, schema.projectWorktrees.workerId),
-        )
-        .where(
-          and(
-            eq(schema.projects.ownerId, ownerId),
-            eq(schema.workers.ownerId, ownerId),
-            isNull(schema.workers.unlinkedAt),
-            eq(schema.projects.id, projectId),
-            eq(schema.projectWorktrees.id, parsed.worktreeId),
-            eq(schema.projectWorktrees.lifecycleState, "ready"),
-            isNull(schema.projectSources.removedAt),
-          ),
-        )
-        .for("update");
+      const osTarget = parsed.cantripOsBindingId
+        ? await new CantripOsChatRepository(
+            transaction as RepositoryDatabase,
+          ).select(ownerId, projectId, parsed.cantripOsBindingId)
+        : null;
+      if (osTarget && osTarget.worktree.id !== parsed.worktreeId)
+        throw new FileDocumentConflictError("File source and worktree differ.");
+      const osCapture = parsed.cantripOsBindingId
+        ? await new CantripOsFileRepository(
+            transaction as RepositoryDatabase,
+          ).capture(
+            ownerId,
+            projectId,
+            parsed.worktreeId,
+            parsed.cantripOsBindingId,
+            parsed.cantripOsRuntimeGeneration,
+          )
+        : {};
+      const targets = osTarget
+        ? [{ workerId: osTarget.workerId }]
+        : await transaction
+            .select({ workerId: schema.projectWorktrees.workerId })
+            .from(schema.projectWorktrees)
+            .innerJoin(
+              schema.projectSources,
+              eq(
+                schema.projectSources.id,
+                schema.projectWorktrees.projectSourceId,
+              ),
+            )
+            .innerJoin(
+              schema.projects,
+              eq(schema.projects.id, schema.projectSources.projectId),
+            )
+            .innerJoin(
+              schema.workers,
+              eq(schema.workers.id, schema.projectWorktrees.workerId),
+            )
+            .where(
+              and(
+                eq(schema.projects.ownerId, ownerId),
+                eq(schema.workers.ownerId, ownerId),
+                isNull(schema.workers.unlinkedAt),
+                eq(schema.projects.id, projectId),
+                eq(schema.projectWorktrees.id, parsed.worktreeId),
+                eq(schema.projectWorktrees.lifecycleState, "ready"),
+                isNull(schema.projectSources.removedAt),
+              ),
+            )
+            .for("update");
       const target = targets[0];
       if (!target) return null;
       const inserted = await transaction
         .insert(schema.fileDocuments)
         .values({
+          ...osCapture,
           id: parsed.id,
           projectId,
           workerId: target.workerId,
@@ -128,6 +159,9 @@ export class FileDocumentRepository {
       const row = existing[0];
       if (
         !row ||
+        row.cantripOsBindingId !== (parsed.cantripOsBindingId ?? null) ||
+        row.osRuntimeGeneration !==
+          (parsed.cantripOsRuntimeGeneration ?? null) ||
         row.workerId !== target.workerId ||
         row.worktreeId !== parsed.worktreeId ||
         !isDeepStrictEqual(row.protectedState, parsed.stateProtection)
@@ -144,7 +178,7 @@ export class FileDocumentRepository {
     const rows = await this.database
       .select({
         document: schema.fileDocuments,
-        root: schema.projectWorktrees.absolutePath,
+        worktree: schema.projectWorktrees,
       })
       .from(schema.fileDocuments)
       .innerJoin(
@@ -163,12 +197,21 @@ export class FileDocumentRepository {
         ),
       )
       .innerJoin(
-        schema.projectSources,
+        schema.projectSourceIdentities,
         and(
-          eq(schema.projectSources.id, schema.projectWorktrees.projectSourceId),
-          eq(schema.projectSources.projectId, schema.fileDocuments.projectId),
-          isNull(schema.projectSources.removedAt),
+          eq(
+            schema.projectSourceIdentities.id,
+            schema.projectWorktrees.projectSourceId,
+          ),
+          eq(
+            schema.projectSourceIdentities.projectId,
+            schema.fileDocuments.projectId,
+          ),
         ),
+      )
+      .leftJoin(
+        schema.projectSources,
+        eq(schema.projectSources.id, schema.projectWorktrees.projectSourceId),
       )
       .innerJoin(
         schema.workers,
@@ -178,10 +221,29 @@ export class FileDocumentRepository {
           isNull(schema.workers.unlinkedAt),
         ),
       )
-      .where(eq(schema.fileDocuments.id, id));
+      .where(
+        and(
+          eq(schema.fileDocuments.id, id),
+          or(
+            eq(schema.projectWorktrees.locationKind, "cantrip-os"),
+            and(
+              isNotNull(schema.projectSources.id),
+              isNull(schema.projectSources.removedAt),
+            ),
+          ),
+        ),
+      );
     const row = rows[0];
     return row
-      ? { ...summary(row.document), root: requireWorkerLocalPath(row.root) }
+      ? {
+          ...summary(row.document),
+          root: await new CantripOsFileRepository(this.database).root(
+            ownerId,
+            row.document.projectId,
+            row.worktree,
+            row.document,
+          ),
+        }
       : null;
   }
 }

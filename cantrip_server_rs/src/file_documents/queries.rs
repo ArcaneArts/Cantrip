@@ -34,9 +34,6 @@ pub(super) fn column(key: &str) -> usize {
         .position(|k| k == key)
         .expect("document column")
 }
-pub(super) fn width() -> usize {
-    manifest().columns.len()
-}
 pub(super) struct Query {
     key: &'static str,
     sql: String,
@@ -78,6 +75,31 @@ impl Query {
             values,
             diagnostic,
         })
+    }
+    pub fn with_os_capture(mut self, captured: &serde_json::Value) -> Result<Self> {
+        anyhow::ensure!(
+            self.key == "insert",
+            "Only document insertion captures placement"
+        );
+        self.sql = self.sql.replacen(
+            "(default, default, default, default,",
+            "($6::text, $7::text, $8::text, $9::text,",
+            1,
+        );
+        for key in [
+            "binding_id",
+            "binding_generation",
+            "attachment_generation",
+            "runtime_generation",
+        ] {
+            let value = captured[key]
+                .as_str()
+                .context("OS file capture")?
+                .to_owned();
+            self.diagnostic.push(Value::String(value.clone().into()));
+            self.values.push(value);
+        }
+        Ok(self)
     }
     fn params(&self) -> Vec<&(dyn postgres_types::ToSql + Sync)> {
         self.values

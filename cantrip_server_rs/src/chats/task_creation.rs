@@ -193,9 +193,17 @@ impl Repository {
         let github_number = github.get("number").map(Value::stringify);
         let github_intent = optional(&github["intent"])?;
         let github_head = optional(&github["headSha"])?;
+        let os_binding = os_placement
+            .as_ref()
+            .and_then(|v| v["source"]["binding"]["id"].as_str())
+            .map(str::to_owned);
+        let os_runtime = os_placement
+            .as_ref()
+            .and_then(|v| v["source"]["instance"]["runtimeGeneration"].as_str())
+            .map(str::to_owned);
         let input = input.clone();
         self.database.transaction(|tx| Box::pin(async move {
-            let rows = tx.query("INSERT INTO chats(id,owner_id,context_kind,project_id,protected_label,auto_title_pending,experience,position,active_worker_id,active_worktree_id,worktree_mode,model_id,reasoning_effort,custom_subagent_model,subagent_model_id,subagent_reasoning_effort,github_item_kind,github_item_number,github_agent_intent,github_head_sha) VALUES($1,$2,'project',$3,$4::text::jsonb,$5,$15,$6::text::integer,$7,$8,$9,$10,$11,$12,$13,$14,$16,$17::text::integer,$18,$19) RETURNING to_jsonb(chats)::text", &[&id,&owner,&project,&label,&auto_title,&position,&worker,&worktree,&mode,&model,&reasoning,&custom_subagent,&subagent_model,&subagent_reasoning,&experience,&github_kind,&github_number,&github_intent,&github_head]).await.map_err(|error| statement_failure(error, &[&id,&owner,&project,&label,&position,&worker,&worktree,&mode,model.as_deref().unwrap_or(""),reasoning.as_deref().unwrap_or(""),subagent_model.as_deref().unwrap_or(""),subagent_reasoning.as_deref().unwrap_or(""),github_kind.as_deref().unwrap_or(""),github_intent.as_deref().unwrap_or(""),github_head.as_deref().unwrap_or("")]))?;
+            let rows = tx.query("INSERT INTO chats(id,owner_id,context_kind,project_id,protected_label,auto_title_pending,experience,position,active_worker_id,active_worktree_id,worktree_mode,model_id,reasoning_effort,custom_subagent_model,subagent_model_id,subagent_reasoning_effort,github_item_kind,github_item_number,github_agent_intent,github_head_sha,cantrip_os_binding_id,cantrip_os_runtime_generation) VALUES($1,$2,'project',$3,$4::text::jsonb,$5,$15,$6::text::integer,$7,$8,$9,$10,$11,$12,$13,$14,$16,$17::text::integer,$18,$19,$20,$21) RETURNING to_jsonb(chats)::text", &[&id,&owner,&project,&label,&auto_title,&position,&worker,&worktree,&mode,&model,&reasoning,&custom_subagent,&subagent_model,&subagent_reasoning,&experience,&github_kind,&github_number,&github_intent,&github_head,&os_binding,&os_runtime]).await.map_err(|error| statement_failure(error, &[&id,&owner,&project,&label,&position,&worker,&worktree,&mode,model.as_deref().unwrap_or(""),reasoning.as_deref().unwrap_or(""),subagent_model.as_deref().unwrap_or(""),subagent_reasoning.as_deref().unwrap_or(""),github_kind.as_deref().unwrap_or(""),github_intent.as_deref().unwrap_or(""),github_head.as_deref().unwrap_or("")]))?;
             let chat = raw(rows.first().context("Database returned no row while creating a chat")?)?;
             if !task && input.get("attachToTabLayout") == Some(&Value::Bool(false)) {
                 let request = input.stringify();

@@ -25,6 +25,15 @@ export type OsExecutorTransport =
       knownHostsFile: string;
     };
 
+export class OsExecutorRpcError extends Error {
+  constructor(
+    message: string,
+    readonly code: number | undefined,
+  ) {
+    super(message);
+  }
+}
+
 export class OsExecutorDeliveryError extends Error {
   readonly delivery = "unknown";
 }
@@ -194,7 +203,7 @@ export class OsExecutorConnection {
         const message = JSON.parse(line) as {
           id?: number;
           result?: unknown;
-          error?: { message: string };
+          error?: { message: string; code?: number };
           method?: string;
           params?: unknown;
         };
@@ -203,7 +212,10 @@ export class OsExecutorConnection {
           if (!request) return;
           this.pending.delete(message.id);
           clearTimeout(request.timer);
-          if (message.error) request.reject(new Error(message.error.message));
+          if (message.error)
+            request.reject(
+              new OsExecutorRpcError(message.error.message, message.error.code),
+            );
           else request.resolve(message.result);
         } else if (message.method)
           this.notification(message.method, message.params);

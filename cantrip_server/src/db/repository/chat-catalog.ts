@@ -462,6 +462,9 @@ export class ChatCatalogRepository {
           position,
           activeWorkerId: workerId,
           activeWorktreeId: worktreeId,
+          cantripOsBindingId: osBindingId ?? null,
+          cantripOsRuntimeGeneration:
+            osPlacement?.source.instance.runtimeGeneration ?? null,
           worktreeMode: input.worktreeMode,
           modelId: defaultSettings.modelId,
           reasoningEffort: defaultSettings.reasoningEffort,

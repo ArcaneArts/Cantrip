@@ -36,7 +36,7 @@ const manifest = {
   columns: Object.keys(getTableColumns(schema.fileDocuments)),
   queries: {},
 };
-const row = () => manifest.columns.map((key) => values[key]);
+const row = () => manifest.columns.map((key) => values[key] ?? null);
 let phase;
 const aliases = new Map([
   ["owner", "owner"],
@@ -63,7 +63,7 @@ const database = new Proxy(
       rows = [row()];
     } else if (phase === "context") {
       key = "context";
-      rows = [[...row(), "/fixture/root"]];
+      rows = [];
     } else {
       key = "existing";
       rows = [row()];

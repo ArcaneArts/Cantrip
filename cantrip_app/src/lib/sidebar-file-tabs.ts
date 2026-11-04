@@ -1,3 +1,4 @@
+import { sameOsFilePlacement, type OsFilePlacement } from "./os-file-placement";
 import type {
   ExplorerSummary,
   ProjectPaneSummary,
@@ -74,11 +75,13 @@ export function surfaceWorktreeId(surface: ProjectSurface | undefined) {
 }
 
 export function preferredSidebarExplorer({
+  desiredOsPlacement = {},
   desiredWorktreeId,
   explorers,
   layout,
 }: {
   desiredWorktreeId: string | null;
+  desiredOsPlacement?: OsFilePlacement;
   explorers: readonly ExplorerSummary[];
   layout: ProjectTabLayoutSummary | null | undefined;
 }): ExplorerSummary | null {
@@ -86,7 +89,13 @@ export function preferredSidebarExplorer({
   const candidates = desiredWorktreeId
     ? explorers.filter((explorer) => explorer.worktreeId === desiredWorktreeId)
     : [...explorers];
-  return candidates.find((explorer) => !tabbed.has(explorer.id)) ?? null;
+  return (
+    candidates.find(
+      (explorer) =>
+        !tabbed.has(explorer.id) &&
+        sameOsFilePlacement(explorer, desiredOsPlacement),
+    ) ?? null
+  );
 }
 
 export function primaryWorktreeId(

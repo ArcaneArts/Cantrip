@@ -7,12 +7,23 @@ export const fileDocumentCreateSchema = z
   .object({
     id: z.string().uuid(),
     worktreeId: z.string().min(1),
+    cantripOsBindingId: z.uuid().optional(),
+    cantripOsRuntimeGeneration: z.uuid().optional(),
     stateProtection: fileDocumentPrivateStateOpaqueSchema,
   })
-  .strict();
+  .strict()
+  .refine(
+    (input) =>
+      Boolean(input.cantripOsBindingId) ===
+      Boolean(input.cantripOsRuntimeGeneration),
+    {
+      message:
+        "OS file placement requires both binding and runtime generation.",
+    },
+  );
 
 export const fileDocumentWireSummarySchema = fileDocumentCreateSchema
-  .extend({
+  .safeExtend({
     projectId: z.string().min(1),
     workerId: z.string().min(1),
     createdAt: z.string().datetime(),

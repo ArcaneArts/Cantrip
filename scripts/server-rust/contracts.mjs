@@ -744,6 +744,12 @@ for (const schema of [
   taskOperations.taskOpaqueSummarySchema.shape.draftAttachmentIds,
 ])
   registerChecks(schema, ["worker-command-unique"]);
+registerChecks(protocol.fileDocumentCreateSchema, [
+  "cantrip-os-file-placement",
+]);
+registerChecks(protocol.fileDocumentWireSummarySchema, [
+  "cantrip-os-file-placement",
+]);
 registerChecks(protocol.nativeSettingsVersionSchema.shape.revision, [
   "native-settings-version",
 ]);
@@ -957,6 +963,7 @@ registerChecks(protocol.encryptedLinkedConsoleCreateSchema, ["terminal-title"]);
 registerChecks(protocol.terminalWireSummarySchema, ["terminal-wire"]);
 registerChecks(protocol.encryptedExplorerCreateSchema, [
   "terminal-placement",
+  "cantrip-os-file-placement",
   "surface-title:explorer",
 ]);
 registerChecks(protocol.encryptedExplorerUpdateSchema, [

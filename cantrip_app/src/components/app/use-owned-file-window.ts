@@ -61,6 +61,13 @@ export function useOwnedFileWindow({
         queryClient,
         projectId: explorer.projectId,
         worktreeId: explorer.worktreeId,
+        ...(explorer.cantripOsBindingId
+          ? {
+              cantripOsBindingId: explorer.cantripOsBindingId,
+              cantripOsRuntimeGeneration: explorer.cantripOsRuntimeGeneration,
+              workerId: explorer.activeWorkerId,
+            }
+          : {}),
         path: entry.path,
       });
       if (

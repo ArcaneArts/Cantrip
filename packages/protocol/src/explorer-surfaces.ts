@@ -12,6 +12,8 @@ export const explorerFileModeSchema = z.enum(["preview", "visual", "edit"]);
 const explorerCreateBaseSchema = z
   .object({
     worktreeId: z.string().min(1).optional(),
+    cantripOsBindingId: z.uuid().optional(),
+    cantripOsRuntimeGeneration: z.uuid().optional(),
     ...projectPaneDestinationShape,
     target: executionTargetSchema.optional(),
     attachToTabLayout: z.boolean().optional(),
@@ -32,7 +34,16 @@ const explorerCreateBaseSchema = z
         path: ["paneId"],
       });
     }
-  });
+  })
+  .refine(
+    (input) =>
+      Boolean(input.cantripOsBindingId) ===
+      Boolean(input.cantripOsRuntimeGeneration),
+    {
+      message:
+        "OS file placement requires both binding and runtime generation.",
+    },
+  );
 
 export const explorerCreateSchema = explorerCreateBaseSchema.safeExtend({
   title: z.string().trim().min(1).max(200).default("Explorer"),
@@ -109,6 +120,8 @@ export const encryptedExplorerWorktreeUpdateSchema = z
   .strict();
 
 const explorerSummaryBaseSchema = z.object({
+  cantripOsBindingId: z.uuid().optional(),
+  cantripOsRuntimeGeneration: z.uuid().optional(),
   id: z.string().min(1),
   projectId: z.string().min(1),
   position: z.number().int().nonnegative(),

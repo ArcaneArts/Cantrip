@@ -2,6 +2,7 @@
 pub mod chats;
 mod control;
 pub mod coordinator;
+pub mod files;
 mod sources;
 use crate::database::{Database, Parameters, Row};
 use anyhow::{Context, Result};

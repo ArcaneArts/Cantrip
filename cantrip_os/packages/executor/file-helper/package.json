@@ -1,0 +1,12 @@
+{
+  "name": "@cantrip/os-files-helper-build",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "@hpke/core": "1.9.0",
+    "@noble/hashes": "2.3.0",
+    "croner": "10.0.1",
+    "esbuild": "0.28.1",
+    "zod": "4.4.3"
+  }
+}

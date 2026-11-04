@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CodeAppearance, ExplorerFileMode } from "@cantrip/protocol";
 import type { ProjectSurface } from "@/lib/project-surface";
+import type { OsFilePlacement } from "@/lib/os-file-placement";
 import type { FileDocument } from "@/lib/api/file-documents";
 import { PersistentSurfacePortal } from "@/components/app/persistent-surface-portal";
 import { FileDocumentView } from "./file-document-view";
@@ -25,7 +26,12 @@ interface Props {
   activeTabId?: string | null;
   appearance: CodeAppearance;
   onlineWorkerIds?: ReadonlySet<string>;
-  onOpenFile(projectId: string, worktreeId: string, path: string): void;
+  onOpenFile(
+    projectId: string,
+    worktreeId: string,
+    path: string,
+    placement?: OsFilePlacement & { workerId?: string },
+  ): void;
   onModeChange?(tabId: string, mode: ExplorerFileMode): Promise<void>;
   onHeaderChange?(header: ExplorerHeaderState | null): void;
   onLifecycleChange?(
@@ -59,6 +65,11 @@ function RetainedDocumentView({
       defaultExplorerFileMode(document.path),
   );
   const previousSavedMode = useRef(savedMode);
+  // Header/lifecycle publication can render the shell, whose command factories
+  // supply fresh callbacks. Keep the editor's view identity stable while using
+  // the latest commands; otherwise publishing its header publishes it again.
+  const commands = useRef(props);
+  commands.current = props;
   useEffect(() => {
     if (savedMode !== undefined && savedMode !== previousSavedMode.current)
       setMode(savedMode);
@@ -66,17 +77,38 @@ function RetainedDocumentView({
   }, [savedMode]);
   const changeMode = useCallback(
     async (next: ExplorerFileMode) => {
-      if (!props.onModeChange)
+      if (!commands.current.onModeChange)
         throw new Error("File view ownership is unavailable.");
-      await props.onModeChange(tabId, next);
+      await commands.current.onModeChange(tabId, next);
       setMode(next);
     },
-    [props.onModeChange, tabId],
+    [tabId],
   );
   const openFile = useCallback(
     (path: string) =>
-      props.onOpenFile(document.projectId, document.worktreeId, path),
-    [props.onOpenFile, document.projectId, document.worktreeId],
+      document.cantripOsBindingId
+        ? commands.current.onOpenFile(
+            document.projectId,
+            document.worktreeId,
+            path,
+            {
+              cantripOsBindingId: document.cantripOsBindingId,
+              cantripOsRuntimeGeneration: document.cantripOsRuntimeGeneration,
+              workerId: document.workerId,
+            },
+          )
+        : commands.current.onOpenFile(
+            document.projectId,
+            document.worktreeId,
+            path,
+          ),
+    [
+      document.projectId,
+      document.worktreeId,
+      document.cantripOsBindingId,
+      document.cantripOsRuntimeGeneration,
+      document.workerId,
+    ],
   );
   return (
     <div

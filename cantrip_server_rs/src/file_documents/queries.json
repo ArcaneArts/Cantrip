@@ -1,5 +1,9 @@
 {
   "columns": [
+    "cantripOsBindingId",
+    "osBindingGeneration",
+    "osAttachmentGeneration",
+    "osRuntimeGeneration",
     "id",
     "projectId",
     "workerId",
@@ -9,7 +13,7 @@
   ],
   "queries": {
     "list": {
-      "source": "select \"file_documents\".\"id\", \"file_documents\".\"project_id\", \"file_documents\".\"worker_id\", \"file_documents\".\"worktree_id\", \"file_documents\".\"protected_state\", \"file_documents\".\"created_at\" from \"file_documents\" inner join \"projects\" on (\"projects\".\"id\" = \"file_documents\".\"project_id\" and \"projects\".\"owner_id\" = $1) where \"file_documents\".\"project_id\" = $2 order by \"file_documents\".\"created_at\" asc, \"file_documents\".\"id\" asc",
+      "source": "select \"file_documents\".\"cantrip_os_binding_id\", \"file_documents\".\"os_binding_generation\", \"file_documents\".\"os_attachment_generation\", \"file_documents\".\"os_runtime_generation\", \"file_documents\".\"id\", \"file_documents\".\"project_id\", \"file_documents\".\"worker_id\", \"file_documents\".\"worktree_id\", \"file_documents\".\"protected_state\", \"file_documents\".\"created_at\" from \"file_documents\" inner join \"projects\" on (\"projects\".\"id\" = \"file_documents\".\"project_id\" and \"projects\".\"owner_id\" = $1) where \"file_documents\".\"project_id\" = $2 order by \"file_documents\".\"created_at\" asc, \"file_documents\".\"id\" asc",
       "bindings": [
         {
           "key": "owner",
@@ -22,7 +26,7 @@
       ]
     },
     "get": {
-      "source": "select \"file_documents\".\"id\", \"file_documents\".\"project_id\", \"file_documents\".\"worker_id\", \"file_documents\".\"worktree_id\", \"file_documents\".\"protected_state\", \"file_documents\".\"created_at\" from \"file_documents\" inner join \"projects\" on (\"projects\".\"id\" = \"file_documents\".\"project_id\" and \"projects\".\"owner_id\" = $1) where \"file_documents\".\"id\" = $2",
+      "source": "select \"file_documents\".\"cantrip_os_binding_id\", \"file_documents\".\"os_binding_generation\", \"file_documents\".\"os_attachment_generation\", \"file_documents\".\"os_runtime_generation\", \"file_documents\".\"id\", \"file_documents\".\"project_id\", \"file_documents\".\"worker_id\", \"file_documents\".\"worktree_id\", \"file_documents\".\"protected_state\", \"file_documents\".\"created_at\" from \"file_documents\" inner join \"projects\" on (\"projects\".\"id\" = \"file_documents\".\"project_id\" and \"projects\".\"owner_id\" = $1) where \"file_documents\".\"id\" = $2",
       "bindings": [
         {
           "key": "owner",
@@ -60,7 +64,7 @@
       ]
     },
     "insert": {
-      "source": "insert into \"file_documents\" (\"id\", \"project_id\", \"worker_id\", \"worktree_id\", \"protected_state\", \"created_at\") values ($1, $2, $3, $4, $5, default) on conflict do nothing returning \"id\", \"project_id\", \"worker_id\", \"worktree_id\", \"protected_state\", \"created_at\"",
+      "source": "insert into \"file_documents\" (\"cantrip_os_binding_id\", \"os_binding_generation\", \"os_attachment_generation\", \"os_runtime_generation\", \"id\", \"project_id\", \"worker_id\", \"worktree_id\", \"protected_state\", \"created_at\") values (default, default, default, default, $1, $2, $3, $4, $5, default) on conflict do nothing returning \"cantrip_os_binding_id\", \"os_binding_generation\", \"os_attachment_generation\", \"os_runtime_generation\", \"id\", \"project_id\", \"worker_id\", \"worktree_id\", \"protected_state\", \"created_at\"",
       "bindings": [
         {
           "key": "id",
@@ -85,7 +89,7 @@
       ]
     },
     "existing": {
-      "source": "select \"id\", \"project_id\", \"worker_id\", \"worktree_id\", \"protected_state\", \"created_at\" from \"file_documents\" where (\"file_documents\".\"id\" = $1 and \"file_documents\".\"project_id\" = $2)",
+      "source": "select \"cantrip_os_binding_id\", \"os_binding_generation\", \"os_attachment_generation\", \"os_runtime_generation\", \"id\", \"project_id\", \"worker_id\", \"worktree_id\", \"protected_state\", \"created_at\" from \"file_documents\" where (\"file_documents\".\"id\" = $1 and \"file_documents\".\"project_id\" = $2)",
       "bindings": [
         {
           "key": "id",
@@ -98,7 +102,7 @@
       ]
     },
     "context": {
-      "source": "select \"file_documents\".\"id\", \"file_documents\".\"project_id\", \"file_documents\".\"worker_id\", \"file_documents\".\"worktree_id\", \"file_documents\".\"protected_state\", \"file_documents\".\"created_at\", \"project_worktrees\".\"absolute_path\" from \"file_documents\" inner join \"projects\" on (\"projects\".\"id\" = \"file_documents\".\"project_id\" and \"projects\".\"owner_id\" = $1) inner join \"project_worktrees\" on (\"project_worktrees\".\"id\" = \"file_documents\".\"worktree_id\" and \"project_worktrees\".\"worker_id\" = \"file_documents\".\"worker_id\" and \"project_worktrees\".\"lifecycle_state\" = $2) inner join \"project_sources\" on (\"project_sources\".\"id\" = \"project_worktrees\".\"project_source_id\" and \"project_sources\".\"project_id\" = \"file_documents\".\"project_id\" and \"project_sources\".\"removed_at\" is null) inner join \"workers\" on (\"workers\".\"id\" = \"file_documents\".\"worker_id\" and \"workers\".\"owner_id\" = $3 and \"workers\".\"unlinked_at\" is null) where \"file_documents\".\"id\" = $4",
+      "source": "select \"file_documents\".\"cantrip_os_binding_id\", \"file_documents\".\"os_binding_generation\", \"file_documents\".\"os_attachment_generation\", \"file_documents\".\"os_runtime_generation\", \"file_documents\".\"id\", \"file_documents\".\"project_id\", \"file_documents\".\"worker_id\", \"file_documents\".\"worktree_id\", \"file_documents\".\"protected_state\", \"file_documents\".\"created_at\", \"project_worktrees\".\"id\", \"project_worktrees\".\"project_source_id\", \"project_worktrees\".\"worker_id\", \"project_worktrees\".\"root_kind\", \"project_worktrees\".\"name\", \"project_worktrees\".\"location_kind\", \"project_worktrees\".\"absolute_path\", \"project_worktrees\".\"guest_path\", \"project_worktrees\".\"display_path\", \"project_worktrees\".\"is_primary\", \"project_worktrees\".\"is_default\", \"project_worktrees\".\"origin\", \"project_worktrees\".\"lifecycle_state\", \"project_worktrees\".\"branch\", \"project_worktrees\".\"head\", \"project_worktrees\".\"detached\", \"project_worktrees\".\"locked\", \"project_worktrees\".\"lock_reason\", \"project_worktrees\".\"status_snapshot\", \"project_worktrees\".\"status_observed_at\", \"project_worktrees\".\"last_scanned_at\", \"project_worktrees\".\"created_at\", \"project_worktrees\".\"updated_at\" from \"file_documents\" inner join \"projects\" on (\"projects\".\"id\" = \"file_documents\".\"project_id\" and \"projects\".\"owner_id\" = $1) inner join \"project_worktrees\" on (\"project_worktrees\".\"id\" = \"file_documents\".\"worktree_id\" and \"project_worktrees\".\"worker_id\" = \"file_documents\".\"worker_id\" and \"project_worktrees\".\"lifecycle_state\" = $2) inner join \"project_source_identities\" on (\"project_source_identities\".\"id\" = \"project_worktrees\".\"project_source_id\" and \"project_source_identities\".\"project_id\" = \"file_documents\".\"project_id\") left join \"project_sources\" on \"project_sources\".\"id\" = \"project_worktrees\".\"project_source_id\" inner join \"workers\" on (\"workers\".\"id\" = \"file_documents\".\"worker_id\" and \"workers\".\"owner_id\" = $3 and \"workers\".\"unlinked_at\" is null) where (\"file_documents\".\"id\" = $4 and (\"project_worktrees\".\"location_kind\" = $5 or (\"project_sources\".\"id\" is not null and \"project_sources\".\"removed_at\" is null)))",
       "bindings": [
         {
           "key": "owner",
@@ -114,6 +118,10 @@
         },
         {
           "key": "id",
+          "kind": "text"
+        },
+        {
+          "constant": "cantrip-os",
           "kind": "text"
         }
       ]

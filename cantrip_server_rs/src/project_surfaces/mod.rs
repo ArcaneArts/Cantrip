@@ -56,6 +56,10 @@ fn summary(row: &Row, kind: Kind) -> Result<Value> {
         out["activeWorkerId"] = text("activeWorkerId")?;
     }
     if kind == Kind::Explorer {
+        if let Some(binding) = row.get::<Option<String>>(column("cantripOsBindingId"))? {
+            out["cantripOsBindingId"] = json!(binding);
+            out["cantripOsRuntimeGeneration"] = text("osRuntimeGeneration")?;
+        }
         out["stateProtection"] = row
             .get::<Option<postgres_types::Json<Value>>>(column("protectedState"))?
             .map_or(Value::Null, |v| v.0);
@@ -107,7 +111,18 @@ impl Repository {
         let offset = queries::manifest().columns[kind.table()].len();
         let tree = |field| row.get::<String>(offset + queries::column("projectWorktrees", field));
         Ok(Some(if kind == Kind::Explorer {
-            json!({"explorerId":resource["id"],"projectId":resource["projectId"],"root":tree("absolutePath")?,"workerId":resource["activeWorkerId"],"worktreeId":tree("id")?})
+            let col = |key| row.get::<Option<String>>(queries::column("explorers", key));
+            let captured = serde_json::json!({"binding_id":col("cantripOsBindingId")?,"binding_generation":col("osBindingGeneration")?,"attachment_generation":col("osAttachmentGeneration")?,"runtime_generation":col("osRuntimeGeneration")?});
+            let root = crate::cantrip_os::files::root(
+                self.executor(),
+                owner,
+                resource["projectId"].as_str().unwrap(),
+                &tree("id")?,
+                resource["activeWorkerId"].as_str().unwrap(),
+                &captured,
+            )
+            .await?;
+            json!({"explorerId":resource["id"],"projectId":resource["projectId"],"root":root,"workerId":resource["activeWorkerId"],"worktreeId":tree("id")?})
         } else {
             json!({"codeTab":resource,"cwd":tree("absolutePath")?,"workerId":resource["activeWorkerId"],"worktreeId":tree("id")?,"worktreeName":tree("name")?})
         }))

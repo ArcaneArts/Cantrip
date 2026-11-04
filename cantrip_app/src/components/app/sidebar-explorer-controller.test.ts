@@ -1,3 +1,5 @@
+import { getCantripOsBindings } from "@/lib/api/cantrip-os";
+vi.mock("@/lib/api/cantrip-os", () => ({ getCantripOsBindings: vi.fn() }));
 import type {
   ChatSummary,
   ExplorerSummary,
@@ -75,6 +77,45 @@ describe("owned file lifecycle registration", () => {
 });
 
 describe("project file opening", () => {
+  it("opens Linux chat links with their captured binding and never resolves another worktree on the host", async () => {
+    const openOwnedFile = vi.fn(async () => {}),
+      showAppToast = vi.fn();
+    const chat = {
+      projectId: project.id,
+      activeWorktreeId: "linux-tree",
+      activeWorkerId: "worker",
+      cantripOsBindingId: "binding",
+      cantripOsRuntimeGeneration: "generation",
+    } as ChatSummary;
+    vi.mocked(getCantripOsBindings).mockResolvedValue([
+      { id: "binding", worktreeId: "linux-tree", guestPath: "/linux/source" },
+    ] as Awaited<ReturnType<typeof getCantripOsBindings>>);
+    const { openChatFileLink } = createProjectExplorerFileOpening({
+      openOwnedFile,
+      queryClient: new QueryClient(),
+      selectedProject: project,
+      showAppToast,
+      worktrees: [],
+    });
+    openChatFileLink(chat, "/linux/source/main.py:12");
+    await vi.waitFor(() =>
+      expect(openOwnedFile).toHaveBeenCalledExactlyOnceWith(
+        project.id,
+        "linux-tree",
+        "main.py",
+        {
+          cantripOsBindingId: "binding",
+          cantripOsRuntimeGeneration: "generation",
+          workerId: "worker",
+        },
+      ),
+    );
+    openOwnedFile.mockClear();
+    openChatFileLink(chat, "main.py", "other-tree");
+    await vi.waitFor(() => expect(showAppToast).toHaveBeenCalled());
+    expect(openOwnedFile).not.toHaveBeenCalled();
+  });
+
   it("reports a removed checkout failure without retrying the chat's current checkout", async () => {
     const openOwnedFile = vi.fn(async () => {
       throw new Error("Project or available worktree not found.");

@@ -886,6 +886,13 @@ export function App() {
       queryClient,
       projectId: explorer.projectId,
       worktreeId: explorer.worktreeId,
+      ...(explorer.cantripOsBindingId
+        ? {
+            cantripOsBindingId: explorer.cantripOsBindingId,
+            cantripOsRuntimeGeneration: explorer.cantripOsRuntimeGeneration,
+            workerId: explorer.activeWorkerId,
+          }
+        : {}),
       path,
       preview,
       viewer,
@@ -2089,11 +2096,12 @@ export function App() {
   });
   const { openChatFileLink, openProjectExplorerFile } =
     createProjectExplorerFileOpening({
-      openOwnedFile: async (projectId, worktreeId, path) => {
+      openOwnedFile: async (projectId, worktreeId, path, placement) => {
         if (!ownedWorkspace)
           throw new Error("Workspace connection is not ready.");
         await openOwnedFile({
           ...ownedWorkspace,
+          ...placement,
           queryClient,
           projectId,
           worktreeId,
