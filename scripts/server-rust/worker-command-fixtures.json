@@ -5857,6 +5857,552 @@
           "operationId": "12345678-1234-4234-8234-123456789abc"
         }
       }
+    },
+    {
+      "type": "cantrip-os.run-definition",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.run-definition",
+          "execution": {
+            "kind": "cantrip-os",
+            "scope": {
+              "ownerId": "owner",
+              "workerId": "worker",
+              "instanceId": "12345678-1234-4234-8234-123456789abc",
+              "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+              "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+              "runtimeGeneration": "12345678-1234-4234-8234-123456789abc",
+              "bindingId": "12345678-1234-4234-8234-123456789abc",
+              "bindingGeneration": "12345678-1234-4234-8234-123456789abc",
+              "projectId": "12345678-1234-4234-8234-123456789abc",
+              "projectSourceId": "12345678-1234-4234-8234-123456789abc",
+              "sourceKind": "git",
+              "worktreeId": "12345678-1234-4234-8234-123456789abc",
+              "workspaceId": "12345678-1234-4234-8234-123456789abc",
+              "guestWorkspaceId": "example",
+              "uid": 20000,
+              "gid": 20000,
+              "homeGuestPath": "/home/example",
+              "guestPath": "/home/example/checkouts/source",
+              "dependencyOverlays": [],
+              "mode": "linux-owned",
+              "linkedWorkerPath": null
+            },
+            "transport": {
+              "kind": "docker",
+              "container": "cantrip-os"
+            }
+          },
+          "request": {
+            "type": "project.run-configuration-definitions.list",
+            "operationId": "12345678-1234-4234-8234-123456789abc",
+            "projectId": "12345678-1234-4234-8234-123456789abc"
+          }
+        }
+      }
+    },
+    {
+      "type": "cantrip-os.run-runtime.start",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.run-runtime.start",
+          "definitions": {
+            "kind": "cantrip-os",
+            "scope": {
+              "ownerId": "owner",
+              "workerId": "worker",
+              "instanceId": "12345678-1234-4234-8234-123456789abc",
+              "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+              "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+              "runtimeGeneration": "12345678-1234-4234-8234-123456789abc",
+              "bindingId": "12345678-1234-4234-8234-123456789abc",
+              "bindingGeneration": "12345678-1234-4234-8234-123456789abc",
+              "projectId": "12345678-1234-4234-8234-123456789abc",
+              "projectSourceId": "12345678-1234-4234-8234-123456789abc",
+              "sourceKind": "git",
+              "worktreeId": "12345678-1234-4234-8234-123456789abc",
+              "workspaceId": "12345678-1234-4234-8234-123456789abc",
+              "guestWorkspaceId": "example",
+              "uid": 20000,
+              "gid": 20000,
+              "homeGuestPath": "/home/example",
+              "guestPath": "/home/example/checkouts/source",
+              "dependencyOverlays": [],
+              "mode": "linux-owned",
+              "linkedWorkerPath": null
+            },
+            "transport": {
+              "kind": "docker",
+              "container": "cantrip-os"
+            }
+          },
+          "target": {
+            "kind": "cantrip-os",
+            "scope": {
+              "ownerId": "owner",
+              "workerId": "worker",
+              "instanceId": "12345678-1234-4234-8234-123456789abc",
+              "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+              "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+              "runtimeGeneration": "12345678-1234-4234-8234-123456789abc",
+              "bindingId": "12345678-1234-4234-8234-123456789abc",
+              "bindingGeneration": "12345678-1234-4234-8234-123456789abc",
+              "projectId": "12345678-1234-4234-8234-123456789abc",
+              "projectSourceId": "12345678-1234-4234-8234-123456789abc",
+              "sourceKind": "git",
+              "worktreeId": "12345678-1234-4234-8234-123456789abc",
+              "workspaceId": "12345678-1234-4234-8234-123456789abc",
+              "guestWorkspaceId": "example",
+              "uid": 20000,
+              "gid": 20000,
+              "homeGuestPath": "/home/example",
+              "guestPath": "/home/example/checkouts/source",
+              "dependencyOverlays": [],
+              "mode": "linux-owned",
+              "linkedWorkerPath": null
+            },
+            "transport": {
+              "kind": "docker",
+              "container": "cantrip-os"
+            }
+          },
+          "identity": {
+            "runtimeId": "12345678-1234-4234-8234-123456789abc",
+            "projectId": "12345678-1234-4234-8234-123456789abc",
+            "configurationId": "12345678-1234-4234-8234-123456789abc",
+            "worktreeId": "12345678-1234-4234-8234-123456789abc",
+            "workerId": "worker",
+            "definitionRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "codexEnvironmentRevision": null,
+            "generation": 1,
+            "operationId": "12345678-1234-4234-8234-123456789abc",
+            "terminalId": "12345678-1234-4234-8234-123456789abc"
+          },
+          "protectedSecrets": []
+        }
+      }
+    },
+    {
+      "type": "cantrip-os.run-runtime.restart",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.run-runtime.restart",
+          "definitions": {
+            "kind": "cantrip-os",
+            "scope": {
+              "ownerId": "owner",
+              "workerId": "worker",
+              "instanceId": "12345678-1234-4234-8234-123456789abc",
+              "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+              "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+              "runtimeGeneration": "12345678-1234-4234-8234-123456789abc",
+              "bindingId": "12345678-1234-4234-8234-123456789abc",
+              "bindingGeneration": "12345678-1234-4234-8234-123456789abc",
+              "projectId": "12345678-1234-4234-8234-123456789abc",
+              "projectSourceId": "12345678-1234-4234-8234-123456789abc",
+              "sourceKind": "git",
+              "worktreeId": "12345678-1234-4234-8234-123456789abc",
+              "workspaceId": "12345678-1234-4234-8234-123456789abc",
+              "guestWorkspaceId": "example",
+              "uid": 20000,
+              "gid": 20000,
+              "homeGuestPath": "/home/example",
+              "guestPath": "/home/example/checkouts/source",
+              "dependencyOverlays": [],
+              "mode": "linux-owned",
+              "linkedWorkerPath": null
+            },
+            "transport": {
+              "kind": "docker",
+              "container": "cantrip-os"
+            }
+          },
+          "target": {
+            "kind": "cantrip-os",
+            "scope": {
+              "ownerId": "owner",
+              "workerId": "worker",
+              "instanceId": "12345678-1234-4234-8234-123456789abc",
+              "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+              "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+              "runtimeGeneration": "12345678-1234-4234-8234-123456789abc",
+              "bindingId": "12345678-1234-4234-8234-123456789abc",
+              "bindingGeneration": "12345678-1234-4234-8234-123456789abc",
+              "projectId": "12345678-1234-4234-8234-123456789abc",
+              "projectSourceId": "12345678-1234-4234-8234-123456789abc",
+              "sourceKind": "git",
+              "worktreeId": "12345678-1234-4234-8234-123456789abc",
+              "workspaceId": "12345678-1234-4234-8234-123456789abc",
+              "guestWorkspaceId": "example",
+              "uid": 20000,
+              "gid": 20000,
+              "homeGuestPath": "/home/example",
+              "guestPath": "/home/example/checkouts/source",
+              "dependencyOverlays": [],
+              "mode": "linux-owned",
+              "linkedWorkerPath": null
+            },
+            "transport": {
+              "kind": "docker",
+              "container": "cantrip-os"
+            }
+          },
+          "identity": {
+            "runtimeId": "12345678-1234-4234-8234-123456789abc",
+            "projectId": "12345678-1234-4234-8234-123456789abc",
+            "configurationId": "12345678-1234-4234-8234-123456789abc",
+            "worktreeId": "12345678-1234-4234-8234-123456789abc",
+            "workerId": "worker",
+            "definitionRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "codexEnvironmentRevision": null,
+            "generation": 1,
+            "operationId": "12345678-1234-4234-8234-123456789abc",
+            "terminalId": "12345678-1234-4234-8234-123456789abc"
+          },
+          "protectedSecrets": []
+        }
+      }
+    },
+    {
+      "type": "cantrip-os.run-runtime.stop",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.run-runtime.stop",
+          "definitions": {
+            "kind": "cantrip-os",
+            "scope": {
+              "ownerId": "owner",
+              "workerId": "worker",
+              "instanceId": "12345678-1234-4234-8234-123456789abc",
+              "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+              "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+              "runtimeGeneration": "12345678-1234-4234-8234-123456789abc",
+              "bindingId": "12345678-1234-4234-8234-123456789abc",
+              "bindingGeneration": "12345678-1234-4234-8234-123456789abc",
+              "projectId": "12345678-1234-4234-8234-123456789abc",
+              "projectSourceId": "12345678-1234-4234-8234-123456789abc",
+              "sourceKind": "git",
+              "worktreeId": "12345678-1234-4234-8234-123456789abc",
+              "workspaceId": "12345678-1234-4234-8234-123456789abc",
+              "guestWorkspaceId": "example",
+              "uid": 20000,
+              "gid": 20000,
+              "homeGuestPath": "/home/example",
+              "guestPath": "/home/example/checkouts/source",
+              "dependencyOverlays": [],
+              "mode": "linux-owned",
+              "linkedWorkerPath": null
+            },
+            "transport": {
+              "kind": "docker",
+              "container": "cantrip-os"
+            }
+          },
+          "target": {
+            "kind": "cantrip-os",
+            "scope": {
+              "ownerId": "owner",
+              "workerId": "worker",
+              "instanceId": "12345678-1234-4234-8234-123456789abc",
+              "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+              "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+              "runtimeGeneration": "12345678-1234-4234-8234-123456789abc",
+              "bindingId": "12345678-1234-4234-8234-123456789abc",
+              "bindingGeneration": "12345678-1234-4234-8234-123456789abc",
+              "projectId": "12345678-1234-4234-8234-123456789abc",
+              "projectSourceId": "12345678-1234-4234-8234-123456789abc",
+              "sourceKind": "git",
+              "worktreeId": "12345678-1234-4234-8234-123456789abc",
+              "workspaceId": "12345678-1234-4234-8234-123456789abc",
+              "guestWorkspaceId": "example",
+              "uid": 20000,
+              "gid": 20000,
+              "homeGuestPath": "/home/example",
+              "guestPath": "/home/example/checkouts/source",
+              "dependencyOverlays": [],
+              "mode": "linux-owned",
+              "linkedWorkerPath": null
+            },
+            "transport": {
+              "kind": "docker",
+              "container": "cantrip-os"
+            }
+          },
+          "identity": {
+            "runtimeId": "12345678-1234-4234-8234-123456789abc",
+            "projectId": "12345678-1234-4234-8234-123456789abc",
+            "configurationId": "12345678-1234-4234-8234-123456789abc",
+            "worktreeId": "12345678-1234-4234-8234-123456789abc",
+            "workerId": "worker",
+            "definitionRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "codexEnvironmentRevision": null,
+            "generation": 1,
+            "operationId": "12345678-1234-4234-8234-123456789abc",
+            "terminalId": "12345678-1234-4234-8234-123456789abc"
+          }
+        }
+      }
+    },
+    {
+      "type": "cantrip-os.run-runtime.status",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.run-runtime.status",
+          "definitions": {
+            "kind": "cantrip-os",
+            "scope": {
+              "ownerId": "owner",
+              "workerId": "worker",
+              "instanceId": "12345678-1234-4234-8234-123456789abc",
+              "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+              "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+              "runtimeGeneration": "12345678-1234-4234-8234-123456789abc",
+              "bindingId": "12345678-1234-4234-8234-123456789abc",
+              "bindingGeneration": "12345678-1234-4234-8234-123456789abc",
+              "projectId": "12345678-1234-4234-8234-123456789abc",
+              "projectSourceId": "12345678-1234-4234-8234-123456789abc",
+              "sourceKind": "git",
+              "worktreeId": "12345678-1234-4234-8234-123456789abc",
+              "workspaceId": "12345678-1234-4234-8234-123456789abc",
+              "guestWorkspaceId": "example",
+              "uid": 20000,
+              "gid": 20000,
+              "homeGuestPath": "/home/example",
+              "guestPath": "/home/example/checkouts/source",
+              "dependencyOverlays": [],
+              "mode": "linux-owned",
+              "linkedWorkerPath": null
+            },
+            "transport": {
+              "kind": "docker",
+              "container": "cantrip-os"
+            }
+          },
+          "target": {
+            "kind": "cantrip-os",
+            "scope": {
+              "ownerId": "owner",
+              "workerId": "worker",
+              "instanceId": "12345678-1234-4234-8234-123456789abc",
+              "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+              "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+              "runtimeGeneration": "12345678-1234-4234-8234-123456789abc",
+              "bindingId": "12345678-1234-4234-8234-123456789abc",
+              "bindingGeneration": "12345678-1234-4234-8234-123456789abc",
+              "projectId": "12345678-1234-4234-8234-123456789abc",
+              "projectSourceId": "12345678-1234-4234-8234-123456789abc",
+              "sourceKind": "git",
+              "worktreeId": "12345678-1234-4234-8234-123456789abc",
+              "workspaceId": "12345678-1234-4234-8234-123456789abc",
+              "guestWorkspaceId": "example",
+              "uid": 20000,
+              "gid": 20000,
+              "homeGuestPath": "/home/example",
+              "guestPath": "/home/example/checkouts/source",
+              "dependencyOverlays": [],
+              "mode": "linux-owned",
+              "linkedWorkerPath": null
+            },
+            "transport": {
+              "kind": "docker",
+              "container": "cantrip-os"
+            }
+          },
+          "identity": {
+            "runtimeId": "12345678-1234-4234-8234-123456789abc",
+            "projectId": "12345678-1234-4234-8234-123456789abc",
+            "configurationId": "12345678-1234-4234-8234-123456789abc",
+            "worktreeId": "12345678-1234-4234-8234-123456789abc",
+            "workerId": "worker",
+            "definitionRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "codexEnvironmentRevision": null,
+            "generation": 1,
+            "operationId": "12345678-1234-4234-8234-123456789abc",
+            "terminalId": "12345678-1234-4234-8234-123456789abc"
+          }
+        }
+      }
+    },
+    {
+      "type": "cantrip-os.run-runtime.output",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.run-runtime.output",
+          "definitions": {
+            "kind": "cantrip-os",
+            "scope": {
+              "ownerId": "owner",
+              "workerId": "worker",
+              "instanceId": "12345678-1234-4234-8234-123456789abc",
+              "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+              "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+              "runtimeGeneration": "12345678-1234-4234-8234-123456789abc",
+              "bindingId": "12345678-1234-4234-8234-123456789abc",
+              "bindingGeneration": "12345678-1234-4234-8234-123456789abc",
+              "projectId": "12345678-1234-4234-8234-123456789abc",
+              "projectSourceId": "12345678-1234-4234-8234-123456789abc",
+              "sourceKind": "git",
+              "worktreeId": "12345678-1234-4234-8234-123456789abc",
+              "workspaceId": "12345678-1234-4234-8234-123456789abc",
+              "guestWorkspaceId": "example",
+              "uid": 20000,
+              "gid": 20000,
+              "homeGuestPath": "/home/example",
+              "guestPath": "/home/example/checkouts/source",
+              "dependencyOverlays": [],
+              "mode": "linux-owned",
+              "linkedWorkerPath": null
+            },
+            "transport": {
+              "kind": "docker",
+              "container": "cantrip-os"
+            }
+          },
+          "target": {
+            "kind": "cantrip-os",
+            "scope": {
+              "ownerId": "owner",
+              "workerId": "worker",
+              "instanceId": "12345678-1234-4234-8234-123456789abc",
+              "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+              "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+              "runtimeGeneration": "12345678-1234-4234-8234-123456789abc",
+              "bindingId": "12345678-1234-4234-8234-123456789abc",
+              "bindingGeneration": "12345678-1234-4234-8234-123456789abc",
+              "projectId": "12345678-1234-4234-8234-123456789abc",
+              "projectSourceId": "12345678-1234-4234-8234-123456789abc",
+              "sourceKind": "git",
+              "worktreeId": "12345678-1234-4234-8234-123456789abc",
+              "workspaceId": "12345678-1234-4234-8234-123456789abc",
+              "guestWorkspaceId": "example",
+              "uid": 20000,
+              "gid": 20000,
+              "homeGuestPath": "/home/example",
+              "guestPath": "/home/example/checkouts/source",
+              "dependencyOverlays": [],
+              "mode": "linux-owned",
+              "linkedWorkerPath": null
+            },
+            "transport": {
+              "kind": "docker",
+              "container": "cantrip-os"
+            }
+          },
+          "identity": {
+            "runtimeId": "12345678-1234-4234-8234-123456789abc",
+            "projectId": "12345678-1234-4234-8234-123456789abc",
+            "configurationId": "12345678-1234-4234-8234-123456789abc",
+            "worktreeId": "12345678-1234-4234-8234-123456789abc",
+            "workerId": "worker",
+            "definitionRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "codexEnvironmentRevision": null,
+            "generation": 1,
+            "operationId": "12345678-1234-4234-8234-123456789abc",
+            "terminalId": "12345678-1234-4234-8234-123456789abc"
+          },
+          "requestOperationId": "12345678-1234-4234-8234-123456789abc",
+          "serverId": "server",
+          "tail": 1024
+        }
+      }
+    },
+    {
+      "type": "cantrip-os.run-runtime.reconcile",
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "cantrip-os.run-runtime.reconcile",
+          "captures": [
+            {
+              "definitions": {
+                "kind": "cantrip-os",
+                "scope": {
+                  "ownerId": "owner",
+                  "workerId": "worker",
+                  "instanceId": "12345678-1234-4234-8234-123456789abc",
+                  "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+                  "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+                  "runtimeGeneration": "12345678-1234-4234-8234-123456789abc",
+                  "bindingId": "12345678-1234-4234-8234-123456789abc",
+                  "bindingGeneration": "12345678-1234-4234-8234-123456789abc",
+                  "projectId": "12345678-1234-4234-8234-123456789abc",
+                  "projectSourceId": "12345678-1234-4234-8234-123456789abc",
+                  "sourceKind": "git",
+                  "worktreeId": "12345678-1234-4234-8234-123456789abc",
+                  "workspaceId": "12345678-1234-4234-8234-123456789abc",
+                  "guestWorkspaceId": "example",
+                  "uid": 20000,
+                  "gid": 20000,
+                  "homeGuestPath": "/home/example",
+                  "guestPath": "/home/example/checkouts/source",
+                  "dependencyOverlays": [],
+                  "mode": "linux-owned",
+                  "linkedWorkerPath": null
+                },
+                "transport": {
+                  "kind": "docker",
+                  "container": "cantrip-os"
+                }
+              },
+              "target": {
+                "kind": "cantrip-os",
+                "scope": {
+                  "ownerId": "owner",
+                  "workerId": "worker",
+                  "instanceId": "12345678-1234-4234-8234-123456789abc",
+                  "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+                  "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+                  "runtimeGeneration": "12345678-1234-4234-8234-123456789abc",
+                  "bindingId": "12345678-1234-4234-8234-123456789abc",
+                  "bindingGeneration": "12345678-1234-4234-8234-123456789abc",
+                  "projectId": "12345678-1234-4234-8234-123456789abc",
+                  "projectSourceId": "12345678-1234-4234-8234-123456789abc",
+                  "sourceKind": "git",
+                  "worktreeId": "12345678-1234-4234-8234-123456789abc",
+                  "workspaceId": "12345678-1234-4234-8234-123456789abc",
+                  "guestWorkspaceId": "example",
+                  "uid": 20000,
+                  "gid": 20000,
+                  "homeGuestPath": "/home/example",
+                  "guestPath": "/home/example/checkouts/source",
+                  "dependencyOverlays": [],
+                  "mode": "linux-owned",
+                  "linkedWorkerPath": null
+                },
+                "transport": {
+                  "kind": "docker",
+                  "container": "cantrip-os"
+                }
+              },
+              "identity": {
+                "runtimeId": "12345678-1234-4234-8234-123456789abc",
+                "projectId": "12345678-1234-4234-8234-123456789abc",
+                "configurationId": "12345678-1234-4234-8234-123456789abc",
+                "worktreeId": "12345678-1234-4234-8234-123456789abc",
+                "workerId": "worker",
+                "definitionRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "codexEnvironmentRevision": null,
+                "generation": 1,
+                "operationId": "12345678-1234-4234-8234-123456789abc",
+                "terminalId": "12345678-1234-4234-8234-123456789abc"
+              }
+            }
+          ]
+        }
+      }
     }
   ]
 }

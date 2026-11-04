@@ -522,6 +522,10 @@ const cantripOsExports = [
   "cantripOsRunDefinitionApiSchema",
   "cantripOsRunDefinitionResponseSchema",
   "cantripOsRunPrimarySchema",
+  "cantripOsRunRootsSchema",
+  "cantripOsRunLaunchSchema",
+  "cantripOsRunCaptureSchema",
+  "workerCantripOsRunCommandSchemas",
   "cantripOsDispatchScopeSchema",
   "cantripOsSourceDispatchScopeSchema",
   "cantripOsExecutionSchema",
@@ -689,7 +693,7 @@ describe("protocol public surface compatibility", () => {
       (option) => option.shape.type.value,
     );
 
-    expect(commandTypes).toHaveLength(286);
+    expect(commandTypes).toHaveLength(292);
     expect(
       commandTypes.filter((type) => type.startsWith("cantrip-os.")),
     ).toEqual([
@@ -701,6 +705,12 @@ describe("protocol public surface compatibility", () => {
       "cantrip-os.source.inspect",
       "cantrip-os.operation.inspect",
       "cantrip-os.run-definition",
+      "cantrip-os.run-runtime.start",
+      "cantrip-os.run-runtime.restart",
+      "cantrip-os.run-runtime.stop",
+      "cantrip-os.run-runtime.status",
+      "cantrip-os.run-runtime.output",
+      "cantrip-os.run-runtime.reconcile",
     ]);
     expect(
       commandTypes.filter((type) => type === "file-document.operation"),

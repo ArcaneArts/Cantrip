@@ -156,6 +156,12 @@ binding reports an error. Provider validation checks files and executables in
 Linux. Definitions remain revisioned files under `.cantrip/run-configurations`.
 
 This is an API/package checkpoint. The header source picker and delegated Run
-process lifecycle follow next; the existing header still controls host Runs.
+Server lifecycle routing follow next; the existing header still controls host Runs.
+The Worker now integrates the native driver into its common Run supervisor with
+explicit `cantrip-os.run-runtime.*` commands. Every command captures both the
+definition Primary and execution target. Reconciliation after Worker memory loss
+stops recorded native handles without repeating their launch or input; an
+unconfirmed stop remains an error rather than an idle result. This internal
+Worker capability is not yet a client Run action.
 Linux definition deletion is not admitted by this checkpoint: it must join
 that lifecycle so active Runs stop before their definition and tabs are removed.

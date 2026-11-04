@@ -7,7 +7,10 @@ import { workerWorktreeCommandSchemas } from "./worker-command-worktrees.js";
 import { workerSurfaceCommandSchemas } from "./worker-command-surfaces.js";
 import { workerChatCommandSchemas } from "./worker-command-chat.js";
 import { workerCantripOsCommandSchemas } from "./worker-command-cantrip-os.js";
-import { cantripOsRunDefinitionWorkerCommandSchema } from "./cantrip-os-run.js";
+import {
+  cantripOsRunDefinitionWorkerCommandSchema,
+  workerCantripOsRunCommandSchemas,
+} from "./cantrip-os-run.js";
 import {
   workerComputerUseEffectsCommandSchema,
   workerComputerUseCommandSchema,
@@ -33,6 +36,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   generateLabelCommandSchema,
   ...workerCantripOsCommandSchemas,
   cantripOsRunDefinitionWorkerCommandSchema,
+  ...workerCantripOsRunCommandSchemas,
 ]);
 
 export type WorkerCommand = z.infer<typeof workerCommandSchema>;

@@ -1,4 +1,8 @@
 import { randomUUID } from "node:crypto";
+import { spawn, type ChildProcess } from "node:child_process";
+import { once } from "node:events";
+import { fileURLToPath } from "node:url";
+import { RunConfigurationRuntimeSupervisor } from "../src/run-configuration-runtime-supervisor.js";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -92,7 +96,9 @@ describe.skipIf(!enabled)("actual Linux Run generation driver", () => {
     const binding = await controller.captureExecutionBinding(transport, scope);
     const connection = new OsExecutorConnection(transport, binding);
     let unrelated: string | undefined;
+    const supervisors: RunConfigurationRuntimeSupervisor[] = [];
     let restoreSpy: (() => void) | undefined;
+    let crashWorker: ChildProcess | undefined;
     const hostValue = process.env.CANTRIP_TEST_HOST_ONLY;
     process.env.CANTRIP_TEST_HOST_ONLY = "must-stay-on-the-worker";
     try {
@@ -562,6 +568,254 @@ describe.skipIf(!enabled)("actual Linux Run generation driver", () => {
           })
         ).exited,
       ).toBe(false);
+      // Exercise the product's common lifecycle against the same real Native
+      // executor, not a fake child process or a second guest scheduler.
+      let hostAuthorizations = 0;
+      const makeSupervisor = () => {
+        const supervisor = new RunConfigurationRuntimeSupervisor({
+          authorize: async () => {
+            hostAuthorizations++;
+            throw new Error("Linux Run reached Host authorization");
+          },
+          linux: new OsRunExecution(
+            directory,
+            controller,
+            authority,
+            async () => secretValue,
+          ),
+        });
+        supervisors.push(supervisor);
+        return supervisor;
+      };
+      const supervisor = makeSupervisor();
+      const lifecycleInput = {
+        ...input,
+        identity: {
+          ...input.identity,
+          runtimeId: randomUUID(),
+          terminalId: randomUUID(),
+          operationId: randomUUID(),
+        },
+      };
+      const capture = () => ({
+        identity: lifecycleInput.identity,
+        definitions,
+        target,
+      });
+      expect(
+        (
+          await supervisor.start({
+            type: "cantrip-os.run-runtime.start",
+            ...lifecycleInput,
+          })
+        ).outcome,
+      ).toBe("accepted");
+      await expect
+        .poll(
+          () => supervisor.status(lifecycleInput.identity, lifecycleInput),
+          { timeout: 60000 },
+        )
+        .toMatchObject({
+          found: true,
+          observation: { state: "exited", exitCode: 0 },
+        });
+      const lifecycleOutput = supervisor.output({
+        type: "cantrip-os.run-runtime.output",
+        ...capture(),
+        serverId: core.serverId,
+        requestOperationId: randomUUID(),
+        tail: 65536,
+      });
+      expect(lifecycleOutput.data).toContain("RUN_RESULT=");
+      expect(lifecycleOutput.data).not.toContain(secretValue);
+      expect(
+        (
+          await supervisor.start({
+            type: "cantrip-os.run-runtime.start",
+            ...lifecycleInput,
+          })
+        ).outcome,
+      ).toBe("replayed");
+      expect(await get(`${targetPath}/runs.txt`)).toBe("once\nonce\n");
+      expect(() => supervisor.status(lifecycleInput.identity)).toThrow(
+        "different execution placement",
+      );
+      expect(() =>
+        supervisor.output({
+          type: "cantrip-os.run-runtime.output",
+          ...capture(),
+          target: {
+            ...target,
+            scope: { ...target.scope, workspaceId: randomUUID() },
+          },
+          serverId: core.serverId,
+          requestOperationId: randomUUID(),
+          tail: 1024,
+        }),
+      ).toThrow("different execution placement");
+      await expect(
+        supervisor.start({
+          type: "project.run-configuration-runtime.start",
+          identity: {
+            ...lifecycleInput.identity,
+            generation: 2,
+            operationId: randomUUID(),
+          },
+          rootKind: "git-root",
+          sourcePath: "/must-not-resolve-guest-on-host",
+          targetPath: "/must-not-resolve-guest-on-host",
+          protectedSecrets: [],
+        }),
+      ).rejects.toThrow("different execution placement");
+      const managedLong = {
+        ...input,
+        identity: {
+          ...input.identity,
+          runtimeId: randomUUID(),
+          terminalId: randomUUID(),
+          operationId: randomUUID(),
+          configurationId: longDoc.id,
+          definitionRevision: longWrite.result.entry.revision!,
+          codexEnvironmentRevision: null,
+        },
+        protectedSecrets: [],
+      };
+      const managedCapture = () => ({
+        identity: managedLong.identity,
+        definitions,
+        target,
+      });
+      const running = () =>
+        supervisor.status(managedLong.identity, managedLong);
+      const waitRoot = async (previous: string) => {
+        await expect
+          .poll(
+            async () => {
+              const value = await get(`${targetPath}/root-child.pid`);
+              return value.trim() !== previous;
+            },
+            { timeout: 60000 },
+          )
+          .toBe(true);
+        await expect
+          .poll(running, { timeout: 60000 })
+          .toMatchObject({ found: true, observation: { state: "running" } });
+        return (await get(`${targetPath}/root-child.pid`)).trim();
+      };
+      const gone = async (pid: string) => {
+        const value = await runGuestProcess(
+          connection,
+          [
+            "python",
+            "-c",
+            "import pathlib,sys;p=pathlib.Path('/proc/'+sys.argv[1]+'/stat');print('gone' if not p.exists() else p.read_text().split()[2])",
+            pid,
+          ],
+          home,
+        );
+        return ["gone", "Z"].includes(value.stdout.trim());
+      };
+      await supervisor.start({
+        type: "cantrip-os.run-runtime.start",
+        ...managedLong,
+      });
+      const firstRoot = await waitRoot(rootPid);
+      await supervisor.reconcile([]);
+      expect(running()).toMatchObject({
+        found: true,
+        observation: { state: "running" },
+      });
+      managedLong.identity = {
+        ...managedLong.identity,
+        generation: 2,
+        operationId: randomUUID(),
+      };
+      expect(
+        (
+          await supervisor.restart({
+            type: "cantrip-os.run-runtime.restart",
+            ...managedLong,
+          })
+        ).outcome,
+      ).toBe("accepted");
+      const secondRoot = await waitRoot(firstRoot);
+      expect(await gone(firstRoot)).toBe(true);
+      managedLong.identity = {
+        ...managedLong.identity,
+        operationId: randomUUID(),
+      };
+      expect(
+        (
+          await supervisor.stop({
+            type: "cantrip-os.run-runtime.stop",
+            ...managedCapture(),
+          })
+        ).observation?.state,
+      ).toBe("idle");
+      expect(await gone(secondRoot)).toBe(true);
+      managedLong.identity = {
+        ...managedLong.identity,
+        generation: 3,
+        operationId: randomUUID(),
+      };
+      const crashInput = path.join(directory, "crash-worker.json");
+      await writeFile(
+        crashInput,
+        JSON.stringify({
+          directory,
+          workerId,
+          ownerId,
+          serverId: core.serverId,
+          launch: managedLong,
+        }),
+        { mode: 0o600 },
+      );
+      crashWorker = spawn(
+        process.execPath,
+        [
+          "--import",
+          "tsx",
+          fileURLToPath(
+            new URL("./fixtures/os-run-crash-worker.ts", import.meta.url),
+          ),
+          crashInput,
+        ],
+        { stdio: ["ignore", "pipe", "pipe"] },
+      );
+      let crashDiagnostics = "";
+      crashWorker.stdout!.on("data", (chunk) => {
+        crashDiagnostics += chunk.toString();
+      });
+      crashWorker.stderr!.on("data", (chunk) => {
+        crashDiagnostics += chunk.toString();
+      });
+      await expect
+        .poll(
+          async () => {
+            if (crashWorker!.exitCode !== null)
+              throw new Error(crashDiagnostics);
+            return (
+              (await get(`${targetPath}/root-child.pid`)).trim() !== secondRoot
+            );
+          },
+          { timeout: 60000 },
+        )
+        .toBe(true);
+      const thirdRoot = (await get(`${targetPath}/root-child.pid`)).trim();
+      const crashed = once(crashWorker, "exit");
+      crashWorker.kill("SIGKILL");
+      await crashed;
+      crashWorker = undefined;
+      // A fresh Worker supervisor observes and stops recorded handles. It does
+      // not recreate the process when its in-memory runtime is absent.
+      const recovered = makeSupervisor();
+      const reconciled = await recovered.reconcileLinux([managedCapture()]);
+      expect(reconciled.runtimes).toEqual([
+        { found: false, identity: managedLong.identity },
+      ]);
+      expect(await gone(thirdRoot)).toBe(true);
+      expect(await get(`${targetPath}/root-child.pid`)).toBe(thirdRoot);
+      expect(hostAuthorizations).toBe(0);
       const artifacts = new URL(
         "../../cantrip_os/artifacts/phase3-run-execution/",
         import.meta.url,
@@ -581,6 +835,14 @@ describe.skipIf(!enabled)("actual Linux Run generation driver", () => {
             dropped,
             rootChildAfterCancel: rootState,
             unrelatedRetained: true,
+            commonLifecycle: {
+              hostAuthorizations,
+              replayDidNotExecute: true,
+              restartedRootStopped: firstRoot,
+              stoppedRoot: secondRoot,
+              workerCrashRootStopped: thirdRoot,
+              recoveredWithoutReplay: reconciled.runtimes,
+            },
           },
           null,
           2,
@@ -589,6 +851,10 @@ describe.skipIf(!enabled)("actual Linux Run generation driver", () => {
       key.fill(0);
     } finally {
       restoreSpy?.();
+      crashWorker?.kill("SIGKILL");
+      await Promise.allSettled(
+        supervisors.map((supervisor) => supervisor.closeAll()),
+      );
       if (unrelated)
         await connection
           .request("process/terminate", { processId: unrelated })

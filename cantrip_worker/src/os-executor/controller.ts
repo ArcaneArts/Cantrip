@@ -1,4 +1,5 @@
 import { realpath } from "node:fs/promises";
+import type { z } from "zod";
 import { isDeepStrictEqual } from "node:util";
 import {
   cantripOsObservedInstanceSchema,
@@ -8,7 +9,7 @@ import {
   type CantripOsDispatchScope,
   type CantripOsSourceDispatchScope,
   type CantripOsProvisionIntent,
-  type WorkerCommand,
+  type workerCantripOsCommandSchemas,
 } from "@cantrip/protocol";
 import { LocalDocker, sourceMounts } from "@cantrip/os-host";
 import {
@@ -28,10 +29,7 @@ import { installLinkedSource } from "./linked.js";
 import { OsOperationStore, type OsOperationRecord } from "./operations.js";
 import { guestFileUri } from "./paths.js";
 
-type WireCommand = Exclude<
-  Extract<WorkerCommand, { type: `cantrip-os.${string}` }>,
-  { type: "cantrip-os.run-definition" }
->;
+type WireCommand = z.infer<(typeof workerCantripOsCommandSchemas)[number]>;
 type Provision = Extract<WireCommand, { type: "cantrip-os.source.provision" }>;
 type Command =
   | Exclude<WireCommand, Provision>

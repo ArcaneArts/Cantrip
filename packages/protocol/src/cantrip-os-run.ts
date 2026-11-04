@@ -5,6 +5,13 @@ import {
   runConfigurationDefinitionWorkerCommandSchemas,
   runConfigurationOperationResponseSchema,
 } from "./run-configuration-operations.js";
+import {
+  runConfigurationRuntimeLaunchIdentitySchema,
+  runConfigurationRuntimeWorkerIdentitySchema,
+  runConfigurationRuntimeOutputWorkerCommandSchema,
+  RUN_CONFIGURATION_RUNTIME_LIST_LIMIT,
+} from "./run-configuration-runtime.js";
+import { runConfigurationProtectedSecretListSchema } from "./run-configuration-secrets.js";
 
 // Paths in these requests exist only inside the authenticated guest helper.
 // The owning Worker receives an explicit Linux execution descriptor instead.
@@ -69,4 +76,63 @@ export const cantripOsRunDefinitionResponseSchema = z
   .strict();
 export type CantripOsRunDefinitionRequest = z.infer<
   typeof cantripOsRunDefinitionRequestSchema
+>;
+
+export const cantripOsRunRootsSchema = z
+  .object({
+    definitions: cantripOsExecutionSchema,
+    target: cantripOsExecutionSchema,
+  })
+  .strict();
+export const cantripOsRunLaunchSchema = cantripOsRunRootsSchema
+  .extend({
+    identity: runConfigurationRuntimeLaunchIdentitySchema,
+    protectedSecrets: runConfigurationProtectedSecretListSchema,
+  })
+  .strict();
+export const cantripOsRunCaptureSchema = cantripOsRunRootsSchema
+  .extend({
+    identity: runConfigurationRuntimeWorkerIdentitySchema,
+  })
+  .strict();
+export const workerCantripOsRunCommandSchemas = [
+  cantripOsRunLaunchSchema
+    .extend({ type: z.literal("cantrip-os.run-runtime.start") })
+    .strict(),
+  cantripOsRunLaunchSchema
+    .extend({ type: z.literal("cantrip-os.run-runtime.restart") })
+    .strict(),
+  cantripOsRunRootsSchema
+    .extend({
+      type: z.literal("cantrip-os.run-runtime.stop"),
+      identity: runConfigurationRuntimeLaunchIdentitySchema,
+    })
+    .strict(),
+  cantripOsRunCaptureSchema
+    .extend({ type: z.literal("cantrip-os.run-runtime.status") })
+    .strict(),
+  cantripOsRunCaptureSchema
+    .extend({
+      type: z.literal("cantrip-os.run-runtime.output"),
+      requestOperationId:
+        runConfigurationRuntimeOutputWorkerCommandSchema.shape
+          .requestOperationId,
+      serverId: runConfigurationRuntimeOutputWorkerCommandSchema.shape.serverId,
+      tail: runConfigurationRuntimeOutputWorkerCommandSchema.shape.tail,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("cantrip-os.run-runtime.reconcile"),
+      captures: z
+        .array(cantripOsRunCaptureSchema)
+        .max(RUN_CONFIGURATION_RUNTIME_LIST_LIMIT),
+    })
+    .strict(),
+] as const;
+export type CantripOsRunLaunch = z.infer<typeof cantripOsRunLaunchSchema>;
+export type CantripOsRunRoots = z.infer<typeof cantripOsRunRootsSchema>;
+export type CantripOsRunCapture = z.infer<typeof cantripOsRunCaptureSchema>;
+export type CantripOsRunWorkerCommand = z.infer<
+  (typeof workerCantripOsRunCommandSchemas)[number]
 >;

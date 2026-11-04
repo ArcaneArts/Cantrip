@@ -683,6 +683,10 @@ original source identity. Executor 0.5.0 adds source-specific Primary Run
 definition files, discovery, and Linux validation through the protected Worker
 path. Executor 0.6.0 adds a tested Worker/native Run generation driver, including
 Linux setup/environment resolution and cancellation of adopted root descendants.
+The existing Worker Run supervisor now owns these Linux generations through
+explicit captured definition/target roots, with start/restart/stop/output and
+observation-only reconciliation commands. Host and Linux reconciliation are
+separate so one family cannot retire the other's active processes.
 The Run header source picker, Server runtime routing, and final distribution
 acceptance remain pending.
 See [the workflow](../cantrip_os/PRODUCT_WORKFLOW.md#files-and-editor) and
