@@ -1,3 +1,5 @@
+import { serveCantripMcpHttp } from "./http-server.js";
+import { cantripMcpToolNamesForOperations } from "@cantrip/protocol";
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import {
   chmodSync,
@@ -636,6 +638,26 @@ export class CantripMcpBroker {
       const handshake = /^\/v1\/bindings\/([0-9a-f-]+)$/u.exec(
         requestUrl.pathname,
       );
+      const mcp = /^\/v1\/mcp\/([0-9a-f-]+)$/u.exec(requestUrl.pathname);
+      if (mcp) {
+        const stored = this.bindingFor(mcp[1]!, request.headers.authorization);
+        if (!stored) {
+          sendJson(response, 401, { error: "Unauthorized" });
+          return;
+        }
+        void serveCantripMcpHttp(request, response, {
+          connection: stored.connection,
+          profile:
+            stored.claims.contextKind === "standalone"
+              ? "standalone-web"
+              : "ide",
+          allowedToolNames: cantripMcpToolNamesForOperations(
+            stored.claims.allowedOperations,
+          ),
+        });
+        return;
+      }
+
       if (request.method === "GET" && handshake) {
         const stored = this.bindingFor(
           handshake[1]!,

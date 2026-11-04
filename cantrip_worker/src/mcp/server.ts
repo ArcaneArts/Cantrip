@@ -132,7 +132,7 @@ export type CantripMcpOperationGateway = (
 ) => Promise<CantripAgentOperationResult>;
 
 function compatibleToolHelpInputSchema<
-  const Names extends readonly [string, ...string[]],
+  const Names extends readonly (typeof CANTRIP_MCP_TOOL_NAMES)[number][],
 >(names: Names) {
   const toolName = z.enum(names);
   return z
@@ -235,17 +235,17 @@ const idempotentDestructiveOpenWorldMutationAnnotations = {
 export function createCantripMcpServer(
   gateway: CantripMcpOperationGateway,
   profile: CantripMcpProfile = "ide",
+  allowedToolNames?: readonly string[],
 ) {
-  const availableToolNames = new Set<string>(
+  const profileToolNames =
     profile === "standalone-web"
       ? CANTRIP_MCP_STANDALONE_TOOL_NAMES
-      : CANTRIP_MCP_TOOL_NAMES,
-  );
-  const toolHelpInputSchema = compatibleToolHelpInputSchema(
-    profile === "standalone-web"
-      ? CANTRIP_MCP_STANDALONE_TOOL_NAMES
-      : CANTRIP_MCP_TOOL_NAMES,
-  );
+      : CANTRIP_MCP_TOOL_NAMES;
+  const names = allowedToolNames
+    ? profileToolNames.filter((name) => allowedToolNames.includes(name))
+    : profileToolNames;
+  const availableToolNames = new Set<string>(names);
+  const toolHelpInputSchema = compatibleToolHelpInputSchema(names);
   const server = new McpServer(
     {
       name: "cantrip",
