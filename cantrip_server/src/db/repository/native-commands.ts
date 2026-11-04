@@ -1,3 +1,4 @@
+import { deferUndispatchedGui } from "./native-undispatched-gui.js";
 import { reconcileNativeThreadObservation } from "./native-thread-observation.js";
 import { NativeCommandRecoveryRepository } from "./native-command-recovery.js";
 import {
@@ -846,6 +847,21 @@ export class NativeCommandRepository {
       this.database,
       this.lanes,
     ).logicalGuiOutcomeRoot(...args);
+  }
+  deferUndispatchedGui(
+    ownerId: string,
+    workerId: string,
+    operationId: string,
+    generation: string,
+  ) {
+    return deferUndispatchedGui(
+      this.database,
+      this.lanes,
+      ownerId,
+      workerId,
+      operationId,
+      generation,
+    );
   }
   finishLogicalGui(
     ...args: Parameters<NativeLogicalInputRepository["finishLogicalGui"]>

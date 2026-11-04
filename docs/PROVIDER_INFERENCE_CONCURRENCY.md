@@ -151,6 +151,42 @@ of old pending journal records remain to be integrated. Merely loading ordinals
 is not yet complete FIFO recovery across a restart. In-memory runtime/controller
 tombstones also still need the final bounded-lifecycle audit.
 
+## Canonical submission and transport backpressure
+
+New user submissions to managed IDE chats enter the existing encrypted canonical
+queue even when the chat is idle. The queue retains the client's original message,
+attachments, model selection, and subagent settings before dispatch; it is not a
+second worker prompt store. Only the next eligible item acquires a queue claim
+and competes for a provider ticket. GUI goal prompts default to the normal
+`turn/start` path so first-message naming and goal initialization keep the same
+lifecycle. Explicit native queue actions retain their selected execution method.
+
+Both server command limiters mark a rejection as **not dispatched** only at their
+actual admission failure before invoking the delegate. Byte-limit failures while
+receiving events or responses do not carry that proof. For an accepted GUI start
+with a matching canonical claim, the server transaction can close that exact
+unused activation, mark the old logical receipt complete, and return the original
+queue item to pending. A new claim receives its own physical operation identity.
+Removed items stay removed, and deferral does not create an unread completion.
+Rebuilding a first native thread excludes the current pending message ID from
+its prior-history section, so retained input appears once. A preparation-stage transport rejection similarly
+defers an unadmitted claim instead of permanently rejecting that prompt revision.
+The existing durable queue delivery service retries; no provider semaphore or
+second scheduling queue was added to the server.
+
+This compensation does not infer safety from missing output, timeouts, or socket
+loss. A dispatched, consumed, cancelled, superseded, or otherwise contradictory
+native receipt is ineligible. Pre-dispatch telemetry shells close as cancelled
+transport attempts with zero inference time, without failing a chat, starting a
+goal cycle, spending its retry budget, or abandoning a live analytics record.
+Worker queue waiting and execution-time accounting still require the final audit.
+
+This step covers managed IDE submission and transport admission. Standalone Chat,
+Task dispatch, edited-message retries, native recovery, and restart FIFO must
+still complete their existing canonical lifecycle integration. It does not yet
+remove the ordinary RPC concurrency ceiling: a full transport retains inputs
+for retry rather than claiming that they have entered a provider's FIFO queue.
+
 ## Configuration and live queue feedback
 
 Provider setup and editing expose **Maximum concurrent inference**, defaulting

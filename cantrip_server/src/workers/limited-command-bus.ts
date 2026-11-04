@@ -230,7 +230,11 @@ export class LimitedWorkerCommandBus implements WorkerCommandBus {
     ) {
       this.#failedRequests += 1;
       this.#logLimit(workerId, command.type, "relay-bandwidth-quota");
-      throw new RelayLimitError("Relay bandwidth quota reached. Retry later.");
+      throw new RelayLimitError(
+        "Relay bandwidth quota reached. Retry later.",
+        1,
+        true,
+      );
     }
     // A full inference queue cannot consume cancellation/configuration headroom.
     // These are transport resource limits, never provider inference permits.
@@ -244,6 +248,7 @@ export class LimitedWorkerCommandBus implements WorkerCommandBus {
       throw new RelayLimitError(
         "Worker command rate limit reached. Retry shortly.",
         retryAfter,
+        true,
       );
     }
     const releaseAccount = lane.accountActive.acquire(ownerId);
@@ -252,6 +257,8 @@ export class LimitedWorkerCommandBus implements WorkerCommandBus {
       this.#logLimit(workerId, command.type, "account-concurrency-limit");
       throw new RelayLimitError(
         "Account worker-command concurrency limit reached.",
+        1,
+        true,
       );
     }
     const releaseWorker = lane.workerActive.acquire(workerId);
@@ -259,7 +266,11 @@ export class LimitedWorkerCommandBus implements WorkerCommandBus {
       releaseAccount();
       this.#failedRequests += 1;
       this.#logLimit(workerId, command.type, "worker-concurrency-limit");
-      throw new RelayLimitError("Worker command concurrency limit reached.");
+      throw new RelayLimitError(
+        "Worker command concurrency limit reached.",
+        1,
+        true,
+      );
     }
     this.#routedRequests += 1;
     try {

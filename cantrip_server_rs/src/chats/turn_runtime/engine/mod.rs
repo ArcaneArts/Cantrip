@@ -238,6 +238,32 @@ impl Runtime {
             match result {
                 Ok(()) => return Ok(()),
                 Err(error) => {
+                    if let Some(CommandFailure::Limit(limit)) =
+                        error.downcast_ref::<CommandFailure>()
+                        && limit.not_dispatched()
+                        && let Some(receipt) = &turn.native_receipt
+                        && Commands::new(self.dependencies.events.database.clone())
+                            .defer_undispatched_gui(
+                                &turn.owner,
+                                &events::text(&turn.execution["workerId"])?,
+                                &events::text(&receipt["operationId"])?,
+                                &events::text(&receipt["operationGeneration"])?,
+                            )
+                            .await?
+                    {
+                        self.record_transport_deferred(&sink, index, began).await;
+                        self.dependencies.events.live.publish_summary(
+                            &turn.owner,
+                            &turn.execution["chatId"],
+                            &turn.execution["projectId"],
+                        );
+                        self.log("info", "Queued chat is waiting for worker transport capacity", json!({
+                            "event":"chat.queue.transport-deferred", "chatId":turn.execution["chatId"],
+                            "workerId":turn.execution["workerId"], "operationId":receipt["operationId"],
+                            "retryAfterSeconds":limit.retry_after_seconds,
+                        }));
+                        return Ok(());
+                    }
                     if let Some(receipt) = &turn.native_receipt
                         && Commands::new(self.dependencies.events.database.clone())
                             .has_deferred_logical_gui(

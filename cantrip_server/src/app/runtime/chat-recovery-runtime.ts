@@ -1,3 +1,4 @@
+import { RelayLimitError } from "../../security/abuse-limits.js";
 import { createChatTurnOutcomeRuntime } from "./chat-turn-outcome-runtime.js";
 import {
   managedConsoleSessionContext,
@@ -480,12 +481,25 @@ export function createChatRecoveryRuntime({
       if (!managedClaim)
         await deleteLiveQueuedPrompt(applicationOwnerId(), prompt.id);
     } catch (error) {
+      const retryable = error instanceof RelayLimitError && error.notDispatched;
       if (managedClaim)
         await repository.managedQueue.releaseUnadmitted(
           applicationOwnerId(),
           chatId,
           managedClaim.id,
+          { retryable },
         );
+      if (retryable) {
+        app.log.info(
+          {
+            event: "chat.queue.transport-deferred",
+            chatId,
+            retryAfterSeconds: error.retryAfterSeconds,
+          },
+          "Queued chat is waiting for worker transport capacity",
+        );
+        return;
+      }
       app.log.error(
         {
           event: "chat.queue.dispatch-failed",

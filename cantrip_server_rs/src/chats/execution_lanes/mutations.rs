@@ -67,7 +67,11 @@ async fn finish(
     }
     let pause = truthy(options.get("pauseAutomation"));
     let pause_sql = if pause { ",automation_paused=true" } else { "" };
-    let unread = if ["idle", "failed"].contains(&status) {
+    let unread = if ["idle", "failed"].contains(&status)
+        && options
+            .get("markUnreadCompletion")
+            .is_none_or(|v| v != &json!(false))
+    {
         ",has_unread_completion=true"
     } else {
         ""

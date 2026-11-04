@@ -887,7 +887,11 @@ export class ChatExecutionLaneRepository {
     chatId: string,
     laneId: string,
     status: ChatWireSummary["status"],
-    options: { pauseAutomation?: boolean; expectedActivatedAt?: string } = {},
+    options: {
+      pauseAutomation?: boolean;
+      expectedActivatedAt?: string;
+      markUnreadCompletion?: boolean;
+    } = {},
   ): Promise<boolean> {
     const now = new Date();
     return this.database.transaction(async (transaction) => {
@@ -934,7 +938,8 @@ export class ChatExecutionLaneRepository {
         .set({
           status,
           ...(options.pauseAutomation ? { automationPaused: true } : {}),
-          ...(status === "idle" || status === "failed"
+          ...((status === "idle" || status === "failed") &&
+          options.markUnreadCompletion !== false
             ? { hasUnreadCompletion: true }
             : {}),
           updatedAt: now,

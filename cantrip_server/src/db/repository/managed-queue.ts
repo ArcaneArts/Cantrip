@@ -748,7 +748,12 @@ export class ManagedQueueRepository {
       return row ? claimValue(row) : null;
     });
   }
-  async releaseUnadmitted(ownerId: string, chatId: string, id: string) {
+  async releaseUnadmitted(
+    ownerId: string,
+    chatId: string,
+    id: string,
+    options: { retryable?: boolean } = {},
+  ) {
     return this.database.transaction(async (tx) => {
       await this.lock(tx, ownerId, chatId);
       const [row] = await tx
@@ -763,7 +768,7 @@ export class ManagedQueueRepository {
       if (!row || row.status !== "claimed" || row.operationId) return false;
       await tx
         .update(schema.managedQueueClaims)
-        .set({ status: "rejected" })
+        .set({ status: options.retryable ? "deferred" : "rejected" })
         .where(eq(schema.managedQueueClaims.id, id));
       await tx
         .update(schema.queuedPrompts)

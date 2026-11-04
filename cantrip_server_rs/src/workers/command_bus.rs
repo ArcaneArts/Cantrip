@@ -428,7 +428,7 @@ impl LimitedCommandBus {
             state.failed += 1.0;
             drop(state);
             self.log_limit(&worker.value, command, reason);
-            return Err(CommandFailure::Limit(error));
+            return Err(CommandFailure::Limit(error.before_dispatch()));
         }
         state.routed += 1.0;
         Ok(ActiveRequest {

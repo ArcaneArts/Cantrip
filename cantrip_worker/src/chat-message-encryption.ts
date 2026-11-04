@@ -159,18 +159,22 @@ export async function openEncryptedChatTurn(input: {
       "Review the attached files and respond to the user.";
     if (input.threadId) return prompt;
     const history = await Promise.all(
-      input.history.map(async (raw): Promise<ChatMessage> => {
-        const message = chatMessageOpaqueSummarySchema.parse(raw);
-        const content = await openMessage({
-          componentKey: component.key,
-          message,
-          ownerId,
-        });
-        return {
-          ...message,
-          content,
-        };
-      }),
+      // A retained canonical input can already have its user row committed even
+      // though its turn was never forwarded. It belongs in the prompt once.
+      input.history
+        .filter((raw) => raw.id !== input.prompt.id)
+        .map(async (raw): Promise<ChatMessage> => {
+          const message = chatMessageOpaqueSummarySchema.parse(raw);
+          const content = await openMessage({
+            componentKey: component.key,
+            message,
+            ownerId,
+          });
+          return {
+            ...message,
+            content,
+          };
+        }),
     );
     return continuationPrompt(history, prompt);
   } finally {
