@@ -1,3 +1,4 @@
+import { RelayLimitError } from "../../security/abuse-limits.js";
 import {
   chatTurnModelConfiguration,
   validateChatTurnInput,
@@ -1836,6 +1837,77 @@ export function createChatTurnRuntime({
             );
             return;
           } catch (error) {
+            if (
+              nativeCommandReceipt &&
+              error instanceof RelayLimitError &&
+              error.notDispatched &&
+              (await repository.nativeCommands.deferUndispatchedGui(
+                ownerId,
+                execution.workerId,
+                nativeCommandReceipt.operationId,
+                nativeCommandReceipt.operationGeneration,
+              ))
+            ) {
+              // No worker turn was forwarded. The original canonical queue item
+              // remains eligible; do not fail over, spend retries or replay input.
+              // Close the pre-dispatch telemetry shell with zero inference time.
+              // This is a transport cancellation, not a failed model/goal attempt.
+              const deferredAt = new Date();
+              try {
+                await recordRuntimeTokenUsage(
+                  tokenUsageSourceKey,
+                  execution.projectId,
+                  execution.chatId,
+                  runtime,
+                  undefined,
+                  {
+                    workerId: execution.workerId,
+                    executionAttemptId,
+                    attemptKind: "chat-turn",
+                    attemptStatus: "cancelled",
+                    startedAt: attemptStartedAt,
+                    completedAt: attemptStartedAt,
+                    finalizedAt: deferredAt,
+                    codexVersion: attributedWorker?.codexVersion ?? null,
+                  },
+                );
+                await recordRuntimeModelBehavior(
+                  behaviorSourceKey,
+                  execution,
+                  runtime,
+                  behaviorTracker,
+                  {
+                    executionAttemptId,
+                    attemptStatus: "cancelled",
+                    routeAttemptIndex: index,
+                    retryFailoverCount: index,
+                    startedAt: attemptStartedAt,
+                    completedAt: attemptStartedAt,
+                    finalizedAt: deferredAt,
+                    durationMs: 0,
+                    userInterrupted: false,
+                    codexVersion: attributedWorker?.codexVersion ?? null,
+                  },
+                );
+              } catch (telemetryError) {
+                app.log.warn(
+                  { err: telemetryError, chatId: execution.chatId },
+                  "Could not close deferred transport telemetry",
+                );
+              }
+              publishChatSummary(execution.chatId, execution.projectId);
+              app.log.info(
+                {
+                  event: "chat.queue.transport-deferred",
+                  chatId: execution.chatId,
+                  workerId: execution.workerId,
+                  operationId: nativeCommandReceipt.operationId,
+                  retryAfterSeconds: error.retryAfterSeconds,
+                },
+                "Queued chat is waiting for worker transport capacity",
+              );
+              return;
+            }
             // Only the durable, source-correlated no-input receipt may retain this
             // submission. Transport errors and ordinary native rejections still fail.
             if (

@@ -5,7 +5,7 @@ use crate::{
         managed_console::{permission_profile, session_context},
         message_queries::MessageKind,
     },
-    workers::command_bus::RequestTimeout,
+    workers::command_bus::{CommandFailure, RequestTimeout},
 };
 impl Service {
     /// Admission and coalescing happen before returning the owned future.
@@ -35,10 +35,24 @@ impl Service {
         let mut claim = None;
         let result = self.execute_next(owner, chat, &mut claim).await;
         if let Err(error) = result {
+            let retryable = error.downcast_ref::<CommandFailure>().is_some_and(
+                |e| matches!(e, CommandFailure::Limit(limit) if limit.not_dispatched()),
+            );
             if let Some(claim) = claim {
-                self.queue
-                    .release_unadmitted(owner, chat, &text(&claim["id"])?)
-                    .await?;
+                let id = text(&claim["id"])?;
+                if retryable {
+                    self.queue.defer_unadmitted(owner, chat, &id).await?;
+                } else {
+                    self.queue.release_unadmitted(owner, chat, &id).await?;
+                }
+            }
+            if retryable {
+                self.log(
+                    "info",
+                    "Queued chat is waiting for worker transport capacity",
+                    json!({"event":"chat.queue.transport-deferred","chatId":chat}),
+                );
+                return Ok(());
             }
             self.log("error","Queued prompt dispatch failed",json!({"event":"chat.queue.dispatch-failed","subsystem":"chat-queue","operation":"dispatch-prompt","reasonCode":"dispatch-failed","status":"failed","chatId":chat,"err":logging::error_details(&error)}));
         }

@@ -52,7 +52,7 @@ impl Execution {
                 ));
             }
         }
-        if truthy(context.get("automationPaused")) || executing(&context) {
+        if managed(&context) || truthy(context.get("automationPaused")) || executing(&context) {
             let result: Result<Option<Value>> = async {
                 self.service
                     .model_routing
@@ -64,15 +64,19 @@ impl Execution {
                         &input["queuedPrompt"]["classification"]["attachmentIds"],
                     )
                     .await?;
-                self.prompt_create(&context, &input["queuedPrompt"], &attachments)
-                    .await
+                let mut prompt = input["queuedPrompt"].clone();
+                if managed(&context) && prompt.get("executionMethod").is_none() {
+                    // Retain normal first-turn naming and goal initialization.
+                    prompt["executionMethod"] = json!("turn/start");
+                }
+                self.prompt_create(&context, &prompt, &attachments).await
             }
             .await;
             return match result {
                 Err(cause) => Ok(error(409, message(&cause))),
                 Ok(None) => Ok(error(404, "Chat not found.")),
                 Ok(Some(prompt)) => {
-                    self.log("Chat prompt queued behind active work",json!({"event":"chat.queue.enqueued","subsystem":"chat-queue","operation":"enqueue-prompt","status":"queued","chatId":context["chatId"],"projectId":context["projectId"],"workerId":context["workerId"],"requestId":prompt["id"],"counts":json!({"attachments":prompt["attachments"].as_array().context("Queued attachments")?.len()}),"reasonCode":if truthy(context.get("automationPaused")){"automation-paused"}else{"turn-active"}}));
+                    self.log("Chat prompt retained in the canonical queue",json!({"event":"chat.queue.enqueued","subsystem":"chat-queue","operation":"enqueue-prompt","status":"queued","chatId":context["chatId"],"projectId":context["projectId"],"workerId":context["workerId"],"requestId":prompt["id"],"counts":json!({"attachments":prompt["attachments"].as_array().context("Queued attachments")?.len()}),"reasonCode":if truthy(context.get("automationPaused")){"automation-paused"}else if executing(&context){"turn-active"}else{"durable-submission"}}));
                     if managed(&context) {
                         self.dispatch(chat);
                     }

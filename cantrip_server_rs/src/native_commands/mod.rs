@@ -29,6 +29,7 @@ mod settlement;
 mod thread_observation;
 pub mod transaction;
 pub mod turns;
+mod undispatched_gui;
 use crate::database::Database;
 use std::sync::Arc;
 #[cfg(test)]

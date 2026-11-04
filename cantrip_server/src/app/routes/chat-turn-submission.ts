@@ -125,7 +125,13 @@ export function installChatTurnSubmissionRoutes(
                 : "This Chat's scratch folder is unavailable.",
         });
       }
-      if (context.automationPaused || chatIsExecuting(context.status)) {
+      const managedSubmission =
+        managedConsoleSessionContext(context) !== undefined;
+      if (
+        managedSubmission ||
+        context.automationPaused ||
+        chatIsExecuting(context.status)
+      ) {
         let modelId: string;
         let attachments: Awaited<ReturnType<typeof resolvePromptAttachments>>;
         try {
@@ -146,7 +152,13 @@ export function installChatTurnSubmissionRoutes(
                   context,
                   {
                     kind: "add",
-                    prompt: input.data.queuedPrompt,
+                    // GUI goal prompts still enter through beginTurn so naming,
+                    // first-cycle setup and response admission share one lifecycle.
+                    prompt: {
+                      ...input.data.queuedPrompt,
+                      executionMethod:
+                        input.data.queuedPrompt.executionMethod ?? "turn/start",
+                    },
                     attachments: attachments.map(toChatAttachmentOpaqueSummary),
                   },
                   {
@@ -178,9 +190,11 @@ export function installChatTurnSubmissionRoutes(
                 counts: { attachments: prompt.attachments.length },
                 reasonCode: context.automationPaused
                   ? "automation-paused"
-                  : "turn-active",
+                  : chatIsExecuting(context.status)
+                    ? "turn-active"
+                    : "durable-submission",
               },
-              "Chat prompt queued behind active work",
+              "Chat prompt retained in the canonical queue",
             );
           }
           if (prompt && managedConsoleSessionContext(context))

@@ -4,6 +4,8 @@ export class RelayLimitError extends Error {
   constructor(
     message: string,
     readonly retryAfterSeconds = 1,
+    /** Set only by the transport limiter before invoking its delegate. */
+    readonly notDispatched = false,
   ) {
     super(message);
     this.name = "RelayLimitError";

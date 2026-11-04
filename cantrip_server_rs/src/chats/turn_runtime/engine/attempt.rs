@@ -183,6 +183,45 @@ impl Runtime {
             )
             .await;
     }
+    pub(super) async fn record_transport_deferred(
+        &self,
+        sink: &EventSink,
+        index: usize,
+        began: i64,
+    ) {
+        let runtime = sink.runtime.lock().unwrap().clone();
+        let mut a = self.analytics(sink, index, "cancelled", began, Some(began));
+        a["finalizedAt"] = json!(
+            crate::wire::date_iso_milliseconds((self.dependencies.events.clock)())
+                .expect("Attempt clock")
+        );
+        a["userInterrupted"] = json!(false);
+        self.dependencies
+            .events
+            .telemetry
+            .record_usage(
+                &sink.turn.owner,
+                &sink.source,
+                &sink.turn.execution,
+                &runtime,
+                None,
+                &a,
+            )
+            .await;
+        let state = sink.state.lock().await;
+        self.dependencies
+            .events
+            .telemetry
+            .record_behavior(
+                &sink.turn.owner,
+                &sink.source,
+                &sink.turn.execution,
+                &runtime,
+                &state.tracker,
+                &a,
+            )
+            .await;
+    }
     pub(super) async fn dispatch(
         self: &Arc<Self>,
         sink: &Arc<EventSink>,
