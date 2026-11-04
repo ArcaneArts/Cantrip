@@ -92,6 +92,25 @@ reset those budgets. The Node server's inter-instance relay carries the same clo
 control events internally, without exposing them as chat activity. Native label
 execution retains its own 27-second observation/25-second native cancellation bounds.
 
+Native patch `0053` distinguishes cancellation in a provider queue from an empty
+automatic goal response. A per-turn extension-store marker is installed before
+Core's actual `begin` request for regular turns, restored continuations and manual
+compaction. It is marked admitted only after the worker grant reaches Core.
+The existing inference lifetime still owns cancellation/settlement; the marker
+cannot grant or release capacity. On abort, a turn that never received its grant
+is retired from goal turn accounting without entering empty-response evaluation.
+Existing empty-response history is preserved; a later admitted empty execution
+still follows the normal policy.
+
+Native goal `timeUsedSeconds` remains the existing active wall-clock metric. The
+app already displays it as elapsed time, so subtracting provider waits there
+would silently change that metric's meaning. Worker execution/queue counters are
+separate evidence. Their canonical handoff to per-turn performance and the UI's
+execution-versus-elapsed presentation still require integration, including the
+outer worker wait before a first `turn/start` and native cycle reacquisition.
+Server attempt accounting and restart timing reconciliation also remain part
+of that work. No native wall-clock baseline is reset on a provider grant.
+
 Provider limit edits are delivered directly to linked workers and synchronized on
 authenticated reconnect. Workers acknowledge the actual scoped pool snapshot and
 ignore stale per-provider configuration revisions. A capacity-only edit preserves
@@ -244,7 +263,7 @@ not an idle polling loop. No prompt content is copied into the journal.
 This is recovery of proven unstarted managed GUI inputs, not permission to replay
 potentially executed work. Granted/resumed execution still needs its canonical
 native checkpoint/terminal lifecycle. Standalone/Task recovery, current-generation
-abandoned preparations, transport admission, execution/wait accounting, and the
+abandoned preparations, the remaining execution/wait accounting, and the
 final bounded runtime/controller audit remain separate unfinished goal work.
 
 ## Canonical submission and transport backpressure

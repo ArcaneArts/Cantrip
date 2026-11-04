@@ -1,0 +1,131 @@
+diff --git a/codex-rs/ext/extension-api/src/inference_admission.rs b/codex-rs/ext/extension-api/src/inference_admission.rs
+new file mode 100644
+--- /dev/null
++++ b/codex-rs/ext/extension-api/src/inference_admission.rs
+@@ -0,0 +1,18 @@
++//! Per-turn observation of worker admission, without owning provider capacity.
++use std::sync::atomic::{AtomicBool, Ordering};
++
++/// Distinguishes cancellation in the provider queue from an empty execution.
++/// Core marks this only after receiving its actual worker grant; its presence
++/// and value are not themselves a permission to run inference.
++#[derive(Debug, Default)]
++pub struct InferenceQueueAdmission(AtomicBool);
++
++impl InferenceQueueAdmission {
++    pub fn mark_admitted(&self) {
++        self.0.store(true, Ordering::Release);
++    }
++
++    pub fn admitted(&self) -> bool {
++        self.0.load(Ordering::Acquire)
++    }
++}
+diff --git a/codex-rs/ext/extension-api/src/lib.rs b/codex-rs/ext/extension-api/src/lib.rs
+--- a/codex-rs/ext/extension-api/src/lib.rs
++++ b/codex-rs/ext/extension-api/src/lib.rs
+@@ -1,6 +1,7 @@
+ mod capabilities;
+ mod catalog_refresh;
+ mod contributors;
++mod inference_admission;
+ mod message_lifecycle;
+ mod registry;
+ mod session_isolation;
+@@ -9,6 +10,7 @@
+ mod turn_admission;
+ mod user_instructions;
+ 
++pub use inference_admission::InferenceQueueAdmission;
+ pub use message_lifecycle::MessageLifecycleContributor;
+ pub use message_lifecycle::MessageLifecycleInput;
+ pub use session_isolation::IsolatedSessionExtensions;
+diff --git a/codex-rs/ext/goal/src/extension.rs b/codex-rs/ext/goal/src/extension.rs
+--- a/codex-rs/ext/goal/src/extension.rs
++++ b/codex-rs/ext/goal/src/extension.rs
+@@ -407,6 +407,16 @@
+                 return;
+             }
+             let accounting = runtime.accounting_state();
++            if input
++                .turn_store
++                .get::<codex_extension_api::InferenceQueueAdmission>()
++                .is_some_and(|admission| !admission.admitted())
++            {
++                // No worker grant reached this turn. Queue cancellation is not
++                // an empty model response and cannot exhaust goal retries.
++                accounting.finish_turn(turn_id);
++                return;
++            }
+             match input.reason {
+                 codex_protocol::protocol::TurnAbortReason::Interrupted => {
+                     accounting.interrupt_turn(turn_id);
+diff --git a/codex-rs/core/src/session/turn.rs b/codex-rs/core/src/session/turn.rs
+--- a/codex-rs/core/src/session/turn.rs
++++ b/codex-rs/core/src/session/turn.rs
+@@ -268,6 +268,11 @@
+     cancellation_token: CancellationToken,
+ ) -> CodexResult<Option<String>> {
+     let _inference_lifetime = if let Some(gate) = sess.managed_inference_gate().await {
++        let admission = turn_context
++            .extension_data
++            .get_or_init::<codex_extension_api::InferenceQueueAdmission>(
++                codex_extension_api::InferenceQueueAdmission::default,
++            );
+         let lifetime = crate::managed_inference::ManagedInferenceTurn::begin(
+             gate,
+             sess.thread_id,
+@@ -275,6 +280,7 @@
+             cancellation_token.clone(),
+         )
+         .await?;
++        admission.mark_admitted();
+         turn_context
+             .extension_data
+             .insert_arc(Arc::clone(&lifetime.0));
+diff --git a/codex-rs/core/src/session/durable_suspension.rs b/codex-rs/core/src/session/durable_suspension.rs
+--- a/codex-rs/core/src/session/durable_suspension.rs
++++ b/codex-rs/core/src/session/durable_suspension.rs
+@@ -1107,6 +1107,11 @@
+         .await
+         .map_err(io)?;
+     let _inference_lifetime = if let Some(gate) = session.managed_inference_gate().await {
++        let admission = context
++            .extension_data
++            .get_or_init::<codex_extension_api::InferenceQueueAdmission>(
++                codex_extension_api::InferenceQueueAdmission::default,
++            );
+         let lifetime = crate::managed_inference::ManagedInferenceTurn::begin(
+             gate,
+             session.thread_id,
+@@ -1114,6 +1119,7 @@
+             cancellation_token.clone(),
+         )
+         .await?;
++        admission.mark_admitted();
+         context.extension_data.insert_arc(Arc::clone(&lifetime.0));
+         Some(lifetime)
+     } else {
+diff --git a/codex-rs/core/src/tasks/compact.rs b/codex-rs/core/src/tasks/compact.rs
+--- a/codex-rs/core/src/tasks/compact.rs
++++ b/codex-rs/core/src/tasks/compact.rs
+@@ -34,6 +34,11 @@
+         cancellation_token: CancellationToken,
+     ) -> SessionTaskResult {
+         let _inference_lifetime = if let Some(gate) = session.managed_inference_gate().await {
++            let admission = ctx
++                .extension_data
++                .get_or_init::<codex_extension_api::InferenceQueueAdmission>(
++                    codex_extension_api::InferenceQueueAdmission::default,
++                );
+             let lifetime = crate::managed_inference::ManagedInferenceTurn::begin(
+                 gate,
+                 session.thread_id,
+@@ -41,6 +46,7 @@
+                 cancellation_token.clone(),
+             )
+             .await?;
++            admission.mark_admitted();
+             ctx.extension_data.insert_arc(Arc::clone(&lifetime.0));
+             Some(lifetime)
+         } else {
