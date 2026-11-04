@@ -58,6 +58,7 @@ impl SettingsRepository {
         let name = text(input, "name")?.lossy().into_owned();
         let base = normalize_responses_base_url(&text(input, "baseUrl")?.lossy())?;
         let reserve = input["weeklyUsageReservePercent"].as_i64().unwrap_or(3);
+        let concurrency = input["maxConcurrentInference"].as_i64().unwrap_or(8);
         let protected_key = json_value(&input["protectedApiKey"])?;
         let initial = input["initialAccount"].clone();
         let insert_context = super::query_error::provider_insert(&id, owner, input, &base, reserve);
@@ -66,7 +67,7 @@ impl SettingsRepository {
             if account_kind(&kind) && !tx.query("SELECT id FROM model_providers WHERE owner_id=$1 AND kind=$2 LIMIT 1", &[&owner,&kind]).await?.is_empty() {
                 anyhow::bail!("A {} provider already exists. Add another sign-in to that provider instead.",label(&kind));
             }
-            let rows=super::query_error::context(tx.query("INSERT INTO model_providers(id,owner_id,name,kind,base_url,weekly_usage_reserve_percent,protected_api_key) VALUES($1,$2,$3,$4,$5,$6::text::integer,$7) RETURNING to_jsonb(model_providers)", &[&id,&owner,&name,&kind,&base,&reserve.to_string(),&protected_key.as_object().map(|_| &protected_key)]).await, &insert_context.0, &insert_context.1)?;
+            let rows=super::query_error::context(tx.query("INSERT INTO model_providers(id,owner_id,name,kind,base_url,weekly_usage_reserve_percent,protected_api_key,max_concurrent_inference) VALUES($1,$2,$3,$4,$5,$6::text::integer,$7,$8::text::integer) RETURNING to_jsonb(model_providers)", &[&id,&owner,&name,&kind,&base,&reserve.to_string(),&protected_key.as_object().map(|_| &protected_key),&concurrency.to_string()]).await, &insert_context.0, &insert_context.1)?;
             let provider=rows.first().context("Database returned no row after creating a model provider.")?.get::<Value>(0)?;
             if !account_kind(&kind) { return provider_summary(&provider,vec![],None,None) }
             if initial.is_null() { anyhow::bail!("The provider is missing its protected account label.") }
@@ -134,6 +135,10 @@ impl SettingsRepository {
         if let Some(reserve) = input.get("weeklyUsageReservePercent") {
             values["weekly_usage_reserve_percent"] = json_value(reserve)?;
             sets.push("weekly_usage_reserve_percent=v.weekly_usage_reserve_percent");
+        }
+        if let Some(limit) = input.get("maxConcurrentInference") {
+            values["max_concurrent_inference"] = json_value(limit)?;
+            sets.push("max_concurrent_inference=v.max_concurrent_inference");
         }
         if let Some(key) = input.get("protectedApiKey") {
             values["protected_api_key"] = json_value(key)?;

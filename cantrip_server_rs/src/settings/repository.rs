@@ -173,7 +173,15 @@ pub(super) fn provider_summary(
 ) -> Result<Value> {
     let mut output = project(
         provider,
-        &["id", "name", "kind", "baseUrl", "weeklyUsageReservePercent"],
+        &[
+            "id",
+            "name",
+            "kind",
+            "baseUrl",
+            "weeklyUsageReservePercent",
+            "maxConcurrentInference",
+            "inferenceConfigRevision",
+        ],
     );
     output["hasApiKey"] = json!(!provider["protected_api_key"].is_null());
     output["accounts"] = json!(accounts);
@@ -575,7 +583,7 @@ impl SettingsRepository {
             let (profile,route,provider) = (&row["profile"],&row["route"],&row["provider"]);
             let kind = provider["kind"].as_str().context("provider kind")?;
             let catalog = enrichment::enrich(&wire::Value::from_serialize(&catalog),kind,&candidates);
-            Ok(json!({"routeId":route["id"],"model":{"id":profile["id"],"profileName":profile["name"],"routeId":route["id"],"name":route["model_name"],"reasoningEffort":null,"providerModelId":if route["provider_model_id"].is_null() { &row["catalog"]["id"] } else { &route["provider_model_id"] },"catalog":serde_json::from_str::<Value>(&catalog.stringify())?},"provider":{"id":provider["id"],"name":provider["name"],"kind":provider["kind"],"baseUrl":provider["base_url"],"protectedApiKey":provider["protected_api_key"],"accountId":null,"credentialHomeKey":null,"weeklyUsageReservePercent":provider["weekly_usage_reserve_percent"]}}))
+            Ok(json!({"routeId":route["id"],"model":{"id":profile["id"],"profileName":profile["name"],"routeId":route["id"],"name":route["model_name"],"reasoningEffort":null,"providerModelId":if route["provider_model_id"].is_null() { &row["catalog"]["id"] } else { &route["provider_model_id"] },"catalog":serde_json::from_str::<Value>(&catalog.stringify())?},"provider":{"id":provider["id"],"name":provider["name"],"kind":provider["kind"],"baseUrl":provider["base_url"],"protectedApiKey":provider["protected_api_key"],"accountId":null,"credentialHomeKey":null,"weeklyUsageReservePercent":provider["weekly_usage_reserve_percent"],"maxConcurrentInference":provider["max_concurrent_inference"],"inferenceConfigRevision":provider["inference_config_revision"]}}))
         }).collect()
     }
 }

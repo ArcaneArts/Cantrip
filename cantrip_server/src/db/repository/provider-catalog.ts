@@ -131,6 +131,8 @@ export function toProviderSummary(
     baseUrl: provider.baseUrl,
     hasApiKey: provider.protectedApiKey !== null,
     weeklyUsageReservePercent: provider.weeklyUsageReservePercent,
+    maxConcurrentInference: provider.maxConcurrentInference,
+    inferenceConfigRevision: provider.inferenceConfigRevision,
     accounts,
     tokenUsage,
     agentTime,
@@ -254,6 +256,7 @@ export class ProviderCatalogRepository {
           kind: input.kind,
           baseUrl: normalizeResponsesBaseUrl(input.baseUrl),
           weeklyUsageReservePercent: input.weeklyUsageReservePercent ?? 3,
+          maxConcurrentInference: input.maxConcurrentInference ?? 8,
           protectedApiKey: input.protectedApiKey,
         })
         .returning();
@@ -359,6 +362,9 @@ export class ProviderCatalogRepository {
         ...(input.protectedApiKey === undefined
           ? {}
           : { protectedApiKey: input.protectedApiKey }),
+        ...(input.maxConcurrentInference === undefined
+          ? {}
+          : { maxConcurrentInference: input.maxConcurrentInference }),
         updatedAt: new Date(),
       })
       .where(

@@ -311,6 +311,7 @@ import { TunnelWorkerLinkAdapter } from "./tunnel-worker-link-adapter.js";
 import { RemoteSurfaceManager } from "./remote-surface-manager.js";
 import { RemoteSurfaceWorkerLinkAdapter } from "./remote-surface-worker-link-adapter.js";
 import { WorkerObservationHub } from "./worker-observation-worker-link-adapter.js";
+import { WorkerInferenceAdmission } from "./inference-admission.js";
 import {
   runWorkerRuntimeLoop,
   scheduleWorkerRuntimeRestart,
@@ -1552,6 +1553,27 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     ownerId: workerEncryption.ownerId(),
     workerId: config.workerId,
   });
+  // This belongs to the worker, outside the per-project/per-model runtime maps.
+  const inferenceAdmissions = new Map<string, WorkerInferenceAdmission>();
+  const inferenceAdmissionForWorker = () => {
+    // Encryption learns the authoritative server/owner binding after startup.
+    // Resolve lazily, and never share pools across a changed account binding.
+    const scope = nativeNamespaceScope();
+    const key = JSON.stringify(scope);
+    let admission = inferenceAdmissions.get(key);
+    if (!admission) {
+      admission = new WorkerInferenceAdmission(
+        { ...scope, workerGeneration: workerProcessGeneration },
+        (error) =>
+          workerLogger.event("warn", "Inference status observer failed", {
+            event: "inference.status.observer-failed",
+            error: workerLogError(error),
+          }),
+      );
+      inferenceAdmissions.set(key, admission);
+    }
+    return admission;
+  };
   const handoffStaging = new ManagedRuntimeHandoffStaging<CodexAppServer>();
   const osAgentPlacements = new OsAgentPlacements(config.dataDirectory);
   const runtimeFor = (
@@ -1568,6 +1590,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     },
     stagingOperationId?: string,
   ) => {
+    inferenceAdmissionForWorker().configure({
+      providerId: command.provider.id,
+      maxConcurrentInference: command.provider.maxConcurrentInference,
+      inferenceConfigRevision: command.provider.inferenceConfigRevision,
+    });
     if (command.threadId && command.chatId && !stagingOperationId)
       projectGoalDelivery.watch(command.threadId, command.chatId);
     const namespace =

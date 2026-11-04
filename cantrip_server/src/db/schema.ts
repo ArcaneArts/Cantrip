@@ -544,6 +544,12 @@ export const modelProviders = pgTable(
     weeklyUsageReservePercent: integer("weekly_usage_reserve_percent")
       .notNull()
       .default(3),
+    maxConcurrentInference: integer("max_concurrent_inference")
+      .notNull()
+      .default(8),
+    inferenceConfigRevision: integer("inference_config_revision")
+      .notNull()
+      .default(0),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -565,6 +571,14 @@ export const modelProviders = pgTable(
     check(
       "model_providers_weekly_usage_reserve_percent_check",
       sql`${table.weeklyUsageReservePercent} BETWEEN 0 AND 100`,
+    ),
+    check(
+      "model_providers_max_concurrent_inference_check",
+      sql`${table.maxConcurrentInference} > 0`,
+    ),
+    check(
+      "model_providers_inference_config_revision_check",
+      sql`${table.inferenceConfigRevision} >= 0`,
     ),
   ],
 );
