@@ -80,7 +80,14 @@ continuation or trivial edit.
   changes.
 - Run validation proportional to the change. `git diff --check` is the minimum.
 
-The standard repository check is:
+Run development validation locally. GitHub Actions is reserved for releases and
+deployments, including validation performed as part of those release builds.
+Do not add or restore pull-request or ordinary-push validation workflows, dispatch
+hosted diagnostic runs, or require hosted validation for an ordinary change.
+Document actual local results and platform limitations without describing
+canceled or unrun hosted checks as passing.
+
+The standard local repository check is:
 
 ```bash
 pnpm check
@@ -133,9 +140,11 @@ An intentionally disabled optional workflow, an empty check list, or the
 absence of an optional gate is not a blocker. Request auto-merge anyway and let
 GitHub merge immediately when remaining repository rules are satisfied.
 
-If a check actually runs and fails, or the branch conflicts with a newer
-`main`, fix only the manual-change branch and let GitHub evaluate it again. Do
-not use `--admin` and do not manually merge a pull request with a failing check.
+Fix actual local validation failures and conflicts with newer `main` on the
+manual-change branch. Use documented local validation for ordinary pull requests;
+do not rerun or wait for retired hosted validation. Preserve historical failures
+as evidence rather than claiming they passed. Do not use `--admin` to bypass
+repository rules or manually merge a failing required check.
 
 Observe the pull request until GitHub reports it merged before starting a
 dependent milestone.

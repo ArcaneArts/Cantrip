@@ -9975,7 +9975,7 @@
       "status": "implemented-pending-platform-acceptance",
       "evidence": [
         "scripts/server-rust/actual-worker-client.mjs",
-        ".github/workflows/rust-server.yml",
+        ".github/workflow-archive/rust-server.yml",
         "scripts/server-rust/actual-run-retirement.mjs",
         "scripts/server-rust/actual-worker-browser-discovery.mjs",
         "scripts/server-rust/discovery-http-listener.mjs"
@@ -11203,7 +11203,7 @@
         "scripts/server-rust/actual-task-client.mjs",
         "scripts/server-rust/actual-task-recovery.mjs",
         "scripts/server-rust/task-model-provider.mjs",
-        ".github/workflows/rust-server.yml: actual-task-worker"
+        ".github/workflow-archive/rust-server.yml: actual-task-worker"
       ],
       "localAcceptance": {
         "platform": "macOS arm64",

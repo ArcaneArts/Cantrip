@@ -1,5 +1,11 @@
 # Rust server replacement
 
+Validation policy, updated November 4, 2026: run development and milestone checks
+locally. GitHub Actions is reserved for releases and deployments. Historical CI
+results below retain their original scope; they are not instructions to dispatch
+new validation jobs or wait for retired hosted checks. Record actual local
+results and platform limitations without treating unrun checks as passing.
+
 The Git/worktree/Run milestone broad `pnpm check` exited 1 with 1,633 server
 tests passing, two failing and 57 skipped. Both failures were freshly reproduced
 on clean Primary `b04530e3c`: the pooled-provider assertion in

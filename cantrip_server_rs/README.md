@@ -358,9 +358,12 @@ Domain event persistence, binary relays, shared coordination and
 resource/execution recovery remain unported. App Live is integrated below,
 with incomplete domain publishers and multi-instance support.
 
-`.github/workflows/rust-server.yml` executes native and compatibility suites on
-Linux, macOS and Windows. A configured workflow is not passing evidence; record
-observed results for the actual milestone head before claiming acceptance.
+Run native and compatibility suites locally. GitHub Actions is reserved for
+releases and deployments; the former Linux/macOS/Windows recipe is retained at
+`.github/workflow-archive/rust-server.yml` as an inactive command reference.
+Record observed results and platform limitations for the actual milestone head.
+Do not dispatch hosted validation or infer another platform's runtime behavior
+from a successful local run.
 
 ## Application Live core in progress
 
