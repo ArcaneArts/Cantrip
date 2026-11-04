@@ -1150,6 +1150,30 @@ export function createRunConfigurationRuntime({
     requestInput: unknown,
   ) => {
     const input = runConfigurationRuntimeStatusQuerySchema.parse(requestInput);
+    if (input.runtimeId) {
+      if (input.osSource)
+        throw new CantripOsPlacementError(
+          "Choose a runtime ID or a Run source.",
+        );
+      const captured = await repository.getRunConfigurationRuntimeCapture(
+        ownerId,
+        input.runtimeId,
+      );
+      const runtime = captured?.runtime;
+      return runConfigurationRuntimeStatusResultSchema.parse({
+        operationId: input.operationId,
+        projectId: input.projectId,
+        runtimes:
+          runtime &&
+          runtime.projectId === input.projectId &&
+          (input.configurationId === null ||
+            runtime.configurationId === input.configurationId) &&
+          (input.targetWorktreeId === null ||
+            runtime.worktreeId === input.targetWorktreeId)
+            ? [runtime]
+            : [],
+      });
+    }
     const osSource = input.osSource
       ? await resolveOsRunSource(
           repository,

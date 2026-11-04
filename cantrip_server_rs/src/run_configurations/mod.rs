@@ -25,6 +25,11 @@ fn text<'a>(v: &'a Value, key: &str) -> Result<&'a str> {
 }
 fn summary(row: &Value) -> Result<Value> {
     let mut result = Value::Object(Default::default());
+    if !row["os_execution"].is_null() {
+        let scope = &row["os_execution"]["definitions"]["scope"];
+        result["osDefinition"] = json!({"kind":"binding","bindingId":scope["bindingId"],"bindingGeneration":scope["bindingGeneration"],"attachmentGeneration":scope["attachmentGeneration"],"runtimeGeneration":scope["runtimeGeneration"]});
+        result["osTargetGuestPath"] = row["os_execution"]["target"]["scope"]["guestPath"].clone();
+    }
     for (key, column) in [
         ("id", "id"),
         ("projectId", "project_id"),

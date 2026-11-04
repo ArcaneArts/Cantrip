@@ -55,6 +55,8 @@ export const cantripOsRunDefinitionWorkerCommandSchema = z
   .strict();
 export const cantripOsRunDefinitionApiSchema = z
   .object({
+    bindingGeneration: z.uuid().optional(),
+    attachmentGeneration: z.uuid().optional(),
     runtimeGeneration: z.uuid(),
     request: cantripOsRunDefinitionRequestSchema,
   })

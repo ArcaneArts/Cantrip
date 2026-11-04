@@ -210,7 +210,7 @@ impl Repository {
             "Source location changed."
         );
         Ok(
-            serde_json::json!({"binding":summary(b,"binding",Some(text(i,"id")?))?,"instance":summary(i,"instance",None)?,"workspace":summary(&row["workspace"],"workspace",Some(text(i,"worker_id")?))?,"transport":i["transport"],"sourceKind":row["sourceKind"],"repositoryFingerprint":row["linux"]["repository_fingerprint"]}),
+            serde_json::json!({"binding":summary(b,"binding",Some(text(i,"id")?))?,"instance":summary(i,"instance",None)?,"workspace":summary(&row["workspace"],"workspace",Some(text(i,"worker_id")?))?,"transport":i["transport"],"sourceKind":row["sourceKind"],"repositoryFingerprint":row["linux"]["repository_fingerprint"],"runTarget":{"id":t["id"],"workerId":t["worker_id"],"isPrimary":t["is_primary"],"isDefault":t["is_default"],"name":if t["is_primary"]==true {"Primary".to_owned()}else{format!("Worktree {}",text(t,"id")?.chars().take(8).collect::<String>())},"branch":null,"lifecycleState":t["lifecycle_state"],"displayPath":b["guest_path"]}}),
         )
     }
 }

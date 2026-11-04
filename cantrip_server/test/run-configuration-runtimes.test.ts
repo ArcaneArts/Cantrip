@@ -625,6 +625,28 @@ describe("Run configuration runtime persistence", () => {
     );
     expect(linux.runtime!.id).not.toBe(host.runtime!.id);
     expect(linux.runtime!.terminalId).not.toBe(host.runtime!.terminalId);
+    const surfaces = await repository.listTerminals(LOCAL_USER_ID, projectId);
+    expect(
+      surfaces.find((terminal) => terminal.id === linux.runtime!.terminalId),
+    ).toMatchObject({
+      cantripOsBindingId: binding.id,
+      cantripOsRuntimeGeneration: runtimeGeneration,
+    });
+    expect(
+      surfaces.find((terminal) => terminal.id === host.runtime!.terminalId),
+    ).not.toHaveProperty("cantripOsBindingId");
+    expect(
+      await repository.getTerminalExecutionContext(
+        LOCAL_USER_ID,
+        linux.runtime!.terminalId!,
+      ),
+    ).toMatchObject({
+      worktreePath: {
+        kind: "cantrip-os",
+        scope: { bindingId: binding.id, guestPath: binding.guestPath },
+      },
+    });
+
     expect(
       await repository.getRunConfigurationRuntime(
         LOCAL_USER_ID,

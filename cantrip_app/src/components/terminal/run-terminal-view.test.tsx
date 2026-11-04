@@ -78,6 +78,7 @@ function renderView(
       [
         "run-configuration-runtime-output",
         projectId,
+        runtimeId,
         configurationId,
         worktreeId,
         2,

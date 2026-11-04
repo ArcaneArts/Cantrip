@@ -2,8 +2,9 @@
 
 This checkpoint adds the client workflow for the executor, source provisioning,
 captured agent placement, file/editor/Explorer operations, and interactive Linux
-terminals. Setup/Run, attachment/artifact delivery and final distribution acceptance remain
-in subsequent product integration work. This checkpoint is not complete Phase 3
+terminals, and explicit Linux Run source selection. Delegated project tools,
+attachment/artifact delivery, safe Run definition deletion, and final distribution
+acceptance remain in subsequent integration work. This checkpoint is not complete Phase 3
 acceptance.
 
 ## Attach and select
@@ -137,50 +138,61 @@ host worktrees through the existing worker workflow and link each exact
 worktree explicitly. This Linux-owned creation form does not rewrite host Git
 metadata. Run and broader Git product integration remain subsequent work.
 
-## Linux Run definition API checkpoint
+## Linux Run configurations
 
-Executor 0.5.0 supports definition files and provider discovery through
+1. Attach and verify the intended source in **Project Settings → CantripOS**.
+2. In the project header, choose **Run source → Linux · instance / workspace**.
+   Distinct checkouts have distinct short source IDs. **Host** retains the existing
+   default Worker Run behavior. This selection is independent of the selected chat.
+3. Open the Run configuration menu and choose **New Run configuration**. Discovery,
+   directory/file suggestions, provider validation, and saved definitions use this
+   Linux source's Primary. Definitions are ordinary revisioned files under
+   `.cantrip/run-configurations`. The editor reports its Linux validation target.
+4. The main **Run** button runs Primary. For an alternate target choose the
+   configuration's **More options → Run in Worktree…**, then its exact worktree
+   identity and displayed Linux path. That target must be bound in the same
+   checkout source and workspace; it never follows the current chat implicitly.
+
+A Run output tab retains its captured runtime. Changing the header to **Host** or
+another Linux source does not redirect its output, Start/Restart, or Stop actions.
+**Edit** on a Linux Run opens its original definition source and selects that Run
+source in the header. Unavailable captured sources report an error. A lost Linux
+Run offers Stop before another Start; only confirmed cleanup reports Stopped.
+
+The Files sidebar follows the focused Run's captured target. Its files and editor
+use the same Linux directory, including Linux dependency overlays. Identically
+named files in Primary and an alternate worktree open as distinct documents.
+Earlier Linux Run terminals gain this capture through migration `0249`.
+
+Selections and their configuration choices are scoped to the authenticated
+server/account, project, source, workspace, and captured generations. An old or
+unavailable Linux selection stays unavailable. Refresh the OS, verify its files,
+then explicitly choose its current source epoch. No unavailable selection selects
+Host automatically. Existing resources retain their earlier captures.
+
+Linux definition deletion is currently disabled while its stop/retirement path
+is integrated. Stop controls remain available. This is a Run integration milestone;
+it does not complete the remaining delegated project/Git/artifact tools or fresh
+Docker/ISO acceptance.
+
+## Run API reference
+
+`GET /api/projects/:projectId/cantrip-os/run-sources` returns owned binding epochs,
+workspace/instance labels, availability, and logical worktree targets. Targets have
+no Worker filesystem path. Their display paths identify the guest directory.
+
+The existing lifecycle, status, and protected-output POSTs accept `osSource`.
+New Runs select a binding plus binding/attachment/runtime generations. Ordinary
+Run uses `targetWorktreeId: null`; worktree Run supplies its exact ID. Existing
+tabs use `osSource: { kind: "runtime", runtimeId }`. Status can load one owned
+runtime by `runtimeId` without resolving the current default source. The Server
+resolves guest paths, accounts, and transports. Host requests omit `osSource`.
+
+Definitions use
 `POST /api/projects/:projectId/cantrip-os/bindings/:bindingId/run-definitions`.
-The body contains `runtimeGeneration` and a shared Run definition `request`
-with its operation UUID and project UUID. The request uses the existing
-`project.run-configuration-definitions.*` discriminator and omits `sourcePath`.
-The Server resolves Primary in this binding's source and workspace; choosing a
-secondary worktree does not move definition files into it or select the host.
-The response identifies the resolved Primary and contains the ordinary Run
-definition result. Worker/native schemas reject older unsupported command paths.
-
-Retain the operation UUID and identical request after a lost mutation response.
-The Worker observes its saved result or known native process and never starts a
-replacement mutation for that admission. A changed runtime or missing Primary
-binding reports an error. Provider validation checks files and executables in
-Linux. Definitions remain revisioned files under `.cantrip/run-configurations`.
-
-This remains an API/package checkpoint; the existing header still controls host
-Runs until its explicit source picker is implemented.
-The Worker now integrates the native driver into its common Run supervisor with
-explicit `cantrip-os.run-runtime.*` commands. Every command captures both the
-definition Primary and execution target. Reconciliation after Worker memory loss
-stops recorded native handles without repeating their launch or input; an
-unconfirmed stop remains an error rather than an idle result. This internal
-Worker capability is not yet a client Run action.
-Server persistence now gives Host and Linux Runs separate identities, even for
-the same linked worktree and configuration. A Linux identity captures its
-definition Primary, target, workspace, and binding/attachment/runtime generations.
-Replacing the OS generation creates another runtime and terminal; existing
-records retain their original capture. Both Server implementations now accept
-an optional `osSource` on the existing Run lifecycle, status, and output POSTs.
-For a new Run this names a binding ID plus binding, attachment, and runtime
-generations. The Server resolves owned Primary/target paths; the client supplies
-no guest account, path, or transport. Ordinary Run uses `targetWorktreeId: null`
-for that source's Primary; worktree Run supplies the exact worktree ID in the same
-source and workspace. The selected chat does not affect either choice.
-
-Existing Run output tabs and Stop actions can send
-`osSource: { kind: "runtime", runtimeId }` to retain the stored capture even after
-the current source selection or instance generation changes. Host requests omit
-`osSource`; their runtime lists do not include Linux Runs. A lost Linux delivery
-reports an unknown outcome, blocks another Start for that generation, and permits
-an explicit Stop retry. Only confirmed cleanup returns Idle. The header source
-picker and definition retirement remain the next integration block.
-Linux definition deletion is not admitted by this checkpoint: it must join
-that lifecycle so active Runs stop before their definition and tabs are removed.
+The body contains binding, attachment, and runtime generations plus a shared
+`project.run-configuration-definitions.*` request without `sourcePath`.
+The Server resolves definition Primary within that source and workspace.
+Retain the same operation UUID and request after an uncertain write. The client
+and Worker retain this admission for observation rather than starting another
+mutation. A changed source epoch fails before dispatch.

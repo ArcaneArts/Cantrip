@@ -4,7 +4,7 @@ import type { ChatSummary, TerminalSummary } from "@cantrip/protocol";
 import { DEFAULT_ELITE_REVEAL_CONFIG } from "@cantrip/glitch";
 import { TabColorDialogHost } from "@/components/workspace/tab-color";
 import { useCallback, useEffect, useState } from "react";
-import { RunConfigurationControl } from "@/components/run/run-configuration-control";
+import { RunSourceControl } from "@/components/run/run-source-control";
 import { ExplorerFilePopout } from "@/components/explorer/explorer-file-popout";
 import { WorkspaceDndProvider } from "@/components/workspace/workspace-dnd-provider";
 import { EliteGlobalEffects } from "@/components/elite/elite-global-effects";
@@ -299,7 +299,7 @@ export function ApplicationShellRender({
     !isPopout && (desktopSidebarDrawer || sidebarCollapsed);
   const renderProjectRunConfigurationControl = (compact: boolean) =>
     selectedProject ? (
-      <RunConfigurationControl
+      <RunSourceControl
         compact={compact}
         editorConfigurationId={runConfigurationEditorId}
         error={

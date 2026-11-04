@@ -67,6 +67,12 @@ export function installCantripOsRoutes(
     "/api/cantrip-os",
     route(() => repository.cantripOs.list(owner())),
   );
+  app.get<Params>(
+    "/api/projects/:projectId/cantrip-os/run-sources",
+    route((request) =>
+      repository.cantripOs.runSources(owner(), request.params.projectId!),
+    ),
+  );
   app.post<Params>(
     "/api/projects/:projectId/cantrip-os/bindings/:bindingId/run-definitions",
     parsed(cantripOsRunDefinitionApiSchema, (request, input) =>

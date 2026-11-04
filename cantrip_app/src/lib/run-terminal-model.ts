@@ -82,6 +82,12 @@ export function runtimeForRunTerminal(
   runtimes: readonly RunConfigurationRuntime[],
 ): RunConfigurationRuntime | null {
   if (terminal.kind !== "run-configuration") return null;
+  if (terminal.runConfigurationRuntimeId)
+    return (
+      runtimes.find(
+        (runtime) => runtime.id === terminal.runConfigurationRuntimeId,
+      ) ?? null
+    );
   return (
     runtimes.find(
       (runtime) => runtime.id === terminal.runConfigurationRuntimeId,
@@ -109,6 +115,7 @@ export function decorateRunConfigurationTerminals(
   terminals: readonly TerminalSummary[],
   inventory: RunConfigurationRepositoryInventory | null | undefined,
   worktrees: readonly ProjectWorktreeSummary[],
+  capturedTitles: Readonly<Record<string, string>> = {},
 ): TerminalSummary[] {
   const names = new Map(
     (inventory?.entries ?? []).flatMap((entry) =>
@@ -122,9 +129,12 @@ export function decorateRunConfigurationTerminals(
     if (terminal.kind !== "run-configuration" || !terminal.runConfigurationId) {
       return terminal;
     }
-    const name =
-      names.get(terminal.runConfigurationId) ??
-      (inventory ? "Deleted Run configuration" : terminal.title);
+    const captured = terminal.runConfigurationRuntimeId
+      ? capturedTitles[terminal.runConfigurationRuntimeId]
+      : undefined;
+    if (captured) return { ...terminal, title: captured };
+    // The Host inventory cannot establish whether another source's definition exists.
+    const name = names.get(terminal.runConfigurationId) ?? "Run configuration";
     const worktree = worktreeById.get(terminal.worktreeId);
     return {
       ...terminal,

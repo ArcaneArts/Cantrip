@@ -25,7 +25,10 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { inspectFlutterRunConfigurationDevices } from "@/lib/run-configuration-api";
+import {
+  useRunDefinitionApi,
+  useRunDefinitionScope,
+} from "@/lib/run-definition-source";
 
 export function RunConfigurationFlutterDevicePickerList({
   currentDeviceId,
@@ -115,11 +118,18 @@ export function RunConfigurationFlutterDevicePicker({
   onChoose(deviceId: string): void;
   projectId: string;
 }) {
+  const { inspectFlutterRunConfigurationDevices } = useRunDefinitionApi();
+  const runSourceScope = useRunDefinitionScope();
   const [open, setOpen] = useState(false);
   const fingerprint = JSON.stringify(document);
   const inspection = useQuery({
     enabled: false,
-    queryKey: ["run-configuration-flutter-devices", projectId, fingerprint],
+    queryKey: [
+      "run-configuration-flutter-devices",
+      projectId,
+      runSourceScope,
+      fingerprint,
+    ],
     queryFn: () => inspectFlutterRunConfigurationDevices(projectId, document),
     retry: false,
     staleTime: Number.POSITIVE_INFINITY,

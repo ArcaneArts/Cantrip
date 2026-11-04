@@ -106,6 +106,21 @@ function toRunConfigurationRuntime(
 ): RunConfigurationRuntime {
   return {
     id: runtime.id,
+    ...(runtime.osExecution
+      ? {
+          osDefinition: {
+            kind: "binding" as const,
+            bindingId: runtime.osExecution.definitions.scope.bindingId,
+            bindingGeneration:
+              runtime.osExecution.definitions.scope.bindingGeneration,
+            attachmentGeneration:
+              runtime.osExecution.definitions.scope.attachmentGeneration,
+            runtimeGeneration:
+              runtime.osExecution.definitions.scope.runtimeGeneration,
+          },
+          osTargetGuestPath: runtime.osExecution.target.scope.guestPath,
+        }
+      : {}),
     projectId: runtime.projectId,
     configurationId: runtime.configurationId,
     worktreeId: runtime.worktreeId,
@@ -715,6 +730,17 @@ export class RunConfigurationStateRepository {
             linkedChatId: null,
             runConfigurationId: input.configurationId,
             runConfigurationRuntimeId: current.id,
+            ...(requestedCapture
+              ? {
+                  cantripOsBindingId: requestedCapture.target.scope.bindingId,
+                  osBindingGeneration:
+                    requestedCapture.target.scope.bindingGeneration,
+                  osAttachmentGeneration:
+                    requestedCapture.target.scope.attachmentGeneration,
+                  osRuntimeGeneration:
+                    requestedCapture.target.scope.runtimeGeneration,
+                }
+              : {}),
             serviceEnabled: false,
           })
           .onConflictDoNothing({ target: schema.terminals.id })

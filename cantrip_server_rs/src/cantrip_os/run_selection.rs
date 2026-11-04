@@ -4,6 +4,20 @@ use anyhow::{Context, Result, ensure};
 use serde_json::{Value, json};
 
 impl Repository {
+    pub async fn run_sources(&self, owner: &str, project: &str) -> Result<Vec<Value>> {
+        let mut sources = Vec::new();
+        for binding in self.bindings(owner, project).await? {
+            let context = self.context(owner, project, text(&binding, "id")?).await?;
+            let available = chats::available(&context).is_ok()
+                && context["runTarget"]["lifecycleState"] == "ready";
+            sources.push(super::checked("cantripOsRunSourceSchema", json!({
+                "binding":context["binding"],"instance":context["instance"],"workspace":context["workspace"],
+                "target":context["runTarget"],"available":available,
+            }))?);
+        }
+        Ok(sources)
+    }
+
     pub async fn selected_run(
         &self,
         owner: &str,

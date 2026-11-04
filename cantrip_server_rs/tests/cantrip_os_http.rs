@@ -356,6 +356,19 @@ async fn exercise_run_http(fixture: RunHttpFixture<'_>) -> Result<()> {
         attached,
         lose_run_reply,
     } = fixture;
+    let sources = client
+        .get(format!(
+            "{base}/api/projects/{project}/cantrip-os/run-sources"
+        ))
+        .send()
+        .await?;
+    let status = sources.status();
+    let sources = sources.json().await?;
+    assert_eq!(status, 200, "{sources}");
+    assert_eq!(sources[0]["target"]["isPrimary"], true);
+    assert_eq!(sources[0]["binding"]["id"], binding["id"]);
+    assert!(sources[0].get("transport").is_none());
+    assert!(sources[0]["target"].get("path").is_none());
     let configuration = id();
     let selection = json!({"kind":"binding","bindingId":binding["id"],"bindingGeneration":binding["bindingGeneration"],"attachmentGeneration":attached["instance"]["attachmentGeneration"],"runtimeGeneration":attached["instance"]["runtimeGeneration"]});
     let run_url = format!("{base}/api/run-configuration-runtimes");
@@ -370,6 +383,12 @@ async fn exercise_run_http(fixture: RunHttpFixture<'_>) -> Result<()> {
     assert_eq!(status, 202, "{admitted}");
     assert_eq!(admitted["runtime"]["state"], "running");
     assert_eq!(admitted["runtime"]["worktreeId"], binding["worktreeId"]);
+    let by_id=client.post(format!("{run_url}/status")).json(&json!({"operationId":id(),"projectId":project,"configurationId":null,"targetWorktreeId":null,"runtimeId":admitted["runtime"]["id"]})).send().await?.json().await?;
+    assert_eq!(
+        by_id["runtimes"][0]["osDefinition"]["bindingId"], binding["id"],
+        "{by_id}"
+    );
+
     let captured = json!({"kind":"runtime","runtimeId":admitted["runtime"]["id"]});
     let status_request = json!({"operationId":id(),"projectId":project,"configurationId":configuration,"targetWorktreeId":null,"osSource":selection});
     let response = client

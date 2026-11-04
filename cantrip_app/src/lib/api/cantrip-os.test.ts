@@ -154,6 +154,8 @@ it("captures the Linux Run source and preserves the operation identity without t
     id,
     projectId: id,
     projectSourceId: id,
+    bindingGeneration: id,
+    provisionedAttachmentGeneration: id,
     provisionedRuntimeGeneration: id,
   };
   const request = {
@@ -187,6 +189,8 @@ it("captures the Linux Run source and preserves the operation identity without t
     allowCsrfRecovery: false,
   });
   expect(JSON.parse(mocks.request.mock.calls[0]![1].body)).toEqual({
+    bindingGeneration: id,
+    attachmentGeneration: id,
     runtimeGeneration: id,
     request,
   });

@@ -226,7 +226,7 @@ async fn admit(tx: &Transaction<'_>, owner: String, input: Value, position: i64)
         .filter(|row| outcome == "accepted" && row["terminal_id"].is_null())
     {
         let runtime_id = text(row, "id")?;
-        let inserted=tx.query("INSERT INTO terminals (id,project_id,kind,protected_label,protected_state,position,status,active_worker_id,worktree_id,linked_chat_id,run_configuration_id,run_configuration_runtime_id,service_enabled) VALUES ($1,$2,'run-configuration',NULL,NULL,$3::bigint::integer,'running',$4,$5,NULL,$6,$1,false) ON CONFLICT (id) DO NOTHING RETURNING to_jsonb(terminals)::text", &[&runtime_id,&project,&position,&worker,&worktree,&configuration]).await?;
+        let inserted=tx.query("INSERT INTO terminals (id,project_id,kind,protected_label,protected_state,position,status,active_worker_id,worktree_id,linked_chat_id,run_configuration_id,run_configuration_runtime_id,service_enabled,cantrip_os_binding_id,os_binding_generation,os_attachment_generation,os_runtime_generation) VALUES ($1,$2,'run-configuration',NULL,NULL,$3::bigint::integer,'running',$4,$5,NULL,$6,$1,false,$7::jsonb->'target'->'scope'->>'bindingId',$7::jsonb->'target'->'scope'->>'bindingGeneration',$7::jsonb->'target'->'scope'->>'attachmentGeneration',$7::jsonb->'target'->'scope'->>'runtimeGeneration') ON CONFLICT (id) DO NOTHING RETURNING to_jsonb(terminals)::text", &[&runtime_id,&project,&position,&worker,&worktree,&configuration,&os_execution]).await?;
         let created_terminal = !inserted.is_empty();
         let terminals = if inserted.is_empty() {
             tx.query(

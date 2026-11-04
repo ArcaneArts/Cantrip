@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { projectPaneViews } from "@cantrip/protocol";
 import type { AppMode, ProjectTabLayoutSummary } from "@cantrip/protocol";
 import {
@@ -216,14 +217,27 @@ export function useProjectSurfaceSelection({
   >;
   selectedTabKey: string | null;
 }) {
+  const capturedRunTitles = useQuery({
+    queryKey: [
+      "run-terminal-titles",
+      resources.tabLayout.data?.projectId ??
+        resources.terminals.data?.[0]?.projectId ??
+        null,
+    ],
+    queryFn: async () => ({}) as Record<string, string>,
+    initialData: {} as Record<string, string>,
+    enabled: false,
+  });
   const displayTerminals = useMemo(
     () =>
       decorateRunConfigurationTerminals(
         resources.terminals.data ?? [],
         resources.runConfigurations.data,
         resources.worktrees.data ?? [],
+        capturedRunTitles.data,
       ),
     [
+      capturedRunTitles.data,
       resources.runConfigurations.data,
       resources.terminals.data,
       resources.worktrees.data,

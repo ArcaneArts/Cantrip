@@ -41,6 +41,21 @@ export class CantripOsCoordinator {
   ) {
     if (input.request.projectId !== projectId)
       return fail("The Run definition belongs to another project.");
+    if (input.bindingGeneration || input.attachmentGeneration) {
+      const selected = await this.repository.cantripOs.bindingContext(
+        ownerId,
+        bindingId,
+      );
+      if (
+        !selected ||
+        selected.binding.projectId !== projectId ||
+        (input.bindingGeneration &&
+          selected.binding.bindingGeneration !== input.bindingGeneration) ||
+        (input.attachmentGeneration &&
+          selected.instance.attachmentGeneration !== input.attachmentGeneration)
+      )
+        return fail("The selected Linux definition source changed.");
+    }
     const execution = await this.repository.cantripOs.runPrimary(
       ownerId,
       projectId,

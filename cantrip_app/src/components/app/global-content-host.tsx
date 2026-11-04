@@ -655,6 +655,7 @@ export function GlobalContentHost({
               }
             >
               <RunTerminalView
+                onEditConfiguration={setRunConfigurationEditorId}
                 definitionAvailable={selectedRunDefinitionAvailable}
                 definitionProblem={
                   runConfigurations.isError

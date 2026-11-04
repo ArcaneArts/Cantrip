@@ -91,8 +91,10 @@ Project Settings → CantripOS now provides attachment, source selection, and
 Linux-owned Git worktree admission. Captured terminals and file/editor/Explorer
 operations use those targets. A real local-provider agent has written and run
 code through the full product; its recorded checkpoint distinguishes provider
-limitations from the deterministic native patch fixture. Setup/Run, delegated
-project tools, attachments/artifacts, and fresh distribution acceptance remain.
+limitations from the deterministic native patch fixture. Header Run selection,
+Linux definition editing/setup, captured output/Stop, and Run file/editor routing
+are now available. Safe definition retirement, delegated project tools,
+attachments/artifacts, and fresh distribution acceptance remain.
 
 The canonical model keeps `project_sources.absolute_path` worker-local. A shared
 source identity preserves worktree IDs and leases, while Linux-owned source
@@ -692,13 +694,17 @@ ordinary Run lifecycle, status, protected output, and reconnect reconciliation.
 An explicit source selection resolves Primary independently of the selected chat;
 worktree Run resolves its binding in that same source/workspace. Uncertain Linux
 Runs require a confirmed Stop before a new Start generation.
-The Run header source picker, definition retirement routing, and final
-distribution acceptance remain pending.
+The Run header now selects Host or an explicit Linux source/workspace epoch,
+with independent inventory/configuration caches and Primary/worktree semantics.
+Captured Run tabs preserve their original target when this selection changes;
+Edit resolves their original Linux definition. Migration `0249` projects the
+captured Run target into terminal file placement, including earlier Linux Runs.
+Definition retirement routing and final distribution acceptance remain pending.
 Server runtime persistence now separates Host and Linux execution epochs and
 retains immutable definition/target captures. Both Server implementations admit
 Linux-owned worktrees through their canonical OS source rather than a Host-only
 source join. Public requests contain owned binding epochs or a captured runtime
 ID; guest paths, accounts, and transports are resolved on the Server. The source
-picker and definition retirement remain the next block.
+picker is connected; definition retirement remains the next block.
 See [the workflow](../cantrip_os/PRODUCT_WORKFLOW.md#files-and-editor) and
 [recorded evidence](../cantrip_os/ACCEPTANCE.md#product-file-checkpoint-2026-11-04).

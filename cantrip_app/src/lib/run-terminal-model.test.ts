@@ -205,18 +205,37 @@ describe("Run terminal model", () => {
   it("matches the durable runtime binding and reports lifecycle results", () => {
     const running = runtime("running");
     expect(runtimeForRunTerminal(terminal(), [running])).toEqual(running);
+    expect(
+      runtimeForRunTerminal(
+        {
+          ...terminal(),
+          runConfigurationRuntimeId: "00000000-0000-4000-8000-000000000099",
+        },
+        [running],
+      ),
+    ).toBeNull();
+
     expect(runConfigurationRuntimeIsActive(running)).toBe(true);
     expect(runConfigurationRuntimeIsActive(runtime("exited"))).toBe(false);
     expect(runRuntimeLastResult(runtime("exited"))).toBe("Exited with code 7");
   });
 
-  it("keeps a deleted definition identifiable without inventing editable state", () => {
+  it("uses the captured runtime title independently of the current Host inventory", () => {
+    const selected = terminal();
+    expect(
+      decorateRunConfigurationTerminals([selected], inventory, [], {
+        [selected.runConfigurationRuntimeId!]: "Linux capture",
+      })[0]?.title,
+    ).toBe("Linux capture");
+  });
+
+  it("does not declare another source deleted when the Host inventory lacks its definition", () => {
     expect(
       decorateRunConfigurationTerminals(
         [terminal()],
         { ...inventory, entries: [] },
         [],
       ).at(0)?.title,
-    ).toBe("Deleted Run configuration");
+    ).toBe("Run configuration");
   });
 });

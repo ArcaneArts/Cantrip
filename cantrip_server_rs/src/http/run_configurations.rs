@@ -44,6 +44,33 @@ async fn execute(
     };
     let repository = Repository::new(service.repository.database.clone());
     let project = input["projectId"].as_str().unwrap();
+    if status && let Some(runtime_id) = input["runtimeId"].as_str() {
+        if !input["osSource"].is_null() {
+            return Ok(coded_error(
+                StatusCode::CONFLICT,
+                "conflict",
+                "Choose a runtime ID or a Run source.",
+            ));
+        }
+        let captured = repository.captured(owner, runtime_id).await?;
+        let runtimes: Vec<_> = captured
+            .iter()
+            .map(|capture| &capture["runtime"])
+            .filter(|runtime| {
+                runtime["projectId"] == project
+                    && (input["configurationId"].is_null()
+                        || runtime["configurationId"] == input["configurationId"])
+                    && (input["targetWorktreeId"].is_null()
+                        || runtime["worktreeId"] == input["targetWorktreeId"])
+            })
+            .cloned()
+            .collect();
+        return output(
+            200,
+            "runConfigurationRuntimeStatusResultSchema",
+            &json!({"operationId":input["operationId"],"projectId":project,"runtimes":runtimes}),
+        );
+    }
     let os_source = if input["osSource"].is_null() {
         None
     } else {
