@@ -1572,7 +1572,20 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   });
   // This belongs to the worker, outside the per-project/per-model runtime maps.
   const inferenceAdmissions = new Map<string, WorkerInferenceAdmission>();
+  let inferenceAuthorityRetired = false;
+  const retireInferenceAuthority = async () => {
+    // Block lazy creation as well as existing pools before any asynchronous
+    // fencing. A rejected worker must restart with a fresh generation.
+    inferenceAuthorityRetired = true;
+    await Promise.all(
+      [...inferenceAdmissions.values()].map((admission) => admission.close()),
+    );
+  };
   const inferenceAdmissionForWorker = () => {
+    if (inferenceAuthorityRetired)
+      throw new Error(
+        "Worker inference authority was retired; restart the worker.",
+      );
     // Encryption learns the authoritative server/owner binding after startup.
     // Resolve lazily, and never share pools across a changed account binding.
     const scope = nativeNamespaceScope();
@@ -6925,6 +6938,39 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     },
     {
       connectionGeneration: workerProcessGeneration,
+      onAuthenticationRejected: () => {
+        void retireInferenceAuthority().then(
+          () =>
+            workerLogger.event(
+              "info",
+              "Rejected worker inference ownership retired",
+              {
+                event: "inference.authority.retired",
+                subsystem: "provider",
+                operation: "retire-authority",
+                reasonCode: "authentication-rejected",
+                status: "completed",
+                workerId: config.workerId,
+                workerGeneration: workerProcessGeneration,
+              },
+            ),
+          (error) =>
+            workerLogger.event(
+              "warn",
+              "Rejected worker inference retirement is pending",
+              {
+                event: "inference.authority.retirement-pending",
+                subsystem: "provider",
+                operation: "retire-authority",
+                reasonCode: "authentication-rejected",
+                status: "degraded",
+                workerId: config.workerId,
+                workerGeneration: workerProcessGeneration,
+                error: workerLogError(error),
+              },
+            ),
+        );
+      },
       handleWorkerLinkFrame: async (header, payload) => {
         await workerLinkGateway.handleFrame(
           header,
@@ -7255,9 +7301,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     }
     // start() can restart in the same Node process. Close its lifetime pipes and
     // prove native settlement before a new worker generation claims this scope.
-    await Promise.all(
-      [...inferenceAdmissions.values()].map((admission) => admission.close()),
-    );
+    await retireInferenceAuthority();
     workerLogStreams.close();
     workerLogger.flushRepeated();
     workerLogger.event("info", "Cantrip Worker stopped", {
