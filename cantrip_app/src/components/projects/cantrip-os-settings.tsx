@@ -23,6 +23,7 @@ import { prepareConversationCreation } from "@/lib/api/conversations";
 import { errorMessage } from "@/lib/error-message";
 import { CantripOsAttachForm } from "./cantrip-os-attach-form";
 import { CantripOsSourceForm } from "./cantrip-os-source-form";
+import { CantripOsWorktreeForm } from "./cantrip-os-worktree-form";
 
 export function CantripOsSettings({
   project,
@@ -40,6 +41,7 @@ export function CantripOsSettings({
   const [workspaceId, setWorkspaceId] = useState("");
   const [profile, setProfile] = useState("work");
   const [adding, setAdding] = useState(false);
+  const [worktreeSource, setWorktreeSource] = useState<string | null>(null);
   const instances = useQuery({
     queryKey: ["cantrip-os"],
     queryFn: getCantripOsInstances,
@@ -313,7 +315,27 @@ export function CantripOsSettings({
               >
                 New Linux agent
               </Button>
+              {project.capabilities.git && binding.mode === "linux-owned" ? (
+                <Button
+                  variant="ghost"
+                  onClick={() => setWorktreeSource(binding.id)}
+                >
+                  New Linux worktree
+                </Button>
+              ) : null}
             </div>
+            {worktreeSource === binding.id ? (
+              <CantripOsWorktreeForm
+                key={binding.id}
+                source={binding}
+                onChanged={refreshLists}
+                onCancel={() => setWorktreeSource(null)}
+                onCreated={() => {
+                  setWorktreeSource(null);
+                  refreshLists();
+                }}
+              />
+            ) : null}
           </article>
         ))}
       </section>

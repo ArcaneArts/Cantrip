@@ -111,6 +111,65 @@ async fn exercise(database: Arc<Database>) -> Result<()> {
         .await?;
     assert_eq!(stored[0].get::<String>(0)?, "a".repeat(40));
     assert_eq!(stored[0].get::<String>(1)?, "ctrr:protected-branch");
+    let worktree_admission = json!({"mode":"linux-worktree","sourceBindingId":binding["id"],"expectedRuntimeGeneration":instance["runtimeGeneration"],"operationId":id()});
+    let (worktree_a, worktree_b) = tokio::join!(
+        repository.create_binding("owner", "project", &worktree_admission),
+        repository.create_binding("owner", "project", &worktree_admission)
+    );
+    let mut worktree = worktree_a?;
+    assert_eq!(worktree, worktree_b?);
+    assert_eq!(worktree["projectSourceId"], binding["projectSourceId"]);
+    assert_ne!(worktree["worktreeId"], binding["worktreeId"]);
+    assert_eq!(worktree["mode"], "linux-owned");
+    assert!(
+        repository
+            .create_binding("other", "project", &worktree_admission)
+            .await
+            .is_err()
+    );
+    let source_count = database
+        .query(
+            "SELECT count(*)::bigint FROM project_source_identities WHERE project_id='project'",
+            &[],
+        )
+        .await?;
+    assert_eq!(source_count[0].get::<i64>(0)?, 1);
+    let tree_count = database
+        .query(
+            "SELECT count(*)::bigint FROM project_worktrees WHERE project_source_id=$1",
+            &[&binding["projectSourceId"].as_str().unwrap()],
+        )
+        .await?;
+    assert_eq!(tree_count[0].get::<i64>(0)?, 2);
+    let mut worktree_scope = scope.clone();
+    for (key, value) in [
+        ("bindingId", worktree["id"].clone()),
+        ("bindingGeneration", worktree["bindingGeneration"].clone()),
+        ("worktreeId", worktree["worktreeId"].clone()),
+        ("guestPath", worktree["guestPath"].clone()),
+    ] {
+        worktree_scope[key] = value;
+    }
+    let mut worktree_receipt = receipt.clone();
+    worktree_receipt["bindingId"] = worktree["id"].clone();
+    worktree_receipt["guestPath"] = worktree["guestPath"].clone();
+    worktree_receipt["branch"] = json!("ctrr:worktree-branch");
+    worktree = repository
+        .outcome(
+            "owner",
+            &worktree_scope,
+            "ready",
+            None,
+            Some(&worktree_receipt),
+        )
+        .await?;
+    let branches = database
+        .query(
+            "SELECT branch FROM project_worktrees WHERE id=$1",
+            &[&binding["worktreeId"].as_str().unwrap()],
+        )
+        .await?;
+    assert_eq!(branches[0].get::<String>(0)?, "ctrr:protected-branch");
     database
         .execute("INSERT INTO user_settings(user_id,computer_use_enabled) VALUES('owner',true)")
         .await?;
@@ -297,6 +356,20 @@ async fn exercise(database: Arc<Database>) -> Result<()> {
             .is_err()
     );
     assert!(chats.execution_context("owner", &chat_id).await.is_err());
+    assert_eq!(
+        repository
+            .create_binding("owner", "project", &worktree_admission)
+            .await?,
+        worktree
+    );
+    let mut stale_admission = worktree_admission.clone();
+    stale_admission["operationId"] = json!(id());
+    assert!(
+        repository
+            .create_binding("owner", "project", &stale_admission)
+            .await
+            .is_err()
+    );
     assert!(terminals.context("owner", &terminal_id).await.is_err());
     assert!(terminals.context("owner", &console_id).await.is_err());
     assert!(

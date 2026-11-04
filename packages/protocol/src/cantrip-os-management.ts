@@ -35,6 +35,14 @@ export const cantripOsBindingCreateSchema = z.discriminatedUnion("mode", [
       sourceKind: z.enum(["git", "folder"]),
     })
     .strict(),
+  z
+    .object({
+      mode: z.literal("linux-worktree"),
+      sourceBindingId: z.uuid(),
+      expectedRuntimeGeneration: z.uuid(),
+      operationId: z.uuid(),
+    })
+    .strict(),
 ]);
 
 export const cantripOsProvisionSchema = z

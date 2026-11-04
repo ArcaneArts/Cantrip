@@ -301,6 +301,167 @@ describe.skipIf(!enabled)(
         expect(Buffer.from(artifact.dataBase64, "base64").toString()).toBe(
           "actual Linux artifact\n",
         );
+        const worktreeAdmission = {
+          mode: "linux-worktree",
+          sourceBindingId: binding.id,
+          expectedRuntimeGeneration: attached.instance.runtimeGeneration,
+          operationId: randomUUID(),
+        };
+        const worktree = await post(root, worktreeAdmission);
+        expect(await post(root, worktreeAdmission)).toEqual(worktree);
+        expect(worktree.projectSourceId).toBe(binding.projectSourceId);
+        expect(worktree.worktreeId).not.toBe(binding.worktreeId);
+        expect(worktree.mode).toBe("linux-owned");
+        expect(worktree.guestPath).toBe(
+          `${workspace.homeGuestPath}/worktrees/${worktree.worktreeId}`,
+        );
+        expect(
+          (
+            await database.query(
+              "SELECT count(*)::int AS count FROM project_source_identities WHERE project_id=$1",
+              [projectId],
+            )
+          ).rows[0],
+        ).toEqual({ count: 1 });
+        expect(
+          (
+            await database.query(
+              "SELECT count(*)::int AS count FROM project_worktrees WHERE project_source_id=$1",
+              [binding.projectSourceId],
+            )
+          ).rows[0],
+        ).toEqual({ count: 2 });
+        const worktreeOperationId = randomUUID();
+        const branch = `phase3/日本-${randomUUID().slice(0, 8)}`;
+        const worktreeRequest = await protectWorkerRepositoryOperationContent({
+          service: encryption,
+          context: {
+            serverId,
+            projectId,
+            worktreeId: worktree.worktreeId,
+            operationId: worktreeOperationId,
+            direction: "request",
+          },
+          schema: cantripOsProvisionRequestContentSchema,
+          content: {
+            type: "cantrip-os.source.provision",
+            instanceId: attached.instance.id,
+            workspaceId: workspace.id,
+            bindingId: worktree.id,
+            bindingGeneration: worktree.bindingGeneration,
+            intent: {
+              mode: "linux-owned",
+              source: { kind: "git-worktree", revision, branch },
+            },
+          },
+        });
+        const worktreeBody = {
+          operationId: worktreeOperationId,
+          bindingGeneration: worktree.bindingGeneration,
+          protectedRequest: worktreeRequest,
+        };
+        drop = true;
+        const uncertain = await app.inject({
+          method: "POST",
+          url: `${root}/${worktree.id}/provision`,
+          payload: worktreeBody,
+        });
+        expect(uncertain.statusCode, uncertain.body).toBe(409);
+        const worktreeRecovered = await post(`${root}/${worktree.id}/recover`);
+        expect(worktreeRecovered.state).toBe("ready");
+        expect(worktreeRecovered.receipt.source.repositoryFingerprint).toBe(
+          recovered.receipt.source.repositoryFingerprint,
+        );
+        await post(`${root}/${worktree.id}/provision`, worktreeBody);
+        expect(provisions).toBe(2);
+        expect(
+          (await repository.bindingContext(ownerId, worktree.id))?.available,
+        ).toBe(true);
+        expect(JSON.stringify(commands)).not.toContain(branch);
+        const gitWorktrees = await runGuestProcess(
+          connection,
+          ["git", "-C", binding.guestPath, "worktree", "list", "--porcelain"],
+          binding.guestPath,
+        );
+        expect(gitWorktrees.exitCode).toBe(0);
+        expect(gitWorktrees.stdout.match(/^worktree /gm)).toHaveLength(2);
+        expect(gitWorktrees.stdout).toContain(`worktree ${worktree.guestPath}`);
+        const worktreeBranch = await runGuestProcess(
+          connection,
+          ["git", "-C", worktree.guestPath, "branch", "--show-current"],
+          worktree.guestPath,
+        );
+        expect(worktreeBranch.stdout.trim()).toBe(branch);
+        await connection.request("fs/writeFile", {
+          path: guestFileUri(`${worktree.guestPath}/${filename}`),
+          dataBase64: Buffer.from("Independent worktree 日本\n").toString(
+            "base64",
+          ),
+          sandbox: null,
+        });
+        const retained = await connection.request<{ dataBase64: string }>(
+          "fs/readFile",
+          {
+            path: guestFileUri(`${binding.guestPath}/${filename}`),
+            sandbox: null,
+          },
+        );
+        expect(Buffer.from(retained.dataBase64, "base64").toString()).toBe(
+          bytes,
+        );
+        const worktreeProcess = await runGuestProcess(
+          connection,
+          [
+            "python",
+            "-c",
+            "import os,json,pathlib;print(json.dumps({'uid':os.getuid(),'cwd':os.getcwd(),'text':pathlib.Path('README # % ? 日本語.txt').read_text()}))",
+          ],
+          worktree.guestPath,
+        );
+        expect(worktreeProcess.exitCode).toBe(0);
+        expect(JSON.parse(worktreeProcess.stdout)).toEqual({
+          uid: workspace.uid,
+          cwd: worktree.guestPath,
+          text: "Independent worktree 日本\n",
+        });
+        const originalWorktree = commands.findLast(
+          (command) =>
+            command.type === "cantrip-os.source.provision" &&
+            command.scope.bindingId === worktree.id,
+        );
+        if (originalWorktree?.type !== "cantrip-os.source.provision")
+          throw new Error("Missing admitted worktree scope");
+        const rejectedWorktreeId = randomUUID();
+        const rejectedPath = `${workspace.homeGuestPath}/worktrees/${rejectedWorktreeId}`;
+        const identityFailure = await controller.handle({
+          type: "cantrip-os.source.provision",
+          operationId: randomUUID(),
+          transport,
+          scope: {
+            ...originalWorktree.scope,
+            bindingId: randomUUID(),
+            worktreeId: rejectedWorktreeId,
+            guestPath: rejectedPath,
+            repositoryFingerprint: "different-common-directory",
+          },
+          intent: {
+            mode: "linux-owned",
+            source: { kind: "git-worktree", revision, branch: null },
+          },
+        });
+        expect(identityFailure.state).toBe("failed");
+        await expect(
+          connection.request("fs/getMetadata", {
+            path: guestFileUri(rejectedPath),
+            sandbox: null,
+          }),
+        ).rejects.toThrow();
+        const retainedWorktrees = await runGuestProcess(
+          connection,
+          ["git", "-C", binding.guestPath, "worktree", "list", "--porcelain"],
+          binding.guestPath,
+        );
+        expect(retainedWorktrees.stdout.match(/^worktree /gm)).toHaveLength(2);
         const proof = {
           transport: transport.kind,
           instance: attached.instance,
@@ -309,10 +470,14 @@ describe.skipIf(!enabled)(
           recovered,
           provisions,
           guestProcess,
+          worktree,
+          worktreeRecovered,
+          worktreeProcess,
+          identityFailure,
           admission: await repository.provisionAdmission(ownerId, binding.id),
         };
         const artifacts = new URL(
-          "../../cantrip_os/artifacts/phase3-dispatch/",
+          "../../cantrip_os/artifacts/phase3-worktrees/",
           import.meta.url,
         );
         await mkdir(artifacts, { recursive: true });

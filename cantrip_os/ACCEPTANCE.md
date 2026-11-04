@@ -777,3 +777,39 @@ suite in Docker. The exact final AMD64 archive was checksum-verified, installed
 in the VM, and passed the complete terminal suite. The installed VM also
 reported htop 3.4.1, nano 8.4, and Python 3.13.5 through the `python` command.
 Fresh Docker image and ISO distribution acceptance remains subsequent work.
+
+## Product Git worktree checkpoint (2026-11-04)
+
+The current Server and Worker expose Linux-owned Git worktree admission through
+Settings. These tests used installed executor 0.4.0 process/filesystem APIs;
+this cycle does not introduce a new guest runtime or claim full Phase 3 completion.
+
+- Real Node HTTP handlers, canonical PGlite rows, protected Worker commands, and
+  the native executor created a checkout at an exact Git revision and a second
+  worktree with a Unicode branch. Both targets retained one source identity.
+  The Docker run passed; the installed VM run passed in 33.7 seconds. A response
+  deliberately lost after worktree creation was recovered without another Git
+  mutation. Secondary edits left Primary unchanged; Python reported the actual
+  workspace UID and worktree cwd.
+- A mismatched canonical Git common-directory identity was rejected after
+  actual native Git observation and before a worktree directory or mutation was
+  created. Git still listed only the two expected worktrees afterward. This
+  check passed in both Docker and the installed VM.
+- Actual PGlite and PostgreSQL repositories admitted concurrent identical
+  requests as one binding/worktree. Ownership and stale-generation checks
+  rejected new admissions; an existing admission remained observable. Updating
+  secondary worktree observations retained Primary's branch and source identity.
+- In Codex's in-app browser, attached a disposable existing local Git repository,
+  provisioned its Linux checkout from a Git bundle, and created
+  `acceptance/linux-worktree` using the new settings form. Opened its Linux
+  agent, edited `main.py` in the product editor, and ran it in a product terminal.
+  Independent reading verified UID 20000, the intended worktree directory and
+  branch, the saved comment, and an unchanged, clean Primary file. No model turn
+  was submitted for this worktree test. Its agent and terminal headers now show
+  the Linux location instead of the original host source path.
+
+The production app build passed. The form test verifies that uncertain delivery
+retains captured inputs and reuses the prepared operation. Screenshots and
+receipts are under ignored `artifacts/phase3-worktrees/`. Run, delegated project
+tools and broader Git UI, attachments/artifacts, notifications, and current
+Docker/ISO distribution acceptance remain later blocks.

@@ -4,6 +4,7 @@ mod control;
 pub mod coordinator;
 pub mod files;
 mod sources;
+mod worktrees;
 use crate::database::{Database, Parameters, Row};
 use anyhow::{Context, Result};
 use serde_json::Value;
@@ -207,7 +208,7 @@ impl Repository {
             "Source location changed."
         );
         Ok(
-            serde_json::json!({"binding":summary(b,"binding",Some(text(i,"id")?))?,"instance":summary(i,"instance",None)?,"workspace":summary(&row["workspace"],"workspace",Some(text(i,"worker_id")?))?,"transport":i["transport"],"sourceKind":row["sourceKind"]}),
+            serde_json::json!({"binding":summary(b,"binding",Some(text(i,"id")?))?,"instance":summary(i,"instance",None)?,"workspace":summary(&row["workspace"],"workspace",Some(text(i,"worker_id")?))?,"transport":i["transport"],"sourceKind":row["sourceKind"],"repositoryFingerprint":row["linux"]["repository_fingerprint"]}),
         )
     }
 }

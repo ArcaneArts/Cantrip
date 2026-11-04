@@ -239,6 +239,34 @@ it(
           )
         ).rows,
       ).toEqual([{ head: "a".repeat(40), branch: "ctrr:protected-branch" }]);
+      const worktreeAdmission = {
+        mode: "linux-worktree",
+        sourceBindingId: binding.id,
+        expectedRuntimeGeneration: runtime,
+        operationId: randomUUID(),
+      };
+      const [createdWorktree, repeatedWorktree] = await Promise.all([
+        post(root, worktreeAdmission),
+        post(root, worktreeAdmission),
+      ]);
+      expect(createdWorktree.statusCode, createdWorktree.body).toBe(200);
+      expect(repeatedWorktree.statusCode, repeatedWorktree.body).toBe(200);
+      const worktree = createdWorktree.json();
+      expect(repeatedWorktree.json()).toEqual(worktree);
+      expect(worktree.projectSourceId).toBe(binding.projectSourceId);
+      expect(worktree.worktreeId).not.toBe(binding.worktreeId);
+      expect(
+        (await post(root, { ...worktreeAdmission, sourceBindingId: second.id }))
+          .statusCode,
+      ).toBe(409);
+      expect(
+        (
+          await post(root, {
+            ...worktreeAdmission,
+            guestPath: "/client-supplied",
+          })
+        ).statusCode,
+      ).toBe(400);
       expect(
         (
           await post(`${path}/provision`, {
@@ -254,6 +282,10 @@ it(
         ),
       ).rejects.toThrow(/immutable/);
       owner = "other";
+      expect(
+        (await post(root, { ...worktreeAdmission, operationId: randomUUID() }))
+          .statusCode,
+      ).toBe(409);
       expect((await post(`${path}/recover`)).statusCode).toBe(409);
       owner = "owner";
       expect(
@@ -270,6 +302,11 @@ it(
       expect(
         (await repository.bindingContext("owner", binding.id))?.available,
       ).toBe(false);
+      expect(
+        (await post(root, { ...worktreeAdmission, operationId: randomUUID() }))
+          .statusCode,
+      ).toBe(409);
+      expect((await post(root, worktreeAdmission)).json()).toEqual(worktree);
       expect((await post(`${path}/recover`)).statusCode).toBe(200);
       expect(
         (await repository.bindingContext("owner", binding.id))?.binding.state,
