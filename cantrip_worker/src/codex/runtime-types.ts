@@ -50,6 +50,10 @@ export interface CodexNativeEnvironment {
   prepare(codexHome: string): Promise<void>;
   hasGitMetadata(cwd: string): Promise<boolean>;
   snapshot(cwd: string): Promise<WorkspaceSnapshot>;
+  materializeAttachments?(
+    chatId: string,
+    attachments: readonly RuntimeChatAttachment[],
+  ): Promise<GuestRuntimeAttachment[]>;
 }
 
 export interface RpcError {
@@ -598,6 +602,11 @@ export interface AgentOperationResult {
   structuredResult: unknown;
   measuredUsage: MeasuredAgentUsage;
   status: "completed";
+}
+
+/** A materialized guest reference must never be passed to Host localImage. */
+export interface GuestRuntimeAttachment extends ChatAttachmentSummary {
+  guestPath: string;
 }
 
 export interface RuntimeChatAttachment extends ChatAttachmentSummary {

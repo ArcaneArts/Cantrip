@@ -8,6 +8,7 @@ export function attachmentPromptText(
   prompt: string,
   attachments: readonly LocalRuntimeAttachment[],
   imageInputSupported: boolean,
+  location: "worker" | "Linux workspace" = "worker",
 ): string {
   if (!attachments.length) return prompt;
   const references = attachments.map(
@@ -17,9 +18,9 @@ export function attachmentPromptText(
   const hasUnsupportedImages =
     !imageInputSupported &&
     attachments.some((attachment) => attachment.kind === "image");
-  return `${prompt}\n\nAttachments are stored outside the repository on this worker. Read them from these paths as needed:\n${references.join("\n")}${
+  return `${prompt}\n\nAttachments are stored outside the repository ${location === "worker" ? "on this worker" : "in this Linux workspace"}. Read them from these paths as needed:\n${references.join("\n")}${
     hasUnsupportedImages
-      ? "\n\nThe selected model is text-only. Image files were not sent as model image input; inspect their worker paths with local tools if needed."
+      ? "\n\nThe selected model is text-only. Image files were not sent as model image input; inspect their listed paths with the current environment tools if needed."
       : ""
   }`;
 }

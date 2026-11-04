@@ -2833,6 +2833,76 @@
       "case": 367
     },
     {
+      "kind": "union",
+      "path": ["command", "options", "28", "root"],
+      "index": 0,
+      "case": 1006
+    },
+    {
+      "kind": "union",
+      "path": ["command", "options", "28", "root"],
+      "index": 1,
+      "case": 1007
+    },
+    {
+      "kind": "union",
+      "path": ["command", "options", "28", "root", "options", "1", "scope"],
+      "index": 0,
+      "case": 1008
+    },
+    {
+      "kind": "union",
+      "path": ["command", "options", "28", "root", "options", "1", "scope"],
+      "index": 1,
+      "case": 1009
+    },
+    {
+      "kind": "enum",
+      "path": [
+        "command",
+        "options",
+        "28",
+        "root",
+        "options",
+        "1",
+        "scope",
+        "options",
+        "0",
+        "sourceKind"
+      ],
+      "index": 0,
+      "case": 1010
+    },
+    {
+      "kind": "enum",
+      "path": [
+        "command",
+        "options",
+        "28",
+        "root",
+        "options",
+        "1",
+        "scope",
+        "options",
+        "0",
+        "sourceKind"
+      ],
+      "index": 1,
+      "case": 1011
+    },
+    {
+      "kind": "union",
+      "path": ["command", "options", "28", "root", "options", "1", "transport"],
+      "index": 0,
+      "case": 1012
+    },
+    {
+      "kind": "union",
+      "path": ["command", "options", "28", "root", "options", "1", "transport"],
+      "index": 1,
+      "case": 1013
+    },
+    {
       "kind": "enum",
       "path": ["command", "options", "33", "component"],
       "index": 0,
@@ -3870,96 +3940,6 @@
       "path": ["command", "options", "94", "worktreePath"],
       "index": 1,
       "case": 981
-    },
-    {
-      "kind": "union",
-      "path": [
-        "command",
-        "options",
-        "94",
-        "worktreePath",
-        "options",
-        "1",
-        "scope"
-      ],
-      "index": 0,
-      "case": 982
-    },
-    {
-      "kind": "union",
-      "path": [
-        "command",
-        "options",
-        "94",
-        "worktreePath",
-        "options",
-        "1",
-        "scope"
-      ],
-      "index": 1,
-      "case": 983
-    },
-    {
-      "kind": "enum",
-      "path": [
-        "command",
-        "options",
-        "94",
-        "worktreePath",
-        "options",
-        "1",
-        "scope",
-        "options",
-        "0",
-        "sourceKind"
-      ],
-      "index": 0,
-      "case": 984
-    },
-    {
-      "kind": "enum",
-      "path": [
-        "command",
-        "options",
-        "94",
-        "worktreePath",
-        "options",
-        "1",
-        "scope",
-        "options",
-        "0",
-        "sourceKind"
-      ],
-      "index": 1,
-      "case": 985
-    },
-    {
-      "kind": "union",
-      "path": [
-        "command",
-        "options",
-        "94",
-        "worktreePath",
-        "options",
-        "1",
-        "transport"
-      ],
-      "index": 0,
-      "case": 986
-    },
-    {
-      "kind": "union",
-      "path": [
-        "command",
-        "options",
-        "94",
-        "worktreePath",
-        "options",
-        "1",
-        "transport"
-      ],
-      "index": 1,
-      "case": 987
     },
     {
       "kind": "enum",
@@ -46644,6 +46624,413 @@
             "request": {
               "id": "00000000-0000-4000-8000-000000000001",
               "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          }
+        }
+      }
+    },
+    {
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.files.references",
+          "chatId": "00000000-0000-4000-8000-000000000001",
+          "serverId": "fixture",
+          "root": "fixture",
+          "operationId": "fixture",
+          "sequence": 0,
+          "protectedRequest": {
+            "formatVersion": 1,
+            "keyRevision": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "00000000-0000-4000-8000-000000000001"
+            }
+          }
+        }
+      }
+    },
+    {
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.files.references",
+          "chatId": "00000000-0000-4000-8000-000000000001",
+          "serverId": "fixture",
+          "root": {
+            "kind": "cantrip-os",
+            "scope": {
+              "ownerId": "owner",
+              "workerId": "worker",
+              "instanceId": "12345678-1234-4234-8234-123456789abc",
+              "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+              "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+              "runtimeGeneration": "12345678-1234-4234-8234-123456789abc",
+              "bindingId": "12345678-1234-4234-8234-123456789abc",
+              "bindingGeneration": "12345678-1234-4234-8234-123456789abc",
+              "projectId": "12345678-1234-4234-8234-123456789abc",
+              "projectSourceId": "12345678-1234-4234-8234-123456789abc",
+              "sourceKind": "git",
+              "worktreeId": "12345678-1234-4234-8234-123456789abc",
+              "workspaceId": "12345678-1234-4234-8234-123456789abc",
+              "guestWorkspaceId": "example",
+              "uid": 20000,
+              "gid": 20000,
+              "homeGuestPath": "/home/example",
+              "guestPath": "/home/example/checkouts/source",
+              "dependencyOverlays": [],
+              "mode": "linux-owned",
+              "linkedWorkerPath": null
+            },
+            "transport": {
+              "kind": "docker",
+              "container": "cantrip-os"
+            }
+          },
+          "operationId": "fixture",
+          "sequence": 0,
+          "protectedRequest": {
+            "formatVersion": 1,
+            "keyRevision": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "00000000-0000-4000-8000-000000000001"
+            }
+          }
+        }
+      }
+    },
+    {
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.files.references",
+          "chatId": "00000000-0000-4000-8000-000000000001",
+          "serverId": "fixture",
+          "root": {
+            "kind": "cantrip-os",
+            "scope": {
+              "ownerId": "owner",
+              "workerId": "worker",
+              "instanceId": "12345678-1234-4234-8234-123456789abc",
+              "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+              "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+              "runtimeGeneration": "12345678-1234-4234-8234-123456789abc",
+              "bindingId": "12345678-1234-4234-8234-123456789abc",
+              "bindingGeneration": "12345678-1234-4234-8234-123456789abc",
+              "projectId": "12345678-1234-4234-8234-123456789abc",
+              "projectSourceId": "12345678-1234-4234-8234-123456789abc",
+              "sourceKind": "git",
+              "worktreeId": "12345678-1234-4234-8234-123456789abc",
+              "workspaceId": "12345678-1234-4234-8234-123456789abc",
+              "guestWorkspaceId": "example",
+              "uid": 20000,
+              "gid": 20000,
+              "homeGuestPath": "/home/example",
+              "guestPath": "/home/example/checkouts/source",
+              "dependencyOverlays": [],
+              "mode": "linked",
+              "linkedWorkerPath": "/host/source"
+            },
+            "transport": {
+              "kind": "docker",
+              "container": "cantrip-os"
+            }
+          },
+          "operationId": "fixture",
+          "sequence": 0,
+          "protectedRequest": {
+            "formatVersion": 1,
+            "keyRevision": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "00000000-0000-4000-8000-000000000001"
+            }
+          }
+        }
+      }
+    },
+    {
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.files.references",
+          "chatId": "00000000-0000-4000-8000-000000000001",
+          "serverId": "fixture",
+          "root": {
+            "kind": "cantrip-os",
+            "scope": {
+              "ownerId": "owner",
+              "workerId": "worker",
+              "instanceId": "12345678-1234-4234-8234-123456789abc",
+              "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+              "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+              "runtimeGeneration": "12345678-1234-4234-8234-123456789abc",
+              "bindingId": "12345678-1234-4234-8234-123456789abc",
+              "bindingGeneration": "12345678-1234-4234-8234-123456789abc",
+              "projectId": "12345678-1234-4234-8234-123456789abc",
+              "projectSourceId": "12345678-1234-4234-8234-123456789abc",
+              "sourceKind": "git",
+              "worktreeId": "12345678-1234-4234-8234-123456789abc",
+              "workspaceId": "12345678-1234-4234-8234-123456789abc",
+              "guestWorkspaceId": "example",
+              "uid": 20000,
+              "gid": 20000,
+              "homeGuestPath": "/home/example",
+              "guestPath": "/home/example/checkouts/source",
+              "dependencyOverlays": [],
+              "mode": "linux-owned",
+              "linkedWorkerPath": null
+            },
+            "transport": {
+              "kind": "docker",
+              "container": "cantrip-os"
+            }
+          },
+          "operationId": "fixture",
+          "sequence": 0,
+          "protectedRequest": {
+            "formatVersion": 1,
+            "keyRevision": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "00000000-0000-4000-8000-000000000001"
+            }
+          }
+        }
+      }
+    },
+    {
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.files.references",
+          "chatId": "00000000-0000-4000-8000-000000000001",
+          "serverId": "fixture",
+          "root": {
+            "kind": "cantrip-os",
+            "scope": {
+              "ownerId": "owner",
+              "workerId": "worker",
+              "instanceId": "12345678-1234-4234-8234-123456789abc",
+              "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+              "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+              "runtimeGeneration": "12345678-1234-4234-8234-123456789abc",
+              "bindingId": "12345678-1234-4234-8234-123456789abc",
+              "bindingGeneration": "12345678-1234-4234-8234-123456789abc",
+              "projectId": "12345678-1234-4234-8234-123456789abc",
+              "projectSourceId": "12345678-1234-4234-8234-123456789abc",
+              "sourceKind": "git",
+              "worktreeId": "12345678-1234-4234-8234-123456789abc",
+              "workspaceId": "12345678-1234-4234-8234-123456789abc",
+              "guestWorkspaceId": "example",
+              "uid": 20000,
+              "gid": 20000,
+              "homeGuestPath": "/home/example",
+              "guestPath": "/home/example/checkouts/source",
+              "dependencyOverlays": [],
+              "mode": "linux-owned",
+              "linkedWorkerPath": null
+            },
+            "transport": {
+              "kind": "docker",
+              "container": "cantrip-os"
+            }
+          },
+          "operationId": "fixture",
+          "sequence": 0,
+          "protectedRequest": {
+            "formatVersion": 1,
+            "keyRevision": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "00000000-0000-4000-8000-000000000001"
+            }
+          }
+        }
+      }
+    },
+    {
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.files.references",
+          "chatId": "00000000-0000-4000-8000-000000000001",
+          "serverId": "fixture",
+          "root": {
+            "kind": "cantrip-os",
+            "scope": {
+              "ownerId": "owner",
+              "workerId": "worker",
+              "instanceId": "12345678-1234-4234-8234-123456789abc",
+              "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+              "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+              "runtimeGeneration": "12345678-1234-4234-8234-123456789abc",
+              "bindingId": "12345678-1234-4234-8234-123456789abc",
+              "bindingGeneration": "12345678-1234-4234-8234-123456789abc",
+              "projectId": "12345678-1234-4234-8234-123456789abc",
+              "projectSourceId": "12345678-1234-4234-8234-123456789abc",
+              "sourceKind": "folder",
+              "worktreeId": "12345678-1234-4234-8234-123456789abc",
+              "workspaceId": "12345678-1234-4234-8234-123456789abc",
+              "guestWorkspaceId": "example",
+              "uid": 20000,
+              "gid": 20000,
+              "homeGuestPath": "/home/example",
+              "guestPath": "/home/example/checkouts/source",
+              "dependencyOverlays": [],
+              "mode": "linux-owned",
+              "linkedWorkerPath": null
+            },
+            "transport": {
+              "kind": "docker",
+              "container": "cantrip-os"
+            }
+          },
+          "operationId": "fixture",
+          "sequence": 0,
+          "protectedRequest": {
+            "formatVersion": 1,
+            "keyRevision": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "00000000-0000-4000-8000-000000000001"
+            }
+          }
+        }
+      }
+    },
+    {
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.files.references",
+          "chatId": "00000000-0000-4000-8000-000000000001",
+          "serverId": "fixture",
+          "root": {
+            "kind": "cantrip-os",
+            "scope": {
+              "ownerId": "owner",
+              "workerId": "worker",
+              "instanceId": "12345678-1234-4234-8234-123456789abc",
+              "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+              "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+              "runtimeGeneration": "12345678-1234-4234-8234-123456789abc",
+              "bindingId": "12345678-1234-4234-8234-123456789abc",
+              "bindingGeneration": "12345678-1234-4234-8234-123456789abc",
+              "projectId": "12345678-1234-4234-8234-123456789abc",
+              "projectSourceId": "12345678-1234-4234-8234-123456789abc",
+              "sourceKind": "git",
+              "worktreeId": "12345678-1234-4234-8234-123456789abc",
+              "workspaceId": "12345678-1234-4234-8234-123456789abc",
+              "guestWorkspaceId": "example",
+              "uid": 20000,
+              "gid": 20000,
+              "homeGuestPath": "/home/example",
+              "guestPath": "/home/example/checkouts/source",
+              "dependencyOverlays": [],
+              "mode": "linux-owned",
+              "linkedWorkerPath": null
+            },
+            "transport": {
+              "kind": "docker",
+              "container": "cantrip-os"
+            }
+          },
+          "operationId": "fixture",
+          "sequence": 0,
+          "protectedRequest": {
+            "formatVersion": 1,
+            "keyRevision": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "00000000-0000-4000-8000-000000000001"
+            }
+          }
+        }
+      }
+    },
+    {
+      "input": {
+        "kind": "request",
+        "requestId": "fixture-command",
+        "command": {
+          "type": "chat.files.references",
+          "chatId": "00000000-0000-4000-8000-000000000001",
+          "serverId": "fixture",
+          "root": {
+            "kind": "cantrip-os",
+            "scope": {
+              "ownerId": "owner",
+              "workerId": "worker",
+              "instanceId": "12345678-1234-4234-8234-123456789abc",
+              "guestInstanceId": "12345678-1234-4234-8234-123456789abc",
+              "attachmentGeneration": "12345678-1234-4234-8234-123456789abc",
+              "runtimeGeneration": "12345678-1234-4234-8234-123456789abc",
+              "bindingId": "12345678-1234-4234-8234-123456789abc",
+              "bindingGeneration": "12345678-1234-4234-8234-123456789abc",
+              "projectId": "12345678-1234-4234-8234-123456789abc",
+              "projectSourceId": "12345678-1234-4234-8234-123456789abc",
+              "sourceKind": "git",
+              "worktreeId": "12345678-1234-4234-8234-123456789abc",
+              "workspaceId": "12345678-1234-4234-8234-123456789abc",
+              "guestWorkspaceId": "example",
+              "uid": 20000,
+              "gid": 20000,
+              "homeGuestPath": "/home/example",
+              "guestPath": "/home/example/checkouts/source",
+              "dependencyOverlays": [],
+              "mode": "linux-owned",
+              "linkedWorkerPath": null
+            },
+            "transport": {
+              "kind": "ssh",
+              "host": "localhost",
+              "port": 2222,
+              "user": "cantrip",
+              "identityFile": "/worker/key",
+              "knownHostsFile": "/worker/known-hosts"
+            }
+          },
+          "operationId": "fixture",
+          "sequence": 0,
+          "protectedRequest": {
+            "formatVersion": 1,
+            "keyRevision": 1,
+            "envelope": {
+              "version": 1,
+              "algorithm": "AES-256-GCM",
+              "keyRevision": 1,
+              "nonce": "AAAAAAAAAAAAAAAA",
+              "ciphertext": "00000000-0000-4000-8000-000000000001"
             }
           }
         }

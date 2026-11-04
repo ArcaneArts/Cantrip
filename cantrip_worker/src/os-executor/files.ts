@@ -1,3 +1,18 @@
+import {
+  osFileRequestSchema,
+  osFileRequestMutates,
+  osFileOutcomeSchema,
+  type OsFileRequest,
+  type OsFileOutcome,
+} from "./file-requests.js";
+import {
+  safeAttachmentFileName,
+  MAX_ATTACHMENT_BYTES,
+} from "../attachment-paths.js";
+import type {
+  RuntimeChatAttachment,
+  GuestRuntimeAttachment,
+} from "../codex/runtime-types.js";
 import { StringDecoder } from "node:string_decoder";
 import { listExplorerDirectoryCommits } from "../explorer.js";
 import { createHash, randomUUID } from "node:crypto";
@@ -8,14 +23,10 @@ import type {
   CantripOsSourceDispatchScope,
 } from "@cantrip/protocol";
 import {
-  explorerOperationRequestContentSchema,
   surfaceOperationOutcomeContentSchema,
   type ExplorerOperationRequestContent,
 } from "@cantrip/protocol/surface-stream";
-import {
-  explorerRequestMutates,
-  type ExplorerRequestContext,
-} from "../commands/explorer-request.js";
+import { type ExplorerRequestContext } from "../commands/explorer-request.js";
 import {
   OsExecutorConnection,
   OsExecutorDeliveryError,
@@ -25,7 +36,7 @@ import type { CantripOsController } from "./controller.js";
 import { guestFileUri } from "./paths.js";
 
 type Outcome = {
-  outcome: ReturnType<typeof surfaceOperationOutcomeContentSchema.parse>;
+  outcome: OsFileOutcome;
   complete: boolean;
 };
 type ReadResult = {
@@ -109,7 +120,7 @@ class FileClient {
     if (typeof result?.complete !== "boolean")
       throw new OsExecutorDeliveryError("Invalid OS file helper receipt.");
     return {
-      outcome: surfaceOperationOutcomeContentSchema.parse(result.outcome),
+      outcome: osFileOutcomeSchema.parse(result.outcome),
       complete: result.complete,
     };
   }
@@ -251,12 +262,86 @@ export class OsFileOperations {
   }
   execute(
     execution: CantripOsExecution,
-    request: ExplorerOperationRequestContent,
-    suppliedContext: ExplorerRequestContext,
+    request:
+      | ExplorerOperationRequestContent
+      | Extract<OsFileRequest, { type: "chat.files.references" }>,
+    suppliedContext:
+      | ExplorerRequestContext
+      | (Omit<ExplorerRequestContext, "surfaceKind"> & {
+          surfaceKind: "chat-files";
+        }),
+  ) {
+    return this.perform(execution, request, suppliedContext).then((result) => ({
+      ...result,
+      outcome: surfaceOperationOutcomeContentSchema.parse(result.outcome),
+    }));
+  }
+
+  async materialize(
+    execution: CantripOsExecution,
+    chatId: string,
+    attachments: readonly RuntimeChatAttachment[],
+  ): Promise<GuestRuntimeAttachment[]> {
+    const output: GuestRuntimeAttachment[] = [];
+    for (const attachment of attachments) {
+      if (attachment.sizeBytes > MAX_ATTACHMENT_BYTES)
+        throw new Error("Linux attachment is too large.");
+      const bytes = await readFile(attachment.path);
+      try {
+        if (bytes.length !== attachment.sizeBytes)
+          throw new Error(
+            "The uploaded attachment changed before Linux materialization.",
+          );
+        const request = osFileRequestSchema.parse({
+          type: "chat.attachment.materialize",
+          chatId,
+          attachmentId: attachment.id,
+          fileName: safeAttachmentFileName(attachment.fileName),
+          sha256: createHash("sha256").update(bytes).digest("hex"),
+          sizeBytes: bytes.length,
+          dataBase64: bytes.toString("base64"),
+        });
+        const digest = createHash("sha256")
+          .update(JSON.stringify(request))
+          .digest();
+        digest[6] = (digest[6]! & 15) | 80;
+        digest[8] = (digest[8]! & 63) | 128;
+        const id = digest.subarray(0, 16).toString("hex");
+        const operationId = `${id.slice(0, 8)}-${id.slice(8, 12)}-${id.slice(12, 16)}-${id.slice(16, 20)}-${id.slice(20)}`;
+        const result = await this.perform(execution, request, {
+          serverId: this.authority.serverIdentity(),
+          surfaceKind: "chat-files",
+          surfaceId: chatId,
+          operationId,
+          sequence: 0,
+        });
+        if (!result.outcome.ok) throw new Error(result.outcome.error);
+        if (result.outcome.result.type !== "chat.attachment.materialized")
+          throw new Error("Misrouted Linux attachment receipt.");
+        const { path: _workerPath, ...metadata } = attachment;
+        output.push({
+          ...metadata,
+          guestPath: result.outcome.result.value.path,
+        });
+      } finally {
+        bytes.fill(0);
+      }
+    }
+    return output;
+  }
+
+  private perform(
+    execution: CantripOsExecution,
+    request: OsFileRequest,
+    suppliedContext:
+      | ExplorerRequestContext
+      | (Omit<ExplorerRequestContext, "surfaceKind"> & {
+          surfaceKind: "chat-files";
+        }),
   ): Promise<Outcome> {
     // Hash the same schema-normalized record the packaged peer receives. JSON
     // property insertion order must not turn a completed write into a mismatch.
-    request = explorerOperationRequestContentSchema.parse(request);
+    request = osFileRequestSchema.parse(request);
     const context = {
       serverId: suppliedContext.serverId,
       surfaceKind: suppliedContext.surfaceKind,
@@ -316,7 +401,7 @@ export class OsFileOperations {
       await mkdir(path.dirname(admission), { recursive: true, mode: 0o700 });
       let observe = false;
       try {
-        if (explorerRequestMutates(request)) {
+        if (osFileRequestMutates(request)) {
           const file = await open(admission, "wx", 0o600);
           try {
             await file.writeFile(JSON.stringify({ digest }));

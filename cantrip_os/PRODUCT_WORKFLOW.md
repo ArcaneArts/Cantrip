@@ -76,6 +76,18 @@ the stale placement; retain/copy the draft, refresh/verify the source, create a
 new Linux agent and reopen the file there. A completed uncertain save can be
 observed by its original operation identity; an unknown save is not replayed.
 
+Uploaded chat attachments are copied into the selected Linux workspace account's
+private data directory outside the checkout. The native agent sees Linux paths;
+original uploads and native model image input remain on the owning worker.
+Copies are content-addressed, checked before use, and never overwrite a changed
+copy during recovery. Unknown writes require inspection rather than replay.
+
+Files returned by an OS-bound agent resolve against that chat's captured source.
+Clicking a project file link opens an OS-bound document/editor using the same
+worktree and generation. A stopped or changed source reports unavailable instead
+of reading the similarly named file on the host. Executor 0.8.0 is required for
+these attachment and file-reference operations.
+
 ## Linux terminals
 
 Select a current Linux agent, file, Explorer, or terminal and choose **Add project
@@ -181,8 +193,8 @@ removes the definition and their Run surfaces. For a linked checkout the definit
 is shared with Host, so affected Host and Linux Runs are both stopped. Separate
 checkouts remain separate even when their configuration UUIDs match. Unconfirmed
 cleanup keeps the definition and captured handles; inspect the outcome and retry
-explicitly. This requires executor 0.7.0 for Linux. Broader delegated project/Git/
-artifact tools and fresh Docker/ISO acceptance remain in progress.
+explicitly. This requires executor 0.7.0 for Linux. Attachment and returned file links require
+executor 0.8.0. GUI launch context and fresh Docker/ISO acceptance remain in progress.
 
 ## Run API reference
 

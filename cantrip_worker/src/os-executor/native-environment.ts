@@ -7,6 +7,11 @@ import type {
 } from "@cantrip/protocol";
 import { executorCommand, OsExecutorConnection } from "./connection.js";
 import type { CantripOsController } from "./controller.js";
+import type { OsFileOperations } from "./files.js";
+import type {
+  RuntimeChatAttachment,
+  GuestRuntimeAttachment,
+} from "../codex/runtime-types.js";
 import type { CodexNativeEnvironment } from "../codex/runtime-types.js";
 import {
   workspaceSnapshot,
@@ -28,6 +33,7 @@ export class OsNativeEnvironment implements CodexNativeEnvironment {
       CantripOsController,
       "captureExecutionBinding"
     >,
+    private readonly files?: Pick<OsFileOperations, "materialize">,
   ) {
     this.scope = structuredClone(scope);
     for (const overlay of this.scope.dependencyOverlays) Object.freeze(overlay);
@@ -54,6 +60,23 @@ export class OsNativeEnvironment implements CodexNativeEnvironment {
       )
       .digest("hex")
       .slice(0, 48)}`;
+  }
+
+  async materializeAttachments(
+    chatId: string,
+    attachments: readonly RuntimeChatAttachment[],
+  ): Promise<GuestRuntimeAttachment[]> {
+    if (!attachments.length) return [];
+    if (!this.files)
+      throw new Error(
+        "Linux attachment materialization is unavailable; no worker paths were sent to the agent.",
+      );
+    const { serverId: _serverId, ...scope } = this.scope;
+    return this.files.materialize(
+      { kind: "cantrip-os", scope, transport: this.transport },
+      chatId,
+      attachments,
+    );
   }
 
   get selection() {

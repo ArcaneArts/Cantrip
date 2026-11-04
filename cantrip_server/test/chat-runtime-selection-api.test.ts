@@ -1,3 +1,5 @@
+import { cantripOsExecutionSchema } from "@cantrip/protocol";
+import { CantripOsPlacementError } from "../src/db/repository/cantrip-os.js";
 import Fastify from "fastify";
 import { afterAll, describe, expect, it, vi } from "vitest";
 
@@ -41,6 +43,35 @@ const context: ChatExecutionContext = {
   worktreePolicy: null,
 };
 
+const uuid = "12345678-1234-4234-8234-123456789abc";
+const linux = cantripOsExecutionSchema.parse({
+  kind: "cantrip-os",
+  transport: { kind: "docker", container: "fixture" },
+  scope: {
+    ownerId: "owner-one",
+    workerId: "worker-one",
+    instanceId: uuid,
+    guestInstanceId: uuid,
+    attachmentGeneration: uuid,
+    runtimeGeneration: uuid,
+    bindingId: uuid,
+    bindingGeneration: uuid,
+    projectId: "project-one",
+    projectSourceId: uuid,
+    sourceKind: "folder",
+    worktreeId: uuid,
+    workspaceId: uuid,
+    guestWorkspaceId: "fixture",
+    uid: 20000,
+    gid: 20000,
+    homeGuestPath: "/home/fixture",
+    guestPath: "/home/fixture/source",
+    dependencyOverlays: [],
+    mode: "linux-owned",
+    linkedWorkerPath: null,
+  },
+});
+
 const app = Fastify();
 const opaque = {
   formatVersion: 1,
@@ -70,8 +101,23 @@ installChatBasicRoutes(app, {
   repository: {
     acknowledgeChatCompletion: async () => null,
     getChatComposerDraftWireState: async () => null,
-    getChatExecutionContext: async (_ownerId, chatId) =>
-      chatId === context.chatId
+    getChatExecutionContext: async (_ownerId, chatId) => {
+      if (chatId === "stale-linux")
+        throw new CantripOsPlacementError(
+          "The captured Linux runtime changed.",
+        );
+      if (chatId === "chat-linux")
+        return {
+          ...context,
+          chatId,
+          contextKind: "project",
+          projectId: "project-one",
+          worktreeId: linux.scope.worktreeId,
+          scratchRootId: null,
+          osExecution: linux,
+          cwd: linux.scope.guestPath,
+        };
+      return chatId === context.chatId
         ? context
         : chatId === "chat-project"
           ? {
@@ -83,7 +129,8 @@ installChatBasicRoutes(app, {
               scratchRootId: null,
               cwd: "/srv/project",
             }
-          : null,
+          : null;
+    },
     getWorker: async () => null,
     updateChat: async () => null,
     updateChatComposerDraft: async () => null,
@@ -96,7 +143,7 @@ afterAll(async () => {
 });
 
 describe("chat referenced path metadata routing", () => {
-  it.each([context.chatId, "chat-project"])(
+  it.each([context.chatId, "chat-project", "chat-linux"])(
     "routes a protected read to the owning worker for %s",
     async (chatId) => {
       requestWorker.mockClear();
@@ -114,7 +161,12 @@ describe("chat referenced path metadata routing", () => {
         type: "chat.files.references",
         chatId,
         serverId: "server-one",
-        root: chatId === "chat-project" ? "/srv/project" : context.cwd,
+        root:
+          chatId === "chat-linux"
+            ? linux
+            : chatId === "chat-project"
+              ? "/srv/project"
+              : context.cwd,
         operationId: "reference-operation",
         sequence: 0,
         protectedRequest: opaque,
@@ -126,6 +178,24 @@ describe("chat referenced path metadata routing", () => {
       });
     },
   );
+
+  it("reports stale Linux placement without dispatching any Host file read", async () => {
+    requestWorker.mockClear();
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/chats/stale-linux/file-references",
+      payload: {
+        operationId: "reference-operation",
+        sequence: 0,
+        protectedRequest: opaque,
+      },
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toEqual({
+      error: "The captured Linux runtime changed.",
+    });
+    expect(requestWorker).not.toHaveBeenCalled();
+  });
 
   it("does not dispatch a reference read for an unknown chat", async () => {
     requestWorker.mockClear();

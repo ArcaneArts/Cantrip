@@ -15,7 +15,11 @@ import type { FastifyInstance } from "fastify";
 
 import type { ServerRepository } from "../../db/repository.js";
 import { invalidBody } from "../../http/request-helpers.js";
-import { sendWorkerRequestFailure } from "../../http/worker-request-failures.js";
+import { CantripOsPlacementError } from "../../db/repository/cantrip-os.js";
+import {
+  sendWorkerConflictFailure,
+  sendWorkerRequestFailure,
+} from "../../http/worker-request-failures.js";
 import type { WorkerCommandBus } from "../../workers/bridge.js";
 
 export interface ChatBasicRouteDependencies {
@@ -90,21 +94,23 @@ export function installChatBasicRoutes(
       const input = surfaceStreamWireRequestSchema.safeParse(request.body);
       if (!input.success)
         return reply.code(400).send(invalidBody(input.error.issues));
-      const context = await repository.getChatExecutionContext(
-        applicationOwnerId(),
-        request.params.chatId,
-      );
-      if (!context) return reply.code(404).send({ error: "Chat not found." });
       try {
+        const context = await repository.getChatExecutionContext(
+          applicationOwnerId(),
+          request.params.chatId,
+        );
+        if (!context) return reply.code(404).send({ error: "Chat not found." });
         const result = await bridge.request(context.workerId, {
           type: "chat.files.references",
           chatId: context.chatId,
           serverId,
-          root: context.cwd,
+          root: context.osExecution ?? context.cwd,
           ...input.data,
         });
         return reply.send(surfaceStreamWireResponseSchema.parse(result));
       } catch (error) {
+        if (error instanceof CantripOsPlacementError)
+          return sendWorkerConflictFailure(reply, error);
         return sendWorkerRequestFailure(reply, error);
       }
     },

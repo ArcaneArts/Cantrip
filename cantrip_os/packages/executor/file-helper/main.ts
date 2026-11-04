@@ -1,14 +1,18 @@
+import { chatFileReferences } from "../../../../cantrip_worker/src/chat-file-references.js";
+import {
+  osFileRequestSchema,
+  osFileRequestMutates,
+} from "../../../../cantrip_worker/src/os-executor/file-requests.js";
+import { materializeAttachment, verifyAttachment } from "./attachments.js";
 import { createHash, randomBytes } from "node:crypto";
 import { mkdir, readFile, writeFile, rename, open } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
 import { z } from "zod";
-import { explorerOperationRequestContentSchema } from "@cantrip/protocol/surface-stream";
 import {
   executeExplorerRequest,
   explorerRequestFailure,
-  explorerRequestMutates,
 } from "../../../../cantrip_worker/src/commands/explorer-request.js";
 import { BinaryFileWrites } from "../../../../cantrip_worker/src/binary-file-writes.js";
 import { ExplorerFileImports } from "../../../../cantrip_worker/src/explorer-file-imports.js";
@@ -69,11 +73,11 @@ const frame = z
       .string()
       .regex(/^[a-f0-9]{64}$/)
       .optional(),
-    request: explorerOperationRequestContentSchema.optional(),
+    request: osFileRequestSchema.optional(),
     context: z
       .object({
         serverId: z.string().min(1),
-        surfaceKind: z.enum(["explorer", "file-document"]),
+        surfaceKind: z.enum(["explorer", "file-document", "chat-files"]),
         surfaceId: z.string().min(1),
         operationId: z.uuid(),
         sequence: z.number().int().nonnegative(),
@@ -90,16 +94,50 @@ try {
     const message = frame.parse(JSON.parse(line));
     if (
       message.action === "execute" &&
+      message.request?.type === "chat.files.references"
+    ) {
+      if (message.context.surfaceKind !== "chat-files")
+        throw new Error("Misrouted chat file references.");
+      try {
+        emit({
+          id: message.id,
+          result: {
+            complete: true,
+            outcome: {
+              ok: true,
+              result: {
+                type: "chat.files.references",
+                value: await chatFileReferences(
+                  root,
+                  message.request.references,
+                ),
+              },
+            },
+          },
+        });
+      } catch (error) {
+        emit({ id: message.id, result: explorerRequestFailure(error) });
+      }
+      continue;
+    }
+    if (
+      message.action === "execute" &&
       message.request &&
-      !explorerRequestMutates(message.request)
+      !osFileRequestMutates(message.request)
     ) {
       let result;
       try {
+        if (
+          message.request.type === "chat.files.references" ||
+          message.request.type === "chat.attachment.materialize" ||
+          message.context.surfaceKind === "chat-files"
+        )
+          throw new Error("Misrouted OS file request.");
         result = await executeExplorerRequest(
           root,
           message.request,
           { fileImports, binaryWrites },
-          message.context,
+          { ...message.context, surfaceKind: message.context.surfaceKind },
         );
       } catch (error) {
         result = explorerRequestFailure(error);
@@ -132,6 +170,22 @@ try {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
     if (saved) {
+      const cached = saved.result as
+        | {
+            outcome?: {
+              ok?: boolean;
+              result?: { type?: string; value?: unknown };
+            };
+          }
+        | undefined;
+      if (cached?.outcome?.result?.type === "chat.attachment.materialized") {
+        try {
+          await verifyAttachment(cached.outcome.result.value);
+        } catch (error) {
+          emit({ id: message.id, result: explorerRequestFailure(error) });
+          continue;
+        }
+      }
       emit({
         id: message.id,
         result:
@@ -164,12 +218,35 @@ try {
     await durableJson(filename, { digest }, true);
     let result;
     try {
-      result = await executeExplorerRequest(
-        root,
-        message.request,
-        { fileImports, binaryWrites },
-        message.context,
-      );
+      if (message.request.type === "chat.attachment.materialize") {
+        if (
+          message.context.surfaceKind !== "chat-files" ||
+          message.context.surfaceId !== message.request.chatId
+        )
+          throw new Error("Misrouted Linux attachment.");
+        result = {
+          complete: true,
+          outcome: {
+            ok: true,
+            result: {
+              type: "chat.attachment.materialized",
+              value: await materializeAttachment(homedir(), message.request),
+            },
+          },
+        };
+      } else {
+        if (
+          message.request.type === "chat.files.references" ||
+          message.context.surfaceKind === "chat-files"
+        )
+          throw new Error("Misrouted OS file request.");
+        result = await executeExplorerRequest(
+          root,
+          message.request,
+          { fileImports, binaryWrites },
+          message.context,
+        );
+      }
     } catch (error) {
       result = explorerRequestFailure(error);
     }
