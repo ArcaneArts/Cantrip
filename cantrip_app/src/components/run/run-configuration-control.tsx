@@ -1,5 +1,6 @@
+import { useRunDefinitionApi } from "@/lib/run-definition-source";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import type { ProjectWorktreeSummary, WorkerSummary } from "@cantrip/protocol";
+import type { CantripOsRunSelection, WorkerSummary } from "@cantrip/protocol";
 import type { RunConfigurationRuntime } from "@cantrip/protocol/run-configuration-runtime";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -60,7 +61,6 @@ import {
   StyledDropdownMenuItem,
 } from "@/components/ui/styled-menu";
 import {
-  deleteRunConfiguration,
   operateRunConfigurationRuntime,
   type RunConfigurationListInventory,
 } from "@/lib/run-configuration-api";
@@ -69,6 +69,7 @@ import {
   runConfigurationPrimaryOperation,
   type RunConfigurationControlItem,
   type RunConfigurationTargetControl,
+  type RunConfigurationWorktree,
 } from "@/lib/run-configuration-control-model";
 import {
   readRunConfigurationSelection,
@@ -125,7 +126,8 @@ function LifecycleButtons({
   onOperate(operation: "start" | "restart" | "stop"): void;
 }) {
   const [tooltipsSuppressed, setTooltipsSuppressed] = useState(false);
-  const active = runConfigurationRuntimeIsActive(runtime);
+  const uncertain = Boolean(runtime?.osDefinition && runtime.state === "lost");
+  const active = runConfigurationRuntimeIsActive(runtime) || uncertain;
   const stopping = runtime?.state === "stopping";
   const operate = (operation: "start" | "restart" | "stop") => {
     setTooltipsSuppressed(true);
@@ -173,7 +175,7 @@ function LifecycleButtons({
           "grid place-items-center rounded text-emerald-600 hover:bg-emerald-500/10 disabled:pointer-events-none disabled:opacity-40 dark:text-emerald-400",
           compact ? "size-7" : "size-8",
         )}
-        disabled={disabled || pending || stopping}
+        disabled={disabled || pending || stopping || uncertain}
         onClick={(event) => {
           event.stopPropagation();
           operate("restart");
@@ -196,7 +198,9 @@ function LifecycleButtons({
           "grid place-items-center rounded text-red-600 hover:bg-red-500/10 disabled:pointer-events-none disabled:opacity-40 dark:text-red-400",
           compact ? "size-7" : "size-8",
         )}
-        disabled={stopDisabled || pending || stopping}
+        disabled={
+          stopDisabled || pending || (stopping && !runtime?.osDefinition)
+        }
         onClick={(event) => {
           event.stopPropagation();
           operate("stop");
@@ -219,6 +223,8 @@ function LifecycleButtons({
 
 export function RunConfigurationControl({
   compact = false,
+  sourceKey,
+  osSelection,
   editorConfigurationId,
   error,
   inventory,
@@ -232,6 +238,8 @@ export function RunConfigurationControl({
   onFocusTerminal,
 }: {
   compact?: boolean;
+  sourceKey?: string;
+  osSelection?: CantripOsRunSelection;
   editorConfigurationId: string | "new" | null;
   error?: string | null;
   inventory: RunConfigurationListInventory | null | undefined;
@@ -240,11 +248,19 @@ export function RunConfigurationControl({
   renderEditor?: boolean;
   runtimes: readonly RunConfigurationRuntime[];
   workers: readonly WorkerSummary[];
-  worktrees: readonly ProjectWorktreeSummary[];
+  worktrees: readonly RunConfigurationWorktree[];
   onEditorConfigurationChange(configurationId: string | "new" | null): void;
   onFocusTerminal(terminalId: string): void;
 }) {
   const queryClient = useQueryClient();
+  const { deleteRunConfiguration } = useRunDefinitionApi();
+  const selectionScopeId = sourceKey ? `${projectId}\0${sourceKey}` : projectId;
+  const configurationQueryKey = sourceKey
+    ? ["run-configurations", projectId, sourceKey]
+    : ["run-configurations", projectId];
+  const runtimeQueryKey = sourceKey
+    ? ["run-configuration-runtimes", projectId, sourceKey]
+    : ["run-configuration-runtimes", projectId];
   const model = useMemo(
     () =>
       buildRunConfigurationControlModel({
@@ -257,12 +273,18 @@ export function RunConfigurationControl({
   );
   const [menuOpen, setMenuOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(() =>
-    reconcileRunConfigurationSelection(
-      readRunConfigurationSelection(projectId, scopedClientStorageKey),
-      model.configurations.map(({ id }) => id),
-    ),
-  );
+  const [selectedId, setSelectedId] = useState<string | null>(() => {
+    const preferred = readRunConfigurationSelection(
+      selectionScopeId,
+      scopedClientStorageKey,
+    );
+    return inventory
+      ? reconcileRunConfigurationSelection(
+          preferred,
+          model.configurations.map(({ id }) => id),
+        )
+      : preferred;
+  });
   const [worktreeConfigurationId, setWorktreeConfigurationId] = useState<
     string | null
   >(null);
@@ -272,23 +294,24 @@ export function RunConfigurationControl({
 
   const ids = model.configurations.map(({ id }) => id);
   const idsKey = ids.join("\0");
-  const selectionProjectRef = useRef(projectId);
+  const selectionProjectRef = useRef(selectionScopeId);
   useEffect(() => {
-    const projectChanged = selectionProjectRef.current !== projectId;
+    if (!inventory) return;
+    const projectChanged = selectionProjectRef.current !== selectionScopeId;
     const preferred = projectChanged
-      ? readRunConfigurationSelection(projectId, scopedClientStorageKey)
+      ? readRunConfigurationSelection(selectionScopeId, scopedClientStorageKey)
       : selectedId;
-    selectionProjectRef.current = projectId;
+    selectionProjectRef.current = selectionScopeId;
     const reconciled = reconcileRunConfigurationSelection(preferred, ids);
     if (reconciled !== selectedId) setSelectedId(reconciled);
     writeRunConfigurationSelection(
-      projectId,
+      selectionScopeId,
       reconciled,
       scopedClientStorageKey,
     );
     // The joined identity list is the stable inventory dependency.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [idsKey, projectId, selectedId]);
+  }, [idsKey, inventory, selectionScopeId, selectedId]);
 
   const selected =
     model.configurations.find(({ id }) => id === selectedId) ?? null;
@@ -306,13 +329,13 @@ export function RunConfigurationControl({
   const refreshConfigurations = () =>
     queryClient.invalidateQueries({
       exact: true,
-      queryKey: ["run-configurations", projectId],
+      queryKey: configurationQueryKey,
     });
   const refresh = async () => {
     await Promise.all([
       refreshConfigurations(),
       queryClient.invalidateQueries({
-        queryKey: ["run-configuration-runtimes", projectId],
+        queryKey: runtimeQueryKey,
       }),
       queryClient.invalidateQueries({ queryKey: ["terminals", projectId] }),
       queryClient.invalidateQueries({
@@ -326,12 +349,27 @@ export function RunConfigurationControl({
         operation,
         projectId,
         configurationId: item.id,
+        ...(osSelection
+          ? {
+              osSource:
+                operation === "stop" && target.runtime
+                  ? { kind: "runtime" as const, runtimeId: target.runtime.id }
+                  : osSelection,
+            }
+          : {}),
         targetWorktreeId: target.worktree.isPrimary ? null : target.worktree.id,
       }),
-    onSuccess: async (result, { operation }) => {
+    onSuccess: async (result, { operation, item, target }) => {
       if (result.runtime) {
+        const title = target.worktree.isPrimary
+          ? item.name
+          : `${item.name} · ${target.label}`;
+        queryClient.setQueryData<Record<string, string>>(
+          ["run-terminal-titles", projectId],
+          (current = {}) => ({ ...current, [result.runtime!.id]: title }),
+        );
         queryClient.setQueryData<RunConfigurationRuntime[]>(
-          ["run-configuration-runtimes", projectId],
+          runtimeQueryKey,
           (current = []) => [
             ...current.filter(({ id }) => id !== result.runtime!.id),
             result.runtime!,
@@ -591,6 +629,12 @@ export function RunConfigurationControl({
                               <Pencil className="size-4" /> Edit
                             </StyledDropdownMenuItem>
                             <StyledDropdownMenuItem
+                              disabled={Boolean(osSelection)}
+                              title={
+                                osSelection
+                                  ? "Delete is not available for Linux Run configurations yet."
+                                  : undefined
+                              }
                               className="text-destructive focus:text-destructive"
                               onSelect={() => {
                                 setMenuOpen(false);
@@ -692,7 +736,7 @@ export function RunConfigurationControl({
           }}
           onSaved={(saved) => {
             queryClient.setQueryData<RunConfigurationListInventory>(
-              ["run-configurations", projectId],
+              configurationQueryKey,
               (current) => ({
                 directory: current?.directory ?? ".cantrip/run-configurations",
                 diagnostics: current?.diagnostics ?? [],
@@ -711,7 +755,7 @@ export function RunConfigurationControl({
             if (saved.id) {
               setSelectedId(saved.id);
               writeRunConfigurationSelection(
-                projectId,
+                selectionScopeId,
                 saved.id,
                 scopedClientStorageKey,
               );

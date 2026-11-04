@@ -1032,3 +1032,71 @@ Logs and actual guest receipts are retained under ignored
 `artifacts/phase3-run-product/`. The header source picker, safe definition
 retirement/deletion, broader delegated project/Git/artifact tools, and fresh
 Docker/ISO acceptance remain outstanding. This is not Phase 3 completion.
+
+## Linux Run source picker checkpoint (2026-11-04)
+
+The project header selects Host or a Linux checkout source/workspace and its
+captured epochs. The ordinary Run button uses that source's Primary; an explicit
+worktree action selects a bound target in the same source and workspace. Discovery,
+validation, definition editing, and file/directory/device pickers use the selected
+Linux definition source. Guest executor packages remain 0.6.0.
+
+Actual product acceptance used Codex's in-app browser, a disposable Node Server
+on port 4319, the existing test Worker, and the ARM64 Docker desktop. The desktop
+was upgraded from executor 0.4.0 to the already verified 0.6.0 package, refreshed,
+and its Primary/secondary bindings verified through Settings. The retained client
+profile was reused at its original browser origin; the host user's browser and
+development Server were untouched.
+
+- Created and saved `Linux UI acceptance` through the Linux editor. Provider
+  validation reported Linux. The Run definition lived in the Linux Primary.
+- Header Run executed Primary despite a secondary terminal being selected.
+  Browser-decrypted Python output reported UID 20000 and its exact Primary cwd.
+- **Run in Worktree** executed the alternate path under the same UID. Switching
+  the header to Host preserved that Run's Linux output and target; explicit Stop
+  reported Stopped. A captured Primary tab also started and stopped its original
+  Linux target while the header stayed Host.
+- **Edit** from a captured Linux Run under a Host header opened the exact Linux
+  definition and selected its source. The source/configuration selection survived
+  a browser reload.
+- Both Runs wrote distinct `run-ui-proof.json` files. Direct guest reads verified
+  their bytes and UID 20000 ownership. Focusing each Run listed its intended files;
+  opening the identical filename produced separate editor documents containing
+  the respective Primary/secondary cwd. No Guest path was placed into a logical
+  target's Worker path field.
+- Restarted the actual Docker instance, refreshed its observation, and verified
+  both bindings. The old header selection remained unavailable until explicitly
+  choosing the current epoch; the saved definition returned on that selection.
+  Captured old Run tabs kept Start disabled and retained their original targets.
+- The new metadata APIs passed actual Docker Server/Worker/executor tests and
+  native HTTP parity. Client tests cover unavailable source parsing, captured
+  runtime identity, blocked Host actions while resolving a Run, and stable write
+  admission IDs after a lost reply and adapter recreation. Pending write storage
+  contains only a request hash and UUID, not definition contents.
+
+Migration `0249` backfills Linux Run terminal file placement from immutable Run
+target captures in one atomic statement, restoring the capture trigger before it
+commits. New admissions write this capture directly. Native PGlite/PostgreSQL
+checks exercised an actual pre-upgrade-shaped row, applied the real backfill,
+and confirmed that later retargeting still fails. Existing Host terminals remain
+Host-owned. Node Run persistence checks passed after the same change.
+
+Validation: 79 focused app tests and 22 focused Server tests passed. Native
+HTTP parity, both PostgreSQL/PGlite persistence suites, and two source-contract
+tests passed. App type checking and the production build passed. Server type checking
+retained the two existing Task errors. The public surface check retained its
+seven previously unreviewed exports after adding the new source schema to the
+allowlist. The required `pnpm check` reached the unchanged reviewed
+`agentOperations` digest mismatch (`691b6132…` versus `c01cedeb…`); it is not
+reported as passing.
+
+Screenshots, raw guest file evidence, and validation logs are retained under
+ignored `artifacts/phase3-run-source-picker/`. Older agent/editor/interactive-shell
+resources retained their previous-runtime captures after the package upgrade;
+this test did not silently retarget them. Their stale-resource recovery/history
+presentation remains part of the acceptance follow-up.
+
+Linux Run definition deletion remains disabled until its source-scoped runtime
+retirement is integrated. Broader delegated Cantrip/Git/artifact tools, GUI launch
+context, and refreshed distribution acceptance remain outstanding. This is not
+complete Phase 3 acceptance.

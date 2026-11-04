@@ -711,6 +711,50 @@ describe.skipIf(!enabled)(
         };
         const ordinary = await startRun(null);
         const secondary = await startRun(worktree.worktreeId);
+        const sourceResponse = await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/cantrip-os/run-sources`,
+        });
+        expect(sourceResponse.statusCode, sourceResponse.body).toBe(200);
+        const sourceOptions = sourceResponse.json();
+        expect(
+          sourceOptions.find(
+            (source: { binding: { id: string } }) =>
+              source.binding.id === binding.id,
+          ),
+        ).toMatchObject({
+          available: true,
+          target: {
+            id: binding.worktreeId,
+            isPrimary: true,
+            displayPath: binding.guestPath,
+          },
+        });
+        expect(
+          sourceOptions.every(
+            (source: {
+              transport?: unknown;
+              target: Record<string, unknown>;
+            }) => !("transport" in source) && !("path" in source.target),
+          ),
+        ).toBe(true);
+        const capturedStatus = await post(
+          "/api/run-configuration-runtimes/status",
+          {
+            operationId: randomUUID(),
+            projectId,
+            configurationId,
+            targetWorktreeId: null,
+            runtimeId: secondary.runtime.id,
+          },
+        );
+        expect(capturedStatus.runtimes).toHaveLength(1);
+        expect(capturedStatus.runtimes[0]).toMatchObject({
+          id: secondary.runtime.id,
+          osTargetGuestPath: worktree.guestPath,
+          osDefinition: { kind: "binding", bindingId: binding.id },
+        });
+
         expect(ordinary.runtime.worktreeId).toBe(binding.worktreeId);
         expect(secondary.runtime.worktreeId).toBe(worktree.worktreeId);
         expect(ordinary.runtime.id).not.toBe(secondary.runtime.id);

@@ -32,6 +32,8 @@ async fn execute(
     let value = if request.method() == Method::GET {
         if route == "/api/cantrip-os" {
             serde_json::json!(repository.list(&owner).await?)
+        } else if route.ends_with("/run-sources") {
+            serde_json::json!(repository.run_sources(&owner, param("projectId")?).await?)
         } else if route.ends_with("/workspaces") {
             let id = param("instanceId")?;
             repository.attachment(&owner, id).await?;
@@ -134,6 +136,10 @@ pub(super) fn routes() -> Router<Arc<AuthService>> {
             post(handle),
         )
         .route("/api/cantrip-os", get(handle))
+        .route(
+            "/api/projects/{projectId}/cantrip-os/run-sources",
+            get(handle),
+        )
         .route("/api/cantrip-os/inspect", post(handle))
         .route("/api/cantrip-os/attach", post(handle))
         .route("/api/cantrip-os/{instanceId}/refresh", post(handle))

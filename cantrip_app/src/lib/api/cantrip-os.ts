@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   cantripOsRunDefinitionApiSchema,
+  cantripOsRunSourceSchema,
   cantripOsRunDefinitionResponseSchema,
   type CantripOsRunDefinitionRequest,
   cantripOsAttachSchema,
@@ -40,6 +41,8 @@ export async function executeCantripOsRunDefinition(
   request: CantripOsRunDefinitionRequest,
 ) {
   const input = cantripOsRunDefinitionApiSchema.parse({
+    bindingGeneration: binding.bindingGeneration,
+    attachmentGeneration: binding.provisionedAttachmentGeneration ?? undefined,
     runtimeGeneration: binding.provisionedRuntimeGeneration,
     request,
   });
@@ -207,5 +210,13 @@ export async function prepareCantripOsProvision(
         { method: "POST", body },
         { expectedIdentity: identity, allowCsrfRecovery: false },
       ),
+    );
+}
+
+export async function getCantripOsRunSources(projectId: string) {
+  return z
+    .array(cantripOsRunSourceSchema)
+    .parse(
+      await request(`/api/projects/${route(projectId)}/cantrip-os/run-sources`),
     );
 }

@@ -176,7 +176,8 @@ export function RunTerminalView({
   onEdit?(): void;
 }) {
   const queryClient = useQueryClient();
-  const active = runConfigurationRuntimeIsActive(runtime);
+  const uncertain = Boolean(runtime?.osDefinition && runtime.state === "lost");
+  const active = runConfigurationRuntimeIsActive(runtime) || uncertain;
   const configurationId = terminal.runConfigurationId;
   const canReadOutput = Boolean(configurationId && runtime);
   const lifecycle = useMutation({
@@ -188,13 +189,18 @@ export function RunTerminalView({
         operation,
         projectId: terminal.projectId,
         configurationId,
+        ...(runtime?.osDefinition
+          ? { osSource: { kind: "runtime" as const, runtimeId: runtime.id } }
+          : {}),
         targetWorktreeId: terminal.worktreeId,
       });
     },
     onSuccess: async (result) => {
       if (result.runtime) {
         queryClient.setQueryData<RunConfigurationRuntime[]>(
-          ["run-configuration-runtimes", terminal.projectId],
+          runtime?.osDefinition
+            ? ["run-configuration-runtime", terminal.projectId, runtime.id]
+            : ["run-configuration-runtimes", terminal.projectId],
           (current = []) => [
             ...current.filter(({ id }) => id !== result.runtime!.id),
             result.runtime!,
@@ -218,15 +224,19 @@ export function RunTerminalView({
         projectId: terminal.projectId,
         configurationId: configurationId!,
         worktreeId: terminal.worktreeId,
+        ...(runtime?.osDefinition
+          ? { osSource: { kind: "runtime" as const, runtimeId: runtime.id } }
+          : {}),
       }),
     queryKey: [
       "run-configuration-runtime-output",
       terminal.projectId,
+      runtime?.id,
       configurationId,
       terminal.worktreeId,
       runtime?.generation,
     ],
-    refetchInterval: active ? 500 : false,
+    refetchInterval: runConfigurationRuntimeIsActive(runtime) ? 500 : false,
     retry: false,
   });
   const wasActiveRef = useRef(active);
@@ -334,7 +344,9 @@ export function RunTerminalView({
             <span
               className={cn(
                 "size-1.5 rounded-full",
-                active ? "bg-emerald-500" : "bg-muted-foreground/50",
+                runConfigurationRuntimeIsActive(runtime)
+                  ? "bg-emerald-500"
+                  : "bg-muted-foreground/50",
               )}
             />
             <span className={cn(active && "capitalize")}>
@@ -350,6 +362,7 @@ export function RunTerminalView({
               definitionAvailable !== true ||
               launchAvailable !== true ||
               status === "stopping" ||
+              uncertain ||
               lifecycle.isPending
             }
             onClick={() => lifecycle.mutate("restart")}
@@ -388,7 +401,7 @@ export function RunTerminalView({
           <Button
             disabled={
               stopAvailable !== true ||
-              status === "stopping" ||
+              (status === "stopping" && !runtime?.osDefinition) ||
               lifecycle.isPending
             }
             onClick={() => lifecycle.mutate("stop")}

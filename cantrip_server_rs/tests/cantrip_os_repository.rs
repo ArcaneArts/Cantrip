@@ -39,6 +39,48 @@ async fn exercise_run_captures(
     let admitted = runs.request_operation("owner", &request).await?;
     let runtime = &admitted["runtime"];
     assert_eq!(runtime["generation"].as_f64(), Some(1.0));
+    let terminal_id = runtime["terminalId"].as_str().unwrap();
+    let terminal_repo = cantrip_server::terminals::Repository::new(database.clone());
+    let terminal = terminal_repo
+        .list("owner", "project")
+        .await?
+        .into_iter()
+        .find(|row| row["id"] == terminal_id)
+        .unwrap();
+    assert_eq!(
+        terminal["cantripOsBindingId"].as_str(),
+        worktree["id"].as_str()
+    );
+    assert_eq!(
+        terminal["cantripOsRuntimeGeneration"].as_str(),
+        target["scope"]["runtimeGeneration"].as_str()
+    );
+    // Emulate a pre-upgrade Run terminal, then execute the actual atomic backfill.
+    database.execute(&format!("DO $$ BEGIN ALTER TABLE terminals DISABLE TRIGGER terminal_os_capture_immutable; UPDATE terminals SET cantrip_os_binding_id=NULL,os_binding_generation=NULL,os_attachment_generation=NULL,os_runtime_generation=NULL WHERE id='{terminal_id}'; ALTER TABLE terminals ENABLE TRIGGER terminal_os_capture_immutable; END $$;")).await?;
+    database
+        .execute(include_str!(
+            "../../cantrip_server/drizzle/0249_cantrip_os_run_terminal_files.sql"
+        ))
+        .await?;
+    let backfilled = terminal_repo
+        .list("owner", "project")
+        .await?
+        .into_iter()
+        .find(|row| row["id"] == terminal_id)
+        .unwrap();
+    assert_eq!(
+        backfilled["cantripOsBindingId"].as_str(),
+        worktree["id"].as_str()
+    );
+    assert!(
+        database
+            .execute(&format!(
+                "UPDATE terminals SET os_runtime_generation='different' WHERE id='{terminal_id}'"
+            ))
+            .await
+            .is_err()
+    );
+
     assert_eq!(
         runtime["worktreeId"].as_str(),
         worktree["worktreeId"].as_str()

@@ -35,6 +35,17 @@ impl Coordinator {
             input["request"]["projectId"] == project,
             "The Run definition belongs to another project."
         );
+        if !input["bindingGeneration"].is_null() || !input["attachmentGeneration"].is_null() {
+            let selected = self.repository.context(owner, project, binding).await?;
+            ensure!(
+                (input["bindingGeneration"].is_null()
+                    || selected["binding"]["bindingGeneration"] == input["bindingGeneration"])
+                    && (input["attachmentGeneration"].is_null()
+                        || selected["instance"]["attachmentGeneration"]
+                            == input["attachmentGeneration"]),
+                "The selected Linux definition source changed."
+            );
+        }
         let execution = self
             .repository
             .run_primary(owner, project, binding, text(input, "runtimeGeneration")?)

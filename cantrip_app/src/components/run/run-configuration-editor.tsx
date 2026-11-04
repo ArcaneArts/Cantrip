@@ -1,4 +1,8 @@
 import {
+  useRunDefinitionApi,
+  useRunDefinitionScope,
+} from "@/lib/run-definition-source";
+import {
   runConfigurationSecretReferenceSchema,
   type RunConfigurationDetectionCandidate,
   type RunConfigurationDartDocument,
@@ -56,12 +60,8 @@ import { RunConfigurationPathPicker } from "@/components/run/run-configuration-p
 import { RunConfigurationTargetPicker } from "@/components/run/run-configuration-target-picker";
 import { RunConfigurationValidationStatus } from "@/components/run/run-configuration-validation-status";
 import {
-  detectRunConfigurations,
-  getRunConfigurationCapabilities,
   listRunConfigurationSecrets,
-  saveRunConfiguration,
   setRunConfigurationSecret,
-  validateRunConfiguration,
 } from "@/lib/run-configuration-api";
 import {
   applyRunConfigurationDetectionCandidate,
@@ -856,16 +856,23 @@ export function RunConfigurationEditor({
     fingerprint: string;
   } | null>(null);
   const queryClient = useQueryClient();
+  const {
+    detectRunConfigurations,
+    getRunConfigurationCapabilities,
+    saveRunConfiguration,
+    validateRunConfiguration,
+  } = useRunDefinitionApi();
+  const runSourceScope = useRunDefinitionScope();
   const editingRevision = entry?.revision ?? null;
   const detection = useQuery({
     enabled: open && creating && stage === "choose",
-    queryKey: ["run-configuration-detection", projectId],
+    queryKey: ["run-configuration-detection", projectId, runSourceScope],
     queryFn: () => detectRunConfigurations(projectId),
     staleTime: 5_000,
   });
   const capabilities = useQuery({
     enabled: open && creating && stage === "choose",
-    queryKey: ["run-configuration-capabilities", projectId],
+    queryKey: ["run-configuration-capabilities", projectId, runSourceScope],
     queryFn: () => getRunConfigurationCapabilities(projectId),
     staleTime: 30_000,
   });
@@ -878,6 +885,7 @@ export function RunConfigurationEditor({
     queryKey: [
       "run-configuration-target-detection",
       projectId,
+      runSourceScope,
       document.provider,
     ],
     queryFn: () => detectRunConfigurations(projectId, document.provider),
@@ -944,6 +952,7 @@ export function RunConfigurationEditor({
     queryKey: [
       "run-configuration-provider-validation",
       projectId,
+      runSourceScope,
       validationDraft?.fingerprint,
     ],
     queryFn: () => {

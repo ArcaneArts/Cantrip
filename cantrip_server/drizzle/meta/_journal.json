@@ -1744,6 +1744,13 @@
       "when": 1793805840552,
       "tag": "0248_cantrip_os_run_placements",
       "breakpoints": true
+    },
+    {
+      "idx": 249,
+      "version": "7",
+      "when": 1793813543080,
+      "tag": "0249_cantrip_os_run_terminal_files",
+      "breakpoints": true
     }
   ]
 }

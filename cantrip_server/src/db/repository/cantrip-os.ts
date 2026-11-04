@@ -11,6 +11,7 @@ import {
   cantripOsInstanceSummarySchema,
   cantripOsProjectSourceSummarySchema,
   cantripOsSourceBindingSummarySchema,
+  cantripOsRunSourceSchema,
   cantripOsTransportSchema,
   cantripOsWorkspaceSummarySchema,
   cantripOsWorkspaceObservationSchema,
@@ -99,6 +100,27 @@ export class CantripOsRepository {
       input,
     );
     return binding(result.row, result.instanceId);
+  }
+
+  async runSources(ownerId: string, projectId: string) {
+    const contexts = await Promise.all(
+      (await this.listBindings(ownerId, projectId)).map((binding) =>
+        this.bindingContext(ownerId, binding.id),
+      ),
+    );
+    return contexts.flatMap((context) =>
+      context
+        ? [
+            cantripOsRunSourceSchema.parse({
+              binding: context.binding,
+              instance: context.instance,
+              workspace: context.workspace,
+              target: context.runTarget,
+              available: context.available,
+            }),
+          ]
+        : [],
+    );
   }
 
   async list(ownerId: string) {
@@ -722,6 +744,18 @@ export class CantripOsRepository {
                 row.linuxSource.removedAt === null &&
                 row.binding.guestPath === row.worktree.guestPath),
           worktreeState: row.worktree.lifecycleState,
+          runTarget: {
+            id: row.worktree.id,
+            workerId: row.worktree.workerId,
+            isPrimary: row.worktree.isPrimary,
+            isDefault: row.worktree.isDefault,
+            name: row.worktree.isPrimary
+              ? "Primary"
+              : `Worktree ${row.worktree.id.slice(0, 8)}`,
+            branch: null,
+            lifecycleState: row.worktree.lifecycleState,
+            displayPath: row.binding.guestPath,
+          },
           available:
             row.binding.state === "ready" &&
             row.worktree.projectSourceId === row.binding.projectSourceId &&

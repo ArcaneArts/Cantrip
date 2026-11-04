@@ -75,6 +75,8 @@ export const runConfigurationRuntimeIdentitySchema = z
 
 export const runConfigurationRuntimeSchema = z
   .object({
+    osDefinition: cantripOsRunSelectionSchema.options[0].optional(),
+    osTargetGuestPath: z.string().min(1).optional(),
     id: z.string().uuid(),
     ...runConfigurationRuntimeIdentitySchema.shape,
     workerId: z.string().trim().min(1).max(200),
@@ -127,6 +129,7 @@ export const runConfigurationRuntimeLifecycleRequestSchema =
 
 export const runConfigurationRuntimeStatusQuerySchema = z
   .object({
+    runtimeId: z.uuid().optional(),
     osSource: cantripOsRunSelectionSchema.optional(),
     operationId: runConfigurationOperationIdSchema,
     projectId: runConfigurationRuntimeIdentitySchema.shape.projectId,

@@ -20,9 +20,10 @@ Linux-owned checkouts/worktrees, including explicit Linux dependency overlays.
 The [authorized dispatch APIs](DISPATCH.md) and [native runtime adapter](NATIVE_RUNTIME.md)
 are available as internal checkpoints, including captured placement for new agent
 chats. The [client attachment/selection workflow](PRODUCT_WORKFLOW.md) is available
-in Project Settings → CantripOS. Remaining product surfaces are still being implemented.
-Its current package/transport cycle is opt-in with `CANTRIP_OS_EXECUTOR=1`;
-Cantrip project selection and full agent placement are subsequent cycles.
+in Project Settings → CantripOS. Captured Linux agents, files/editor/Explorer,
+terminals, and the header Run source selector now use these bindings. Delegated
+project/Git/artifact tools and final distribution acceptance remain in progress.
+The executor edition is currently opt-in with `CANTRIP_OS_EXECUTOR=1`.
 
 The first personal-testing checkpoint is ready. See [acceptance results](ACCEPTANCE.md)
 for the actual tested builds and platform limits. Iterate in Docker first; build

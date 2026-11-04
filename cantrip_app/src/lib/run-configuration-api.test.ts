@@ -98,6 +98,22 @@ afterEach(() => {
 });
 
 describe("Run configuration app API", () => {
+  it("does not dispatch Linux mutations or obtain a Host grant without a captured client identity", async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    await expect(
+      operateRunConfigurationRuntime({
+        operation: "start",
+        projectId,
+        configurationId,
+        targetWorktreeId: null,
+        osSource: { kind: "runtime", runtimeId },
+      }),
+    ).rejects.toThrow("An authenticated session is required.");
+    expect(fetch).not.toHaveBeenCalled();
+    expect(ensureRunOperationWorker).not.toHaveBeenCalled();
+  });
+
   it.each(["start", "restart"] as const)(
     "installs the worker Run grant before admitting %s",
     async (operation) => {
@@ -579,41 +595,57 @@ describe("Run configuration app API", () => {
     );
   });
 
-  it("opens protected runtime output only after checking exact identity", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
-        jsonResponse({
-          operationId,
-          projectId,
-          configurationId,
-          worktreeId,
-          generation: 3,
-          protectedOutput: {
-            formatVersion: 1,
-            domain: "run-content",
-            keyRevision: 1,
-            envelope: {
-              version: 1,
-              algorithm: "AES-256-GCM",
+  it.each([false, true])(
+    "opens protected runtime output with exact identity (Linux=%s)",
+    async (linux) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(
+          jsonResponse({
+            operationId,
+            projectId,
+            configurationId,
+            worktreeId,
+            generation: 3,
+            protectedOutput: {
+              formatVersion: 1,
+              domain: "run-content",
               keyRevision: 1,
-              nonce: "AAAAAAAAAAAAAAAA",
-              ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+              envelope: {
+                version: 1,
+                algorithm: "AES-256-GCM",
+                keyRevision: 1,
+                nonce: "AAAAAAAAAAAAAAAA",
+                ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+              },
             },
-          },
-        }),
-      ),
-    );
+          }),
+        ),
+      );
 
-    await expect(
-      readRunConfigurationRuntimeOutput(
-        { projectId, configurationId, worktreeId },
-        operationId,
-      ),
-    ).resolves.toEqual({
-      data: "server ready\r\n",
-      generation: 3,
-      truncated: false,
-    });
-  });
+      await expect(
+        readRunConfigurationRuntimeOutput(
+          {
+            projectId,
+            configurationId,
+            worktreeId,
+            ...(linux
+              ? { osSource: { kind: "runtime" as const, runtimeId } }
+              : {}),
+          },
+          operationId,
+        ),
+      ).resolves.toEqual({
+        data: "server ready\r\n",
+        generation: 3,
+        truncated: false,
+      });
+      if (linux) expect(ensureRunOperationWorker).not.toHaveBeenCalled();
+      else
+        expect(ensureRunOperationWorker).toHaveBeenCalledWith({
+          projectId,
+          worktreeId,
+        });
+    },
+  );
 });

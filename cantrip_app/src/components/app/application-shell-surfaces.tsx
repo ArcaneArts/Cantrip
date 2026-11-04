@@ -13,8 +13,8 @@ export const PersistentTerminalViews = lazy(() =>
 );
 
 export const RunTerminalView = lazy(() =>
-  import("@/components/terminal/run-terminal-view").then((module) => ({
-    default: module.RunTerminalView,
+  import("@/components/terminal/captured-run-terminal-view").then((module) => ({
+    default: module.CapturedRunTerminalView,
   })),
 );
 
